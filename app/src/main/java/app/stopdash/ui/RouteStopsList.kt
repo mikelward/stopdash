@@ -137,6 +137,37 @@ internal fun rememberRouteStops(row: DepartureRow, next: Departure?, retry: Int)
 }
 
 /**
+ * Every station on [lineId] in both directions, in route order, for a page with no stop list of its
+ * own (a status row: no train to follow). Used only to name the stations a line's alert mentions
+ * beside its chip (SPEC *Disruptions*), so it is empty until loaded, when not [wanted], and on a
+ * failure: a missing name costs nothing the alert's own prose doesn't already say. Rendered from
+ * the in-memory cache when this line was already fetched, else loaded off the render path.
+ */
+@Composable
+internal fun rememberLineStops(lineId: String, wanted: Boolean): List<RouteStop> {
+    val repository = LocalRouteStops.current
+    if (repository == null || !wanted || lineId.isBlank()) return emptyList()
+    fun stopsOf(sequence: LineSequence): List<RouteStop> =
+        sequence.routes.flatMap { it.stopIds }.distinct()
+            .map { id -> RouteStop(id, sequence.stopNames[id].orEmpty()) }
+    return key(repository, lineId) {
+        val initial = remember { repository.cached(lineId, "")?.let(::stopsOf) }
+        val state by produceState(initial, lineId) {
+            if (value != null) return@produceState
+            value = try {
+                stopsOf(repository.load(lineId, ""))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: TflException) {
+                // Already logged (sanitized) by the repository; the page just names no stations.
+                emptyList()
+            }
+        }
+        state.orEmpty()
+    }
+}
+
+/**
  * The route detail's stop list: every station from the boarding stop to the train's
  * destination on a rail in the line's [railColor] — the boarding stop a blue "you are here" dot, every other stop
  * hollow, the boarding stop and terminus named in bold —
@@ -152,6 +183,8 @@ internal fun RouteStopsSection(
     direction: String? = null,
     // Stations (after the boarding stop) with a starred journey from here; each shows a star.
     starredStopIds: Set<String> = emptySet(),
+    // Stations the line's service alert names ([app.stopdash.domain.AlertStops]); each shows a ⚠.
+    alertStopIds: Set<String> = emptySet(),
     // Stars or unstars the journey from the boarding stop to a tapped station (SPEC *Journeys*);
     // null leaves the stations inert.
     onToggleJourneyTo: ((RouteStop) -> Unit)? = null,
@@ -187,6 +220,7 @@ internal fun RouteStopsSection(
                     first = index == 0,
                     last = index == state.stops.lastIndex,
                     starred = index > 0 && stop.id in starredStopIds,
+                    inAlert = stop.id in alertStopIds,
                     onClick = if (index > 0) onToggleJourneyTo?.let { toggle -> { toggle(stop) } } else null,
                 )
             }
@@ -248,6 +282,8 @@ private fun StopOnRail(
     last: Boolean,
     // A starred journey ends here: the name carries a star, and the row says so to a screen reader.
     starred: Boolean = false,
+    // The line's service alert names this station: the name carries a ⚠, and the row says so too.
+    inAlert: Boolean = false,
     // Stars or unstars the journey to this station; null leaves the row inert.
     onClick: (() -> Unit)? = null,
 ) {
@@ -255,6 +291,8 @@ private fun StopOnRail(
     val starredLabel = stringResource(R.string.route_stop_journey_starred)
     val toggleLabel = stringResource(if (starred) R.string.action_unstar_journey else R.string.action_star_journey)
     val starColor = MaterialTheme.colorScheme.primary
+    val alertColor = MaterialTheme.colorScheme.error
+    val alertLabel = stringResource(R.string.route_stop_in_alert)
     val railStroke = Modifier.fillMaxSize()
     // The blue dot is drawn, so it says nothing to a screen reader: the boarding stop is read as one
     // node with "Your stop" as its state, so TalkBack users hear which stop is theirs too.
@@ -287,10 +325,12 @@ private fun StopOnRail(
             },
             {
                 Text(
-                    text = if (starred) {
+                    text = if (starred || inAlert) {
                         buildAnnotatedString {
                             append(name)
-                            withStyle(SpanStyle(color = starColor)) { append(" \u2605") }
+                            // The same glyph and color as a disrupted departure row's warning.
+                            if (inAlert) withStyle(SpanStyle(color = alertColor)) { append(" \u26A0") }
+                            if (starred) withStyle(SpanStyle(color = starColor)) { append(" \u2605") }
                         }
                     } else {
                         AnnotatedString(name)
@@ -304,11 +344,11 @@ private fun StopOnRail(
         modifier = Modifier.fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClickLabel = toggleLabel, onClick = onClick) else Modifier)
             .then(
-                when {
-                    first -> Modifier.semantics(mergeDescendants = true) { stateDescription = currentStop }
-                    starred -> Modifier.semantics(mergeDescendants = true) { stateDescription = starredLabel }
-                    else -> Modifier
-                },
+                // Every state that applies, so the boarding stop named in the alert says both.
+                listOfNotNull(currentStop.takeIf { first }, starredLabel.takeIf { starred }, alertLabel.takeIf { inAlert })
+                    .takeIf { it.isNotEmpty() }
+                    ?.let { states -> Modifier.semantics(mergeDescendants = true) { stateDescription = states.joinToString(", ") } }
+                    ?: Modifier,
             ),
     ) { (railParts, nameParts, pillParts), constraints ->
         val railWidth = 24.dp.roundToPx()

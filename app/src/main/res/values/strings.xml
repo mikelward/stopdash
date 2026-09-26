@@ -332,6 +332,7 @@
     <string name="journey_incomplete">Some routes couldn\'t be checked</string>
     <string name="action_unstar_journey">Unstar journey</string>
     <string name="route_stop_journey_starred">Starred journey</string>
+    <string name="route_stop_in_alert">Named in the service alert</string>
     <string name="map_open_failed">No maps app to open</string>
     <string name="action_done">Done</string>
     <string name="action_close">Close</string>

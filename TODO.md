@@ -1502,7 +1502,12 @@ Builds on Phase 1's minimal line-status marking.
         ("Suspended", "Part Suspended", "Severe/Minor Delays"), kept verbatim on the graded
         path. Extend the inferred vocabulary as new catch-all cases turn up.
       - Stretch: also pull the **affected stretch** from the text — "Diversion Moorgate to
-        Monument" — where the text gives a clean from→to.
+        Monument" — where the text gives a clean from→to. **First step landed** (2026-09-26): each
+        station the alert names gets a ⚠ on the line's page (`AlertStops`). **Next:** mark the
+        stations *between* two named ends where the text says "between X and Y" / "X to Y", and use
+        the marked stations to judge relevance to the rider's own journey. A status-only line page (a
+        suspension, no predictions) names the alert's stations beside the chip too — see *Decisions
+        needing review*.
       - **Current-vs-future must come from the dates in the text, not `isNow`.** TfL's
         `validityPeriods[].isNow` reads `false` even for planned closures in effect right now
         (observed 2026-09-20, a Sunday: every live Overground/tube part-closure was `isNow:
@@ -2058,6 +2063,18 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
       before implementation, per *Cost and reliability*.
 
 ## Decisions needing review
+
+- [ ] **Check and confirm: a line page with no trains names the alert's stations but lists none
+  (maintainer asked for a call, 2026-09-26).** A status row (a suspension, no predictions) has no
+  train to follow, so it had no stop list and PR #262's markers couldn't show there (Codex on #262).
+  Taken: load the line's stations in both directions in the background, off the render path (a
+  route fetch TfL is already asked for when a page opens), and show **only the names** beside the
+  alert's chip — no stop list, since which direction or branch to list would be a guess on a line
+  with nothing running. A failed or slow load names nothing, and the alert's own prose still says
+  it. *Alternatives:* list both directions' stations with ⚠s; list one direction (the row's
+  platform or bearing, where known); show nothing, as before. **Reversible:** `rememberLineStops`
+  and the `lineStops` fallback in `RouteDetailScreen`. **To confirm:** on a real suspension, that
+  the names read well without a list, and that the extra route request costs nothing noticeable.
 
 - **Farther stations: by line, 3 mi, five buttons (two tube), no distance (autopilot, 2026-09-25).**
   The maintainer chose "by branch/line, then cap at 5 or so", with the tube at most "1 or 2". Taken:
