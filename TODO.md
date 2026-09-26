@@ -826,7 +826,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
   - [x] **From… To…, direct only** (maintainer, 2026-09-24): the overflow's *Find a station* is
         now *From…*, and a station's page has *To…*, which keeps only the departures whose own
         line's route calls at the picked destination (`DirectTrips.filter`), flagging any it
-        couldn't check.
+        couldn't check. *(Superseded: both To…s now open the trip planner, below; the direct-only
+        page is left to delete.)*
     - [ ] **Trips with a change** (maintainer, 2026-09-24; designed 2026-09-26, SPEC *Trips with a
           change*): *To…* a stop plans with TfL's Journey Planner, lists routes best first (checked and open, then unchecked, then not running; within each,
           fully live, then est., then withheld; then earliest arrival) as
@@ -844,7 +845,19 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [ ] **Borrow from the other search's recent list** (maintainer, 2026-09-26): *From…* and
             *To…* keep separate recents, ordered by last use; maybe a single button to swap in the
             other list, or a way to pick from it (the station you came from as the way home).
-      - [ ] **Station page's own *To…*** still shows direct trains only; move it to trips.
+      - [x] **Station page's own *To…*** plans trips as the near-me list's does (the station page's
+            *To…* has opened the trip planner since *Plan trips with a change from To…*), for a
+            station TfL places.
+      - [ ] **To… from a station TfL doesn't place**: with no position for any of its stops, the
+            station page falls back to its stops' departures with no *To…*. Plan from a plannable
+            member of the station's resolved stops rather than drop the action (the Planner takes
+            no interchange `HUB…` id; `PlanTargets` rejects them).
+      - [ ] **Delete the unreachable direct-trips page path**: `LookDepartures`' `destination` and
+            `hereTiers` are always null now. Delete their branches and everything only they reach
+            (find it by a repo-wide search: `rememberTripView`, `tripMessages`, `tripLoaded`,
+            `hereTripTiers`/`HereTripTiers`, `DirectTrips.lineIds`, and `StationStopsViewModel`'s
+            `around` with `DirectTrips.destinationStops`, so far), with its tests. Keep
+            what the planner calls: `DirectTrips.filter`, `rememberLineSequences`, `hereOriginIds`.
       - [x] **Plan to every station of a complex** (maintainer, 2026-09-26: the best way to King's
             Cross St. Pancras whatever the line or mode): once per station code plus one bus
             stop, in parallel, merged, the soonest six routes timed.
@@ -886,7 +899,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
     - [ ] **Star a From… To… trip as a journey**: the trip has no single starred line, which
           `StarredJourney` places its ends on, so it needs a line-free journey first.
     - [x] **To… from the near-me list** (maintainer, 2026-09-24): the overflow's *To…* starts
-          from the list's default stops plus any within 0.2 mi (`hereOriginIds`).
+          from the list's default stops plus any within 0.2 mi (`hereOriginIds`). *Superseded
+          2026-09-26: To… plans a trip from the rider's nearest stop (SPEC "Trips with a change").*
   - [x] **Find a station from the location gate**: a *Find a station* button under the gate's
         own action, since the search needs no location and helps most a user who denied it (Codex).
 - [ ] **Search for a stop by name or line, and pin it.** Beyond nearby discovery, let the
@@ -2084,8 +2098,8 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   card.
 - **From… stands at the middle of the station's stops (autopilot, 2026-09-24).** The maintainer
   asked for From… to be "like setting your location to there"; the point used is the mean of the
-  station's placed stops, and the near-me list's picking (nearest of each mode within a mile, the
-  0.2 mi ring for To…) runs from it unchanged. *Alternatives:* the hub's own coordinate, or the
+  station's placed stops, and the near-me list's picking (nearest of each mode within a mile)
+  runs from it unchanged; a To… from it plans from the station (SPEC "Trips with a change"). *Alternatives:* the hub's own coordinate, or the
   nearest entrance. **Reversible:** `FixedLocation.centerOf`.
 
 - **To… is a look with no Star button (autopilot, 2026-09-24).** Picking a destination narrows
@@ -2094,14 +2108,17 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   away, which needs a line-free journey (`StarredJourney` places its ends on one starred line's
   route); logged under *Find a station* above. **Reversible:** the To… state is a few saved UI values
   in `MainActivity`; the filter is a pure `DirectTrips` function.
+  *Superseded 2026-09-26: To… plans a trip (SPEC "Trips with a change").*
 - **To… from the near-me list starts from the list's default stops plus any within 0.2 mi
   (autopilot, 2026-09-24).** The maintainer asked for "the near-me list's stations": the nearest
   of each mode within a mile (the list's default set, so a "More" reveal isn't carried over), plus
   any stop within 0.2 mi, less hidden modes, worked out afresh on every re-locate so the trip moves
   with the rider. *Alternatives:* freeze the rows shown when To… was tapped (tried: it went stale
   on a re-locate), or the 0.2 mi radius alone. **Reversible:** `hereOriginIds` and its radius.
+  *Superseded 2026-09-26: To… plans a trip (SPEC "Trips with a change").*
 - **To… reads "No direct trips to ‹place› soon" and "Checking routes…" (autopilot, 2026-09-24).**
   Provisional copy (with "To station or stop" in the search field); strings only, not translated.
+  *Superseded 2026-09-26: To… plans a trip (SPEC "Trips with a change").*
 - **The "More" reveal widget mirrors the app's *current* view, not eager-only (autopilot,
   2026-09-21).** The reveal follow-up had to decide whether a revealed expansion reaches the
   persisted snapshot — which the widget renders and its background worker keeps polling — or

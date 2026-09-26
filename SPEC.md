@@ -223,7 +223,7 @@ The app finds stops two ways:
   *services* a line repeats across adjacent stops collapse to one row is *Departures*; this is
   only which stops are looked up.)
 - **Find a station** (maintainer, 2026-09-24) — the overflow's *From…* (labeled so a *To…* for
-  simple direct trips can sit beside it; spelled out as *Find a station* on the location
+  a trip can sit beside it; spelled out as *Find a station* on the location
   screen's button, since it needs no location) searches
   TfL's stops by name as the user types (a short pause after the last letter, and at least
   two letters, so a name costs one request rather than one per keystroke). Each match shows
@@ -266,39 +266,19 @@ The app finds stops two ways:
   shorter name. A station whose interchange also matches is folded into it, since the
   interchange's page holds it. TfL lists a place's bus stop areas one by one, so results **of
   the same name within 250 m of a better-ranked one fold into it** (maintainer, 2026-09-25):
-  "Archway" is listed once, not once per stand, and its page (or a To… to it) takes in the stops
-  around it (the fold stays inside a To…'s 0.2 mi, so a folded stop is still a destination).
+  "Archway" is listed once, not once per stand, and its page takes in the stops around it.
   Same-named places farther apart ("Church Street" in two boroughs) both stay, and a
   result TfL gives no position for is never folded. If TfL's search fails but the list matched, the list's matches
   stand, with a line saying bus stops weren't searched.
-- **From… To…** (maintainer, 2026-09-24) — **To…** keeps only the departures that **call at a
-  chosen station directly**: the trains or buses whose path, on their own line's route, reaches it
-  (or any station in its interchange, or **any stop within 0.2 mi of it** — maintainer,
-  2026-09-25: the buses stopping outside a station arrive there as surely as its trains do, so "To…
-  Archway" isn't tube-only). A **bus stop** picked as the destination takes in only its
-  same-named stands nearby (those the search lists as one), not every pole within 0.2 mi, so a
-  route calling at an unrelated stop down the road doesn't pass for one serving it. It is offered in two places. On the **near-me list's
-  overflow**, it starts from **the stops the list shows by default** (the nearest of each mode within
-  a mile, a tube station among them — the whole set, including a stop whose rows the list folds
-  into a nearer stop's, since the trip folds them the same way) **plus any other stop within
-  0.2 mi** (the pole across the road), leaving out hidden modes and stops with no routes, and titled "To ‹place›"; back returns to the list. The starting
-  stops follow the rider: a refresh or a return to the app re-locates first, as the list does, and
-  works them out again from where the rider now is. Its rows read like the list's: a line once,
-  from its nearest stop, nearest first, with distances. On a **searched station's page** (reached with the overflow's *From…*), it works the same way
-  from the station's position — its own stops, the default stops around it and any within 0.2 mi —
-  titled "From ➔ To", and back returns to the station's page. Either way it is a look, not
-  a pin: nothing is saved but the destination, which *To…*'s own *Recent* remembers. A departure
-  whose route is still loading, failed to load, or can't be followed is left out and the page says
-  so ("Checking routes…", "Some routes couldn't be checked") rather than pass a short list off as
-  complete (principle 2), and the debug log names each departure it couldn't check — its line, its
-  boarding stop and why — as it does for a trip's legs and a journey card's trains; only when everything was checked does it say "No direct trips to ‹place›
-  soon". Direct only: a trip needing a change is **journey planning**, the eventual goal and a
-  follow-up (`TODO.md`), and starring the trip as a journey is one too. The routes are the same
-  per-line lookups a route page makes (a request or two per line a day, cached); the destination
-  is TfL's stop lookup of the picked station and one of the stops around its public position,
-  once each, and a trip from here fetches the arrivals of
-  its origin stops like the list does. The destination's name and id go only to TfL, as the
-  station search's already do (*Privacy*).
+- **From… To…** (maintainer, 2026-09-24; planned since 2026-09-26) — **To…** plans a trip to a
+  picked station or stop, as *Trips with a change* below describes. It is offered on the **near-me
+  list**, from where the rider is, and on a **searched station's page** (reached with the overflow's
+  *From…*), from that station, titled "From ➔ To"; back returns to where it was opened. A station
+  whose stops TfL gives no position for has no *To…* yet (`TODO.md`). The first
+  design, keeping only the departures that call at the destination directly, was superseded by the
+  planner: a trip needing a change is planned the same way as one that doesn't. The destination's
+  name and id go only to TfL, as the station search's already do (*Privacy*), and *To…*'s own
+  *Recent* remembers it on the device.
 - **Farther stations** (maintainer, 2026-09-25) — where the near-me list reaches only one tube
   station, the rest of the network can be two miles off. Below the loaded places and the *More*
   controls, a **collapsed card** stands for the nearest station of each **rail line** the loaded
