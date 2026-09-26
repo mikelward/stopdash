@@ -43,6 +43,8 @@ class ActiveTripTracker(
     // "Get off soon", once per leg ([OnTheWay.shouldWarn]): whether it was said, so one that
     // couldn't be (notifications off) is tried again on the next refresh.
     private val onGetOffSoon: (ActiveTrip, TripProgress.Riding) -> Boolean = { _, _ -> true },
+    // The rider has moved past a leg whose "get off soon" was said (or arrived): it's done with.
+    private val onGetOffSoonDone: () -> Unit = {},
 ) {
     private val _trip = MutableStateFlow<ActiveTrip?>(null)
     val trip: StateFlow<ActiveTrip?> = _trip.asStateFlow()
@@ -94,7 +96,11 @@ class ActiveTripTracker(
         }
         restored = true
         _failed.value = false
-        if (kept == null) return true
+        if (kept == null) {
+            // No trip on the way: an alert left from one ended just before the app died goes too.
+            onGetOffSoonDone()
+            return true
+        }
         if (_trip.value == null) {
             _trip.value = kept
             _progress.value = standing(kept, clock())
@@ -222,6 +228,14 @@ class ActiveTripTracker(
         // A train that turned out not to be the rider's: drop it, so the next refresh picks another.
         // Once on board it stays followed: TfL has only gone quiet on it.
         if (progress is TripProgress.Lost && calls != null && !next.boarded) next = next.copy(vehicleId = "", dueOffAt = null)
+        if (trip.warnedLeg == trip.legIndex && (next.legIndex != trip.legIndex || progress == TripProgress.Arrived)) onGetOffSoonDone()
+        // The train lost on the leg it was said for: the stop it named may not be the rider's now, so
+        // it's taken back, and said again once the train is found on the leg. A failed lookup (above)
+        // leaves it: nothing new is known, and the stop is still the one planned.
+        if (progress is TripProgress.Lost && next.warnedLeg == next.legIndex) {
+            onGetOffSoonDone()
+            next = next.copy(warnedLeg = -1)
+        }
         // Said again, silently, when the stop's time moves, so the alert's deadline follows it.
         val saidAt = (_progress.value as? TripProgress.Riding)?.takeIf { next.warnedLeg == next.legIndex }?.getOffAt
         val moved = progress is TripProgress.Riding && progress.getOffSoon && next.warnedLeg == next.legIndex &&

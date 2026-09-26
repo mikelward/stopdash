@@ -11,6 +11,11 @@
          background refresh (SPEC Finding stops / Privacy). -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- "Get off soon" on a trip on the way (SPEC On the way): asked for when the rider taps
+         Start, the one time an alert is wanted; a denial leaves the trip running, its screen saying
+         alerts are off. VIBRATE, granted at install, lets the alert be felt in a pocket. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- StopDash shows no ads: strip the advertising-ID and ad-attribution permissions the Firebase
          Analytics dependency would otherwise merge in. -->

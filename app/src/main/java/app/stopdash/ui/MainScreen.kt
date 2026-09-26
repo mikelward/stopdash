@@ -1160,157 +1160,164 @@ fun MainScreen(
             )
         },
     ) { innerPadding ->
-        val content = Modifier.fillMaxSize().padding(innerPadding)
-        when (state) {
-            DeparturesUiState.Loading -> Centered(content) {
-                CircularProgressIndicator()
-                Text(
-                    text = stringResource(R.string.departures_loading),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 16.dp),
-                )
-                // A more direct update prompt than the top-bar overflow dot, which is easy to miss
-                // while waiting on a cold load.
-                if (updateAvailable) UpdateAvailableButton(onClick = onOpenAppListing)
-            }
-
-            is DeparturesUiState.Loaded -> if (journeyViewOpen && journeyViewCard == null) {
-                // The saved journeys are still loading: a placeholder until the card is back.
-                Centered(content) { CircularProgressIndicator() }
-            } else if (journeyViewCard != null) {
-                // A journey's own view: just its card, each group headed by where it boards, under
-                // Swap and Unstar. Rendered from the same snapshot as the list (SPEC D4).
-                LoadedContent(
-                    state, now, onPullRefresh ?: onRefresh, refreshing, content, rows = emptyList(),
-                    listState = drillListState,
-                    journeyCards = listOf(journeyViewCard),
-                    journeyView = true,
-                    onFlipJourney = onFlipJourney,
-                    onUnstarJourney = onToggleJourney,
-                    onRetryJourneyRoutes = { journeyRouteRetry++ },
-                    starred = starred,
-                    onToggleStar = onToggleStar,
-                    starringAvailable = starringAvailable,
-                    onOpenDetail = { row, focus ->
-                        detailKey = row.detailKey()
-                        detailDestination = focus?.destination
-                        detailBranch = focus?.branch
-                    },
-                    onOpenSettings = onOpenSettings,
-                    dismissed = dismissed,
-                    onDismissAlert = onDismissAlert,
-                )
-            } else {
-                LoadedContent(
-                    state, now, onPullRefresh ?: onRefresh, refreshing, content, shownRows,
-                    listState = if (platformRows != null) drillListState else listState,
-                    dismissedClosures = if (platformRows != null) emptyList() else dismissedClosures,
-                    sharedNotices = sharedNotices,
-                    // The platform view is one place: no distances (its header would only repeat the
-                    // title).
-                    stopDistanceMeters = if (platformRows != null) emptyMap() else stopDistanceMeters,
-                    onOpenStopMap = onOpenStopMap,
-                    // Journey cards sit atop the near-me list only, not a platform or station view.
-                    // A far journey's card sits at the foot, once revealed, never among the near ones.
-                    journeyCards = if (platformRows != null) emptyList() else journeyCards.filter { it.journey.key !in farJourneyMeters },
-                    farJourneyCards = if (platformRows != null || !farRevealed) emptyList() else journeyCards.filter { it.journey.key in farJourneyMeters },
-                    farJourneyMeters = farJourneyMeters,
-                    onRevealFar = if (platformRows == null && !farRevealed && farJourneyMeters.isNotEmpty()) {
-                        { farReveal.reveal() }
-                    } else {
-                        null
-                    },
-                    // Every nearby row is on a journey card above: nothing to call "no departures".
-                    nearbyShownAbove = platformRows == null && rows.isEmpty() && nearbyRows.isNotEmpty(),
-                    onFlipJourney = onFlipJourney,
-                    onRetryJourneyRoutes = { journeyRouteRetry++ },
-                    starred = starred,
-                    onToggleStar = onToggleStar,
-                    starringAvailable = starringAvailable,
-                    hiddenModes = hiddenModes,
-                    onHideMode = onHideMode,
-                    modesByPlace = placeModesShown,
-                    onShowAllModes = onShowAllModes,
-                    // Not on a platform's own view, which is one place.
-                    farther = if (platformRows != null) emptyList() else fartherShown,
-                    // Hiding a mode applies to the loading cards too, as to the loaded rows.
-                    // Unfiltered: hiding a mode drops its loading cards from view, but they're still
-                    // loading (see [DepartureList]'s held cards).
-                    pending = if (platformRows != null) emptyList() else state.pendingStops,
-                    holdLanded = platformRows == null,
-                    pendingTracker = pendingTracker,
-                    onOpenFarther = onOpenFarther,
-                    onOpenDetail = { row, focus ->
-                        detailKey = row.detailKey()
-                        detailDestination = focus?.destination
-                        detailBranch = focus?.branch
-                    },
-                    onOpenSettings = onOpenSettings,
-                    dismissed = dismissed,
-                    onDismissAlert = onDismissAlert,
-                    // The full list and a whole-station view drill down to a platform; inside a platform
-                    // view the header is inert. From a station, the station is remembered so back
-                    // returns to it.
-                    onOpenPlatform = if (platformRows != null && !platformIsStation) {
-                        null
-                    } else {
-                        { group ->
-                            if (platformRows != null) {
-                                parentStationIds = platformStopIds
-                                parentStationTitle = platformTitle
-                            } else {
-                                parentStationIds = null
-                            }
-                            platformStopIds = group.rows.mapTo(LinkedHashSet()) { it.stopId }.joinToString(",")
-                            platformIsStation = false
-                            platformKey = group.splitKey
-                            platformTitle = groupHeaderTitle(group.stopName, group.qualifier)
-                        }
-                    },
-                    // The whole station: the tapped place's clusters, keyed blank so the view keeps all of
-                    // their stops' groups (see platformView). Membership is resolved from each snapshot's
-                    // stops, not the groups on screen: the near-me fold can leave a sibling platform with
-                    // no group, and a warned stop groups under a per-stop key (Codex).
-                    onOpenStation = if (platformRows != null) {
-                        null
-                    } else {
-                        { group ->
-                            platformStopIds = group.rows.mapTo(LinkedHashSet()) { stationClusterOf(it.clusterId, it.stopId) }
-                                .joinToString(",")
-                            platformIsStation = true
-                            parentStationIds = null
-                            platformKey = ""
-                            platformTitle = group.stopName
-                        }
-                    },
-                    // A platform/station drill-down shows one place's stops, not the near-me set, so
-                    // the "your location is low-confidence" banner doesn't apply there.
-                    locationBanner = if (platformRows != null) null else locationBanner,
-                    tripNotice = if (platformRows != null) null else tripNotice,
-                    emptyMessage = if (platformRows != null) null else emptyMessage,
-                    // A journey heading opens the journey's own view (from the full list only).
-                    onOpenJourney = { journey -> journeyViewKey = journey.key },
-                )
-            }
-
-            is DeparturesUiState.Error ->
-                // Under the pull box with a scrollable child so a downward swipe refreshes
-                // the error screen too (SPEC D6), not only the button.
-                PullToRefreshBox(isRefreshing = refreshing, onRefresh = onPullRefresh ?: onRefresh, modifier = content) {
-                    val scrollState = rememberScrollState()
-                    Centered(
-                        Modifier.fillMaxSize()
-                            .scrollEdgeCue(scrollState, scrollCueColors(MaterialTheme.colorScheme.background))
-                            .verticalScroll(scrollState),
-                    ) {
-                        Text(
-                            text = stringResource(errorMessage(state.kind)),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                        RefreshButton(onPullRefresh ?: onRefresh, Modifier.padding(top = 16.dp))
-                    }
+        // The trip on the way, pinned above the near-me list (SPEC *On the way*): from the tracker's
+        // state, no request of its own. Not on a station's page, nor a drill-down from the list (a
+        // station, a platform or a starred journey), each its own view.
+        val onTheWay = LocalOnTheWayBanner.current?.takeIf { stationTitle == null && platformRows == null && !journeyViewOpen }
+        Column(Modifier.fillMaxSize().padding(innerPadding)) {
+            if (onTheWay != null) OnTheWayBanner(onTheWay, now, Modifier.padding(start = 16.dp, top = 8.dp, end = 16.dp))
+            val content = Modifier.fillMaxWidth().weight(1f)
+            when (state) {
+                DeparturesUiState.Loading -> Centered(content) {
+                    CircularProgressIndicator()
+                    Text(
+                        text = stringResource(R.string.departures_loading),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 16.dp),
+                    )
+                    // A more direct update prompt than the top-bar overflow dot, which is easy to miss
+                    // while waiting on a cold load.
+                    if (updateAvailable) UpdateAvailableButton(onClick = onOpenAppListing)
                 }
+
+                is DeparturesUiState.Loaded -> if (journeyViewOpen && journeyViewCard == null) {
+                    // The saved journeys are still loading: a placeholder until the card is back.
+                    Centered(content) { CircularProgressIndicator() }
+                } else if (journeyViewCard != null) {
+                    // A journey's own view: just its card, each group headed by where it boards, under
+                    // Swap and Unstar. Rendered from the same snapshot as the list (SPEC D4).
+                    LoadedContent(
+                        state, now, onPullRefresh ?: onRefresh, refreshing, content, rows = emptyList(),
+                        listState = drillListState,
+                        journeyCards = listOf(journeyViewCard),
+                        journeyView = true,
+                        onFlipJourney = onFlipJourney,
+                        onUnstarJourney = onToggleJourney,
+                        onRetryJourneyRoutes = { journeyRouteRetry++ },
+                        starred = starred,
+                        onToggleStar = onToggleStar,
+                        starringAvailable = starringAvailable,
+                        onOpenDetail = { row, focus ->
+                            detailKey = row.detailKey()
+                            detailDestination = focus?.destination
+                            detailBranch = focus?.branch
+                        },
+                        onOpenSettings = onOpenSettings,
+                        dismissed = dismissed,
+                        onDismissAlert = onDismissAlert,
+                    )
+                } else {
+                    LoadedContent(
+                        state, now, onPullRefresh ?: onRefresh, refreshing, content, shownRows,
+                        listState = if (platformRows != null) drillListState else listState,
+                        dismissedClosures = if (platformRows != null) emptyList() else dismissedClosures,
+                        sharedNotices = sharedNotices,
+                        // The platform view is one place: no distances (its header would only repeat the
+                        // title).
+                        stopDistanceMeters = if (platformRows != null) emptyMap() else stopDistanceMeters,
+                        onOpenStopMap = onOpenStopMap,
+                        // Journey cards sit atop the near-me list only, not a platform or station view.
+                        // A far journey's card sits at the foot, once revealed, never among the near ones.
+                        journeyCards = if (platformRows != null) emptyList() else journeyCards.filter { it.journey.key !in farJourneyMeters },
+                        farJourneyCards = if (platformRows != null || !farRevealed) emptyList() else journeyCards.filter { it.journey.key in farJourneyMeters },
+                        farJourneyMeters = farJourneyMeters,
+                        onRevealFar = if (platformRows == null && !farRevealed && farJourneyMeters.isNotEmpty()) {
+                            { farReveal.reveal() }
+                        } else {
+                            null
+                        },
+                        // Every nearby row is on a journey card above: nothing to call "no departures".
+                        nearbyShownAbove = platformRows == null && rows.isEmpty() && nearbyRows.isNotEmpty(),
+                        onFlipJourney = onFlipJourney,
+                        onRetryJourneyRoutes = { journeyRouteRetry++ },
+                        starred = starred,
+                        onToggleStar = onToggleStar,
+                        starringAvailable = starringAvailable,
+                        hiddenModes = hiddenModes,
+                        onHideMode = onHideMode,
+                        modesByPlace = placeModesShown,
+                        onShowAllModes = onShowAllModes,
+                        // Not on a platform's own view, which is one place.
+                        farther = if (platformRows != null) emptyList() else fartherShown,
+                        // Hiding a mode applies to the loading cards too, as to the loaded rows.
+                        // Unfiltered: hiding a mode drops its loading cards from view, but they're still
+                        // loading (see [DepartureList]'s held cards).
+                        pending = if (platformRows != null) emptyList() else state.pendingStops,
+                        holdLanded = platformRows == null,
+                        pendingTracker = pendingTracker,
+                        onOpenFarther = onOpenFarther,
+                        onOpenDetail = { row, focus ->
+                            detailKey = row.detailKey()
+                            detailDestination = focus?.destination
+                            detailBranch = focus?.branch
+                        },
+                        onOpenSettings = onOpenSettings,
+                        dismissed = dismissed,
+                        onDismissAlert = onDismissAlert,
+                        // The full list and a whole-station view drill down to a platform; inside a platform
+                        // view the header is inert. From a station, the station is remembered so back
+                        // returns to it.
+                        onOpenPlatform = if (platformRows != null && !platformIsStation) {
+                            null
+                        } else {
+                            { group ->
+                                if (platformRows != null) {
+                                    parentStationIds = platformStopIds
+                                    parentStationTitle = platformTitle
+                                } else {
+                                    parentStationIds = null
+                                }
+                                platformStopIds = group.rows.mapTo(LinkedHashSet()) { it.stopId }.joinToString(",")
+                                platformIsStation = false
+                                platformKey = group.splitKey
+                                platformTitle = groupHeaderTitle(group.stopName, group.qualifier)
+                            }
+                        },
+                        // The whole station: the tapped place's clusters, keyed blank so the view keeps all of
+                        // their stops' groups (see platformView). Membership is resolved from each snapshot's
+                        // stops, not the groups on screen: the near-me fold can leave a sibling platform with
+                        // no group, and a warned stop groups under a per-stop key (Codex).
+                        onOpenStation = if (platformRows != null) {
+                            null
+                        } else {
+                            { group ->
+                                platformStopIds = group.rows.mapTo(LinkedHashSet()) { stationClusterOf(it.clusterId, it.stopId) }
+                                    .joinToString(",")
+                                platformIsStation = true
+                                parentStationIds = null
+                                platformKey = ""
+                                platformTitle = group.stopName
+                            }
+                        },
+                        // A platform/station drill-down shows one place's stops, not the near-me set, so
+                        // the "your location is low-confidence" banner doesn't apply there.
+                        locationBanner = if (platformRows != null) null else locationBanner,
+                        tripNotice = if (platformRows != null) null else tripNotice,
+                        emptyMessage = if (platformRows != null) null else emptyMessage,
+                        // A journey heading opens the journey's own view (from the full list only).
+                        onOpenJourney = { journey -> journeyViewKey = journey.key },
+                    )
+                }
+
+                is DeparturesUiState.Error ->
+                    // Under the pull box with a scrollable child so a downward swipe refreshes
+                    // the error screen too (SPEC D6), not only the button.
+                    PullToRefreshBox(isRefreshing = refreshing, onRefresh = onPullRefresh ?: onRefresh, modifier = content) {
+                        val scrollState = rememberScrollState()
+                        Centered(
+                            Modifier.fillMaxSize()
+                                .scrollEdgeCue(scrollState, scrollCueColors(MaterialTheme.colorScheme.background))
+                                .verticalScroll(scrollState),
+                        ) {
+                            Text(
+                                text = stringResource(errorMessage(state.kind)),
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                            RefreshButton(onPullRefresh ?: onRefresh, Modifier.padding(top = 16.dp))
+                        }
+                    }
+            }
         }
     }
     if (showAbout) {
