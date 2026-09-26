@@ -756,6 +756,39 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `a route starts only once its origin is confirmed and its bus poles are placed`() {
+        val tube = TripLeg("tube", "blue", "blue", "B", "B", "C", "C", at(20), at(30), path = listOf("C"))
+        val bus = TripLeg("bus", "1", "1", "B", "B", "C", "C", at(20), at(30), path = listOf("C"), fromArea = "490G0000B")
+        val routes = LineSequence(routes = listOf(LineRoute("B ↔ C", listOf("B", "C"))), stopNames = mapOf("B" to "B", "C" to "C"))
+        assertTrue(canStart(TripRoute(listOf(tube)), emptyMap(), originUnconfirmed = false))
+        // Being found again: the route may change with the new fix.
+        assertFalse(canStart(TripRoute(listOf(tube)), emptyMap(), originUnconfirmed = true))
+        // A bus named by its stop pair, its route not loaded (or failed): the pole may be the wrong side.
+        assertFalse(canStart(TripRoute(listOf(bus)), emptyMap(), originUnconfirmed = false))
+        assertFalse(canStart(TripRoute(listOf(bus)), mapOf("1" to null), originUnconfirmed = false))
+        assertTrue(canStart(TripRoute(listOf(bus)), mapOf("1" to routes), originUnconfirmed = false))
+        // The route loaded, but its bus uses the pair's other pole, not yet looked up and placed:
+        // the Planner's pole may be the wrong side of the road.
+        val otherSide = LineSequence(
+            routes = listOf(LineRoute("B2 ↔ C", listOf("B2", "C"))),
+            stopNames = mapOf("B" to "B", "B2" to "B", "C" to "C"),
+            stopAreas = mapOf("B" to "490G0000B", "B2" to "490G0000B"),
+        )
+        assertFalse(canStart(TripRoute(listOf(bus)), mapOf("1" to otherSide), originUnconfirmed = false))
+        assertTrue(canStart(TripRoute(listOf(bus.copy(fromId = "B2"))), mapOf("1" to otherSide), originUnconfirmed = false))
+        // Boarding at a stand in no pair, alighting at a roadside pair: its alighting pole matters too.
+        val toPair = TripLeg("bus", "1", "1", "S", "S", "C", "C", at(20), at(30), toArea = "490G0000C")
+        val farSide = LineSequence(
+            routes = listOf(LineRoute("S ↔ C2", listOf("S", "C2"))),
+            stopNames = mapOf("S" to "S", "C" to "C", "C2" to "C"),
+            stopAreas = mapOf("C" to "490G0000C", "C2" to "490G0000C"),
+        )
+        assertFalse(canStart(TripRoute(listOf(toPair)), emptyMap(), originUnconfirmed = false))
+        assertFalse(canStart(TripRoute(listOf(toPair)), mapOf("1" to farSide), originUnconfirmed = false))
+        assertTrue(canStart(TripRoute(listOf(toPair.copy(toId = "C2"))), mapOf("1" to farSide), originUnconfirmed = false))
+    }
+
+    @Test
     fun `lines being checked say so, and only a finished check says it couldn't`() {
         val refreshing = TripViewModel.State(refreshing = true)
         assertEquals(true, statusNote(refreshing, unchecked = true))
