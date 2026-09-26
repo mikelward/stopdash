@@ -5,6 +5,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarHost
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -495,6 +496,11 @@ internal fun TripScreen(
     onRelocate: () -> Unit = {},
     hiddenModes: Set<String> = emptySet(),
     onShowAllModes: () -> Unit = {},
+    // A line row's long-press "Hide ‹mode›", as on the list (null: no menu).
+    onHideMode: ((String) -> Unit)? = null,
+    // A change of hidden modes that didn't save, said once as the list says it, then acknowledged.
+    hiddenModesWriteFailed: Boolean = false,
+    onHiddenModesWriteFailureShown: () -> Unit = {},
     // The app's own overflow: the update dot, the bug report and About, as on the list. Null (a
     // test) shows no overflow.
     menu: AppMenuActions? = null,
@@ -512,7 +518,7 @@ internal fun TripScreen(
     CompositionLocalProvider(LocalRouteStops provides routeStops) {
         TripContent(
             title, state, now, access, onBack, onRetry, locationBanner, relocating, onRelocate,
-            hiddenModes, onShowAllModes, menu, openRoute,
+            hiddenModes, onShowAllModes, onHideMode, hiddenModesWriteFailed, onHiddenModesWriteFailureShown, menu, openRoute,
             TripAlerts(dismissed, onDismissAlert, dismissWriteFailed, onDismissWriteFailureShown),
         )
     }
@@ -543,6 +549,9 @@ private fun TripContent(
     // Modes the rider hid: routes riding them are left out, with the list's "Show all".
     hiddenModes: Set<String> = emptySet(),
     onShowAllModes: () -> Unit = {},
+    onHideMode: ((String) -> Unit)? = null,
+    hiddenModesWriteFailed: Boolean = false,
+    onHiddenModesWriteFailureShown: () -> Unit = {},
     menu: AppMenuActions? = null,
     openRoute: MutableState<String?>? = null,
     alerts: TripAlerts = TripAlerts(emptySet(), null, false) {},
@@ -593,9 +602,18 @@ private fun TripContent(
     // with the line's full service alert and its stops (SPEC *Trips with a change*). Found again among
     // the open route's rows on every refresh, so it stays live; gone with them, it closes.
     var detailKey by rememberSaveable { mutableStateOf<String?>(null) }
+    // Which leg the page belongs to ([tripLegKey]): two of the list's routes can board the same line
+    // at the same stop and get off at different places, so the tapped one is remembered, not guessed.
+    var detailLegKey by rememberSaveable { mutableStateOf<String?>(null) }
     var detailDestination by rememberSaveable { mutableStateOf<String?>(null) }
     var detailBranch by rememberSaveable { mutableStateOf<String?>(null) }
-    val detailRow = if (open == null || detailKey == null) {
+    // The legs a line page opens from: the open route's, else every route the list shows (a card's
+    // line row opens its page too, as a row on the main screen does).
+    val detailLegs = remember(open, estimates) {
+        (open?.let { listOf(it) } ?: estimates.orEmpty()).flatMap { it.route.rides }.distinct()
+    }
+    val detailLeg = detailLegs.firstOrNull { tripLegKey(it) == detailLegKey }
+    val detailRow = if (detailKey == null || detailLeg == null) {
         null
     } else {
         // A leg's no-trains row only while it has no live rows, as the list's status row: once trains
@@ -603,12 +621,19 @@ private fun TripContent(
         // Dismissed alerts apply as on the list's page: a timed row keeps its times, marked dismissed.
         // A no-trains row is kept too, marked the same: unlike the list's, it's how the leg opens its
         // line's stops, not only its alert.
-        open.route.rides.firstNotNullOfOrNull { leg ->
-            val live = legRows(state, leg, now, sequences)
-            val rows = if (live.isEmpty()) listOf(withDismissedMarked(legStatusRow(state, leg, now), alerts.dismissed))
-            else DepartureRows.withoutDismissed(live, alerts.dismissed)
-            rows.firstOrNull { tripDetailKey(leg, it) == detailKey }
-        }
+        // Every train a list card's row shows, those still being checked too, so a page opened from
+        // one finds the row it was opened from (the open route's rows are a subset, keyed the same).
+        val live = legRows(state, detailLeg, now, sequences, withUnchecked = true)
+        val rows = if (live.isEmpty()) listOf(withDismissedMarked(legStatusRow(state, detailLeg, now), alerts.dismissed))
+        else DepartureRows.withoutDismissed(live, alerts.dismissed)
+        rows.firstOrNull { tripDetailKey(detailLeg, it) == detailKey }
+    }
+    // A line row tapped, on the open route or a list card: its line's page, for that leg's row.
+    fun openDetail(leg: TripLeg, row: DepartureRow, focus: RouteFocus?) {
+        detailLegKey = tripLegKey(leg)
+        detailKey = tripDetailKey(leg, row)
+        detailDestination = focus?.destination
+        detailBranch = focus?.branch
     }
     // Its row gone (its last train passed, or the route closed): the page stays closed rather than
     // reopening by itself should a later refresh bring the same row back, as the list's does.
@@ -634,8 +659,7 @@ private fun TripContent(
             // A leg with no train to follow still shows its line's stops, from the leg's own route.
             onDismissAlert = alerts.onDismiss?.takeIf { detailRow.status != null }?.let { dismiss -> { dismiss(detailRow) } },
             loadRouteStops = if (detailRow.upcoming.isEmpty()) {
-                open?.route?.rides.orEmpty().firstOrNull { it.fromId == detailRow.stopId && it.lineId == detailRow.lineId }
-                    ?.let { leg -> { retry: Int -> rememberLegRouteStops(leg, retry) } }
+                detailLeg?.let { leg -> { retry: Int -> rememberLegRouteStops(leg, retry) } }
             } else {
                 null
             },
@@ -650,6 +674,15 @@ private fun TripContent(
         if (alerts.writeFailed) {
             alerts.onWriteFailureShown()
             snackbarHostState.showSnackbar(dismissWriteFailedMessage)
+        }
+    }
+    // A mode hidden (or shown) from here that didn't save: it's hidden for now but won't last, so
+    // say so, as the list does, then acknowledge it so it isn't said again.
+    val hiddenModesWriteFailedMessage = stringResource(R.string.hidden_modes_write_failed)
+    LaunchedEffect(hiddenModesWriteFailed) {
+        if (hiddenModesWriteFailed) {
+            onHiddenModesWriteFailureShown()
+            snackbarHostState.showSnackbar(hiddenModesWriteFailedMessage)
         }
     }
     Scaffold(
@@ -697,13 +730,13 @@ private fun TripContent(
             Box(Modifier.fillMaxSize()) {
                 when {
                     cards == null -> TripPlaceholder(state, onRetry)
-                    open != null -> RouteLegs(open, state, now, access, sequences, onRetry) { row, focus ->
-                        detailKey = open.route.rides.firstOrNull { it.lineId == row.lineId && it.fromId == row.stopId }
-                            ?.let { tripDetailKey(it, row) } ?: row.detailKey()
-                        detailDestination = focus?.destination
-                        detailBranch = focus?.branch
-                    }
-                    else -> RouteList(cards, state, now, sequences, onRetry, onOpen = { setOpenKey(routeKey(it.route)) })
+                    open != null -> RouteLegs(open, state, now, access, sequences, onRetry, alerts.dismissed, onHideMode, ::openDetail)
+                    else -> RouteList(
+                        cards, state, now, sequences, onRetry, alerts.dismissed,
+                        onOpen = { setOpenKey(routeKey(it.route)) },
+                        onOpenDetail = ::openDetail,
+                        onHideMode = onHideMode,
+                    )
                 }
             }
         }
@@ -806,7 +839,12 @@ private fun RouteList(
     now: Instant,
     sequences: Map<String, LineSequence?>,
     onRetry: () -> Unit,
+    // The alerts dismissed (as on the list): their ⚠ doesn't show on a card.
+    dismissed: Set<DismissedAlert>,
     onOpen: (TripTiming.Estimate) -> Unit,
+    // A line row tapped: its line's page, as a row on the main screen opens it.
+    onOpenDetail: (TripLeg, DepartureRow, RouteFocus?) -> Unit,
+    onHideMode: ((String) -> Unit)?,
 ) {
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -835,15 +873,22 @@ private fun RouteList(
             item(key = "none") { Text(stringResource(R.string.trip_no_routes), style = MaterialTheme.typography.bodyLarge) }
         }
         // Routes sharing their first leg's stop and their later lines are one card: one header, and
-        // a row for each first-leg line. Tapping it opens the best of them.
+        // a row for each first-leg line. Tapping the header opens the best of them; a line row opens
+        // its line's page, as on the main screen.
         items(cards, key = { cardKey(it.first().route) }) { card ->
-            OutlinedCard(onClick = { onOpen(card.first()) }, modifier = Modifier.fillMaxWidth()) {
-                RouteSummary(card, state.statuses, Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
+            // Only the top row opens the route: a clickable card would merge its line rows into
+            // itself, and a screen reader would lose each row's own action (its line's page).
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                RouteSummary(
+                    card,
+                    shownStatuses(state.statuses, dismissed),
+                    Modifier.clickable { onOpen(card.first()) }.padding(horizontal = 16.dp, vertical = 12.dp),
+                )
                 card.forEach { estimate ->
                     val first = estimate.route.legs.indexOfFirst { !it.isWalk }
                     if (first >= 0) {
                         HorizontalDivider()
-                        FirstLegRow(estimate, first, state, now, sequences)
+                        FirstLegRow(estimate, first, state, now, sequences, dismissed, onOpenDetail, onHideMode)
                     }
                 }
             }
@@ -912,7 +957,11 @@ private fun arrivalText(estimate: TripTiming.Estimate): String {
     }
 }
 
-/** The first leg's line and its live trains, those the rider can't reach in time grayed. */
+/**
+ * The first leg's line and its live trains, those the rider can't reach in time grayed — drawn and
+ * handled as a route row on the main screen ([RouteRow]): its pill, destination, a ⚠ left of the
+ * times when the line is disrupted, a tap opening the line's page and a long press its "Hide ‹mode›".
+ */
 @Composable
 private fun FirstLegRow(
     estimate: TripTiming.Estimate,
@@ -920,6 +969,9 @@ private fun FirstLegRow(
     state: TripViewModel.State,
     now: Instant,
     sequences: Map<String, LineSequence?>,
+    dismissed: Set<DismissedAlert>,
+    onOpenDetail: (TripLeg, DepartureRow, RouteFocus?) -> Unit,
+    onHideMode: ((String) -> Unit)?,
 ) {
     val leg = estimate.route.legs[index]
     val usable = legTrains(state, leg, now, sequences)
@@ -934,38 +986,54 @@ private fun FirstLegRow(
     val usableSet = usable.orEmpty().toSet() + pending.filterNot { it in checking }
     val reachable = estimate.legs.getOrNull(index)?.board ?: estimate.start
     val shown = shownTrains(trains.orEmpty(), reachable, usable = { it in usableSet })
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp, vertical = 8.dp),
-    ) {
-        LinePill(leg.lineName, leg.lineId, leg.mode)
+    // The page follows the soonest train the rider can catch, else the soonest shown.
+    val followed = (shown.firstOrNull { it.second } ?: shown.firstOrNull())?.first
+    val focus = followed?.let { RouteFocus(it.destination, it.branch) }
+    // The row its line's page opens from, as the open route's leg opens it: the live row holding
+    // that train (a line's trains can split by direction or platform), else its line and status
+    // alone. Its status is a disruption only, so it drives the ⚠ — unless dismissed, as on the list.
+    val row = remember(state, leg, now, sequences, followed, dismissed) {
+        legRowFor(DepartureRows.withoutDismissed(legRows(state, leg, now, sequences, withUnchecked = true), dismissed), followed)
+            ?: withDismissedMarked(legStatusRow(state, leg, now), dismissed)
+    }
+    LineRouteRow(
+        row = row,
+        isStarred = false,
+        starrable = false,
+        onToggleStar = {},
+        onOpenDetail = { tapped, tappedFocus -> onOpenDetail(leg, tapped, tappedFocus) },
+        focus = focus,
+        onHideMode = onHideMode,
         // Every destination the times cover, so a time is never read as another train's; shortened
         // as the list shortens a destination (full, then the standard abbreviations, then its floor)
         // before it would elide. With no live train to show, the terminus of the Planner's service,
         // as the train's front shows it (never the stop the rider gets off at, which read as the
         // line's destination); failing that, where they board.
-        val destinations = shown.map { (train, _) -> train.destination }.filter { it.isNotBlank() }.distinct()
-        DestinationsLabel(
-            names = destinations.ifEmpty { leg.headings }
-                .ifEmpty { listOf(stringResource(R.string.trip_first_leg_from, leg.fromName)) },
-            modifier = Modifier.weight(1f),
-        )
-        // Graying is lost on TalkBack: each time is read with its destination, and whether it's usable.
-        val description = shown.map { (train, catchable) ->
-            val time = Countdown.mergedLabel(listOf(train), now)
-            val to = train.destination.ifBlank { leg.toName }
-            stringResource(trainDescription(train, catchable, train in checking, reachable), time, to)
-        }.joinToString(", ")
-        Text(
-            // No arrivals yet for the boarding stop (never fetched; a failed fetch is kept as failed).
-            text = trainTimes(shown, now, loading = legLoading(state, leg, sequences)),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            modifier = if (shown.isEmpty()) Modifier else Modifier.semantics { contentDescription = description },
-        )
-    }
+        destination = { modifier ->
+            val destinations = shown.map { (train, _) -> train.destination }.filter { it.isNotBlank() }.distinct()
+            DestinationsLabel(
+                names = destinations.ifEmpty { leg.headings }
+                    .ifEmpty { listOf(stringResource(R.string.trip_first_leg_from, leg.fromName)) },
+                modifier = modifier,
+            )
+        },
+        times = {
+            // Graying is lost on TalkBack: each time is read with its destination, and whether it's usable.
+            val description = shown.map { (train, catchable) ->
+                val time = Countdown.mergedLabel(listOf(train), now)
+                val to = train.destination.ifBlank { leg.toName }
+                stringResource(trainDescription(train, catchable, train in checking, reachable), time, to)
+            }.joinToString(", ")
+            Text(
+                // No arrivals yet for the boarding stop (never fetched; a failed fetch is kept as failed).
+                text = trainTimes(shown, now, loading = legLoading(state, leg, sequences)),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                modifier = if (shown.isEmpty()) Modifier else Modifier.semantics { contentDescription = description },
+            )
+        },
+    )
 }
 
 /**
@@ -1046,8 +1114,12 @@ private fun RouteLegs(
     access: Duration,
     sequences: Map<String, LineSequence?>,
     onRetry: () -> Unit,
+    // The alerts dismissed (as on the list): their ⚠ doesn't show on a leg.
+    dismissed: Set<DismissedAlert>,
+    // A leg's row long-pressed: "Hide ‹mode›", as on the list (null: no menu).
+    onHideMode: ((String) -> Unit)?,
     // A leg's row tapped: opens its line's page.
-    onOpenDetail: (DepartureRow, RouteFocus?) -> Unit,
+    onOpenDetail: (TripLeg, DepartureRow, RouteFocus?) -> Unit,
 ) {
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -1057,7 +1129,7 @@ private fun RouteLegs(
         // A re-plan that failed says so over the open route too, with its Retry, as the list does.
         state.planError?.let { error -> item(key = "error") { PlanFailure(error, state.planning, onRetry) } }
         if (state.planError == null && state.planIncomplete) item(key = "incomplete") { PlanIncomplete(state.planning, onRetry) }
-        item(key = "summary") { RouteSummary(listOf(estimate), state.statuses, Modifier.padding(vertical = 8.dp)) }
+        item(key = "summary") { RouteSummary(listOf(estimate), shownStatuses(state.statuses, dismissed), Modifier.padding(vertical = 8.dp)) }
         statusNote(state, estimate.unchecked)?.let { checking -> item(key = "status") { StatusUnknown(checking) } }
         val firstStop = estimate.route.legs.firstOrNull()?.fromName
         if (access > Duration.ZERO && firstStop != null) {
@@ -1067,7 +1139,7 @@ private fun RouteLegs(
             if (leg.isWalk) {
                 item(key = "leg$index") { WalkLink(stringResource(R.string.trip_walk, leg.run.toMinutes().toInt(), leg.toName)) }
             } else {
-                item(key = "leg$index") { RideLeg(leg, index == 0, state, now, sequences, onOpenDetail) }
+                item(key = "leg$index") { RideLeg(leg, index == 0, state, now, sequences, dismissed, onOpenDetail, onHideMode) }
                 // A change the Planner allows time for after this ride (not a walk leg of its own):
                 // shown, since it decides which next train is in reach.
                 if (leg.changeAfter > Duration.ZERO && index < estimate.route.legs.lastIndex) {
@@ -1116,10 +1188,18 @@ private fun WalkLink(text: String) {
  * other-branch trains too (the way the leg goes), as the list would; only the usable ones time the
  * route. Stale arrivals show none (D4). While the route is checked, the line's trains as the main
  * screen shows them, less those on a named branch that may skip the stop the rider gets off at
- * (they join once the check vouches).
+ * (they join once the check vouches) — unless [withUnchecked]: a list card's line row shows those
+ * grayed, so the row it opens, and that page, are built from the same trains.
  */
-internal fun legRows(state: TripViewModel.State, leg: TripLeg, now: Instant, sequences: Map<String, LineSequence?>): List<DepartureRow> {
-    val trains = pendingCardTrains(state, leg, now, sequences)
+internal fun legRows(
+    state: TripViewModel.State,
+    leg: TripLeg,
+    now: Instant,
+    sequences: Map<String, LineSequence?>,
+    withUnchecked: Boolean = false,
+): List<DepartureRow> {
+    val pending = if (withUnchecked) pendingTrains(state, leg, now, sequences) else pendingCardTrains(state, leg, now, sequences)
+    val trains = pending
         .ifEmpty { legTrains(state, leg, now, sequences)?.let { lineTrains(state, leg, now, it, sequences) }.orEmpty() }
     return DepartureRows.forStop(
         leg.fromId,
@@ -1181,6 +1261,13 @@ internal fun rememberLegRouteStops(leg: TripLeg, retry: Int): RouteStopsUi {
     }
 }
 
+/**
+ * The line statuses a trip's cards warn of: [statuses] less the alerts the rider dismissed, as the
+ * list shows them. Display only — a dismissed line still ranks and counts as checked.
+ */
+internal fun shownStatuses(statuses: Map<String, LineStatus>, dismissed: Set<DismissedAlert>): Map<String, LineStatus> =
+    if (dismissed.isEmpty()) statuses else statuses.filterValues { !it.disrupted || DismissedAlert.ofLineStatus(it) !in dismissed }
+
 /** [row] with its line alert marked dismissed ([DepartureRow.statusDismissed]) if it's in [dismissed]. */
 internal fun withDismissedMarked(row: DepartureRow, dismissed: Set<DismissedAlert>): DepartureRow {
     val status = row.status ?: return row
@@ -1194,6 +1281,28 @@ internal fun withDismissedMarked(row: DepartureRow, dismissed: Set<DismissedAler
  */
 internal fun tripDetailKey(leg: TripLeg, row: DepartureRow): String =
     row.copy(stopId = leg.fromArea.ifEmpty { row.stopId }).detailKey()
+
+/**
+ * Which planned leg a line page belongs to, stable across refreshes and re-plans (never its times):
+ * its line, where it boards and gets off, and its path. Two routes boarding the same line at the same
+ * stop but getting off elsewhere are different legs, and a page shows the one tapped. Only what
+ * [onPoles] never changes: a bus leg's poles can move to the other side of the road once its route
+ * loads, so an end is its stop pair where it has one, and where it gets off is by name otherwise
+ * (a bus station's stand can move to the route's own stand of that name).
+ */
+internal fun tripLegKey(leg: TripLeg): String = listOf(
+    leg.lineId,
+    leg.fromArea.ifEmpty { leg.fromId },
+    leg.toArea.ifEmpty { leg.toName },
+    leg.path.joinToString(","),
+).joinToString("|")
+
+/**
+ * Of a leg's live [rows] (split by direction or platform), the one holding [followed] — the train its
+ * row's times lead with — so its page follows that train; else the first. Null with no rows.
+ */
+internal fun legRowFor(rows: List<DepartureRow>, followed: Departure?): DepartureRow? =
+    rows.firstOrNull { followed != null && followed in it.upcoming } ?: rows.firstOrNull()
 
 /** The row a leg with no live trains opens to: its line at its boarding stop and its status, timing nothing. */
 internal fun legStatusRow(state: TripViewModel.State, leg: TripLeg, now: Instant): DepartureRow = DepartureRow(
@@ -1218,22 +1327,33 @@ private fun RideLeg(
     state: TripViewModel.State,
     now: Instant,
     sequences: Map<String, LineSequence?>,
-    onOpenDetail: (DepartureRow, RouteFocus?) -> Unit,
+    dismissed: Set<DismissedAlert>,
+    onOpenDetail: (TripLeg, DepartureRow, RouteFocus?) -> Unit,
+    onHideMode: ((String) -> Unit)?,
 ) {
-    val groups = remember(leg, state, now, sequences) { StopGrouping.groupByStop(legRows(state, leg, now, sequences)) }
+    val groups = remember(leg, state, now, sequences, dismissed) {
+        StopGrouping.groupByStop(DepartureRows.withoutDismissed(legRows(state, leg, now, sequences), dismissed))
+    }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (groups.isEmpty()) {
             StopGroupHeader(leg.fromName, qualifier = null, distanceLabel = null, firstOnScreen = first)
-            // Tapped, its line's page all the same: its service alert and its stops.
-            OutlinedCard(onClick = { onOpenDetail(legStatusRow(state, leg, now), null) }, modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp, vertical = 8.dp),
+            // Tapped, its line's page all the same: its service alert and its stops; long-pressed,
+            // "Hide ‹mode›" — the main screen's route row, as a line with no trains shows there.
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                // A dismissed alert leaves the row (it's how the leg opens its stops), without its chip.
+                val statusRow = withDismissedMarked(legStatusRow(state, leg, now), dismissed)
+                RouteRow(
+                    row = statusRow,
+                    isStarred = false,
+                    starrable = false,
+                    onToggleStar = {},
+                    onOpenDetail = { row, focus -> onOpenDetail(leg, row, focus) },
+                    onHideMode = onHideMode,
                 ) {
                     LinePill(leg.lineName, leg.lineId, leg.mode)
-                    state.statuses[leg.lineId]?.takeIf { it.disrupted }?.let { DisruptionChip(it.description) }
-                    Box(Modifier.weight(1f))
+                    Box(Modifier.weight(1f).padding(start = 8.dp)) {
+                        statusRow.status?.let { DisruptionChip(it.description) }
+                    }
                     // "Loading" while its times aren't in yet, as the first-leg row says; "–" once none can be shown.
                     Text(
                         if (legLoading(state, leg, sequences)) stringResource(R.string.trip_times_loading) else "–",
@@ -1250,7 +1370,8 @@ private fun RideLeg(
                     starred = emptySet(),
                     onToggleStar = {},
                     starringAvailable = false,
-                    onOpenDetail = onOpenDetail,
+                    onOpenDetail = { row, focus -> onOpenDetail(leg, row, focus) },
+                    onHideMode = onHideMode,
                 )
             }
         }

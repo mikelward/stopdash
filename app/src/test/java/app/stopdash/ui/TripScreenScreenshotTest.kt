@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import app.stopdash.domain.LineRef
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
@@ -48,6 +49,8 @@ import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import java.time.Duration
 import java.time.Instant
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.SemanticsMatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -253,6 +256,30 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun a_route_cards_line_row_is_the_main_screens_row() {
+        show(planned.copy(statuses = planned.statuses + ("windrush" to LineStatus("windrush", 6, "Severe Delays"))))
+        // The disrupted Windrush warns on each card's line row, just left of its times, as a row on
+        // the main screen does — not only beside the card's pill.
+        // In the tree a screen reader gets: two cards start on the Windrush, each warning beside
+        // its pill and on its line row.
+        assertEquals(4, composeRule.onAllNodesWithContentDescription("Severe Delays").fetchSemanticsNodes().size)
+        // Every card's line row (three routes) keeps its own action to open its line's page: the
+        // card doesn't swallow it.
+        val details = composeRule.activity.getString(R.string.departure_details)
+        val rowActions = composeRule.onAllNodes(
+            SemanticsMatcher("opens its line's page") { it.config.getOrElseNullable(SemanticsActions.OnClick) { null }?.label == details },
+        )
+        assertEquals(3, rowActions.fetchSemanticsNodes().size)
+        captureSnapshot("trip-routes-disrupted.png")
+        // Tapped, the line row opens its line's page (the card's top row still opens the route).
+        rowActions.onFirst().performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodes(hasTestTag("tripRoutes")).assertCountEquals(0)
+        composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(0)
+        composeRule.onAllNodesWithText("Severe Delays", substring = true).onFirst().assertExists()
+    }
+
+    @Test
     fun trip_route_legs() {
         show(planned)
         composeRule.onNodeWithText("28 min · ~08:30").performClick()
@@ -319,7 +346,7 @@ class TripScreenScreenshotTest {
         composeRule.onAllNodes(hasClickAction() and hasContentDescription("Windrush") and hasContentDescription("Jubilee"))
             .onFirst().performClick()
         composeRule.waitForIdle()
-        composeRule.onNode(hasClickAction() and hasContentDescription("Jubilee")).performClick()
+        composeRule.onNode(hasClickAction() and hasAnyDescendant(hasContentDescription("Jubilee"))).performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(0)
         composeRule.onNodeWithText(composeRule.activity.getString(R.string.route_detail_alert_dismissed)).assertExists()
@@ -344,10 +371,68 @@ class TripScreenScreenshotTest {
             .onFirst().performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(1)
-        composeRule.onNode(hasClickAction() and hasContentDescription("Jubilee")).performClick()
+        composeRule.onNode(hasClickAction() and hasAnyDescendant(hasContentDescription("Jubilee"))).performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(0)
         composeRule.onNodeWithText("Canary Wharf").assertExists()
+    }
+
+    @Test
+    fun a_dismissed_line_alert_leaves_the_trip_cards_as_it_leaves_the_list() {
+        val severe = LineStatus("windrush", 6, "Severe Delays")
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf", state = planned.copy(statuses = planned.statuses + ("windrush" to severe)),
+                    now = now, access = Duration.ofMinutes(2), routeStops = RouteStopsRepository(source),
+                    onBack = {}, onRetry = {}, dismissed = setOf(DismissedAlert.ofLineStatus(severe)),
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        // Dismissed: neither the pill nor the line row warns, as the list's rows don't.
+        composeRule.onAllNodesWithContentDescription("Severe Delays").assertCountEquals(0)
+        // The trains still show.
+        composeRule.onAllNodesWithContentDescription(" min to ", substring = true).onFirst().assertExists()
+    }
+
+    @Test
+    fun a_leg_with_no_trains_offers_hide_as_the_list_does() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf", state = planned.copy(live = planned.live - canadaWaterTube.first),
+                    now = now, access = Duration.ofMinutes(2), routeStops = RouteStopsRepository(source),
+                    onBack = {}, onRetry = {}, onHideMode = {},
+                )
+            }
+        }
+        composeRule.onAllNodes(hasClickAction() and hasContentDescription("Windrush") and hasContentDescription("Jubilee"))
+            .onFirst().performClick()
+        composeRule.waitForIdle()
+        // The Jubilee leg, with no trains to show, still carries the list row's long-press menu.
+        val more = composeRule.activity.getString(R.string.more_actions)
+        composeRule.onNode(
+            hasAnyDescendant(hasContentDescription("Jubilee")) and
+                SemanticsMatcher("long-presses to its menu") { it.config.getOrElseNullable(SemanticsActions.OnLongClick) { null }?.label == more },
+        ).assertExists()
+    }
+
+    @Test
+    fun a_hide_that_did_not_save_is_said_on_the_trip() {
+        var acknowledged = 0
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {},
+                    hiddenModesWriteFailed = true, onHiddenModesWriteFailureShown = { acknowledged++ },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.hidden_modes_write_failed)).assertExists()
+        assertEquals(1, acknowledged)
     }
 
     @Test
@@ -365,7 +450,7 @@ class TripScreenScreenshotTest {
         composeRule.onAllNodes(hasClickAction() and hasContentDescription("Windrush") and hasContentDescription("Jubilee"))
             .onFirst().performClick()
         composeRule.waitForIdle()
-        composeRule.onNode(hasClickAction() and hasContentDescription("Jubilee")).performClick()
+        composeRule.onNode(hasClickAction() and hasAnyDescendant(hasContentDescription("Jubilee"))).performClick()
         composeRule.waitForIdle()
         assertEquals(
             listOf("route stops unavailable for line jubilee at stop ${canadaWaterTube.first}: line not known to TfL"),
@@ -399,7 +484,7 @@ class TripScreenScreenshotTest {
         composeRule.onAllNodes(hasClickAction() and hasContentDescription("Windrush") and hasContentDescription("Jubilee"))
             .onFirst().performClick()
         composeRule.waitForIdle()
-        composeRule.onNode(hasClickAction() and hasContentDescription("Jubilee")).performClick()
+        composeRule.onNode(hasClickAction() and hasAnyDescendant(hasContentDescription("Jubilee"))).performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(0)
         // Its trains come: the page opened from the no-trains row closes, back to the route.

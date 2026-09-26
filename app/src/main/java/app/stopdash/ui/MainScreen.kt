@@ -3448,7 +3448,7 @@ internal fun StopGroupCard(
                     // cards TfL keeps distinct stay distinguishable (SPEC principle 1).
                     val label = DepartureLabels.destinationLabel(group2.destination, row.directionKey)
                         ?: stringResource(R.string.destination_unknown)
-                    RouteRow(
+                    LineRouteRow(
                         row = row,
                         isStarred = isStarred,
                         starrable = starrable,
@@ -3457,25 +3457,51 @@ internal fun StopGroupCard(
                         // The route row's own soonest train names the route the detail follows.
                         focus = RouteFocus.of(group2),
                         onHideMode = onHideMode,
-                    ) {
-                        LinePill(lineName = row.lineName, lineId = row.lineId, mode = row.mode, modifier = pillModifier)
-                        DestinationLabelContent(
-                            label = label,
-                            branch = group2.branch,
-                            modifier = Modifier.weight(1f).padding(start = 8.dp, end = 12.dp),
-                        )
-                        // A disrupted line shows an inline ⚠ just left of the countdown, announced
-                        // first (traversalIndex, in DisruptionWarningGlyph) so the warning precedes the
-                        // countdown it qualifies (SPEC D3 / principle 2). It replaces the old full-width
-                        // chip; the full status text stays reachable in the detail view.
-                        row.status?.let { status ->
-                            DisruptionWarningGlyph(status.description, Modifier.padding(end = 8.dp))
-                        }
-                        CountdownLabel(group2.times, stale, now)
-                    }
+                        destination = { modifier -> DestinationLabelContent(label = label, branch = group2.branch, modifier = modifier) },
+                        times = { CountdownLabel(group2.times, stale, now) },
+                    )
                 }
             }
         }
+    }
+}
+
+/**
+ * A line's timed route row, drawn the same wherever a line's trains are listed — a stop's card on the
+ * main screen, a trip's route card: its pill (capped at half the card, so a long name can't starve
+ * the times), its [destination], a disrupted line's ⚠ just left of the [times] and announced first
+ * (SPEC D3 / principle 2; the full status text stays reachable in the detail view), then the times.
+ * Handled as a [RouteRow]: a tap opens the line's page, a long press pins it or opens its menu. Only
+ * the destination and times differ between lists, so they're the slots; [destination] gets the
+ * modifier that sizes and spaces it.
+ */
+@Composable
+internal fun LineRouteRow(
+    row: DepartureRow,
+    isStarred: Boolean,
+    starrable: Boolean,
+    onToggleStar: (DepartureRow) -> Unit,
+    onOpenDetail: (DepartureRow, RouteFocus?) -> Unit,
+    focus: RouteFocus?,
+    onHideMode: ((String) -> Unit)?,
+    destination: @Composable RowScope.(Modifier) -> Unit,
+    times: @Composable RowScope.() -> Unit,
+) {
+    // Inner width ≈ screen minus the list's 16dp side padding and the row's 16dp padding.
+    val cardInnerWidth = LocalConfiguration.current.screenWidthDp.dp - 64.dp
+    RouteRow(
+        row = row,
+        isStarred = isStarred,
+        starrable = starrable,
+        onToggleStar = onToggleStar,
+        onOpenDetail = onOpenDetail,
+        focus = focus,
+        onHideMode = onHideMode,
+    ) {
+        LinePill(lineName = row.lineName, lineId = row.lineId, mode = row.mode, modifier = Modifier.widthIn(max = cardInnerWidth * 0.5f))
+        destination(Modifier.weight(1f).padding(start = 8.dp, end = 12.dp))
+        row.status?.let { status -> DisruptionWarningGlyph(status.description, Modifier.padding(end = 8.dp)) }
+        times()
     }
 }
 
@@ -3499,7 +3525,7 @@ private fun RouteDivider() {
  * recomposition never drops an in-progress long-press (Codex).
  */
 @Composable
-private fun RouteRow(
+internal fun RouteRow(
     row: DepartureRow,
     isStarred: Boolean,
     starrable: Boolean,
