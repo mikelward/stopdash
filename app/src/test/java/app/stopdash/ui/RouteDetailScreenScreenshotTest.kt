@@ -14,6 +14,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -36,6 +37,7 @@ import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -612,6 +614,54 @@ class RouteDetailScreenScreenshotTest {
     }
 
     @Test
+    fun stationsTheAlertNames_carryAWarning() {
+        // Synthetic alert wording over public station names: it names two stations on this list, the
+        // line itself (not a station) and a station off the list.
+        val alert = "Victoria line: no service between Oxford Circus and Euston while we fix a signal " +
+            "failure. Use the Northern line via Tottenham Court Road."
+        val stops = listOf("Victoria", "Green Park", "Oxford Circus", "Warren Street", "Euston", "King's Cross St. Pancras")
+            .mapIndexed { i, name -> RouteStop("stop$i", name) }
+        val statuses = mapOf("victoria" to LineStatus("victoria", 6, "Part Suspended", alert))
+        val stop = StopArrivals(
+            stopId = "940GZZLUVIC",
+            stopName = "Victoria",
+            departures = listOf(
+                Departure("victoria", "Victoria", "northbound", "Walthamstow Central", "Northbound - Platform 5", now.plusSeconds(120), "tube"),
+            ),
+            fetchedAt = now,
+        )
+        val row = DepartureRows.across(listOf(stop), now, statuses).first { it.upcoming.isNotEmpty() }
+        composeRule.setContent {
+            StopDashTheme {
+                RouteDetailScreen(
+                    row = row,
+                    isStarred = false,
+                    starrable = true,
+                    disruptionUnknown = false,
+                    stale = false,
+                    now = now,
+                    onToggleStar = {},
+                    onBack = {},
+                    routeStops = RouteStopsUi.Loaded(stops),
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        val inAlert = SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Named in the service alert")
+        composeRule.onNodeWithText("Oxford Circus \u26A0", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("Euston \u26A0", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("Warren Street", useUnmergedTree = true).assertExists()
+        assertEquals(2, composeRule.onAllNodes(inAlert).fetchSemanticsNodes().size)
+        // And beside the chip, in route order, so where it is reads next to what it is.
+        composeRule.onNodeWithText("Oxford Circus, Euston").assertIsDisplayed()
+        // The boarding stop isn't named (only its line is), so it stays "Your stop" alone.
+        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop")).assertExists()
+
+        captureSnapshot("route-detail-alert-stops.png")
+    }
+
+    @Test
     fun tappingAStation_starsTheJourneyThere_andAStarredOneShowsAStar() {
         val stops = listOf(
             RouteStop("940GZZLUVIC", "Victoria"),
@@ -952,6 +1002,132 @@ class RouteDetailScreenScreenshotTest {
     }
 
     @Test
+    fun aStatusRowWithNoTrains_stillNamesTheAlertsStationsBesideTheChip() {
+        // A suspension leaves no train to follow, so there is no stop list; the line's stations are
+        // loaded just to name the ones the alert mentions. Public names, synthetic ids and wording.
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence =
+                    LineSequence(
+                        // Each way calls at its own ids under the same names, as a bus line's poles on
+                        // either side of the road do, so each name is matched twice.
+                        routes = listOf(
+                            LineRoute("Victoria - Walthamstow", listOf("s1", "s2", "s3")),
+                            LineRoute("Walthamstow - Victoria", listOf("r3", "r2", "r1")),
+                        ),
+                        stopNames = mapOf(
+                            "s1" to "Victoria", "s2" to "Green Park", "s3" to "Oxford Circus",
+                            "r1" to "Victoria", "r2" to "Green Park", "r3" to "Oxford Circus",
+                        ),
+                    )
+            },
+            // Loaded on the test's own thread, so the page settles on its answer without a wait.
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        val statusRow = disruptedRow().let { row ->
+            row.copy(
+                upcoming = emptyList(),
+                status = row.status!!.copy(description = "Suspended", fullText = "Victoria line: suspended between Green Park and Oxford Circus."),
+            )
+        }
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalRouteStops provides repository) {
+                    RouteDetailScreen(
+                        row = statusRow,
+                        isStarred = false,
+                        starrable = false,
+                        disruptionUnknown = false,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        // Each name once, in the first direction's order.
+        composeRule.onNodeWithText("Green Park, Oxford Circus").assertIsDisplayed()
+        // Named, not listed: no station rows appear on a page with no train to follow.
+        composeRule.onAllNodes(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Named in the service alert"))
+            .assertCountEquals(0)
+    }
+
+    @Test
+    fun aStaleRow_stillNamesTheAlertsStationsBesideTheChip() {
+        // A stale row's train-specific stop list is withheld, but the alert's stations are still
+        // named, from the line's stations. Public names, synthetic ids and wording.
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence =
+                    LineSequence(
+                        routes = listOf(LineRoute("Victoria - Walthamstow", listOf("s1", "s2", "s3"))),
+                        stopNames = mapOf("s1" to "Victoria", "s2" to "Green Park", "s3" to "Oxford Circus"),
+                    )
+            },
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        val row = disruptedRow().let { it.copy(status = it.status!!.copy(fullText = "No service between Green Park and Oxford Circus.")) }
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalRouteStops provides repository) {
+                    RouteDetailScreen(
+                        row = row,
+                        isStarred = false,
+                        starrable = false,
+                        disruptionUnknown = false,
+                        stale = true,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Green Park, Oxford Circus").assertIsDisplayed()
+        // The list itself stays withheld.
+        composeRule.onNodeWithText("Stops shown once departures refresh").assertIsDisplayed()
+    }
+
+    @Test
+    fun anUnresolvedStopList_stillNamesTheAlertsStationsBesideTheChip() {
+        // The line's stations load, but the row's stop isn't among them, so its list is
+        // unavailable; the alert's stations are still named from them. Public names, synthetic ids.
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence =
+                    LineSequence(
+                        routes = listOf(LineRoute("Victoria - Walthamstow", listOf("s1", "s2", "s3"))),
+                        stopNames = mapOf("s1" to "Victoria", "s2" to "Green Park", "s3" to "Oxford Circus"),
+                    )
+            },
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        val row = disruptedRow().let { it.copy(status = it.status!!.copy(fullText = "No service between Green Park and Oxford Circus.")) }
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalRouteStops provides repository) {
+                    RouteDetailScreen(
+                        row = row,
+                        isStarred = false,
+                        starrable = false,
+                        disruptionUnknown = false,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Stop list unavailable").assertIsDisplayed()
+        composeRule.onNodeWithText("Green Park, Oxford Circus").assertIsDisplayed()
+    }
+
+    @Test
     fun staleStatusRow_showsNoStopMessage() {
         val statusRow = disruptedRow().copy(upcoming = emptyList())
         composeRule.setContent {
@@ -986,6 +1162,44 @@ class RouteDetailScreenScreenshotTest {
         composeRule.onNodeWithText("Couldn't load stops — you're offline").assertIsDisplayed()
         composeRule.onNodeWithText("Retry").performClick()
         assertEquals(1, retried)
+    }
+
+    @Test
+    fun aLineTfLDoesntKnow_doesNotAskAgainToNameTheAlertsStations() {
+        // Its route request already came back not found, so naming the alert's stations from the
+        // line's stations would only repeat a request that can't succeed.
+        val calls = mutableListOf<String>()
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                    calls += direction
+                    throw TflException.NotFound(null)
+                }
+            },
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        val row = disruptedRow().let { it.copy(status = it.status!!.copy(fullText = "No service between Green Park and Oxford Circus.")) }
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalRouteStops provides repository) {
+                    RouteDetailScreen(
+                        row = row,
+                        isStarred = false,
+                        starrable = false,
+                        disruptionUnknown = false,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Stop list unavailable").assertIsDisplayed()
+        // Resolving the route asks for each direction once; nothing asks again.
+        assertEquals(calls.distinct(), calls)
+        assertTrue(calls.isNotEmpty())
     }
 
     @Test

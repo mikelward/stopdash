@@ -1018,8 +1018,24 @@ reason where the wording is only TfL's vague bus catch-all "Special Service" —
 nothing on its own, the real state (usually a diversion) living only in the text. So a
 diverted bus reads "Diversion"; a vague status whose text yields nothing better falls back
 to "Service Alert" — never the meaningless "Special Service" — rather than being hidden.
-Pulling the affected stretch
-("Diversion Moorgate to Monument") and the compact chip are follow-ups (`TODO.md` Phase 3).
+On a line's page, **each station the alert's text names carries a ⚠** after its name, and **the
+same stations are listed beside the alert's chip** ("Diversion  Camomile Street, Fenchurch Street")
+so where it is reads next to what it is (maintainer, 2026-09-26) — a first guess at the stretch it
+affects, since TfL gives that only as prose. A station matches without the place TfL qualifies it
+with ("Stratford" for "Stratford (London)") but not inside a longer station name on the same page, and a
+bus stop matches on its own name, not its cross
+street, and destinations in a "towards …" list (joined by "and" or "or") are not taken as the affected stops. An alert
+written all in capitals carries no case to tell names from words, so it marks every station it
+names, destinations included — judged a clause at a time, so an all-caps clause stays generous even
+when the alert goes on in ordinary case (maintainer, 2026-09-26): a marker too many beats a missed stop. A page with no
+stop list to show — no train to follow (a suspended line), or a stale snapshot whose train-specific
+list is withheld — loads the line's stations just to **name** the ones the alert mentions beside the
+chip, and lists none: which direction or branch to list would
+be a guess on a line with nothing running. A name counts as a place only where it isn't a line, a branch or a holiday of the same name
+("Victoria line", "Bank branch", "Bank Holiday"), and only as a capitalized whole phrase; the guess
+errs toward marking, since it only adds a marker and never hides or reorders anything. Filling in
+the stations between two named ends ("between Oxford Circus and Euston"), and the compact chip, are
+follow-ups (`TODO.md` Phase 3).
 TfL's `isNow` flag is not used to hide a "future" alert: it reads `false` even for planned
 closures currently in effect, so telling current from future needs the dates in the text,
 and showing a not-yet-current diversion is the safe side (an extra chip beats a hidden
