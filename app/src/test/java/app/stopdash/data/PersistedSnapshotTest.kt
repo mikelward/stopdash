@@ -135,6 +135,23 @@ class PersistedSnapshotTest {
     }
 
     @Test
+    fun `a departure's train survives the round trip`() {
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(
+                StopArrivals(
+                    "940GZZLUCWR", "Canada Water",
+                    listOf(Departure("jubilee", "Jubilee", "outbound", "Stanmore", null, now, "tube", vehicleId = "162")),
+                    now,
+                ),
+            ),
+            fetchedAt = now,
+        )
+        val restored = snapshot.toPersisted().toDomain()!!
+        assertEquals("162", restored.stops.single().departures.single().vehicleId)
+        assertEquals(snapshot, restored)
+    }
+
+    @Test
     fun `the bus pole letter, bearing, and towards survive the round trip`() {
         // They are grouping inputs like clusterId, so a restored snapshot must keep its per-pole
         // "Stop D (towards Farringdon)" / "(Eastbound)" sub-headers instead of collapsing to bare/terminus

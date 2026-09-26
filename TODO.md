@@ -870,13 +870,18 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             - a long press on a route offering "Avoid <line>" for each of its lines;
             - an avoided-lines chip at the top of the trip;
             - a setting listing lines to avoid.
-      - [ ] **On the way** (later milestone; mocked 2026-09-26): tapping a first-leg train ("I'm on
-            this one") starts the trip. A top card shows the next action ("Change at Whitechapel ·
-            Platform A"), over a timeline of the route with the rider's position on it, followed
-            by the boarded train's vehicle id in TfL arrivals, so it works underground without GPS.
-      - [ ] **Step by step** (later milestone): the next action as an ongoing notification, with
-            a nudge a stop before each change. A foreground service and a new wakeup, so it's a
-            battery and permission decision stated when it's picked up.
+      - [ ] **On the way** (maintainer, 2026-09-26; SPEC *On the way*; autopilot): Start on an open
+            route follows the rider there, assuming the next train they can catch and switching
+            when another is seen (this replaces the mock's "I'm on this one" tap as the way in).
+        - [x] Which train makes each departure, and one train's calls ahead (`VehicleSource`).
+        - [ ] Following a started trip from its train's calls (`OnTheWay`, `:domain`).
+        - [ ] Start, the trip's on-the-way screen, End trip, and picking another train; the trip
+              kept on the device.
+        - [ ] The main view's pinned card.
+        - [ ] "Get off soon" on its own channel (sound, vibration), the permission asked on Start.
+        - [ ] **Not to merge until the maintainer's Play declarations:** the ongoing notification
+              with the app closed (a foreground service, which replaces the old *Step by step*
+              item), and live location to see the train boarded and follow a bus.
       - [x] **One-tap trips**: the near-me top bar's Directions button opens *To…* in one tap, with
             room freed by shortening the freshness stamp to "1 min ago" (maintainer, 2026-09-26).
       - [ ] **Better than a bare "est."** (maintainer, 2026-09-26): a leg past its live predictions
