@@ -25,6 +25,7 @@ import app.stopdash.widget.logWidgetSnapshotWarning
 import app.stopdash.domain.YourStops
 import app.stopdash.domain.StarredRowSet
 import app.stopdash.data.FileRecentStationsStore
+import app.stopdash.data.RecentSearches
 import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.data.FileRouteStopsStore
 import android.content.Context
@@ -1447,14 +1448,16 @@ class MainActivity : ComponentActivity() {
             key = "station-search",
             factory = viewModelFactory {
                 initializer {
+                    // From…'s own recent opens, read and recorded alike.
+                    val recents = recentSearches(appContext).store(RecentSearches.Kind.FROM)
                     StationSearchViewModel(
                         stationFinder,
                         createSavedStateHandle(),
                         // The bundled index, read off the main thread on the search's first query.
                         loadIndex = { StationIndexStore.load(appContext) },
                         // The user's own stops, from the device: listed before typing, matched as they type.
-                        loadYours = { loadYourStops(appContext) },
-                        recordOpen = { recentStationsStore(appContext).add(it) },
+                        loadYours = { loadYourStops(appContext, recents) },
+                        recordOpen = { recents.add(it) },
                         warn = ::logDepartureWarning,
                     )
                 }
@@ -1750,12 +1753,15 @@ class MainActivity : ComponentActivity() {
             key = "$keyPrefix-to-search",
             factory = viewModelFactory {
                 initializer {
+                    // Its own recent list, apart from From…'s: where the rider goes, most recent
+                    // first (maintainer, 2026-09-26), read and recorded alike.
+                    val recents = recentSearches(appContext).store(RecentSearches.Kind.TO)
                     StationSearchViewModel(
                         stationFinder,
                         createSavedStateHandle(),
                         loadIndex = { StationIndexStore.load(appContext) },
-                        loadYours = { loadYourStops(appContext) },
-                        recordOpen = {},
+                        loadYours = { loadYourStops(appContext, recents) },
+                        recordOpen = { recents.add(it) },
                         warn = ::logDepartureWarning,
                     )
                 }
@@ -1784,6 +1790,7 @@ class MainActivity : ComponentActivity() {
                 onQueryChange = search::onQueryChange,
                 onOpenStation = { match ->
                     toStores.clearAll()
+                    search.onOpened(match)
                     search.clear()
                     onPickTo(match)
                 },
@@ -2665,17 +2672,16 @@ private fun nearbyStopsCache(context: Context): NearbyStopsCache = synchronized(
 }
 
 /**
- * The stations recently opened from "Find a station": process-wide, backed by a file in the app's
- * no-backup directory, so the list survives a restart but never leaves the device.
+ * Each station search's recent picks ([RecentSearches]: *From…*'s and *To…*'s apart), process-wide,
+ * backed by files in the app's no-backup directory, so each list survives a restart but never
+ * leaves the device.
  */
-private val recentStationsLock = Any()
-private var recentStationsInstance: FileRecentStationsStore? = null
+private val recentSearchesLock = Any()
+private var recentSearchesInstance: RecentSearches? = null
 
-private fun recentStationsStore(context: Context): FileRecentStationsStore = synchronized(recentStationsLock) {
-    recentStationsInstance ?: FileRecentStationsStore(
-        File(context.applicationContext.noBackupFilesDir, "recent-stations.json"),
-        warn = ::logDepartureWarning,
-    ).also { recentStationsInstance = it }
+private fun recentSearches(context: Context): RecentSearches = synchronized(recentSearchesLock) {
+    recentSearchesInstance ?: RecentSearches(context.applicationContext.noBackupFilesDir, warn = ::logDepartureWarning)
+        .also { recentSearchesInstance = it }
 }
 
 /**
@@ -2714,13 +2720,14 @@ private suspend fun rememberStarredPlace(context: Context, row: DepartureRow) = 
 }
 
 /**
- * The user's own stops for "Find a station" (SPEC *Finding stops*), all read from the device: the
- * starred journeys' ends; the places holding a starred row; the recent opens; and every place the
+ * The user's own stops for a station search (SPEC *Finding stops*), all read from the device: the
+ * starred journeys' ends; the places holding a starred row; that search's own recent picks
+ * ([recents]: *From…*'s opens or *To…*'s destinations); and every place the
  * app has lately shown (the widget's snapshot and the nearby-lookup cache), so they match with no
  * TfL search. A source that can't be read is logged by kind alone and left out. Call off the main
  * thread.
  */
-private suspend fun loadYourStops(context: Context): YourStops {
+private suspend fun loadYourStops(context: Context, recents: FileRecentStationsStore): YourStops {
     val journeys = readOrEmpty("starred journeys") {
         DataStoreStarredJourneysStore.from(context, warn = ::logStarWarning).journeys().first().orEmpty()
     }
@@ -2755,7 +2762,7 @@ private suspend fun loadYourStops(context: Context): YourStops {
     return YourStops.of(
         journeys = journeys.map { it.copy(from = it.from.withArea(), to = it.to.withArea()) },
         starred = starred.map { it.second }.distinctBy { it.id },
-        recent = recentStationsStore(context).load(),
+        recent = recents.load(),
         known = known.map { it.second },
         unnamedStarred = unnamed,
     )

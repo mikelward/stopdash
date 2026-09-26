@@ -813,10 +813,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
     - [ ] **Extract the matcher into a shared `mikelward/*` library**, with TypeLauncher's copy,
           rather than keep two.
   - [x] **The user's own stops, without TfL** (maintainer, 2026-09-24): before typing, the
-        search lists *Starred* (journey ends, places holding a starred row) and *Recent* (last
-        eight opened, kept in no-backup storage); as the user types, those and the places lately
-        shown near them (widget snapshot, nearby-lookup cache) match on the device, the user's own
-        leading their tier.
+        search lists *Recent* (last eight opened, most recent on top, kept in no-backup storage;
+        *From…* and *To…* each keep their own, maintainer 2026-09-26) and then *Starred* (journey
+        ends, places holding a starred row, less those picked lately); as the user types, those and
+        the places lately shown near them (widget snapshot, nearby-lookup cache) match on the
+        device, the user's own leading their tier by last use.
     - [ ] **Clear or remove a recent entry**: the list only ages out past eight; a long-press to
           remove one (or a "Clear" on the heading) if it proves wanted.
   - [x] **Set the near-me origin to a station** (maintainer, 2026-09-24): *From…* now opens the
@@ -840,6 +841,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             destination), from the list's few-minute cache; not yet fetched.
       - [ ] **Gray unreachable trains in the leg-by-leg cards** (the list's first-leg row does).
       - [ ] **"From" chip on the destination search** naming the start ("Here" or the station).
+      - [ ] **Borrow from the other search's recent list** (maintainer, 2026-09-26): *From…* and
+            *To…* keep separate recents, ordered by last use; maybe a single button to swap in the
+            other list, or a way to pick from it (the station you came from as the way home).
       - [ ] **Station page's own *To…*** still shows direct trains only; move it to trips.
       - [x] **Plan to every station of a complex** (maintainer, 2026-09-26: the best way to King's
             Cross St. Pancras whatever the line or mode): once per station code plus one bus
@@ -2085,7 +2089,8 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   nearest entrance. **Reversible:** `FixedLocation.centerOf`.
 
 - **To… is a look with no Star button (autopilot, 2026-09-24).** Picking a destination narrows
-  the departures to those that call there; nothing is saved. *Alternative:* star the trip straight
+  the departures to those that call there; no trip is saved (the destination goes into *To…*'s
+  own recent list since 2026-09-26). *Alternative:* star the trip straight
   away, which needs a line-free journey (`StarredJourney` places its ends on one starred line's
   route); logged under *Find a station* above. **Reversible:** the To… state is a few saved UI values
   in `MainActivity`; the filter is a pure `DirectTrips` function.

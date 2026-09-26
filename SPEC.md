@@ -240,12 +240,14 @@ The app finds stops two ways:
   alerts are shared with the main list.
 
   **The user's own stops** (maintainer, 2026-09-24) come without a TfL search. Before anything
-  is typed, the search lists them under **Starred** (the ends of starred journeys, then the
-  places holding a starred row, each recorded when starred) and **Recent** (the last eight stations opened from the
-  search). As the user types, those and every place the app has lately shown near them (the
+  is typed, the search lists them **by last use** (maintainer, 2026-09-26): **Recent** first (the
+  last eight places picked from that search, the most recent on top), then **Starred** (the ends
+  of starred journeys, then the places holding a starred row, each recorded when starred), less
+  any picked lately. *From…* and *To…* keep **separate recent lists** — where the rider looks from
+  and where they go — so each search lists its own history. As the user types, those and every place the app has lately shown near them (the
   widget's last departures and the nearby-lookup cache) match on the device alongside the
   bundled stations, so a starred bus stop appears at once; a bus stop (a journey's end
-  included) lists as its stop area, whose page holds its poles. A starred or recently opened place leads its matching tier. All
+  included) lists as its stop area, whose page holds its poles. A recently picked or starred place leads its matching tier, the most recently picked first. All
   of it is read from the device and sent nowhere; the recent list stays on the device and out
   of backups (*Privacy*).
 
@@ -285,7 +287,7 @@ The app finds stops two ways:
   from its nearest stop, nearest first, with distances. On a **searched station's page** (reached with the overflow's *From…*), it works the same way
   from the station's position — its own stops, the default stops around it and any within 0.2 mi —
   titled "From ➔ To", and back returns to the station's page. Either way it is a look, not
-  a pin: nothing is saved and the destination isn't added to the search's *Recent*. A departure
+  a pin: nothing is saved but the destination, which *To…*'s own *Recent* remembers. A departure
   whose route is still loading, failed to load, or can't be followed is left out and the page says
   so ("Checking routes…", "Some routes couldn't be checked") rather than pass a short list off as
   complete (principle 2), and the debug log names each departure it couldn't check — its line, its
@@ -1557,7 +1559,7 @@ approximate under an approximate-only grant or when no accurate fix can be obtai
 *Finding stops*) — and a departures lookup necessarily sends the watched stop
 IDs. **Find a station** likewise sends the typed name to TfL's stop search (and a later
 search-to-pin would send a stop-name or line query); the query is never saved or logged. The
-stations opened from it are remembered for its *Recent* list, and each starred row's place (so
+places picked from it are remembered for its *Recent* lists (*From…*'s and *To…*'s apart), and each starred row's place (so
 a star is listed by name), in the app's no-backup storage: never logged, sent, or backed up. That is inherent to each feature and disclosed; precise location is the
 Play Data Safety type the nearby action may collect (and so declares), not a claim that
 every fix sent is precise.
