@@ -132,6 +132,37 @@ class OnTheWayTest {
         assertEquals(at(19), next.legStartedAt)
     }
 
+    @Test
+    fun `a change between two rides shows the change time before the next ride`() {
+        val first = ride.copy(changeAfter = Duration.ofMinutes(4))
+        val direct = ActiveTrip(TripRoute(listOf(first, second)), "E", startedAt = t0, vehicleId = "8", boarded = true, dueOffAt = at(15))
+        val (changing, progress) = OnTheWay.advance(direct, listOf(call("X", 16)), at(15))
+        assertEquals(TripProgress.Changing(second, at(19)), progress)
+        assertEquals(TripProgress.Changing(second, at(19)), OnTheWay.advance(changing, null, at(17)).second)
+        assertEquals(TripProgress.Waiting(second, null), OnTheWay.advance(changing, null, at(19)).second)
+    }
+
+    @Test
+    fun `a walk already done while away moves on to the ride after it`() {
+        val onBoard = OnTheWay.follow(trip, train("8", 5)).copy(boarded = true, dueOffAt = at(14))
+        // Off at 14, the 5-minute walk done by 19: back at 25, the next ride is waited for.
+        val (next, progress) = OnTheWay.advance(onBoard, emptyList(), at(25))
+        assertEquals(2, next.legIndex)
+        assertEquals(TripProgress.Waiting(second, null), progress)
+    }
+
+    @Test
+    fun `a change noticed late runs from when the rider got off, not from when it was noticed`() {
+        val first = ride.copy(changeAfter = Duration.ofMinutes(4))
+        val direct = ActiveTrip(TripRoute(listOf(first, second)), "E", startedAt = t0, vehicleId = "8", boarded = true, dueOffAt = at(15))
+        // Back at 18 after a while away: off at 15, so the change ends at 19, not 22.
+        val (changing, progress) = OnTheWay.advance(direct, listOf(call("X", 16)), at(18))
+        assertEquals(TripProgress.Changing(second, at(19)), progress)
+        assertEquals(at(19), changing.legStartedAt)
+        // Back only after the change was up: the next ride is waited for at once.
+        assertEquals(TripProgress.Waiting(second, null), OnTheWay.advance(direct, listOf(call("X", 16)), at(25)).second)
+    }
+
     // A long ride: TfL predicts only so far ahead, so the calls can end before F.
     private val long = TripLeg("tube", "red", "Red", "A", "A", "F", "F", at(5), at(45), path = listOf("B", "C", "D", "E", "F"))
 
@@ -165,7 +196,8 @@ class OnTheWayTest {
         val (walking, progress) = OnTheWay.advance(seen, emptyList(), at(15))
         assertEquals(1, walking.legIndex)
         assertNull(walking.dueOffAt)
-        assertEquals(TripProgress.Walking(walk, at(20)), progress)
+        // The walk runs from when the rider was due off (14), not from when that was noticed.
+        assertEquals(TripProgress.Walking(walk, at(19)), progress)
     }
 
     @Test
@@ -248,6 +280,10 @@ class OnTheWayTest {
         assertFalse(OnTheWay.runsAlong(bus, short))
         assertTrue(OnTheWay.runsAlong(bus.copy(headings = listOf("Example Terminus")), short, heading = "Example Terminus"))
         assertFalse(OnTheWay.runsAlong(bus.copy(headings = listOf("Example Terminus")), short, heading = "Somewhere Short"))
+        // A bus station, as the live feed cleans it ("Example Bus Station" → "Example Bus"), against
+        // the Planner's heading for the same blind ("Example").
+        assertTrue(OnTheWay.runsAlong(bus.copy(headings = listOf("Example")), short, heading = "Example Bus"))
+        assertTrue(OnTheWay.runsAlong(bus.copy(headings = listOf("Example")), short, heading = "Example Bus Station"))
     }
 
     @Test
@@ -331,7 +367,7 @@ class OnTheWayTest {
         // Seen due at C at 14; at 15 it's round towards A, and at C again at 24.
         val (off, progress) = OnTheWay.advance(onBoard, listOf(call("A", 18), call("B", 21), call("C", 24)), at(15))
         assertEquals(1, off.legIndex)
-        assertEquals(TripProgress.Walking(walk, at(20)), progress)
+        assertEquals(TripProgress.Walking(walk, at(19)), progress)
     }
 
     @Test
@@ -433,5 +469,12 @@ class OnTheWayTest {
         val (next, progress) = OnTheWay.advance(following, calls, at(10))
         assertEquals(TripProgress.Waiting(ride, at(14)), progress)
         assertEquals(at(14), next.boardsAt)
+    }
+
+    @Test
+    fun `a route with a National Rail train can't be followed, having no train to name`() {
+        assertTrue(OnTheWay.canFollow(trip.route))
+        val byRail = TripRoute(listOf(ride.copy(mode = NATIONAL_RAIL_MODE), walk, second))
+        assertFalse(OnTheWay.canFollow(byRail))
     }
 }

@@ -49,6 +49,12 @@ sealed interface TripProgress {
         val getOffSoon: Boolean,
     ) : TripProgress
 
+    /**
+     * Changing onto [leg], a ride straight after another, until about [until]: the change time the
+     * Planner allows (as the route shows it), with no walk leg of its own.
+     */
+    data class Changing(val leg: TripLeg, val until: Instant) : TripProgress
+
     /** On foot along [leg] (a walk to a change or the destination), until about [until]. */
     data class Walking(val leg: TripLeg, val until: Instant) : TripProgress
 
@@ -73,6 +79,13 @@ object OnTheWay {
 
     /** …or from this long before the train is due where the rider gets off. */
     val GET_OFF_SOON_TIME: Duration = Duration.ofMinutes(2)
+
+    /**
+     * Whether [route] can be followed: each of its rides by a train its departures name. National
+     * Rail's come from its own boards (SPEC *National Rail*), which name none.
+     */
+    fun canFollow(route: TripRoute): Boolean =
+        route.legs.none { !it.isWalk && it.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) }
 
     /**
      * The train to follow for a leg: the soonest of its [trains] (the leg's line, heading its way,
@@ -109,7 +122,7 @@ object OnTheWay {
         // A leg whose stops can't be checked (a bus) looks the same as a short working or another
         // branch until its calls reach the stop: meanwhile only the terminus it shows ([heading],
         // its departure's) against the Planner's tells them apart.
-        if (!checkable(leg)) return heading != null && leg.headings.any { it.equals(cleanStopName(heading), ignoreCase = true) }
+        if (!checkable(leg)) return heading != null && leg.headings.any { signed(it).equals(signed(heading), ignoreCase = true) }
         return keepsToLeg(leg, ahead)
     }
 
@@ -140,6 +153,7 @@ object OnTheWay {
             val until = trip.legStartedAt.plus(leg.run)
             return if (now.isBefore(until)) trip to TripProgress.Walking(leg, until) else nextLeg(trip, now)
         }
+        changeUntil(trip, now)?.let { return trip to TripProgress.Changing(leg, it) }
         if (trip.vehicleId.isBlank() || calls == null) {
             return trip to if (trip.boarded) TripProgress.Lost(leg) else TripProgress.Waiting(leg, null)
         }
@@ -199,6 +213,26 @@ object OnTheWay {
         return riding to TripProgress.Riding(leg, calls.first().stopName, stopsLeft, getOffAt, soon)
     }
 
+    /**
+     * When the change onto [trip]'s ride ends, while the rider is still making it: a ride straight
+     * after another, not yet boarded, before the change time the Planner allows is up. Null otherwise.
+     */
+    fun changeUntil(trip: ActiveTrip, now: Instant): Instant? {
+        val leg = trip.leg ?: return null
+        val before = trip.route.legs.getOrNull(trip.legIndex - 1) ?: return null
+        if (leg.isWalk || before.isWalk || trip.boarded || !now.isBefore(trip.legStartedAt)) return null
+        return trip.legStartedAt
+    }
+
+    // A bus blind's place, however it was cleaned: the live feed turns "X Bus Station" into "X Bus"
+    // ([cleanStopName] drops only "Station"), the Planner's heading into "X".
+    private fun signed(name: String): String {
+        val clean = cleanStopName(name)
+        return if (clean.endsWith(BUS, ignoreCase = true) && clean.length > BUS.length) clean.dropLast(BUS.length).trim() else clean
+    }
+
+    private const val BUS = " Bus"
+
     /** [trip] with its "get off soon" said for the leg it's on, so it isn't said again. */
     fun warned(trip: ActiveTrip): ActiveTrip = trip.copy(warnedLeg = trip.legIndex)
 
@@ -206,13 +240,22 @@ object OnTheWay {
     fun shouldWarn(trip: ActiveTrip, progress: TripProgress): Boolean =
         progress is TripProgress.Riding && progress.getOffSoon && trip.warnedLeg != trip.legIndex
 
-    // The next leg, from [now] plus the change the Planner allows after this one (a change with no
-    // walk leg of its own): a walk's time runs from there, and a ride's train is picked from there.
+    // The next leg, from when this one was done plus the change the Planner allows after it (a
+    // change with no walk leg of its own): a walk's time runs from there, and a ride's train is
+    // picked from there. Done is when the rider was due off (or the walk's time was up), not when
+    // it was noticed, which is later after a while away; [now] when that isn't known.
     private fun nextLeg(trip: ActiveTrip, now: Instant): Pair<ActiveTrip, TripProgress> {
-        val from = now.plus(trip.leg?.changeAfter ?: Duration.ZERO)
+        val leg = trip.leg
+        val doneAt = if (leg?.isWalk == true) trip.legStartedAt.plus(leg.run) else trip.dueOffAt
+        val from = (doneAt?.takeIf { it.isBefore(now) } ?: now).plus(leg?.changeAfter ?: Duration.ZERO)
         val next = trip.copy(legIndex = trip.legIndex + 1, legStartedAt = from, vehicleId = "", boardsAt = null, boarded = false, dueOffAt = null)
-        val leg = next.leg ?: return next to TripProgress.Arrived
-        return next to if (leg.isWalk) TripProgress.Walking(leg, from.plus(leg.run)) else TripProgress.Waiting(leg, null)
+        val onward = next.leg ?: return next to TripProgress.Arrived
+        if (onward.isWalk) {
+            val until = from.plus(onward.run)
+            // A walk already done while away: on to the leg after it.
+            return if (now.isBefore(until)) next to TripProgress.Walking(onward, until) else nextLeg(next, now)
+        }
+        return next to (changeUntil(next, now)?.let { TripProgress.Changing(onward, it) } ?: TripProgress.Waiting(onward, null))
     }
 
     // A bus stop area's id, naming a road's poles together.

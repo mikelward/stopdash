@@ -1,5 +1,8 @@
 package app.stopdash.ui
 
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material3.Button
 import app.stopdash.domain.DismissedAlert
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarHost
@@ -88,6 +91,7 @@ import app.stopdash.domain.Staleness
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopGrouping
 import app.stopdash.domain.TripLeg
+import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTiming
 import java.time.Duration
@@ -139,6 +143,22 @@ internal fun leavesAlongLeg(train: Departure, leg: TripLeg, sequences: Map<Strin
 internal fun legLoading(state: TripViewModel.State, leg: TripLeg, sequences: Map<String, LineSequence?>): Boolean =
     state.live[leg.fromId] == null ||
         (leg.fromArea.isNotEmpty() && (leg.lineId !in sequences || (state.refreshing && leg.fromArea !in state.areaPoles)))
+
+/**
+ * Whether [route] can be started on the way: not while its origin is being found again
+ * ([originUnconfirmed], the route may change with the new fix), nor while a bus leg boarding or
+ * alighting at a stop pair isn't yet at the poles its bus uses: no route ([sequences]: loading, or
+ * failed) to say which, or those poles not yet looked up and placed. A
+ * started trip keeps the route as it was, so it's started only once that's settled.
+ */
+internal fun canStart(route: TripRoute, sequences: Map<String, LineSequence?>, originUnconfirmed: Boolean): Boolean =
+    !originUnconfirmed && route.legs.none { leg ->
+        // The route's poles, boarding and alighting, must be those its line's route says the bus uses
+        // ([onPoles]): until a pair's poles are looked up, the trip keeps the Planner's, which may be
+        // the wrong side of the road.
+        !leg.isWalk && (leg.fromArea.isNotEmpty() || leg.toArea.isNotEmpty()) &&
+            (sequences[leg.lineId] == null || onPoles(leg, sequences).let { it.fromId != leg.fromId || it.toId != leg.toId })
+    }
 
 /**
  * [state] with each route's legs [onPoles] — where the trip fetches the chosen pole: one of its
@@ -478,12 +498,18 @@ internal fun TripScreen(
     onDismissAlert: ((DepartureRow) -> Unit)? = null,
     dismissWriteFailed: Boolean = false,
     onDismissWriteFailureShown: () -> Unit = {},
+    // Start an open route on the way (SPEC *On the way*); null offers no Start.
+    onStart: ((TripRoute) -> Unit)? = null,
+    // With a trip already on the way, open it in Start's place rather than replace it.
+    onOpenTrip: (() -> Unit)? = null,
 ) {
     CompositionLocalProvider(LocalRouteStops provides routeStops) {
         TripContent(
             title, state, now, access, onBack, onRetry, locationBanner, relocating, onRelocate,
             hiddenModes, onShowAllModes, onHideMode, hiddenModesWriteFailed, onHiddenModesWriteFailureShown, menu, openRoute,
             TripAlerts(dismissed, onDismissAlert, dismissWriteFailed, onDismissWriteFailureShown),
+            onStart,
+            onOpenTrip,
         )
     }
 }
@@ -519,6 +545,8 @@ private fun TripContent(
     menu: AppMenuActions? = null,
     openRoute: MutableState<String?>? = null,
     alerts: TripAlerts = TripAlerts(emptySet(), null, false) {},
+    onStart: ((TripRoute) -> Unit)? = null,
+    onOpenTrip: (() -> Unit)? = null,
 ) {
     // Only the timed routes' lines: a hidden mode's routes, and those past the cap, load no route data.
     // While a plan's answers are still landing, the last settled plan's lines stand, so a passing
@@ -651,6 +679,34 @@ private fun TripContent(
     }
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        // An open route starts on the way from here: followed by its train to the destination. Above
+        // the system navigation bar, as the app draws edge to edge.
+        bottomBar = {
+            if (open != null && onStart != null && onOpenTrip != null) {
+                // One trip at a time: the one on the way is ended from its own screen.
+                Button(
+                    onClick = onOpenTrip,
+                    modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp).height(56.dp),
+                ) {
+                    Text(stringResource(R.string.on_the_way_open_current))
+                }
+            } else if (open != null && onStart != null && !OnTheWay.canFollow(open.route)) {
+                Text(
+                    stringResource(R.string.on_the_way_cant_follow_rail),
+                    modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (open != null && onStart != null) {
+                Button(
+                    onClick = { onStart(open.route) },
+                    enabled = canStart(open.route, sequences, originUnconfirmed),
+                    modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp).height(56.dp),
+                ) {
+                    Text(stringResource(R.string.on_the_way_start))
+                }
+            }
+        },
         topBar = {
             TopAppBar(
                 navigationIcon = {

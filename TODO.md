@@ -887,8 +887,29 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 later between two refreshes, is taken for its next lap (it gives the very same calls
                 as one that just left with its next lap predicted). Tell them apart from the rider's
                 location (still at the stop), or from how long since the call was last seen.
-        - [ ] Start, the trip's on-the-way screen, End trip, and picking another train; the trip
-              kept on the device.
+          - [ ] **Candidates past the first three**: a pick asks after at most three trains (one
+                request each, within the keyless rate limit). At a fork where the first three turn
+                off, none is found until one that runs along the leg comes up. Filter the board by
+                the line's route sequences first (as the trip view's leg rows do), at no request cost,
+                so the three asked after are ones that run the rider's way.
+          - [ ] **A boarded train that leaves the leg** (a diversion, a short working): it's shown as
+                lost and kept followed, since the rider is on it, not at the boarding stop to take
+                another. Re-plan from where it goes instead, or, with location, from where they are.
+        - [x] Start, the trip's on-the-way screen and End trip; the trip kept on the device and
+              followed while the app is in the foreground.
+        - [ ] Picking another train by hand ("I'm on this one"), until location can see it.
+        - [ ] **The trip's screen as the route view, kept live** (maintainer, 2026-09-27: today's
+              Next card and leg list for v1, this after): the route as the rider planned it, done
+              legs hidden, a status line (stops left, next stop), the followed train marked, and
+              the next leg's live departures. At a change, only the services safe to take, each
+              with its live departures and platform. First version: the departures for the leg's
+              own route, as planned. Then every departure from the same stop whose service reaches
+              the leg's change point (the Circle and the Metropolitan, say): with delays, the best
+              next train is often another service from the same platform. Smarter later (tbd): the
+              one that arrives first, or only services with all the leg's stops in common. Asks
+              only the leg's own stop (TfL's stops split by
+              mode: `940G…` metro, `910G…` rail), never its interchange (`HUB…`), and from that
+              leg's own source: TfL for a tube leg, National Rail only for a National Rail one.
         - [ ] The main view's pinned card.
         - [ ] "Get off soon" on its own channel (sound, vibration), the permission asked on Start.
         - [ ] **Not to merge until the maintainer's Play declarations:** the ongoing notification
