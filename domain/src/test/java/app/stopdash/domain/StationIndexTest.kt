@@ -96,6 +96,17 @@ class StationIndexTest {
     }
 
     @Test
+    fun `the user's stops lead their tier by last use`() {
+        val road = StationMatch("490000000001A", "Kennington Road", listOf("bus"))
+        val lane = StationMatch("490000000002B", "Kennington Lane", listOf("bus"))
+        // Lane opened last: it leads, then Road, then the station neither chose.
+        val yours = index.withYours(YourStops(recent = listOf(lane, road)))
+        assertEquals(listOf("490000000002B", "490000000001A", "940GZZLUKNG"), yours.search("kenn").map { it.id })
+        val reopened = index.withYours(YourStops(recent = listOf(road, lane)))
+        assertEquals(listOf("490000000001A", "490000000002B", "940GZZLUKNG"), reopened.search("kenn").map { it.id })
+    }
+
+    @Test
     fun `a stop seen lately matches but doesn't lead`() {
         val seen = StationMatch("490000000002B", "Kennington Park Road", listOf("bus"))
         val yours = index.withYours(YourStops(known = listOf(seen)))

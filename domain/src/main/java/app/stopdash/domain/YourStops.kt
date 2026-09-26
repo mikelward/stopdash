@@ -2,8 +2,9 @@ package app.stopdash.domain
 
 /**
  * The stops "Find a station" knows without asking TfL (SPEC *Finding stops → Find a station*):
- * the user's [favorites] (the ends of starred journeys, and the stops holding a starred row) and
- * their [recent] opens from the search, both listed before anything is typed; and [known], the
+ * the user's [recent] picks from the search, most recent first, and their [favorites] not picked
+ * lately (the ends of starred journeys, and the stops holding a starred row), both listed before
+ * anything is typed, the recent first; and [known], the
  * stops the app has lately shown near the user. All of them match as the user types, alongside the
  * bundled stations, so a starred bus stop is found at once rather than after TfL's search. Read
  * from the device and kept there: nothing here is sent anywhere or logged.
@@ -17,7 +18,7 @@ data class YourStops(
     val unnamedStarred: List<String> = emptyList(),
 ) {
     /** Every stop here once, the user's own first. */
-    val all: List<StationMatch> get() = (favorites + recent + known).distinctBy { it.id }
+    val all: List<StationMatch> get() = (recent + favorites + known).distinctBy { it.id }
 
     /**
      * These lists with each [unnamedStarred] stop that [index] holds (a station, not a bus stop)
@@ -25,25 +26,25 @@ data class YourStops(
      */
     fun namedFrom(index: StationIndex): YourStops {
         if (unnamedStarred.isEmpty()) return this
-        val have = favorites.mapTo(HashSet()) { it.id }
+        val have = (favorites + recent).mapTo(HashSet()) { it.id }
         val named = unnamedStarred.mapNotNull(index::station).filter { it.id !in have }.sortedBy { it.name }
-        return copy(
-            favorites = favorites + named,
-            recent = recent.filter { r -> named.none { it.id == r.id } },
-            unnamedStarred = emptyList(),
-        )
+        return copy(favorites = favorites + named, unnamedStarred = emptyList())
     }
 
-    /** The stops the user chose — starred or opened — which lead their tier in a search. */
-    val ownIds: Set<String> get() = (favorites + recent).mapTo(HashSet()) { it.id }
+    /**
+     * The stops the user chose — picked or starred — by last use: the recent, most recent first, then
+     * the favorites not picked lately. Each leads its tier in a search, in this order.
+     */
+    val own: List<String> get() = (recent + favorites).map { it.id }.distinct()
 
     companion object {
         val EMPTY = YourStops()
 
         /**
-         * Gathers the lists from what the device holds: [journeys]' ends in their saved order, then
-         * the [starred] rows' stops by name, as the favorites; the [recent] opens not already a
-         * favorite; and every [known] stop. Names are cleaned the way the rest of the app shows them.
+         * Gathers the lists from what the device holds: the [recent] picks, most recent first; then
+         * [journeys]' ends in their saved order and the [starred] rows' stops by name, as the
+         * favorites, less any picked lately; and every [known] stop. Names are cleaned the way the
+         * rest of the app shows them.
          */
         fun of(
             journeys: List<StarredJourney>,
@@ -56,11 +57,11 @@ data class YourStops(
                 val modes = listOf(journey.mode).filter { it.isNotBlank() }
                 listOf(journey.from, journey.to).map { StationMatch(it.areaId.ifBlank { it.stopId }, it.name, modes) }
             }
-            val favorites = (journeyEnds + starred.sortedBy { cleanStopName(it.name) }).cleaned()
-            val favoriteIds = favorites.mapTo(HashSet()) { it.id }
+            val picked = recent.cleaned()
+            val pickedIds = picked.mapTo(HashSet()) { it.id }
             return YourStops(
-                favorites = favorites,
-                recent = recent.cleaned().filter { it.id !in favoriteIds },
+                favorites = (journeyEnds + starred.sortedBy { cleanStopName(it.name) }).cleaned().filter { it.id !in pickedIds },
+                recent = picked,
                 known = known.cleaned(),
                 unnamedStarred = unnamedStarred,
             )

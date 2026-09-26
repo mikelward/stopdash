@@ -196,6 +196,108 @@ class StationViewModelsTest {
     }
 
     @Test
+    fun `a match opened from a search leads it on the way back`() = runTest {
+        val place = IndexedStation("940GZZLUAAA", "Example Place", listOf("tube"))
+        val park = IndexedStation("940GZZLUBBB", "Example Park", listOf("tube"))
+        val opened = mutableListOf<StationMatch>()
+        val vm = StationSearchViewModel(
+            FakeFinder(),
+            loadIndex = { StationIndex(listOf(place, park)) },
+            loadYours = { YourStops(recent = opened.toList()) },
+            recordOpen = { opened.add(0, it) },
+            io = dispatcher,
+            debounceMillis = 300,
+        )
+        vm.onQueryChange("example")
+        advanceUntilIdle()
+        val before = (vm.state.value.result as StationSearchViewModel.Result.Matches).matches.map { it.id }
+        assertEquals(listOf("940GZZLUBBB", "940GZZLUAAA"), before)
+        // The lower match is picked; on Back the same query is still up, now led by it.
+        vm.onOpened(StationMatch("940GZZLUAAA", "Example Place", listOf("tube")))
+        advanceUntilIdle()
+        val after = (vm.state.value.result as StationSearchViewModel.Result.Matches).matches.map { it.id }
+        assertEquals(listOf("940GZZLUAAA", "940GZZLUBBB"), after)
+    }
+
+    @Test
+    fun `opening a match re-ranks TfL's matches without asking TfL again`() = runTest {
+        val place = IndexedStation("940GZZLUAAA", "Example Place", listOf("tube"))
+        val busStop = StationMatch("490000000001A", "Example Road", listOf("bus"))
+        var up = true
+        val finder = FakeFinder(search = { if (up) listOf(busStop) else throw TflException.Offline(null) })
+        val opened = mutableListOf<StationMatch>()
+        val vm = StationSearchViewModel(
+            finder,
+            loadIndex = { StationIndex(listOf(place)) },
+            loadYours = { YourStops(recent = opened.toList()) },
+            recordOpen = { opened.add(0, it) },
+            io = dispatcher,
+            debounceMillis = 300,
+        )
+        vm.onQueryChange("example")
+        advanceUntilIdle()
+        assertEquals(1, finder.queries.size)
+        // TfL goes down while the bus stop's page is open; Back still has both matches, the bus stop first.
+        up = false
+        vm.onOpened(busStop)
+        advanceUntilIdle()
+        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(listOf("490000000001A", "940GZZLUAAA"), result.matches.map { it.id })
+        assertEquals(null, result.remoteFailure)
+        assertEquals(1, finder.queries.size)
+    }
+
+    @Test
+    fun `a match opened while its search is still running leads it once the search lands`() = runTest {
+        val place = IndexedStation("940GZZLUAAA", "Example Place", listOf("tube"))
+        val park = IndexedStation("940GZZLUBBB", "Example Park", listOf("tube"))
+        val opened = mutableListOf<StationMatch>()
+        val vm = StationSearchViewModel(
+            FakeFinder(),
+            loadIndex = { StationIndex(listOf(place, park)) },
+            loadYours = { YourStops(recent = opened.toList()) },
+            recordOpen = { opened.add(0, it) },
+            io = dispatcher,
+            debounceMillis = 300,
+        )
+        vm.onQueryChange("example")
+        runCurrent()
+        // Picked from the index's matches, inside the typing pause, before TfL has answered.
+        assertTrue(vm.state.value.searching)
+        vm.onOpened(StationMatch("940GZZLUAAA", "Example Place", listOf("tube")))
+        advanceUntilIdle()
+        val after = (vm.state.value.result as StationSearchViewModel.Result.Matches).matches.map { it.id }
+        assertEquals(listOf("940GZZLUAAA", "940GZZLUBBB"), after)
+    }
+
+    @Test
+    fun `a re-rank never brings back TfL matches from an earlier answer`() = runTest {
+        val place = IndexedStation("940GZZLUAAA", "Example Place", listOf("tube"))
+        val busStop = StationMatch("490000000001A", "Example Road", listOf("bus"))
+        var up = true
+        val finder = FakeFinder(search = { if (up) listOf(busStop) else throw TflException.Offline(null) })
+        val vm = StationSearchViewModel(
+            finder,
+            loadIndex = { StationIndex(listOf(place)) },
+            loadYours = { YourStops() },
+            io = dispatcher,
+            debounceMillis = 300,
+        )
+        vm.onQueryChange("example")
+        advanceUntilIdle()
+        up = false
+        vm.onQueryChange("exampl")
+        advanceUntilIdle()
+        vm.onQueryChange("example")
+        advanceUntilIdle()
+        vm.onOpened(StationMatch("940GZZLUAAA", "Example Place", listOf("tube")))
+        advanceUntilIdle()
+        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(listOf("940GZZLUAAA"), result.matches.map { it.id })
+        assertEquals(DeparturesUiState.Error.Kind.OFFLINE, result.remoteFailure)
+    }
+
+    @Test
     fun `a query under two characters doesn't search`() = runTest {
         val finder = FakeFinder(search = { listOf(oxford) })
         val vm = searchVm(finder)

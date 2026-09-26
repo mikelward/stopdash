@@ -29,9 +29,10 @@ data class IndexedStation(
  */
 class StationIndex(
     val stations: List<IndexedStation>,
-    // The user's own stops (starred or opened, [YourStops.ownIds]): each leads its tier, and so does
-    // the interchange it folds into, so a starred stop ranks above an equally good stranger.
-    own: Set<String> = emptySet(),
+    // The user's own stops by last use ([YourStops.own]): each leads its tier in this order, and so
+    // does the interchange it folds into, so a stop picked lately ranks above an equally good one
+    // picked before it, and both above a stranger.
+    own: List<String> = emptyList(),
     // Each line's name as TfL spells it ("Hammersmith & City"), by id, for a line the index carries
     // by id alone. Empty in an older index.
     val lineNames: Map<String, String> = emptyMap(),
@@ -49,7 +50,7 @@ class StationIndex(
         return scored
             .filter { (station, _) -> station.hubId.isBlank() || station.hubId !in matchedIds }
             .sortedWith(
-                compareBy({ it.second }, { it.first.id !in leads }, { !it.first.isHub }, { it.first.name.length }, { it.first.name }),
+                compareBy({ it.second }, { leadOf(it.first.id) }, { !it.first.isHub }, { it.first.name.length }, { it.first.name }),
             )
             .take(limit)
             .map { (station, _) -> StationMatch(station.id, station.name, station.modes) }
@@ -78,7 +79,7 @@ class StationIndex(
             .sortedWith(
                 compareBy(
                     { StationMatcher.tier(query, it.value.name, it.value.id, hubOf[it.value.id].orEmpty())?.ordinal ?: StationMatchTier.entries.size },
-                    { it.value.id !in leads },
+                    { leadOf(it.value.id) },
                     { !it.value.id.startsWith("HUB", ignoreCase = true) },
                     { it.value.name.length },
                     { it.value.name },
@@ -94,7 +95,15 @@ class StationIndex(
     private val hubOf: Map<String, String> =
         stations.filter { it.hubId.isNotBlank() }.associate { it.id to it.hubId }
 
-    private val leads: Set<String> = own + own.mapNotNull { hubOf[it] }
+    // Each own stop's place in [own], and its interchange's (the earliest of its members').
+    private val leads: Map<String, Int> = buildMap {
+        own.forEachIndexed { i, id ->
+            putIfAbsent(id, i)
+            hubOf[id]?.let { putIfAbsent(it, i) }
+        }
+    }
+
+    private fun leadOf(id: String): Int = leads[id] ?: Int.MAX_VALUE
 
     private val byId: Map<String, IndexedStation> by lazy { stations.associateBy { it.id } }
 
@@ -110,7 +119,7 @@ class StationIndex(
         if (yours.all.isEmpty()) return this
         val indexed = stations.mapTo(HashSet()) { it.id }
         val extra = yours.all.filter { it.id !in indexed }.map { IndexedStation(it.id, it.name, it.modes) }
-        return StationIndex(stations + extra, yours.ownIds, lineNames)
+        return StationIndex(stations + extra, yours.own, lineNames)
     }
 
     companion object {

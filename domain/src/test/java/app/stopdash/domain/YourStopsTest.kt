@@ -31,12 +31,14 @@ class YourStopsTest {
     }
 
     @Test
-    fun `a recent open that's also a favorite is listed once, as a favorite`() {
+    fun `a favorite opened lately is listed once, among the recent, most recent first`() {
         val oxford = StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))
         val bank = StationMatch("940GZZLUBNK", "Bank", listOf("tube"))
         val yours = YourStops.of(listOf(journey), emptyList(), listOf(oxford, bank), emptyList())
-        assertEquals(listOf(bank), yours.recent)
-        assertEquals(setOf("490000000001A", "940GZZLUOXC", "940GZZLUBNK"), yours.ownIds)
+        assertEquals(listOf(oxford, bank), yours.recent)
+        assertEquals(listOf("Example Road"), yours.favorites.map { it.name })
+        // The user's own, by last use: the recent first, then the favorites not used lately.
+        assertEquals(listOf("940GZZLUOXC", "940GZZLUBNK", "490000000001A"), yours.own)
     }
 
     @Test
@@ -74,8 +76,9 @@ class YourStopsTest {
         val bank = StationMatch("940GZZLUBNK", "Bank", listOf("tube"))
         val yours = YourStops(recent = listOf(bank), unnamedStarred = listOf("940GZZLUBNK", "490000000001A"))
             .namedFrom(index)
-        assertEquals(listOf(bank), yours.favorites)
-        assertEquals(emptyList<StationMatch>(), yours.recent)
+        // Bank was opened lately, so it stays among the recent rather than moving to the favorites.
+        assertEquals(emptyList<StationMatch>(), yours.favorites)
+        assertEquals(listOf(bank), yours.recent)
         assertEquals(emptyList<String>(), yours.unnamedStarred)
     }
 }

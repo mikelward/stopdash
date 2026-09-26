@@ -92,6 +92,10 @@ class StationSearchViewModel(
 
     private var search: Job? = null
 
+    // TfL's answer behind the matches on screen, for the query it answered: an open re-ranks it
+    // rather than asking again. Dropped as each search starts, so a failed one never borrows it.
+    private var remoteFor: Pair<String, List<StationMatch>>? = null
+
     // Loaded once, on first use, so opening the search never waits on the asset read.
     private val index = viewModelScope.async(io, start = CoroutineStart.LAZY) { loadIndex() }
 
@@ -121,6 +125,7 @@ class StationSearchViewModel(
     fun clear() {
         search?.cancel()
         savedState.remove<String>(KEY_QUERY)
+        remoteFor = null
         _state.update { State(favorites = it.favorites, recent = it.recent, yoursRead = it.yoursRead) }
     }
 
@@ -132,11 +137,37 @@ class StationSearchViewModel(
         yours = readYours()
     }
 
-    /** Remember [match] as opened, for the recent list; the write finishes even if the search closes. */
+    /**
+     * Remember [match] as opened, for the recent list; the write finishes even if the search closes.
+     * The matches still up are ranked again, so on Back the match just opened leads its tier.
+     */
     fun onOpened(match: StationMatch) {
         viewModelScope.launch {
             withContext(NonCancellable + io) { recordOpen(match) }
             refreshYours()
+            rerank()
+        }
+    }
+
+    // The matches on screen ranked again with the user's stops as now read — from the bundled index
+    // and TfL's answer behind them, with no new request, so Back keeps what it showed. A search still
+    // running re-ranks when it lands instead ([start]).
+    private fun rerank() {
+        val current = _state.value
+        val trimmed = current.query.trim()
+        if (current.searching || current.result !is Result.Matches) return
+        val remote = remoteFor?.takeIf { it.first == trimmed }?.second
+        if (remote == null && current.result.remoteFailure == null) return
+        search = viewModelScope.launch {
+            val stations = withContext(io) { index.await().withYours(yours.await()) }
+            val local = withContext(io) { stations.search(trimmed) }
+            val shown = _state.value.result as? Result.Matches ?: return@launch
+            val result = if (remote != null) {
+                Result.Matches(stations.rank(trimmed, local, remote))
+            } else {
+                Result.Matches(local, remoteFailure = shown.remoteFailure)
+            }
+            if (result.matches.isNotEmpty()) _state.update { it.copy(result = result) }
         }
     }
 
@@ -168,18 +199,21 @@ class StationSearchViewModel(
         // query's until the new answer lands, and the progress bar says so rather than letting them
         // read as the answer to what's now typed.
         _state.update { it.copy(searching = true) }
+        remoteFor = null
         search = viewModelScope.launch {
             // The bundled index answers at once — an abbreviation or code finds its station before
             // the typing pause is over. TfL's search (for what the index doesn't hold, like bus
             // stops) follows the pause, and the two are merged and ranked together.
             val bundled = index.await()
-            val own = yours.await()
+            val read = yours
+            val own = read.await()
             val stations = withContext(io) { bundled.withYours(own) }
             val local = withContext(io) { stations.search(trimmed) }
             if (local.isNotEmpty()) _state.update { it.copy(result = Result.Matches(local), searching = true) }
             if (debounce) delay(debounceMillis)
             val result = try {
                 val remote = withContext(io) { finder.searchStations(trimmed) }
+                remoteFor = trimmed to remote
                 val merged = stations.rank(trimmed, local, remote)
                 if (merged.isEmpty()) Result.NoMatches else Result.Matches(merged)
             } catch (e: CancellationException) {
@@ -189,6 +223,8 @@ class StationSearchViewModel(
                 if (local.isEmpty()) Result.Failed(errorKindOf(e)) else Result.Matches(local, remoteFailure = errorKindOf(e))
             }
             _state.update { it.copy(result = result, searching = false) }
+            // The user's stops were read again meanwhile (a match opened mid-search): rank with that.
+            if (yours !== read) rerank()
         }
     }
 

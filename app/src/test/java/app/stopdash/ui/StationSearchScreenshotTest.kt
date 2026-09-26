@@ -12,6 +12,7 @@ import app.stopdash.domain.StationMatch
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -106,6 +107,10 @@ class StationSearchScreenshotTest {
         )
         composeRule.onNodeWithText("Starred").assertIsDisplayed()
         composeRule.onNodeWithText("Recent").assertIsDisplayed()
+        // By last use: the recent picks head the list, the starred stops not picked lately after.
+        val recentTop = composeRule.onNodeWithText("Recent").fetchSemanticsNode().boundsInRoot.top
+        assertTrue(recentTop < composeRule.onNodeWithText("Starred").fetchSemanticsNode().boundsInRoot.top)
+        assertTrue(recentTop < composeRule.onNodeWithText("King's Cross Station").fetchSemanticsNode().boundsInRoot.top)
         captureSnapshot("station-search-yours.png")
         composeRule.onNodeWithText("Oxford Circus").performClick()
         assertEquals("940GZZLUOXC", opened?.id)

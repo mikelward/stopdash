@@ -178,7 +178,7 @@ fun StationSearchScreen(
 /** The search field's value for [query] on arrival: the text, with the cursor after it. */
 internal fun queryFieldValue(query: String): TextFieldValue = TextFieldValue(query, TextRange(query.length))
 
-/** The user's starred stops, then their recent opens, each under its heading. */
+/** The user's recent picks, most recent first, then their starred stops not picked lately, each under its heading. */
 @Composable
 private fun YourStopsList(favorites: List<StationMatch>, recent: List<StationMatch>, onOpenStation: (StationMatch) -> Unit) {
     val listState = rememberLazyListState()
@@ -189,7 +189,7 @@ private fun YourStopsList(favorites: List<StationMatch>, recent: List<StationMat
             .scrollEdgeCue(listState, scrollCueColors(MaterialTheme.colorScheme.background)),
         state = listState,
     ) {
-        listOf(R.string.station_search_starred to favorites, R.string.station_search_recent to recent).forEach { (heading, stops) ->
+        listOf(R.string.station_search_recent to recent, R.string.station_search_starred to favorites).forEach { (heading, stops) ->
             if (stops.isEmpty()) return@forEach
             item(key = "heading-$heading") {
                 Text(
