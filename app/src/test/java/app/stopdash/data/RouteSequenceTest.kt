@@ -37,6 +37,16 @@ class RouteSequenceTest {
         RouteStops.ahead(northern, stopId, destination, branch)?.map { it.name }
 
     @Test
+    fun `each route keeps the direction its sequence was fetched for`() {
+        val dto = json.decodeFromString<TflRouteSequenceDto>(fixture)
+        // TfL echoes the direction asked for; the request's own wins, and blank or unknown falls
+        // back to TfL's.
+        assertEquals(setOf("outbound"), dto.toLineSequence().routes.mapTo(HashSet()) { it.direction })
+        assertEquals(setOf("inbound"), dto.toLineSequence("inbound").routes.mapTo(HashSet()) { it.direction })
+        assertEquals(setOf("outbound"), dto.toLineSequence("all").routes.mapTo(HashSet()) { it.direction })
+    }
+
+    @Test
     fun `a Charing Cross train from Kennington lists every stop to Edgware via Charing Cross`() {
         assertEquals(
             listOf(

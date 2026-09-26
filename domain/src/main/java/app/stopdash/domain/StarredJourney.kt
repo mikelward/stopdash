@@ -336,11 +336,25 @@ object Journeys {
                 // send a rider to change on.
                 val changing = LinkedHashMap<String, MutableList<Departure>>()
                 val calling = row.upcoming.filter { departure ->
-                    val resolution = RouteStops.resolve(sequence, segment.originId, departure.destination, departure.branch, row.lineId, bus)
+                    val bound = RouteStops.boundOf(departure.platform)
+                    val resolution = RouteStops.resolve(sequence, segment.originId, departure.destination, departure.branch, row.lineId, bus, bound, departure.direction)
                     val path = (resolution as? RouteStops.Resolution.Found)?.stops
                     if (path == null) {
-                        unresolved = true
-                        misses += RouteMiss(row.lineId, segment.originId, resolution)
+                        // One path can't be told (no destination yet, or two ways that match it):
+                        // still an answer when every way it may take agrees on reaching the far end.
+                        val ways = RouteStops.candidatePaths(sequence, segment.originId, departure.destination, departure.branch, bus, bound, departure.direction)
+                            .map { way -> way.drop(1).filter { it in destinations } }
+                        when {
+                            ways.isNotEmpty() && ways.all { it.isNotEmpty() } -> {
+                                ways.flatten().toCollection(reached)
+                                return@filter true
+                            }
+                            ways.isNotEmpty() && ways.all { it.isEmpty() } -> return@filter false
+                            else -> {
+                                unresolved = true
+                                misses += RouteMiss(row.lineId, segment.originId, resolution)
+                            }
+                        }
                     }
                     val hits = path?.filter { it.id in destinations }.orEmpty()
                     hits.mapTo(reached) { it.id }

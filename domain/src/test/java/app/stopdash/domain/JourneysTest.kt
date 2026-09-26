@@ -363,6 +363,32 @@ class JourneysTest {
     }
 
     @Test
+    fun `a train with no destination yet counts when every way it may run reaches the far end`() {
+        // A line that forks after "Mid": on to "Bottom A", or by "Side" to "Bottom B".
+        val forked = LineSequence(
+            routes = listOf(
+                LineRoute("Top ↔ Bottom A", listOf("TOP", "MID", "BOTA")),
+                LineRoute("Top ↔ Bottom B", listOf("TOP", "MID", "SIDE", "BOTB")),
+            ),
+            stopNames = mapOf("TOP" to "Top", "MID" to "Mid", "BOTA" to "Bottom A", "SIDE" to "Side", "BOTB" to "Bottom B"),
+        )
+        val sequences = mapOf("example" to forked)
+        // TfL's "Check Front of Train": either branch passes Mid, so it's a train to Mid.
+        val toMid = Journeys.trains(Journeys.segment(journey, forked)!!, rowsAt("TOP", departure("Check Front of Train", 60)), sequences)
+        assertEquals(1, toMid.rows.single().upcoming.size)
+        assertFalse(toMid.unresolved)
+        assertTrue("MID" in toMid.reachedIds)
+        // Only one branch reaches Side: it can't be vouched for either way, and says so.
+        val toSide = StarredJourney(JourneyEnd("TOP", "Top", 51.51, -0.12), JourneyEnd("SIDE", "Side", 51.48, -0.12), "example")
+        val sideTrains = Journeys.trains(
+            Journeys.segment(toSide, forked)!!, rowsAt("TOP", departure("Check Front of Train", 60)), sequences, toSide,
+        )
+        assertTrue(sideTrains.rows.isEmpty())
+        assertTrue(sideTrains.unresolved)
+        assertEquals(setOf(RouteMiss("example", "TOP", RouteStops.Resolution.NoDestination)), sideTrains.misses)
+    }
+
+    @Test
     fun `a line whose route is loading or failed isn't a definite no`() {
         val segment = Journeys.segment(journey, rail)!!
         val rows = rowsAt("TOP", departure("Bottom A", 120, "other"))

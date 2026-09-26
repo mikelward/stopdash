@@ -22,10 +22,11 @@ import kotlinx.coroutines.withContext
 
 /**
  * One end-to-end route of a line in one direction, from TfL's `/Line/{id}/Route/Sequence`
- * `orderedLineRoutes`: its [name] as TfL spells it ("Morden ↔ Edgware via Bank") and its
- * [stopIds] in travel order.
+ * `orderedLineRoutes`: its [name] as TfL spells it ("Morden ↔ Edgware via Bank"), its
+ * [stopIds] in travel order, and the TfL [direction] (`inbound`/`outbound`) it was fetched for,
+ * blank where not known (a sequence cached before this was kept).
  */
-data class LineRoute(val name: String, val stopIds: List<String>)
+data class LineRoute(val name: String, val stopIds: List<String>, val direction: String = "")
 
 /**
  * A line's routes in one or both directions, plus a display name for each stop id ([stopNames],
@@ -182,7 +183,41 @@ object RouteStops {
         branch: String?,
         lineId: String = "",
         bus: Boolean = false,
-    ): List<RouteStop>? = (resolve(sequence, stopId, destination, branch, lineId, bus) as? Resolution.Found)?.stops
+        bound: Bound? = null,
+        direction: String = "",
+    ): List<RouteStop>? = (resolve(sequence, stopId, destination, branch, lineId, bus, bound, direction) as? Resolution.Found)?.stops
+
+    /**
+     * Which way a train leaves its platform, from the platform's name ("Eastbound - Platform 2",
+     * "Inner Rail - Platform 1"): what tells the two ways round a loop apart (the Circle line), where
+     * a train's destination is the same either way. TfL's `direction` can't: it names the train's
+     * trip, and on a loop both trips pass the same platform.
+     */
+    enum class Bound { NORTH, SOUTH, EAST, WEST, INNER_RAIL, OUTER_RAIL }
+
+    /** The [Bound] a platform's name starts with, else null (a bus, a platform with no compass). */
+    fun boundOf(platform: String?): Bound? {
+        val head = platform?.substringBefore(" - ")?.trim()?.lowercase() ?: return null
+        return when (head) {
+            "northbound" -> Bound.NORTH
+            "southbound" -> Bound.SOUTH
+            "eastbound" -> Bound.EAST
+            "westbound" -> Bound.WEST
+            "inner rail" -> Bound.INNER_RAIL
+            "outer rail" -> Bound.OUTER_RAIL
+            else -> null
+        }
+    }
+
+    /**
+     * TfL's stand-in for a train whose destination isn't set yet, as the platform board shows it
+     * ("Check Front of Train"). Shown as TfL words it, but it names no place, so route matching
+     * treats it as unknown: the train runs to one of its line's ends ([candidatePaths]).
+     */
+    fun isUnknownDestination(destination: String): Boolean =
+        destination.isBlank() || destination.equals(CHECK_FRONT_OF_TRAIN, ignoreCase = true)
+
+    private const val CHECK_FRONT_OF_TRAIN = "Check Front of Train"
 
     /**
      * The stations a train at [stopId] bound for [destination] (cleaned, as on a [Departure]) via
@@ -211,9 +246,65 @@ object RouteStops {
         branch: String?,
         lineId: String = "",
         bus: Boolean = false,
+        // Which way the train leaves its platform ([boundOf]): picks between ways round a loop.
+        bound: Bound? = null,
+        direction: String = "",
     ): Resolution {
-        if (destination.isBlank()) return Resolution.NoDestination
+        if (isUnknownDestination(destination)) return Resolution.NoDestination
         if (sequence.routes.none { visits(it, stopId).isNotEmpty() }) return Resolution.NotOnRoute
+        val paths = candidatePaths(sequence, stopId, destination, branch, bus, bound, direction)
+        if (paths.isEmpty()) return Resolution.NoMatch
+        val path = paths.singleOrNull() ?: return Resolution.Ambiguous(paths.size)
+        return Resolution.Found(
+            path.map { id ->
+                RouteStop(id, sequence.stopNames[id].orEmpty(), Connections.of(sequence.stopLines[id].orEmpty(), lineId))
+            },
+        )
+    }
+
+    /**
+     * Whether a train at [stopId] calls at one of [destinationIds] after boarding, where its
+     * [candidatePaths] all agree — true when every way it may take does, false when none does,
+     * null when they differ or none is known. So a train whose exact path can't be told (TfL's
+     * "Check Front of Train", or two ways matching its destination) still counts when it can only
+     * reach the stop, or can't: it runs at least as far as where its possible ways part.
+     */
+    fun reaches(
+        sequence: LineSequence,
+        stopId: String,
+        destination: String,
+        branch: String?,
+        destinationIds: Set<String>,
+        bus: Boolean = false,
+        bound: Bound? = null,
+        direction: String = "",
+    ): Boolean? {
+        val paths = candidatePaths(sequence, stopId, destination, branch, bus, bound, direction)
+        if (paths.isEmpty()) return null
+        val answers = paths.mapTo(HashSet()) { path -> path.drop(1).any { it in destinationIds } }
+        return answers.singleOrNull()
+    }
+
+    /**
+     * Every distinct way a train at [stopId] bound for [destination] via [branch] may take, from the
+     * boarding stop through where it ends (see [resolve] for the matching rules). With no known
+     * destination ([isUnknownDestination]), every way from here to its route's end. Where there's
+     * more than one, a [bound] keeps those leaving the platform that way — unless it would keep
+     * none, or the stops' positions can't say. With no [bound], the train's TfL [direction] keeps
+     * the ways on routes fetched for it (a route whose direction isn't known stays), again unless
+     * it would keep none.
+     */
+    fun candidatePaths(
+        sequence: LineSequence,
+        stopId: String,
+        destination: String,
+        branch: String?,
+        bus: Boolean = false,
+        bound: Bound? = null,
+        direction: String = "",
+    ): List<List<String>> {
+        if (sequence.routes.none { visits(it, stopId).isNotEmpty() }) return emptyList()
+        val unknown = isUnknownDestination(destination)
         // Every visit to [stopId] is a candidate origin and every later stop named [destination] a
         // candidate end: a loop can call here twice, and two stops can share a cleaned name (a
         // loop, a bus route passing a place twice, TfL's line qualifiers that [cleanStopName]
@@ -221,7 +312,7 @@ object RouteStops {
         // than one leaves the answer ambiguous below rather than picking the first.
         // Per route: its stop-name matches, else (none on that route) its route-name terminus — so
         // one variant matching by stop name can't hide another that only matches by its name.
-        val matched = sequence.routes.flatMap { route ->
+        val matched = if (unknown) sequence.routes.flatMap { toEnd(it, stopId) } else sequence.routes.flatMap { route ->
             val byStopName = visits(route, stopId).flatMap { i ->
                 (i + 1 until route.stopIds.size).filter { k ->
                     sequence.stopNames[route.stopIds[k]].equals(destination, ignoreCase = true)
@@ -234,7 +325,7 @@ object RouteStops {
         }
         // A bus whose label matched nothing: every route calling here, run to its end.
         val candidates = if (matched.isEmpty() && bus) sequence.routes.flatMap { toEnd(it, stopId) } else matched
-        if (candidates.isEmpty()) return Resolution.NoMatch
+        if (candidates.isEmpty()) return emptyList()
         // A branch TfL named narrows to the routes carrying it; if none carry it (an unlabeled
         // Battersea route for a "via CX" train), the branch can't narrow and all candidates stand.
         val onBranch = if (branch == null) {
@@ -242,13 +333,44 @@ object RouteStops {
         } else {
             candidates.filter { (route, _) -> branchOf(route.name) == branch }.ifEmpty { candidates }
         }
+        val routeOf = onBranch.associate { (route, path) -> path to route }
         val paths = onBranch.map { it.second }.distinct()
-        val path = paths.singleOrNull() ?: return Resolution.Ambiguous(paths.size)
-        return Resolution.Found(
-            path.map { id ->
-                RouteStop(id, sequence.stopNames[id].orEmpty(), Connections.of(sequence.stopLines[id].orEmpty(), lineId))
-            },
-        )
+        if (paths.size < 2) return paths
+        if (bound != null) return paths.filter { leaves(sequence, routeOf.getValue(it), it, bound) != false }.ifEmpty { paths }
+        // A platform with no compass ("Platform 1"): the train's own [direction] keeps the ways its
+        // routes were fetched for — only then, as on a loop TfL's direction can name the other way
+        // round from the platform the train is at, and the platform is what wins there.
+        if (direction !in DIRECTIONS) return paths
+        return onBranch.filter { (route, _) -> route.direction == direction || route.direction.isBlank() }
+            .map { it.second }.distinct().ifEmpty { paths }
+    }
+
+    /**
+     * Whether [path] (on [route]) leaves its first stop the way [bound] says: its first hop's
+     * compass for north/south/east/west, or the turn about the route's middle for a loop's inner
+     * and outer rail (the outer rail runs clockwise, as London drives on the left). Null where the
+     * stops' positions aren't known.
+     */
+    private fun leaves(sequence: LineSequence, route: LineRoute, path: List<String>, bound: Bound): Boolean? {
+        val (lat0, lon0) = sequence.stopPositions[path.getOrNull(0)] ?: return null
+        val (lat1, lon1) = sequence.stopPositions[path.getOrNull(1)] ?: return null
+        val north = lat1 - lat0
+        val east = (lon1 - lon0) * Math.cos(Math.toRadians(lat0))
+        return when (bound) {
+            Bound.NORTH -> north > 0
+            Bound.SOUTH -> north < 0
+            Bound.EAST -> east > 0
+            Bound.WEST -> east < 0
+            Bound.INNER_RAIL, Bound.OUTER_RAIL -> {
+                val known = route.stopIds.mapNotNull { sequence.stopPositions[it] }
+                if (known.isEmpty()) return null
+                val midLat = known.map { it.first }.average()
+                val midLon = known.map { it.second }.average()
+                // Cross product of (stop - middle) and the hop: negative turns clockwise.
+                val cross = (lon0 - midLon) * north - (lat0 - midLat) * (lon1 - lon0)
+                if (bound == Bound.OUTER_RAIL) cross < 0 else cross > 0
+            }
+        }
     }
 
     /**

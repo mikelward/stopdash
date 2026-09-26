@@ -10,15 +10,19 @@ import kotlinx.serialization.Serializable
  * TfL's `/Line/{id}/Route/Sequence/{direction}` response, trimmed to what the route detail's stop
  * list needs: each end-to-end route's ordered stop ids, a name for every stop, and the lines at
  * each stop and its interchange (its `topMostParentId`, a hub listed under `stations`) for the
- * connection chips. The geometry (`lineStrings`) is ignored ([Json] `ignoreUnknownKeys`).
+ * connection chips, and the [direction] it was asked for (so a train's own direction can pick
+ * its routes). The geometry (`lineStrings`) is ignored ([Json] `ignoreUnknownKeys`).
  */
 @Serializable
 data class TflRouteSequenceDto(
+    val direction: String = "",
     val orderedLineRoutes: List<TflOrderedRouteDto> = emptyList(),
     val stopPointSequences: List<TflStopPointSequenceDto> = emptyList(),
     val stations: List<TflMatchedStopDto> = emptyList(),
 ) {
-    fun toLineSequence(): LineSequence {
+    fun toLineSequence(requested: String = ""): LineSequence {
+        // TfL echoes the direction asked for; the request's own wins where it's one TfL knows.
+        val routeDirection = requested.lowercase().takeIf { it == "inbound" || it == "outbound" } ?: direction.lowercase()
         val names = HashMap<String, String>()
         for (stop in stations + stopPointSequences.flatMap { it.stopPoint }) {
             if (stop.id.isNotBlank() && stop.name.isNotBlank()) names.putIfAbsent(stop.id, cleanStopName(stop.name))
@@ -48,7 +52,7 @@ data class TflRouteSequenceDto(
             if (stop.id.isNotBlank() && hub.isNotBlank() && hub != stop.id) hubs.putIfAbsent(stop.id, hub)
         }
         return LineSequence(
-            routes = orderedLineRoutes.filter { it.naptanIds.size >= 2 }.map { LineRoute(it.name, it.naptanIds) },
+            routes = orderedLineRoutes.filter { it.naptanIds.size >= 2 }.map { LineRoute(it.name, it.naptanIds, routeDirection) },
             stopNames = names,
             stopLines = lines,
             stopPositions = positions,
