@@ -271,14 +271,17 @@ The app finds stops two ways:
   result TfL gives no position for is never folded. If TfL's search fails but the list matched, the list's matches
   stand, with a line saying bus stops weren't searched.
 - **From… To…** (maintainer, 2026-09-24; planned since 2026-09-26) — **To…** plans a trip to a
-  picked station or stop, as *Trips with a change* below describes. It is offered on the **near-me
+  picked station or stop, as *Trips with a change* below describes; a pinned **Home/Work favorite**
+  instead plans to its saved coordinate (D9). It is offered on the **near-me
   list**, from where the rider is, and on a **searched station's page** (reached with the overflow's
   *From…*), from that station, titled "From ➔ To"; back returns to where it was opened. A station
   whose stops TfL gives no position for has no *To…* yet (`TODO.md`). The first
   design, keeping only the departures that call at the destination directly, was superseded by the
-  planner: a trip needing a change is planned the same way as one that doesn't. The destination's
-  name and id go only to TfL, as the station search's already do (*Privacy*), and *To…*'s own
-  *Recent* remembers it on the device.
+  planner: a trip needing a change is planned the same way as one that doesn't. For an **ordinary
+  stop pick**, the destination's name and id go only to TfL, as the station search's already do
+  (*Privacy*), and *To…*'s own *Recent* remembers it on the device; a **saved favorite** instead sends
+  its **coordinate** (D9); its name and stable id are **never sent to TfL** (they ride Android backup /
+  device transfer with the rest of the user's config, per *Privacy*).
 - **Farther stations** (maintainer, 2026-09-25) — where the near-me list reaches only one tube
   station, the rest of the network can be two miles off. Below the loaded places and the *More*
   controls, a **collapsed card** stands for the nearest station of each **rail line** the loaded
@@ -835,7 +838,11 @@ kept on the device with the rest of the user's config and never logged (*Privacy
 *Planned* (maintainer, 2026-09-26; mocked the same day). *To…* — on the near-me list, one tap on the
 app bar's **Directions** button (maintainer, 2026-09-26; the overflow keeps its *To…* too) — plans a trip to a **stop** — a station
 or bus stop picked from the station search, never an address or a map point — from the rider's
-nearest stop of any mode (the Planner walks on to a better one itself), or from the *From…* station when one is set. The search page keeps its look (each
+nearest stop of any mode (the Planner walks on to a better one itself), or from the *From…* station when one is set.
+This is the ordinary search flow; **any saved favorite** is the exception, planning to its
+saved coordinate rather than a picked stop (D9) — the coordinate goes only to TfL, which walks the last leg.
+Every favorite is routed by tapping it in the Settings *"Favorite places"* list; Home and Work are
+**additionally** pinned atop this To… menu for quick access. The search page keeps its look (each
 result's name over its modes); it gains only a "From" chip naming the start ("Here", or the *From…*
 station). The trip opens on a **list of routes, best first**: ordered first by how far StopDash
 stands behind each route (tiers, below — usable before not, fully live before "est."), and within a
@@ -974,8 +981,11 @@ didn't lift the lean. An ordinary pick is planned to as picked, the Planner walk
 stretch itself where a neighboring stop serves the trip better, so a same-named stand the search
 folded into the result is reached on foot rather than lost.
 
-**What leaves the phone:** both ends of the trip go to TfL's Journey Planner as stop ids — the
-nearest stop's id stands in for the rider's position, never a coordinate. It is free and keyless
+**What leaves the phone:** both ends of an ordinary trip go to TfL's Journey Planner as stop ids —
+the nearest stop's id stands in for the rider's position, never a coordinate. **The one exception is
+routing to a saved favorite place (D9): its stored *coordinate* is sent as the destination** — still
+the **Location** type already declared, sent only to TfL, no new Data Safety type; this section and
+`docs/PRIVACY.md` are updated to match when that routing ships (tracked in `TODO.md`). It is free and keyless
 (within TfL's anonymous budget). The Planner is called when a trip opens without a plan under 15
 minutes old (the plan is held in memory only, so a trip reopened after process death re-plans), again
 every 15 minutes while the screen stays visible, on a re-locate to a new nearest stop, and once
@@ -1750,8 +1760,19 @@ Mirrors the sibling fleet:
 
 ## Non-goals
 
-- **Door-to-door routing.** Trips go stop to stop (*Trips with a change*): no addresses, map
-  points, or walking directions to a door. StopDash still leads with "what's next from here".
+- **A backend of our own.** StopDash must never require the maintainer to run or operate a server:
+  every network call goes to a third-party service the user or the app talks to directly — e.g. TfL
+  (keyless, or the user's own key), National Rail with the user's own key, optional Firebase (a
+  managed service, on opt-in), and the platform services already documented under *Privacy* (the
+  release-only Play update check, the Wearable Data Layer). A feature that would need a
+  StopDash-operated server, proxy, or datastore is out. This, not "door to door", is the real
+  constraint: a capability a third party already provides — routing to a coordinate, which TfL does —
+  is in scope; door-to-door was only ever set aside because it looked hard, not on principle (D9).
+- **Maps and turn-by-turn walking directions.** Routing to a place is in scope — a saved favorite
+  plans to its coordinate and TfL walks the last leg (D9, *Trips*) — but a walk shows as a timed leg,
+  not a map or step-by-step directions to the door, and the To… search itself stays **stop/station**
+  (stations and bus stops, not addresses; favorites are the door-to-door path). StopDash still leads
+  with "what's next from here".
 - **Non-TfL operators** outside the Unified API (coach, etc.), National Rail aside: its
   times come from National Rail's own feed once the user adds a key (*Data source*). Without
   one, TfL gives no times for them, so a National Rail line TfL reports disrupted at a station
@@ -1867,3 +1888,33 @@ Mirrors the sibling fleet:
   labeling a direction by the next branch/interchange point downstream rather than the
   terminus, feeding user-set favorite destinations. Supersedes the earlier open question;
   the flat-list-vs-swipe-card choice is the remaining open call, to settle from real use.
+- **D9 — Home, Work and other favorite places are saved by *coordinate*, routed to directly.**
+  A favorite stores a **coordinate + a label** (e.g. "Home") plus a **stable role** — Home, Work,
+  School, or custom — and a stable id, so the reserved Home/Work slots are identified by role, not by
+  the mutable, possibly-duplicated label (a custom place may reuse the word "Home"; a label may change
+  on edit or with localization). The coordinate is resolved in v1 from a **place or
+  postcode via TfL** (its `/StopPoint/Search` matches usually carry lat/lon, and the Journey Planner's
+  disambiguation resolves a postcode/place to one — no third-party geocoder, £0). A match TfL gives
+  **no position** for can't anchor a favorite (which needs a coordinate), so it is **unselectable in
+  favorite setup only** and a favorite is saved only once a coordinate resolves; such a match stays a
+  valid **ordinary** *To…* destination, which routes by stop id and needs no coordinate. A trip is planned
+  to the **coordinate** (`to = lat,lon`): TfL picks the access stop and returns a final **walk leg to
+  the place**, which the trip screen already renders. StopDash does **no nearest-stop snapping of its
+  own** — TfL chooses the access stop, so a shut local station never breaks the trip — but the trip's
+  existing **per-alighting-stop closure checks** (*Trips*) still run on the resulting route: a route
+  through a closed stop is still caught, never trusted to the Planner blindly (SPEC principle 1). The
+  coordinate is the **Location** Data Safety type already
+  declared (same as the nearby lookup), sent only to TfL, so **no new type**; it persists with the
+  rest of the user's config and rides Android backup / device transfer (a user-controlled platform
+  channel, *Privacy*), and is handled like watched-stop data — never in the debug log or any pushed
+  artifact. Favorites (Home, Work, School, custom) are managed from a Settings **"Favorite places"**
+  row, and **tapping a favorite there routes to it**, so every saved favorite is reachable — not only
+  Home and Work. Home and Work **additionally** pin at the top of the trip screen's **To…** menu
+  (whose own search stays **stop/station** fuzzy search — stations and bus stops, per *Trips*, not
+  addresses): set → route there; unset → prompt once to add it, the field reading
+  "Stop or postcode". Ratified by the maintainer 2026-09-26, superseding an earlier `TODO.md`
+  note that treated the Journey API as a non-goal and left the privacy call open — that note predated
+  trip planning. Routing to a point with a last-leg walk **is door-to-door routing, now in scope**
+  (see *Non-goals*). A finer **street-address autocomplete** for entry is a later opt-in — it adds an
+  address-resolver recipient (a Data Safety change) — so it stays a separate decision; the coordinate
+  storage already supports it.

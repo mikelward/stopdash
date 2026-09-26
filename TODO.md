@@ -1240,9 +1240,28 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           journey round (its origin is now the other end) the refresh starts on the old origin and
           restarts when the screen reports the new one. Hand the refresh the flipped origin up
           front, as the faraway hold-back already does for journeys crossing the mile line.
-  - [ ] **Home and work, with routing** — the eventual goal: star two places, not two stations,
-        and show how to get between them. Needs journey planning, a SPEC non-goal today and a
-        separate product + privacy decision (it would send both places to TfL's Journey Planner).
+  - [ ] **Home, Work and favorite places, routed to by coordinate (door-to-door)** (v1 scope
+        ratified 2026-09-26, SPEC D9) — a Settings **"Favorite places"** row to add/edit/delete
+        **Home, Work, School, custom**; each stores a **coordinate + label** plus a **stable role**
+        (Home/Work/School/custom) and a **stable id**, so the reserved Home/Work pins are keyed by role,
+        not the mutable label (SPEC D9); the coordinate is resolved in v1 from a
+        stop/postcode via TfL (no third-party geocoder; entry field reads "Stop or postcode").
+        **Tapping a favorite in the Settings list routes to it**, so every favorite (incl. School and
+        custom) is reachable; Home and Work **additionally pin at the top of the To… menu** (whose own
+        search stays **stop/station** — stations and bus stops, not addresses): set → route there;
+        unset → prompt once to add it. Plan the trip **to the coordinate**
+        (`to = lat,lon`): TfL picks the access stop and returns a final walk leg (already rendered), so
+        **no nearest-stop snapping on our side** — but keep the trip's existing per-alighting-stop
+        **closure checks** (never trust the Planner alone, SPEC *Trips*). Door-to-door is now in scope
+        (SPEC *Non-goals* narrowed to maps/turn-by-turn only). The coordinate is the Location Data
+        Safety type already declared (TfL only, no new type) and rides backup with the rest of config;
+        **this slice updates the SPEC *Trips* privacy section and `docs/PRIVACY.md`** (both still say
+        "coordinates never sent to the Planner") to disclose two TfL sends: the favorite-coordinate
+        routing send, **and the postcode/place entry lookup** — the typed query sent to TfL during
+        favorite setup (like the existing station search, but the query may be a postcode). Follow-ups:
+        finer **street-address autocomplete** (its own resolver recipient
+        + privacy review); quick-nav **chips at the top of the main page** to route straight to
+        Home/Work; "show whichever you're *not* near / by time of day" (Later).
 - [ ] Per-stop line/direction filters (D2).
 - [ ] **Filter or rank by a destination the user enters, and let them save favorite
       destinations** — the user names where they're going (or picks a saved favorite) and
@@ -1257,9 +1276,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       platform channel, not an app-initiated send, and already covered by SPEC *Privacy*'s
       backup note. An
       off-device "does this stop reach X" lookup (TfL Journey Planner) would transmit the
-      destination to TfL and is a **separate product + privacy decision** (SPEC declares
-      the Journey API a non-goal; it would change the Play Data Safety answers), not
-      assumed by this item.
+      destination to TfL; that channel now ships for trips and adds no new Play Data Safety type
+      (SPEC *Trips* / D9), but this item stays **on-device by design** — matching against retained
+      text, never a send — distinct from planning a trip to a saved destination (D9).
 - [ ] **Working hours / trip windows** (requested 2026-09-19, on-device). Let the user say
       when they commute (a morning window toward work, an evening one home), so stopdash can
       emphasize the relevant direction at the relevant time and scope commute announcements
