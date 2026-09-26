@@ -688,6 +688,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         unknown-version raw bytes rather than treating a decode failure as corruption).
         Best built *with* that v2 (its shape is needed to build and test it); v1 is the only
         schema today, so a decode failure now is genuine corruption and correctly discarded.
+        Applies to every versioned store that decodes a typed body then checks `version`:
+        watched-stops, starred rows, and now favorite places (Codex P2 on #271) — fix them
+        together when the first incompatible bump lands.
 - [x] **Restore the stop name to the departure card when the list spans more than one
       stop.** The compact-card redesign dropped it (too much clutter, and implicit on a
       single-stop widget), but the current seed is already multi-stop (Oxford Circus +
@@ -2108,6 +2111,16 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   and the `lineStops` fallback in `RouteDetailScreen`. **To confirm:** on a real suspension, that
   the names read well without a list, and that the extra route request costs nothing noticeable.
 
+- **Favorite places storage model (autopilot, 2026-09-26, SPEC D9).** Building the v1 foundation
+  (`FavoritePlace`, `FavoritePlacesStore`, DataStore-backed store). Reversible guesses taken, flag
+  any to change: (1) **School is a fixed `FavoriteKind`** alongside Home/Work/Custom (not just a
+  suggested custom name); (2) each favorite has a **stable UUID `id`**, with Home/Work/School kept as
+  **singletons** by the ops layer and Custom allowed many; (3) a favorite stores **coordinate +
+  label + optional resolved `placeName`** (for display subtext); (4) persisted via **DataStore**
+  (rides backup, like starred rows/settings), file `favorite-places.json`; (5) an unknown persisted
+  kind within a known version falls back to **CUSTOM** (keeps the place) rather than dropping it — a
+  genuinely new kind ships behind a `version` bump. None of these is user-visible yet; the Settings
+  CRUD, picker and To… wiring land in later slices.
 - **Farther stations: by line, 3 mi, five buttons (two tube), no distance (autopilot, 2026-09-25).**
   The maintainer chose "by branch/line, then cap at 5 or so", with the tube at most "1 or 2". Taken:
   one per rail line TfL names (tube lines, National Rail services, Overground lines, Elizabeth line,
