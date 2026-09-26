@@ -888,7 +888,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             fetches its lines' status but not its stops' own disruptions (a closure, a moved stop),
             so a leg's line page can't say "No disruptions reported" and reads "Couldn't check"
             instead. Fetch them as the list does, and let the page vouch once both checks pass.
-      - [ ] **Honor dismissed alerts on a trip's cards** (Codex on PR 259, 2026-09-26): a line alert
+      - [x] **Honor dismissed alerts on a trip's cards** (Codex on PR 259, 2026-09-26): a line alert
             dismissed from a leg's page (or the list) is honored on that page, but the trip's own
             cards still show the line's ⚠. Apply the dismissals there as the list does, keeping
             a dismissed line's status out of the warnings without reading it as unchecked.

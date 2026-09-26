@@ -844,8 +844,11 @@ arrows), a ⚠ where a leg is disrupted, and **duration · arrival** ("22 min ·
 where a number of changes might otherwise go; the duration is from now to that arrival, so it
 takes in the same walks, waits and legs. The pills wrap onto a second line when a route has
 many legs, and the time drops below them when it doesn't fit beside them. Under the top row is the
-first leg's live row, the train the rider would catch now, **read like the main screen's row for that
-stop and line**: the line's pill, the destinations its trains show, and their times. While the
+first leg's live row, the train the rider would catch now, **the main screen's row for that stop and
+line** — the same row, not a lookalike (maintainer, 2026-09-26): the line's pill, the destinations its
+trains show, a ⚠ just left of the times when the line is disrupted, and the times; tapping it opens
+its line's page and a long press offers "Hide ‹mode›", as on the list (the card's top row still
+opens the route); the open route's leg rows offer the same. While the
 line's route is still being checked, it shows the line's live trains at that stop (those heading for
 the Planner's terminus, whether or not a name adds a place such as "(London)") as the main screen
 does, timing nothing until the check vouches for them: only a bus to the terminus on no named branch

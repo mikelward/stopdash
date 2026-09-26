@@ -8,6 +8,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import app.stopdash.R
 import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.Departure
+import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.JourneyPlanner
@@ -991,6 +992,10 @@ class TripViewModelTest {
         assertEquals(setOf(express), uncheckedPending(listOf(express), railLeg))
         val rail = TripViewModel.State(live = mapOf("B" to TripViewModel.StopLive(listOf(express), now)))
         assertEquals(emptyList<Departure>(), pendingCardTrains(rail, railLeg, now, emptyMap()))
+        // A list card's line row shows it grayed meanwhile, so the row it opens holds it too; the
+        // open route's rows leave it out.
+        assertEquals(emptyList<DepartureRow>(), legRows(rail, railLeg, now, emptyMap()))
+        assertEquals(listOf(express), legRows(rail, railLeg, now, emptyMap(), withUnchecked = true).flatMap { it.upcoming })
     }
 
     @Test
@@ -1032,6 +1037,63 @@ class TripViewModelTest {
         assertTrue(tripMisses(state, estimates, now, emptyMap()).isEmpty())
         assertTrue(tripMisses(state, estimates, now, mapOf("blue" to null)).isEmpty())
         assertTrue(tripMisses(state, estimates, now, mapOf("blue" to blue)).isEmpty())
+    }
+
+    @Test
+    fun `two legs on one line from one stop are told apart by where they get off`() {
+        val one = TripLeg("bus", "43", "43", "A", "A", "C", "C", at(5), at(15), path = listOf("B", "C"))
+        val other = one.copy(toId = "D", toName = "D", path = listOf("B", "D"))
+        assertTrue(tripLegKey(one) != tripLegKey(other))
+        // A re-plan moves a leg's times, not which leg it is.
+        assertEquals(tripLegKey(one), tripLegKey(one.copy(departure = at(9), arrival = at(19))))
+    }
+
+    private fun row(direction: String, destination: String, train: Departure) = DepartureRow(
+        stopId = "B", stopName = "B", lineId = "blue", lineName = "Blue", direction = direction,
+        directionKey = direction, destination = destination, mode = "tube", upcoming = listOf(train), fetchedAt = now,
+    )
+
+    @Test
+    fun `a bus leg keeps its key when its route moves it to the other side of the road`() {
+        val planned = TripLeg(
+            "bus", "43", "43", "A1", "A", "B1", "B", at(5), at(15),
+            path = listOf("M", "B1"), fromArea = "GA", toArea = "GB",
+        )
+        val route = LineSequence(
+            routes = listOf(LineRoute("A ↔ B", listOf("A2", "M", "B2"))),
+            stopNames = mapOf("A2" to "A", "M" to "M", "B2" to "B"),
+            stopAreas = mapOf("A2" to "GA", "B2" to "GB"),
+        )
+        val placed = onPoles(planned, mapOf("43" to route))
+        // The route's own poles, the other side of the road from the Planner's...
+        assertEquals("A2" to "B2", placed.fromId to placed.toId)
+        // ...and still the leg the page was opened for.
+        assertEquals(tripLegKey(planned), tripLegKey(placed))
+    }
+
+    @Test
+    fun `a dismissed alert is left off the cards but a good service or a new alert is not`() {
+        val severe = LineStatus("blue", 6, "Severe Delays")
+        val good = LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service")
+        val statuses = mapOf("blue" to severe, "red" to good)
+        assertEquals(mapOf("red" to good), shownStatuses(statuses, setOf(DismissedAlert.ofLineStatus(severe))))
+        // A different alert on the same line (its wording changed) is a new one: it shows.
+        val worse = LineStatus("blue", 20, "Service Closed")
+        assertEquals(worse, shownStatuses(mapOf("blue" to worse), setOf(DismissedAlert.ofLineStatus(severe)))["blue"])
+        assertEquals(statuses, shownStatuses(statuses, emptySet()))
+    }
+
+    @Test
+    fun `a line row opens the row holding the train it leads with`() {
+        val northbound = train("blue", "C", 6)
+        val southbound = train("blue", "D", 3).copy(direction = "outbound")
+        val rows = listOf(
+            row(direction = "outbound", destination = "D", train = southbound),
+            row(direction = "inbound", destination = "C", train = northbound),
+        )
+        assertEquals("C", legRowFor(rows, northbound)?.destination)
+        assertEquals("D", legRowFor(rows, null)?.destination)
+        assertNull(legRowFor(emptyList(), northbound))
     }
 
     @Test
