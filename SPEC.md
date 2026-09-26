@@ -1145,7 +1145,19 @@ said only while the app is open, as the trip is only followed then.
 2026-09-26): an **ongoing notification with the app closed**, which needs a foreground service
 (a Play Console foreground-service declaration), and **live location** to see which train the
 rider boarded and to follow a bus above ground, which needs a location declaration. Until then the
-trip is followed while the app is open. The battery cost is the ~30 s train lookup while shown, and
+trip is followed while the app is open. The **foreground service** (special use: the live progress
+of a trip the rider started) is started from the app, on Start and on every return to the app with a trip on the way, and
+follows the trip every 30 s app open or closed; its ongoing notification, on a quiet channel of its
+own, is the next step (or says it couldn't update) and opens the trip. It stops itself once the
+rider arrives or ends the trip, and a process that dies takes it with it: the next opening of the
+app starts it again from the kept trip. It holds a partial wake lock (screen off) for the trip, since
+a sleeping phone would otherwise stall the refresh and the get-off alert: renewed for two minutes on
+each refresh, so a stalled service lets go. A trip never ended is followed in the background until
+four hours after it started; the service then stops, and the app still follows the trip whenever it's open.
+A kept trip it can't read is read again for up to 10 minutes, since its age isn't known until then.
+If Android refuses the service, or it fails, the trip's screen says it updates only while the app is
+open (never failing silently); each opening tries the service again.
+The battery cost is that, the ~30 s train lookup while shown, and
 with location, a coarse fix at an interval while on the way; nothing new leaves the device but the
 followed train's TfL id.
 

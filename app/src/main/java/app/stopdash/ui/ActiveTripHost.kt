@@ -12,6 +12,7 @@ import app.stopdash.domain.TripRoute
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Starts a trip on the way (SPEC *On the way*), for a screen several layers down (a trip's open route)
@@ -32,12 +33,12 @@ val ON_THE_WAY_REFRESH: Duration = Duration.ofSeconds(30)
 
 /**
  * Follows [tracker]'s trip while the app is in the foreground: the kept trip read once, then a
- * refresh every [ON_THE_WAY_REFRESH] while one is on the way. Nothing runs with the app in the
- * background (that needs a foreground service, held for the maintainer's Play declaration; SPEC
- * *On the way*), and nothing at all with no trip.
+ * refresh every [ON_THE_WAY_REFRESH] while one is on the way — unless [serviceFollowing], when the
+ * trip's foreground service does it, app open or closed (SPEC *On the way*). Nothing at all with no
+ * trip.
  */
 @Composable
-internal fun FollowActiveTrip(tracker: ActiveTripTracker) {
+internal fun FollowActiveTrip(tracker: ActiveTripTracker, serviceFollowing: StateFlow<Boolean>) {
     val lifecycleOwner = LocalLifecycleOwner.current
     // Read again every [ON_THE_WAY_REFRESH] while in the foreground if it couldn't be read.
     LaunchedEffect(tracker, lifecycleOwner) {
@@ -46,7 +47,8 @@ internal fun FollowActiveTrip(tracker: ActiveTripTracker) {
         }
     }
     val trip by tracker.trip.collectAsStateWithLifecycle()
-    if (trip != null) {
+    val service by serviceFollowing.collectAsStateWithLifecycle()
+    if (trip != null && !service) {
         LaunchedEffect(tracker, lifecycleOwner) {
             lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 while (true) {

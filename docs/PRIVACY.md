@@ -123,12 +123,14 @@ nothing runs once you leave the trip.
 **A trip on the way** (after you tap *Start* on a route) is kept on the device until you arrive or
 end it: the route's stops and lines, the leg you're on and the train followed, in app storage that
 Android never backs up or transfers, so the trip survives the app being closed. It's never logged
-beyond coarse diagnostics (a line id, an error kind) or sent anywhere. While the app is open, stopdash
-asks TfL about every 30 seconds where the followed train will call next, by TfL's own id for that
+beyond coarse diagnostics (a line id, an error kind) or sent anywhere. While a trip is on the way, app
+open or closed, stopdash asks TfL about every 30 seconds where the followed train will call next, by TfL's own id for that
 train, and for the departures at a stop where the next leg boards; neither says anything about you
 that the trip's departures don't already. Ending the trip, or arriving, deletes it. The "get off
 soon" alert names the stop and the trip's destination on your lock screen, like any notification;
-you can turn it off in Android's settings for StopDash.
+you can turn it off in Android's settings for StopDash. While a trip is on the way, an ongoing
+notification shows its next step, until you arrive or end the trip (or, for a trip left running,
+four hours after it started).
 
 **Starred journeys** (two stops you travel between) are kept on the device with your other
 settings and stars, so they ride your own Android backup like the rest (above); they are never

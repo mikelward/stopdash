@@ -547,7 +547,7 @@ class MainActivity : ComponentActivity() {
                 var onTheWayOpen by rememberSaveable { mutableStateOf(false) }
                 val tracker = remember { activeTrip(applicationContext) }
                 val onTheWayScope = rememberCoroutineScope()
-                FollowActiveTrip(tracker)
+                FollowActiveTrip(tracker, OnTheWayService.running)
                 // A trip End couldn't forget opens again to say so, in whichever composition is
                 // current when End returns (the one that asked may have been recreated since).
                 val endFailures by tracker.endFailures.collectAsStateWithLifecycle()
@@ -559,6 +559,14 @@ class MainActivity : ComponentActivity() {
                     endFailuresShown = endFailures
                 }
                 val onTheWayTrip by tracker.trip.collectAsStateWithLifecycle()
+                // A trip on the way is followed by its foreground service, app open or closed: started
+                // here (the foreground), on Start and on every return to the app with a trip on the way,
+                // so a start Android refused is tried again; it stops itself.
+                val onTheWayActive = onTheWayTrip != null
+                LifecycleResumeEffect(onTheWayActive) {
+                    if (onTheWayActive) OnTheWayService.start(applicationContext)
+                    onPauseOrDispose {}
+                }
                 val onTheWayProgress by tracker.progress.collectAsStateWithLifecycle()
                 val onTheWayUpdatedAt by tracker.updatedAt.collectAsStateWithLifecycle()
                 val openOnTheWayAsked by openOnTheWay.collectAsStateWithLifecycle()
@@ -588,7 +596,10 @@ class MainActivity : ComponentActivity() {
                     LocalOnTheWay provides OnTheWayActions(active = onTheWayTrip != null, open = { onTheWayOpen = true }) { route, destinationName, readyAt ->
                         // Its first refresh is [FollowActiveTrip]'s, once the trip is on the way.
                         // In the app's scope, so recreating the activity can't cut the save short.
-                        ((application as? StopdashApp)?.applicationScope ?: onTheWayScope).launch { tracker.start(route, destinationName, readyAt) }
+                        tracker.launchStart((application as? StopdashApp)?.applicationScope ?: onTheWayScope, route, destinationName, readyAt)
+                        // Started now, while the app is in the foreground: the rider may leave before
+                        // the trip is kept, and the service waits for the start ([ActiveTripTracker.starting]).
+                        OnTheWayService.start(applicationContext)
                         onTheWayOpen = true
                         GetOffSoonAlert.ensureChannel(applicationContext)
                         if (ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -614,6 +625,7 @@ class MainActivity : ComponentActivity() {
                             if (onTheWayOpen) {
                                 val failed by tracker.failed.collectAsStateWithLifecycle()
                                 val notKept by tracker.notKept.collectAsStateWithLifecycle()
+                                val appOpenOnly by OnTheWayService.refused.collectAsStateWithLifecycle()
                                 val now = tickingNow()
                                 val endFailed by tracker.endFailed.collectAsStateWithLifecycle()
                                 val end = {
@@ -639,6 +651,7 @@ class MainActivity : ComponentActivity() {
                                     current = ActiveTripTracker.isCurrent(onTheWayUpdatedAt, now),
                                     notKept = notKept,
                                     endFailed = endFailed,
+                                    appOpenOnly = appOpenOnly,
                                 )
                             } else if (licensesOpen) {
                                 LicensesScreen(onBack = { licensesOpen = false })
@@ -2437,7 +2450,7 @@ class MainActivity : ComponentActivity() {
         private val activeTripLock = Any()
         private var activeTripInstance: ActiveTripTracker? = null
 
-        private fun activeTrip(context: Context): ActiveTripTracker = synchronized(activeTripLock) {
+        internal fun activeTrip(context: Context): ActiveTripTracker = synchronized(activeTripLock) {
             activeTripInstance ?: run {
                 val store = FileActiveTripStore(File(context.applicationContext.noBackupFilesDir, "active-trip.json"), ::logDepartureWarning)
                 ActiveTripTracker(

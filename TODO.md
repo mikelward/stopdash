@@ -949,6 +949,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         - [ ] **Not to merge until the maintainer's Play declarations:** the ongoing notification
               with the app closed (a foreground service, which replaces the old *Step by step*
               item), and live location to see the train boarded and follow a bus.
+          - [x] The foreground service and its ongoing notification (built; PR held for the
+                declaration).
+          - [ ] Live location.
       - [x] **One-tap trips**: the near-me top bar's Directions button opens *To…* in one tap, with
             room freed by shortening the freshness stamp to "1 min ago" (maintainer, 2026-09-26).
       - [ ] **Better than a bare "est."** (maintainer, 2026-09-26): a leg past its live predictions

@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import android.content.res.Resources
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,9 +33,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
@@ -72,6 +74,9 @@ internal fun OnTheWayScreen(
     // Notifications are off for the app, so "get off soon" can't alert: said here, not left to be
     // found out at the stop (SPEC principle 2).
     alertsOff: Boolean = false,
+    // Android refused to follow the trip with the app closed ([app.stopdash.OnTheWayService.refused]):
+    // it's followed only while the app is open, and reopening it tries again.
+    appOpenOnly: Boolean = false,
 ) {
     BackHandler(onBack = onBack)
     val destination = trip?.destinationName
@@ -122,6 +127,15 @@ internal fun OnTheWayScreen(
                 item(key = "notKept") {
                     Text(
                         stringResource(R.string.on_the_way_not_kept),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+            if (appOpenOnly && trip != null) {
+                item(key = "appOpenOnly") {
+                    Text(
+                        stringResource(R.string.on_the_way_app_open_only),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -179,26 +193,32 @@ internal fun nextStepColors(progress: TripProgress?, current: Boolean = true): C
 /** What the rider does next, as a title and a detail line — the trip's screen and its banner alike. */
 @Composable
 internal fun nextStepText(progress: TripProgress?, now: Instant, current: Boolean = true): Pair<String, String> {
+    LocalConfiguration.current // Read again on a configuration change (locale, font scale).
+    return nextStepText(LocalContext.current.resources, progress, now, current)
+}
+
+/** [nextStepText] from [resources], for the trip's ongoing notification too. */
+internal fun nextStepText(resources: Resources, progress: TripProgress?, now: Instant, current: Boolean = true): Pair<String, String> {
     // A train's time or stops from an answer too old to stand behind ([current]): the step stays,
     // its details wait for the next answer.
     val live = progress is TripProgress.Riding || (progress is TripProgress.Waiting && progress.due != null)
-    if (live && !current) return nextStepText(progress, now).first to stringResource(R.string.on_the_way_updating)
+    if (live && !current) return nextStepText(resources, progress, now).first to resources.getString(R.string.on_the_way_updating)
     return when (progress) {
-        is TripProgress.Waiting -> stringResource(R.string.on_the_way_board, progress.leg.lineName, progress.leg.fromName) to
-            (progress.due?.let { stringResource(R.string.on_the_way_due, minutesUntil(now, it)) } ?: stringResource(R.string.on_the_way_finding))
-        is TripProgress.Riding -> stringResource(R.string.on_the_way_get_off, progress.leg.toName) to
+        is TripProgress.Waiting -> resources.getString(R.string.on_the_way_board, progress.leg.lineName, progress.leg.fromName) to
+            (progress.due?.let { resources.getString(R.string.on_the_way_due, minutesUntil(now, it)) } ?: resources.getString(R.string.on_the_way_finding))
+        is TripProgress.Riding -> resources.getString(R.string.on_the_way_get_off, progress.leg.toName) to
             when (val left = progress.stopsLeft) {
-                null -> stringResource(R.string.on_the_way_next_is, progress.nextStop)
-                0, 1 -> stringResource(R.string.on_the_way_next_stop)
-                else -> pluralStringResource(R.plurals.on_the_way_stops, left, left, progress.nextStop)
+                null -> resources.getString(R.string.on_the_way_next_is, progress.nextStop)
+                0, 1 -> resources.getString(R.string.on_the_way_next_stop)
+                else -> resources.getQuantityString(R.plurals.on_the_way_stops, left, left, progress.nextStop)
             }
-        is TripProgress.Changing -> stringResource(R.string.on_the_way_change, progress.leg.lineName, progress.leg.fromName) to
-            stringResource(R.string.on_the_way_change_time, minutesUntil(now, progress.until))
-        is TripProgress.Walking -> stringResource(R.string.on_the_way_walk, progress.leg.toName) to
-            stringResource(R.string.on_the_way_walk_time, minutesUntil(now, progress.until))
-        is TripProgress.Lost -> stringResource(R.string.on_the_way_lost) to stringResource(R.string.on_the_way_finding)
-        TripProgress.Arrived -> stringResource(R.string.on_the_way_arrived) to ""
-        null -> stringResource(R.string.on_the_way) to stringResource(R.string.on_the_way_finding)
+        is TripProgress.Changing -> resources.getString(R.string.on_the_way_change, progress.leg.lineName, progress.leg.fromName) to
+            resources.getString(R.string.on_the_way_change_time, minutesUntil(now, progress.until))
+        is TripProgress.Walking -> resources.getString(R.string.on_the_way_walk, progress.leg.toName) to
+            resources.getString(R.string.on_the_way_walk_time, minutesUntil(now, progress.until))
+        is TripProgress.Lost -> resources.getString(R.string.on_the_way_lost) to resources.getString(R.string.on_the_way_finding)
+        TripProgress.Arrived -> resources.getString(R.string.on_the_way_arrived) to ""
+        null -> resources.getString(R.string.on_the_way) to resources.getString(R.string.on_the_way_finding)
     }
 }
 

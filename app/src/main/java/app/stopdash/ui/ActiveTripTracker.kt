@@ -12,6 +12,10 @@ import app.stopdash.domain.VehicleSource
 import java.io.IOException
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -131,6 +135,23 @@ class ActiveTripTracker(
         }
         _updatedAt.value = null
         keep(trip, OnTheWay.advance(trip, null, now).second)
+    }
+
+    private val _starting = MutableStateFlow(0)
+
+    /** Starts in flight ([launchStart]): counted from the tap, so a follower doesn't take one for none. */
+    val starting: StateFlow<Int> = _starting.asStateFlow()
+
+    /** [start] in [scope], counted in [starting] at once, before the trip is saved. */
+    fun launchStart(scope: CoroutineScope, route: TripRoute, destinationName: String, readyAt: Instant): Job {
+        _starting.update { it + 1 }
+        return scope.launch {
+            try {
+                start(route, destinationName, readyAt)
+            } finally {
+                _starting.update { it - 1 }
+            }
+        }
     }
 
     /** End the trip: forgotten here and on the device. */
