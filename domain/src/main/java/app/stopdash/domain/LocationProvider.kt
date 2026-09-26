@@ -1,8 +1,9 @@
 package app.stopdash.domain
 
 /**
- * A point on Earth — the device's own position, used **only** for the on-demand
- * nearby-stops search and never on a background refresh (SPEC D1 / *Privacy*). A plain
+ * A point on Earth — the device's own position, sent **only** for the on-demand nearby-stops
+ * search and never on a background refresh (SPEC D1 / *Privacy*); a trip on the way also compares
+ * it on the device with the boarding stop, never sending it (SPEC *On the way*). A plain
  * data class of two doubles so the ranking math ([NearestStops]) and the resolver stay
  * pure and JVM-testable, with no Android `Location` in the domain.
  */
@@ -21,8 +22,19 @@ data class Coordinates(val latitude: Double, val longitude: Double)
  * provider) under a precise grant, because GPS/fused didn't answer within the short grace: fast
  * enough to show something at once (underground), but it can be hundreds of meters out. The caller
  * labels a set shown from one as approximate and asks [LocationProvider.precise] for a better fix.
+ *
+ * [accuracyMeters] is how sure the fix is, as its provider reported it (null when it didn't say): a
+ * precise provider's fix can still be vague indoors, which a caller deciding on distance must heed.
+ * [ageMillis] is how long before it was handed over the fix was taken (null when not known): a
+ * sure fix from a while ago says nothing of where a rider on a moving train is now.
  */
-data class LocationFix(val coordinates: Coordinates, val isFallback: Boolean, val isCoarse: Boolean = false)
+data class LocationFix(
+    val coordinates: Coordinates,
+    val isFallback: Boolean,
+    val isCoarse: Boolean = false,
+    val accuracyMeters: Float? = null,
+    val ageMillis: Long? = null,
+)
 
 /**
  * Supplies the device's current position for the nearby-stops search. A domain seam so

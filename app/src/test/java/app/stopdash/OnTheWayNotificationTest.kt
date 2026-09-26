@@ -3,6 +3,7 @@ package app.stopdash
 import android.app.Application
 import android.app.Notification
 import android.app.NotificationManager
+import android.content.pm.ServiceInfo
 import androidx.test.core.app.ApplicationProvider
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.TripLeg
@@ -17,6 +18,7 @@ import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -203,5 +205,24 @@ class OnTheWayNotificationTest {
         assertEquals(OnTheWayWakeLock.TAG, shadowOf(held).tag)
         OnTheWayWakeLock.release(lock)
         assertFalse(held.isHeld)
+    }
+
+    @Test
+    fun `location refused as the service starts falls back to following without it, not a crash`() {
+        val special = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+        val withLocation = special or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+        val tried = mutableListOf<Int>()
+        val warned = mutableListOf<String>()
+        // Permission revoked between the check and the start: Android 14+ throws on the location type.
+        val located = enterForeground(canLocate = true, warn = { warned += it }) { type ->
+            tried += type
+            if (type == withLocation) throw SecurityException("revoked")
+        }
+        assertEquals(false, located)
+        assertEquals(listOf(withLocation, special), tried)
+        assertEquals(1, warned.size)
+        // Refused altogether (from the background): not started, said so.
+        assertNull(enterForeground(canLocate = false, warn = { warned += it }) { throw IllegalStateException("background") })
+        assertEquals(true, enterForeground(canLocate = true, warn = {}) {})
     }
 }

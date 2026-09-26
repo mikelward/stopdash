@@ -2,6 +2,7 @@ package app.stopdash.ui
 
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Departure
+import app.stopdash.domain.LocationFix
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripLeg
@@ -41,6 +42,8 @@ class ActiveTripTracker(
     private val arrivals: suspend (String) -> List<Departure>,
     private val vehicles: VehicleSource,
     private val clock: () -> Instant = Instant::now,
+    // A monotonic clock in ms, for timing a wait the wall clock could be set back during.
+    private val elapsed: () -> Long = { System.nanoTime() / 1_000_000 },
     private val io: CoroutineDispatcher = Dispatchers.IO,
     // Coarse facts only — a line id, an error kind, never a stop or where the rider is going.
     private val warn: (String) -> Unit = {},
@@ -179,17 +182,33 @@ class ActiveTripTracker(
      * Bring the trip up to date: pick its leg's train if none is followed (the soonest the rider can
      * catch that runs where they're going), fetch the followed train's calls, and move the trip on.
      * A trip that has arrived is forgotten, its [progress] left at [TripProgress.Arrived] to say so.
+     * [rider], a fix taken when [OnTheWay.wantsFix], shows a rider left behind by their train, and
+     * the next one is picked ([OnTheWay.seen]).
      */
-    suspend fun refresh() = lock.withLock {
-        // A leg just done (a walk, or a ride straight into another) picks the next ride's train at
-        // once: one due before the next refresh is still the rider's to catch.
-        if (step()) step()
+    suspend fun refresh(rider: LocationFix? = null) {
+        val asked = elapsed()
+        lock.withLock {
+            // The fix aged while this waited behind another refresh: one no longer fresh enough is
+            // no evidence the rider was left behind ([OnTheWay.sureEnough]).
+            val fresh = rider?.let { fix -> aged(fix, Duration.ofMillis(elapsed() - asked)) }
+            // A leg just done (a walk, or a ride straight into another) picks the next ride's train at
+            // once: one due before the next refresh is still the rider's to catch.
+            if (step(fresh)) step(null)
+        }
+    }
+
+    // [fix] as it stands [waited] later, or null once that makes it too old to act on. One whose age
+    // isn't known is taken as it came.
+    private fun aged(fix: LocationFix, waited: Duration): LocationFix? {
+        val age = fix.ageMillis ?: return fix
+        val now = age + waited.toMillis().coerceAtLeast(0)
+        return if (now > OnTheWay.FIX_FRESH_WITHIN_MILLIS) null else fix.copy(ageMillis = now)
     }
 
     // One step of [refresh]: at most one leg change. True when it left a ride with no train yet,
     // reached by that change or its train dropped, so another step picks one.
-    private suspend fun step(): Boolean {
-        var trip = _trip.value ?: return false
+    private suspend fun step(rider: LocationFix?): Boolean {
+        if (_trip.value == null) return false
         if (_progress.value == TripProgress.Arrived) {
             // Arrived, but not yet forgotten on the device: only that's tried again, not the ride,
             // which a train round again on its next lap could seem to restart.
@@ -200,16 +219,26 @@ class ActiveTripTracker(
             }
             return false
         }
-        val followed = trip.vehicleId
-        var failed = false
         val now = clock()
+        // The train followed coming in, before a fix may have dropped it ([OnTheWay.seen]).
+        val followed = _trip.value?.vehicleId.orEmpty()
+        val before = _trip.value ?: return false
+        var trip = OnTheWay.seen(before, rider, now)
+        // Left behind by a train get off soon was already said for: the stop it named was that
+        // train's, so it's taken back, and said again for the next train in its time.
+        if (before.warnedLeg == before.legIndex && trip.warnedLeg != before.warnedLeg) onGetOffSoonDone()
+        var failed = false
         val leg = trip.leg
         var calls: List<VehicleCall>? = null
         // While a change runs, no train is picked or asked about: one picked now could be revised to
         // leave before the change is done, and be taken for the rider's.
+        // Whether this step already looked for a train on its leg: none found, it isn't looked for
+        // again at once (a TfL request each), only on the next refresh.
+        var searched = false
         if (leg != null && !leg.isWalk && OnTheWay.changeUntil(trip, now) == null) {
             try {
                 if (trip.vehicleId.isBlank()) {
+                    searched = true
                     val picked = pick(trip, now)
                     if (picked != null) {
                         trip = OnTheWay.follow(trip, picked.first)
@@ -242,7 +271,9 @@ class ActiveTripTracker(
             // longer stood behind on any surface (its time, stops left and get off soon wait).
             _failed.value = true
             _updatedAt.value = null
-            keep(trip, _progress.value ?: standing(trip, now))
+            // The step as it was, unless a fix just showed the rider left behind: then it's the new
+            // trip's (finding a train), never the ride the rider isn't on.
+            keep(trip, _progress.value?.takeIf { trip.vehicleId == before.vehicleId } ?: standing(trip, now))
             return false
         }
         var (next, progress) = OnTheWay.advance(trip, calls, now)
@@ -284,7 +315,7 @@ class ActiveTripTracker(
             keep(next, progress)
         }
         // A ride with no train yet, reached now or with its train just dropped, picks one at once.
-        val onward = next.legIndex != trip.legIndex || (followed.isNotBlank() && !next.boarded)
+        val onward = next.legIndex != trip.legIndex || (followed.isNotBlank() && !next.boarded && !searched)
         return onward && next.leg?.isWalk == false && next.vehicleId.isBlank()
     }
 

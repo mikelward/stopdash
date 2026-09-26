@@ -18,7 +18,9 @@
       "commonName": "Archway Underground Station",
       "naptanId": "940GZZLUACY",
       "individualStopId": "9400ZZLUACY2",
-      "icsCode": "1000008"
+      "icsCode": "1000008",
+      "lat": 51.564624624535,
+      "lon": -0.134969428047
      },
      "arrivalPoint": {
       "commonName": "Bank Underground Station",

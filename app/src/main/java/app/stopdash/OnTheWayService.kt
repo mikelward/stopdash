@@ -1,5 +1,6 @@
 package app.stopdash
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,13 +8,17 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import app.stopdash.data.AndroidLocationProvider
 import app.stopdash.domain.ActiveTrip
+import app.stopdash.domain.LocationFix
+import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.TripProgress
 import app.stopdash.ui.ActiveTripTracker
 import app.stopdash.ui.ON_THE_WAY_REFRESH
@@ -48,6 +53,8 @@ class OnTheWayService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var following: Job? = null
     private var awake: PowerManager.WakeLock? = null
+    // Whether the service runs with the location type, so a fix may be taken (and is still allowed).
+    private var located = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -55,12 +62,21 @@ class OnTheWayService : Service() {
         val tracker = MainActivity.activeTrip(applicationContext)
         OnTheWayNotification.ensureChannel(this)
         val first = OnTheWayNotification.build(this, tracker.trip.value, tracker.progress.value, tracker.failed.value, tracker.updatedAt.value, Instant.now())
-        if (!promote { startForeground(OnTheWayNotification.ID, first, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE) }) {
+        // Location too when it's allowed: a fix just after boarding shows a rider left behind.
+        val canLocate = locationAllowed()
+        val withLocation = enterForeground(canLocate, warn = { StopdashDebugLog.warning("on the way: %s", it) }) { type ->
+            startForeground(OnTheWayNotification.ID, first, type)
+        }
+        followed(withLocation != null)
+        if (withLocation == null) {
             // Refused (started from the background, or the type not allowed): the activity's own
             // foreground loop still follows the trip while the app is open, and its screen says so.
             stopSelf()
             return START_NOT_STICKY
         }
+        // Read again on each start (the app starts the service each time it opens with a trip), so
+        // location allowed partway through a trip is used from then on, by the loop already running.
+        located = withLocation
         _running.value = true
         if (following?.isActive != true) {
             awake = awake ?: OnTheWayWakeLock.acquire(this)
@@ -85,7 +101,7 @@ class OnTheWayService : Service() {
                     followTrip(tracker.trip, tracker.starting, ON_THE_WAY_REFRESH, OnTheWayWakeLock.LIMIT, restore = tracker::restore,
                         startedFor = { Duration.between(it.startedAt, Instant.now()) },
                         keepAwake = { awake?.let(OnTheWayWakeLock::renew) }) {
-                        tracker.refresh()
+                        tracker.refresh(if (located && locationAllowed()) riderIfWanted(tracker.trip.value) else null)
                     }
                 }
             }
@@ -93,6 +109,22 @@ class OnTheWayService : Service() {
         // The trip is kept on disk; a process that dies takes the service with it, and the next
         // opening of the app starts it again.
         return START_NOT_STICKY
+    }
+
+    // A precise fix, only in the minute or so after the train leaves the boarding stop
+    // ([OnTheWay.wantsFix]); never logged or kept, only compared with the stop's public position.
+    private suspend fun riderIfWanted(trip: ActiveTrip?): LocationFix? {
+        if (trip == null || !OnTheWay.wantsFix(trip, Instant.now())) return null
+        // GPS/fused, waited for: a quick coarse fix could never settle it, so it isn't asked for.
+        val fix = location.preciseFix(sureEnough = OnTheWay::sureEnough) ?: return null
+        return OnTheWay.usableFix(fix)
+    }
+
+    private fun locationAllowed(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+    private val location by lazy {
+        AndroidLocationProvider(applicationContext, warn = { StopdashDebugLog.warning("on the way: %s", it) }, remembers = false)
     }
 
     override fun onDestroy() {
@@ -133,10 +165,10 @@ class OnTheWayService : Service() {
                 start()
             } catch (e: IllegalStateException) {
                 StopdashDebugLog.warning("on the way: %s", "foreground service refused: ${e::class.simpleName}")
-                _refused.value = true
+                followed(false)
                 return false
             }
-            _refused.value = false
+            followed(true)
             return true
         }
 
@@ -144,6 +176,42 @@ class OnTheWayService : Service() {
         internal fun notFollowing() {
             _refused.value = true
         }
+
+        /** Notes whether a foreground start went ahead, for [refused]. */
+        internal fun followed(started: Boolean) {
+            _refused.value = !started
+        }
+    }
+}
+
+/**
+ * Puts the service in the foreground through [start], with the location type too when [canLocate]:
+ * true when it runs with location, false without, null when it was refused (started from the
+ * background). Location refused as it starts (permission revoked since the check, Android 14+) falls
+ * back to following without it rather than crashing.
+ */
+internal fun enterForeground(canLocate: Boolean, warn: (String) -> Unit, start: (type: Int) -> Unit): Boolean? {
+    val special = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+    if (canLocate) {
+        try {
+            start(special or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+            return true
+        } catch (e: SecurityException) {
+            warn("location refused as the service started: ${e::class.simpleName}")
+        } catch (e: IllegalStateException) {
+            warn("foreground service refused: ${e::class.simpleName}")
+            return null
+        }
+    }
+    return try {
+        start(special)
+        false
+    } catch (e: IllegalStateException) {
+        warn("foreground service refused: ${e::class.simpleName}")
+        null
+    } catch (e: SecurityException) {
+        warn("foreground service refused: ${e::class.simpleName}")
+        null
     }
 }
 

@@ -7,8 +7,9 @@
          ~1 km off (a stop half a mile away read as nearest), so stopdash requests FINE and uses
          it when granted (maintainer, 2026-09-19). COARSE stays declared so the runtime dialog
          offers the precise/approximate choice and an approximate grant still finds stops,
-         degraded. Location is used on demand only — sent to TfL to find stops, never on a
-         background refresh (SPEC Finding stops / Privacy). -->
+         degraded. Location is sent to TfL on demand only, to find stops, never on a background
+         refresh (SPEC Finding stops / Privacy); a trip on the way also checks it on the device just
+         after boarding, never sending it (SPEC On the way). -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- "Get off soon" on a trip on the way (SPEC On the way): asked for when the rider taps
@@ -23,6 +24,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <!-- Keeps the CPU awake while a trip is followed with the screen off (normal, granted at install). -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- With location allowed, the same service takes a fix in the minute after the rider's train
+         leaves the boarding stop, to see a rider left behind (SPEC On the way). Needs the Play
+         Console location declaration before it ships. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
     <!-- StopDash shows no ads: strip the advertising-ID and ad-attribution permissions the Firebase
          Analytics dependency would otherwise merge in. -->
@@ -105,7 +110,7 @@
         <service
             android:name=".OnTheWayService"
             android:exported="false"
-            android:foregroundServiceType="specialUse">
+            android:foregroundServiceType="specialUse|location">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Shows the live progress of a public-transport trip the user started, and alerts them before their stop, until they arrive or end the trip." />

@@ -8,6 +8,7 @@ import android.location.LocationManager
 import android.os.Build
 import android.os.CancellationSignal
 import android.os.SystemClock
+import androidx.annotation.VisibleForTesting
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FixDiagnostics
 import app.stopdash.domain.FixSelection
@@ -41,6 +42,9 @@ class AndroidLocationProvider(
     // Where each fix placed the rider, for the in-memory RecentPositions only — never [warn],
     // whose lines are persisted (SPEC *Privacy*).
     private val position: (what: String, at: Coordinates) -> Unit = { _, _ -> },
+    // Whether a precise fix taken here is remembered for a later coarse lookup to defer to (near me).
+    // Off for a fix that must never be kept, such as a trip's left-behind check (SPEC *On the way*).
+    private val remembers: Boolean = true,
 ) : LocationProvider {
     // Every location taken expires the remembered precise fix on the way out, whichever return
     // it takes and however long the fix took (the clock moves during the request).
@@ -110,12 +114,12 @@ class AndroidLocationProvider(
         // A precise fix used here — fresh, recent-cached or fallback — is remembered as of when it
         // was taken, so a coarse fix in the next few minutes can defer to it.
         val used = if (!fromFallback && usedFresh != null) usedFresh else cached?.located
-        if (coordinates != null && used != null && isAccurateProvider(used.provider)) {
+        if (remembers && coordinates != null && used != null && isAccurateProvider(used.provider)) {
             remember(used)
             // An old fallback re-remembered at its own (expired) timestamp is dropped again.
             expirePreciseMemory()
         }
-        if (coordinates != null && isCoarse && usedFresh != null) {
+        if (remembers && coordinates != null && isCoarse && usedFresh != null) {
             // The rider hasn't left the coarse fix's circle since the last precise fix: use that.
             val considered = preciseMemory.consider(
                 usedFresh.coordinates,
@@ -138,10 +142,10 @@ class AndroidLocationProvider(
                 // An older one stays flagged coarse: the rider may have moved within the circle, so
                 // the list shows from the precise point but GPS is still asked to confirm it or move
                 // it (a forced refresh included), rather than the recall standing unchecked.
-                return LocationFix(recalled.coordinates, isFallback = false, isCoarse = !recalled.standsAsCurrent)
+                return LocationFix(recalled.coordinates, isFallback = false, isCoarse = !recalled.standsAsCurrent, accuracyMeters = recalled.accuracyMeters)
             }
         }
-        return coordinates?.let { LocationFix(it, isFallback = fromFallback, isCoarse = isCoarse) }
+        return coordinates?.let { LocationFix(it, isFallback = fromFallback, isCoarse = isCoarse, accuracyMeters = used?.accuracyMeters) }
     }
 
     private fun remember(fix: Located) =
@@ -157,14 +161,22 @@ class AndroidLocationProvider(
     // app takes a location" holds on every path, not only the one that can recall it.
     private fun expirePreciseMemory() = preciseMemory.expire(SystemClock.elapsedRealtime())
 
-    override suspend fun precise(): Coordinates? =
+    override suspend fun precise(): Coordinates? = preciseFix()?.coordinates
+
+    /**
+     * [precise], with how sure the fix is: GPS/fused only, waited for up to the precise timeout,
+     * never a quick coarse fix. For a caller that decides on distance (a trip's left-behind check):
+     * with [sureEnough], a fix it turns down (vague, or taken a while ago) doesn't end the wait for
+     * the other provider.
+     */
+    suspend fun preciseFix(sureEnough: ((LocationFix) -> Boolean)? = null): LocationFix? =
         try {
-            takePrecise()
+            takePrecise(sureEnough)
         } finally {
             expirePreciseMemory()
         }
 
-    private suspend fun takePrecise(): Coordinates? {
+    private suspend fun takePrecise(sureEnough: ((LocationFix) -> Boolean)? = null): LocationFix? {
         expirePreciseMemory()
         if (!hasFineLocationPermission()) return null
         val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
@@ -179,6 +191,7 @@ class AndroidLocationProvider(
             coarseGraceMillis = 0,
             isAccurate = { true },
             onTimeout = { provider -> warn("precise fix: $provider provider timed out") },
+            accept = { fix -> sureEnough == null || sureEnough(fix.toFix()) },
         ) { provider ->
             requestFreshFixFrom(manager, provider)
         }
@@ -191,9 +204,17 @@ class AndroidLocationProvider(
         val ageMillis = (SystemClock.elapsedRealtimeNanos() - fix.elapsedRealtimeNanos) / 1_000_000
         warn(FixDiagnostics.describe(FixDiagnostics.Source.PRECISE, fix.provider, fix.accuracyMeters, ageMillis))
         position("${FixDiagnostics.Source.PRECISE.label} ${fix.provider} fix", fix.coordinates)
-        remember(fix)
-        return fix.coordinates
+        if (remembers) remember(fix)
+        return fix.toFix()
     }
+
+    // The fix as handed over, with how sure it is and how long ago it was taken.
+    private fun Located.toFix() = LocationFix(
+        coordinates,
+        isFallback = false,
+        accuracyMeters = accuracyMeters,
+        ageMillis = (SystemClock.elapsedRealtimeNanos() - elapsedRealtimeNanos).coerceAtLeast(0) / 1_000_000,
+    )
 
     /**
      * A fresh fix from [providers], all asked at once ([raceFix]): an accurate (fused/GPS) fix wins
@@ -360,10 +381,11 @@ class AndroidLocationProvider(
 
     private fun Location.toCoordinates() = Coordinates(latitude, longitude)
 
-    private companion object {
+    internal companion object {
         // Process-wide, so a recreated screen (and its new provider) still knows the last precise
         // fix. In memory only, never persisted or logged (SPEC *Privacy*).
-        val preciseMemory = PreciseFixMemory()
+        @VisibleForTesting
+        internal val preciseMemory = PreciseFixMemory()
     }
 }
 

@@ -21,7 +21,9 @@ about departures: the details of what you're looking up (your location for "near
 **precise** if you grant precise and a precise fix is available, otherwise approximate (if you grant
 only approximate, or if no precise fix can be obtained) — or the stop or line you're after) and, if
 you've set an optional TfL API key (`app_key`), that key as your own credential, sent with your own
-TfL calls and nowhere else. Location is used **only on demand**, never in the background.
+TfL calls and nowhere else. Location is **sent only on demand**, never in the background. The one
+use beyond that is a trip you start: it's checked on the phone just after you board, app open or
+closed, and never sent (see *On the way*, below).
 
 **National Rail times (optional).** If you paste a National Rail API key (from the Rail Data
 Marketplace) in Settings, stopdash also asks **National Rail's live departure boards** for the
@@ -130,7 +132,10 @@ that the trip's departures don't already. Ending the trip, or arriving, deletes 
 soon" alert names the stop and the trip's destination on your lock screen, like any notification;
 you can turn it off in Android's settings for StopDash. While a trip is on the way, an ongoing
 notification shows its next step, until you arrive or end the trip (or, for a trip left running,
-four hours after it started).
+four hours after it started). If you've allowed location, stopdash takes your
+precise position a few times in the five minutes after your train leaves the stop you're boarding
+at, only to see whether you got on (you're still at the stop if not). It's compared on the device
+with that stop's public position and then dropped: never logged, kept, or sent anywhere.
 
 **Starred journeys** (two stops you travel between) are kept on the device with your other
 settings and stars, so they ride your own Android backup like the rest (above); they are never

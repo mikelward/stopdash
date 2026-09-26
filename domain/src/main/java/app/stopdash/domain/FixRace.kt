@@ -11,6 +11,8 @@ import kotlinx.coroutines.withTimeoutOrNull
  * arrives. A coarse one (network/passive) is held for up to [coarseGraceMillis] in case an
  * accurate fix follows, then returned. Each provider is bounded by [perProviderTimeoutMillis];
  * one that exceeds it is reported via [onTimeout], so a hanging provider stays diagnosable.
+ * An accurate provider's fix that [accept] turns down (too vague for the caller) doesn't end the
+ * race: the others keep going, and it's returned only when nothing better comes.
  * Returns `null` only when no provider yields a fix. Generic in the fix type [T], so the caller
  * can carry what the provider reported (its accuracy, age) alongside the position.
  *
@@ -27,6 +29,7 @@ suspend fun <T : Any> raceFix(
     coarseGraceMillis: Long,
     isAccurate: (String) -> Boolean,
     onTimeout: (String) -> Unit = {},
+    accept: (T) -> Boolean = { true },
     fetch: suspend (String) -> T?,
 ): T? = coroutineScope {
     val results = Channel<Pair<String, T?>>(Channel.UNLIMITED)
@@ -45,25 +48,33 @@ suspend fun <T : Any> raceFix(
     try {
         var remaining = providers.size
         var coarse: T? = null
+        // An accurate provider's fix [accept] turned down: kept only in case nothing better comes.
+        var vague: T? = null
         while (remaining > 0 && coarse == null) {
             val (provider, fix) = results.receive()
             remaining--
             if (fix == null) continue
-            if (isAccurate(provider)) return@coroutineScope fix
+            if (isAccurate(provider)) {
+                if (accept(fix)) return@coroutineScope fix
+                if (vague == null) vague = fix
+                continue
+            }
             coarse = fix
         }
-        if (coarse == null) return@coroutineScope null
+        if (coarse == null) return@coroutineScope vague
         // A coarse fix is in hand: give the accurate providers a short grace to beat it.
         val accurate = withTimeoutOrNull(coarseGraceMillis) {
             var found: T? = null
             while (remaining > 0 && found == null) {
                 val (provider, fix) = results.receive()
                 remaining--
-                if (fix != null && isAccurate(provider)) found = fix
+                if (fix != null && isAccurate(provider)) {
+                    if (accept(fix)) found = fix else if (vague == null) vague = fix
+                }
             }
             found
         }
-        accurate ?: coarse
+        accurate ?: vague ?: coarse
     } finally {
         // Stop the providers still out: their answer is no longer wanted, and an unfinished
         // request would otherwise hold its location updates (and battery) until its bound.

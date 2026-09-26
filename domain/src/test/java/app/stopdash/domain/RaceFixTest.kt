@@ -94,4 +94,19 @@ class RaceFixTest {
         assertEquals(coarseFix, result)
         assertEquals(200L, currentTime)
     }
+
+    @Test
+    fun `a vague precise fix doesn't end the race when a sure one is still coming`() = runTest {
+        // Fused answers first but vague (indoors, say); GPS answers later, sure.
+        val vague = Coordinates(51.7, -0.14)
+        val result = raceFix(listOf("fused", "gps"), timeout, 0, { true }, accept = { it != vague }) { provider ->
+            if (provider == "fused") { delay(300); vague } else { delay(1_500); accurateFix }
+        }
+        assertEquals(accurateFix, result)
+        // With nothing better coming, the vague one is still what's returned, for the caller to judge.
+        val only = raceFix(listOf("fused", "gps"), timeout, 0, { true }, accept = { it != vague }) { provider ->
+            if (provider == "fused") { delay(300); vague } else null
+        }
+        assertEquals(vague, only)
+    }
 }
