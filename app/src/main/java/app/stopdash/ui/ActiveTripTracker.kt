@@ -41,6 +41,8 @@ class ActiveTripTracker(
     // "Get off soon", once per leg ([OnTheWay.shouldWarn]): whether it was said, so one that
     // couldn't be (notifications off) is tried again on the next refresh.
     private val onGetOffSoon: (ActiveTrip, TripProgress.Riding) -> Boolean = { _, _ -> true },
+    // The rider has moved past a leg whose "get off soon" was said (or arrived): it's done with.
+    private val onGetOffSoonDone: () -> Unit = {},
 ) {
     private val _trip = MutableStateFlow<ActiveTrip?>(null)
     val trip: StateFlow<ActiveTrip?> = _trip.asStateFlow()
@@ -171,6 +173,7 @@ class ActiveTripTracker(
         // A train that turned out not to be the rider's: drop it, so the next refresh picks another.
         // Once on board it stays followed: TfL has only gone quiet on it.
         if (progress is TripProgress.Lost && calls != null && !next.boarded) next = next.copy(vehicleId = "", dueOffAt = null)
+        if (trip.warnedLeg == trip.legIndex && (next.legIndex != trip.legIndex || progress == TripProgress.Arrived)) onGetOffSoonDone()
         if (progress is TripProgress.Riding && OnTheWay.shouldWarn(next, progress) && onGetOffSoon(next, progress)) {
             next = OnTheWay.warned(next)
         }

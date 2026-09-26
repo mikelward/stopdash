@@ -601,6 +601,37 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `a trip on the way stays on the near-me list, not a platform's drill-down`() {
+        val leg = app.stopdash.domain.TripLeg(
+            "tube", "piccadilly", "Piccadilly", "940GZZLUMRH", "Manor House", "940GZZLUKSX", "King's Cross St. Pancras",
+            now, now.plusSeconds(900),
+        )
+        val trip = app.stopdash.domain.ActiveTrip(app.stopdash.domain.TripRoute(listOf(leg)), "King's Cross", startedAt = now)
+        val banner = OnTheWayBannerState(trip, app.stopdash.domain.TripProgress.Waiting(leg, null), now) {}
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalOnTheWayBanner provides banner) {
+                    Surface(modifier = Modifier.fillMaxSize()) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(
+                                listOf(turnpikeLaneNorth(), turnpikeLaneSouth(), manorHouse()),
+                                now.minusSeconds(60),
+                            ),
+                            now,
+                            {},
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("onTheWayBanner").assertExists()
+        composeRule.onNodeWithContentDescription("Platform 2, Westbound", substring = true).performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("onTheWayBanner").assertDoesNotExist()
+    }
+
+    @Test
     fun `tapping a platform header shows just that platform, and back returns to the list`() {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {

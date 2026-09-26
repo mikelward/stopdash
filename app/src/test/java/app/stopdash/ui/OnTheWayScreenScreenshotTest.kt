@@ -52,12 +52,97 @@ class OnTheWayScreenScreenshotTest {
         endFailed: Boolean = false,
         onEnd: () -> Unit = {},
         onBack: () -> Unit = {},
+        alertsOff: Boolean = false,
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
-                OnTheWayScreen(trip, progress, failed, now, onEnd, onBack, current = current, notKept = notKept, endFailed = endFailed)
+                OnTheWayScreen(trip, progress, failed, now, onEnd, onBack, current = current, notKept = notKept, endFailed = endFailed, alertsOff = alertsOff)
             }
         }
+    }
+
+    @Test
+    fun on_the_way_says_when_get_off_alerts_are_off() {
+        show(trip, TripProgress.Waiting(mildmay, at(4)), alertsOff = true)
+        composeRule.onNodeWithText("Get-off alerts are off").assertIsDisplayed()
+    }
+
+    @Test
+    fun the_main_view_pins_the_trip_on_the_way_and_opens_it() {
+        var opened = false
+        val state = OnTheWayBannerState(trip.copy(boarded = true), TripProgress.Riding(mildmay, "Hackney Central", 4, at(16), getOffSoon = false), now) {
+            opened = true
+        }
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalOnTheWayBanner provides state) {
+                    MainScreen(DeparturesUiState.Loaded(emptyList(), now), now, {})
+                }
+            }
+        }
+        composeRule.onNodeWithText("To Canary Wharf").assertIsDisplayed()
+        composeRule.onNodeWithText("Get off at Stratford").assertIsDisplayed()
+        captureSnapshot("on-the-way-banner.png")
+        composeRule.onNodeWithText("Get off at Stratford").performClick()
+        assertTrue(opened)
+    }
+
+    @Test
+    fun the_pinned_card_doesnt_show_an_old_answer_as_live() {
+        // Last brought up to date ten minutes ago: its "next stop" is no longer known.
+        val state = OnTheWayBannerState(trip.copy(boarded = true), TripProgress.Riding(mildmay, "Stratford", 1, at(1), getOffSoon = true), at(-10)) {}
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalOnTheWayBanner provides state) {
+                    MainScreen(DeparturesUiState.Loaded(emptyList(), now), now, {})
+                }
+            }
+        }
+        composeRule.onNodeWithText("Get off at Stratford").assertIsDisplayed()
+        composeRule.onNodeWithText("Updating…").assertIsDisplayed()
+    }
+
+    @Test
+    fun the_location_gate_pins_the_trip_too() {
+        // Location denied, so the near-me list never comes up: the trip is still a tap away.
+        var opened = false
+        val state = OnTheWayBannerState(trip, TripProgress.Waiting(mildmay, at(4)), now) { opened = true }
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalOnTheWayBanner provides state) {
+                    LocationGate(NearbyStopsViewModel.State.PermissionRequired, onAllow = {}, onRetry = {}, onOpenSettings = {})
+                }
+            }
+        }
+        composeRule.onNodeWithText("To Canary Wharf").performClick()
+        assertTrue(opened)
+    }
+
+    @Test
+    fun the_location_gate_card_reads_the_clock_it_is_given() {
+        // Updated just now by the clock the gate is handed: live, not "Updating…".
+        val state = OnTheWayBannerState(trip, TripProgress.Waiting(mildmay, at(4)), now) {}
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalOnTheWayBanner provides state) {
+                    LocationGate(NearbyStopsViewModel.State.PermissionRequired, onAllow = {}, onRetry = {}, onOpenSettings = {}, now = now)
+                }
+            }
+        }
+        composeRule.onNodeWithText("Due in 4 min").assertIsDisplayed()
+    }
+
+    @Test
+    fun a_station_page_leaves_the_trip_card_to_the_near_me_list() {
+        val state = OnTheWayBannerState(trip, TripProgress.Waiting(mildmay, at(4)), now) {}
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalOnTheWayBanner provides state) {
+                    MainScreen(DeparturesUiState.Loaded(emptyList(), now), now, {}, stationTitle = "Highbury & Islington")
+                }
+            }
+        }
+        composeRule.onNodeWithText("To Canary Wharf").assertDoesNotExist()
     }
 
     @Test

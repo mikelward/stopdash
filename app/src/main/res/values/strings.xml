@@ -400,6 +400,9 @@
     <string name="on_the_way_lost">Can\'t find your train</string>
     <string name="on_the_way_arrived">You\'ve arrived</string>
     <string name="on_the_way_failed">Couldn\'t update just now</string>
+    <string name="on_the_way_alerts_off">Get-off alerts are off</string>
+    <string name="get_off_soon_channel">Get off soon</string>
+    <string name="get_off_soon_channel_description">A trip on the way: when your stop is next</string>
     <!-- A leg: %1$s from, %2$s to. -->
     <string name="on_the_way_leg">%1$s → %2$s</string>
 </resources>

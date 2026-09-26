@@ -46,6 +46,7 @@ class ActiveTripTrackerTest {
     private var shownWhenForgotten: Boolean? = null
     private val warned = mutableListOf<TripProgress.Riding>()
     private var alertPosts = true
+    private var alertsDone = 0
 
     private fun tracker(dispatcher: kotlinx.coroutines.CoroutineDispatcher, load: () -> ActiveTrip? = { null }) = ActiveTripTracker(
         load = load,
@@ -73,6 +74,7 @@ class ActiveTripTrackerTest {
             warned += riding
             alertPosts
         },
+        onGetOffSoonDone = { alertsDone++ },
     ).also { current = it }
 
     @Test
@@ -139,6 +141,26 @@ class ActiveTripTrackerTest {
         tracker.refresh()
         assertEquals(1, warned.size)
         assertTrue((tracker.progress.value as TripProgress.Riding).getOffSoon)
+    }
+
+    @Test
+    fun `get off soon is taken back once the rider is past that leg`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        tracker.start(route, "C", readyAt = at(1))
+        tracker.refresh()
+        now = at(12)
+        trains["3"] = listOf(call("C", 14))
+        tracker.refresh()
+        assertEquals(1, warned.size)
+        assertEquals(0, alertsDone)
+        // Past C: got off, and the trip has arrived.
+        now = at(15)
+        trains["3"] = emptyList()
+        tracker.refresh()
+        assertEquals(TripProgress.Arrived, tracker.progress.value)
+        assertEquals(1, alertsDone)
     }
 
     @Test

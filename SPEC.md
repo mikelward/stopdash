@@ -1054,15 +1054,21 @@ them there:
   step stays but its details say **Updating…** until the next answer (principle 1).
 - **Get off soon**, from **one stop, or two minutes, out**, said once per leg.
 - **Where it shows:** the trip's own screen (the next step over the route), a **card pinned at the
-  top of the main view**, and the notifications below; each opens the trip.
+  top of the main view** (the near-me list, under the top bar, not scrolling with it; a station's
+  page, and a station, platform or starred journey opened from the list, are each their own view;
+  over the location prompt too, when near me can't come up),
+  and the notifications below; each opens the trip.
 - **Kept on the device** while on the way (the route, the leg, the train followed), in app storage
   that is never backed up, so it survives the app being closed; where a rider is going is theirs
   (*Privacy*), and it's forgotten when the trip ends.
 
 **Notifications** need Android's notification permission, asked for when the rider taps Start;
-declined, the trip still follows them on its screen and the main view's card, which says the
-notifications are off. "Get off soon" has **its own channel, with sound and vibration**, so it can
-be silenced apart from the trip's ongoing notification.
+declined, the trip still follows them on its screen and the main view's card, and its screen says
+get-off alerts are off (checked again on every return, so a change in Settings shows). "Get off
+soon" has **its own channel, high importance with sound and vibration**, so it can be silenced
+apart from the trip's ongoing notification; it goes **five minutes after the stop** (or 15 minutes
+with no time to it), so a stale alert doesn't linger. Until the foreground service below, it's
+said only while the app is open, as the trip is only followed then.
 
 **Pending the maintainer's Play declarations** (built, not merged until they're made; maintainer,
 2026-09-26): an **ongoing notification with the app closed**, which needs a foreground service
