@@ -45,13 +45,15 @@ internal object GetOffSoonAlert {
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
+    /** Whether the app may post notifications at all. */
+    fun canNotify(context: Context): Boolean =
+        NotificationManagerCompat.from(context).areNotificationsEnabled() &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+
     /** Whether an alert can reach the rider: notifications allowed, and this channel not silenced. */
-    fun canAlert(context: Context): Boolean {
-        val manager = NotificationManagerCompat.from(context)
-        if (!manager.areNotificationsEnabled()) return false
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
-        return manager.getNotificationChannel(CHANNEL_ID)?.importance != NotificationManager.IMPORTANCE_NONE
-    }
+    fun canAlert(context: Context): Boolean =
+        canNotify(context) &&
+            NotificationManagerCompat.from(context).getNotificationChannel(CHANNEL_ID)?.importance != NotificationManager.IMPORTANCE_NONE
 
     /**
      * Alerts that [riding]'s stop on [trip] is next; false (and logged, with no stop or place) when

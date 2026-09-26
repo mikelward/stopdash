@@ -16,6 +16,13 @@
          alerts are off. VIBRATE, granted at install, lets the alert be felt in a pocket. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Following a trip on the way with the app closed (SPEC On the way): a foreground service,
+         special use (live progress of a trip the user started, until they arrive or end it). Needs
+         the Play Console foreground-service declaration before it ships. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Keeps the CPU awake while a trip is followed with the screen off (normal, granted at install). -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!-- StopDash shows no ads: strip the advertising-ID and ad-attribution permissions the Firebase
          Analytics dependency would otherwise merge in. -->
@@ -95,6 +102,14 @@
 
         <!-- Republishes the widget's snapshot when a watch gains the app or comes back in reach
              (dev-docs/wear-os.md). -->
+        <service
+            android:name=".OnTheWayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Shows the live progress of a public-transport trip the user started, and alerts them before their stop, until they arrive or end the trip." />
+        </service>
         <service
             android:name=".watch.PhoneWearListenerService"
             android:exported="true">

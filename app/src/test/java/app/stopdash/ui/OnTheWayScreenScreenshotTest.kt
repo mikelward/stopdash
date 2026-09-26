@@ -54,10 +54,11 @@ class OnTheWayScreenScreenshotTest {
         onEnd: () -> Unit = {},
         onBack: () -> Unit = {},
         alertsOff: Boolean = false,
+        appOpenOnly: Boolean = false,
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
-                OnTheWayScreen(trip, progress, failed, now, onEnd, onBack, current = current, notKept = notKept, endFailed = endFailed, alertsOff = alertsOff)
+                OnTheWayScreen(trip, progress, failed, now, onEnd, onBack, current = current, notKept = notKept, endFailed = endFailed, alertsOff = alertsOff, appOpenOnly = appOpenOnly)
             }
         }
     }
@@ -66,6 +67,12 @@ class OnTheWayScreenScreenshotTest {
     fun on_the_way_says_when_get_off_alerts_are_off() {
         show(trip, TripProgress.Waiting(mildmay, at(4)), alertsOff = true)
         composeRule.onNodeWithText("Get-off alerts are off").assertIsDisplayed()
+    }
+
+    @Test
+    fun on_the_way_says_when_it_can_follow_only_while_open() {
+        show(trip, TripProgress.Waiting(mildmay, at(4)), appOpenOnly = true)
+        composeRule.onNodeWithText("Updates only while the app is open").assertIsDisplayed()
     }
 
     @Test

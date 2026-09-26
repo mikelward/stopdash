@@ -11,6 +11,7 @@ import app.stopdash.domain.VehicleSource
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -633,6 +634,17 @@ class ActiveTripTrackerTest {
         failing = true
         tracker.refresh()
         assertEquals(riding, tracker.progress.value)
+    }
+
+    @Test
+    fun `a start is counted from the tap until the trip is kept`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.launchStart(this, route, "C", readyAt = now)
+        // Counted at once, before the trip is saved, so the service started from the tap waits for it.
+        assertEquals(1, tracker.starting.value)
+        advanceUntilIdle()
+        assertEquals(0, tracker.starting.value)
+        assertEquals(route, checkNotNull(tracker.trip.value).route)
     }
 
     @Test
