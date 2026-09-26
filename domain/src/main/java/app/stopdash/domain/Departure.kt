@@ -35,6 +35,9 @@ import java.time.Instant
  * folds them. Null when TfL gives no "via" (most services, and buses). Not part of the
  * domain's own direction key, but a display surface groups by terminus *and* branch. See
  * [branchOf].
+ *
+ * [vehicleId] is TfL's id for the train or bus making this departure (unique within a line), so a
+ * trip can follow the one the rider boards ([VehicleSource]); blank when TfL gives none.
  */
 data class Departure(
     val lineId: String,
@@ -46,4 +49,5 @@ data class Departure(
     val mode: String,
     val branch: String? = null,
     val destinationId: String = "",
+    val vehicleId: String = "",
 )

@@ -17,6 +17,8 @@ import app.stopdash.domain.TflClient
 import app.stopdash.domain.TflRateLimiter
 import app.stopdash.domain.TflRequestPool
 import app.stopdash.domain.TripRoute
+import app.stopdash.domain.VehicleCall
+import app.stopdash.domain.VehicleSource
 import app.stopdash.domain.cleanStopName
 import app.stopdash.domain.TflException
 import io.ktor.client.HttpClient
@@ -33,6 +35,7 @@ import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.encodeURLPathPart
 import io.ktor.serialization.kotlinx.json.json
 import java.io.IOException
 import java.net.UnknownHostException
@@ -72,7 +75,7 @@ class KtorTflClient(
     // Sink for recoverable response oddities (an unparseable disruption date), coarse facts only —
     // a stop id, never a coordinate or key (SPEC *Privacy*). No-op by default (tests, widget).
     private val warn: (String) -> Unit = {},
-) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, JourneyPlanner {
+) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, JourneyPlanner, VehicleSource {
     override suspend fun journeys(fromId: String, toId: String): List<TripRoute> =
         tflRequest { key ->
             val dto = try {
@@ -108,6 +111,16 @@ class KtorTflClient(
             httpClient.get("$baseUrl/StopPoint/$stopId/Arrivals") {
                 applyAppKey(key)
             }.body<List<TflArrivalDto>>().map { it.toDeparture() }.let(DepartureRows::inferDirections)
+        }
+
+    override suspend fun vehicleCalls(vehicleId: String, lineId: String): List<VehicleCall> =
+        tflRequest { key ->
+            httpClient.get("$baseUrl/Vehicle/${vehicleId.encodeURLPathPart()}/Arrivals") {
+                applyAppKey(key)
+            }.body<List<TflArrivalDto>>()
+                .filter { it.lineId == lineId && !it.naptanId.isNullOrBlank() }
+                .map { it.toVehicleCall() }
+                .sortedBy { it.expected }
         }
 
     override suspend fun nearbyStops(

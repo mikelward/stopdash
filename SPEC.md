@@ -1001,6 +1001,49 @@ that ships it.
 list), and avoiding a line, done on the phone: the Planner has no way to exclude a line, so the trip
 asks it for alternative routes and drops those using the avoided line.
 
+### On the way
+
+*In progress* (maintainer, 2026-09-26; mocked the same day). An open trip route has a **Start**
+button; the trip is then **on the way** until the rider arrives or taps **End trip**, and follows
+them there:
+
+- **Which train.** Start assumes the **next train the rider can catch** on the first leg — the
+  soonest the route lists that TfL names (its `vehicleId`) and that is due after the rider can
+  reach the stop — and switches when another is seen to be the one they're on: picked by the
+  rider, or (with location, below) seen moving with them. A change picks the next leg's train the
+  same way once the rider has got off and walked.
+- **Following it.** The trip asks TfL for **the followed train's calls ahead of it**
+  (`/Vehicle/{id}/Arrivals`, in one request) about every 30 s while it is shown. Still due at the
+  boarding stop, the rider is **waiting** for it; once it has left, they are taken to be **on
+  it**, the next stop and the stops left to getting off counted from its calls — so it works
+  underground with no GPS. TfL predicts only about half an hour ahead, so a stop further on is
+  **not yet predicted, not passed**: while the train keeps to the leg's planned stops, the stops
+  left are counted from the plan and no time is claimed. Its calls moved on past where they get
+  off, they have **got off**: the trip walks on for the walk's planned time, then waits for the
+  next leg's train. An empty answer ends a ride only once the rider was seen due off. A followed
+  train that neither calls at the boarding stop nor keeps to the leg is **lost** (the wrong
+  train, or TfL lost it), and another is picked; calls that can't be fetched claim nothing
+  (principle 1).
+- **Get off soon**, from **one stop, or two minutes, out**, said once per leg.
+- **Where it shows:** the trip's own screen (the next step over the route), a **card pinned at the
+  top of the main view**, and the notifications below; each opens the trip.
+- **Kept on the device** while on the way (the route, the leg, the train followed), in app storage
+  that is never backed up, so it survives the app being closed; where a rider is going is theirs
+  (*Privacy*), and it's forgotten when the trip ends.
+
+**Notifications** need Android's notification permission, asked for when the rider taps Start;
+declined, the trip still follows them on its screen and the main view's card, which says the
+notifications are off. "Get off soon" has **its own channel, with sound and vibration**, so it can
+be silenced apart from the trip's ongoing notification.
+
+**Pending the maintainer's Play declarations** (built, not merged until they're made; maintainer,
+2026-09-26): an **ongoing notification with the app closed**, which needs a foreground service
+(a Play Console foreground-service declaration), and **live location** to see which train the
+rider boarded and to follow a bus above ground, which needs a location declaration. Until then the
+trip is followed while the app is open. The battery cost is the ~30 s train lookup while shown, and
+with location, a coarse fix at an interval while on the way; nothing new leaves the device but the
+followed train's TfL id.
+
 ### Disruptions
 
 A departure time is worse than useless if the service is cancelled or the stop is

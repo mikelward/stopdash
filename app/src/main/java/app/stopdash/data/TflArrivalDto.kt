@@ -1,6 +1,7 @@
 package app.stopdash.data
 
 import app.stopdash.domain.Departure
+import app.stopdash.domain.VehicleCall
 import app.stopdash.domain.branchOf
 import app.stopdash.domain.cleanStopName
 import java.time.Instant
@@ -28,6 +29,11 @@ data class TflArrivalDto(
     val towards: String? = null,
     val modeName: String = "",
     val expectedArrival: String = "",
+    val vehicleId: String? = null,
+    // Where the prediction is for: the stop's id and name, read by [toVehicleCall] (a stop's own
+    // arrivals already know which stop they're for).
+    val naptanId: String? = null,
+    val stationName: String? = null,
 )
 
 /**
@@ -61,5 +67,18 @@ fun TflArrivalDto.toDeparture(): Departure {
         mode = modeName,
         branch = branchOf(towards),
         destinationId = destinationNaptanId?.trim().orEmpty(),
+        vehicleId = vehicleIdOf(vehicleId),
     )
 }
+
+/** A call on a train's own arrivals (`/Vehicle/{id}/Arrivals`): the stop it's for and when. */
+fun TflArrivalDto.toVehicleCall(): VehicleCall = VehicleCall(
+    stopId = naptanId?.trim().orEmpty(),
+    stopName = cleanStopName(stationName.orEmpty()),
+    platform = platformName?.ifBlank { null },
+    expected = Instant.parse(expectedArrival),
+)
+
+// TfL's vehicle id, trimmed; blank when it gives none, or its all-zero placeholder (a train it hasn't
+// identified), which is no particular train.
+private fun vehicleIdOf(raw: String?): String = raw?.trim()?.takeIf { id -> id.any { it != '0' } }.orEmpty()

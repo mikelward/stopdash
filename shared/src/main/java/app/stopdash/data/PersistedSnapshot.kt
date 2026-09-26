@@ -122,6 +122,9 @@ data class PersistedDeparture(
     // The terminus stop id (TfL `destinationNaptanId`), so a restored or widget-refreshed snapshot
     // hides the same terminating services ([Terminating]). Defaulted blank for an older snapshot.
     val destinationId: String = "",
+    // TfL's id for the train making the departure, so one restored can still be followed. Defaulted
+    // blank (no train) for an older snapshot.
+    val vehicleId: String = "",
 )
 
 @Serializable
@@ -213,6 +216,7 @@ private fun Departure.toPersisted(): PersistedDeparture =
         mode = mode,
         branch = branch,
         destinationId = destinationId,
+        vehicleId = vehicleId,
     )
 
 internal fun PersistedDeparture.toDomain(): Departure =
@@ -228,4 +232,5 @@ internal fun PersistedDeparture.toDomain(): Departure =
         // short label on restore, so a persisted row matches a freshly-fetched one (SPEC).
         branch = normalizeBranch(branch),
         destinationId = destinationId,
+        vehicleId = vehicleId,
     )
