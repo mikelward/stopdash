@@ -1019,11 +1019,22 @@ them there:
   underground with no GPS. TfL predicts only about half an hour ahead, so a stop further on is
   **not yet predicted, not passed**: while the train keeps to the leg's planned stops, the stops
   left are counted from the plan and no time is claimed. Its calls moved on past where they get
-  off, they have **got off**: the trip walks on for the walk's planned time, then waits for the
-  next leg's train. An empty answer ends a ride only once the rider was seen due off. A followed
-  train that neither calls at the boarding stop nor keeps to the leg is **lost** (the wrong
-  train, or TfL lost it), and another is picked; calls that can't be fetched claim nothing
-  (principle 1).
+  off, once it was seen due there by now, they have **got off**: the trip walks on for the walk's
+  planned time, then waits for the next leg's train. An empty answer once they were seen due off
+  is the same (TfL has no calls left for a train that has reached its terminus). Without that
+  sighting, calls that leave the leg (a diversion, another branch) or an empty answer claim
+  nothing: the rider is **lost** on it rather than moved on. A train is only followed on a leg if every stop it calls at between
+  boarding and getting off is one of the leg's own, in the leg's order (not another branch, nor a
+  loop's other way round); one that calls off the leg on the way is **lost**, not ridden. A bus
+  leg can't be checked that way: the Planner names its stops by stop area, which the live calls (by
+  pole) never name, so a bus is taken on its boarding and alighting stops alone, matched by pole: a
+  stop the Planner gives only as a stop area is never matched to a pole by name (a route can call at
+  two stops of one name), so such a leg isn't followed. Until its calls
+  reach the rider's stop it is taken only if it shows the Planner's terminus (a short working or
+  another branch looks the same until then), and beyond its predictions it is ridden with the stops
+  left not counted, until it was seen due at the stop and has passed it. A followed train that neither calls at the
+  boarding stop nor keeps to the leg is **lost** (the wrong train, or TfL lost it), and another is
+  picked; calls that can't be fetched claim nothing (principle 1).
 - **Get off soon**, from **one stop, or two minutes, out**, said once per leg.
 - **Where it shows:** the trip's own screen (the next step over the route), a **card pinned at the
   top of the main view**, and the notifications below; each opens the trip.

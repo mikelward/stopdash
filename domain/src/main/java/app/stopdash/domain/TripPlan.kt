@@ -8,7 +8,8 @@ import java.time.Instant
  * or a walk between them ([isWalk]). The times are TfL Journey Planner's timetable view — the lines
  * and changes are its, the live times are StopDash's own ([TripTiming]).
  *
- * [path] is the stop ids the leg calls at after boarding, through [toId]; [changeAfter] is the time
+ * [path] is the stop ids the leg calls at after boarding, through [toId], and [pathNames] their names
+ * (cleaned; empty when not known), as TfL can name a station by another id; [changeAfter] is the time
  * the Planner allows to change to the next leg; [headings] is the terminus the Planner's service
  * runs to ("Stanmore"), as its front and a station card show it, for when no live train does.
  *
@@ -27,6 +28,7 @@ data class TripLeg(
     val departure: Instant,
     val arrival: Instant,
     val path: List<String> = emptyList(),
+    val pathNames: List<String> = emptyList(),
     val changeAfter: Duration = Duration.ZERO,
     val headings: List<String> = emptyList(),
     val fromArea: String = "",

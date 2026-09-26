@@ -94,6 +94,15 @@ class JourneyPlannerTest {
     }
 
     @Test
+    fun `a leg keeps its stops' names alongside their ids, cleaned`() = runTest {
+        val fixture = checkNotNull(javaClass.getResource("/fixtures/journey_results_archway_to_cannon_street.json")).readText()
+        val ride = client(fixture).journeys("940GZZLUACY", "910GCANONST").first().legs.first()
+        assertEquals(ride.path.size, ride.pathNames.size)
+        assertEquals("940GZZLUTFP", ride.path.first())
+        assertEquals("Tufnell Park", ride.pathNames.first())
+    }
+
+    @Test
     fun `a train's heading drops the branch the Planner names after it`() = runTest {
         val fixture = checkNotNull(javaClass.getResource("/fixtures/journey_results_kennington_to_archway.json")).readText()
         // The Planner names it "High Barnet Station via Charing Cross"; the train's front reads "High Barnet".
