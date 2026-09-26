@@ -1,6 +1,7 @@
 package app.stopdash.data
 
 import app.stopdash.domain.ActiveTrip
+import app.stopdash.domain.Coordinates
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
 import java.io.File
@@ -255,6 +256,7 @@ private data class PersistedActiveTrip(
     val vehicleId: String = "",
     val boardsAt: String? = null,
     val boarded: Boolean = false,
+    val boardedAt: String? = null,
     val dueOffAt: String? = null,
     val warnedLeg: Int = -1,
 ) {
@@ -267,6 +269,7 @@ private data class PersistedActiveTrip(
         vehicleId = vehicleId,
         boardsAt = boardsAt?.let(Instant::parse),
         boarded = boarded,
+        boardedAt = boardedAt?.let(Instant::parse),
         dueOffAt = dueOffAt?.let(Instant::parse),
         warnedLeg = warnedLeg,
     )
@@ -281,6 +284,7 @@ private data class PersistedActiveTrip(
             vehicleId = trip.vehicleId,
             boardsAt = trip.boardsAt?.toString(),
             boarded = trip.boarded,
+            boardedAt = trip.boardedAt?.toString(),
             dueOffAt = trip.dueOffAt?.toString(),
             warnedLeg = trip.warnedLeg,
         )
@@ -304,17 +308,21 @@ private data class PersistedTripLeg(
     val headings: List<String> = emptyList(),
     val fromArea: String = "",
     val toArea: String = "",
+    // Where the leg boards: a public stop position, not the rider's.
+    val fromLat: Double? = null,
+    val fromLon: Double? = null,
 ) {
     fun toLeg() = TripLeg(
         mode, lineId, lineName, fromId, fromName, toId, toName, Instant.parse(departure), Instant.parse(arrival),
         path, pathNames, Duration.ofSeconds(changeAfterSeconds), headings, fromArea, toArea,
+        fromAt = if (fromLat != null && fromLon != null) Coordinates(fromLat, fromLon) else null,
     )
 
     companion object {
         fun of(leg: TripLeg) = PersistedTripLeg(
             leg.mode, leg.lineId, leg.lineName, leg.fromId, leg.fromName, leg.toId, leg.toName,
             leg.departure.toString(), leg.arrival.toString(), leg.path, leg.pathNames, leg.changeAfter.seconds, leg.headings,
-            leg.fromArea, leg.toArea,
+            leg.fromArea, leg.toArea, leg.fromAt?.latitude, leg.fromAt?.longitude,
         )
     }
 }

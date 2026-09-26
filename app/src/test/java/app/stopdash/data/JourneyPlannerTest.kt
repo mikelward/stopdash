@@ -155,6 +155,14 @@ class JourneyPlannerTest {
     }
 
     @Test
+    fun `a leg keeps where the Planner places its boarding stop, and none when it gives none`() = runTest {
+        val fixture = checkNotNull(javaClass.getResource("/fixtures/journey_results_archway_to_cannon_street.json")).readText()
+        val journeys = client(fixture).journeys("940GZZLUACY", TripDestination.Stop("910GCANONST"))
+        assertEquals(app.stopdash.domain.Coordinates(51.564624624535, -0.134969428047), journeys[0].legs.first().fromAt)
+        assertEquals(null, journeys[1].legs.first().fromAt)
+    }
+
+    @Test
     fun `a train's heading drops the branch the Planner names after it`() = runTest {
         val fixture = checkNotNull(javaClass.getResource("/fixtures/journey_results_kennington_to_archway.json")).readText()
         // The Planner names it "High Barnet Station via Charing Cross"; the train's front reads "High Barnet".

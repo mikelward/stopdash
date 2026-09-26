@@ -561,7 +561,8 @@ class MainActivity : ComponentActivity() {
                 val onTheWayTrip by tracker.trip.collectAsStateWithLifecycle()
                 // A trip on the way is followed by its foreground service, app open or closed: started
                 // here (the foreground), on Start and on every return to the app with a trip on the way,
-                // so a start Android refused is tried again; it stops itself.
+                // so a start Android refused is tried again, and a location grant made meanwhile (in
+                // Settings) moves the service onto location; it stops itself.
                 val onTheWayActive = onTheWayTrip != null
                 LifecycleResumeEffect(onTheWayActive) {
                     if (onTheWayActive) OnTheWayService.start(applicationContext)

@@ -31,7 +31,7 @@ the way `values-en-rGB` overrides the app's strings.
 >
 > Honest about freshness: every time shows how old it is, and StopDash never passes old data off as live. When TfL can't be reached, it says so.
 >
-> No ads, no account. Your location goes only to TfL, only to find stops near you, and never in the background; a bug report includes it only if you agree. Crash reports and usage stats (with a rough region from your IP address) are opt-in and off by default.
+> No ads, no account. Your location goes only to TfL, only to find stops near you. On a trip you start, it's also checked on your phone to see if you boarded, and never sent. A bug report includes it only if you agree. Crash reports and usage stats (with a rough region from your IP address) are opt-in and off by default.
 >
 > Powered by TfL Open Data. StopDash isn't affiliated with or endorsed by Transport for London.
 

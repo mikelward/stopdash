@@ -1,5 +1,6 @@
 package app.stopdash.data
 
+import app.stopdash.domain.Coordinates
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.cleanStopName
@@ -80,6 +81,7 @@ data class TflJourneyLegDto(
                 .map { signedName(it) }.filter { it.isNotBlank() }.distinct(),
             fromArea = departurePoint.stopPair(),
             toArea = arrivalPoint.stopPair(),
+            fromAt = departurePoint.at(),
         )
     }
 }
@@ -111,6 +113,9 @@ data class TflJourneyPointDto(
     val lat: Double? = null,
     val lon: Double? = null,
 ) {
+    /** Where the Planner places the stop, when it does. */
+    fun at(): Coordinates? = if (lat != null && lon != null) Coordinates(lat, lon) else null
+
     /**
      * The stop a leg boards or leaves at, as the live feed knows it. The Planner names a bus leg's
      * ends by their stop pair ("490G…", both of a road's poles), which TfL gives no arrivals for, and

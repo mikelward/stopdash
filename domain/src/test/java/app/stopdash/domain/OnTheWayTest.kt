@@ -477,4 +477,100 @@ class OnTheWayTest {
         val byRail = TripRoute(listOf(ride.copy(mode = NATIONAL_RAIL_MODE), walk, second))
         assertFalse(OnTheWay.canFollow(byRail))
     }
+
+    // Synthetic positions: the boarding stop, a rider still on its platform, and one 1 km down the line.
+    private val platform = Coordinates(51.5, -0.12)
+    private fun fix(at: Coordinates, accuracyMeters: Float = 5f) = LocationFix(at, isFallback = false, accuracyMeters = accuracyMeters, ageMillis = 1_000L)
+    private val stillThere = fix(Coordinates(51.5005, -0.12))
+    private val downTheLine = fix(Coordinates(51.509, -0.12))
+    private val placed = trip.copy(route = TripRoute(listOf(ride.copy(fromAt = platform), walk, second)))
+
+    @Test
+    fun `the train leaving the boarding stop notes when the rider boarded`() {
+        val following = OnTheWay.follow(placed, train("8", 5))
+        val (onBoard, _) = OnTheWay.advance(following, listOf(call("B", 9), call("C", 14)), at(6))
+        // When it was due to leave, not when a refresh first saw it gone.
+        assertEquals(at(5), onBoard.boardedAt)
+        // Kept from the first sighting, not moved on by each refresh.
+        assertEquals(at(5), OnTheWay.advance(onBoard, listOf(call("C", 14)), at(10)).first.boardedAt)
+    }
+
+    @Test
+    fun `a departure first seen late is dated to the train, so the left-behind window isn't stretched`() {
+        // TfL unreachable (or the app not running) as the train left at 5: first seen gone at 12.
+        val following = OnTheWay.follow(placed, train("8", 5))
+        val (onBoard, _) = OnTheWay.advance(following, listOf(call("C", 14)), at(12))
+        assertEquals(at(5), onBoard.boardedAt)
+        assertFalse(OnTheWay.wantsFix(onBoard, at(12)))
+    }
+
+    @Test
+    fun `a rider still at the boarding stop after their train left missed it, and the next is picked`() {
+        val onBoard = OnTheWay.follow(placed, train("8", 5)).copy(boarded = true, boardedAt = at(6), dueOffAt = at(14))
+        // Too soon to tell: the train may still be pulling out.
+        assertEquals(onBoard, OnTheWay.seen(onBoard, stillThere, at(6)))
+        val missed = OnTheWay.seen(onBoard, stillThere, at(7))
+        assertEquals("", missed.vehicleId)
+        assertFalse(missed.boarded)
+        assertNull(missed.dueOffAt)
+        assertEquals(at(7), missed.legStartedAt)
+        assertEquals(TripProgress.Waiting(ride.copy(fromAt = platform), null), OnTheWay.advance(missed, null, at(7)).second)
+    }
+
+    @Test
+    fun `a rider moving off with the train, or with no fix, stays on it`() {
+        val onBoard = OnTheWay.follow(placed, train("8", 5)).copy(boarded = true, boardedAt = at(6))
+        assertEquals(onBoard, OnTheWay.seen(onBoard, downTheLine, at(7)))
+        assertEquals(onBoard, OnTheWay.seen(onBoard, null, at(7)))
+    }
+
+    @Test
+    fun `a fix is wanted only just after boarding, where the stop is placed`() {
+        val onBoard = OnTheWay.follow(placed, train("8", 5)).copy(boarded = true, boardedAt = at(6))
+        assertTrue(OnTheWay.wantsFix(onBoard, at(7)))
+        assertFalse(OnTheWay.wantsFix(onBoard, at(11)))
+        assertFalse(OnTheWay.wantsFix(onBoard.copy(route = trip.route), at(7)))
+        assertFalse(OnTheWay.wantsFix(OnTheWay.follow(placed, train("8", 5)), at(4)))
+        // Past the window the rider is taken to be on board, wherever the fix says.
+        assertEquals(onBoard, OnTheWay.seen(onBoard, stillThere, at(12)))
+    }
+
+    @Test
+    fun `a fix is wanted only on a train, not a bus held up near its stop`() {
+        val bus = ride.copy(mode = "bus", fromAt = platform)
+        val onBus = OnTheWay.follow(placed.copy(route = TripRoute(listOf(bus, walk, second))), train("8", 5)).copy(boarded = true, boardedAt = at(6))
+        assertFalse(OnTheWay.wantsFix(onBus, at(7)))
+        // Still near the pole in traffic: kept on the bus it's on.
+        assertEquals(onBus, OnTheWay.seen(onBus, stillThere, at(8)))
+    }
+
+    @Test
+    fun `only a fix sure to within the left-behind distance is used`() {
+        val sure = stillThere.copy(accuracyMeters = 10f)
+        assertEquals(sure, OnTheWay.usableFix(sure))
+        // Indoors or at a tunnel mouth: a GPS fix that can't say whether the rider is 150 m away.
+        assertNull(OnTheWay.usableFix(sure.copy(accuracyMeters = 120f)))
+        assertNull(OnTheWay.usableFix(sure.copy(accuracyMeters = null)))
+        assertNull(OnTheWay.usableFix(sure.copy(isCoarse = true)))
+        assertNull(OnTheWay.usableFix(sure.copy(isFallback = true)))
+    }
+
+    @Test
+    fun `a rider is left behind only if the fix is sure they're within the distance`() {
+        val onBoard = OnTheWay.follow(placed, train("8", 5)).copy(boarded = true, boardedAt = at(6))
+        // About 140 m from the stop: sure to 5 m, that's still on the platform's doorstep...
+        val near = Coordinates(51.50126, -0.12)
+        assertEquals("", OnTheWay.seen(onBoard, fix(near, 5f), at(7)).vehicleId)
+        // ...but to 50 m the rider could be 190 m off, already moving on the train: kept on it.
+        assertEquals(onBoard, OnTheWay.seen(onBoard, fix(near, 50f), at(7)))
+    }
+
+    @Test
+    fun `a fix taken a while ago isn't used, however sure it was then`() {
+        val fresh = stillThere.copy(ageMillis = 2_000L)
+        assertEquals(fresh, OnTheWay.usableFix(fresh))
+        // Sure to 5 m, but half a minute old: the rider may be well down the line by now.
+        assertNull(OnTheWay.usableFix(fresh.copy(ageMillis = 30_000L)))
+        assertNull(OnTheWay.usableFix(fresh.copy(ageMillis = null)))
+    }
 }

@@ -10,8 +10,10 @@ import app.stopdash.domain.VehicleCall
 import app.stopdash.domain.VehicleSource
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -23,7 +25,11 @@ import org.junit.Test
 class ActiveTripTrackerTest {
     private val t0 = Instant.parse("2026-09-26T08:00:00Z")
     private fun at(minutes: Long) = t0.plus(Duration.ofMinutes(minutes))
+    // How often a stop's board was asked for (each is a TfL request).
+    private var boardReads = 0
     private var now = t0
+    // A monotonic clock (ms), apart from [now]: the wall clock can be set back, this can't.
+    private var ticks = 0L
 
     private val ride = TripLeg("tube", "red", "Red", "A", "A", "C", "C", at(5), at(15), path = listOf("B", "C"))
     private val route = TripRoute(listOf(ride))
@@ -51,6 +57,8 @@ class ActiveTripTrackerTest {
     // What the tracker logged: never a stop or place (docs/PRIVACY.md).
     private val logged = mutableListOf<String>()
     private var alertsDone = 0
+    // Holds a train's calls back until completed, as a slow TfL answer does.
+    private var gate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
 
     private fun tracker(dispatcher: kotlinx.coroutines.CoroutineDispatcher, load: () -> ActiveTrip? = { null }) = ActiveTripTracker(
         load = load,
@@ -63,9 +71,13 @@ class ActiveTripTrackerTest {
             kept = it
             saves
         },
-        arrivals = { stop -> if (stop in unknownStops) throw TflException.NotFound(null) else departures[stop].orEmpty() },
+        arrivals = { stop ->
+            boardReads++
+            if (stop in unknownStops) throw TflException.NotFound(null) else departures[stop].orEmpty()
+        },
         vehicles = object : VehicleSource {
             override suspend fun vehicleCalls(vehicleId: String, lineId: String): List<VehicleCall> {
+                gate?.await()
                 if (failing) throw TflException.Offline(null)
                 if (vehicleId in gone) throw TflException.NotFound(null)
                 asked += vehicleId
@@ -73,6 +85,7 @@ class ActiveTripTrackerTest {
             }
         },
         clock = { now },
+        elapsed = { ticks },
         io = dispatcher,
         warn = { logged += it },
         onGetOffSoon = { _, riding ->
@@ -645,6 +658,147 @@ class ActiveTripTrackerTest {
         advanceUntilIdle()
         assertEquals(0, tracker.starting.value)
         assertEquals(route, checkNotNull(tracker.trip.value).route)
+    }
+
+    @Test
+    fun `a rider seen still at the boarding stop after their train left is moved to the next train`() = runTest {
+        // Synthetic positions: the boarding stop, and the rider a few meters from it.
+        val placed = TripRoute(listOf(ride.copy(fromAt = app.stopdash.domain.Coordinates(51.5, -0.12))))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6), train("4", 9))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        trains["4"] = listOf(call("A", 9), call("B", 12), call("C", 17))
+        tracker.start(placed, "C", readyAt = now)
+        tracker.refresh()
+        now = at(6)
+        trains["3"] = listOf(call("B", 9), call("C", 14))
+        tracker.refresh()
+        assertTrue(checkNotNull(tracker.trip.value).boarded)
+        now = at(8)
+        tracker.refresh(rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.5003, -0.12), isFallback = false, accuracyMeters = 5f))
+        assertEquals("4", tracker.trip.value?.vehicleId)
+        assertEquals(TripProgress.Waiting(placed.legs.single(), at(9)), tracker.progress.value)
+    }
+
+    @Test
+    fun `a get-off alert said for a train the rider turned out not to be on is taken back`() = runTest {
+        // A short leg: get off soon is said as the train leaves, before a fix shows the rider left behind.
+        val placed = TripRoute(listOf(ride.copy(fromAt = app.stopdash.domain.Coordinates(51.5, -0.12))))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6), train("4", 9))
+        trains["3"] = listOf(call("A", 6), call("C", 8))
+        trains["4"] = listOf(call("A", 9), call("B", 12), call("C", 17))
+        tracker.start(placed, "C", readyAt = now)
+        alertsDone = 0 // Start's first read found no kept trip, and cleared any alert left.
+        tracker.refresh()
+        now = at(6)
+        trains["3"] = listOf(call("C", 8))
+        tracker.refresh()
+        assertEquals(1, warned.size)
+        now = at(7)
+        tracker.refresh(rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.5003, -0.12), isFallback = false, accuracyMeters = 5f))
+        assertEquals("4", tracker.trip.value?.vehicleId)
+        assertEquals(1, alertsDone)
+    }
+
+    @Test
+    fun `a rider left behind isn't told to get off when the next train can't be found yet`() = runTest {
+        val placed = TripRoute(listOf(ride.copy(fromAt = app.stopdash.domain.Coordinates(51.5, -0.12))))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6), train("4", 9))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        tracker.start(placed, "C", readyAt = now)
+        tracker.refresh()
+        now = at(6)
+        trains["3"] = listOf(call("B", 9), call("C", 14))
+        tracker.refresh()
+        assertTrue(tracker.progress.value is TripProgress.Riding)
+        // Seen still on the platform, but the next train's lookup fails.
+        now = at(8)
+        failing = true
+        tracker.refresh(rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.5003, -0.12), isFallback = false, accuracyMeters = 5f))
+        assertTrue(tracker.failed.value)
+        assertEquals(TripProgress.Waiting(placed.legs.single(), null), tracker.progress.value)
+    }
+
+    @Test
+    fun `a rider left behind with no next train yet asks the board once, not twice`() = runTest {
+        val placed = TripRoute(listOf(ride.copy(fromAt = app.stopdash.domain.Coordinates(51.5, -0.12))))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        tracker.start(placed, "C", readyAt = now)
+        tracker.refresh()
+        now = at(6)
+        trains["3"] = listOf(call("B", 9), call("C", 14))
+        tracker.refresh()
+        // Seen still on the platform, and no other train on the board yet.
+        now = at(8)
+        departures["A"] = emptyList()
+        boardReads = 0
+        tracker.refresh(rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.5003, -0.12), isFallback = false, accuracyMeters = 5f, ageMillis = 1_000L))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(1, boardReads)
+    }
+
+    @Test
+    fun `a fix that went stale waiting behind another refresh doesn't drop the train`() = runTest {
+        val placed = TripRoute(listOf(ride.copy(fromAt = app.stopdash.domain.Coordinates(51.5, -0.12))))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6), train("4", 9))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        trains["4"] = listOf(call("A", 9), call("B", 12), call("C", 17))
+        tracker.start(placed, "C", readyAt = now)
+        tracker.refresh()
+        now = at(6)
+        trains["3"] = listOf(call("B", 9), call("C", 14))
+        tracker.refresh()
+        now = at(8)
+        // A refresh held up on TfL, and a fix a second old waiting behind it for 20 s.
+        val slow = kotlinx.coroutines.CompletableDeferred<Unit>()
+        gate = slow
+        backgroundScope.launch { tracker.refresh() }
+        runCurrent()
+        val fixed = backgroundScope.launch {
+            tracker.refresh(rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.5003, -0.12), isFallback = false, accuracyMeters = 5f, ageMillis = 1_000L))
+        }
+        runCurrent()
+        now = now.plusSeconds(20)
+        ticks += 20_000
+        gate = null
+        slow.complete(Unit)
+        fixed.join()
+        assertEquals("3", tracker.trip.value?.vehicleId)
+    }
+
+    @Test
+    fun `a fix's wait is timed on a clock that can't be set back`() = runTest {
+        val placed = TripRoute(listOf(ride.copy(fromAt = app.stopdash.domain.Coordinates(51.5, -0.12))))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6), train("4", 9))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        trains["4"] = listOf(call("A", 9), call("B", 12), call("C", 17))
+        tracker.start(placed, "C", readyAt = now)
+        tracker.refresh()
+        now = at(6)
+        trains["3"] = listOf(call("B", 9), call("C", 14))
+        tracker.refresh()
+        now = at(8)
+        val slow = kotlinx.coroutines.CompletableDeferred<Unit>()
+        gate = slow
+        backgroundScope.launch { tracker.refresh() }
+        runCurrent()
+        val fixed = backgroundScope.launch {
+            tracker.refresh(rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.5003, -0.12), isFallback = false, accuracyMeters = 5f, ageMillis = 1_000L))
+        }
+        runCurrent()
+        // 20 s pass while the phone's clock is set back a few seconds.
+        now = now.minusSeconds(5)
+        ticks += 20_000
+        gate = null
+        slow.complete(Unit)
+        fixed.join()
+        assertEquals("3", tracker.trip.value?.vehicleId)
     }
 
     @Test

@@ -16,6 +16,9 @@ import java.time.Instant
  * A bus leg's ends are stop pairs to the Planner ("490G…", a road's two poles), [fromArea] and
  * [toArea]; [fromId] and [toId] are the poles it names within them, which can be the other side of
  * the road from the one the bus uses. Empty for any other stop.
+ *
+ * [fromAt] is where the leg boards, as the Planner places the stop (a public stop position, null when
+ * it gives none): a trip on the way sees from it whether the rider left on the train.
  */
 data class TripLeg(
     val mode: String,
@@ -33,6 +36,7 @@ data class TripLeg(
     val headings: List<String> = emptyList(),
     val fromArea: String = "",
     val toArea: String = "",
+    val fromAt: Coordinates? = null,
 ) {
     val isWalk: Boolean get() = mode.equals(WALKING, ignoreCase = true)
 

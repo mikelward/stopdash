@@ -29,6 +29,7 @@ class FileActiveTripStoreTest {
                     t0, t0.plusSeconds(600), path = listOf("940GZZLUBMY", "940GZZLUWLO"),
                     pathNames = listOf("Bermondsey", "Waterloo"),
                     changeAfter = Duration.ofMinutes(3), headings = listOf("Stanmore"),
+                    fromAt = app.stopdash.domain.Coordinates(51.5, -0.12),
                 ),
                 TripLeg(TripLeg.WALKING, "", "", "940GZZLUWLO", "Waterloo", "910GWLOO", "Waterloo", t0.plusSeconds(600), t0.plusSeconds(900)),
             ),
@@ -39,6 +40,7 @@ class FileActiveTripStoreTest {
         vehicleId = "162",
         boardsAt = Instant.parse("2026-09-26T08:02:00Z"),
         boarded = true,
+        boardedAt = Instant.parse("2026-09-26T08:02:00Z"),
         dueOffAt = Instant.parse("2026-09-26T08:14:00Z"),
         warnedLeg = 0,
     )
