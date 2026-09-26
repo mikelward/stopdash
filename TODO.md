@@ -880,8 +880,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 later between two refreshes, is taken for its next lap (it gives the very same calls
                 as one that just left with its next lap predicted). Tell them apart from the rider's
                 location (still at the stop), or from how long since the call was last seen.
-        - [ ] Start, the trip's on-the-way screen, End trip, and picking another train; the trip
-              kept on the device.
+        - [x] Start, the trip's on-the-way screen and End trip; the trip kept on the device and
+              followed while the app is in the foreground.
+        - [ ] Picking another train by hand ("I'm on this one"), until location can see it.
         - [ ] The main view's pinned card.
         - [ ] "Get off soon" on its own channel (sound, vibration), the permission asked on Start.
         - [ ] **Not to merge until the maintainer's Play declarations:** the ongoing notification

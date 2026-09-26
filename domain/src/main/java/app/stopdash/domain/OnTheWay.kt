@@ -75,6 +75,13 @@ object OnTheWay {
     val GET_OFF_SOON_TIME: Duration = Duration.ofMinutes(2)
 
     /**
+     * Whether [route] can be followed: each of its rides by a train its departures name. National
+     * Rail's come from its own boards (SPEC *National Rail*), which name none.
+     */
+    fun canFollow(route: TripRoute): Boolean =
+        route.legs.none { !it.isWalk && it.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) }
+
+    /**
      * The train to follow for a leg: the soonest of its [trains] (the leg's line, heading its way,
      * as the trip lists them) that TfL names and the rider can reach by [readyAt]. The maintainer's
      * rule (2026-09-26): assume the next catchable train, and switch once another is seen to be the

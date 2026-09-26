@@ -230,6 +230,8 @@ jobs:
         run: ./gradlew :app:testDebugUnitTest --tests "app.stopdash.ui.StationSearchScreenshotTest" -Proborazzi.test.record=true
       - name: Run TripScreen screenshot tests
         run: ./gradlew :app:testDebugUnitTest --tests "app.stopdash.ui.TripScreenScreenshotTest" -Proborazzi.test.record=true
+      - name: Run OnTheWayScreen screenshot tests
+        run: ./gradlew :app:testDebugUnitTest --tests "app.stopdash.ui.OnTheWayScreenScreenshotTest" -Proborazzi.test.record=true
       # The watch's captures land in app/src/test/snapshots too (wear_*.png), so this one
       # pipeline records, diffs and commits them.
       - name: Run WatchHome screenshot tests

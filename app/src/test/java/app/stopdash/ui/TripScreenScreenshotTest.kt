@@ -52,6 +52,7 @@ import java.time.Instant
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -288,6 +289,68 @@ class TripScreenScreenshotTest {
         composeRule.onNodeWithText("┊  3 min to change").assertIsDisplayed()
         composeRule.onNodeWithText("2 stops to Canary Wharf").assertIsDisplayed()
         captureSnapshot("trip-route-legs.png")
+    }
+
+    @Test
+    fun an_open_route_starts_on_the_way() {
+        var started: TripRoute? = null
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {},
+                    onStart = { started = it },
+                )
+            }
+        }
+        // The list itself offers no Start: only an open route does.
+        composeRule.onNodeWithText("Start").assertDoesNotExist()
+        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Start").performClick()
+        composeRule.runOnIdle { assertEquals(viaCanadaWater, started) }
+    }
+
+    @Test
+    fun a_route_with_a_national_rail_train_says_it_cant_be_followed() {
+        // The same route, its first train a National Rail one: its departures name no train to follow.
+        val byRail = TripRoute(listOf(viaCanadaWater.legs[0].copy(mode = "national-rail"), viaCanadaWater.legs[1]))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf", state = planned.copy(routes = listOf(byRail)), now = now,
+                    access = Duration.ofMinutes(2), routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {},
+                    onStart = {},
+                )
+            }
+        }
+        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Start").assertDoesNotExist()
+        composeRule.onNodeWithText("Can't follow National Rail trains yet").assertIsDisplayed()
+    }
+
+    @Test
+    fun a_trip_already_on_the_way_is_opened_not_replaced() {
+        var started = false
+        var opened = false
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {},
+                    onStart = { started = true }, onOpenTrip = { opened = true },
+                )
+            }
+        }
+        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Start").assertDoesNotExist()
+        composeRule.onNodeWithText("Open current trip").performClick()
+        composeRule.runOnIdle {
+            assertTrue(opened)
+            assertFalse(started)
+        }
     }
 
     @Test

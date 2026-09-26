@@ -434,4 +434,11 @@ class OnTheWayTest {
         assertEquals(TripProgress.Waiting(ride, at(14)), progress)
         assertEquals(at(14), next.boardsAt)
     }
+
+    @Test
+    fun `a route with a National Rail train can't be followed, having no train to name`() {
+        assertTrue(OnTheWay.canFollow(trip.route))
+        val byRail = TripRoute(listOf(ride.copy(mode = NATIONAL_RAIL_MODE), walk, second))
+        assertFalse(OnTheWay.canFollow(byRail))
+    }
 }

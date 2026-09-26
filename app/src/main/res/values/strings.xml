@@ -364,4 +364,42 @@
     <!-- Toasts when the share sheet didn't open (the report is on the clipboard) or nothing landed. -->
     <string name="bug_report_copied">Bug report copied to clipboard</string>
     <string name="bug_report_failed">Couldn\'t share the bug report</string>
+    <!-- On the way (SPEC *On the way*): a started trip, followed by its train. -->
+    <string name="on_the_way">On the way</string>
+    <string name="on_the_way_title">To %1$s</string>
+    <!-- In place of Start, on a route with a National Rail train: its boards name no train to follow. -->
+    <string name="on_the_way_cant_follow_rail">Can\'t follow National Rail trains yet</string>
+    <!-- In place of Start while another trip is on the way: opens that one. -->
+    <string name="on_the_way_open_current">Open current trip</string>
+    <string name="on_the_way_start">Start</string>
+    <string name="on_the_way_end">End trip</string>
+    <string name="on_the_way_done">Done</string>
+    <string name="on_the_way_next">Next</string>
+    <!-- %1$s the line ("Jubilee"), %2$s the stop. -->
+    <string name="on_the_way_board">Board %1$s at %2$s</string>
+    <string name="on_the_way_due">Due in %1$d min</string>
+    <!-- In place of a train's time or stops, back after a while away, until the next answer. -->
+    <string name="on_the_way_updating">Updating…</string>
+    <!-- The trip couldn't be saved on the device (storage full or failing): it may end, or come back out of date, if the app closes. -->
+    <string name="on_the_way_not_kept">Couldn\'t save the trip on this phone</string>
+    <!-- End trip couldn't remove the trip from the device (storage failing). -->
+    <string name="on_the_way_end_failed">Couldn\'t end the trip. Try again.</string>
+    <string name="on_the_way_finding">Finding your train…</string>
+    <string name="on_the_way_get_off">Get off at %1$s</string>
+    <string name="on_the_way_next_stop">Next stop</string>
+    <!-- Stops left not known (a bus beyond its predictions); %1$s the next stop. -->
+    <string name="on_the_way_next_is">Next: %1$s</string>
+    <!-- %1$d stops left, counting the stop itself; %2$s the next stop. -->
+    <plurals name="on_the_way_stops">
+        <item quantity="one">%1$d stop · next %2$s</item>
+        <item quantity="other">%1$d stops · next %2$s</item>
+    </plurals>
+    <string name="on_the_way_walk">Walk to %1$s</string>
+    <string name="on_the_way_walk_time">About %1$d min</string>
+    <string name="on_the_way_walk_leg">Walk</string>
+    <string name="on_the_way_lost">Can\'t find your train</string>
+    <string name="on_the_way_arrived">You\'ve arrived</string>
+    <string name="on_the_way_failed">Couldn\'t update just now</string>
+    <!-- A leg: %1$s from, %2$s to. -->
+    <string name="on_the_way_leg">%1$s → %2$s</string>
 </resources>

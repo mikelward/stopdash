@@ -102,6 +102,14 @@ boards are fetched from TfL like any other stop's, along with its lines' status.
 in memory only, never saved or logged beyond coarse diagnostics (a stop id, an HTTP status), and
 nothing runs once you leave the trip.
 
+**A trip on the way** (after you tap *Start* on a route) is kept on the device until you arrive or
+end it: the route's stops and lines, the leg you're on and the train followed, in app storage that
+Android never backs up or transfers, so the trip survives the app being closed. It's never logged
+beyond coarse diagnostics (a line id, an error kind) or sent anywhere. While the app is open, stopdash
+asks TfL about every 30 seconds where the followed train will call next, by TfL's own id for that
+train, and for the departures at a stop where the next leg boards; neither says anything about you
+that the trip's departures don't already. Ending the trip, or arriving, deletes it.
+
 **Starred journeys** (two stops you travel between) are kept on the device with your other
 settings and stars, so they ride your own Android backup like the rest (above); they are never
 logged or sent anywhere. For the widget, the departures at a journey's nearer stop, and which of

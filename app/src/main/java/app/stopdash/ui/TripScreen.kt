@@ -1,5 +1,7 @@
 package app.stopdash.ui
 
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.Button
 import app.stopdash.domain.DismissedAlert
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarHost
@@ -81,6 +83,7 @@ import app.stopdash.domain.Staleness
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopGrouping
 import app.stopdash.domain.TripLeg
+import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTiming
 import java.time.Duration
@@ -514,12 +517,18 @@ internal fun TripScreen(
     onDismissAlert: ((DepartureRow) -> Unit)? = null,
     dismissWriteFailed: Boolean = false,
     onDismissWriteFailureShown: () -> Unit = {},
+    // Start an open route on the way (SPEC *On the way*); null offers no Start.
+    onStart: ((TripRoute) -> Unit)? = null,
+    // With a trip already on the way, open it in Start's place rather than replace it.
+    onOpenTrip: (() -> Unit)? = null,
 ) {
     CompositionLocalProvider(LocalRouteStops provides routeStops) {
         TripContent(
             title, state, now, access, onBack, onRetry, locationBanner, relocating, onRelocate,
             hiddenModes, onShowAllModes, onHideMode, hiddenModesWriteFailed, onHiddenModesWriteFailureShown, menu, openRoute,
             TripAlerts(dismissed, onDismissAlert, dismissWriteFailed, onDismissWriteFailureShown),
+            onStart,
+            onOpenTrip,
         )
     }
 }
@@ -555,6 +564,8 @@ private fun TripContent(
     menu: AppMenuActions? = null,
     openRoute: MutableState<String?>? = null,
     alerts: TripAlerts = TripAlerts(emptySet(), null, false) {},
+    onStart: ((TripRoute) -> Unit)? = null,
+    onOpenTrip: (() -> Unit)? = null,
 ) {
     // Only the timed routes' lines: a hidden mode's routes, and those past the cap, load no route data.
     // While a plan's answers are still landing, the last settled plan's lines stand, so a passing
@@ -687,6 +698,32 @@ private fun TripContent(
     }
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        // An open route starts on the way from here: followed by its train to the destination.
+        bottomBar = {
+            if (open != null && onStart != null && onOpenTrip != null) {
+                // One trip at a time: the one on the way is ended from its own screen.
+                Button(
+                    onClick = onOpenTrip,
+                    modifier = Modifier.fillMaxWidth().padding(16.dp).height(56.dp),
+                ) {
+                    Text(stringResource(R.string.on_the_way_open_current))
+                }
+            } else if (open != null && onStart != null && !OnTheWay.canFollow(open.route)) {
+                Text(
+                    stringResource(R.string.on_the_way_cant_follow_rail),
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (open != null && onStart != null) {
+                Button(
+                    onClick = { onStart(open.route) },
+                    modifier = Modifier.fillMaxWidth().padding(16.dp).height(56.dp),
+                ) {
+                    Text(stringResource(R.string.on_the_way_start))
+                }
+            }
+        },
         topBar = {
             TopAppBar(
                 navigationIcon = {

@@ -1021,7 +1021,11 @@ them there:
   soonest the route lists that TfL names (its `vehicleId`) and that is due after the rider can
   reach the stop — and switches when another is seen to be the one they're on: picked by the
   rider, or (with location, below) seen moving with them. A change picks the next leg's train the
-  same way once the rider has got off and walked.
+  same way once the rider has got off and walked. A route that starts with a walk shows the walk
+  first (maintainer, 2026-09-27), and its first ride's train is picked once it's done. A route with a **National Rail** train offers no
+  Start but says it can't be followed yet: its times come from National Rail's boards, which name
+  no train to follow. **One trip at a time:** while one is on the way, a route offers **Open current
+  trip** in Start's place; the trip is ended from its own screen.
 - **Following it.** The trip asks TfL for **the followed train's calls ahead of it**
   (`/Vehicle/{id}/Arrivals`, in one request) about every 30 s while it is shown. Still due at the
   boarding stop, the rider is **waiting** for it; once it has left, they are taken to be **on
@@ -1045,6 +1049,9 @@ them there:
   left not counted, until it was seen due at the stop and has passed it. A followed train that neither calls at the
   boarding stop nor keeps to the leg is **lost** (the wrong train, or TfL lost it), and another is
   picked; calls that can't be fetched claim nothing (principle 1).
+- **Only a recent answer is live.** A train's time, the stops left and "get off soon" show only
+  while the last answer is under about a minute and a quarter old; back after a while away, the
+  step stays but its details say **Updating…** until the next answer (principle 1).
 - **Get off soon**, from **one stop, or two minutes, out**, said once per leg.
 - **Where it shows:** the trip's own screen (the next step over the route), a **card pinned at the
   top of the main view**, and the notifications below; each opens the trip.
