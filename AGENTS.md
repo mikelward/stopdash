@@ -99,7 +99,9 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
 - **The test is whether a value is somebody's, not whether the name looks real.** A
   canned line ("Victoria line") or a well-known station used as a documentation example
   is fine; a coordinate or a watched-stop list lifted from a real device or bug report is
-  not. Paraphrase a user's bug report in the commit/PR; don't quote it verbatim. When in
+  not. A station's published position (tube, rail, tram — any mode but bus) is network data,
+  not somebody's, so recorded fixtures may keep it; a **bus stop's** is synthetic, as one can
+  sit outside a rider's door (maintainer, 2026-09-26). Paraphrase a user's bug report in the commit/PR; don't quote it verbatim. When in
   doubt, ask before pushing.
 - **The on-device debug log is one exception, and narrow**: coarse diagnostics only —
   a stop ID, a line id, an HTTP status — never a raw coordinate or the API key. `docs/
@@ -129,7 +131,7 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
 
 - Product logic belongs in the pure `:domain` module (`app.stopdash.domain`), JVM-testable
   without Android; test it against **recorded TfL fixtures**, never the live API and never a
-  real coordinate.
+  real rider's or bus stop's coordinate (a station's published position is fine — *Privacy*).
 - Compose screens and Glance widget layouts get Robolectric + Roborazzi screenshot tests
   wired into `.github/workflows/ci.yml` — a new `*ScreenshotTest` class needs its own
   step in the CI `--tests` allow-list or it records nothing.
