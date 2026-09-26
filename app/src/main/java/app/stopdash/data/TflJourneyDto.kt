@@ -73,7 +73,8 @@ data class TflJourneyLegDto(
             toName = pointName(arrivalPoint.commonName),
             departure = departure,
             arrival = arrival,
-            path = path.stopPoints.map { it.id }.filter { it.isNotBlank() },
+            path = path.stopPoints.filter { it.id.isNotBlank() }.map { it.id },
+            pathNames = path.stopPoints.filter { it.id.isNotBlank() }.map { pointName(it.name) },
             changeAfter = Duration.ofMinutes(change ?: 0),
             headings = routeOptions.firstOrNull()?.directions.orEmpty()
                 .map { signedName(it) }.filter { it.isNotBlank() }.distinct(),

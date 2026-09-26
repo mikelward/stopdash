@@ -874,7 +874,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             route follows the rider there, assuming the next train they can catch and switching
             when another is seen (this replaces the mock's "I'm on this one" tap as the way in).
         - [x] Which train makes each departure, and one train's calls ahead (`VehicleSource`).
-        - [ ] Following a started trip from its train's calls (`OnTheWay`, `:domain`).
+        - [x] Following a started trip from its train's calls (`OnTheWay`, `:domain`).
+          - [ ] **A loop train's boarding call jumping over five minutes at once**: a loop train still
+                on its previous lap, whose call at the boarding stop moves more than five minutes
+                later between two refreshes, is taken for its next lap (it gives the very same calls
+                as one that just left with its next lap predicted). Tell them apart from the rider's
+                location (still at the stop), or from how long since the call was last seen.
         - [ ] Start, the trip's on-the-way screen, End trip, and picking another train; the trip
               kept on the device.
         - [ ] The main view's pinned card.
