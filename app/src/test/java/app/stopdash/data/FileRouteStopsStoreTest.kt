@@ -26,7 +26,7 @@ class FileRouteStopsStoreTest {
             "43/inbound" to RouteStopsStore.Timed(
                 at,
                 LineSequence(
-                    routes = listOf(LineRoute("Park ↔ Hill", listOf("490000001A", "490000002B"))),
+                    routes = listOf(LineRoute("Park ↔ Hill", listOf("490000001A", "490000002B"), direction = "inbound")),
                     stopNames = mapOf("490000001A" to "Park", "490000002B" to "Hill"),
                     stopLines = mapOf("490000002B" to listOf(LineRef("northern", "Northern", "tube"))),
                     stopPositions = mapOf("490000001A" to (51.5 to -0.12)),

@@ -173,6 +173,72 @@ class RouteStopsTest {
     }
 
     @Test
+    fun `a loop's inner and outer rail go opposite ways round`() {
+        // A square loop about the origin, both ways round from N ending at End: the outer rail runs
+        // clockwise (by E), the inner rail anticlockwise (by W).
+        val loop = LineSequence(
+            routes = listOf(
+                LineRoute("N ↔ End", listOf("N", "E", "S", "W", "END")),
+                LineRoute("N ↔ End", listOf("N", "W", "S", "E", "END")),
+            ),
+            stopNames = mapOf("N" to "N", "E" to "E", "S" to "S", "W" to "W", "END" to "End"),
+            stopPositions = mapOf(
+                "N" to (51.01 to 0.0), "E" to (51.0 to 0.01), "S" to (50.99 to 0.0), "W" to (51.0 to -0.01), "END" to (51.0 to 0.0),
+            ),
+        )
+        assertEquals(RouteStops.Resolution.Ambiguous(2), RouteStops.resolve(loop, "N", "End", null))
+        assertEquals("E", RouteStops.ahead(loop, "N", "End", null, bound = RouteStops.Bound.OUTER_RAIL)!![1].id)
+        assertEquals("W", RouteStops.ahead(loop, "N", "End", null, bound = RouteStops.Bound.INNER_RAIL)!![1].id)
+        assertEquals(RouteStops.Bound.INNER_RAIL, RouteStops.boundOf("Inner Rail - Platform 1"))
+        assertEquals(RouteStops.Bound.OUTER_RAIL, RouteStops.boundOf("Outer Rail - Platform 2"))
+        // A platform that faces neither way keeps both: never guessed down to one.
+        assertEquals(RouteStops.Resolution.Ambiguous(2), RouteStops.resolve(loop, "N", "End", null, bound = RouteStops.Bound.NORTH))
+    }
+
+    @Test
+    fun `with a platform that faces no way, the train's direction picks its routes`() {
+        // One line both ways through Mid: outbound runs on to Far, inbound back to Home.
+        val line = LineSequence(
+            routes = listOf(
+                LineRoute("Home ↔ Far", listOf("HOME", "MID", "FAR"), direction = "outbound"),
+                LineRoute("Far ↔ Home", listOf("FAR", "MID", "HOME"), direction = "inbound"),
+            ),
+            stopNames = mapOf("HOME" to "Home", "MID" to "Mid", "FAR" to "Far"),
+        )
+        val far = setOf("FAR")
+        // "Check Front of Train" at "Platform 1": either way, so it can't be said.
+        assertEquals(null, RouteStops.reaches(line, "MID", "Check Front of Train", null, far))
+        assertEquals(true, RouteStops.reaches(line, "MID", "Check Front of Train", null, far, direction = "outbound"))
+        assertEquals(false, RouteStops.reaches(line, "MID", "Check Front of Train", null, far, direction = "inbound"))
+        // A direction no route was fetched for can't narrow, nor can a blank one.
+        assertEquals(null, RouteStops.reaches(line, "MID", "Check Front of Train", null, far, direction = "sideways"))
+        // A route cached before its direction was kept stays a candidate.
+        val unknown = line.copy(routes = line.routes.map { it.copy(direction = "") })
+        assertEquals(null, RouteStops.reaches(unknown, "MID", "Check Front of Train", null, far, direction = "outbound"))
+    }
+
+    @Test
+    fun `a platform's compass wins over the train's direction`() {
+        // On a loop TfL's direction can name the other way round; the platform decides.
+        val loop = LineSequence(
+            routes = listOf(
+                LineRoute("N ↔ End", listOf("N", "E", "S", "W", "END"), direction = "outbound"),
+                LineRoute("N ↔ End", listOf("N", "W", "S", "E", "END"), direction = "inbound"),
+            ),
+            stopNames = mapOf("N" to "N", "E" to "E", "S" to "S", "W" to "W", "END" to "End"),
+            stopPositions = mapOf(
+                "N" to (51.01 to 0.0), "E" to (51.0 to 0.01), "S" to (50.99 to 0.0), "W" to (51.0 to -0.01), "END" to (51.0 to 0.0),
+            ),
+        )
+        assertEquals(
+            "E",
+            RouteStops.ahead(loop, "N", "End", null, bound = RouteStops.Bound.OUTER_RAIL, direction = "inbound")!![1].id,
+        )
+        // No compass: the direction picks.
+        assertEquals("W", RouteStops.ahead(loop, "N", "End", null, direction = "inbound")!![1].id)
+    }
+
+    @Test
     fun `route names parse to their far end`() {
         assertEquals("Edgware", RouteStops.terminusOf("Morden  &harr;  Edgware  via Bank"))
         assertEquals("Archway", RouteStops.terminusOf("Victoria Bus Station &harr;  Archway Station"))

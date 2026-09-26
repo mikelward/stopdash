@@ -616,7 +616,16 @@ destination names neither a stop ahead nor the route: a bus blind shows an area 
 its last stop's name, so matching by name alone left most buses with no list. A
 bus short-working whose label *does* name a stop ahead still ends there, and two variants that part
 ways ahead are still unavailable. Rail keeps the strict name match — its destinations are stations,
-so a miss there is a working the sequence doesn't model. **A station TfL lists under one id and routes
+so a miss there is a working the sequence doesn't model. **A loop goes the way its platform faces**
+(maintainer, 2026-09-26): a Circle line train "to Edgware Road" can reach it either way round, so
+where more than one path matches, the platform's compass ("Eastbound", or a loop's "Inner Rail" /
+"Outer Rail", the outer running clockwise) keeps the path that leaves that way. TfL's direction
+can't decide it — on a loop both trips pass the same platform. Where the platform names no compass
+("Platform 1"), the train's direction does instead, keeping the routes TfL runs that way. **A train TfL shows as "Check Front
+of Train"** keeps TfL's wording on the list, as the platform board has it, but names no place: it
+has no stop list, and a trip or journey counts it only where every way it may run from its platform
+agrees (all pass the rider's stop, at least as far as where they part, or none does); otherwise it's
+one of the routes that couldn't be checked. **A station TfL lists under one id and routes
 under another** (St Pancras's Thameslink departures, whose route calls at the station's low-level
 platforms) boards at the same-named station in the same interchange — never a different station
 in it, like King's Cross beside St Pancras. A journey starred there keeps the id the departures

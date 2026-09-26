@@ -1,0 +1,347 @@
+{
+ "lineId": "circle",
+ "orderedLineRoutes": [
+  {
+   "name": "Edgware Road (Circle Line)  &harr;  Hammersmith (H&C Line) ",
+   "naptanIds": [
+    "940GZZLUERC",
+    "940GZZLUPAC",
+    "940GZZLUBWT",
+    "940GZZLUNHG",
+    "940GZZLUHSK",
+    "940GZZLUGTR",
+    "940GZZLUSKS",
+    "940GZZLUSSQ",
+    "940GZZLUVIC",
+    "940GZZLUSJP",
+    "940GZZLUWSM",
+    "940GZZLUEMB",
+    "940GZZLUTMP",
+    "940GZZLUBKF",
+    "940GZZLUMSH",
+    "940GZZLUCST",
+    "940GZZLUMMT",
+    "940GZZLUTWH",
+    "940GZZLUALD",
+    "940GZZLULVT",
+    "940GZZLUMGT",
+    "940GZZLUBBN",
+    "940GZZLUFCN",
+    "940GZZLUKSX",
+    "940GZZLUESQ",
+    "940GZZLUGPS",
+    "940GZZLUBST",
+    "940GZZLUERC",
+    "940GZZLUPAH",
+    "940GZZLURYO",
+    "940GZZLUWSP",
+    "940GZZLULAD",
+    "940GZZLULRD",
+    "940GZZLUWLA",
+    "940GZZLUSBM",
+    "940GZZLUGHK",
+    "940GZZLUHSC"
+   ]
+  },
+  {
+   "name": "Hammersmith (H&C Line)  &harr;  Edgware Road (Circle Line) ",
+   "naptanIds": [
+    "940GZZLUHSC",
+    "940GZZLUGHK",
+    "940GZZLUSBM",
+    "940GZZLUWLA",
+    "940GZZLULRD",
+    "940GZZLULAD",
+    "940GZZLUWSP",
+    "940GZZLURYO",
+    "940GZZLUPAH",
+    "940GZZLUERC",
+    "940GZZLUBST",
+    "940GZZLUGPS",
+    "940GZZLUESQ",
+    "940GZZLUKSX",
+    "940GZZLUFCN",
+    "940GZZLUBBN",
+    "940GZZLUMGT",
+    "940GZZLULVT",
+    "940GZZLUALD",
+    "940GZZLUTWH",
+    "940GZZLUMMT",
+    "940GZZLUCST",
+    "940GZZLUMSH",
+    "940GZZLUBKF",
+    "940GZZLUTMP",
+    "940GZZLUEMB",
+    "940GZZLUWSM",
+    "940GZZLUSJP",
+    "940GZZLUVIC",
+    "940GZZLUSSQ",
+    "940GZZLUSKS",
+    "940GZZLUGTR",
+    "940GZZLUHSK",
+    "940GZZLUNHG",
+    "940GZZLUBWT",
+    "940GZZLUPAC",
+    "940GZZLUERC"
+   ]
+  }
+ ],
+ "stopPointSequences": [
+  {
+   "stopPoint": [
+    {
+     "id": "940GZZLUERC",
+     "name": "Edgware Road (Circle Line) Underground Station",
+     "topMostParentId": "940GZZLUERC",
+     "lat": 51.519858,
+     "lon": -0.167832
+    },
+    {
+     "id": "940GZZLUPAC",
+     "name": "Paddington Underground Station",
+     "topMostParentId": "HUBPAD",
+     "lat": 51.516581,
+     "lon": -0.175689
+    },
+    {
+     "id": "940GZZLUBWT",
+     "name": "Bayswater Underground Station",
+     "topMostParentId": "940GZZLUBWT",
+     "lat": 51.512284,
+     "lon": -0.187938
+    },
+    {
+     "id": "940GZZLUNHG",
+     "name": "Notting Hill Gate Underground Station",
+     "topMostParentId": "940GZZLUNHG",
+     "lat": 51.509128,
+     "lon": -0.196104
+    },
+    {
+     "id": "940GZZLUHSK",
+     "name": "High Street Kensington Underground Station",
+     "topMostParentId": "940GZZLUHSK",
+     "lat": 51.501055,
+     "lon": -0.192792
+    },
+    {
+     "id": "940GZZLUGTR",
+     "name": "Gloucester Road Underground Station",
+     "topMostParentId": "940GZZLUGTR",
+     "lat": 51.494316,
+     "lon": -0.182658
+    },
+    {
+     "id": "940GZZLUSKS",
+     "name": "South Kensington Underground Station",
+     "topMostParentId": "940GZZLUSKS",
+     "lat": 51.494094,
+     "lon": -0.174138
+    },
+    {
+     "id": "940GZZLUSSQ",
+     "name": "Sloane Square Underground Station",
+     "topMostParentId": "940GZZLUSSQ",
+     "lat": 51.49227,
+     "lon": -0.156377
+    },
+    {
+     "id": "940GZZLUVIC",
+     "name": "Victoria Underground Station",
+     "topMostParentId": "HUBVIC",
+     "lat": 51.496359,
+     "lon": -0.143102
+    },
+    {
+     "id": "940GZZLUSJP",
+     "name": "St. James's Park Underground Station",
+     "topMostParentId": "940GZZLUSJP",
+     "lat": 51.499544,
+     "lon": -0.133608
+    },
+    {
+     "id": "940GZZLUWSM",
+     "name": "Westminster Underground Station",
+     "topMostParentId": "HUBWSM",
+     "lat": 51.50132,
+     "lon": -0.124861
+    },
+    {
+     "id": "940GZZLUEMB",
+     "name": "Embankment Underground Station",
+     "topMostParentId": "940GZZLUEMB",
+     "lat": 51.507058,
+     "lon": -0.122666
+    },
+    {
+     "id": "940GZZLUTMP",
+     "name": "Temple Underground Station",
+     "topMostParentId": "940GZZLUTMP",
+     "lat": 51.511006,
+     "lon": -0.11426
+    },
+    {
+     "id": "940GZZLUBKF",
+     "name": "Blackfriars Underground Station",
+     "topMostParentId": "HUBBFR",
+     "lat": 51.511581,
+     "lon": -0.103659
+    },
+    {
+     "id": "940GZZLUMSH",
+     "name": "Mansion House Underground Station",
+     "topMostParentId": "940GZZLUMSH",
+     "lat": 51.512117,
+     "lon": -0.094009
+    },
+    {
+     "id": "940GZZLUCST",
+     "name": "Cannon Street Underground Station",
+     "topMostParentId": "HUBCST",
+     "lat": 51.51151,
+     "lon": -0.090432
+    },
+    {
+     "id": "940GZZLUMMT",
+     "name": "Monument Underground Station",
+     "topMostParentId": "940GZZLUMMT",
+     "lat": 51.5107,
+     "lon": -0.085969
+    },
+    {
+     "id": "940GZZLUTWH",
+     "name": "Tower Hill Underground Station",
+     "topMostParentId": "940GZZLUTWH",
+     "lat": 51.509971,
+     "lon": -0.076546
+    },
+    {
+     "id": "940GZZLUALD",
+     "name": "Aldgate Underground Station",
+     "topMostParentId": "940GZZLUALD",
+     "lat": 51.514246,
+     "lon": -0.075689
+    },
+    {
+     "id": "940GZZLULVT",
+     "name": "Liverpool Street Underground Station",
+     "topMostParentId": "HUBLST",
+     "lat": 51.517372,
+     "lon": -0.083182
+    },
+    {
+     "id": "940GZZLUMGT",
+     "name": "Moorgate Underground Station",
+     "topMostParentId": "HUBZMG",
+     "lat": 51.518176,
+     "lon": -0.088322
+    },
+    {
+     "id": "940GZZLUBBN",
+     "name": "Barbican Underground Station",
+     "topMostParentId": "940GZZLUBBN",
+     "lat": 51.520275,
+     "lon": -0.097993
+    },
+    {
+     "id": "940GZZLUFCN",
+     "name": "Farringdon Underground Station",
+     "topMostParentId": "HUBZFD",
+     "lat": 51.520252,
+     "lon": -0.104913
+    },
+    {
+     "id": "940GZZLUKSX",
+     "name": "King's Cross St. Pancras Underground Station",
+     "topMostParentId": "HUBKGX",
+     "lat": 51.530663,
+     "lon": -0.123194
+    },
+    {
+     "id": "940GZZLUESQ",
+     "name": "Euston Square Underground Station",
+     "topMostParentId": "940GZZLUESQ",
+     "lat": 51.525604,
+     "lon": -0.135829
+    },
+    {
+     "id": "940GZZLUGPS",
+     "name": "Great Portland Street Underground Station",
+     "topMostParentId": "940GZZLUGPS",
+     "lat": 51.52384,
+     "lon": -0.144262
+    },
+    {
+     "id": "940GZZLUBST",
+     "name": "Baker Street Underground Station",
+     "topMostParentId": "940GZZLUBST",
+     "lat": 51.522883,
+     "lon": -0.15713
+    },
+    {
+     "id": "940GZZLUPAH",
+     "name": "Paddington (H&C Line)-Underground",
+     "topMostParentId": "HUBPAD",
+     "lat": 51.518187,
+     "lon": -0.178306
+    },
+    {
+     "id": "940GZZLURYO",
+     "name": "Royal Oak Underground Station",
+     "topMostParentId": "940GZZLURYO",
+     "lat": 51.519113,
+     "lon": -0.188748
+    },
+    {
+     "id": "940GZZLUWSP",
+     "name": "Westbourne Park Underground Station",
+     "topMostParentId": "940GZZLUWSP",
+     "lat": 51.52111,
+     "lon": -0.201065
+    },
+    {
+     "id": "940GZZLULAD",
+     "name": "Ladbroke Grove Underground Station",
+     "topMostParentId": "940GZZLULAD",
+     "lat": 51.517449,
+     "lon": -0.210391
+    },
+    {
+     "id": "940GZZLULRD",
+     "name": "Latimer Road Underground Station",
+     "topMostParentId": "940GZZLULRD",
+     "lat": 51.513389,
+     "lon": -0.217799
+    },
+    {
+     "id": "940GZZLUWLA",
+     "name": "Wood Lane Underground Station",
+     "topMostParentId": "940GZZLUWLA",
+     "lat": 51.509669,
+     "lon": -0.22453
+    },
+    {
+     "id": "940GZZLUSBM",
+     "name": "Shepherd's Bush Market Underground Station",
+     "topMostParentId": "940GZZLUSBM",
+     "lat": 51.505579,
+     "lon": -0.226375
+    },
+    {
+     "id": "940GZZLUGHK",
+     "name": "Goldhawk Road Underground Station",
+     "topMostParentId": "940GZZLUGHK",
+     "lat": 51.502005,
+     "lon": -0.226715
+    },
+    {
+     "id": "940GZZLUHSC",
+     "name": "Hammersmith (H&C Line) Underground Station",
+     "topMostParentId": "HUBHMS",
+     "lat": 51.49339,
+     "lon": -0.22503
+    }
+   ]
+  }
+ ]
+}

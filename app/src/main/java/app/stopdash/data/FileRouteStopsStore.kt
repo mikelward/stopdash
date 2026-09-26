@@ -103,7 +103,9 @@ private data class RouteCacheSequence(
 )
 
 @Serializable
-private data class RouteCacheRoute(val name: String, val stopIds: List<String>)
+// [direction] is blank in a sequence cached before it was kept: the route still resolves, it just
+// can't be picked by a train's direction until it is fetched again.
+private data class RouteCacheRoute(val name: String, val stopIds: List<String>, val direction: String = "")
 
 @Serializable
 private data class RouteCachePosition(val latitude: Double, val longitude: Double)
@@ -135,7 +137,7 @@ private fun RouteCacheLine.toLine() = LineRef(id, name, mode)
 private fun LineSequence.toPersisted(key: String, at: Instant) = RouteCacheSequence(
     key,
     at.toString(),
-    routes.map { RouteCacheRoute(it.name, it.stopIds) },
+    routes.map { RouteCacheRoute(it.name, it.stopIds, it.direction) },
     stopNames,
     stopLines.mapValues { (_, lines) -> lines.map { it.toPersisted() } },
     stopPositions.mapValues { (_, p) -> RouteCachePosition(p.first, p.second) },
@@ -144,7 +146,7 @@ private fun LineSequence.toPersisted(key: String, at: Instant) = RouteCacheSeque
 )
 
 private fun RouteCacheSequence.toSequence() = LineSequence(
-    routes.map { LineRoute(it.name, it.stopIds) },
+    routes.map { LineRoute(it.name, it.stopIds, it.direction) },
     stopNames,
     stopLines.mapValues { (_, lines) -> lines.map { it.toLine() } },
     stopPositions.mapValues { (_, p) -> p.latitude to p.longitude },

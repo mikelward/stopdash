@@ -178,7 +178,7 @@ class KtorTflClient(
                 // A National Rail line's sequence (~600 KB, every station and pattern it runs) can take
                 // TfL 4–15 s to start answering when it isn't cached, which failed the route page.
                 allowSlowAnswer()
-            }.body<TflRouteSequenceDto>().toLineSequence()
+            }.body<TflRouteSequenceDto>().toLineSequence(direction)
         }
 
     override suspend fun stopAreaPoles(areaId: String): List<StopLocation> =
