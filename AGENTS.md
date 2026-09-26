@@ -94,15 +94,14 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   bodies, PR titles/descriptions/comments, review replies, branch names, code comments,
   test fixtures, screenshots, or logs. For stopdash that means **coordinates, the set of
   stops a user watches, a home/work stop, and the user's TfL `app_key`** — together they
-  reveal where someone lives and travels. Use stock stand-ins (`(51.5, -0.12)` only as
-  an obviously-synthetic fixture, `490000…` style example stop IDs, `app_key=EXAMPLE`).
-- **The test is whether a value is somebody's, not whether the name looks real.** A
-  canned line ("Victoria line") or a well-known station used as a documentation example
-  is fine; a coordinate or a watched-stop list lifted from a real device or bug report is
-  not. A station's published position (tube, rail, tram — any mode but bus) is network data,
-  not somebody's, so recorded fixtures may keep it; a **bus stop's** is synthetic, as one can
-  sit outside a rider's door (maintainer, 2026-09-26). Paraphrase a user's bug report in the commit/PR; don't quote it verbatim. When in
-  doubt, ask before pushing.
+  reveal where someone lives and travels. Use stock stand-ins for the user's own values
+  (`app_key=EXAMPLE`, a synthetic position like `(51.5, -0.12)` for "where the rider is").
+- **Public TfL data is fine; anyone's neighborhood is not** (maintainer, 2026-09-26). Real
+  details of any stop, station or route may appear anywhere in the repo, but nothing that
+  points to where the maintainer or a user lives: no stop data from anyone's device,
+  location, starred stops, bug reports or screenshots (paraphrase a bug report, don't quote
+  it), and no examples that keep returning to one area. It governs new work; existing data
+  isn't rewritten to fit it. When unsure, ask in chat, never on GitHub.
 - **The on-device debug log is one exception, and narrow**: coarse diagnostics only —
   a stop ID, a line id, an HTTP status — never a raw coordinate or the API key. `docs/
   PRIVACY.md` must describe what the log carries before it ships.
@@ -131,7 +130,7 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
 
 - Product logic belongs in the pure `:domain` module (`app.stopdash.domain`), JVM-testable
   without Android; test it against **recorded TfL fixtures**, never the live API and never a
-  real rider's or bus stop's coordinate (a station's published position is fine — *Privacy*).
+  user's coordinate (public stop coordinates are fine, per *Privacy*).
 - Compose screens and Glance widget layouts get Robolectric + Roborazzi screenshot tests
   wired into `.github/workflows/ci.yml` — a new `*ScreenshotTest` class needs its own
   step in the CI `--tests` allow-list or it records nothing.
