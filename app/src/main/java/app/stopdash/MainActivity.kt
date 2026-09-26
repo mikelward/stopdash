@@ -29,6 +29,8 @@ import app.stopdash.data.RecentSearches
 import app.stopdash.ui.OnTheWayScreen
 import app.stopdash.ui.OnTheWayActions
 import app.stopdash.ui.LocalOnTheWay
+import app.stopdash.ui.LocalOnTheWayBanner
+import app.stopdash.ui.OnTheWayBannerState
 import app.stopdash.ui.FollowActiveTrip
 import app.stopdash.ui.ActiveTripTracker
 import app.stopdash.data.FileActiveTripStore
@@ -76,6 +78,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.HasDefaultViewModelProviderFactory
 import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -170,6 +173,7 @@ import app.stopdash.widget.StopDashWidget
 import app.stopdash.widget.WidgetSnapshotStore
 import app.stopdash.widget.applyLiveWidgetRefresh
 import app.stopdash.widget.syncLiveWidgetRefreshSchedule
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.glance.appwidget.updateAll
 import com.mikelward.androidlog.DebugLog
@@ -257,6 +261,10 @@ private fun rememberStoredKey(
 }
 
 class MainActivity : ComponentActivity() {
+    // A tap on the get-off alert asks for the trip on the way ([GetOffSoonAlert]); the UI opens it
+    // and clears the ask.
+    private val openOnTheWay = MutableStateFlow(false)
+
     // The nearby-stops lookup, shared by the near-me gate and a searched station's page (From…).
     // Reuses a recent lookup made close by (in memory, process-wide), so reopening the app near
     // where it was last used skips a request and a round trip.
@@ -315,9 +323,24 @@ class MainActivity : ComponentActivity() {
     private val updateAvailable = mutableStateOf(false)
     private val playUpdateChecker by lazy { PlayUpdateChecker(application, warn = ::logUpdateWarning) }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        takeOpenOnTheWay(intent)
+    }
+
+    // Takes the alert's "open the trip" ask off [intent], so it's acted on once.
+    private fun takeOpenOnTheWay(intent: Intent?) {
+        if (intent?.getBooleanExtra(GetOffSoonAlert.EXTRA_OPEN_ON_THE_WAY, false) != true) return
+        intent.removeExtra(GetOffSoonAlert.EXTRA_OPEN_ON_THE_WAY)
+        openOnTheWay.value = true
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Read once: a recreation (rotation) keeps the overlay's own saved state instead.
+        if (savedInstanceState == null) takeOpenOnTheWay(intent)
         // Warm the chosen text size into memory (off the main thread) so the first frame is sized
         // from the user's setting rather than the default, then resized a beat later (SPEC *Display
         // size*). Idempotent and shares the process-singleton DataStore instance the settings
@@ -525,7 +548,26 @@ class MainActivity : ComponentActivity() {
                     if (endFailures > endFailuresShown) onTheWayOpen = true
                     endFailuresShown = endFailures
                 }
-                val tripOnTheWay by tracker.trip.collectAsStateWithLifecycle()
+                val onTheWayTrip by tracker.trip.collectAsStateWithLifecycle()
+                val onTheWayProgress by tracker.progress.collectAsStateWithLifecycle()
+                val onTheWayUpdatedAt by tracker.updatedAt.collectAsStateWithLifecycle()
+                val openOnTheWayAsked by openOnTheWay.collectAsStateWithLifecycle()
+                LaunchedEffect(openOnTheWayAsked) {
+                    if (openOnTheWayAsked) {
+                        onTheWayOpen = true
+                        openOnTheWay.value = false
+                    }
+                }
+                // Whether "get off soon" can alert, checked again on every return (the user may have
+                // changed it in Settings); asked for on Start, the one time an alert is wanted.
+                var alertsOff by remember { mutableStateOf(false) }
+                LifecycleResumeEffect(Unit) {
+                    alertsOff = !GetOffSoonAlert.canAlert(applicationContext)
+                    onPauseOrDispose {}
+                }
+                val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+                    alertsOff = !GetOffSoonAlert.canAlert(applicationContext)
+                }
                 CompositionLocalProvider(
                     LocalAppMenu provides AppMenuActions(
                         updateAvailable = updateAvailable.value,
@@ -533,11 +575,18 @@ class MainActivity : ComponentActivity() {
                         onSendBugReport = requestBugReport,
                         onOpenLicenses = openLicenses,
                     ),
-                    LocalOnTheWay provides OnTheWayActions(active = tripOnTheWay != null, open = { onTheWayOpen = true }) { route, destinationName, readyAt ->
+                    LocalOnTheWay provides OnTheWayActions(active = onTheWayTrip != null, open = { onTheWayOpen = true }) { route, destinationName, readyAt ->
                         // Its first refresh is [FollowActiveTrip]'s, once the trip is on the way.
                         // In the app's scope, so recreating the activity can't cut the save short.
                         ((application as? StopdashApp)?.applicationScope ?: onTheWayScope).launch { tracker.start(route, destinationName, readyAt) }
                         onTheWayOpen = true
+                        GetOffSoonAlert.ensureChannel(applicationContext)
+                        if (ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    },
+                    LocalOnTheWayBanner provides onTheWayTrip?.let { trip ->
+                        OnTheWayBannerState(trip, onTheWayProgress, onTheWayUpdatedAt) { onTheWayOpen = true }
                     },
                 ) {
                     NearbyArea(
@@ -553,30 +602,31 @@ class MainActivity : ComponentActivity() {
                             // The trip on the way first: it's what the rider opened last. Licenses wins
                             // over the rest; each closes via its own Back.
                             if (onTheWayOpen) {
-                                val onTheWay by tracker.trip.collectAsStateWithLifecycle()
-                                val progress by tracker.progress.collectAsStateWithLifecycle()
                                 val failed by tracker.failed.collectAsStateWithLifecycle()
                                 val notKept by tracker.notKept.collectAsStateWithLifecycle()
-                                val updatedAt by tracker.updatedAt.collectAsStateWithLifecycle()
                                 val now = tickingNow()
                                 val endFailed by tracker.endFailed.collectAsStateWithLifecycle()
                                 val end = {
                                     // In the app's scope, so recreating the activity (a rotation)
                                     // can't cancel it before the trip is forgotten; one that
-                                    // couldn't be ended opens again to say so (above).
-                                    ((application as? StopdashApp)?.applicationScope ?: onTheWayScope).launch { tracker.end() }
+                                    // couldn't be ended opens again to say so (above). The alert is
+                                    // cleared once ended: a refresh in flight may still post one first.
+                                    ((application as? StopdashApp)?.applicationScope ?: onTheWayScope).launch {
+                                        if (tracker.end()) GetOffSoonAlert.cancel(applicationContext)
+                                    }
                                     onTheWayOpen = false
                                 }
                                 OnTheWayScreen(
-                                    trip = onTheWay,
-                                    progress = progress,
+                                    trip = onTheWayTrip,
+                                    progress = onTheWayProgress,
                                     failed = failed,
                                     now = now,
                                     onEnd = end,
                                     // Back leaves a trip on the way running; once it has arrived, it clears it.
                                     // (No trip yet, while one is read back or started, is not an arrival.)
-                                    onBack = { if (progress == TripProgress.Arrived) end() else onTheWayOpen = false },
-                                    current = ActiveTripTracker.isCurrent(updatedAt, now),
+                                    onBack = { if (onTheWayProgress == TripProgress.Arrived) end() else onTheWayOpen = false },
+                                    alertsOff = alertsOff,
+                                    current = ActiveTripTracker.isCurrent(onTheWayUpdatedAt, now),
                                     notKept = notKept,
                                     endFailed = endFailed,
                                 )
@@ -814,6 +864,7 @@ class MainActivity : ComponentActivity() {
                                     val gateBanner by nearbyViewModel.locationBanner.collectAsStateWithLifecycle()
                                     LocationGate(
                                         state = state,
+                                        now = tickingNow(),
                                         approximate = gateBanner == LocationBanner.COARSE,
                                         permanentlyDenied = permissionPermanentlyDenied,
                                         onAllow = { permissionLauncher.launch(locationPermissions) },
@@ -2301,6 +2352,10 @@ class MainActivity : ComponentActivity() {
                     arrivals = journeyPlanner::arrivals,
                     vehicles = journeyPlanner,
                     warn = ::logDepartureWarning,
+                    onGetOffSoon = { trip, riding ->
+                        GetOffSoonAlert.post(context.applicationContext, trip, riding, Instant.now(), ::logDepartureWarning)
+                    },
+                    onGetOffSoonDone = { GetOffSoonAlert.cancel(context.applicationContext) },
                 )
             }.also { activeTripInstance = it }
         }

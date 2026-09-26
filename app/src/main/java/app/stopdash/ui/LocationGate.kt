@@ -25,6 +25,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
+import java.time.Instant
 
 /**
  * The screen shown until the nearby-stops search resolves (SPEC *Finding stops*): the
@@ -72,6 +73,9 @@ fun LocationGate(
     // "No stops found nearby" was worked out from a coarse (network) fix, which can be hundreds of
     // meters out, so it says so until a precise fix confirms or replaces it (SPEC *Finding stops*).
     approximate: Boolean = false,
+    // The clock the pinned trip card reads (a ticking one from the caller, so an old answer turns
+    // to "Updating…" while the gate stays up); default for a test.
+    now: Instant = Instant.now(),
 ) {
     // Saved so an open About dialog survives rotation on the gate.
     var showAbout by rememberSaveable { mutableStateOf(false) }
@@ -94,6 +98,8 @@ fun LocationGate(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
+        // A trip on the way stays a tap away when near me can't come up (SPEC *On the way*).
+        LocalOnTheWayBanner.current?.let { OnTheWayBanner(it, now, Modifier.padding(bottom = 24.dp)) }
         when (state) {
             NearbyStopsViewModel.State.PermissionRequired -> {
                 Title(stringResource(R.string.location_title))

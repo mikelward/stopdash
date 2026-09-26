@@ -119,7 +119,9 @@ Android never backs up or transfers, so the trip survives the app being closed. 
 beyond coarse diagnostics (a line id, an error kind) or sent anywhere. While the app is open, stopdash
 asks TfL about every 30 seconds where the followed train will call next, by TfL's own id for that
 train, and for the departures at a stop where the next leg boards; neither says anything about you
-that the trip's departures don't already. Ending the trip, or arriving, deletes it.
+that the trip's departures don't already. Ending the trip, or arriving, deletes it. The "get off
+soon" alert names the stop and the trip's destination on your lock screen, like any notification;
+you can turn it off in Android's settings for StopDash.
 
 **Starred journeys** (two stops you travel between) are kept on the device with your other
 settings and stars, so they ride your own Android backup like the rest (above); they are never

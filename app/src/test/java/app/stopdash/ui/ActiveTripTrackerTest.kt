@@ -49,6 +49,7 @@ class ActiveTripTrackerTest {
     private var alertPosts = true
     // What the tracker logged: never a stop or place (docs/PRIVACY.md).
     private val logged = mutableListOf<String>()
+    private var alertsDone = 0
 
     private fun tracker(dispatcher: kotlinx.coroutines.CoroutineDispatcher, load: () -> ActiveTrip? = { null }) = ActiveTripTracker(
         load = load,
@@ -77,6 +78,7 @@ class ActiveTripTrackerTest {
             warned += riding
             alertPosts
         },
+        onGetOffSoonDone = { alertsDone++ },
     ).also { current = it }
 
     @Test
@@ -188,6 +190,74 @@ class ActiveTripTrackerTest {
         tracker.refresh()
         tracker.refresh()
         assertEquals(listOf(at(14), at(22)), warned.map { it.getOffAt })
+    }
+
+    @Test
+    fun `get off soon is taken back once the rider is past that leg`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        alertsDone = 0 // Start's first read found no kept trip, and cleared any alert left.
+        tracker.refresh()
+        now = at(12)
+        trains["3"] = listOf(call("C", 14))
+        tracker.refresh()
+        assertEquals(1, warned.size)
+        assertEquals(0, alertsDone)
+        // Past C: got off, and the trip has arrived.
+        now = at(15)
+        trains["3"] = emptyList()
+        tracker.refresh()
+        assertEquals(TripProgress.Arrived, tracker.progress.value)
+        assertEquals(1, alertsDone)
+    }
+
+    @Test
+    fun `get off soon is taken back when the train is lost, and said again once it's found`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        alertsDone = 0 // Start's first read found no kept trip, and cleared any alert left.
+        tracker.refresh()
+        now = at(12)
+        trains["3"] = listOf(call("C", 14))
+        tracker.refresh()
+        assertEquals(1, warned.size)
+        // Its calls now leave the leg before C: the stop it named may no longer be the rider's.
+        trains["3"] = listOf(call("X", 13))
+        tracker.refresh()
+        assertTrue(tracker.progress.value is TripProgress.Lost)
+        assertEquals(1, alertsDone)
+        // Back on the leg: said again.
+        trains["3"] = listOf(call("C", 14))
+        tracker.refresh()
+        assertEquals(2, warned.size)
+    }
+
+    @Test
+    fun `an alert left from a trip ended just before the app died is cleared once no trip is found`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        assertTrue(tracker.restore())
+        assertEquals(1, alertsDone)
+    }
+
+    @Test
+    fun `get off soon stands through a failed lookup`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        alertsDone = 0 // Start's first read found no kept trip, and cleared any alert left.
+        tracker.refresh()
+        now = at(12)
+        trains["3"] = listOf(call("C", 14))
+        tracker.refresh()
+        // No signal underground: the stop is still the rider's, so the alert stays.
+        failing = true
+        tracker.refresh()
+        assertEquals(0, alertsDone)
     }
 
     @Test

@@ -910,8 +910,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               only the leg's own stop (TfL's stops split by
               mode: `940G…` metro, `910G…` rail), never its interchange (`HUB…`), and from that
               leg's own source: TfL for a tube leg, National Rail only for a National Rail one.
-        - [ ] The main view's pinned card.
-        - [ ] "Get off soon" on its own channel (sound, vibration), the permission asked on Start.
+        - [x] The main view's pinned card (the near-me list; a station page is its own look).
+        - [x] "Get off soon" on its own channel (sound, vibration), the permission asked on Start.
+              Only while the app is open until the foreground service below lands.
         - [ ] **Not to merge until the maintainer's Play declarations:** the ongoing notification
               with the app closed (a foreground service, which replaces the old *Step by step*
               item), and live location to see the train boarded and follow a bus.

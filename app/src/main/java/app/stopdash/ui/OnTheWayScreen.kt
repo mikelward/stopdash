@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardColors
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -63,6 +64,9 @@ internal fun OnTheWayScreen(
     notKept: Boolean = false,
     // End trip couldn't forget the trip on the device, so it's still on the way.
     endFailed: Boolean = false,
+    // Notifications are off for the app, so "get off soon" can't alert: said here, not left to be
+    // found out at the stop (SPEC principle 2).
+    alertsOff: Boolean = false,
 ) {
     BackHandler(onBack = onBack)
     val destination = trip?.destinationName
@@ -127,6 +131,15 @@ internal fun OnTheWayScreen(
                     )
                 }
             }
+            if (alertsOff && trip != null) {
+                item(key = "alertsOff") {
+                    Text(
+                        stringResource(R.string.on_the_way_alerts_off),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             if (trip != null) {
                 itemsIndexed(trip.route.legs, key = { index, _ -> "leg$index" }) { index, leg ->
                     LegLine(leg, current = index == trip.legIndex, done = index < trip.legIndex)
@@ -139,17 +152,33 @@ internal fun OnTheWayScreen(
 /** The card at the top: what the rider does next, from [progress]. */
 @Composable
 private fun NextStep(progress: TripProgress?, now: Instant, current: Boolean) {
-    // A train's time or stops from an answer too old to stand behind: the step stays, its details wait.
-    val live = progress is TripProgress.Riding || (progress is TripProgress.Waiting && progress.due != null)
-    val waitsForAnswer = live && !current
-    // "Get off soon" stands out: the one step with a deadline a stop away.
-    val urgent = progress is TripProgress.Riding && progress.getOffSoon && current
-    val colors = if (urgent) {
+    val (title, detail) = nextStepText(progress, now, current)
+    Card(colors = nextStepColors(progress, current), modifier = Modifier.fillMaxWidth().testTag("onTheWayNext")) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(stringResource(R.string.on_the_way_next), style = MaterialTheme.typography.labelMedium)
+            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            if (detail.isNotEmpty()) Text(detail, style = MaterialTheme.typography.bodyLarge)
+        }
+    }
+}
+
+/** The next step's card colors: "get off soon" stands out, the one step with a deadline a stop away. */
+@Composable
+internal fun nextStepColors(progress: TripProgress?, current: Boolean = true): CardColors =
+    if (progress is TripProgress.Riding && progress.getOffSoon && current) {
         CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer)
     } else {
         CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
     }
-    val (title, detail) = when (progress) {
+
+/** What the rider does next, as a title and a detail line — the trip's screen and its banner alike. */
+@Composable
+internal fun nextStepText(progress: TripProgress?, now: Instant, current: Boolean = true): Pair<String, String> {
+    // A train's time or stops from an answer too old to stand behind ([current]): the step stays,
+    // its details wait for the next answer.
+    val live = progress is TripProgress.Riding || (progress is TripProgress.Waiting && progress.due != null)
+    if (live && !current) return nextStepText(progress, now).first to stringResource(R.string.on_the_way_updating)
+    return when (progress) {
         is TripProgress.Waiting -> stringResource(R.string.on_the_way_board, progress.leg.lineName, progress.leg.fromName) to
             (progress.due?.let { stringResource(R.string.on_the_way_due, minutesUntil(now, it)) } ?: stringResource(R.string.on_the_way_finding))
         is TripProgress.Riding -> stringResource(R.string.on_the_way_get_off, progress.leg.toName) to
@@ -165,14 +194,6 @@ private fun NextStep(progress: TripProgress?, now: Instant, current: Boolean) {
         is TripProgress.Lost -> stringResource(R.string.on_the_way_lost) to stringResource(R.string.on_the_way_finding)
         TripProgress.Arrived -> stringResource(R.string.on_the_way_arrived) to ""
         null -> stringResource(R.string.on_the_way) to stringResource(R.string.on_the_way_finding)
-    }
-    val shownDetail = if (waitsForAnswer) stringResource(R.string.on_the_way_updating) else detail
-    Card(colors = colors, modifier = Modifier.fillMaxWidth().testTag("onTheWayNext")) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(stringResource(R.string.on_the_way_next), style = MaterialTheme.typography.labelMedium)
-            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            if (shownDetail.isNotEmpty()) Text(shownDetail, style = MaterialTheme.typography.bodyLarge)
-        }
     }
 }
 
@@ -199,7 +220,7 @@ private fun LegLine(leg: TripLeg, current: Boolean, done: Boolean) {
 }
 
 // Whole minutes from [now] to [at], rounded up and never below zero: "0 min" is due now.
-private fun minutesUntil(now: Instant, at: Instant): Int {
+internal fun minutesUntil(now: Instant, at: Instant): Int {
     val seconds = Duration.between(now, at).seconds.coerceAtLeast(0)
     return ((seconds + 59) / 60).toInt()
 }
