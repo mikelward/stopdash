@@ -869,10 +869,11 @@ or bus stop picked from the station search, never an address or a map point — 
 nearest stop of any mode (the Planner walks on to a better one itself), or from the *From…* station when one is set.
 This is the ordinary search flow; **any saved favorite** is the exception, planning to its
 saved coordinate rather than a picked stop (D9) — the coordinate goes only to TfL, which walks the last leg.
-Every favorite is routed by tapping it — in the Settings *"Favorite places"* list, or at the **top of
-the To… picker**, which lists **all** the saved favorite places before any typing (maintainer,
-2026-09-27, broadening an earlier Home/Work-only framing) so the rider routes to a saved place in one
-tap without leaving the trip. If that list can't be read it says so with a **Retry**, rather than
+Every favorite is routed by tapping it — in the Settings *"Favorite places"* list, as a **chip atop
+the near-me list** (*Routing from the near-me list*, below), or at the **top of the To… picker**,
+which lists **all** the saved favorite places before any typing (maintainer, 2026-09-27, broadening
+an earlier Home/Work-only framing) so the rider routes to a saved place in one tap without leaving
+the trip. If that list can't be read it says so with a **Retry**, rather than
 hiding the section as "no places" (principle 2); station search stays usable meanwhile. The search page keeps its look (each
 result's name over its modes); it gains only a "From" chip naming the start ("Here", or the *From…*
 station). The trip opens on a **list of routes, best first**: ordered first by how far StopDash
@@ -941,6 +942,22 @@ road, where the buses run the other way. Both poles are fetched, and the times r
 the route says which. A bus station's stands are in no pair, and the Planner can name one the line
 doesn't use, so the ride gets off at the route's own stop of that name. A route that is all walking (two stops close
 together) shows "Walk" where the pills go and its minutes, with no live row and no arrivals request.
+
+**Routing from the near-me list** (maintainer, 2026-09-27): the saved places lead the near-me list
+as **one row of chips**, one per place in the saved order, each just its name; a tap plans the trip
+as above. The row is the list's first item, so it **scrolls away with the list** rather than taking
+a pinned row's space, and scrolls sideways when the chips don't fit; when the stops near have no
+departures it still heads the empty state, just when a route elsewhere is wanted (with no stops in
+range at all there is no row yet, as the trip from here plans from nearby stops). It is on the
+near-me list only — not a station's page or a drill-down, which are about one place. A place the
+rider is **already at** is left out, since "Home" at home is a route to nowhere: **within 200 m** on
+an accurate fix (one whose own reported accuracy is within 100 m), back once past **250 m** so a
+wandering fix doesn't make a chip flicker. The rule leans towards showing: a fix the list flags as
+approximate, coarse or not updated, or one only an approximate location grant allows, hides nothing,
+as a wrongly hidden chip costs the one-tap route while a wrongly shown one costs only space. The
+places are read from the first frame, from the device (no request), so the row is there when the
+list is; a place list that can't be read shows no row here — Settings and the To… picker are where
+that is said, with a Retry.
 
 The trip's top bar carries the app's **overflow** as the list's does — its red dot while an update
 is available, "Update available", "Send bug report" and About — so a problem seen on a trip can be

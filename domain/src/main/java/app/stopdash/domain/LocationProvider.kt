@@ -69,4 +69,12 @@ interface LocationProvider {
      * can move to where the rider really is once GPS answers (SPEC *Finding stops*).
      */
     suspend fun precise(): Coordinates? = null
+
+    /**
+     * [precise] with its own confidence: the same fix, carrying [LocationFix.accuracyMeters], so a
+     * caller that acts only on a close fix (the favorite chips) can tell a vague GPS answer from a
+     * sharp one rather than trusting the source (Codex). By default [precise]'s coordinate with no
+     * accuracy, which such a caller treats as rough.
+     */
+    suspend fun preciseWithAccuracy(): LocationFix? = precise()?.let { LocationFix(it, isFallback = false) }
 }

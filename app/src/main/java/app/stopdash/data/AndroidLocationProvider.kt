@@ -163,6 +163,8 @@ class AndroidLocationProvider(
 
     override suspend fun precise(): Coordinates? = preciseFix()?.coordinates
 
+    override suspend fun preciseWithAccuracy(): LocationFix? = preciseFix()
+
     /**
      * [precise], with how sure the fix is: GPS/fused only, waited for up to the precise timeout,
      * never a quick coarse fix. For a caller that decides on distance (a trip's left-behind check):

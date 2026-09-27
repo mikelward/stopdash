@@ -3,6 +3,7 @@ package app.stopdash.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.FavoriteShortcuts
 import app.stopdash.domain.FixRefinement
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LocationFix
@@ -168,6 +169,27 @@ class NearbyStopsViewModel(
     val locationBanner: StateFlow<LocationBanner?> = _locationBanner.asStateFlow()
 
     /**
+     * Where the rider is, and whether that is known closely enough to act on, for the shown set:
+     * [from] is the location the set was resolved from ([State.Ready.location]); [at] is the rider's
+     * best position for it — the fix itself, or the precise fix that later confirmed a coarse set in
+     * place without moving it; [accurate] is the fix's own confidence
+     * ([FavoriteShortcuts.isAccurate] on its reported accuracy; a confirming precise fix counts).
+     *
+     * A consumer that must not act on a rough position — the favorite chips' "already there" test —
+     * reads this rather than inferring precision from the absence of a [locationBanner]: an
+     * approximate-only grant is always rough yet shows no banner (Codex). It is replaced in the same
+     * step as the state it describes, so a new attempt in flight leaves the old set with its own fix.
+     * In memory only, never logged or persisted (SPEC *Privacy*).
+     */
+    data class RiderFix(val from: Coordinates, val at: Coordinates, val accurate: Boolean)
+
+    private val _riderFix = MutableStateFlow<RiderFix?>(null)
+    val riderFix: StateFlow<RiderFix?> = _riderFix.asStateFlow()
+
+    private fun riderFixFor(next: State, fix: LocationFix): RiderFix? =
+        shownLocation(next)?.let { RiderFix(it, fix.coordinates, FavoriteShortcuts.isAccurate(fix.accuracyMeters)) }
+
+    /**
      * A finished re-pick of a shown set ([relocate] or [refilter]): the set shown [before] it and
      * the one after (the same one when a re-locate kept it). A view that shows part of the set (the
      * To… trip from here) compares the two to decide whether its own part is unchanged and wants a
@@ -191,7 +213,13 @@ class NearbyStopsViewModel(
      * [applyRefinement], the same cancel-then-re-pick path a refresh takes, so a stale fetch can't
      * re-stamp the old set. [from] is the coarse fix it replaces; [id] is unique per refinement.
      */
-    data class Refinement(val id: Long, val from: Coordinates, val precise: Coordinates)
+    data class Refinement(
+        val id: Long,
+        val from: Coordinates,
+        val precise: Coordinates,
+        // The precise fix's own reported accuracy, carried to the fix the move re-resolves from.
+        val preciseAccuracyMeters: Float? = null,
+    )
 
     private val _refinement = MutableStateFlow<Refinement?>(null)
     val refinement: StateFlow<Refinement?> = _refinement.asStateFlow()
@@ -231,10 +259,14 @@ class NearbyStopsViewModel(
             if (fix == null) {
                 _state.value = State.NoLocation
                 _locationBanner.value = null
+                _riderFix.value = null
                 return@launch
             }
             val next = resolveFrom(fix.coordinates)
             _state.value = next
+            // The rider's fix for the new outcome, replaced as the outcome is applied — not when the
+            // attempt starts: the old set stays on screen meanwhile and still stands on its own (Codex).
+            _riderFix.value = riderFixFor(next, fix)
             // Label a set shown from a low-confidence (last-known fallback) fix as approximate, and
             // one from a coarse fix as coarse while a precise one is asked for; clear otherwise (a
             // fresh fix, or a gate/error state that speaks for itself).
@@ -290,7 +322,9 @@ class NearbyStopsViewModel(
             if (shown is State.Ready) onSameSet(shown)
             return
         }
-        relocateWith(onSameSet) { LocationFix(refinement.precise, isFallback = false) }
+        relocateWith(onSameSet) {
+            LocationFix(refinement.precise, isFallback = false, accuracyMeters = refinement.preciseAccuracyMeters)
+        }
     }
 
     private fun relocateWith(onSameSet: (State.Ready) -> Unit, fixFor: suspend () -> LocationFix?) {
@@ -303,6 +337,7 @@ class NearbyStopsViewModel(
                 fix == null -> {
                     _state.value = State.NoLocation
                     _locationBanner.value = null
+                    _riderFix.value = null
                 }
                 // Don't jump (SPEC *Finding stops*): a re-locate that could only get a low-confidence
                 // last-known fix keeps the set already shown rather than re-resolving to a stale/
@@ -329,6 +364,8 @@ class NearbyStopsViewModel(
                     // recreate the departures ViewModel (its store is keyed on the whole cluster
                     // set), so this is a plain recompose plus an in-place reconcile, not a rebuild.
                     _state.value = next
+                    // Replaced with this fix's outcome, as in [locate].
+                    _riderFix.value = riderFixFor(next, fix)
                     _locationBanner.value = bannerFor(next, fix)
                     repicked(current, next)
                     if (fix.isCoarse && !fix.isFallback) shownLocation(next)?.let(::refine)
@@ -447,8 +484,8 @@ class NearbyStopsViewModel(
         refineJob = null
         if (!surfaceActive) return
         refineJob = viewModelScope.launch {
-            val precise = try {
-                withContext(io) { location.precise() }
+            val preciseFix = try {
+                withContext(io) { location.preciseWithAccuracy() }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -456,6 +493,7 @@ class NearbyStopsViewModel(
                 warn("precise fix failed: ${e::class.simpleName}")
                 null
             } ?: return@launch
+            val precise = preciseFix.coordinates
             if (shownLocation(_state.value) != shownFrom) return@launch
             // Answered either way: confirmed, or offered as a move (which relocates).
             refineFrom = null
@@ -467,8 +505,16 @@ class NearbyStopsViewModel(
                     maxOf(System.nanoTime(), (_refinement.value?.id ?: 0) + 1),
                     from = shownFrom,
                     precise = precise,
+                    preciseAccuracyMeters = preciseFix.accuracyMeters,
                 )
             } else if (_locationBanner.value == LocationBanner.COARSE) {
+                // Where the rider is, per the precise fix that confirmed the set in place — accurate
+                // only on its own reported accuracy, as GPS can answer vaguely too (Codex).
+                _riderFix.value = RiderFix(
+                    from = shownFrom,
+                    at = precise,
+                    accurate = FavoriteShortcuts.isAccurate(preciseFix.accuracyMeters),
+                )
                 _locationBanner.value = null
             }
         }
