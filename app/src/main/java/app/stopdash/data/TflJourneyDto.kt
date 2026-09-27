@@ -80,6 +80,8 @@ data class TflJourneyLegDto(
                 .map { signedName(it) }.filter { it.isNotBlank() }.distinct(),
             fromArea = departurePoint.stopPair(),
             toArea = arrivalPoint.stopPair(),
+            fromPosition = departurePoint.position(),
+            toPosition = arrivalPoint.position(),
         )
     }
 }
@@ -111,15 +113,22 @@ data class TflJourneyPointDto(
     val lat: Double? = null,
     val lon: Double? = null,
 ) {
+    /** The point's (latitude, longitude), or null when either is absent. */
+    fun position(): Pair<Double, Double>? {
+        val latitude = lat ?: return null
+        val longitude = lon ?: return null
+        return latitude to longitude
+    }
+
+    /** The stop pair ("490G…") the Planner names a bus stop by, or empty for any other stop. */
+    fun stopPair(): String = naptanId?.takeIf { it.startsWith(STOP_PAIR_PREFIX) }.orEmpty()
+
     /**
      * The stop a leg boards or leaves at, as the live feed knows it. The Planner names a bus leg's
      * ends by their stop pair ("490G…", both of a road's poles), which TfL gives no arrivals for, and
      * sometimes by nothing; the pole the rider stands at is its [individualStopId]. Any other stop
      * (a station) goes by its [naptanId]. Null when neither names one.
      */
-    /** The stop pair ("490G…") the Planner names a bus stop by, or empty for any other stop. */
-    fun stopPair(): String = naptanId?.takeIf { it.startsWith(STOP_PAIR_PREFIX) }.orEmpty()
-
     fun stopId(): String? {
         val pole = individualStopId?.takeIf { it.startsWith(BUS_STOP_PREFIX) && !it.startsWith(STOP_PAIR_PREFIX) }
         val id = naptanId?.takeIf { it.isNotBlank() }

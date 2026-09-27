@@ -364,6 +364,17 @@ The app finds stops two ways:
   everything that follows one follows the other. A place's header doesn't offer lines: a busy one
   would list dozens.
 
+### Places
+
+A **place** is what a rider thinks of as one stop, whatever TfL calls it (maintainer, 2026-09-27): a
+TfL interchange, a bus stop pair, or — **synthesized** where TfL keeps them apart — stops of the same
+name within 250 m of each other (the search's fold radius), a name matching whole or as one part of a
+"/"-joined name ("Archway" and "Archway Station", or a stop named "‹place› / ‹road›"). Two routes'
+poles at the same station, filed under different stop areas and no interchange, are one place. It is
+worked out from the stops already at hand — a plan's legs and the routes of the lines it rides — so no
+stop list is preprocessed and nothing extra is fetched. Trips group their cards by place (*Trips with a
+change*); the other surfaces that group by interchange today move onto places in turn (`TODO.md`).
+
 ### Departures
 
 For each watched stop, stopdash shows the next few departures: **line**, **destination**
@@ -862,10 +873,16 @@ tier by the earliest end-to-end arrival, worked out leg by leg from live trains 
 route is therefore the fastest one StopDash can vouch for, not an earlier estimate. Routes riding the
 same lines in turn but changing at a different stop are **cards of their own**, told apart by the
 stops their ride rows name (below) (maintainer, 2026-09-27). Routes whose first ride goes between the
-same two stops by the same mode and then ride the same lines — the 43 or the 134 to Highgate
+same two **places** (*Places*) by the same mode and then ride the same lines — the 43 or the 134 to Highgate
 station, then the Northern line — **share a card**: its header shows that leg's lines as **one pill
 cut diagonally** ("43/134", read as "43 or 134"), then the later lines and the best of their
-arrivals, and its first ride's row times every one of those lines together (below). Tapping
+arrivals, and its first ride's row times every one of those lines together (below). The Planner
+doesn't always offer every line for a stretch — it may change from one bus at the next station along
+while another bus runs on to the same change — so a line some route rides first from the same place
+also joins a card when **its own route runs from that place to the card's change place** (maintainer,
+2026-09-27): it boards where its route calls, only at a stop the trip already fetches (so no extra
+request), and is timed as the ride it stands beside (the same stretch of road). The route the Planner
+gave for that line stays a card of its own. Tapping
 the card opens its best route. **Every route looks alike** — no
 route is expanded — as a card whose top row is its **duration · arrival** ("22 min · 08:24"); the
 duration is from now to that arrival, so it takes in the same walks, waits and legs. Where waiting

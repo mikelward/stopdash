@@ -955,6 +955,15 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [x] **Shared-leg pill**: a leg several routes serve alike (buses 43 and 134 share the stops
             to Highgate station) as one diagonally cut pill carrying both routes, and a live row per
             line in the one card (maintainer, 2026-09-26).
+      - [x] **Places** (maintainer, 2026-09-27; SPEC *Places*): a synthesized place — TfL hub,
+            stop pair, or same-named stops within 250 m — so two lines' different poles at one
+            change share a card, and a line whose route runs the same stretch joins a card the
+            Planner changed from it elsewhere. Resolved from stops already at hand, no preprocessing.
+      - [ ] **Move the other hub-grouped surfaces onto places** (maintainer: "an entity so it's
+            handled everywhere", 2026-09-27): the near-me list's place headers and cards, notice
+            placement and dismissal, direct trips' destination stops, starred journeys' ends, and
+            the search fold (which today keeps "Example / High Road" apart from "Example" by a
+            pinned test — changing that is a decision, not a refactor). One surface per PR.
     - [ ] **Star a From… To… trip as a journey**: the trip has no single starred line, which
           `StarredJourney` places its ends on, so it needs a line-free journey first.
     - [x] **To… from the near-me list** (maintainer, 2026-09-24): the overflow's *To…* starts

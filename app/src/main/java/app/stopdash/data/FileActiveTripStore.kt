@@ -304,10 +304,15 @@ private data class PersistedTripLeg(
     val headings: List<String> = emptyList(),
     val fromArea: String = "",
     val toArea: String = "",
+    val fromLat: Double? = null,
+    val fromLon: Double? = null,
+    val toLat: Double? = null,
+    val toLon: Double? = null,
 ) {
     fun toLeg() = TripLeg(
         mode, lineId, lineName, fromId, fromName, toId, toName, Instant.parse(departure), Instant.parse(arrival),
         path, pathNames, Duration.ofSeconds(changeAfterSeconds), headings, fromArea, toArea,
+        fromLat?.let { lat -> fromLon?.let { lat to it } }, toLat?.let { lat -> toLon?.let { lat to it } },
     )
 
     companion object {
@@ -315,6 +320,7 @@ private data class PersistedTripLeg(
             leg.mode, leg.lineId, leg.lineName, leg.fromId, leg.fromName, leg.toId, leg.toName,
             leg.departure.toString(), leg.arrival.toString(), leg.path, leg.pathNames, leg.changeAfter.seconds, leg.headings,
             leg.fromArea, leg.toArea,
+            leg.fromPosition?.first, leg.fromPosition?.second, leg.toPosition?.first, leg.toPosition?.second,
         )
     }
 }

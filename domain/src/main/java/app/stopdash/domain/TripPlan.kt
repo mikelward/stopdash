@@ -33,6 +33,10 @@ data class TripLeg(
     val headings: List<String> = emptyList(),
     val fromArea: String = "",
     val toArea: String = "",
+    // Each end's position as the Planner gives it, where it does: how a stop finds its place
+    // ([StopPlaces]) among stops TfL keeps apart.
+    val fromPosition: Pair<Double, Double>? = null,
+    val toPosition: Pair<Double, Double>? = null,
 ) {
     val isWalk: Boolean get() = mode.equals(WALKING, ignoreCase = true)
 
