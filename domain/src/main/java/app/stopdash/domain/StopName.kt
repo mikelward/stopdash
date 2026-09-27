@@ -26,9 +26,26 @@ private val LINE_PARENTHETICAL = Regex("""\s*\([^()]*\bLines?\)\s*$""", RegexOpt
  * suffix last — the full `commonName` is "Hammersmith (H&C Line) Underground Station", so the
  * parenthetical only reaches the end (where the end-anchored [LINE_PARENTHETICAL] can catch it)
  * once "Underground Station" is gone.
+ *
+ * A bus stop named with its cross street carries the suffix on either part ("Parkside Station  /
+ * High Road", "Market Place / Riverside Station"): each part is cleaned the same way
+ * ("Parkside / High Road"; maintainer, 2026-09-27: "Station" is stripped everywhere). A road
+ * named for one ("Station Road") has no suffix to strip. TfL pads that slash with a run of spaces,
+ * so runs of whitespace fold to one.
  */
 fun cleanStopName(raw: String): String {
-    var name = raw.trim()
+    val name = raw.trim().replace(WHITESPACE_RUN, " ")
+    return name.split(CROSS_STREET).joinToString(CROSS_STREET, transform = ::cleanPart)
+}
+
+private val WHITESPACE_RUN = Regex("\\s+")
+
+/** Between a bus stop's own name and the street or place it's by: "Aldwych / Somerset House". */
+private const val CROSS_STREET = " / "
+
+// One place name: its type suffix, then a trailing line parenthetical ([cleanStopName]).
+private fun cleanPart(part: String): String {
+    var name = part.trim()
     val suffixes = listOf(
         " Underground Station",
         " DLR Station",

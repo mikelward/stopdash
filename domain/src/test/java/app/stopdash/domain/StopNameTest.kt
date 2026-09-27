@@ -66,6 +66,18 @@ class StopNameTest {
     }
 
     @Test
+    fun `strips the type suffix from each part of a name with a cross street`() {
+        // Synthetic names in TfL's shapes: the suffix before the slash, padded with extra spaces.
+        assertEquals("Parkside / High Road", cleanStopName("Parkside Station   / High Road"))
+        assertEquals("Hillview / Mill Lane", cleanStopName("Hillview Underground Station  / Mill Lane"))
+        assertEquals("Eastgate / Bridge Street", cleanStopName("Eastgate (Green Line) Underground Station / Bridge Street"))
+        // Either part: the place after the slash can be the station.
+        assertEquals("Market Place / Riverside", cleanStopName("Market Place / Riverside Station"))
+        // A road named for a station has no suffix to strip.
+        assertEquals("Parkside / Station Road", cleanStopName("Parkside / Station Road"))
+    }
+
+    @Test
     fun `trims surrounding whitespace`() {
         assertEquals("Victoria", cleanStopName("  Victoria Underground Station  "))
     }
