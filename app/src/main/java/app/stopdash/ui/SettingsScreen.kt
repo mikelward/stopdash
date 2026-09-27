@@ -53,7 +53,7 @@ import app.stopdash.domain.fontScalePercent
 /**
  * The Settings screen, hosted at the activity top level (like [LicensesScreen]) so it is
  * reachable from every state via the overflow menu, and rendered as an overlay whose own Back
- * closes it. Its first setting is the opt-in "refresh widget every minute" toggle (SPEC D5).
+ * closes it. Its first row opens the favorite-places editor (SPEC D9).
  *
  * Kept UI-only: it reflects [liveWidgetRefresh] and reports a change through
  * [onLiveWidgetRefreshChange]; persistence (the settings store) and the refresh scheduler
@@ -132,6 +132,13 @@ fun SettingsScreen(
                 // pinch. Read from the theme's shared handle so the slider, the pinch, and the app
                 // all move one value; absent only outside the theme (a bare test render), where the
                 // section hides.
+                // Favorite places leads the list — the everyday setting a rider reaches for most.
+                SettingNavRow(
+                    title = stringResource(R.string.settings_favorite_places_title),
+                    summary = stringResource(R.string.settings_favorite_places_summary),
+                    onClick = onOpenFavoritePlaces,
+                    testTag = "favoritePlacesRow",
+                )
                 val fontSize = LocalFontSizeState.current
                 if (fontSize != null) {
                     TextSizeRow(
@@ -148,12 +155,6 @@ fun SettingsScreen(
                         switchTestTag = "pinchSwitch",
                     )
                 }
-                SettingNavRow(
-                    title = stringResource(R.string.settings_favorite_places_title),
-                    summary = stringResource(R.string.settings_favorite_places_summary),
-                    onClick = onOpenFavoritePlaces,
-                    testTag = "favoritePlacesRow",
-                )
                 DistanceUnitsRow(
                     selected = distanceUnits,
                     onSelect = onDistanceUnitsChange,
