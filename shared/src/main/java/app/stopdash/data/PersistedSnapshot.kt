@@ -4,6 +4,8 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.JourneyCall
 import app.stopdash.domain.LineRef
+import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.RailFeed
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.Terminating
@@ -23,7 +25,8 @@ import kotlinx.serialization.Serializable
  * renders from exactly the widget's inputs: a field added here reaches the user's watch too, so
  * check it against the watch-sync disclosure (docs/PRIVACY.md). Otherwise the field set can
  * change with a `version` bump, and only the fields the restore actually needs are carried (the
- * transient refresh-cycle flags are not persisted; see [DeparturesSnapshot]). The file itself is
+ * transient refresh-cycle flags are not persisted; line statuses are, age-stamped; see
+ * [DeparturesSnapshot]). The file itself is
  * not strictly device-local: it rides Android backup and device-to-device transfer like the rest
  * of the app's data (SPEC §12), a platform path the user controls — see the app's
  * `DataStoreSnapshotStore`.
@@ -41,6 +44,10 @@ data class PersistedSnapshot(
     // Defaulted, so an older snapshot reads back with none, as before; an older build reading
     // this one ignores it and shows what it did before.
     val missingStopIds: List<String> = emptyList(),
+    // Each shown line's last status check, stamped ([DeparturesSnapshot.lineStatuses]). Defaulted,
+    // so an older snapshot reads back with none (no line marked, as before); an older build reading
+    // this one ignores it, as it always has.
+    val lineStatuses: List<PersistedLineStatus> = emptyList(),
 ) {
     companion object {
         /**
@@ -90,6 +97,54 @@ data class PersistedStop(
 // which is withheld once stale), so a saved one would assert a possibly-reopened station on
 // the next launch. This is the same reason Snapshot.mergeStop never ages a disruption. On
 // restore a stop carries no disruptions; the immediate refresh re-establishes them.
+
+/**
+ * One line's status check. TfL's public status, not user data; the chip label only, since no
+ * surface that reads the snapshot shows the full reason ([app.stopdash.domain.LineStatus.fullText]
+ * is left out, keeping the snapshot and the watch envelope small).
+ */
+@Serializable
+data class PersistedLineStatus(
+    val lineId: String,
+    val severity: Int,
+    val description: String,
+    val checkedAtMillis: Long,
+    // False for a check TfL gave no status for ([LineStatusCheck.known]). Defaulted: a check written
+    // before this field was a verdict.
+    val known: Boolean = true,
+)
+
+fun LineStatusCheck.toPersisted(): PersistedLineStatus =
+    PersistedLineStatus(status.lineId, status.severity, status.description, checkedAt.toEpochMilli(), known)
+
+fun PersistedLineStatus.toDomain(): LineStatusCheck =
+    LineStatusCheck(LineStatus(lineId, severity, description), Instant.ofEpochMilli(checkedAtMillis), known)
+
+/** The persisted form of [DeparturesSnapshot.lineStatuses], in a stable (line id) order. */
+fun Map<String, LineStatusCheck>.toPersistedStatuses(): List<PersistedLineStatus> =
+    values.sortedBy { it.status.lineId }.map { it.toPersisted() }
+
+/** The lines [stops] could show a row or a status for, as [LineStatusCheck.linesOf] counts them. */
+fun linesOfPersisted(stops: List<PersistedStop>): Set<String> =
+    stops.flatMapTo(HashSet()) { stop -> stop.departures.map { it.lineId } + stop.lines.map { it.id } }
+        .filterTo(HashSet()) { it.isNotBlank() }
+
+/**
+ * [a] and [b]'s line checks merged, the later check per line winning ([LineStatusCheck.newest]),
+ * kept only for the lines [stops] show.
+ */
+fun newestStatuses(
+    a: List<PersistedLineStatus>,
+    b: List<PersistedLineStatus>,
+    stops: List<PersistedStop>,
+    now: Instant,
+): List<PersistedLineStatus> =
+    LineStatusCheck.newest(
+        a.associate { it.lineId to it.toDomain() },
+        b.associate { it.lineId to it.toDomain() },
+        linesOfPersisted(stops),
+        now,
+    ).toPersistedStatuses()
 
 @Serializable
 data class PersistedWidgetJourney(
@@ -148,6 +203,7 @@ fun DeparturesSnapshot.toPersisted(): PersistedSnapshot =
         },
         journeyOnlyStopIds = journeyOnlyStopIds.sorted(),
         missingStopIds = missingStopIds.sorted(),
+        lineStatuses = lineStatuses.toPersistedStatuses(),
     )
 
 /**
@@ -167,6 +223,7 @@ fun PersistedSnapshot.toDomain(): DeparturesSnapshot? {
         },
         journeyOnlyStopIds = journeyOnlyStopIds.toSet(),
         missingStopIds = missingStopIds.toSet(),
+        lineStatuses = lineStatuses.associate { it.lineId to it.toDomain() },
     )
 }
 

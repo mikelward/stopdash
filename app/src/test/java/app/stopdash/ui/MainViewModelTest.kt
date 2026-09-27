@@ -80,7 +80,7 @@ class MainViewModelTest {
 
     private class FakeClient(
         val byStop: Map<String, Result<List<Departure>>>,
-        val statuses: Result<List<LineStatus>> = Result.success(emptyList()),
+        var statuses: Result<List<LineStatus>> = Result.success(emptyList()),
         val disruptionsByStop: Map<String, Result<List<StopDisruption>>> = emptyMap(),
     ) : TflClient {
         var requestedLineIds: Collection<String>? = null
@@ -855,6 +855,73 @@ class MainViewModelTest {
         assertEquals(setOf("victoria"), state.lineStatuses.keys)
         assertEquals("Severe Delays", state.lineStatuses.getValue("victoria").description)
         assertEquals(false, state.disruptionUnknown)
+    }
+
+    @Test
+    fun `a line TfL leaves out reaches the widget as a no-verdict check`() = runTest(dispatcher) {
+        val store = FakeStore()
+        viewModel(
+            FakeClient(
+                mapOf("940GZZLUOXC" to Result.success(listOf(departure("victoria", "Victoria", 300)))),
+                statuses = Result.success(emptyList()),
+            ),
+            store,
+        )
+        advanceUntilIdle()
+
+        val check = store.saves.last().lineStatuses.getValue("victoria")
+        assertFalse(check.known)
+        assertEquals(now, check.checkedAt)
+    }
+
+    @Test
+    fun `a verdict after the clock moves back replaces an earlier omission`() = runTest(dispatcher) {
+        val store = FakeStore()
+        var time = now
+        val client = FakeClient(
+            mapOf("940GZZLUOXC" to Result.success(listOf(departure("victoria", "Victoria", 300)))),
+            statuses = Result.success(emptyList()),
+        )
+        val vm = MainViewModel(client, seeds, clock = { time }, io = dispatcher, snapshotStore = store)
+        advanceUntilIdle()
+        assertFalse(store.saves.last().lineStatuses.getValue("victoria").known)
+
+        // The clock is set back, then TfL answers: the omission is dated after the verdict, but
+        // the verdict is the later answer and must win.
+        time = now.minusSeconds(600)
+        client.statuses = Result.success(listOf(status("victoria", 6, "Severe Delays")))
+        vm.refresh()
+        advanceUntilIdle()
+
+        val check = store.saves.last().lineStatuses.getValue("victoria")
+        assertTrue(check.known)
+        assertEquals(6, check.status.severity)
+        assertEquals(time, check.checkedAt)
+    }
+
+    @Test
+    fun `the widget snapshot carries each shown line's status check, stamped`() = runTest(dispatcher) {
+        val store = FakeStore()
+        viewModel(
+            FakeClient(
+                mapOf(
+                    "940GZZLUOXC" to Result.success(listOf(departure("victoria", "Victoria", 300))),
+                    "940GZZLUKSX" to Result.success(listOf(departure("northern", "Northern", 120))),
+                ),
+                statuses = Result.success(
+                    listOf(status("victoria", 6, "Severe Delays"), status("northern", LineStatus.GOOD_SERVICE, "Good Service")),
+                ),
+            ),
+            store,
+        )
+        advanceUntilIdle()
+
+        val checks = store.saves.last().lineStatuses
+        // Good services are kept too, so a newer "good" can replace an older disruption on merge.
+        assertEquals(setOf("victoria", "northern"), checks.keys)
+        assertTrue(checks.values.all { it.known })
+        assertEquals(6, checks.getValue("victoria").status.severity)
+        assertEquals(now, checks.getValue("victoria").checkedAt)
     }
 
     @Test
@@ -3854,10 +3921,12 @@ class MainViewModelTest {
         val statusCalls = mutableListOf<Set<String>>()
         var statuses = emptyList<LineStatus>()
         var failingStatus = false
+        var unknownStatus = false
 
         override suspend fun lineStatuses(lineIds: Collection<String>): List<LineStatus> {
             statusCalls += lineIds.toSet()
             if (failingStatus) throw TflException.RateLimited(null)
+            if (unknownStatus) throw TflException.NotFound(null)
             return statuses.filter { it.lineId in lineIds }
         }
 
@@ -4587,6 +4656,51 @@ class MainViewModelTest {
         vm.refresh()
         advanceUntilIdle()
         assertEquals(2, client.statusCalls.size)
+    }
+
+    @Test
+    fun `a line TfL left out isn't asked about again within the reuse window, and stays unknown`() = runTest(dispatcher) {
+        var current = now
+        // TfL answers with no status for any line.
+        val client = ReuseCountingClient().apply { statuses = emptyList() }
+        val vm = MainViewModel(
+            client, seeds, clock = { current }, io = dispatcher,
+            arrivalsReuse = ARRIVALS_REUSE, disruptionReuse = DISRUPTION_REUSE, lineStatusReuse = LINE_STATUS_REUSE,
+        )
+        advanceUntilIdle()
+        assertEquals(1, client.statusCalls.size)
+
+        current = now.plusSeconds(60)
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(1, client.statusCalls.size)
+        assertTrue((vm.state.value as DeparturesUiState.Loaded).disruptionUnknown)
+
+        current = now.plus(LINE_STATUS_REUSE)
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(2, client.statusCalls.size)
+    }
+
+    @Test
+    fun `a line TfL no longer recognizes replaces its cached disruption for the widget`() = runTest(dispatcher) {
+        var current = now
+        val store = FakeStore()
+        val client = ReuseCountingClient().apply { statuses = listOf(status("victoria", 6, "Severe Delays")) }
+        val vm = MainViewModel(
+            client, seeds, clock = { current }, io = dispatcher, snapshotStore = store,
+            arrivalsReuse = ARRIVALS_REUSE, disruptionReuse = DISRUPTION_REUSE, lineStatusReuse = LINE_STATUS_REUSE,
+        )
+        advanceUntilIdle()
+        assertTrue(store.saves.last().lineStatuses.getValue("victoria").known)
+
+        client.unknownStatus = true
+        current = now.plus(LINE_STATUS_REUSE)
+        vm.refresh()
+        advanceUntilIdle()
+        val check = store.saves.last().lineStatuses.getValue("victoria")
+        assertFalse(check.known)
+        assertEquals(current, check.checkedAt)
     }
 
     @Test

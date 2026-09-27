@@ -1918,13 +1918,22 @@ and these carry the rest as their own PRs:
         on the default path. Scheduling a redraw *per departure boundary* was considered and is
         the same cadence by another name (a chained wake every few minutes), so it isn't a
         cheaper middle ground — it's the deferred loop.
-- [ ] **Carry disruption / line-status into the widget (own PR).** Maintainer: *yes, but a
-      follow-up.* The widget's `across(...)` runs with empty `lineStatuses` and the snapshot
-      has no disruptions, so a delayed/suspended service can show a normal-looking countdown.
-      Requires the snapshot to persist an age-stamped status (a deliberate reversal of the
-      `DeparturesSnapshot` KDoc, so `SPEC.md` records the reasoning). The per-row stale
-      withhold (landed) already stops *old* numbers reading as live; this marks a *fresh*
-      disrupted service on the widget.
+- [x] **Carry disruption / line-status into the widget (own PR).** Maintainer: *yes, but a
+      follow-up.* **[landed]** The snapshot keeps each shown line's status check stamped with its
+      time (good ones too, so two writers merge newest-first); the widget marks a disrupted row
+      ("⚠ Severe Delays", a budgeted line never dropped to fit) and shows a suspended line with no
+      predictions as its status alone, withholding any mark at the shared staleness threshold. The
+      widget's own refresh re-checks the lines with the arrivals (one extra request per cycle, lines
+      checked in the last 90 s reused). SPEC *One widget, many surfaces* records the reversal. A line with no current check reads
+      "Couldn't check for disruptions", as in the app. Stop closures are still not persisted. The
+      watch doesn't render the checks yet: *Disruptions on the watch* (Phase 6).
+- [ ] **Re-check line statuses when arrivals fail (own PR, Codex P1 on #317).** Both writers
+      check statuses only alongside arrivals they save: the worker skips the status call when
+      every arrivals request failed, and the app's save gate needs fresh or carried arrivals. So
+      during an arrivals-only outage a newly declared suspension doesn't reach the widget. Its rows
+      already show `?` and the stale note then, and an older check ages out at the threshold rather
+      than being shown, so nothing false is asserted, but the news is late. Fix: merge a successful
+      status check into the stored snapshot on its own, keeping the last-good arrivals.
 - [ ] **Persist a refresh-failure kind / incompleteness for the widget (own PR, rides with the
       above).** *Incompleteness landed (2026-09-24): the snapshot persists the requested stops a
       refresh couldn't get (`missingStopIds`), and the widget is `uncertain` while any is. The
@@ -2266,6 +2275,14 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
       before implementation, per *Cost and reliability*.
 
 ## Decisions needing review
+
+- [ ] **The widget marks a disruption the user dismissed in the app (autopilot, 2026-09-27).**
+  Taken: the widget shows every live line status, dismissed or not: it has no room for a dismiss
+  control, and SPEC's rule for dismissals errs toward a warning shown, never one hidden.
+  *Alternative:* filter the app's dismissed line statuses out when it writes the snapshot, and
+  re-save the snapshot on each dismissal so the widget follows. **Reversible:** one filter in
+  `MainViewModel.widgetLineChecks` plus a save on dismiss. **To confirm:** whether a dismissed
+  warning lingering on the widget reads as noise.
 
 - [ ] **Check and confirm: a line page with no trains names the alert's stations but lists none
   (maintainer asked for a call, 2026-09-26).** A status row (a suspension, no predictions) has no

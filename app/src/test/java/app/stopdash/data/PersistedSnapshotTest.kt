@@ -3,6 +3,8 @@ package app.stopdash.data
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.LineRef
+import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.RailFeed
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopDisruption
@@ -246,6 +248,32 @@ class PersistedSnapshotTest {
     @Test
     fun `missing stops survive the round trip`() {
         val snapshot = sample().copy(missingStopIds = setOf("940GZZLUBND"))
+        assertEquals(snapshot, snapshot.toPersisted().toDomain())
+    }
+
+    @Test
+    fun `line status checks survive the round trip, less the full reason`() {
+        val check = LineStatusCheck(LineStatus("victoria", 6, "Severe Delays"), now.minusSeconds(30))
+        val snapshot = sample().copy(lineStatuses = mapOf("victoria" to check))
+        assertEquals(snapshot, snapshot.toPersisted().toDomain())
+        // The full text isn't carried: no surface reading the snapshot shows it.
+        val withReason = snapshot.copy(
+            lineStatuses = mapOf("victoria" to check.copy(status = check.status.copy(fullText = "Signal failure"))),
+        )
+        assertEquals(snapshot, withReason.toPersisted().toDomain())
+    }
+
+    @Test
+    fun `a snapshot written before line statuses were persisted reads back with none`() {
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        val older = """{"version":2,"stops":[],"fetchedAtMillis":0}"""
+        val read = json.decodeFromString(PersistedSnapshot.serializer(), older).toDomain()!!
+        assertEquals(emptyMap<String, LineStatusCheck>(), read.lineStatuses)
+    }
+
+    @Test
+    fun `a no-verdict check survives the round trip`() {
+        val snapshot = sample().copy(lineStatuses = mapOf("victoria" to LineStatusCheck.noVerdict("victoria", now)))
         assertEquals(snapshot, snapshot.toPersisted().toDomain())
     }
 }

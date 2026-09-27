@@ -14,6 +14,7 @@ import app.stopdash.domain.Terminating
 import app.stopdash.domain.WidgetJourneys
 import app.stopdash.domain.WidgetJourneysReport
 import java.io.InputStream
+import java.time.Instant
 import java.io.OutputStream
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -35,6 +36,8 @@ import kotlinx.serialization.json.Json
  */
 class DataStoreSnapshotStore internal constructor(
     private val dataStore: DataStore<PersistedSnapshot?>,
+    // For merging line checks: one dated after it predates a clock rollback and loses.
+    private val clock: () -> Instant = Instant::now,
 ) : SnapshotStore {
 
     override suspend fun load(): DeparturesSnapshot? = dataStore.data.first()?.toDomain()
@@ -51,6 +54,8 @@ class DataStoreSnapshotStore internal constructor(
         expectedStopIds: List<String>,
     ): Boolean {
         val desired = snapshot.toPersisted()
+        // Captured once, so the transform stays a pure function of `current` if DataStore re-runs it.
+        val now = clock()
         // The transform runs under DataStore's write lock, so the compare and the write are one
         // atomic step — no reload→save window a concurrent writer could slip through. Keep the
         // stored snapshot untouched when its stop set no longer matches what the caller worked
@@ -73,6 +78,9 @@ class DataStoreSnapshotStore internal constructor(
                 stops = desired.stops.map { stop ->
                     nearerById[stop.stopId]?.let { (ids, names) -> stop.copy(nearerIds = ids, nearerNames = names) } ?: stop
                 },
+                // Line checks per line, newest wins: the app may have checked a line since this
+                // caller loaded, and an older verdict mustn't replace it.
+                lineStatuses = newestStatuses(current.lineStatuses, desired.lineStatuses, desired.stops, now),
             )
         }
         val written = dataStore.updateData { current ->
@@ -121,6 +129,8 @@ class DataStoreSnapshotStore internal constructor(
                     missingStopIds = current.missingStopIds.filterNot { it in departed },
                     fetchedAtMillis = kept.maxOfOrNull { it.fetchedAtMillis } ?: current.fetchedAtMillis,
                     journeyOnlyStopIds = (current.journeyOnlyStopIds + demoted).distinct(),
+                    // A departed stop's lines go with it, unless a kept stop shows them too.
+                    lineStatuses = linesOfPersisted(kept).let { lines -> current.lineStatuses.filter { it.lineId in lines } },
                 )
             }
         }
@@ -128,6 +138,7 @@ class DataStoreSnapshotStore internal constructor(
 
     override suspend fun saveKeepingJourneys(snapshot: DeparturesSnapshot) {
         val desired = snapshot.toPersisted()
+        val now = clock()
         // Pure function of `current`, atomic with the read under the write lock (see pruneStops).
         dataStore.updateData { current ->
             // A newer build's file isn't this one's to rewrite piecemeal: replace it outright.
@@ -159,6 +170,14 @@ class DataStoreSnapshotStore internal constructor(
                     ).distinct(),
                 // A stop the stored copy still holds, carried or not, isn't missing, whoever fetched it.
                 missingStopIds = desired.missingStopIds.filter { id -> stops.none { it.stopId == id } },
+                // Newest check per line of the two writers', for the lines the kept stops show (a
+                // carried origin's too).
+                lineStatuses = newestStatuses(
+                    current?.takeIf { it.version in PersistedSnapshot.READABLE_VERSIONS }?.lineStatuses.orEmpty(),
+                    desired.lineStatuses,
+                    stops,
+                    now,
+                ),
             )
         }
     }

@@ -104,6 +104,12 @@ data class DepartureRow(
 )
 
 /**
+ * A line's status with no departures to go with it: a suspension's own row, drawn as the status
+ * alone. It lasts only as long as the check behind it (SPEC D3/D4).
+ */
+val DepartureRow.isStatusOnly: Boolean get() = upcoming.isEmpty() && status != null
+
+/**
  * The [DepartureRow.directionKey] a status row carries — a fixed sentinel, since a status
  * row has no direction. It keeps `(stopId, lineId, directionKey)` unique for a status row
  * (there is one per stop+line, and the line has no prediction rows to collide with).

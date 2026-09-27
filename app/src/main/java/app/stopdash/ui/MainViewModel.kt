@@ -14,6 +14,7 @@ import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.HubInfo
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.lineAlertKey
 import app.stopdash.domain.NearbySelection
 import app.stopdash.domain.Snapshot
@@ -276,8 +277,21 @@ class MainViewModel(
             // A nearby stop with no arrivals at all failed with nothing to fall back on
             // ([Snapshot.mergeStop] drops it), so the widget must not read the rest as complete.
             missingStopIds = nearIds - kept.mapTo(HashSet()) { it.stopId },
+            // Each kept line's last determined status, stamped with when TfL gave it, so the widget
+            // marks a disrupted service and withholds the mark at the staleness threshold (SPEC D3/D4).
+            lineStatuses = widgetLineChecks(kept),
         )
     }
+
+    /** The [lineStatusCache] entries for the lines [stops] show, as the widget snapshot's checks. */
+    private fun widgetLineChecks(stops: List<StopArrivals>): Map<String, LineStatusCheck> =
+        LineStatusCheck.linesOf(stops).mapNotNull { id ->
+            val verdict = lineStatusCache[id]?.let { (at, status) -> LineStatusCheck(status, at) }
+            val omitted = lineStatusOmitted[id]?.let { LineStatusCheck.noVerdict(id, it) }
+            // At most one is held: each answer clears the other kind, so the latest wins whatever
+            // the clock did in between.
+            (verdict ?: omitted)?.let { id to it }
+        }.toMap()
 
     /**
      * Whether a fetch's widget snapshot is worth saving: judged on the nearby stops whenever any were
@@ -577,6 +591,9 @@ class MainViewModel(
     // [lineStatusReuse] so a refresh a minute after the last one needn't re-ask about the same lines.
     // A line TfL gave no status for, or a failed request, is never cached. In-memory, main thread.
     private val lineStatusCache = mutableMapOf<String, Pair<Instant, LineStatus>>()
+    // When each line was last asked about and TfL gave no status for it (a no-verdict check for the
+    // widget). In-memory, main thread, like the cache.
+    private val lineStatusOmitted = mutableMapOf<String, Instant>()
     // Lines TfL answered 404 for ("not recognised": a National Rail service it has no line for).
     // Not asked about again this session — the answer won't change — and never determined, so their
     // rows still read as unchecked rather than clean (SPEC principle 1).
@@ -1056,7 +1073,13 @@ class MainViewModel(
             val cachedStatuses = lineIds.mapNotNull { id ->
                 lineStatusCache[id]?.takeIf { (at, _) -> isWithin(at, now, lineStatusReuse) }?.second
             }
-            val toQuery = lineIds - cachedStatuses.mapTo(HashSet()) { it.lineId } - unknownLineIds
+            // A line TfL left out within the same window isn't asked about again either: it still
+            // reads as unchecked, but asking every cycle would spend the rate budget and the radio
+            // on an answer that just came back empty.
+            val recentlyOmitted = lineIds.filterTo(HashSet()) { id ->
+                lineStatusOmitted[id]?.let { at -> isWithin(at, now, lineStatusReuse) } == true
+            }
+            val toQuery = lineIds - cachedStatuses.mapTo(HashSet()) { it.lineId } - unknownLineIds - recentlyOmitted
             lineStatusRequests = if (toQuery.isNotEmpty()) 1 else 0
             // With nothing left to ask, the cached verdicts stand on their own.
             if (lineIds.isNotEmpty() && toQuery.isEmpty()) {
@@ -1066,7 +1089,16 @@ class MainViewModel(
             if (toQuery.isNotEmpty()) {
                 try {
                     val fetched = withContext(io) { client.lineStatuses(toQuery) }
-                    fetched.forEach { lineStatusCache[it.lineId] = now to it }
+                    // Stamped when TfL answered, not when this batch began: a slow batch neither loses
+                    // the store's newest-wins merge to a check made meanwhile nor saves an answer
+                    // already near its expiry (SPEC D3/D4).
+                    val answeredAt = clock()
+                    // The latest answer for a line replaces the other kind outright, so a clock moved
+                    // back can't leave a future-dated entry outranking it ([widgetLineChecks]).
+                    fetched.forEach {
+                        lineStatusCache[it.lineId] = answeredAt to it
+                        lineStatusOmitted.remove(it.lineId)
+                    }
                     val statuses = cachedStatuses + fetched
                     lineStatuses = statuses.filter { it.disrupted }.associateBy { it.lineId }
                     // A line TfL returned no determinable status for is unknown, not
@@ -1074,6 +1106,12 @@ class MainViewModel(
                     // (the client drops such lines, so they're absent here).
                     val determined = statuses.mapTo(mutableSetOf()) { it.lineId }
                     determinedLineIds = determined
+                    // Asked and left out: remembered, so the widget's copy of an older verdict for it
+                    // is replaced by "no verdict" rather than kept ([widgetLineChecks]).
+                    toQuery.filterNot { it in determined }.forEach {
+                        lineStatusOmitted[it] = answeredAt
+                        lineStatusCache.remove(it)
+                    }
                     val undetermined = lineIds.filterNot { it in determined }
                     if (undetermined.isNotEmpty()) {
                         // Name the specific lines so a persistent "couldn't check for disruptions" is
@@ -1087,6 +1125,13 @@ class MainViewModel(
                     // TfL knows none of the lines asked about (it leaves an unknown one out of an
                     // answer that has a known one): remembered, so a refresh doesn't ask again.
                     unknownLineIds += toQuery
+                    // Like an omission: an answer with no verdict, which replaces any older one
+                    // for the widget rather than letting it keep showing that ([widgetLineChecks]).
+                    val answeredAt = clock()
+                    toQuery.forEach {
+                        lineStatusOmitted[it] = answeredAt
+                        lineStatusCache.remove(it)
+                    }
                     lineStatuses = cachedStatuses.filter { it.disrupted }.associateBy { it.lineId }
                     determinedLineIds = cachedStatuses.mapTo(mutableSetOf()) { it.lineId }
                     warn("line status: TfL doesn't know line(s) ${toQuery.joinToString(",")}; not asked again")

@@ -99,6 +99,12 @@ object DepartureRows {
         now: Instant,
         lineStatuses: Map<String, LineStatus> = emptyMap(),
         splitPlatforms: Boolean = true,
+        // Keep a disrupted line's status row once its stop's arrivals are old or carried. A glance
+        // surface (the widget, the watch) passes only statuses whose own checks are live and draws
+        // a status row as the status alone, claiming nothing about departures, so the suspension
+        // stays marked until its check expires rather than until the arrivals do. The in-app list
+        // doesn't: its status row asserts "No departures", which needs current arrivals.
+        statusRowsWhenStale: Boolean = false,
     ): List<DepartureRow> =
         stops.flatMap { stop ->
             // A service ending no farther from the rider than this stop goes nowhere for them
@@ -127,7 +133,7 @@ object DepartureRows {
             // empty-state prompt (SPEC principle 1). Timed rows (withheld once stale) and a
             // fresh stop-status closure still show.
             val status =
-                if (stop.arrivalsFresh && !isStale(stop.fetchedAt, now)) {
+                if (statusRowsWhenStale || (stop.arrivalsFresh && !isStale(stop.fetchedAt, now))) {
                     statusRows(stop, timed, lineStatuses, hiddenLines)
                 } else {
                     emptyList()
@@ -434,6 +440,16 @@ object DepartureRows {
                 .thenBy { it.stopName },
         )
     }
+
+    /**
+     * [rows] with fresh ones ahead of stale ones, as every glance surface orders its cap: [stale]
+     * says whether a row's stop is past its boundary. A status-only row ([isStatusOnly]) ranks as
+     * fresh whatever its stop's age, since it has no countdown to withhold and only a live check
+     * reaches it, so a current suspension is never pushed below the cap by fresher departures.
+     * Stable: the prior order carries through within each band.
+     */
+    fun freshFirst(rows: List<DepartureRow>, stale: (DepartureRow) -> Boolean): List<DepartureRow> =
+        rows.sortedBy { if (!it.isStatusOnly && stale(it)) 1 else 0 }
 
     /**
      * Reorder [rows] so the user's **starred** services sit at the top — ranking only, not

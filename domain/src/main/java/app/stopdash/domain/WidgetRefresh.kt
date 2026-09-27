@@ -18,8 +18,7 @@ import kotlinx.coroutines.coroutineScope
  * withhold ages it honestly and the whole-widget stamp/warning can't read it as fresh (SPEC D4 /
  * principle 2) rather than blanking it. When **no** stop fetched fresh the whole cycle is a
  * no-op — this returns null and nothing is saved, leaving the last-good in place for the next
- * cycle. Disruptions/line-status are not refreshed here; carrying them onto the widget is its
- * own follow-up (the persisted snapshot deliberately holds only last-good arrivals + age).
+ * cycle. Line statuses are refreshed separately, by [refreshedLineStatuses], after the arrivals.
  *
  * A stop fetched fresh less than [reuse] before [now] — typically by the app a moment ago, which
  * shares the rate budget — is carried over as it is rather than fetched again. A cycle where every
@@ -100,5 +99,41 @@ object WidgetRefresh {
         // The whole-screen stamp is the freshest stop's age (matches DeparturesSnapshot).
         // The journeys the app last worked out ride along unchanged (route data isn't refetched here).
         return prior.copy(stops = stops, fetchedAt = stops.maxOf { it.fetchedAt })
+    }
+
+    /**
+     * [snapshot] with its line statuses re-checked (SPEC D3): every line its stops show, less those
+     * checked within [reuse] (the app's own check a moment ago, sharing the rate budget), asked in
+     * one [fetchStatuses] call and stamped by [answeredAt] once it returns — when TfL actually
+     * answered, so a slow call neither loses a merge to an earlier check nor lands already
+     * expiring ([now] decides only what to ask). A line TfL gave no status for gets a no-verdict
+     * check ([LineStatusCheck.known] false), so it isn't marked on a verdict nobody gave. A failed call ([fetchStatuses] returns null) leaves
+     * the prior checks as they were, to age out at the staleness threshold like a countdown (D4);
+     * until a check is made the line reads as unchecked ([DeparturesSnapshot.statusKnown]).
+     * Lines no longer shown are dropped either way.
+     */
+    suspend fun refreshedLineStatuses(
+        snapshot: DeparturesSnapshot,
+        now: Instant,
+        reuse: Duration = Duration.ZERO,
+        answeredAt: () -> Instant = { now },
+        fetchStatuses: suspend (lineIds: Set<String>) -> List<LineStatus>?,
+    ): DeparturesSnapshot {
+        val lines = LineStatusCheck.linesOf(snapshot.stops)
+        val kept = snapshot.lineStatuses.filterKeys { it in lines }
+        val toAsk = lines.filterTo(HashSet()) { id ->
+            val prior = kept[id] ?: return@filterTo true
+            val age = Duration.between(prior.checkedAt, now)
+            age.isNegative || age >= reuse
+        }
+        if (toAsk.isEmpty()) return snapshot.copy(lineStatuses = kept)
+        val fetched = fetchStatuses(toAsk) ?: return snapshot.copy(lineStatuses = kept)
+        val at = answeredAt()
+        val returned = fetched.filter { it.lineId in toAsk }.associate { it.lineId to LineStatusCheck(it, at) }
+        // A line asked about that TfL left out gets a no-verdict check, so it replaces the old one
+        // here and in the store's merge alike, rather than the old disruption being kept (an absent
+        // entry reads as "nothing new") until it ages out.
+        val fresh = toAsk.associateWith { returned[it] ?: LineStatusCheck.noVerdict(it, at) }
+        return snapshot.copy(lineStatuses = LineStatusCheck.newest(kept, fresh, lines, at))
     }
 }
