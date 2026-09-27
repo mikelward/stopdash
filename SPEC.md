@@ -1523,8 +1523,10 @@ The app's users are in the UK, so **British English (en-GB) is first-tier**: a p
 English (United Kingdom) reads "Faraway favourites", "licences", "per cent". The strings are
 written in US English (en-US) as the base — for tooling and parity with the sibling repos — and
 every one whose British spelling or usage differs carries an en-GB override (maintainer,
-2026-09-24); any other English locale reads the base. TfL's own line and place names stay as TfL
-spells them.
+2026-09-24). The other Commonwealth English locales (Australia, New Zealand, Ireland, India,
+South Africa, Canada and the rest Android groups with UK English) read the same British strings
+through Android's own locale fallback, so they need no copy of their own; English (United States)
+reads the base. TfL's own line and place names stay as TfL spells them.
 
 ## Architecture
 

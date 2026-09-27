@@ -1432,12 +1432,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       `naptanId`) is verified against the live JourneyResults sample the maintainer captured. **Record a
       sanitized coordinate-route fixture** once a device can capture one, and swap it in for the
       constructed body.
-- [ ] **Alias en-GB spellings to the other English locales** (maintainer, 2026-09-27) — Android
-      doesn't fall back en-GB → en-AU/en-NZ/en-IE/etc., so an Australian device on English shows the
-      en-US base ("Favorite", "Metres"→"Meters"). Add `values-en-rAU` (and the other en-* the audience
-      needs) carrying the same British overrides as `values-en-rGB`, or restructure so one shared file
-      backs them all; extend `EnGbStringsTest` to cover the aliased locales so a new override can't be
-      added to en-GB alone.
+- [x] **Alias en-GB spellings to the other English locales** (maintainer, 2026-09-27) — not
+      needed: since API 24 Android's resource matcher falls back en-AU/NZ/IE/IN/ZA/CA/SG (CLDR's
+      en-001 family) to `values-en-rGB`, and en-US keeps the base. `EnglishLocaleFallbackTest`
+      pins both directions, so an alias directory gets added if that ever stops holding.
 - [ ] Per-stop line/direction filters (D2).
 - [ ] **Filter or rank by a destination the user enters, and let them save favorite
       destinations** — the user names where they're going (or picks a saved favorite) and
