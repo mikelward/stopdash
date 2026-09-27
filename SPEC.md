@@ -875,8 +875,10 @@ save width): from no wait up to the line's longer typical gap, the route timed a
 wait at its longest, so a wait that misses the next leg's train counts that too. Where that later
 route can't be timed at all (the connection missed, nothing else known), it reads as open-ended
 ("41+ min · est. 11:26+"). It counts waiting only, not a slow run, and ranking still goes by the earliest arrival (maintainer,
-2026-09-27). Under the top row, the **walk to where it starts** has a row of its own — a walker, the
-first stop, and its minutes — since it's why a train too soon to reach is grayed, and it reads as the
+2026-09-27). Under the top row, the **walk to where it starts** has a row of its own — a walker in the
+pills' room, so the stop starts where a ride's does beside its pill (a disrupted ride's ⚠ sits
+between its pill and stop, so its stop starts further in), then the first stop, and its minutes in the
+times column, in parentheses ("(3 min)", a duration, set against the first train's) — since it's why a train too soon to reach is grayed, and it reads as the
 route's first leg (maintainer, 2026-09-27, replacing "From ‹stop›" in the top row). A first stop
 under a minute away has no walk row; the top row says **"From ‹stop›"** before the arrival instead,
 the stop's name cut before the time is. Then a
@@ -919,7 +921,8 @@ reported from it (maintainer, 2026-09-26).
 Tapping a route opens it, drawn with the list's own parts, **every leg a card**: the leg's platform header ("Highbury
 & Islington – Platform 2") over a route card of that line's live departures toward the change, then
 "6 stops to Whitechapel", then the next leg's header and card at the change station, down to "2 stops
-to Canary Wharf". A walk reads "5 min walk to ‹place›"; a walk to a station's entrance, which the
+to Canary Wharf". A walk reads "Walk to ‹place› (5 min)", its minutes in parentheses so they read as how long it
+takes, not a time of day (maintainer, 2026-09-27); a walk to a station's entrance, which the
 Planner names by its street then the station ("Cannon Street, Cannon Street Rail Station"), goes by
 the station ("Cannon Street"), never the street repeated. Line status and stop closures for every leg show exactly as on the list:
 the ⚠ on a disrupted row, the status chip on a line with no trains, the closure card at a closed
@@ -940,7 +943,7 @@ disruptions, until a check succeeds.
 (principle 1). The first leg counts down like any row. From "Here", the rider still has to reach the
 first stop. The list's distance is a straight line, not a walkable path, so the walk is
 estimated **conservatively** on the phone: that distance stretched for detours, at an unhurried pace,
-shown as the route's first dotted link ("~7 min walk") so the rider sees the assumption. First-leg
+shown as the route's first dotted link ("Walk to ‹stop› (~7 min)") so the rider sees the assumption. First-leg
 trains that leave before the rider can get there are grayed; the estimate errs toward graying a
 train that could be caught rather than offering one that can't (from a *From…* station the rider is
 taken to be there already). A later leg shows the change station's live

@@ -234,8 +234,9 @@
     <string name="trip_times_loading">Loading</string>
     <!-- A trip card's top row when its first stop is right there: the stop, before duration · arrival. -->
     <string name="trip_from">From %1$s</string>
-    <!-- A trip card's walk to its first stop, after the stop's name: its minutes. -->
-    <string name="trip_walk_minutes">%1$d min</string>
+    <!-- A trip card's walk to its first stop, after the stop's name: its minutes, in parentheses
+         so they read as how long it takes rather than a time. -->
+    <string name="trip_walk_minutes">(%1$d min)</string>
     <!-- How often a later ride's line runs, from its live trains, ↻ for "every" to save width: a
          steady service. %1$d is minutes. -->
     <string name="trip_headway">↻ %1$d min</string>
@@ -245,7 +246,9 @@
     <string name="trip_headway_description">Every %1$d min</string>
     <!-- The same, as a range. -->
     <string name="trip_headway_range_description">Every %1$d to %2$d min</string>
-    <string name="trip_walk">%1$d min walk to %2$s</string>
+    <!-- A walk between two rides or after the last: where to, then its length in minutes in
+         parentheses, a duration and not an arrival time. -->
+    <string name="trip_walk">Walk to %1$s (%2$d min)</string>
     <!-- Time allowed to change between two rides, shown between their cards. -->
     <!-- A first-leg train for screen readers: its countdown ("3 min") and destination. -->
     <string name="trip_train_description">%1$s to %2$s</string>
@@ -255,7 +258,7 @@
     <string name="trip_train_checking_description">%1$s to %2$s, checking route</string>
     <string name="trip_change">%1$d min to change</string>
     <!-- The rider's walk to the trip's first stop, estimated on the phone. -->
-    <string name="trip_walk_first">~%1$d min walk to %2$s</string>
+    <string name="trip_walk_first">Walk to %1$s (~%2$d min)</string>
     <!-- A route leg's line isn't running. %1$s is TfL's status ("Suspended"). -->
     <string name="trip_line_not_running">%1$s: %2$s</string>
     <!-- Placeholder in the station search field. -->
