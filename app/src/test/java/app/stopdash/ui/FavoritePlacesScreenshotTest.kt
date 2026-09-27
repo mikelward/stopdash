@@ -47,6 +47,7 @@ class FavoritePlacesScreenshotTest {
                 FavoritePlacesScreen(
                     state = state,
                     onBack = {},
+                    onRouteTo = {},
                     onStartAdd = { _, _ -> },
                     onStartEdit = {},
                     onDelete = {},

@@ -320,9 +320,14 @@
     <!-- Editor actions. -->
     <string name="favorite_place_save">Save</string>
     <string name="favorite_place_cancel">Cancel</string>
+    <string name="favorite_place_edit">Edit</string>
+    <!-- Content description for a place row\'s edit action; %1$s is the label. -->
+    <string name="favorite_place_edit_description">Edit %1$s</string>
     <string name="favorite_place_delete">Delete</string>
     <!-- Content description for a place row\'s delete action; %1$s is the label. -->
     <string name="favorite_place_delete_description">Delete %1$s</string>
+    <!-- Content description for tapping a place row to plan a trip to it; %1$s is the label. -->
+    <string name="favorite_place_route_description">Plan a trip to %1$s</string>
     <string name="settings_title">Settings</string>
     <string name="settings_live_widget_refresh_title">Refresh widget every minute</string>
     <string name="settings_live_widget_refresh_summary">Refreshes the home-screen widget about once a minute in the background. Uses more battery and data.</string>

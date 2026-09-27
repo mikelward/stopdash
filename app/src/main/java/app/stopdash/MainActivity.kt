@@ -68,6 +68,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -120,6 +121,7 @@ import app.stopdash.domain.StarredJourney
 import app.stopdash.domain.CachingStopFinder
 import app.stopdash.domain.NearbyStopsCache
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StopMap
 import app.stopdash.ui.BugReportConsentDialog
@@ -447,6 +449,11 @@ class MainActivity : ComponentActivity() {
                 var herePicking by rememberSaveable { mutableStateOf(false) }
                 var hereToId by rememberSaveable { mutableStateOf<String?>(null) }
                 var hereToName by rememberSaveable { mutableStateOf("") }
+                // A trip opened to a saved favorite (SPEC D9): its coordinate destination, in place of a
+                // picked stop. Set when a favorite is tapped in Settings; null for an ordinary To… trip.
+                var hereFavorite by rememberSaveable(stateSaver = FAVORITE_TRIP_SAVER) {
+                    mutableStateOf<TripDestination.Place?>(null)
+                }
                 // The list's retained departures model is dropped when the trip opens: while the trip
                 // is up it re-locates for both, and a list model left behind would neither take those
                 // re-picks (it'd hide rows by where the rider used to be) nor stop its own fetches (one
@@ -458,6 +465,7 @@ class MainActivity : ComponentActivity() {
                     herePicking = false
                     hereToId = null
                     hereToName = ""
+                    hereFavorite = null
                 }
 
                 // App settings + the opt-in "live widget" refresh (SPEC D5). The setting is
@@ -663,6 +671,21 @@ class MainActivity : ComponentActivity() {
                                 FavoritePlacesScreen(
                                     state = favoritePlacesState,
                                     onBack = { favoritePlacesOpen = false },
+                                    // Tap a favorite → plan a trip to its coordinate from the rider's
+                                    // current location: drop the list's departures, open the here-trip
+                                    // over the nearby set, and leave Settings (SPEC D9). The label is the
+                                    // name the rider knows it by, used for the title and the walk-to leg.
+                                    onRouteTo = { place ->
+                                        listStores.clearAll()
+                                        val destName = place.label.ifBlank { place.placeName.orEmpty() }
+                                        hereFavorite = TripDestination.Place(place.coordinate, destName)
+                                        hereToId = null
+                                        hereToName = destName
+                                        herePicking = false
+                                        hereTripOpen = true
+                                        favoritePlacesOpen = false
+                                        settingsOpen = false
+                                    },
                                     onStartAdd = favoritePlacesModel::startAdd,
                                     onStartEdit = favoritePlacesModel::startEdit,
                                     onDelete = favoritePlacesModel::delete,
@@ -792,6 +815,7 @@ class MainActivity : ComponentActivity() {
                                         picking = herePicking,
                                         toId = hereToId,
                                         toName = hereToName,
+                                        favorite = hereFavorite,
                                         onPlanTo = { herePicking = true },
                                         onPickTo = { match ->
                                             herePicking = false
@@ -1878,6 +1902,10 @@ class MainActivity : ComponentActivity() {
         picking: Boolean,
         toId: String?,
         toName: String,
+        // A saved favorite this trip routes to (SPEC D9): its coordinate is the destination, so there's
+        // no stop to pick and no interchange to expand — the picker and hub lookup below are skipped.
+        // Null for an ordinary To… trip to a stop.
+        favorite: TripDestination.Place? = null,
         onPlanTo: () -> Unit,
         onPickTo: (StationMatch) -> Unit,
         onClosePicker: () -> Unit,
@@ -1943,7 +1971,7 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(Unit) { close() }
             return
         }
-        if (picking || toId == null) {
+        if (favorite == null && (picking || toId == null)) {
             val state by search.state.collectAsStateWithLifecycle()
             LaunchedEffect(Unit) { search.refreshYours() }
             StationSearchScreen(
@@ -1973,31 +2001,42 @@ class MainActivity : ComponentActivity() {
         // origin stop to the destination, timed by live trains. The Planner takes a stop or station
         // id, not an interchange ("HUB…"): an ordinary stop is planned to as picked, at once; an
         // interchange is looked up first and planned to at each of its stations and its bus stops,
-        // the best way there whatever the line or mode.
-        val toStopIds = if (!toId.startsWith(HUB_PREFIX)) {
-            listOf(toId)
+        // the best way there whatever the line or mode. A favorite is a coordinate the Planner routes
+        // to directly (a final walk leg), so it needs neither a lookup nor a hub expansion (SPEC D9).
+        val destinations: List<TripDestination>
+        val destKey: String
+        if (favorite != null) {
+            destinations = listOf(favorite)
+            destKey = "place:${favorite.coordinate.latitude},${favorite.coordinate.longitude}"
         } else {
-            val toOwner = remember(toId) { toStores.ownerFor(toId, this@MainActivity) }
-            val toModel: StationStopsViewModel = viewModel(
-                viewModelStoreOwner = toOwner,
-                factory = viewModelFactory {
-                    initializer { StationStopsViewModel(stationFinder, toId, warn = ::logDepartureWarning) }
-                },
-            )
-            val to by toModel.state.collectAsStateWithLifecycle()
-            val members = (to as? StationStopsViewModel.State.Ready)?.stops
-            if (members == null) {
-                StationPlaceholderScreen(
-                    title = title,
-                    state = to,
-                    onRetry = toModel::retry,
-                    onBack = close,
-                    // From a From… station, back to near me; from here, re-locate, as the trip's page does.
-                    onLocate = onLocate ?: relocate,
+            val toStopId = checkNotNull(toId) { "a To… trip has a destination once past the picker" }
+            val toStopIds = if (!toStopId.startsWith(HUB_PREFIX)) {
+                listOf(toStopId)
+            } else {
+                val toOwner = remember(toStopId) { toStores.ownerFor(toStopId, this@MainActivity) }
+                val toModel: StationStopsViewModel = viewModel(
+                    viewModelStoreOwner = toOwner,
+                    factory = viewModelFactory {
+                        initializer { StationStopsViewModel(stationFinder, toStopId, warn = ::logDepartureWarning) }
+                    },
                 )
-                return
+                val to by toModel.state.collectAsStateWithLifecycle()
+                val members = (to as? StationStopsViewModel.State.Ready)?.stops
+                if (members == null) {
+                    StationPlaceholderScreen(
+                        title = title,
+                        state = to,
+                        onRetry = toModel::retry,
+                        onBack = close,
+                        // From a From… station, back to near me; from here, re-locate, as the trip's page does.
+                        onLocate = onLocate ?: relocate,
+                    )
+                    return
+                }
+                PlanTargets.of(members.map { PlanTargets.Member(it.id, it.lines) }).ifEmpty { listOf(members.first().id) }
             }
-            PlanTargets.of(members.map { PlanTargets.Member(it.id, it.lines) }).ifEmpty { listOf(members.first().id) }
+            destinations = toStopIds.map { TripDestination.Stop(it) }
+            destKey = toStopIds.joinToString(",")
         }
         // From a From… station, one of its own stops (the neighbors around it are no start); else
         // the stop nearest the rider.
@@ -2006,7 +2045,7 @@ class MainActivity : ComponentActivity() {
         val fromStop = (starts.filter { it.id in fromStopIds }.ifEmpty { starts })
             .minByOrNull { distanceMeters[it.id] ?: Double.MAX_VALUE } ?: origin.first()
         // Keyed on both ends, so a relocation to a new nearest stop plans afresh.
-        val tripKey = "${fromStop.id}>${toStopIds.joinToString(",")}"
+        val tripKey = "${fromStop.id}>$destKey"
         val owner = remember(tripKey) { stores.ownerFor(tripKey, this@MainActivity) }
         val trip: TripViewModel = viewModel(
             viewModelStoreOwner = owner,
@@ -2014,7 +2053,7 @@ class MainActivity : ComponentActivity() {
                 initializer {
                     TripViewModel(
                         journeyPlanner, departuresClient(appContext), fromStop.id,
-                        toStopIds.map { TripDestination.Stop(it) }, warn = ::logDepartureWarning,
+                        destinations, warn = ::logDepartureWarning,
                         arrivals = ArrivalsCache.SHARED, departureSourceChanges = RailApiKeySetting.changes,
                         poles = { area -> routeStops(appContext).loadPoles(area).map { it.id } },
                         savedState = createSavedStateHandle(),
@@ -2369,6 +2408,17 @@ class MainActivity : ComponentActivity() {
 
         // The Planner takes stop and station ids but not an interchange's.
         private const val HUB_PREFIX = "HUB"
+
+        // Keeps the favorite a trip is open to across process death (like the To… destination): by its
+        // coordinate and name. Saved instance state stays on the device — the coordinate leaves only to
+        // TfL as the trip's end, never here (SPEC *Privacy*). Empty means no favorite trip is open.
+        private val FAVORITE_TRIP_SAVER = listSaver<TripDestination.Place?, Any>(
+            save = { place -> place?.let { listOf(it.coordinate.latitude, it.coordinate.longitude, it.name) }.orEmpty() },
+            restore = { saved ->
+                if (saved.size < 3) null
+                else TripDestination.Place(Coordinates(saved[0] as Double, saved[1] as Double), saved[2] as String)
+            },
+        )
 
         // The station view has no location fix to wait on, so its auto-refresh is never held off by one.
         private val NOT_RELOCATING: StateFlow<Boolean> = MutableStateFlow(false)
