@@ -1,6 +1,6 @@
-# StopDash — privacy
+# LDNGo — privacy
 
-This describes what stopdash keeps, what leaves the device, and — in detail — what its
+This describes what LDNGo keeps, what leaves the device, and — in detail — what its
 on-device diagnostic log carries. It is the disclosure `AGENTS.md` requires to exist
 before any on-device logging ships. The full store-facing Play Data Safety statement is
 finalized at release (see `TODO.md` Phase 5); this document is the engineering-level
@@ -8,12 +8,12 @@ truth those answers are built from.
 
 ## What leaves the device
 
-StopDash is a **client-only** app. By default it makes network calls to just two places, plus a
+LDNGo is a **client-only** app. By default it makes network calls to just two places, plus a
 third only if you add a National Rail key: **Transport for London's Unified API**, the calls that
 *are* the product; — on a release build only — **Google Play**, to ask whether an app update is
 available (detailed below; it carries nothing about you); and, with a National Rail key, **National
 Rail's live departure boards** (the Rail Data Marketplace, detailed below). **Firebase** is added
-only if you turn on *Help make StopDash better* (off by default; see *Crash reports and usage stats*
+only if you turn on *Help make LDNGo better* (off by default; see *Crash reports and usage stats*
 below). Your **location, the stops and lines you look up, and your API keys** go only to TfL, or
 with a National Rail key also to National Rail (if you opt in, Firebase sees only the rough region
 Google infers from your IP address), and only ever what a request needs to answer your question
@@ -24,18 +24,18 @@ you've set an optional TfL API key (`app_key`), that key as your own credential,
 TfL calls and nowhere else. Location is used **only on demand**, never in the background.
 
 **National Rail times (optional).** If you paste a National Rail API key (from the Rail Data
-Marketplace) in Settings, stopdash also asks **National Rail's live departure boards** for the
+Marketplace) in Settings, LDNGo also asks **National Rail's live departure boards** for the
 departures at a railway station you're looking at. That request carries only the station's
 three-letter National Rail code (e.g. `WAT` for Waterloo) and your key, never your location. Your
 key is your own credential, sent only with those requests, never logged. Without a key, no
 request goes there. The station codes themselves come bundled with the app, built from NaPTAN,
 the Department for Transport's public stop list.
 
-Nothing else leaves the device *to stopdash* unless you turn on **Help make StopDash better**
+Nothing else leaves the device *to LDNGo* unless you turn on **Help make LDNGo better**
 in Settings, which is **off by default** (see *Crash reports and usage stats* below): no
-third-party tracker, no ads, and no server of stopdash's own.
+third-party tracker, no ads, and no server of LDNGo's own.
 
-On a release build, stopdash makes **one** other kind of network call — to **Google
+On a release build, LDNGo makes **one** other kind of network call — to **Google
 Play**, asking whether an app update is available (this drives the "update available" dot
 on the menu). It is a Play Services query about the app's *own* version; it sends **no**
 location, watched stops, API key, or any other user data — nothing about you or your
@@ -44,37 +44,37 @@ the app's distributor. It is free, runs release-only (a debug build isn't a Play
 silently does nothing if Play is unavailable.
 
 Three channels other than a TfL or National Rail request can carry **user data** off the device,
-and all three are under your control rather than stopdash's. The first is the **crash reports and
+and all three are under your control rather than LDNGo's. The first is the **crash reports and
 usage stats** you can opt in to (see below): off unless you turn them on, they send Firebase crash
 details, app interactions, device details and identifiers, and the approximate region Google
 derives from your IP address, but never your location, stops or journeys. The second is **your
-own Android backup and device-to-device transfer**, if you have it enabled: like any app's data, your saved stopdash
+own Android backup and device-to-device transfer**, if you have it enabled: like any app's data, your saved LDNGo
 data (your settings and its last-good departures snapshot) rides it, so a phone swap keeps your
-setup — all but the crash-report opt-in, which stays with the install, and the rows your watch's complications show, which the phone relearns from the watch. That is Android's channel, tied to your Google account — not something stopdash sends.
+setup — all but the crash-report opt-in, which stays with the install, and the rows your watch's complications show, which the phone relearns from the watch. That is Android's channel, tied to your Google account — not something LDNGo sends.
 The third is a **bug report you choose to send** (see *Sending a bug report* below): it hands
 the app you pick a diagnostic report that, unlike everything else here, **includes your exact
 location and a screenshot of the screen you sent it from** — but only after a consent screen
 that says so, and then to your clipboard and the app you pick (the clipboard copy happens as
 soon as you confirm — detailed below).
 So the guarantee is precise rather than absolute: **without your opt-in, the only user data
-stopdash itself sends off the device goes in its TfL requests, and its National Rail requests if
+LDNGo itself sends off the device goes in its TfL requests, and its National Rail requests if
 you've added a key** (the Play update check carries none), **plus, if a paired watch has the
-StopDash watch app, the widget's stops and departures to that watch** (above); with it, the crash reports and usage
+LDNGo watch app, the widget's stops and departures to that watch** (above); with it, the crash reports and usage
 stats above go to Firebase too. Android's backup
 carries your saved data under your control, and a bug report carries what you consent to share.
 
 **Your Wear OS watch (optional; not released yet).** If a watch paired with your phone has the
-StopDash watch app installed, the phone sends it what your home-screen widget shows, so the watch
+LDNGo watch app installed, the phone sends it what your home-screen widget shows, so the watch
 can show it too: the widget's stops (their names and IDs, and the nearby stops each is compared
 against, which are worked out from your phone's last location), their departures, which rows
 you've starred, and which kinds of transport you've hidden. It never sends your coordinates or your API keys, and the watch never contacts TfL,
 National Rail or anything else itself. In the other direction, the watch sends the phone its
-requests to refresh, which carry only a random request number, and the row each StopDash complication shows (its stop ID, line and direction), so the phone keeps those rows in what it sends. This goes through **Google Play
+requests to refresh, which carry only a random request number, and the row each LDNGo complication shows (its stop ID, line and direction), so the phone keeps those rows in what it sends. This goes through **Google Play
 services' Wearable Data Layer**: over Bluetooth when the watch is near, but when it isn't (a watch
 on Wi-Fi or mobile data) it may pass **through Google's servers**. Nothing is sent when no paired
 watch has the app. The watch keeps only the latest copy, never backs it up, and doesn't log it.
 For Play's Data Safety form, the determination is that this moves your own data between your own
-devices and stopdash never receives it, so it adds no data type *collected* by the developer; the
+devices and LDNGo never receives it, so it adds no data type *collected* by the developer; the
 relay's handling by Google (its encryption and retention) is to be confirmed against Google's
 documentation, and the form re-checked, before the watch app is released.
 
@@ -120,12 +120,12 @@ nothing runs once you leave the trip.
 **A trip on the way** (after you tap *Start* on a route) is kept on the device until you arrive or
 end it: the route's stops and lines, the leg you're on and the train followed, in app storage that
 Android never backs up or transfers, so the trip survives the app being closed. It's never logged
-beyond coarse diagnostics (a line id, an error kind) or sent anywhere. While the app is open, stopdash
+beyond coarse diagnostics (a line id, an error kind) or sent anywhere. While the app is open, LDNGo
 asks TfL about every 30 seconds where the followed train will call next, by TfL's own id for that
 train, and for the departures at a stop where the next leg boards; neither says anything about you
 that the trip's departures don't already. Ending the trip, or arriving, deletes it. The "get off
 soon" alert names the stop and the trip's destination on your lock screen, like any notification;
-you can turn it off in Android's settings for StopDash.
+you can turn it off in Android's settings for LDNGo.
 
 **Starred journeys** (two stops you travel between) are kept on the device with your other
 settings and stars, so they ride your own Android backup like the rest (above); they are never
@@ -141,7 +141,7 @@ and it is deleted the next time the app takes a location or when the app's proce
 comes first.
 
 **Kept on the device, never backed up:** to skip a repeat stop lookup when you reopen the app
-near where you last used it, stopdash keeps the **positions of its last few nearby-stop lookups**
+near where you last used it, LDNGo keeps the **positions of its last few nearby-stop lookups**
 (up to four places) and the stops found around each, for up to a day, in the app's cache
 directory. Android never includes that directory in a backup or device transfer, it is never
 logged or sent anywhere, and clearing the app's cache removes it; an entry older than a day is
@@ -156,7 +156,7 @@ route or stop area.
 
 ## Crash reports and usage stats (opt-in)
 
-If — and only while — you turn on **Help make StopDash better** in Settings, stopdash sends crash
+If — and only while — you turn on **Help make LDNGo better** in Settings, LDNGo sends crash
 reports to **Firebase Crashlytics** and usage statistics to **Google Analytics for Firebase**
 (Google). It is **off by default**: nothing is collected until you turn it on, and a crash from
 before you did is discarded rather than sent (if one is waiting, reporting starts the next time you
@@ -177,20 +177,20 @@ What it sends:
   isn't replaced. Neither is your name, your account or your advertising ID.
 
 What it never sends: your location (coordinates), the stops or stations near you, your starred
-rows or journeys, what you searched for, or your TfL API key. stopdash strips the advertising-ID
+rows or journeys, what you searched for, or your TfL API key. LDNGo strips the advertising-ID
 permission, so the advertising ID isn't collected either.
 
 Turning it **off** stops collection at once, discards any crash report not yet sent, and resets the
 Analytics app-instance ID. The choice is kept on this device only: restored onto a new phone from a
 backup, it starts off again until you turn it back on. Development (debug) builds never send
-anything. Firebase is free at stopdash's scale; uploads are batched by the SDKs, with no extra
+anything. Firebase is free at LDNGo's scale; uploads are batched by the SDKs, with no extra
 wakeups or location requests. For the Play Data Safety form this adds **Crash logs**,
 **Diagnostics**, **App interactions**, **Device or other IDs** and **Approximate location** (the
 region Analytics infers from your IP address), all optional (user-controlled).
 
 ## The on-device diagnostic log
 
-StopDash keeps a diagnostic log on the device so a misbehaving routing or departure
+LDNGo keeps a diagnostic log on the device so a misbehaving routing or departure
 decision can be explained — for example, why "couldn't get your location" appeared, or
 why a line showed "couldn't check for disruptions". Diagnosing those needs a record of
 what the app saw, so the log carries **coarse state and reasons**, and nothing more:
@@ -248,7 +248,7 @@ context a routing bug is diagnosed from.
 
 ## Sending a bug report
 
-StopDash can send a **bug report** from its overflow menu. This is the one channel that
+LDNGo can send a **bug report** from its overflow menu. This is the one channel that
 deliberately carries what the on-device log never does — so it is gated by an explicit consent
 screen that names exactly what leaves, and nothing is assembled or sent until you pass it. The
 report carries:
@@ -271,7 +271,7 @@ it waking — the app doesn't wake the phone just to delete them), and are gone 
 process ends,
 - **how far you are from each nearby stop**.
 
-It is **user-initiated and £0**: stopdash runs no service of its own for it. Tapping *Send bug
+It is **user-initiated and £0**: LDNGo runs no service of its own for it. Tapping *Send bug
 report* opens the consent screen; on *Continue* the report is **copied to your clipboard**
 (on-device, but readable by other apps from then) **and** handed to Android's share sheet, where
 **you** choose the app it goes to — an email, an issue, a chat. So the clipboard copy happens as

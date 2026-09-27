@@ -5,7 +5,7 @@ Conventions for AI agents working in this repository.
 `CLAUDE.md` and `GEMINI.md` are symlinks to this file, so every agent reads the same
 conventions. Edit `AGENTS.md`.
 
-StopDash is an Android app (Kotlin + Compose; `:app`, a pure-Kotlin `:domain`, `:shared`,
+LDNGo is an Android app (Kotlin + Compose; `:app`, a pure-Kotlin `:domain`, `:shared`,
 and a Wear OS `:wear`) that shows live TfL departures for watched stops on the lock screen,
 the home screen, the watch, and in the app.
 Product and architecture decisions live in `SPEC.md`; the phased plan lives in
@@ -260,7 +260,7 @@ and place names stay as TfL spells them.
 ## Cost and reliability
 
 Call out cost and reliability up front when adding infrastructure or an external call.
-StopDash's one dependency (TfL Unified API) is free (£0; ~50 req/min keyless, ~500 with a
+LDNGo's one dependency (TfL Unified API) is free (£0; ~50 req/min keyless, ~500 with a
 user key) — anything new that leaves the device is a distribution/privacy decision, named
 alongside its dollar figure and its Play Data Safety consequence. Battery is the user's
 running cost: a new wakeup, location request, or refresh interval is a battery change and

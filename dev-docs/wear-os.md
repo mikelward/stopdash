@@ -1,6 +1,6 @@
 # Wear OS support
 
-**Status: in progress, not released.** A developer-facing plan for putting StopDash's
+**Status: in progress, not released.** A developer-facing plan for putting LDNGo's
 departures on a Wear OS watch, so the design and its open questions aren't re-derived each time.
 The work is tracked in `TODO.md` (*Phase 6 — Wear OS*), which points here. *Suggested order*
 marks which steps are built; the rest of this document describes the design, built or not. The
@@ -8,7 +8,7 @@ watch app can't be released until the release gate (*Distribution*) is lifted.
 
 ## Why a watch
 
-StopDash answers one question at a glance: *what's leaving my stops, and when?* (SPEC intro).
+LDNGo answers one question at a glance: *what's leaving my stops, and when?* (SPEC intro).
 The lock-screen widget answers it once the phone is out; the watch answers it without that,
 at the moment it matters: walking to the stop, standing at it, deciding whether to run. So the
 watch is another **glance surface**, not a second app. It shows the same rows the widget does,
@@ -222,7 +222,7 @@ the watch app ships would break pairing between old and new installs.
   envelope has arrived since install) is its own explicit state, never a blank surface or the
   previous envelope's rows:
   - the tile shows one line, **Add stops on your phone**, with a single entry and no staleness
-    breaks, since no stop has a boundary; before the first envelope it says **Open StopDash on
+    breaks, since no stop has a boundary; before the first envelope it says **Open LDNGo on
     your phone** instead;
   - the complication returns Wear's *no data* result (a dash), not a stale row;
   - the watch app shows the same one-line message as the tile.
@@ -269,7 +269,7 @@ the watch app ships would break pairing between old and new installs.
     widget's form, never a clean "updated just now".
 - **No disruptions, until the widget has them.** The persisted snapshot deliberately carries no
   line status or disruption (`DeparturesSnapshot` KDoc): a point-in-time closure that ages would
-  assert something StopDash can no longer stand behind. The watch follows the widget here.
+  assert something LDNGo can no longer stand behind. The watch follows the widget here.
   Disruptions reach the watch only after *Carry disruption / line-status into the widget* in
   `TODO.md` lands. That item adds an age-stamped status to the snapshot, with the SPEC reasoning
   and an expiry after which a disruption is withheld rather than shown. The watch then carries
@@ -527,7 +527,7 @@ it before committing to the design.
   `app.stopcast` ID). CI never passes the flag, and a CI step asserts the release build fails
   without it. It's lifted only after the launch decision.
 - It must meet Play's Wear OS app-quality requirements: watch screenshots and a tile that works
-  on round screens and at large font scales. The watch honors the system font size; StopDash's
+  on round screens and at large font scales. The watch honors the system font size; LDNGo's
   own text-size factor stays a phone setting unless the maintainer wants it synced.
 - **Minimum version:** Wear OS 5, the Android 14 / API 34 base that matches the fleet floor. To
   be confirmed against the tile and complication APIs this plan relies on.
@@ -584,7 +584,7 @@ stops there.
 ## Open questions for the maintainer
 
 - **Starred journeys on the watch:** only the widget's rows, or journey cards too?
-- **Crash reports on the watch:** does the phone's *Help make StopDash better* opt-in cover the
+- **Crash reports on the watch:** does the phone's *Help make LDNGo better* opt-in cover the
   watch app, or does the watch ask separately?
 - **Tile-only first release?** Shipping the tile (steps 1–6) before the complication and app
   would get the main glance surface out sooner.

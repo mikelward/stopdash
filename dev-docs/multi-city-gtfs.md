@@ -7,7 +7,7 @@ scratch each time it comes up. It is not a commitment or a scope — see the
 product decision for the maintainer, with cost and Play Data Safety consequences,
 before a line of it is built.
 
-StopDash is TfL-specific today: the data layer talks only to the TfL Unified API, and
+LDNGo is TfL-specific today: the data layer talks only to the TfL Unified API, and
 line colors/codes are TfL's. The question this doc answers is *what it would take* to
 show departures for a city TfL doesn't cover.
 
@@ -54,7 +54,7 @@ source):
     trip by the Schedule's stop/route/trip IDs. This is the "live" data.
   - **Vehicle positions** — where vehicles are (not needed for a departures board).
   - **Service alerts** — disruptions. **Optional**, and some operators publish them through a
-    separate alerts API instead. StopDash's honesty floor (warn about a closed line or stop
+    separate alerts API instead. LDNGo's honesty floor (warn about a closed line or stop
     even with no predictions — `lineStatuses`/`stopDisruptions`, SPEC principle 1) needs a
     disruption source; a provider lacking one needs an honest fallback, never
     unverified-shown-as-clean.

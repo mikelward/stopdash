@@ -80,7 +80,7 @@ jobs:
       # hand-added dependency's license is already in the freshly regenerated working-tree
       # file, but its stale committed copy would fail the diff first — and then the generic
       # "export drifted" failure is what a reader sees, not the copyleft one this exists to
-      # catch. StopDash ships proprietary, so a copyleft or source-available license is
+      # catch. LDNGo ships proprietary, so a copyleft or source-available license is
       # incompatible outright; the script's tier table and its tests are the policy
       # (scripts/check-license-inventory.mjs).
       - name: Check licenses export is up to date and policy-clean

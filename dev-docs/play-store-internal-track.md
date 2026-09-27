@@ -57,7 +57,7 @@ every release build, not only in CI.
 
 https://play.google.com/console → "Create app":
 
-- **App name**: `StopDash`
+- **App name**: `LDNGo`
 - **Default language**: English (United States)
 - **App or game**: App; **Free or paid**: Free
 - **Package name**: `app.stopdash` (must match `applicationId` in
@@ -124,7 +124,7 @@ roles needed) → Keys tab → Add key → JSON. The downloaded JSON becomes the
 ### 6. Grant the service account access in Play Console
 
 Play Console → Users and permissions → Invite new users → the service account
-email. On "App permissions", add StopDash and grant **Releases: Release to
+email. On "App permissions", add LDNGo and grant **Releases: Release to
 testing tracks** — the minimum for an internal-track upload. Propagation can
 take a few minutes.
 
@@ -153,7 +153,7 @@ revises these forms periodically).
   - **An optional user-supplied TfL `app_key`**, if the user sets one, sent as
     their own credential with their own TfL calls and nowhere else.
   - **Nothing else leaves the device to stopdash** unless the user opts in to *Help
-    make StopDash better* (off by default): then crash reports and usage stats go to
+    make LDNGo better* (off by default): then crash reports and usage stats go to
     Firebase, with the Data Safety categories listed in `docs/PRIVACY.md` and
     `dev-docs/firebase.md`. Otherwise no Firebase, no analytics, no crash reporter, no
     third-party tracker, no server of stopdash's own. (The
