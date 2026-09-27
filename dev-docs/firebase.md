@@ -11,7 +11,7 @@ build; whether a build can collect depends on its config, and whether it does de
 - **Never in a debug build**, config or not: `app/build.gradle.kts` disables the debug variant's
   google-services and mapping tasks and purges any previously generated resources, so the unit and
   screenshot suites (which run against debug) can't send anything.
-- **Only while the user has opted in** — *Help make StopDash better* in Settings, off by default.
+- **Only while the user has opted in** — *Help make LDN Go better* in Settings, off by default.
   The manifest starts both SDKs off; `TelemetryConsentHolder` stores each change and applies it
   (`TelemetryGate`) before the tap returns, and on each start trusts the stored choice only while
   the SDKs agree with it — any mismatch loads as off.

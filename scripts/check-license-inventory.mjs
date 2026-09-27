@@ -17,7 +17,7 @@
 // ids are the metadata, the texts ride along with them.
 //
 // The same file also carries this app's LICENSE POLICY, because the policy
-// is only worth having if it is tested and the tests live here. StopDash ships
+// is only worth having if it is tested and the tests live here. LDN Go ships
 // proprietary — no LICENSE file, all rights reserved — so every bundled
 // license id is sorted into one of three tiers: `fine` (the permissive ids
 // and Google vendor terms already shipping), `forbidden` (copyleft and
