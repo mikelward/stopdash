@@ -974,7 +974,7 @@ private fun RouteSummary(card: List<TripTiming.Estimate>, statuses: Map<String, 
         val rides = estimate.route.rides
         if (rides.isEmpty()) {
             // All walking (two stops close together): no line to show, and no live row below.
-            Text(stringResource(R.string.trip_walk_only), style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.trip_walk_only), style = MaterialTheme.typography.titleMedium)
         }
         rides.forEachIndexed { index, leg ->
             // A disrupted line's ⚠ sits beside its own pill (and wraps with it), so it's clear which
@@ -991,7 +991,7 @@ private fun RouteSummary(card: List<TripTiming.Estimate>, statuses: Map<String, 
         }
         Text(
             text = arrivalText(estimate),
-            style = MaterialTheme.typography.titleSmall,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             textAlign = TextAlign.End,
             maxLines = 1,
@@ -1152,6 +1152,7 @@ private fun RideStops(card: List<TripTiming.Estimate>, statuses: Map<String, Lin
                         maxLines = 1,
                         modifier = Modifier
                             .padding(start = 12.dp)
+                            .testTag("firstRideTimes")
                             .then(if (times.shown.isEmpty()) Modifier else Modifier.semantics { contentDescription = description }),
                     )
                 }
@@ -1184,18 +1185,21 @@ private fun CardHeader(card: List<TripTiming.Estimate>, statuses: Map<String, Li
             // "From ‹stop›" around a stand-in for the stop, so the words around it are drawn whole and
             // only the name shortens and elides.
             val from = stringResource(R.string.trip_from, "\u0000")
-            val style = MaterialTheme.typography.titleSmall
+            val style = MaterialTheme.typography.titleMedium
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                 from.substringBefore('\u0000').takeIf { it.isNotEmpty() }?.let { Text(it, style = style, maxLines = 1, softWrap = false) }
                 ShortenedName(first.fromName, style, Modifier.weight(1f, fill = false))
                 from.substringAfter('\u0000', "").takeIf { it.isNotEmpty() }?.let { Text(it, style = style, maxLines = 1, softWrap = false) }
             }
         }
+        // As large as the first ride's times (maintainer, 2026-09-27): when the trip gets there matters
+        // as much as when it leaves.
         Text(
             text = arrivalText(estimate),
-            style = MaterialTheme.typography.titleSmall,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
+            modifier = Modifier.testTag("tripArrival"),
         )
     }
 }
