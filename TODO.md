@@ -1934,6 +1934,15 @@ and these carry the rest as their own PRs:
       already show `?` and the stale note then, and an older check ages out at the threshold rather
       than being shown, so nothing false is asserted, but the news is late. Fix: merge a successful
       status check into the stored snapshot on its own, keeping the last-good arrivals.
+- [ ] **Distrust a snapshot the clock was set back across (own PR, Codex P2 on #317).** A check
+      or a stop's arrivals stamped in the future (the clock moved back) comes back into trust once
+      wall time reaches its stamp, with no record that it was once seen in the future. Arrivals
+      already behave this way (a negative age reads fresh), and a line check is rejected only
+      while it's future-dated, so with no refresh in between, a disruption can show for up to the
+      threshold after it was really that old. Fix both together: record the rollback when first
+      seen (a writer drops or invalidates future-stamped entries on its next save, and a render
+      treats them as stale), rather than a check-only memory that leaves the countdowns beside it
+      trusted.
 - [ ] **Persist a refresh-failure kind / incompleteness for the widget (own PR, rides with the
       above).** *Incompleteness landed (2026-09-24): the snapshot persists the requested stops a
       refresh couldn't get (`missingStopIds`), and the widget is `uncertain` while any is. The
