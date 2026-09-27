@@ -1663,7 +1663,7 @@ IP-derived region.
 
 No **user data** else leaves the device unbidden — no analytics over the user's stops or
 movements, no coordinate, stop list, or API key in logs, and no user's coordinate, stop list,
-or API key in commits, PRs, or fixtures (public stop data is fine there, *Testing and distribution*); the
+or API key in commits, PRs, or fixtures (hub and interchange data is fine there, *Testing and distribution*); the
 consent-gated bug report is the one user-authorized exception, and it discloses exactly what
 it carries before anything leaves. Without the opt-in, the one off-device call that is not a
 TfL request is the release-only Play update-availability check (*Update indicator*): a Play
@@ -1739,9 +1739,10 @@ Mirrors the sibling fleet:
 
 - Product logic lives in the pure domain layer and is JVM-unit-tested against recorded
   TfL fixtures (never the live API in tests, and never a user's coordinate in a fixture).
-  Public network data is not user data: real details of any stop are fine, but never data
-  captured from the maintainer's or a user's own device, location or reports, and no set of
-  examples that together single out where someone lives.
+  Hubs and interchanges are public network data, not user data, and their real details are
+  always fine; a bus stop or anything else neighborhood-level needs the maintainer's OK
+  first. Never data captured from the maintainer's or a user's own device, location or
+  reports, and no set of examples that together single out where someone lives.
 - Compose screens and Glance widget layouts get Robolectric + Roborazzi screenshot
   tests, wired into CI's screenshot allow-list.
 - `./gradlew test` and `./gradlew lint` green before every push.

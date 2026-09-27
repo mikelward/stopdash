@@ -96,11 +96,12 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   stops a user watches, a home/work stop, and the user's TfL `app_key`** — together they
   reveal where someone lives and travels. Use stock stand-ins for the user's own values
   (`app_key=EXAMPLE`, a synthetic position like `(51.5, -0.12)` for "where the rider is").
-- **Public TfL data is fine; anyone's neighborhood is not** (maintainer, 2026-09-26). Real
-  details of any stop, station or route may appear anywhere in the repo, but nothing that
-  points to where the maintainer or a user lives: no stop data from anyone's device,
+- **Never include anyone's location without asking** (maintainer, 2026-09-27). Hub and
+  interchange locations, and other public TfL data about them, are always fine. Check with
+  the maintainer before adding a bus stop or anything else neighborhood-level. Never add data
+  that points to where the maintainer or a user lives: nothing from anyone's device,
   location, starred stops, bug reports or screenshots (paraphrase a bug report, don't quote
-  it), and no examples that keep returning to one area. It governs new work; existing data
+  it), and no examples that keep returning to one area. This governs new work; existing data
   isn't rewritten to fit it. When unsure, ask in chat, never on GitHub.
 - **The on-device debug log is one exception, and narrow**: coarse diagnostics only —
   a stop ID, a line id, an HTTP status — never a raw coordinate or the API key. `docs/
@@ -130,7 +131,8 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
 
 - Product logic belongs in the pure `:domain` module (`app.stopdash.domain`), JVM-testable
   without Android; test it against **recorded TfL fixtures**, never the live API and never a
-  user's coordinate (public stop coordinates are fine, per *Privacy*).
+  user's location; a hub or interchange position is fine, a bus stop or anything
+  neighborhood-level needs the maintainer's OK first (*Privacy*).
 - Compose screens and Glance widget layouts get Robolectric + Roborazzi screenshot tests
   wired into `.github/workflows/ci.yml` — a new `*ScreenshotTest` class needs its own
   step in the CI `--tests` allow-list or it records nothing.
