@@ -31,6 +31,7 @@ import app.stopdash.data.WatchEnvelope
 import app.stopdash.data.toDomain
 import app.stopdash.domain.DepartureLabels
 import app.stopdash.domain.StarredRow
+import app.stopdash.domain.isStatusOnly
 import app.stopdash.domain.lineCode
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +53,9 @@ object ComplicationChoices {
         envelope ?: return emptyList()
         val stops = envelope.stops.map { it.toDomain() }
         val choices = ComplicationTimeline.widgetRows(envelope, now)
+            // A suspension's status row stands for the warning, not a direction anyone can catch
+            // a train in: it lasts only as long as its check, so it's never a pick to keep.
+            .filterNot { it.isStatusOnly }
             .distinctBy { StarredRow.of(it) }
             .map { row ->
                 ComplicationChoice(

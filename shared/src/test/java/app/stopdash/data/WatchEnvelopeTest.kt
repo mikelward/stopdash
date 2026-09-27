@@ -5,6 +5,7 @@ import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.NoTimes
 import app.stopdash.domain.RailFeed
 import app.stopdash.domain.StarredRow
@@ -268,6 +269,27 @@ class WatchEnvelopeTest {
     }
 
     @Test
+    fun `past the ceiling, a stale stop's live suspension outranks a fresh stop`() {
+        val fresh = stop("940GFRESH", listOf(departure(2)))
+        val suspended = StopArrivals(
+            "940GSUSP", "Stop 940GSUSP", emptyList(), now.minusSeconds(320),
+            lines = listOf(LineRef("waterloo-city", "Waterloo-city", "tube")),
+        )
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(fresh, suspended),
+            fetchedAt = now,
+            lineStatuses = mapOf(
+                "waterloo-city" to LineStatusCheck(LineStatus("waterloo-city", 5, "Suspended"), now.minusSeconds(30)),
+            ),
+        )
+        val full = WatchEnvelopes.build(snapshot, emptySet(), now = now).bytes.size
+        val envelope = decoded(
+            WatchEnvelopes.build(snapshot, emptySet(), dataItemBudget = 10, transferCeiling = full - 1, now = now),
+        )
+        assertEquals(listOf("940GSUSP"), envelope.stops.map { it.stopId })
+    }
+
+    @Test
     fun `the ceiling holds even when every stop is starred`() {
         val stops = (1..6).map { stop("940GSTOP$it", listOf(departure(it.toLong()))) }
         val stars = stops.mapTo(HashSet()) { StarredRow(it.stopId, "victoria", "inbound") }
@@ -373,5 +395,40 @@ class WatchEnvelopeTest {
             snapshot, star, hiddenModes = setOf("bus"), dataItemBudget = 10, transferCeiling = full - 1, now = now,
         )
         assertEquals(listOf("940GTUBE"), decoded(payload).stops.map { it.stopId })
+    }
+
+    @Test
+    fun `carries the kept stops' line checks, age-stamped, and marks only a live disruption`() {
+        val severe = LineStatus("victoria", 6, "Severe Delays")
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(stop("940GEXAMPLE1", listOf(departure(3)))),
+            fetchedAt = now,
+            lineStatuses = mapOf(
+                "victoria" to LineStatusCheck(severe.copy(fullText = "Signal failure"), now),
+                // A line no carried stop shows goes no further.
+                "jubilee" to LineStatusCheck(severe.copy(lineId = "jubilee"), now),
+            ),
+        )
+        val envelope = decoded(WatchEnvelopes.build(snapshot, emptySet(), now = now))
+        assertEquals(listOf(PersistedLineStatus("victoria", 6, "Severe Delays", now.toEpochMilli())), envelope.lineStatuses)
+        assertEquals(mapOf("victoria" to severe), envelope.liveLineStatuses(now.plusSeconds(60)))
+        assertTrue(envelope.liveLineStatuses(now.plus(java.time.Duration.ofMinutes(5))).isEmpty())
+        assertEquals(listOf(now.plus(java.time.Duration.ofMinutes(5))), envelope.lineStatusExpiries(now))
+        // A check from the future (the clock moved back) has no expiry that matters.
+        assertTrue(envelope.lineStatusExpiries(now.minusSeconds(1)).isEmpty())
+    }
+
+    @Test
+    fun `an envelope from an older phone, with no line checks, reads as none`() {
+        val older = """{"version":1,"stops":[]}""".encodeToByteArray()
+        val envelope = (WatchEnvelopes.decode(older) as WatchDecode.Ok).envelope
+        assertTrue(envelope.lineStatuses.isEmpty())
+    }
+
+    @Test
+    fun `a no-verdict check marks nothing and leaves the line unchecked`() {
+        val envelope = WatchEnvelope(lineStatuses = listOf(LineStatusCheck.noVerdict("victoria", now).toPersisted()))
+        assertTrue(envelope.liveLineStatuses(now).isEmpty())
+        assertFalse(envelope.statusKnown("victoria", now))
     }
 }

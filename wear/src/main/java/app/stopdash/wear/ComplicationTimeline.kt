@@ -29,16 +29,29 @@ sealed interface ComplicationContent {
         val destination: String,
         val at: Instant,
         val uncertain: Boolean,
+        /** The line's disruption ("Severe Delays") while its check is young enough to show (SPEC D3). */
+        val disruption: String? = null,
     ) : ComplicationContent
 
     /**
      * The row has no departures left before its stop's staleness boundary. Fresh ([uncertain]
      * false) when a fetch established there's nothing more; else the widget's "may be out of date".
      */
-    data class Empty(val code: String, val lineName: String, val uncertain: Boolean) : ComplicationContent
+    data class Empty(
+        val code: String,
+        val lineName: String,
+        val uncertain: Boolean,
+        /** As [Departure.disruption]: a suspended line often has no departures, and says why. */
+        val disruption: String? = null,
+    ) : ComplicationContent
 
     /** Past its stop's staleness boundary: the line with no time, never an old countdown. */
-    data class Stale(val code: String, val lineName: String) : ComplicationContent
+    data class Stale(
+        val code: String,
+        val lineName: String,
+        /** As [Departure.disruption]: a check can outlive the stop's times, and says so till it expires. */
+        val disruption: String? = null,
+    ) : ComplicationContent
 
     /** Nothing to show (never synced, no stops, no row at all): Wear's *no data* dash. */
     data object NoData : ComplicationContent
@@ -72,14 +85,19 @@ object ComplicationTimeline {
     /**
      * The service rows the widget shows at [now], in its order, as the tile orders them: fresh
      * stops' rows before stale ones', hidden modes left out, starred rows pinned first (D8). A
-     * stop's disruption notice is a status line, not a service, so it's never a complication's row.
+     * stop's disruption notice is a status line, not a service, so it's never a complication's row;
+     * a disrupted line's status row is, as the line's own "⚠" with no departure time.
      */
     fun widgetRows(envelope: WatchEnvelope, now: Instant): List<DepartureRow> {
         val stops = envelope.stops.map { it.toDomain() }
         val stale = stops.associate { it.stopId to isStale(it, now) }
-        val ordered = DepartureRows.across(stops, now, splitPlatforms = false)
-            .filter { it.stopDisruption == null }
-            .sortedBy { if (stale[it.stopId] == true) 1 else 0 }
+        // With the live line statuses, as the tile builds its rows: a suspended line with no
+        // predictions is a row too (its status row), leading as a warning does, so a complication
+        // on the default row shows the suspension rather than skip past it.
+        val ordered = DepartureRows.freshFirst(
+            DepartureRows.across(stops, now, envelope.liveLineStatuses(now), splitPlatforms = false, statusRowsWhenStale = true)
+                .filter { it.stopDisruption == null },
+        ) { stale[it.stopId] == true }
         val shown = HiddenModes.rows(ordered, envelope.hiddenModes.toSet())
         return DepartureRows.pinStarred(shown, envelope.starred.mapTo(HashSet()) { it.toDomain() })
     }
@@ -102,25 +120,57 @@ object ComplicationTimeline {
      * nothing to show; otherwise always ending in the open-ended stale entry.
      */
     fun entries(
-        envelope: WatchEnvelope?,
+        received: WatchEnvelope?,
         now: Instant,
         row: StarredRow? = null,
         topology: RouteTopology = RouteTopology.EMPTY,
     ): List<ComplicationEntry> {
         val noData = listOf(ComplicationEntry(now, null, ComplicationContent.NoData))
-        envelope ?: return noData
+        // As the tile does: a check dated after [now] stays untrusted for the whole timeline,
+        // including the hand-over rebuilt later in it.
+        val envelope = received?.withoutFutureChecks(now) ?: return noData
         // A pick the widget no longer shows (its stop gone, or its mode hidden on the phone) gives
         // way to the default row; the pick itself is kept, so un-hiding the mode brings it back.
-        val chosen = row?.takeIf { shows(envelope, it, now) }
-            ?: defaultRow(envelope, now)
-            ?: return noData
+        val picked = row?.takeIf { shows(envelope, it, now) }
+        val chosen = picked ?: defaultRow(envelope, now) ?: return noData
+        val built = rowEntries(envelope, chosen, now, topology)
+        if (picked != null) return built
+        // A default row whose line is disrupted can owe its place to that check: as a suspension's
+        // status alone, or once its last train has gone and only the status is left. So at the
+        // check's expiry the timeline hands over to the default chosen then (the same row, rebuilt,
+        // when it still leads), rather than keep an expired line with nothing to say.
+        if (envelope.liveLineStatuses(now)[chosen.lineId] == null) return built
+        val expiry = statusExpiry(envelope, chosen.lineId)?.takeIf { it > now } ?: return built
+        val before = built.mapNotNull { entry ->
+            val end = entry.end
+            when {
+                entry.start >= expiry -> null
+                end == null || end > expiry -> entry.copy(end = expiry)
+                else -> entry
+            }
+        }
+        return before + entries(envelope, expiry, null, topology)
+    }
+
+    /** When [lineId]'s check stops being shown (SPEC D3/D4), or null when it has none. */
+    private fun statusExpiry(envelope: WatchEnvelope, lineId: String): Instant? =
+        envelope.lineStatuses.firstOrNull { it.lineId == lineId }?.toDomain()?.checkedAt
+            ?.plus(Staleness.THRESHOLD.toJavaDuration())
+
+    /** [chosen]'s own timeline from [now], marked while its line's check is live. */
+    private fun rowEntries(
+        envelope: WatchEnvelope,
+        chosen: StarredRow,
+        now: Instant,
+        topology: RouteTopology,
+    ): List<ComplicationEntry> {
         val stop = envelope.stops.first { it.stopId == chosen.stopId }.toDomain()
         val boundary = stop.fetchedAt.plus(Staleness.THRESHOLD.toJavaDuration())
         val current = DepartureRows.across(listOf(stop), now, splitPlatforms = false).firstOrNull { StarredRow.of(it) == chosen }
         val (lineName, mode) = current?.let { it.lineName to it.mode } ?: lineOf(stop, chosen)
         val code = lineCode(lineName, mode)
         val stale = ComplicationContent.Stale(code, lineName)
-        if (now >= boundary) return listOf(ComplicationEntry(now, null, stale))
+        if (now >= boundary) return marked(listOf(ComplicationEntry(now, null, stale)), envelope, chosen.lineId, now)
 
         val uncertain = !stop.arrivalsFresh
         val entries = mutableListOf<ComplicationEntry>()
@@ -138,7 +188,38 @@ object ComplicationTimeline {
         }
         if (start < boundary) entries += ComplicationEntry(start, boundary, ComplicationContent.Empty(code, lineName, uncertain))
         entries += ComplicationEntry(boundary, null, stale)
-        return entries
+        return marked(entries, envelope, chosen.lineId, now)
+    }
+
+    /**
+     * [entries] with the line's disruption on them while its check is live (SPEC D3/D4): an entry
+     * spanning the check's expiry is split there, and from then on the mark is withheld, as on the
+     * tile. Unchanged when the line isn't disrupted at [now].
+     */
+    private fun marked(entries: List<ComplicationEntry>, envelope: WatchEnvelope, lineId: String, now: Instant): List<ComplicationEntry> {
+        val status = envelope.liveLineStatuses(now)[lineId] ?: return entries
+        val expiry = envelope.lineStatuses.first { it.lineId == lineId }.toDomain().checkedAt
+            .plus(Staleness.THRESHOLD.toJavaDuration())
+        fun mark(content: ComplicationContent, on: Boolean): ComplicationContent {
+            val label = status.description.takeIf { on }
+            return when (content) {
+                is ComplicationContent.Departure -> content.copy(disruption = label)
+                is ComplicationContent.Empty -> content.copy(disruption = label)
+                is ComplicationContent.Stale -> content.copy(disruption = label)
+                ComplicationContent.NoData -> content
+            }
+        }
+        return entries.flatMap { entry ->
+            val end = entry.end
+            when {
+                entry.start >= expiry -> listOf(entry)
+                end != null && end <= expiry -> listOf(entry.copy(content = mark(entry.content, true)))
+                else -> listOf(
+                    ComplicationEntry(entry.start, expiry, mark(entry.content, true)),
+                    ComplicationEntry(expiry, end, entry.content),
+                )
+            }
+        }
     }
 
     /**

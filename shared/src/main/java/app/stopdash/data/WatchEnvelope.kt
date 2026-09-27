@@ -3,6 +3,7 @@ package app.stopdash.data
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.HiddenModes
+import app.stopdash.domain.LineStatus
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
@@ -21,8 +22,10 @@ import kotlinx.serialization.json.jsonPrimitive
  * widget's stops as [PersistedStop]s, unchanged, so the watch builds its rows with the widget's
  * own code from the widget's own inputs, plus the starred-row keys the widget pins by (D8).
  *
- * It carries no coordinate and no key ([PersistedStop] has neither), no starred journeys (an
- * open question in the plan) and no disruptions (they aren't persisted). Each stop's nearer-stop
+ * It carries no coordinate and no key ([PersistedStop] has neither), and no starred journeys (an
+ * open question in the plan). It does carry the carried stops' line status checks, age-stamped as
+ * the widget keeps them ([lineStatuses]); stop closures stay off it, as they aren't persisted.
+ * Each stop's nearer-stop
  * lists ([PersistedStop.nearerIds], [PersistedStop.nearerNames]) are location-derived place data,
  * disclosed with the watch sync.
  */
@@ -39,7 +42,38 @@ data class WatchEnvelope(
     val missingStopIds: List<String> = emptyList(),
     /** The modes hidden from the near-me list, which the widget leaves out, so the watch does too. */
     val hiddenModes: List<String> = emptyList(),
+    /** Each carried line's last status check, stamped ([DeparturesSnapshot.lineStatuses]), so the
+     *  watch marks a disrupted service as the widget does and withholds the mark at the same
+     *  threshold. Additive: an older watch app ignores it and shows what it did before. */
+    val lineStatuses: List<PersistedLineStatus> = emptyList(),
 ) {
+    /** The disruptions to mark at [now], as [DeparturesSnapshot.liveLineStatuses] judges them. */
+    fun liveLineStatuses(now: Instant): Map<String, LineStatus> =
+        lineStatuses.map { it.toDomain() }
+            .filter { it.known && it.status.disrupted && it.isLive(now) }
+            .associate { it.status.lineId to it.status }
+
+    /** Whether [lineId] has a live check at [now], as [DeparturesSnapshot.statusKnown] judges it. */
+    fun statusKnown(lineId: String, now: Instant): Boolean =
+        lineId.isNotBlank() && lineStatuses.any { it.lineId == lineId && it.known && it.toDomain().isLive(now) }
+
+    /** When each line check expires (a disruption's mark goes, or the line turns unchecked): a
+     *  frame can change there. */
+    fun lineStatusExpiries(now: Instant): List<Instant> =
+        lineStatuses.map { it.toDomain().checkedAt }
+            // A check from the future (the clock moved back) is never live: its expiry changes
+            // nothing, and would stretch a timeline toward it.
+            .filterNot { it.isAfter(now) }
+            .map { it.plus(Staleness.THRESHOLD.toJavaDuration()) }
+
+    /**
+     * This envelope without the line checks dated after [now] (the clock moved back). A timeline
+     * built at [now] drops them once, so a frame later in it can't start trusting one when its
+     * instant passes.
+     */
+    fun withoutFutureChecks(now: Instant): WatchEnvelope =
+        copy(lineStatuses = lineStatuses.filterNot { it.toDomain().checkedAt.isAfter(now) })
+
     companion object {
         /** Bump on any change an older watch app would misread; it refuses rather than guesses. */
         const val CURRENT_VERSION = 1
@@ -140,11 +174,23 @@ object WatchEnvelopes {
         val missing = (snapshot.missingStopIds - snapshot.journeyOnlyStopIds).sorted()
 
         val hidden = hiddenModes.sorted()
-        var envelope = WatchEnvelope(stops = stops, starred = keysFor(stops), missingStopIds = missing, hiddenModes = hidden)
+        // The line checks for the lines the kept stops show, so a dropped stop's lines go with it.
+        val allStatuses = snapshot.lineStatuses.toPersistedStatuses()
+        fun statusesFor(kept: List<PersistedStop>): List<PersistedLineStatus> {
+            val lines = linesOfPersisted(kept)
+            return allStatuses.filter { it.lineId in lines }
+        }
+        var envelope = WatchEnvelope(
+            stops = stops,
+            starred = keysFor(stops),
+            missingStopIds = missing,
+            hiddenModes = hidden,
+            lineStatuses = statusesFor(stops),
+        )
         var bytes = encode(envelope)
         if (bytes.size <= dataItemBudget) return WatchPayload(envelope, bytes, asAsset = false)
         if (bytes.size <= transferCeiling) return WatchPayload(envelope, bytes, asAsset = true)
-        val ranked = rankedStopIds(snapshot.stops.filterNot { it.stopId in snapshot.journeyOnlyStopIds }, starred, hiddenModes, threshold, now)
+        val ranked = rankedStopIds(snapshot.stops.filterNot { it.stopId in snapshot.journeyOnlyStopIds }, starred, hiddenModes, threshold, now, snapshot.liveLineStatuses(now))
         val dropOrder = ranked.reversed().let { low -> low.filterNot { it in protectedStops } + low.filter { it in protectedStops } }
         // The watch reads only whether any stop is missing, so past the ceiling one id keeps the
         // flag, and the list can't hold the payload over the bound on its own.
@@ -162,6 +208,7 @@ object WatchEnvelopes {
                 omittedStops = stops.size - kept.size,
                 missingStopIds = missingFlag,
                 hiddenModes = hidden,
+                lineStatuses = statusesFor(kept),
             )
             bytes = encode(envelope)
         }
@@ -176,10 +223,17 @@ object WatchEnvelopes {
         hiddenModes: Set<String>,
         threshold: Duration,
         now: Instant,
+        // A suspended line's status row ranks its stop as the widget would.
+        lineStatuses: Map<String, LineStatus>,
     ): List<String> {
         val staleStop = stops.associate { it.stopId to (java.time.Duration.between(it.fetchedAt, now) >= threshold.toJavaDuration()) }
-        val rows = HiddenModes.rows(DepartureRows.across(stops, now, splitPlatforms = false), hiddenModes)
-            .sortedBy { if (staleStop[it.stopId] == true) 1 else 0 }
+        // Fresh first as the widget orders them, a live suspension's status row counting as fresh.
+        val rows = DepartureRows.freshFirst(
+            HiddenModes.rows(
+                DepartureRows.across(stops, now, lineStatuses, splitPlatforms = false, statusRowsWhenStale = true),
+                hiddenModes,
+            ),
+        ) { staleStop[it.stopId] == true }
         val byRow = DepartureRows.pinStarred(rows, starred, warningsLead = false).map { it.stopId }.distinct()
         return byRow + stops.map { it.stopId }.filterNot { it in byRow }
     }

@@ -57,6 +57,23 @@ class WatchHomeScreenshotTest {
     )
 
     @Test
+    fun disrupted() = capture(
+        "disrupted",
+        TileFrame.Rows(
+            listOf(
+                TileLine.Disruption(TileRow("Waterloo & City", "waterloo-city", "tube", "WAT", "", "", false, false), "Suspended", alone = true),
+                row("victoria", "Victoria", "tube", "VIC", "Brixton", "1 · 4 min"),
+                TileLine.Disruption(TileRow("Victoria", "victoria", "tube", "VIC", "", "", false, false), "Severe Delays", alone = false),
+                row("central", "Central", "tube", "CEN", "Ealing Broadway", "3 min"),
+            ),
+            ageMinutes = 0,
+            stale = false,
+            partial = false,
+        ),
+        refresh = true,
+    )
+
+    @Test
     fun noStops() = capture("no_stops", TileFrame.NoStops)
 
     @Test

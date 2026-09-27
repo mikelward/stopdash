@@ -121,10 +121,12 @@ internal object ComplicationRender {
     /** The short form: the line's code as the title, the countdown (or "None", "?") as the text. */
     private fun shortText(context: Context, content: ComplicationContent): Pair<String, ComplicationText> = when (content) {
         is ComplicationContent.Departure ->
-            content.code to countdown(content.at, if (content.uncertain) context.getString(R.string.complication_uncertain_time) else null)
+            marked(content.code, content.disruption) to
+                countdown(content.at, if (content.uncertain) context.getString(R.string.complication_uncertain_time) else null)
         is ComplicationContent.Empty ->
-            content.code to plain(context.getString(if (content.uncertain) R.string.complication_unknown else R.string.complication_none))
-        is ComplicationContent.Stale -> content.code to plain(context.getString(R.string.complication_unknown))
+            marked(content.code, content.disruption) to
+                plain(context.getString(if (content.uncertain) R.string.complication_unknown else R.string.complication_none))
+        is ComplicationContent.Stale -> marked(content.code, content.disruption) to plain(context.getString(R.string.complication_unknown))
         ComplicationContent.NoData -> "" to plain("")
     }
 
@@ -132,13 +134,26 @@ internal object ComplicationRender {
     private fun longText(context: Context, content: ComplicationContent): ComplicationText = when (content) {
         is ComplicationContent.Departure -> {
             val format = if (content.uncertain) R.string.complication_long_departure_uncertain else R.string.complication_long_departure
-            countdown(content.at, context.getString(format, content.lineName, content.destination))
+            countdown(content.at, context.getString(format, lineWith(context, content.lineName, content.disruption), content.destination))
         }
         is ComplicationContent.Empty ->
-            plain(context.getString(if (content.uncertain) R.string.complication_long_unsure else R.string.complication_long_none, content.lineName))
-        is ComplicationContent.Stale -> plain(context.getString(R.string.complication_long_stale, content.lineName))
+            plain(
+                context.getString(
+                    if (content.uncertain) R.string.complication_long_unsure else R.string.complication_long_none,
+                    lineWith(context, content.lineName, content.disruption),
+                ),
+            )
+        is ComplicationContent.Stale ->
+            plain(context.getString(R.string.complication_long_stale, lineWith(context, content.lineName, content.disruption)))
         ComplicationContent.NoData -> plain("")
     }
+
+    /** The short form's line code, "⚠VIC" while the line is disrupted, so the face shows it. */
+    private fun marked(code: String, disruption: String?): String = if (disruption != null) "⚠$code" else code
+
+    /** The line's name, with its disruption beside it while there is one: "Victoria (Severe Delays)". */
+    private fun lineWith(context: Context, lineName: String, disruption: String?): String =
+        disruption?.let { context.getString(R.string.complication_line_disrupted, lineName, it) } ?: lineName
 
     /** A countdown to [at], in whole minutes, that the system keeps current; [text] places it at `^1`. */
     private fun countdown(at: Instant, text: String?): ComplicationText =

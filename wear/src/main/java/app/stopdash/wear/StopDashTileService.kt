@@ -185,6 +185,8 @@ internal object TileLayout {
                 if (frame.stale || frame.partial) {
                     val note = if (frame.stale) R.string.tile_out_of_date else R.string.watch_partly_out_of_date
                     column.addContent(text(context.getString(note), 12f, warning))
+                } else if (frame.statusUnknown) {
+                    column.addContent(text(context.getString(R.string.watch_disruptions_unknown), 12f, warning))
                 }
                 if (frame.omitted > 0) {
                     val more = context.resources.getQuantityString(R.plurals.watch_more_stops_on_phone, frame.omitted, frame.omitted)
@@ -196,6 +198,7 @@ internal object TileLayout {
                         when (line) {
                             is TileLine.Header -> text(line.text, 12f, gray, bold = true, spoken = line.spoken)
                             is TileLine.Departure -> row(line.row)
+                            is TileLine.Disruption -> disruption(line)
                             TileLine.OnlyHidden -> text(context.getString(R.string.tile_only_hidden), 14f, white, maxLines = 2)
                             is TileLine.EmptyStop -> {
                                 val empty = if (line.uncertain) R.string.tile_may_be_out_of_date else R.string.tile_no_departures
@@ -248,12 +251,12 @@ internal object TileLayout {
 
     /**
      * Whether the tile's foot is **All stops** rather than Refresh: fresh and complete (no stop
-     * failed, none left out for size), with no refresh under way. Otherwise Refresh, which is what
+     * failed, none left out for size, every shown line's status checked), with no refresh under way. Otherwise Refresh, which is what
      * an out-of-date tile needs (and says why it's pending or failed); the app couldn't show stops
      * left out of the envelope anyway.
      */
     fun offersAllStops(frame: TileFrame.Rows, notice: RefreshNotice.Kind?): Boolean =
-        !frame.stale && !frame.partial && frame.omitted == 0 && notice == null
+        !frame.stale && !frame.partial && !frame.statusUnknown && frame.omitted == 0 && notice == null
 
     /** The **All stops** line: opens the watch app, which lists every row and scrolls. */
     private fun allStops(context: Context): LayoutElement {
@@ -279,6 +282,29 @@ internal object TileLayout {
             .addContent(Spacer.Builder().setWidth(dp(4f)).build())
             .addContent(text(row.countdown, 14f, if (row.stale) warning else white, bold = true))
             .build()
+
+    /**
+     * A disrupted line's "⚠ Severe Delays" in the warning color: beside its pill when the line has no
+     * countdown, else under its departures, indented to the destination column (the 36dp pill and
+     * the 4dp gap) so it reads as part of that service.
+     */
+    private fun disruption(line: TileLine.Disruption): LayoutElement {
+        val status = text("⚠ ${line.description}", 12f, warning, spoken = "Disrupted: ${line.description}")
+        return Row.Builder()
+            .setWidth(expand())
+            .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
+            .apply {
+                if (line.alone) addContent(pill(line.row)) else addContent(Spacer.Builder().setWidth(dp(36f)).build())
+            }
+            .addContent(Spacer.Builder().setWidth(dp(4f)).build())
+            .addContent(
+                Box.Builder().setWidth(expand())
+                    .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_START)
+                    .addContent(status)
+                    .build(),
+            )
+            .build()
+    }
 
     private fun pill(row: TileRow): LayoutElement {
         val colors = pillColors(row.lineName, row.lineId, row.mode, Color.Black)

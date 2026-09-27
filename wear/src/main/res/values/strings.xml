@@ -41,6 +41,10 @@
     <string name="complication_unknown">\?</string>
     <!-- Short complication, a carried-forward stop: "~" marks the countdown (^1) uncertain. -->
     <string name="complication_uncertain_time">~^1</string>
+    <!-- A shown line's service status couldn't be checked, so its countdowns aren't vouched for. -->
+    <string name="watch_disruptions_unknown">Couldn\'t check for disruptions</string>
+    <!-- A disrupted line's name in the long complication: "Victoria (Severe Delays)". -->
+    <string name="complication_line_disrupted">%1$s (%2$s)</string>
     <!-- Long complication: line, destination, then the countdown (^1). -->
     <string name="complication_long_departure">%1$s to %2$s ^1</string>
     <!-- Long complication, a carried-forward stop: the countdown (^1) marked uncertain. -->
