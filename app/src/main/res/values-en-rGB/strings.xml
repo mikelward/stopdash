@@ -8,4 +8,6 @@
     <string name="journeys_faraway">Faraway favourites</string>
     <string name="licenses_link_failed">No app to open the licence page</string>
     <string name="settings_distance_units_meters">Metres</string>
+    <string name="settings_favorite_places_title">Favourite places</string>
+    <string name="favorite_places_title">Favourite places</string>
 </resources>

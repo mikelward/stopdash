@@ -11,10 +11,15 @@ import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlaces
 import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoritePlacesStore
+import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.serialization.json.Json
 
 /**
@@ -36,17 +41,54 @@ class DataStoreFavoritePlacesStore internal constructor(
     private val warn: (String) -> Unit = {},
 ) : FavoritePlacesStore {
 
-    // Absent/discarded (null) → an empty list the user can add to. Present and readable → the list.
-    // Present but a version this build can't read → Unavailable, kept distinct from empty so a
-    // surface never treats a newer-version list as "no favorites" (SPEC principle 2).
-    override fun places(): Flow<FavoritePlacesSet> =
-        dataStore.data.map { stored ->
-            when {
-                stored == null -> FavoritePlacesSet.Loaded(emptyList())
-                else -> stored.toDomain()?.let { FavoritePlacesSet.Loaded(it) }
-                    ?: FavoritePlacesSet.Unavailable
+    // Absent (null) → an empty list the user can add to. A discard tombstone (written when a corrupt
+    // file was replaced) → Discarded, so the loss is surfaced even across process death (the marker is
+    // on disk, not in memory). Present and readable → the list. Present but a version this build can't
+    // read → Unavailable, kept distinct from empty so a surface never treats a newer-version list as
+    // "no favorites" (SPEC principle 2).
+    override fun places(): Flow<FavoritePlacesSet> = flow {
+        // Backoff + log state for a read-failure streak, reset on each successful emission below.
+        var backoff = READ_RETRY_MILLIS
+        var loggedThisOutage = false
+        val mapped = dataStore.data
+            .map { stored ->
+                val domain = stored?.toDomain()
+                when {
+                    stored == null -> FavoritePlacesSet.Loaded(emptyList())
+                    // A version this build can't read is Unavailable (preserved, not writable) even if it
+                    // sets `discarded` — treating a newer-schema tombstone as writable would let a save
+                    // no-op against it and drop the new draft (Codex). Check the version before discarded.
+                    domain == null -> FavoritePlacesSet.Unavailable
+                    stored.discarded -> FavoritePlacesSet.Discarded
+                    else -> FavoritePlacesSet.Loaded(domain)
+                }
+            }
+            .onEach {
+                backoff = READ_RETRY_MILLIS
+                loggedThisOutage = false
+            }
+        // A transient I/O read failure is retried rather than collapsing the flow, so a long-lived
+        // collector (the retained ViewModel) recovers once storage comes back. But an *unbounded* silent
+        // retry would leave the screen stuck on "Loading…" forever if storage stays down; so on each
+        // failure emit Unavailable — the honest "couldn't read" state (loaded, saves gated) — and keep
+        // retrying (Codex). Retries use **capped exponential backoff** and log **once per outage**, so a
+        // persistent failure doesn't churn the disk/log/battery every second for the retained ViewModel's
+        // lifetime (SPEC *Cost and reliability*; Codex). A non-IO cause (e.g. a serializer bug) propagates.
+        while (true) {
+            try {
+                emitAll(mapped)
+                return@flow // the source completed (a live DataStore's flow does not)
+            } catch (e: IOException) {
+                if (!loggedThisOutage) {
+                    warn("favorite places read failed, retrying: ${e::class.simpleName}")
+                    loggedThisOutage = true
+                }
+                emit(FavoritePlacesSet.Unavailable)
+                delay(backoff)
+                backoff = (backoff * 2).coerceAtMost(READ_RETRY_MAX_MILLIS)
             }
         }
+    }
 
     override suspend fun save(place: FavoritePlace) {
         dataStore.updateData { stored ->
@@ -78,6 +120,15 @@ class DataStoreFavoritePlacesStore internal constructor(
         /** The file name DataStore owns under the app's files dir. */
         private const val FILE_NAME = "favorite-places.json"
 
+        /** First backoff between retries of a failed read, doubled each attempt up to
+         *  [READ_RETRY_MAX_MILLIS], so a brief glitch recovers fast but a persistent failure doesn't
+         *  hot-loop (mirrors DataStoreAppSettings' 1s floor). */
+        private const val READ_RETRY_MILLIS = 1_000L
+
+        /** The retry-backoff ceiling: a persistent read failure settles to one attempt a minute rather
+         *  than churning the disk/log/battery every second for the retained ViewModel's lifetime. */
+        private const val READ_RETRY_MAX_MILLIS = 60_000L
+
         @Volatile
         private var instance: DataStoreFavoritePlacesStore? = null
 
@@ -99,7 +150,10 @@ class DataStoreFavoritePlacesStore internal constructor(
                         serializer = FavoritePlacesSerializer,
                         corruptionHandler = ReplaceFileCorruptionHandler {
                             warn("favorite places file was unreadable and has been discarded")
-                            null
+                            // Replace the corrupt file with a durable discard tombstone (not just an
+                            // empty file), so the loss is still surfaced after a restart until a save
+                            // overwrites it (Codex).
+                            PersistedFavoritePlaces(discarded = true)
                         },
                     ) {
                         context.applicationContext.dataStoreFile(FILE_NAME)

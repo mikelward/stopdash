@@ -5,9 +5,13 @@ import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlacesSet
+import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -38,6 +42,66 @@ class DataStoreFavoritePlacesStoreTest {
     fun `places reads an empty list when nothing is stored`() = runTest {
         val store = DataStoreFavoritePlacesStore(FakeDataStore(null))
         assertEquals(FavoritePlacesSet.Loaded(emptyList()), store.places().first())
+    }
+
+    /** A read that throws a transient [IOException] once, then reads normally — to prove [places]
+     *  retries rather than collapsing the flow permanently. */
+    private class FlakyReadDataStore : DataStore<PersistedFavoritePlaces?> {
+        private var thrown = false
+        override val data: Flow<PersistedFavoritePlaces?> = flow {
+            if (!thrown) {
+                thrown = true
+                throw IOException("transient read failure")
+            }
+            emit(null)
+        }
+        override suspend fun updateData(
+            transform: suspend (t: PersistedFavoritePlaces?) -> PersistedFavoritePlaces?,
+        ): PersistedFavoritePlaces? = throw UnsupportedOperationException()
+    }
+
+    @Test
+    fun `a discard tombstone reads as Discarded, not empty`() = runTest {
+        // The corruption handler replaced the unreadable file with a durable tombstone; the read must
+        // say the data was lost (and, being on disk, it survives a restart) — not present it as empty.
+        val store = DataStoreFavoritePlacesStore(FakeDataStore(PersistedFavoritePlaces(discarded = true)))
+        assertEquals(FavoritePlacesSet.Discarded, store.places().first())
+    }
+
+    @Test
+    fun `an empty store reads as an empty list, not Discarded`() = runTest {
+        val store = DataStoreFavoritePlacesStore(FakeDataStore(null))
+        assertEquals(FavoritePlacesSet.Loaded(emptyList()), store.places().first())
+    }
+
+    @Test
+    fun `a newer-schema tombstone reads as Unavailable, not Discarded`() = runTest {
+        // An older build reading a newer-schema file that also sets discarded must treat it as
+        // Unavailable (preserved, not writable), not Discarded (writable) — else a save would no-op and
+        // drop the new draft.
+        val newer = PersistedFavoritePlaces(version = PersistedFavoritePlaces.CURRENT_VERSION + 1, discarded = true)
+        val store = DataStoreFavoritePlacesStore(FakeDataStore(newer))
+        assertEquals(FavoritePlacesSet.Unavailable, store.places().first())
+    }
+
+    @Test
+    fun `saving over a discard tombstone clears it`() = runTest {
+        val ds = FakeDataStore(PersistedFavoritePlaces(discarded = true))
+        val store = DataStoreFavoritePlacesStore(ds)
+        assertEquals(FavoritePlacesSet.Discarded, store.places().first())
+        store.save(home)
+        // The tombstone is gone; the saved place reads back normally.
+        assertEquals(FavoritePlacesSet.Loaded(listOf(home)), store.places().first())
+    }
+
+    @Test
+    fun `places surfaces a transient read failure as unavailable, then recovers`() = runTest {
+        val store = DataStoreFavoritePlacesStore(FlakyReadDataStore())
+        // The failed read surfaces Unavailable (so the screen isn't stuck on "Loading…"), then the retry
+        // succeeds and it recovers to the real list (delay is virtual here).
+        val emissions = store.places().take(2).toList()
+        assertEquals(FavoritePlacesSet.Unavailable, emissions[0])
+        assertEquals(FavoritePlacesSet.Loaded(emptyList()), emissions[1])
     }
 
     @Test

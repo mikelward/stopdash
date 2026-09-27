@@ -99,6 +99,8 @@ fun SettingsScreen(
     distanceUnitsLoaded: Boolean = true,
     distanceUnitsWriteFailed: Boolean = false,
     onDismissDistanceUnitsError: () -> Unit = {},
+    // Opens the favorite-places editor (SPEC D9), hosted as its own overlay by the caller.
+    onOpenFavoritePlaces: () -> Unit = {},
 ) {
     BackHandler(onBack = onBack)
     Surface(modifier = Modifier.fillMaxSize()) {
@@ -146,6 +148,12 @@ fun SettingsScreen(
                         switchTestTag = "pinchSwitch",
                     )
                 }
+                SettingNavRow(
+                    title = stringResource(R.string.settings_favorite_places_title),
+                    summary = stringResource(R.string.settings_favorite_places_summary),
+                    onClick = onOpenFavoritePlaces,
+                    testTag = "favoritePlacesRow",
+                )
                 DistanceUnitsRow(
                     selected = distanceUnits,
                     onSelect = onDistanceUnitsChange,
@@ -342,6 +350,31 @@ private fun ApiKeyRow(
                 enabled = loaded && draft.trim() != apiKey,
                 modifier = Modifier.testTag("${tagPrefix}Save"),
             ) { Text(stringResource(R.string.settings_api_key_save)) }
+        }
+    }
+}
+
+/**
+ * A settings row that navigates to a sub-screen: a title + summary, the whole row tappable (the
+ * fewer-larger-targets discipline). Used for the favorite-places editor (SPEC D9).
+ */
+@Composable
+private fun SettingNavRow(title: String, summary: String, onClick: () -> Unit, testTag: String? = null) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = summary,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
