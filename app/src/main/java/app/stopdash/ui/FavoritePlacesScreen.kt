@@ -438,9 +438,9 @@ private fun WriteErrorRow(onDismiss: () -> Unit) {
 }
 
 /**
- * The postcode affordance shown above the station results when the query looks like a postcode: a
- * tappable row that resolves a complete postcode (SPEC D9), a spinner while it resolves, the resolved
- * place candidates to choose from, or a retry/"no places" state.
+ * What the editor shows for a postcode-shaped query (SPEC D9): a passive hint while it's still partial,
+ * a spinner while a complete one resolves itself (no tap needed — a single place is adopted straight
+ * away), a chooser when TfL returns several, or a "no places"/retryable-failure state.
  */
 @Composable
 private fun PostcodeSection(
@@ -450,7 +450,6 @@ private fun PostcodeSection(
     onPickCandidate: (PlaceCandidate) -> Unit,
 ) {
     val code = UkPostcode.format(query) ?: query.trim().uppercase()
-    val complete = UkPostcode.isComplete(query)
     when {
         editor.postcodeResolving -> Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("postcodeResolving"),
@@ -500,19 +499,12 @@ private fun PostcodeSection(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("postcodeNone"),
         )
-        // Not yet looked up: the affordance. Tappable only once the postcode is complete.
+        // Still partial: a passive hint that a postcode was recognized; a complete one resolves itself.
         else -> Text(
-            text = stringResource(
-                if (complete) R.string.favorite_places_postcode_lookup else R.string.favorite_places_postcode_partial,
-                code,
-            ),
+            text = stringResource(R.string.favorite_places_postcode_partial, code),
             style = MaterialTheme.typography.bodyMedium,
-            color = if (complete) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .fillMaxWidth()
-                .then(if (complete) Modifier.clickable { onResolve() } else Modifier)
-                .padding(vertical = 8.dp)
-                .testTag("postcodeRow"),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("postcodeRow"),
         )
     }
 }

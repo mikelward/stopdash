@@ -8,6 +8,7 @@ import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoritePlacesStore
 import app.stopdash.domain.IndexedStation
 import app.stopdash.domain.PlaceCandidate
+import app.stopdash.domain.PostcodeResolution
 import app.stopdash.domain.PostcodeResolver
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationIndex
@@ -214,41 +215,45 @@ class FavoritePlacesViewModelTest {
     }
 
     @Test
-    fun `resolving a complete postcode offers its candidates without auto-picking`() = runTest {
+    fun `a complete postcode with several places offers a chooser to pick from`() = runTest {
         val candidates = listOf(
             PlaceCandidate("X1 9XX", Coordinates(51.50, -0.10)),
             PlaceCandidate("X1 9XY", Coordinates(51.52, -0.12)),
         )
         val model = FavoritePlacesViewModel(
-            FakeStore(), FakeFinder(), postcodes = { candidates },
+            FakeStore(), FakeFinder(), postcodes = { PostcodeResolution.Options(candidates) },
             io = dispatcher, debounceMillis = 300, newId = { "id-1" },
         )
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
+        // Resolves on its own; TfL returns several places, so nothing is auto-adopted (SPEC D9).
         model.onQueryChange("X1 9XX")
         advanceUntilIdle()
-        model.resolvePostcode()
+        val offered = model.state.value.editor!!
+        assertEquals(candidates, offered.postcodeCandidates)
+        assertFalse(offered.postcodeResolving)
+        assertNull(offered.coordinate)
+        // The rider picks one and it's adopted.
+        model.onPickCandidate(candidates[1])
         advanceUntilIdle()
         val editor = model.state.value.editor!!
-        assertEquals(candidates, editor.postcodeCandidates)
-        assertFalse(editor.postcodeResolving)
-        assertNull(editor.coordinate) // nothing auto-picked; the user chooses
+        assertEquals(Coordinates(51.52, -0.12), editor.coordinate)
+        assertEquals("X1 9XY", editor.placeName)
+        assertTrue(editor.postcodeCandidates.isEmpty())
+        assertTrue(editor.canSave)
     }
 
     @Test
-    fun `picking a postcode candidate adopts its coordinate`() = runTest {
+    fun `a complete postcode adopts its single place automatically`() = runTest {
         val candidate = PlaceCandidate("X1 9XX", Coordinates(51.50, -0.10))
         val model = FavoritePlacesViewModel(
-            FakeStore(), FakeFinder(), postcodes = { listOf(candidate) },
+            FakeStore(), FakeFinder(), postcodes = { PostcodeResolution.Resolved(candidate) },
             io = dispatcher, debounceMillis = 300, newId = { "id-1" },
         )
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
+        // Typing a complete postcode resolves it — one unambiguous place, adopted without a tap.
         model.onQueryChange("X1 9XX")
-        advanceUntilIdle()
-        model.resolvePostcode()
-        advanceUntilIdle()
-        model.onPickCandidate(candidate)
         advanceUntilIdle()
         val editor = model.state.value.editor!!
         assertEquals(Coordinates(51.50, -0.10), editor.coordinate)
@@ -265,30 +270,29 @@ class FavoritePlacesViewModelTest {
             FakeStore(), FakeFinder(),
             postcodes = {
                 attempt++
-                if (attempt == 1) throw TflException.Offline(null) else listOf(candidate)
+                if (attempt == 1) throw TflException.Offline(null) else PostcodeResolution.Resolved(candidate)
             },
             io = dispatcher, debounceMillis = 300, newId = { "id-1" },
         )
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
+        // The automatic resolve on a complete postcode fails first.
         model.onQueryChange("X1 9XX")
         advanceUntilIdle()
-        model.resolvePostcode()
-        advanceUntilIdle()
         assertTrue(model.state.value.editor!!.postcodeFailed)
-        // Tapping again retries, and this time it resolves.
+        // Retrying resolves, and the single place is adopted straight away.
         model.resolvePostcode()
         advanceUntilIdle()
         val editor = model.state.value.editor!!
         assertFalse(editor.postcodeFailed)
-        assertEquals(listOf(candidate), editor.postcodeCandidates)
+        assertEquals(Coordinates(51.50, -0.10), editor.coordinate)
     }
 
     @Test
     fun `resolvePostcode is a no-op until the postcode is complete`() = runTest {
         var calls = 0
         val model = FavoritePlacesViewModel(
-            FakeStore(), FakeFinder(), postcodes = { calls++; emptyList() },
+            FakeStore(), FakeFinder(), postcodes = { calls++; PostcodeResolution.None },
             io = dispatcher, debounceMillis = 300, newId = { "id-1" },
         )
         advanceUntilIdle()
@@ -305,17 +309,24 @@ class FavoritePlacesViewModelTest {
     fun `changing the query clears postcode candidates`() = runTest {
         val model = FavoritePlacesViewModel(
             FakeStore(), FakeFinder(),
-            postcodes = { listOf(PlaceCandidate("X1 9XX", Coordinates(51.5, -0.1))) },
+            // Two places, so a complete postcode offers a chooser rather than auto-adopting.
+            postcodes = {
+                PostcodeResolution.Options(
+                    listOf(
+                        PlaceCandidate("X1 9XX", Coordinates(51.5, -0.1)),
+                        PlaceCandidate("X1 9XY", Coordinates(51.52, -0.12)),
+                    ),
+                )
+            },
             io = dispatcher, debounceMillis = 300, newId = { "id-1" },
         )
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
         model.onQueryChange("X1 9XX")
         advanceUntilIdle()
-        model.resolvePostcode()
-        advanceUntilIdle()
         assertTrue(model.state.value.editor!!.postcodeCandidates.isNotEmpty())
-        model.onQueryChange("X2 9YY")
+        // A partial postcode isn't resolved, so the old candidates are dropped, not replaced.
+        model.onQueryChange("X2")
         advanceUntilIdle()
         assertTrue(model.state.value.editor!!.postcodeCandidates.isEmpty())
     }
@@ -326,7 +337,7 @@ class FavoritePlacesViewModelTest {
         val model = FavoritePlacesViewModel(
             FakeStore(),
             FakeFinder(search = { searchCalls++; emptyList() }),
-            postcodes = { emptyList() },
+            postcodes = { PostcodeResolution.None },
             io = dispatcher, debounceMillis = 300, newId = { "id-1" },
         )
         advanceUntilIdle()
@@ -343,7 +354,7 @@ class FavoritePlacesViewModelTest {
     @Test
     fun `a postcode that resolves to nothing reports no places`() = runTest {
         val model = FavoritePlacesViewModel(
-            FakeStore(), FakeFinder(), postcodes = { emptyList() },
+            FakeStore(), FakeFinder(), postcodes = { PostcodeResolution.None },
             io = dispatcher, debounceMillis = 300, newId = { "id-1" },
         )
         advanceUntilIdle()

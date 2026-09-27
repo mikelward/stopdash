@@ -7,6 +7,7 @@ import app.stopdash.domain.JourneyPlanner
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.PlaceCandidate
+import app.stopdash.domain.PostcodeResolution
 import app.stopdash.domain.PostcodeResolver
 import app.stopdash.domain.RouteSequenceSource
 import app.stopdash.domain.StationFinder
@@ -128,7 +129,7 @@ class KtorTflClient(
         return copy(legs = legs.dropLast(1) + last.copy(toName = name))
     }
 
-    override suspend fun resolvePostcode(postcode: String): List<PlaceCandidate> =
+    override suspend fun resolvePostcode(postcode: String): PostcodeResolution =
         tflRequest { key ->
             try {
                 // Plan from the postcode to a fixed, always-resolvable interchange (King's Cross St
@@ -148,9 +149,13 @@ class KtorTflClient(
                 if (candidate == null && dto.journeys.isNotEmpty()) {
                     throw TflException.Unreachable("journey planner: postcode origin unreadable", null)
                 }
-                listOfNotNull(candidate)
+                // 200: TfL placed the postcode at one point — an unambiguous resolution the caller may
+                // adopt straight away; nothing at all means it's placed nowhere.
+                if (candidate != null) PostcodeResolution.Resolved(candidate) else PostcodeResolution.None
             } catch (e: RedirectResponseException) {
-                // 300: the Planner offers look-alike places for the postcode instead of one point.
+                // 300: the Planner offers look-alike places for the postcode instead of one point — a
+                // disambiguation the rider must choose from, never a single resolution even if only one
+                // option carries a position.
                 val result = e.response.body<TflDisambiguationResultDto>()
                 val from = result.fromLocationDisambiguation
                 val candidates = result.toCandidates()
@@ -162,7 +167,7 @@ class KtorTflClient(
                 if (offeredButUnreadable) {
                     throw TflException.Unreachable("journey planner: disambiguation options unreadable", null)
                 }
-                candidates
+                if (candidates.isEmpty()) PostcodeResolution.None else PostcodeResolution.Options(candidates)
             }
         }
 
