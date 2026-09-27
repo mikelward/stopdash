@@ -7,11 +7,16 @@ import app.stopdash.domain.Coordinates
 import app.stopdash.domain.DirectTrips
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FixedLocation
+import app.stopdash.domain.PlaceCandidate
+import app.stopdash.domain.PlaceHit
+import app.stopdash.domain.PlaceHits
+import app.stopdash.domain.PlaceKind
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.TflException
+import app.stopdash.domain.UkPostcode
 import app.stopdash.domain.YourStops
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -60,6 +65,11 @@ class StationSearchViewModel(
     // is none. Null means the read couldn't complete (as opposed to an empty list = genuinely none),
     // so the picker says so honestly and offers a retry rather than pretending there are none.
     private val loadPlaces: suspend () -> List<FavoritePlace>? = { emptyList() },
+    // Geocodes the typed query to candidate places, so a To… search offers arbitrary destinations
+    // (a landmark, an address, a postcode) alongside stops (SPEC *Find a station*). Only a To… picker
+    // supplies it — the default searches no places — and it's additive: a geocode failure yields none
+    // and the stops still stand.
+    private val searchPlaces: suspend (String) -> List<PlaceCandidate> = { emptyList() },
     // Remembers a station opened from the search, for the recent list; blocking, run on [io].
     private val recordOpen: suspend (StationMatch) -> Unit = {},
     private val io: CoroutineDispatcher = Dispatchers.IO,
@@ -93,6 +103,9 @@ class StationSearchViewModel(
          */
         data class Matches(
             val matches: List<StationMatch>,
+            // Geocoded places for the query (SPEC *Find a station*), shown after the stops in a To…
+            // picker with a Place/Postcode tag. Empty for a plain station search, which geocodes none.
+            val places: List<PlaceHit> = emptyList(),
             val remoteFailure: DeparturesUiState.Error.Kind? = null,
         ) : Result
         /** TfL answered, with no match. */
@@ -183,12 +196,14 @@ class StationSearchViewModel(
             val stations = withContext(io) { index.await().withYours(yours.await()) }
             val local = withContext(io) { stations.search(trimmed) }
             val shown = _state.value.result as? Result.Matches ?: return@launch
+            // Re-ranks the stops with the newly-read stops; the geocoded places are unchanged, so keep
+            // the ones already shown rather than dropping them or re-geocoding.
             val result = if (remote != null) {
-                Result.Matches(stations.rank(trimmed, local, remote))
+                Result.Matches(stations.rank(trimmed, local, remote), places = shown.places)
             } else {
-                Result.Matches(local, remoteFailure = shown.remoteFailure)
+                Result.Matches(local, places = shown.places, remoteFailure = shown.remoteFailure)
             }
-            if (result.matches.isNotEmpty()) _state.update { it.copy(result = result) }
+            if (result.matches.isNotEmpty() || result.places.isNotEmpty()) _state.update { it.copy(result = result) }
         }
     }
 
@@ -218,6 +233,11 @@ class StationSearchViewModel(
         }
     }
 
+    // A geocoded result's tag: a complete postcode query resolves to a location (Postcode); anything
+    // else is a named place, landmark or address (Place).
+    private fun placeKindOf(query: String): PlaceKind =
+        if (UkPostcode.isComplete(query)) PlaceKind.POSTCODE else PlaceKind.PLACE
+
     /** Search the current query again now — the Retry after a failure. */
     fun retry() = start(_state.value.query, debounce = false)
 
@@ -244,16 +264,46 @@ class StationSearchViewModel(
             val local = withContext(io) { stations.search(trimmed) }
             if (local.isNotEmpty()) _state.update { it.copy(result = Result.Matches(local), searching = true) }
             if (debounce) delay(debounceMillis)
-            val result = try {
+            // Geocode places in parallel with the stop search — a separate, heavier TfL call (SPEC *Cost*)
+            // that only a To… picker makes. Best-effort: its failure yields no places, never fails the
+            // stop search, so it's caught here rather than in the shared catch below.
+            val placesDeferred = async(io) {
+                try {
+                    PlaceHits.rank(trimmed, searchPlaces(trimmed), placeKindOf(trimmed))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    warn("place search failed: ${e.message}")
+                    emptyList()
+                }
+            }
+            // Resolve the stop search and publish it at once — the geocode is heavier and best-effort, so
+            // it must not hold the stops back: a bus-stop query whose stops are ready would otherwise sit
+            // on the progress state until the Planner answers or times out (Codex).
+            var failureKind: DeparturesUiState.Error.Kind? = null
+            val stops: Result.Matches? = try {
                 val remote = withContext(io) { finder.searchStations(trimmed) }
                 remoteFor = trimmed to remote
-                val merged = stations.rank(trimmed, local, remote)
-                if (merged.isEmpty()) Result.NoMatches else Result.Matches(merged)
+                Result.Matches(stations.rank(trimmed, local, remote))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TflException) {
                 warn("station search failed: ${e.message}")
-                if (local.isEmpty()) Result.Failed(errorKindOf(e)) else Result.Matches(local, remoteFailure = errorKindOf(e))
+                failureKind = errorKindOf(e)
+                // No local stops to stand on → let the places below decide error vs place-only; otherwise
+                // show the local stops now, with the failure noted so the "bus stops not searched" line
+                // still tells the rider the stop results are incomplete (SPEC principle 2).
+                if (local.isEmpty()) null else Result.Matches(local, remoteFailure = failureKind)
+            }
+            if (stops != null && stops.matches.isNotEmpty()) _state.update { it.copy(result = stops) }
+            // Fold in the geocoded places (or none) — the stops are already on screen.
+            val places = placesDeferred.await()
+            val result: Result = when {
+                stops != null && (stops.matches.isNotEmpty() || places.isNotEmpty()) -> stops.copy(places = places)
+                stops != null -> Result.NoMatches
+                places.isNotEmpty() -> Result.Matches(emptyList(), places = places, remoteFailure = failureKind)
+                failureKind != null -> Result.Failed(failureKind)
+                else -> Result.NoMatches
             }
             _state.update { it.copy(result = result, searching = false) }
             // The user's stops were read again meanwhile (a match opened mid-search): rank with that.

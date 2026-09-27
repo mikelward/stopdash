@@ -61,6 +61,8 @@ import app.stopdash.R
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.ModeGroups
+import app.stopdash.domain.PlaceHit
+import app.stopdash.domain.PlaceKind
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.abbreviateStationName
@@ -179,6 +181,17 @@ fun StationSearchScreen(
                             MatchRow(match, onClick = { onOpenStation(match) })
                             HorizontalDivider()
                         }
+                        // Geocoded places for the query, after the stops, each tagged Place/Postcode and
+                        // routed to as a coordinate (SPEC D9). Only a To… picker sets onOpenPlace.
+                        if (onOpenPlace != null) {
+                            items(
+                                result.places,
+                                key = { "place-${it.name}@${it.coordinate.latitude},${it.coordinate.longitude}" },
+                            ) { place ->
+                                PlaceHitRow(place, onClick = { onOpenPlace(TripDestination.Place(place.coordinate, place.name)) })
+                                HorizontalDivider()
+                            }
+                        }
                         // The bundled stations matched but TfL's search (bus stops) failed: say so under
                         // the matches rather than show them as the whole answer.
                         result.remoteFailure?.let { kind ->
@@ -294,6 +307,42 @@ private fun PlacesError(onRetry: (() -> Unit)?) {
         if (onRetry != null) {
             TextButton(onClick = onRetry) { Text(stringResource(R.string.route_stops_retry)) }
         }
+    }
+}
+
+/** A geocoded place in the To… results: its name, and a Place/Postcode tag in the right column (where
+ *  a stop shows its modes) so a place reads apart from a stop, on one line at [MatchRow]'s density. */
+@Composable
+private fun PlaceHitRow(place: PlaceHit, onClick: () -> Unit) {
+    val tag = stringResource(
+        when (place.kind) {
+            PlaceKind.POSTCODE -> R.string.station_search_kind_postcode
+            PlaceKind.PLACE -> R.string.station_search_kind_place
+        },
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .heightIn(min = 48.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            place.name,
+            style = MaterialTheme.typography.bodyLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            tag,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            textAlign = TextAlign.End,
+        )
     }
 }
 

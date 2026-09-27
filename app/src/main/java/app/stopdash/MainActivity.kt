@@ -1963,10 +1963,15 @@ class MainActivity : ComponentActivity() {
                         createSavedStateHandle(),
                         loadIndex = { StationIndexStore.load(appContext) },
                         loadYours = { loadYourStops(appContext, recents) },
-                        // Favorite places only where this trip can route to one (near-me To…); a From…
-                        // trip passes no [onOpenPlace] and reads none.
+                        // Favorite places and geocoded place search only where this trip can route to a
+                        // place (near-me To…); a From… trip passes no [onOpenPlace] and reads/searches none.
                         loadPlaces = if (onOpenPlace != null) {
                             { loadFavoritePlaces(appContext) }
+                        } else {
+                            { emptyList() }
+                        },
+                        searchPlaces = if (onOpenPlace != null) {
+                            stationFinder::searchPlaces
                         } else {
                             { emptyList() }
                         },

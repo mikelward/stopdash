@@ -37,3 +37,16 @@ sealed interface PostcodeResolution {
 fun interface PostcodeResolver {
     suspend fun resolvePostcode(postcode: String): PostcodeResolution
 }
+
+/**
+ * Geocodes free text — a place name, landmark, address or postcode — to the candidate locations TfL's
+ * Journey Planner resolves it to, for the To… search's place results (SPEC *Find a station*). The same
+ * geocoder [PostcodeResolver] uses; it just returns the raw candidate list (one for a uniquely-placed
+ * text, several for a disambiguation), which [PlaceHits.rank] then re-ranks and tags. Sends only the
+ * typed query to TfL, as the stop search already does, and nowhere else (SPEC *Privacy*). Throws a
+ * [TflException] on a transport or decode failure; the To… search treats geocoding as best-effort and
+ * lets its stops stand, so it catches that rather than failing the whole search.
+ */
+fun interface PlaceSearch {
+    suspend fun searchPlaces(query: String): List<PlaceCandidate>
+}

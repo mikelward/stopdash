@@ -5,6 +5,8 @@ import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.IndexedStation
+import app.stopdash.domain.PlaceCandidate
+import app.stopdash.domain.PlaceKind
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StationFinder
@@ -79,6 +81,78 @@ class StationViewModelsTest {
         // Kept across a clear, so reopening still shows the honest notice until the next read.
         vm.clear()
         assertTrue(vm.state.value.favoritePlacesFailed)
+    }
+
+    @Test
+    fun `a To search surfaces geocoded places, re-ranked, alongside the stops`() = runTest {
+        val vm = StationSearchViewModel(
+            FakeFinder(search = { emptyList() }),
+            io = dispatcher,
+            debounceMillis = 300,
+            // TfL's geocoder order is noisy; our matcher floats the prefix match above the weak partial.
+            // Synthetic names and coordinates (AGENTS *Privacy*).
+            searchPlaces = {
+                listOf(
+                    PlaceCandidate("Alpha Zeta", Coordinates(51.5, -0.10)),
+                    PlaceCandidate("Zeta Hall", Coordinates(51.50, -0.10)),
+                )
+            },
+        )
+        vm.onQueryChange("zeta")
+        advanceUntilIdle()
+        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(listOf("Zeta Hall", "Alpha Zeta"), result.places.map { it.name })
+        assertEquals(PlaceKind.PLACE, result.places.first().kind)
+    }
+
+    @Test
+    fun `a plain station search geocodes no places`() = runTest {
+        // No searchPlaces seam (a From… or browse search): only stops, never a geocode call.
+        val vm = StationSearchViewModel(FakeFinder(search = { listOf(oxford) }), io = dispatcher, debounceMillis = 300)
+        vm.onQueryChange("oxford")
+        advanceUntilIdle()
+        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertTrue(result.places.isEmpty())
+    }
+
+    @Test
+    fun `a geocode failure leaves the stops standing`() = runTest {
+        val vm = StationSearchViewModel(
+            FakeFinder(search = { listOf(oxford) }),
+            io = dispatcher,
+            debounceMillis = 300,
+            searchPlaces = { throw RuntimeException("geocode down") },
+        )
+        vm.onQueryChange("oxford")
+        advanceUntilIdle()
+        val result = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(listOf("Oxford Circus"), result.matches.map { it.name })
+        assertTrue(result.places.isEmpty())
+    }
+
+    @Test
+    fun `stop matches show before a slow geocode finishes, then places merge in`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val vm = StationSearchViewModel(
+            FakeFinder(search = { listOf(oxford) }),
+            io = dispatcher,
+            debounceMillis = 300,
+            searchPlaces = {
+                gate.await() // the geocode stalls until released
+                listOf(PlaceCandidate("Oxford Point", Coordinates(51.5, -0.1)))
+            },
+        )
+        vm.onQueryChange("oxford")
+        advanceUntilIdle()
+        // The stop matches are on screen although the geocode hasn't answered.
+        val partial = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(listOf("Oxford Circus"), partial.matches.map { it.name })
+        assertTrue(partial.places.isEmpty())
+        gate.complete(Unit)
+        advanceUntilIdle()
+        val full = vm.state.value.result as StationSearchViewModel.Result.Matches
+        assertEquals(listOf("Oxford Circus"), full.matches.map { it.name })
+        assertEquals(listOf("Oxford Point"), full.places.map { it.name })
     }
 
     @Test

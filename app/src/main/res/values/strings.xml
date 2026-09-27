@@ -273,6 +273,9 @@
     <string name="station_search_places">Places</string>
     <!-- Under the Places heading when the saved places couldn't be read, with a Retry. -->
     <string name="station_search_places_error">Couldn\'t load your places</string>
+    <!-- Right-column tag on a geocoded To… result, telling a place/postcode apart from a stop. -->
+    <string name="station_search_kind_place">Place</string>
+    <string name="station_search_kind_postcode">Postcode</string>
     <!-- Under the station matches when TfL's search (which covers bus stops) failed. -->
     <string name="station_search_bus_stops_missing">Bus stops not searched</string>
     <!-- A searched station that has no stops stopdash shows departures for. -->
