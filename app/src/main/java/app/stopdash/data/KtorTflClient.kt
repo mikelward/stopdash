@@ -7,6 +7,7 @@ import app.stopdash.domain.JourneyPlanner
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.PlaceCandidate
+import app.stopdash.domain.PlaceSearch
 import app.stopdash.domain.PostcodeResolution
 import app.stopdash.domain.PostcodeResolver
 import app.stopdash.domain.RouteSequenceSource
@@ -79,7 +80,7 @@ class KtorTflClient(
     // Sink for recoverable response oddities (an unparseable disruption date), coarse facts only —
     // a stop id, never a coordinate or key (SPEC *Privacy*). No-op by default (tests, widget).
     private val warn: (String) -> Unit = {},
-) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, JourneyPlanner, PostcodeResolver, VehicleSource {
+) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, JourneyPlanner, PostcodeResolver, PlaceSearch, VehicleSource {
     override suspend fun journeys(fromId: String, to: TripDestination): List<TripRoute> =
         tflRequest { key ->
             // A stop goes by id; a place goes by its coordinate ("lat,lon"), which TfL routes to with a
@@ -169,6 +170,20 @@ class KtorTflClient(
                 }
                 if (candidates.isEmpty()) PostcodeResolution.None else PostcodeResolution.Options(candidates)
             }
+        }
+
+    override suspend fun searchPlaces(query: String): List<PlaceCandidate> =
+        // The same geocoder as the postcode resolver — a place name or landmark resolves the way a
+        // postcode does (plan from the text to a fixed anchor, read the origin place(s)). Reusing it
+        // keeps the offered-but-unreadable checks (schema drift throws TflException.Unreachable rather
+        // than reading as "no place"), so the To… search logs the failure instead of silently blanking
+        // (SPEC principle 2). The 200 resolution and the 300 disambiguation options flatten to one list;
+        // the caller treats it as additive to the stop search. The query is the rider's own input, never
+        // logged (SPEC *Privacy*).
+        when (val resolution = resolvePostcode(query)) {
+            is PostcodeResolution.Resolved -> listOf(resolution.place)
+            is PostcodeResolution.Options -> resolution.places
+            PostcodeResolution.None -> emptyList()
         }
 
     override suspend fun arrivals(stopId: String): List<Departure> =

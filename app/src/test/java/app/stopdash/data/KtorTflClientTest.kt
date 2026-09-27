@@ -1058,4 +1058,44 @@ class KtorTflClientTest {
         assertEquals("/Journey/JourneyResults/X1%209XX/to/940GZZLUKSX", request.url.encodedPath)
         assertEquals("EXAMPLE", request.url.parameters["app_key"])
     }
+
+    // A place name TfL geocodes to one point (HTTP 200). Synthetic name and coordinates (AGENTS *Privacy*).
+    private val placeResolvedJson =
+        """
+        { "journeys": [ { "legs": [ {
+          "departurePoint": { "commonName": "Zeta Hall", "lat": 51.50, "lon": -0.10 },
+          "arrivalPoint": { "commonName": "Anchor Station", "naptanId": "940GZZLUKSX" }
+        } ] } ] }
+        """.trimIndent()
+
+    // A place name TfL offers look-alikes for (HTTP 300). Synthetic names and coordinates.
+    private val placeDisambiguationJson =
+        """
+        { "fromLocationDisambiguation": { "matchStatus": "list", "disambiguationOptions": [
+          { "place": { "commonName": "Zeta Hall", "lat": 51.50, "lon": -0.10 } },
+          { "place": { "commonName": "Zeta Gardens", "lat": 51.49, "lon": -0.13 } }
+        ] } }
+        """.trimIndent()
+
+    @Test
+    fun `searchPlaces returns the single origin place TfL geocodes a name to`() = runTest {
+        val places = client(placeResolvedJson).searchPlaces("zeta hall")
+        assertEquals(listOf("Zeta Hall"), places.map { it.name })
+        assertEquals(51.50, places[0].coordinate.latitude, 1e-9)
+        assertEquals(-0.10, places[0].coordinate.longitude, 1e-9)
+    }
+
+    @Test
+    fun `searchPlaces returns every look-alike place when TfL disambiguates a name`() = runTest {
+        val places = client(placeDisambiguationJson, status = HttpStatusCode.MultipleChoices).searchPlaces("zeta")
+        assertEquals(listOf("Zeta Hall", "Zeta Gardens"), places.map { it.name })
+    }
+
+    @Test
+    fun `searchPlaces requests the Journey Planner from the typed query to the anchor, url-encoded`() = runTest {
+        var captured: HttpRequestData? = null
+        client(placeResolvedJson, appKey = "EXAMPLE", capture = { captured = it }).searchPlaces("zeta hall")
+        val request = checkNotNull(captured)
+        assertEquals("/Journey/JourneyResults/zeta%20hall/to/940GZZLUKSX", request.url.encodedPath)
+    }
 }

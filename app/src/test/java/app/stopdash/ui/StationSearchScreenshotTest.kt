@@ -12,6 +12,8 @@ import androidx.compose.ui.test.performClick
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
+import app.stopdash.domain.PlaceHit
+import app.stopdash.domain.PlaceKind
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.TripDestination
 import app.stopdash.ui.theme.StopDashTheme
@@ -163,6 +165,45 @@ class StationSearchScreenshotTest {
         captureSnapshot("station-search-to-places-error.png")
         composeRule.onNodeWithText("Retry").performClick()
         assertTrue(retried)
+    }
+
+    @Test
+    fun station_search_to_place_results() {
+        // A To… search blends geocoded places under the stops, each tagged Place/Postcode on the right;
+        // tapping one routes to its coordinate. An interchange (public TfL data) plus synthetic place and
+        // postcode stand-ins — no real landmark, postcode or user data (AGENTS *Privacy*).
+        var routed: TripDestination.Place? = null
+        composeRule.setContent {
+            StopDashTheme {
+                StationSearchScreen(
+                    state = StationSearchViewModel.State(
+                        query = "victoria",
+                        result = StationSearchViewModel.Result.Matches(
+                            matches = listOf(StationMatch("HUBVIC", "Victoria", listOf("tube", "national-rail"))),
+                            places = listOf(
+                                PlaceHit("Sample Gallery", Coordinates(51.50, -0.10), PlaceKind.PLACE),
+                                PlaceHit("X1 9XX", Coordinates(51.49, -0.13), PlaceKind.POSTCODE),
+                            ),
+                        ),
+                    ),
+                    onQueryChange = {},
+                    onOpenStation = {},
+                    onRetry = {},
+                    onBack = {},
+                    autoFocus = false,
+                    hint = "To station or stop",
+                    onOpenPlace = { routed = it },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Victoria").assertIsDisplayed()
+        composeRule.onNodeWithText("Sample Gallery").assertIsDisplayed()
+        composeRule.onNodeWithText("Place").assertIsDisplayed()
+        composeRule.onNodeWithText("Postcode").assertIsDisplayed()
+        captureSnapshot("station-search-to-place-results.png")
+        composeRule.onNodeWithText("Sample Gallery").performClick()
+        assertEquals(TripDestination.Place(Coordinates(51.50, -0.10), "Sample Gallery"), routed)
     }
 
     @Test
