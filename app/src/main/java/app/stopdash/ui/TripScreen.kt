@@ -74,6 +74,7 @@ import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.RouteFocus
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DirectTrips
+import app.stopdash.domain.Headway
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSequence
@@ -948,12 +949,15 @@ private fun RouteSummary(card: List<TripTiming.Estimate>, statuses: Map<String, 
  * [SHOWN_TRAINS] in time order, each with whether the rider can use it ([shownTrains]); [checking]
  * those whose route is still being checked; [loading] while any line's times aren't in yet (its
  * boarding stop's arrivals, or at a bus stop pair its route), when [shown] is empty.
+ * [headways] is how often each later ride's line runs, by ride ([Headway]): the rider isn't there
+ * yet, so countdowns would say nothing they can use; null where too few trains are known.
  */
 internal data class CardTimes(
     val shown: List<Pair<Departure, Boolean>>,
     val checking: Set<Departure>,
     val reachable: Instant,
     val loading: Boolean,
+    val headways: List<Headway.Range?> = emptyList(),
 )
 
 /**
@@ -989,7 +993,11 @@ internal fun cardTimes(
     val reachable = walks.fold(now.plus(access)) { at, walk -> at.plus(walk.run).plus(walk.changeAfter) }
     // While any line's times are still loading, none show: the others alone would read as all of them.
     val shown = if (loading) emptyList() else shownTrains(trains.distinct(), reachable, usable = { it in usable })
-    return CardTimes(shown, checking, reachable, loading)
+    // Each later ride's own trains, those along its route ([legTrains]); none while stale or unchecked.
+    val headways = card.first().route.rides.drop(1).map { ride ->
+        legTrains(state, ride, now, sequences)?.let { later -> Headway.of(later.map { it.expectedArrival }) }
+    }
+    return CardTimes(shown, checking, reachable, loading, headways)
 }
 
 /**
@@ -1019,6 +1027,21 @@ private fun RideStops(card: List<TripTiming.Estimate>, statuses: Map<String, Lin
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f).padding(start = 8.dp),
                 )
+                if (index > 0) {
+                    times.headways.getOrNull(index - 1)?.let { headway ->
+                        Text(
+                            text = if (headway.min == headway.max) {
+                                stringResource(R.string.trip_headway, headway.min)
+                            } else {
+                                stringResource(R.string.trip_headway_range, headway.min, headway.max)
+                            },
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            modifier = Modifier.padding(start = 12.dp),
+                        )
+                    }
+                }
                 if (index == 0) {
                     // Graying is lost on TalkBack: each time is read with its destination, and whether it's usable.
                     val description = times.shown.map { (train, catchable) ->

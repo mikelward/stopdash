@@ -293,6 +293,10 @@ class TripScreenScreenshotTest {
         composeRule.onAllNodesWithText("Canada Water", useUnmergedTree = true).assertCountEquals(1)
         composeRule.onAllNodesWithText("Whitechapel", useUnmergedTree = true).onFirst().assertExists()
         composeRule.onAllNodesWithText("Canary Wharf", useUnmergedTree = true).assertCountEquals(2)
+        // A later ride says how often its line runs, from its live trains: the Elizabeth line at 14,
+        // 18 and 24 is every 4 to 6 minutes. The Jubilee, with one train known, says nothing.
+        composeRule.onAllNodesWithText("Every 4–6 min", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onAllNodesWithText("Every", substring = true, useUnmergedTree = true).assertCountEquals(1)
         // The top row says where each starts, in place of the lines' pills.
         composeRule.onAllNodesWithText("From Highbury & Islington", useUnmergedTree = true).assertCountEquals(2)
     }
