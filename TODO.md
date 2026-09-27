@@ -869,6 +869,21 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               `hereFavorite`) threaded through `StationSearchArea`/`FromStationArea`.
         - [ ] **Hide a favorite that duplicates a nearby stop** (maintainer, 2026-09-27): when a saved
               place sits at a stop already listed, one of them is redundant in the picker.
+      - [x] **To… a geocoded place or postcode** (maintainer, 2026-09-27): the To… search now offers
+            geocoded places (landmark, address, postcode) beneath the stop matches, each tagged
+            *Place*/*Postcode*; tapping one plans to its coordinate (D9). TfL's Journey Planner is the
+            geocoder (`KtorTflClient.searchPlaces`, the same call the postcode resolver makes);
+            `PlaceHits.rank` re-ranks a place-name query by our own name matcher (TfL's raw order is
+            noisy — a weak partial can outrank the landmark) and drops non-matches. Near-me To… only
+            (a To… picker sets `onOpenPlace`). Follow-ups:
+        - [ ] **A better geocoder**: TfL's Journey Planner ranks place candidates poorly (a well-known
+              landmark ranked well down its raw results in testing); our re-rank fixes the obvious cases
+              but a dedicated place/geocoding API (or TfL's `/Place`) would return better candidates.
+              Watch the added per-search TfL request cost when choosing.
+        - [ ] **Remember a picked place in *Recent***: a chosen geocoded place isn't recorded (no stop
+              id); *To…*'s *Recent* keeps only stops. Consider a device-local recent-places list.
+        - [ ] **Extend geocoded places to the From-station To… picker** (paired with the favorites
+              follow-up above — both need `onOpenPlace`/`searchPlaces` threaded through `FromStationArea`).
       - [ ] **Delete the unreachable direct-trips page path**: `LookDepartures`' `destination` and
             `hereTiers` are always null now. Delete their branches and everything only they reach
             (find it by a repo-wide search: `rememberTripView`, `tripMessages`, `tripLoaded`,

@@ -286,6 +286,18 @@ The app finds stops two ways:
   (*Privacy*), and *To…*'s own *Recent* remembers it on the device; a **saved favorite** instead sends
   its **coordinate** (D9); its name and stable id are **never sent to TfL** (they ride Android backup /
   device transfer with the rest of the user's config, per *Privacy*).
+- **To… a place or postcode** (maintainer, 2026-09-27) — the *To…* search offers **geocoded places**
+  (a landmark, an address, a postcode) beneath the stop matches, each tagged *Place* or *Postcode* in
+  the right column where a stop shows its modes; tapping one plans to its **coordinate** (a final walk
+  leg, D9), like a favorite. TfL's Journey Planner is the geocoder (the only one in the free Unified
+  API), the same call the postcode resolver makes — so it adds a **second TfL request** per *To…*
+  search alongside the stop search (*Cost*; only the *To…* picker makes it, not From…/browse), and
+  sends only the typed query, as the stop search already does (*Privacy*). TfL's geocoder orders its
+  candidates **noisily** (a weak partial can outrank the obvious landmark), so a place-name query is
+  **re-ranked by the app's own name matcher** (Prefix over Anchored over Substring over Fuzzy) and
+  non-matching candidates dropped; a postcode query keeps TfL's order (its resolved location's name
+  needn't contain the digits). Best-effort: a geocode failure yields no places and the stops still
+  stand. A better geocoder is a later option (`TODO.md`).
 - **Farther stations** (maintainer, 2026-09-25) — where the near-me list reaches only one tube
   station, the rest of the network can be two miles off. Below the loaded places and the *More*
   controls, a **collapsed card** stands for the nearest station of each **rail line** the loaded
