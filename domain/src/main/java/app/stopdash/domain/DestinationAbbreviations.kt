@@ -30,12 +30,19 @@ object DestinationAbbreviations {
         "Park" to "Pk",
         "Road" to "Rd",
         "Street" to "St",
+        "Lane" to "Ln",
+        "Market" to "Mkt",
+        "Station" to "Stn",
         "Point" to "Pt",
     )
 
-    /** The name with each recognized standalone word replaced by its short form. */
-    fun abbreviate(name: String): String =
-        name.split(" ").joinToString(" ") { token -> forms[token] ?: token }
+    /**
+     * The name with each recognized standalone word replaced by its short form, in each part of a
+     * slash-separated name alike (`Shepherd's Bush Market / Wood Lane` → `… / Wood Ln`).
+     */
+    fun abbreviate(name: String): String = eachPart(name) { part ->
+        part.split(" ").joinToString(" ") { token -> forms[token] ?: token }
+    }
 
     /**
      * The shortest still-recognizable form, the **floor** below [abbreviate]: the row shows the
@@ -47,16 +54,27 @@ object DestinationAbbreviations {
      * identity ("Finchley", "Barnet"). Only when nothing maps does it fall to **first word in full,
      * each later word an initial** (`Battersea Power` → `Battersea P.`), where the first word carries
      * the identity. A non-letter token (`&`, a number) is left whole so `Elephant & Castle` reads
-     * `Elephant & C.`, not `Elephant &. C.`. A one-word or blank name is returned unchanged.
+     * `Elephant & C.`, not `Elephant &. C.`. A one-word or blank name is returned unchanged. Each
+     * part of a slash-separated name is floored on its own, so each keeps its own identity
+     * (`Wood Lane / White City Road` → `Wood Ln / White City Rd`).
      */
-    fun floor(name: String): String {
-        val abbreviated = abbreviate(name)
-        if (abbreviated != name) return abbreviated
-        val words = name.split(" ").filter { it.isNotEmpty() }
-        if (words.size <= 1) return name
-        return words.first() + " " + words.drop(1).joinToString(" ") { word ->
-            val first = word.first()
-            if (first.isLetter()) "${first.uppercaseChar()}." else word
+    fun floor(name: String): String = eachPart(name) { part ->
+        val abbreviated = abbreviate(part)
+        val words = part.split(" ").filter { it.isNotEmpty() }
+        when {
+            abbreviated != part -> abbreviated
+            words.size <= 1 -> part
+            else -> words.first() + " " + words.drop(1).joinToString(" ") { word ->
+                val first = word.first()
+                if (first.isLetter()) "${first.uppercaseChar()}." else word
+            }
         }
     }
+
+    /** [name] with [shorten] applied to each slash-separated part, the slashes and their spacing kept. */
+    private fun eachPart(name: String, shorten: (String) -> String): String =
+        name.split("/").joinToString("/") { part ->
+            val body = part.trim()
+            if (body.isEmpty()) part else part.substringBefore(body) + shorten(body) + part.substringAfterLast(body)
+        }
 }

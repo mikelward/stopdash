@@ -20,6 +20,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.dp
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineRef
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasAnyAncestor
@@ -33,6 +34,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onChild
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -312,7 +314,49 @@ class TripScreenScreenshotTest {
     fun a_route_card_with_no_walk_says_where_it_starts() {
         show(planned.copy(routes = listOf(viaCanadaWater, viaWhitechapel)), access = Duration.ZERO)
         composeRule.onAllNodes(hasTestTag("walkToStart"), useUnmergedTree = true).assertCountEquals(0)
-        composeRule.onAllNodesWithText("From Highbury & Islington", useUnmergedTree = true).assertCountEquals(2)
+        // "From" drawn beside the stop, not in it, so a narrow row cuts the stop's name, never "From".
+        composeRule.onAllNodesWithText("From ", useUnmergedTree = true).assertCountEquals(2)
+        composeRule.onAllNodesWithText("Highbury & Islington", useUnmergedTree = true).assertCountEquals(2)
+    }
+
+    // A trip's stop names shorten as the main screen's destinations do: whole words first, each
+    // part of a slash-separated name alike, the full name kept for a screen reader.
+    @Test
+    fun a_stop_name_shortens_before_it_is_cut() {
+        val name = "Shepherd's Bush Market / Wood Lane"
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                androidx.compose.foundation.layout.Column {
+                    Box(Modifier.width(400.dp).testTag("wide")) { ShortenedName(name, androidx.compose.material3.MaterialTheme.typography.bodyLarge) }
+                    Box(Modifier.width(160.dp).testTag("narrow")) { ShortenedName(name, androidx.compose.material3.MaterialTheme.typography.bodyLarge) }
+                }
+            }
+        }
+        composeRule.onNode(hasText(name) and hasAnyAncestor(hasTestTag("wide")), useUnmergedTree = true).assertExists()
+        val narrow = composeRule.onNode(hasText("Wood Ln") and hasAnyAncestor(hasTestTag("narrow")), useUnmergedTree = true)
+        narrow.assertExists()
+        // Too narrow even for the floor, each place elides on its own: "Wood Ln" is drawn whole,
+        // not lost behind one trailing "…". The full name stays the screen-reader label.
+        composeRule.onNode(hasTestTag("narrow"), useUnmergedTree = true).onChild().assert(hasContentDescription(name))
+        val results = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        composeRule.onNode(hasText("Wood Ln") and hasAnyAncestor(hasTestTag("narrow")), useUnmergedTree = true)
+            .fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!(results)
+        assertTrue("Wood Ln elided", !results.single().isLineEllipsized(0))
+    }
+
+    // A slash-separated name with nothing to shorten still splits, rather than eliding once at the end.
+    @Test
+    fun a_stop_name_with_nothing_to_shorten_still_keeps_each_place() {
+        val name = "Kensington / Hammersmith"
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Box(Modifier.width(120.dp).testTag("narrow")) { ShortenedName(name, androidx.compose.material3.MaterialTheme.typography.bodyLarge) }
+            }
+        }
+        // Each place is its own text, so neither is lost behind the other's "…".
+        composeRule.onNode(hasText("Kensington") and hasAnyAncestor(hasTestTag("narrow")), useUnmergedTree = true).assertExists()
+        composeRule.onNode(hasText("Hammersmith") and hasAnyAncestor(hasTestTag("narrow")), useUnmergedTree = true).assertExists()
+        composeRule.onNode(hasTestTag("narrow"), useUnmergedTree = true).onChild().assert(hasContentDescription(name))
     }
 
     @Test

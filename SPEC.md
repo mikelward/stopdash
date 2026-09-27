@@ -547,8 +547,10 @@ Green or Finchley Central shows no "/Bank".
 
 Where the pair won't fit, the **branch is kept whole** — it is the cue that tells the two trunks
 apart, so truncating it would lose which train this is — and the **terminus yields**: it shortens
-common whole words to a compact form (`East`→`E.`, `Street`→`St`, and the rest —
-`DestinationAbbreviations`), then, for a name no word maps, drops to its **floor** — the first word
+common whole words to a compact form (`East`→`E.`, `Street`→`St`, `Lane`→`Ln`, `Market`→`Mkt`, `Station`→`Stn`, and the rest —
+`DestinationAbbreviations`; each part of a slash-separated name alike, so "Shepherd's Bush Market /
+Wood Lane" keeps both places, and below the floor each place elides on its own rather than all but
+the first behind one trailing `…`), then, for a name no word maps, drops to its **floor** — the first word
 in full with each later word an initial (`Battersea Power`→`Battersea P.`) — and only below the
 floor does it **elide with a single `…`** — never a mid-glyph cut, and the **terminus yields before
 the branch**. **Both sides are abbreviated before either is cut** (maintainer, 2026-09-25): the
@@ -882,7 +884,9 @@ pill), a ⚠ beside it when that line is disrupted, and the stop — so cards ri
 also carries its **live times**, every line on the card together in time order ("1 · 3 · 5 min"):
 each is a way to the same change, so only when matters, not which line, and the card stays four
 rows tall rather than growing a row per line (maintainer, 2026-09-27, replacing a live row per
-line). The stop's name is cut before the times are. A **later ride's row** says instead how often
+line). The stop's name gives way before the times do, and shortens as a departure's destination
+does — whole words first ("Wood Ln", "Bush Mkt"), then its floor, and only then a single "…" — as do the walk
+row's stop and "From ‹stop›" (maintainer, 2026-09-27). A **later ride's row** says instead how often
 its line runs, **"↻ 2–4 min"** (↻ for "every", to save width; a screen reader hears "Every 2 to 4 min"): the rider isn't there yet, so its countdowns say nothing they can
 use. It is the middle half of the gaps between that leg's live trains (those along its route), so a
 bunched pair or one long gap doesn't set it, and it shows only with at least three trains known
