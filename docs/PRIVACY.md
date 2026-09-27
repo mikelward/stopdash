@@ -224,6 +224,11 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   it boards at and the reason (e.g. its destination matches no route) — and, by line id only,
   a starred journey its line's route can't place (never its two ends together, which would
   record a route you travel),
+- **why a trip route's arrival is withheld** ("arrival unknown"): which of its legs (by number),
+  that leg's mode and line id, the reason (e.g. its line's predictions don't show it running
+  often), how many predictions it had, and minute counts (how long before you'd reach the stop
+  the last one leaves, the longest gap between them, how long ago the Planner's own departure
+  left) — never a stop or either end of the trip,
 - a **failed Play update check, or a failed attempt to open the Play listing** (release
   builds only — see *What leaves the device*): the caught exception's class name (e.g.
   `IllegalStateException`), or a fixed "no app to open the Play listing" reason — never any

@@ -374,6 +374,23 @@ class TripViewModelTest {
         assertEquals(setOf(route, back), trip.state.value.routes?.toSet())
     }
 
+    // A withheld arrival leaves its reason in the log once, not on every minute tick; a new reason,
+    // or the route withheld again after it showed, is logged again.
+    @Test
+    fun `a withheld arrival is logged once per reason`() {
+        val warnings = mutableListOf<String>()
+        val trip = TripViewModel(FakePlanner(listOf(route)), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")), warn = { warnings += it }, clock = { now }, plans = TripPlans(), io = dispatcher)
+        fun why(reason: TripTiming.Reason, predictions: Int = 2) =
+            TripTiming.Withheld(1, "bus", "9", reason, predictions, Duration.ofMinutes(4), null, Duration.ofMinutes(3))
+        trip.noteWithheld(mapOf("r" to why(TripTiming.Reason.INFREQUENT)))
+        trip.noteWithheld(mapOf("r" to why(TripTiming.Reason.INFREQUENT, predictions = 3)))
+        assertEquals(listOf("trip arrival withheld: leg 2 (bus 9): infrequent, 2 predicted, last 4 min before reach; Planner's missed by 3 min"), warnings)
+        trip.noteWithheld(mapOf("r" to why(TripTiming.Reason.NO_LIVE)))
+        trip.noteWithheld(mapOf("r" to null))
+        trip.noteWithheld(mapOf("r" to why(TripTiming.Reason.NO_LIVE)))
+        assertEquals(3, warnings.size)
+    }
+
     // A bus pole planned to keeps its stop area as its stop: the planning target doesn't make it a
     // stop of its own, apart from the sibling pole across the road.
     @Test
@@ -1462,6 +1479,9 @@ class TripViewModelTest {
         assertEquals(setOf("red", "green"), rideTrains(fresh, red, now, sequences, lines)?.map { it.lineId }?.toSet())
         val failed = base.copy(live = base.live + ("A2" to TripViewModel.StopLive(listOf(train("green", "End", 3)), now, failed = true)))
         assertEquals(setOf("red"), rideTrains(failed, red, now, sequences, lines)?.map { it.lineId }?.toSet())
+        // Nor counts toward the predictions a withheld arrival reports: the count describes the
+        // trains that timed the ride.
+        assertEquals(ridePredicted(fresh, red, now, lines) - 1, ridePredicted(failed, red, now, lines))
     }
 
     @Test

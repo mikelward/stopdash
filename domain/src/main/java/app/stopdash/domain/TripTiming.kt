@@ -47,12 +47,66 @@ object TripTiming {
         // from a train or the Planner; null when a longer wait could miss a connection nothing
         // else times, so there's no latest to give.
         val slack: Duration? = Duration.ZERO,
+        // Why [arrival] is withheld, for the debug log (null unless [basis] is UNKNOWN).
+        val withheld: Withheld? = null,
     ) {
         /** Door-to-door time from now, or null when the arrival is withheld. */
         val duration: Duration? get() = arrival?.let { Duration.between(start, it) }
 
         /** The latest the rider may arrive ([slack]), or null when the arrival is withheld or has no latest. */
         val latest: Instant? get() = slack?.let { arrival?.plus(it) }
+    }
+
+    /** Why a leg withheld a route's arrival ([Withheld]). */
+    enum class Reason {
+        /** Its line isn't running now. */
+        NOT_RUNNING,
+
+        /** No live trains StopDash can vouch for: not fetched yet, stale (D4), or none whose route can be followed. */
+        NO_LIVE,
+
+        /** Its arrivals' last refresh failed: the held ones don't vouch the line is still running. */
+        FAILED,
+
+        /** Trains predicted for its line, but none vouched for as calling at its stop along the leg (its route loading, failed, or none does). */
+        NOT_VOUCHED,
+
+        /** No train predicted at all. */
+        NO_TRAINS,
+
+        /** Predictions end before the rider gets there, and don't show the line running every few minutes. */
+        INFREQUENT,
+
+        /** A mode never boarded on arrival (National Rail, tram): a wait there can be long. */
+        MODE,
+    }
+
+    /**
+     * The leg that withheld a route's arrival and why (SPEC principle 2: a degraded answer says why),
+     * with what its predictions showed: how many ([predictions]), how long before the rider reaches
+     * the stop the last one leaves ([lastBefore]), the longest gap between them ([gap]), and how long
+     * before then the Planner's own departure left ([missedBy]). Coarse facts only: a line, never a
+     * stop or a place (SPEC *Privacy*).
+     */
+    data class Withheld(
+        val leg: Int,
+        val mode: String,
+        val lineId: String,
+        val reason: Reason,
+        val predictions: Int,
+        val lastBefore: Duration?,
+        val gap: Duration?,
+        val missedBy: Duration,
+    ) {
+        /** One debug-log line: "leg 2 (bus 390): infrequent, 2 predicted, last 6 min before reach, gap 14 min; Planner's missed by 9 min". */
+        fun describe(): String = buildString {
+            append("leg ").append(leg + 1).append(" (").append(mode).append(' ').append(lineId).append("): ")
+            append(reason.name.lowercase().replace('_', ' '))
+            append(", ").append(predictions).append(" predicted")
+            lastBefore?.let { append(", last ").append(it.toMinutes()).append(" min before reach") }
+            gap?.let { append(", gap ").append(it.toMinutes()).append(" min") }
+            append("; Planner's missed by ").append(missedBy.toMinutes()).append(" min")
+        }
     }
 
     /**
@@ -72,11 +126,15 @@ object TripTiming {
         // Whether leg [index]'s arrivals came from a fetch that succeeded: after a failed refresh the
         // last ones stand, aged, but don't vouch that the line is still running.
         current: (Int) -> Boolean = { true },
+        // How many trains leg [index]'s lines have predicted at its boarding stop before [live]'s
+        // checks, for the reason a withheld arrival gives ([Withheld]); timing never reads it.
+        predicted: (Int) -> Int = { live(it)?.size ?: 0 },
     ): Estimate {
         val blocked = route.rides.any { it.lineId in notRunning }
         val unchecked = !blocked && route.rides.any { it.lineId in unknown }
         var basis = Basis.LIVE
         var waits = false
+        var withheld: Withheld? = null
         // A leg's timing from when the rider is [ready] for it, and whether it boards a frequent line
         // as the rider arrives, assuming away the wait for it ([waits]).
         fun time(index: Int, leg: TripLeg, ready: Instant): Pair<LegTiming, Basis> {
@@ -97,7 +155,10 @@ object TripTiming {
                     waits = true
                     LegTiming(ready, ready.plus(leg.run), null, false) to Basis.ESTIMATED
                 }
-                else -> LegTiming(null, null, null, false) to Basis.UNKNOWN
+                else -> {
+                    if (withheld == null) withheld = withheldAt(index, leg, ready, trains, leg.lineId in notRunning, current(index), predicted(index))
+                    LegTiming(null, null, null, false) to Basis.UNKNOWN
+                }
             }
         }
         var at: Instant? = now.plus(access)
@@ -131,7 +192,40 @@ object TripTiming {
             // The last leg's change time isn't part of the arrival.
             late?.minus(route.legs.lastOrNull()?.changeAfter ?: Duration.ZERO)?.let { Duration.between(arrival, it).coerceAtLeast(Duration.ZERO) }
         }
-        return Estimate(route, basis, arrival, legs, blocked, now, unchecked, slack)
+        return Estimate(route, basis, arrival, legs, blocked, now, unchecked, slack, withheld.takeIf { basis == Basis.UNKNOWN })
+    }
+
+    // Why [leg], reached at [ready] past its live [trains] and the Planner's departure, withholds the arrival.
+    private fun withheldAt(
+        index: Int,
+        leg: TripLeg,
+        ready: Instant,
+        trains: List<Departure>?,
+        notRunning: Boolean,
+        current: Boolean,
+        predicted: Int,
+    ): Withheld {
+        val times = trains.orEmpty().map { it.expectedArrival }.distinct().sorted()
+        val reason = when {
+            notRunning -> Reason.NOT_RUNNING
+            // Before the empty cases: a first fetch that failed leaves nothing to vouch for either.
+            !current -> Reason.FAILED
+            times.isEmpty() && predicted > 0 -> Reason.NOT_VOUCHED
+            trains == null -> Reason.NO_LIVE
+            times.isEmpty() -> Reason.NO_TRAINS
+            leg.mode.lowercase() !in FREQUENT_MODES && !leg.mode.equals(BUS, ignoreCase = true) -> Reason.MODE
+            else -> Reason.INFREQUENT
+        }
+        return Withheld(
+            leg = index,
+            mode = leg.mode,
+            lineId = leg.lineId,
+            reason = reason,
+            predictions = if (times.isEmpty()) predicted else times.size,
+            lastBefore = times.lastOrNull()?.let { Duration.between(it, ready) },
+            gap = times.zipWithNext { a, b -> Duration.between(a, b) }.maxOrNull(),
+            missedBy = Duration.between(leg.departure, ready),
+        )
     }
 
     /**
