@@ -270,4 +270,65 @@ class TripTimingTest {
         )
         assertEquals(setOf("blue"), TripTiming.notRunning(statuses))
     }
+
+    @Test
+    fun `a withheld arrival says which leg and why`() {
+        // Red at 2, an 11 min run and a 3 min change: ready for the bus at 16, past both its
+        // predictions (1 and 12, too far apart to read as frequent) and the Planner's 12.
+        val route = TripRoute(
+            listOf(
+                leg("red", "A", "B", departs = 1, arrives = 12, change = 3),
+                leg("9", "B", "C", departs = 12, arrives = 20, mode = "bus"),
+            ),
+        )
+        val live = mapOf(0 to listOf(train("red", 2)), 1 to listOf(train("9", 1), train("9", 12)))
+        val estimate = TripTiming.estimate(route, now, Duration.ZERO, { live[it] })
+        assertEquals(TripTiming.Basis.UNKNOWN, estimate.basis)
+        val withheld = estimate.withheld!!
+        assertEquals(1, withheld.leg)
+        assertEquals(TripTiming.Reason.INFREQUENT, withheld.reason)
+        assertEquals(2, withheld.predictions)
+        assertEquals(Duration.ofMinutes(4), withheld.lastBefore)
+        assertEquals(Duration.ofMinutes(11), withheld.gap)
+        assertEquals(Duration.ofMinutes(4), withheld.missedBy)
+        assertEquals(
+            "leg 2 (bus 9): infrequent, 2 predicted, last 4 min before reach, gap 11 min; Planner's missed by 4 min",
+            withheld.describe(),
+        )
+    }
+
+    @Test
+    fun `a withheld arrival names no live times, a failed refresh, and a line not running apart`() {
+        val live = mapOf(0 to listOf(train("red", 2)))
+        // Ready for blue at 16, after the Planner's blue at 10 and any train predicted.
+        val route = TripRoute(listOf(leg("red", "A", "B", departs = 1, arrives = 12, change = 3), leg("blue", "B", "C", departs = 10, arrives = 30)))
+        fun reason(trains: List<Departure>?, notRunning: Set<String> = emptySet(), current: Boolean = true) =
+            TripTiming.estimate(route, now, Duration.ZERO, { if (it == 0) live[0] else trains }, notRunning, current = { it == 0 || current }).withheld?.reason
+        assertEquals(TripTiming.Reason.NO_LIVE, reason(null))
+        assertEquals(TripTiming.Reason.NO_TRAINS, reason(emptyList()))
+        assertEquals(TripTiming.Reason.FAILED, reason(listOf(train("blue", 3)), current = false))
+        assertEquals(TripTiming.Reason.NOT_RUNNING, reason(listOf(train("blue", 3)), notRunning = setOf("blue")))
+        // A first fetch that failed with nothing held reads as failed, not as no live times.
+        assertEquals(TripTiming.Reason.FAILED, reason(null, current = false))
+    }
+
+    @Test
+    fun `trains predicted but not vouched for are told apart from none predicted`() {
+        val live = mapOf(0 to listOf(train("red", 2)))
+        val route = TripRoute(listOf(leg("red", "A", "B", departs = 1, arrives = 12, change = 3), leg("blue", "B", "C", departs = 10, arrives = 30)))
+        fun withheld(trains: List<Departure>?, predicted: Int) = TripTiming.estimate(
+            route, now, Duration.ZERO, { if (it == 0) live[0] else trains }, predicted = { if (it == 0) 1 else predicted },
+        ).withheld!!
+        // Its route still loading: three predicted, none vouched to call at C.
+        assertEquals(TripTiming.Reason.NOT_VOUCHED, withheld(emptyList(), 3).reason)
+        assertEquals(3, withheld(emptyList(), 3).predictions)
+        assertEquals(TripTiming.Reason.NOT_VOUCHED, withheld(null, 3).reason)
+        assertEquals(TripTiming.Reason.NO_TRAINS, withheld(emptyList(), 0).reason)
+    }
+
+    @Test
+    fun `an arrival not withheld carries no reason`() {
+        val live = mapOf(0 to listOf(train("red", 2)), 1 to listOf(train("blue", 16)))
+        assertNull(TripTiming.estimate(twoLegs, now, Duration.ZERO, { live[it] }).withheld)
+    }
 }

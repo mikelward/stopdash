@@ -2177,6 +2177,7 @@ class MainActivity : ComponentActivity() {
             // Start: followed from here to [toName], the rider at the first stop once they've walked there.
             onStart = LocalOnTheWay.current?.let { onTheWay -> { route -> onTheWay.start(route, toName, Instant.now().plus(access)) } },
             onOpenTrip = LocalOnTheWay.current?.takeIf { it.active }?.open,
+            onWithheld = trip::noteWithheld,
         )
     }
 

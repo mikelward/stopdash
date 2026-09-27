@@ -136,14 +136,34 @@ internal fun rideTrains(
     sequences: Map<String, LineSequence?>,
     lines: Map<TripLeg, RideLines>,
 ): List<Departure>? {
+    val found = timingLines(state, leg, lines).map { legTrains(state, it, now, sequences) }
+    return if (found.all { it == null }) null else found.flatMap { it.orEmpty() }.distinct()
+}
+
+/**
+ * The lines whose trains may time [leg]'s ride: one list for [rideTrains] and [ridePredicted], so
+ * the reason a withheld arrival gives always describes the trains that timed it.
+ */
+private fun timingLines(state: TripViewModel.State, leg: TripLeg, lines: Map<TripLeg, RideLines>): List<TripLeg> =
     // Another line times the ride only once checked as running ([RideLines.checked]): a suspended
     // line's predictions, or one never checked, mustn't make a route read as live.
     // Nor from a pole whose refresh failed: its held predictions would pass for current, while the
     // route's freshness is judged at the Planner's own pole. The Planner's line keeps its own rule.
-    val timed = (lines[leg] ?: RideLines.only(leg)).timedRunning(state.statuses)
+    (lines[leg] ?: RideLines.only(leg)).timedRunning(state.statuses)
         .filter { it == leg || state.live[it.fromId]?.failed != true }
-    val found = timed.map { legTrains(state, it, now, sequences) }
-    return if (found.all { it == null }) null else found.flatMap { it.orEmpty() }.distinct()
+
+/**
+ * How many trains [leg]'s timing lines ([rideTrains]) have predicted at their boarding stops, before
+ * any route check: for the reason a withheld arrival gives ([TripTiming.Withheld]), so trains a
+ * route couldn't vouch for read apart from none predicted. Stale arrivals (D4) count none.
+ */
+internal fun ridePredicted(state: TripViewModel.State, leg: TripLeg, now: Instant, lines: Map<TripLeg, RideLines>): Int {
+    if (leg.isWalk) return 0
+    return timingLines(state, leg, lines).sumOf { line ->
+        val stop = state.live[line.fromId] ?: return@sumOf 0
+        if (Staleness.isStale(Duration.between(stop.fetchedAt, now).toKotlinDuration())) return@sumOf 0
+        Countdown.upcoming(stop.departures.filter { it.lineId == line.lineId }, now).size
+    }
 }
 
 /**
@@ -419,6 +439,7 @@ internal fun tripEstimates(
         TripTiming.estimate(
             route, now, access, { index -> rideTrains(state, route.legs[index], now, sequences, lines) }, notRunning, unknown,
             current = { index -> state.live[route.legs[index].fromId]?.failed != true },
+            predicted = { index -> ridePredicted(state, route.legs[index], now, lines) },
         )
             .let { if (originUnconfirmed && it.basis == TripTiming.Basis.LIVE) it.copy(basis = TripTiming.Basis.ESTIMATED) else it }
     }
@@ -536,6 +557,9 @@ internal fun TripScreen(
     onStart: ((TripRoute) -> Unit)? = null,
     // With a trip already on the way, open it in Start's place rather than replace it.
     onOpenTrip: (() -> Unit)? = null,
+    // Why each timed route's arrival is withheld (null: it shows), by route key, for the debug log
+    // ([TripViewModel.noteWithheld]).
+    onWithheld: (Map<String, TripTiming.Withheld?>) -> Unit = {},
 ) {
     CompositionLocalProvider(LocalRouteStops provides routeStops) {
         TripContent(
@@ -544,6 +568,7 @@ internal fun TripScreen(
             TripAlerts(dismissed, onDismissAlert, dismissWriteFailed, onDismissWriteFailureShown),
             onStart,
             onOpenTrip,
+            onWithheld,
         )
     }
 }
@@ -581,6 +606,7 @@ private fun TripContent(
     alerts: TripAlerts = TripAlerts(emptySet(), null, false) {},
     onStart: ((TripRoute) -> Unit)? = null,
     onOpenTrip: (() -> Unit)? = null,
+    onWithheld: (Map<String, TripTiming.Withheld?>) -> Unit = {},
 ) {
     // Only the timed routes' lines: a hidden mode's routes, and those past the cap, load no route data.
     // While a plan's answers are still landing, the last settled plan's lines stand, so a passing
@@ -608,6 +634,10 @@ private fun TripContent(
     val rideLines = remember(state, sequences, hiddenModes) { rideLines(state.routes.orEmpty(), state, sequences, hiddenModes) }
     val estimates = remember(state, now, access, sequences, hiddenModes, originUnconfirmed, rideLines) {
         tripEstimates(state, now, access, sequences, hiddenModes, originUnconfirmed, rideLines)
+    }
+    // A withheld arrival leaves its reason in the debug log: a side effect, off composition.
+    LaunchedEffect(estimates) {
+        estimates?.let { list -> onWithheld(list.associate { routeKey(it.route) to it.withheld }) }
     }
     // The list's cards; an open route is looked up among every way timed, so it stays open whichever
     // way its card shows.

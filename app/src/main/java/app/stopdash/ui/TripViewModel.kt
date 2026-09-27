@@ -17,6 +17,7 @@ import app.stopdash.domain.TflClient
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripRoute
+import app.stopdash.domain.TripTiming
 import app.stopdash.domain.withoutDetours
 import java.time.Duration
 import java.time.Instant
@@ -249,6 +250,26 @@ class TripViewModel(
                 _state.update { it.copy(live = emptyMap()) }
                 started = false
             }
+        }
+    }
+
+    // Each route whose arrival was last withheld, by its key, to the leg and reason logged for it.
+    private val withheldLogged = HashMap<String, String>()
+
+    /**
+     * Logs why each route's arrival is withheld ([TripTiming.Withheld]), once per route while the
+     * same leg withholds it for the same reason, so the minute tick doesn't repeat it (SPEC principle
+     * 2: a withheld arrival leaves its reason). [withheld] maps each timed route's key to its reason,
+     * or null when its arrival shows.
+     */
+    fun noteWithheld(withheld: Map<String, TripTiming.Withheld?>) {
+        for ((key, why) in withheld) {
+            if (why == null) {
+                withheldLogged.remove(key)
+                continue
+            }
+            val same = "${why.leg}:${why.lineId}:${why.reason}"
+            if (withheldLogged.put(key, same) != same) warn("trip arrival withheld: ${why.describe()}")
         }
     }
 
