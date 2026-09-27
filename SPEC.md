@@ -1711,7 +1711,13 @@ the widget when the app isn't driving it is deferred (D5).
 The Wear OS companion (`dev-docs/wear-os.md`) shows the widget's snapshot as the phone last sent
 it, on a tile, a watch-face complication and a small app. It never calls TfL itself, and like the
 widget it renders only what is stored, stamped with its age and marked stale rather than passed
-off as live (D4).
+off as live (D4). A delayed or suspended line is marked on all three as the widget marks it (D3), and each
+mark is withheld at the same threshold from its own check: the tile and the app list "⚠ Severe
+Delays" under the service (a suspension with no countdown as its status alone), and the
+complication shows "⚠" by the line code and the status beside the line's name in its long form. A
+live countdown whose line has no current check makes the tile and the app say "Couldn't check for
+disruptions", as the widget does, and the tile's foot offers Refresh; the complication has no room
+for that note.
 
 **The complication** puts one row's next departure on the watch face: the line and its countdown,
 with the destination when there's room. It shows the row the user picks for it in the watch
@@ -1801,7 +1807,10 @@ failed Play update check's exception class — never a raw coordinate or the use
 **The Wear OS watch sync** (dev-docs/wear-os.md; maintainer, 2026-09-24): when a paired watch has
 the StopDash watch app, the phone sends it the widget's snapshot — its stops' names and IDs, their
 departures, the nearer-stop lists the terminating filter compares against (location-derived place
-data), the starred-row keys and the hidden modes — never a coordinate or a key. The watch sends back the rows its
+data), the starred-row keys, the hidden modes, and TfL's public line status for the lines those
+stops serve, each with when it was checked — never a coordinate or a key. The line statuses are
+public TfL data, and they name only lines the snapshot's stops already imply, so they add no Data
+Safety category. The watch sends back the rows its
 complications show and its refresh requests. It goes over Google Play services' Wearable Data Layer,
 which may relay through Google's servers when the watch isn't on Bluetooth; that relay is accepted,
 with this disclosure. Nothing is sent when no paired watch has the app. `docs/PRIVACY.md` carries

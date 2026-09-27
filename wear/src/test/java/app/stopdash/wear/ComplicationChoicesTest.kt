@@ -5,6 +5,8 @@ import app.stopdash.data.WatchStarKey
 import app.stopdash.data.toPersisted
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LineRef
+import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
 import java.time.Instant
@@ -45,6 +47,14 @@ class ComplicationChoicesTest {
             .let { it.copy(departures = it.departures.map { d -> d.copy(expectedArrival = fetched.plusSeconds(30)) }) }
         val env = WatchEnvelope(stops = listOf(stale, victoria).map { it.toPersisted() })
         assertEquals(listOf("victoria", "central"), ComplicationChoices.of(env, fetched).map { it.row.lineId })
+    }
+
+    @Test
+    fun `a suspension's status row isn't a pick`() {
+        val suspended = StopArrivals("940GW", "Stop 940GW", emptyList(), fetched, lines = listOf(LineRef("waterloo-city", "Waterloo-city", "tube")))
+        val check = LineStatusCheck(LineStatus("waterloo-city", 5, "Suspended"), fetched)
+        val env = WatchEnvelope(stops = listOf(suspended, victoria).map { it.toPersisted() }, lineStatuses = listOf(check.toPersisted()))
+        assertEquals(listOf("victoria"), ComplicationChoices.of(env, fetched).map { it.row.lineId })
     }
 
     @Test

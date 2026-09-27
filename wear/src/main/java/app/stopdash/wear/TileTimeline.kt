@@ -11,6 +11,7 @@ import app.stopdash.domain.Staleness
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.lineCode
+import app.stopdash.ui.BudgetedRow
 import app.stopdash.ui.BudgetedRows
 import java.time.Duration
 import java.time.Instant
@@ -37,6 +38,13 @@ sealed interface TileLine {
     data class Header(val text: String, val spoken: String = text) : TileLine
 
     data class Departure(val row: TileRow) : TileLine
+
+    /**
+     * A disrupted line's status ("Severe Delays"), under its departures, or on its own beside the
+     * pill ([alone]) when the line has no countdown to show (a suspension), as the widget draws it.
+     * [row] carries the pill; its label and countdown are empty.
+     */
+    data class Disruption(val row: TileRow, val description: String, val alone: Boolean) : TileLine
 
     /** A stop with no rows, listed when no stop has any: its name and the empty form it's owed. */
     data class EmptyStop(val stopName: String, val uncertain: Boolean) : TileLine
@@ -70,6 +78,9 @@ sealed interface TileFrame {
         val stale: Boolean,
         val partial: Boolean,
         val omitted: Int = 0,
+        /** A fresh row with a live countdown has a line with no current status check: the tile
+         *  says disruptions couldn't be checked, as the widget and app do (SPEC D3). */
+        val statusUnknown: Boolean = false,
     ) : TileFrame
 }
 
@@ -158,16 +169,38 @@ object TileTimeline {
             (!allStale && staleStop.values.any { it })
         // The status lines drawn above the list take room from it, as the widget's note does, and
         // so does the Refresh chip at the foot.
-        val notes = (if (allStale || partial) 1 else 0) + (if (envelope.omittedStops > 0) 1 else 0)
-        val budget = budget ?: lineBudget(screen, notes, refreshLine = true)
+        val freshNote = allStale || partial
+        val statusNote = if (freshNote) 0 else 1
+        val baseNotes = (if (freshNote) 1 else 0) + (if (envelope.omittedStops > 0) 1 else 0)
+        val budgetFor: (Int) -> Int = { notes -> budget ?: lineBudget(screen, notes, refreshLine = true) }
+        // The disruptions still young enough to stand behind, as the widget marks them (SPEC D3);
+        // none on a withheld tail, whose instant is past what the timeline was built for.
+        val statuses = if (withhold) emptyMap() else envelope.liveLineStatuses(now)
         // Fresh rows ahead of stale ones (as the widget orders its cap), then favorites first.
-        val ordered = DepartureRows.across(stops, now, splitPlatforms = false)
-            .sortedBy { if (staleStop[it.stopId] == true) 1 else 0 }
+        // A suspension's status row stays while its own check is live, past the stop's boundary.
+        val ordered = DepartureRows.freshFirst(
+            DepartureRows.across(stops, now, statuses, splitPlatforms = false, statusRowsWhenStale = true),
+        ) { staleStop[it.stopId] == true }
         // Less the modes hidden from the near-me list, as the widget leaves them out.
         val shown = HiddenModes.rows(ordered, envelope.hiddenModes.toSet())
         val pinned = DepartureRows.pinStarred(shown, starred)
+        // Judged on the rows drawn with a live countdown, as the widget judges it: a line that
+        // didn't fit is never spoken for. Its note takes a line, so the rows are chosen again with
+        // that line reserved and judged again; if the unchecked row was the one pushed out, the
+        // note goes with it. Behind the out-of-date note it goes unsaid: one note at a time, the
+        // stronger one first.
+        fun uncheckedIn(selected: List<BudgetedRow>) = !withhold && !freshNote && selected.any { c ->
+            c.groups.isNotEmpty() && staleStop[c.row.stopId] != true && !envelope.statusKnown(c.row.lineId, now)
+        }
+        var budget = budgetFor(baseNotes)
+        var selected = BudgetedRows.select(pinned, budget, MAX_TIMES, topology)
+        if (uncheckedIn(selected)) {
+            budget = budgetFor(baseNotes + statusNote)
+            selected = BudgetedRows.select(pinned, budget, MAX_TIMES, topology)
+        }
+        val statusUnknown = uncheckedIn(selected)
         val lines = buildList {
-            for (chosen in BudgetedRows.select(pinned, budget, MAX_TIMES, topology)) {
+            for (chosen in selected) {
                 chosen.header?.let { add(TileLine.Header(it.text, it.spoken)) }
                 val row = chosen.row
                 val stale = staleStop[row.stopId] == true
@@ -178,6 +211,11 @@ object TileTimeline {
                     val shown = if (group.branch != null) "$label/${group.branch}" else label
                     val countdown = if (stale) "?" else Countdown.mergedLabel(group.times, now)
                     add(TileLine.Departure(TileRow(row.lineName, row.lineId, row.mode, code, shown, countdown, star, stale)))
+                }
+                // Its line was counted in the budget ([BudgetedRows.select]), and is never the one dropped.
+                row.status?.let { status ->
+                    val pill = TileRow(row.lineName, row.lineId, row.mode, code, "", "", star, stale)
+                    add(TileLine.Disruption(pill, status.description, alone = chosen.groups.isEmpty()))
                 }
             }
         }.ifEmpty {
@@ -197,6 +235,7 @@ object TileTimeline {
             allStale,
             partial,
             envelope.omittedStops,
+            statusUnknown = statusUnknown,
         )
     }
 
@@ -206,7 +245,8 @@ object TileTimeline {
 
     /**
      * The entries from [now]: a new one at each instant the frame can change — every countdown
-     * minute, every departure, every stop's staleness boundary, every minute of the age stamp — up
+     * minute, every departure, every stop's staleness boundary, every disruption's expiry, every
+     * minute of the age stamp — up
      * to the moment every stop is stale, then one open-ended stale entry. A setup frame is a single
      * open-ended entry: no stop has a boundary.
      *
@@ -216,11 +256,15 @@ object TileTimeline {
      * horizon, so a stop fetched long ago costs nothing.
      */
     fun schedule(
-        envelope: WatchEnvelope?,
+        received: WatchEnvelope?,
         now: Instant,
         topology: RouteTopology = RouteTopology.EMPTY,
         screen: TileScreen? = null,
     ): TileSchedule {
+        // A check dated after [now] (the clock moved back) is never trusted, and it stays untrusted
+        // for the whole timeline: dropped here once, so a later frame can't start showing it once
+        // its instant passes, with no break at its expiry to take it away again.
+        val envelope = received?.withoutFutureChecks(now)
         if (envelope == null || envelope.stops.isEmpty()) {
             return TileSchedule(listOf(TileEntry(now, null, frame(envelope, now, topology, screen = screen))), refreshAt = null)
         }
@@ -251,7 +295,7 @@ object TileTimeline {
 
     /**
      * The instant after [now] at which the frame can next change (a countdown minute, a departure,
-     * a stop's boundary, a minute of the age stamp), or null once every stop is stale: what the
+     * a stop's boundary, a disruption's expiry, a minute of the age stamp), or null once every stop is stale: what the
      * watch app's foreground ticker waits for. Rows past the list's reach may add instants that
      * change nothing; a re-render there is cheap and never wrong.
      */
@@ -265,13 +309,17 @@ object TileTimeline {
     private fun breaks(envelope: WatchEnvelope, now: Instant): Pair<SortedSet<Instant>, Instant> {
         val stops = envelope.stops.map { it.toDomain() }
         val threshold = Staleness.THRESHOLD.toJavaDuration()
-        val horizon = stops.maxOf { it.fetchedAt.plus(threshold) }
+        // The last instant a frame can change: every stop stale and every line check expired, so
+        // the open-ended frame after it marks no disruption a check no longer vouches for.
+        val horizon = (stops.map { it.fetchedAt.plus(threshold) } + envelope.lineStatusExpiries(now)).max()
         val breaks = sortedSetOf<Instant>()
         fun add(at: Instant) {
             if (at > now && at < horizon) breaks += at
         }
         // A hidden mode's departures never show, so they mustn't spend the entry budget either.
         val hidden = envelope.hiddenModes.toSet()
+        // A disruption's mark is withheld at its own check's boundary.
+        envelope.lineStatusExpiries(now).forEach(::add)
         for (stop in stops) {
             add(stop.fetchedAt.plus(threshold))
             // Each minute of this stop's age, from the first one after now.

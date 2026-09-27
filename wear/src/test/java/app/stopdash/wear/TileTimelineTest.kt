@@ -5,6 +5,8 @@ import app.stopdash.data.WatchStarKey
 import app.stopdash.data.toPersisted
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LineRef
+import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
 import java.time.Instant
@@ -36,8 +38,17 @@ class TileTimelineTest {
         lines = listOf(LineRef(line, line.replaceFirstChar { it.uppercase() }, "tube")),
     )
 
-    private fun envelope(vararg stops: StopArrivals, starred: Set<StarredRow> = emptySet()) =
-        WatchEnvelope(stops = stops.map { it.toPersisted() }, starred = starred.map(WatchStarKey::of))
+    // Every line checked good at the fetch by default, as a complete refresh leaves it; [checked]
+    // false leaves the lines unchecked.
+    private fun envelope(vararg stops: StopArrivals, starred: Set<StarredRow> = emptySet(), checked: Boolean = true) =
+        WatchEnvelope(
+            stops = stops.map { it.toPersisted() },
+            starred = starred.map(WatchStarKey::of),
+            lineStatuses = if (!checked) emptyList() else stops
+                .flatMap { s -> s.departures.map { it.lineId } + s.lines.map { it.id } }
+                .distinct()
+                .map { LineStatusCheck(LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service"), stops.maxOf { s -> s.fetchedAt }).toPersisted() },
+        )
 
     private fun List<TileEntry>.at(t: Instant): TileFrame = single { it.start <= t && (it.end == null || t < it.end) }.frame
 
@@ -317,5 +328,136 @@ class TileTimelineTest {
         assertFalse("a stop failed", TileLayout.offersAllStops(fresh.copy(partial = true), null))
         assertFalse("stops left out for size", TileLayout.offersAllStops(fresh.copy(omitted = 1), null))
         assertFalse("refreshing", TileLayout.offersAllStops(fresh, RefreshNotice.Kind.REFRESHING))
+    }
+
+    private val severe = LineStatus("victoria", 6, "Severe Delays")
+
+    private fun withStatus(env: WatchEnvelope, status: LineStatus, at: Instant = fetched) =
+        env.copy(lineStatuses = env.lineStatuses.filterNot { it.lineId == status.lineId } + LineStatusCheck(status, at).toPersisted())
+
+    @Test
+    fun `a disrupted line is marked under its departures, until its check expires`() {
+        val env = withStatus(envelope(stop("940GA", listOf(departure(120), departure(600)))), severe, at = fetched.minusSeconds(120))
+        val entries = TileTimeline.entries(env, fetched)
+        val before = (entries.at(fetched) as TileFrame.Rows).lines
+        assertEquals(TileLine.Disruption::class, before[1]::class)
+        val mark = before[1] as TileLine.Disruption
+        assertEquals("Severe Delays", mark.description)
+        assertFalse(mark.alone)
+        // The check was 2 min old, so it expires 3 min in, ahead of the stop's own boundary.
+        val expiry = fetched.plusSeconds(180)
+        assertTrue(entries.any { it.start == expiry })
+        assertTrue((entries.at(expiry) as TileFrame.Rows).lines.none { it is TileLine.Disruption })
+    }
+
+    @Test
+    fun `a suspended line with no predictions shows as its status alone, ahead of the rest`() {
+        val stop = stop("940GA", listOf(departure(120))).copy(
+            lines = listOf(LineRef("victoria", "Victoria", "tube"), LineRef("waterloo-city", "Waterloo-city", "tube")),
+        )
+        val env = withStatus(envelope(stop), LineStatus("waterloo-city", 5, "Suspended"))
+        val lines = (TileTimeline.frame(env, fetched) as TileFrame.Rows).lines
+        val first = lines.first() as TileLine.Disruption
+        assertTrue(first.alone)
+        assertEquals("waterloo-city", first.row.lineId)
+    }
+
+    @Test
+    fun `a withheld tail marks no disruption`() {
+        val env = withStatus(envelope(stop("940GA", listOf(departure(120)))), severe)
+        val lines = (TileTimeline.frame(env, fetched, withhold = true) as TileFrame.Rows).lines
+        assertTrue(lines.none { it is TileLine.Disruption })
+    }
+
+    @Test
+    fun `an unchecked line says disruptions couldn't be checked, taking a line, and offers Refresh`() {
+        val busy = (1..8L).map { departure(it * 60, line = "l$it", destination = "Stop $it") }
+        val unchecked = TileTimeline.frame(envelope(stop("940GA", busy), checked = false), fetched) as TileFrame.Rows
+        assertTrue(unchecked.statusUnknown)
+        assertEquals(TileTimeline.MAX_LINES - 2, unchecked.lines.size)
+        assertFalse(TileLayout.offersAllStops(unchecked, null))
+        val checked = TileTimeline.frame(envelope(stop("940GA", busy)), fetched) as TileFrame.Rows
+        assertFalse(checked.statusUnknown)
+    }
+
+    @Test
+    fun `an unchecked line that doesn't fit raises no note`() {
+        // Victoria (checked) fits the one line; Jubilee (unchecked) is below the cap.
+        val env = envelope(stop("940GA", listOf(departure(120), departure(240, line = "jubilee"))))
+        val checkedOnlyVictoria = env.copy(lineStatuses = env.lineStatuses.filter { it.lineId == "victoria" })
+        val frame = TileTimeline.frame(checkedOnlyVictoria, fetched, budget = 1) as TileFrame.Rows
+        assertFalse(frame.statusUnknown)
+        assertEquals(listOf("victoria"), rows(frame).map { it.lineId })
+    }
+
+    @Test
+    fun `a line turns unchecked when its check expires, ahead of the stop's boundary`() {
+        val env = withStatus(envelope(stop("940GA", listOf(departure(240)))), LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service"), at = fetched.minusSeconds(120))
+        val entries = TileTimeline.entries(env, fetched)
+        assertFalse((entries.at(fetched) as TileFrame.Rows).statusUnknown)
+        assertTrue((entries.at(fetched.plusSeconds(180)) as TileFrame.Rows).statusUnknown)
+    }
+
+    @Test
+    fun `a check made after the fetch keeps the timeline going to its expiry, then drops the mark`() {
+        // Arrivals at the fetch, statuses a minute later (the worker's order): the stop goes stale
+        // at +5 min, the check at +6 min.
+        val env = withStatus(envelope(stop("940GA", listOf(departure(900)))), severe, at = fetched.plusSeconds(60))
+        // Built when the envelope arrives, after the check was made.
+        val entries = TileTimeline.entries(env, fetched.plusSeconds(60))
+        val afterStop = (entries.at(fetched.plusSeconds(330)) as TileFrame.Rows).lines
+        assertTrue(afterStop.any { it is TileLine.Disruption })
+        val last = entries.last()
+        assertNull(last.end)
+        assertEquals(fetched.plusSeconds(360), last.start)
+        assertTrue((last.frame as TileFrame.Rows).lines.none { it is TileLine.Disruption })
+    }
+
+    @Test
+    fun `with room for one line, a disrupted service shows as its status, never as no departures`() {
+        val env = withStatus(envelope(stop("940GA", listOf(departure(120)))), severe)
+        val lines = (TileTimeline.frame(env, fetched, budget = 1) as TileFrame.Rows).lines
+        val only = lines.single() as TileLine.Disruption
+        assertTrue(only.alone)
+    }
+
+    @Test
+    fun `a suspension stays on the tile past its stop's boundary until its own check expires`() {
+        val stop = stop("940GA", emptyList()).copy(
+            lines = listOf(LineRef("waterloo-city", "Waterloo-city", "tube")),
+        )
+        val env = withStatus(envelope(stop), LineStatus("waterloo-city", 5, "Suspended"), at = fetched.plusSeconds(60))
+        val entries = TileTimeline.entries(env, fetched.plusSeconds(60))
+        val past = (entries.at(fetched.plusSeconds(330)) as TileFrame.Rows).lines
+        assertTrue((past.single() as TileLine.Disruption).alone)
+        assertTrue((entries.last().frame as TileFrame.Rows).lines.none { it is TileLine.Disruption })
+    }
+
+    @Test
+    fun `a live suspension at a stale stop isn't pushed below the cap by fresh rows`() {
+        val staleStop = stop("940GA", emptyList(), at = fetched.minusSeconds(320)).copy(
+            lines = listOf(LineRef("waterloo-city", "Waterloo-city", "tube")),
+        )
+        val env = withStatus(
+            envelope(stop("940GB", listOf(departure(120))), staleStop),
+            LineStatus("waterloo-city", 5, "Suspended"),
+            at = fetched.minusSeconds(30),
+        )
+        val lines = (TileTimeline.frame(env, fetched, budget = 1) as TileFrame.Rows).lines
+        assertEquals("waterloo-city", (lines.single() as TileLine.Disruption).row.lineId)
+    }
+
+    @Test
+    fun `a check from the future stays unshown for the whole timeline, even once its instant passes`() {
+        val env = withStatus(envelope(stop("940GA", listOf(departure(240)))), severe, at = fetched.plusSeconds(60))
+        val entries = TileTimeline.entries(env, fetched)
+        assertTrue(entries.none { (it.frame as? TileFrame.Rows)?.lines.orEmpty().any { l -> l is TileLine.Disruption } })
+    }
+
+    @Test
+    fun `a check from the future doesn't stretch the timeline`() {
+        val env = withStatus(envelope(stop("940GA", listOf(departure(120)))), severe, at = fetched.plusSeconds(86_400))
+        val entries = TileTimeline.entries(env, fetched)
+        assertEquals(fetched.plusSeconds(300), entries.last().start)
     }
 }

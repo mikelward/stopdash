@@ -1926,7 +1926,7 @@ and these carry the rest as their own PRs:
       widget's own refresh re-checks the lines with the arrivals (one extra request per cycle, lines
       checked in the last 90 s reused). SPEC *One widget, many surfaces* records the reversal. A line with no current check reads
       "Couldn't check for disruptions", as in the app. Stop closures are still not persisted. The
-      watch doesn't render the checks yet: *Disruptions on the watch* (Phase 6).
+      watch renders them too: *Disruptions on the watch* (Phase 6).
 - [ ] **Re-check line statuses when arrivals fail (own PR, Codex P1 on #317).** Both writers
       check statuses only alongside arrivals they save: the worker skips the status call when
       every arrivals request failed, and the app's save gate needs fresh or carried arrivals. So
@@ -2195,10 +2195,18 @@ and these carry the rest as their own PRs:
         failed publish is logged and retried by one bounded, unique job. The **same PR**
         discloses the channel: a watch paragraph in SPEC *Privacy* and `docs/PRIVACY.md` (the
         sync may pass through Google's servers), plus the Data Safety determination.
-  - [ ] Disruptions on the watch, only after *Carry disruption / line-status into the widget*
-        (Phase 4) adds an age-stamped status. The watch withholds each one at the same expiry.
-        The envelope then carries those line statuses too: a status row (and so a rail line's
-        "No key"/"No data", whose feed state `PersistedStop` already keeps) needs one.
+  - [x] Disruptions on the watch, after *Carry disruption / line-status into the widget*
+        (Phase 4) added an age-stamped status. The envelope carries the kept stops' line checks;
+        the tile, app and complication mark a disrupted line and withhold the mark at the same
+        expiry (a timeline break, and a split complication entry). A suspended line's status row
+        reaches the watch too. Stop closures stay off, as on the widget. `docs/PRIVACY.md`'s watch paragraph names the line status; no Data Safety change
+        (TfL's public status, no new category).
+        - [ ] **Device check:** the ⚠ line on a real tile and complication face.
+        - [ ] **Say why a rail line has no times on the glance surfaces** (Codex on #318). A
+              status-only row for a disrupted National Rail line draws only the disruption on
+              the widget, tile and watch app, not the app's "No key"/"No data" reason
+              (`NoTimes.of`). Needs those two strings on the widget and in `:wear`, with their
+              existing translations, and room in the one status line.
   - [x] Tile: the widget's rows, the data's age, and a staleness timeline.
         - Entries break at each countdown minute, each departure time, and each stop's own
           staleness boundary.

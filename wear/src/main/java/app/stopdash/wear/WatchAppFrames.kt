@@ -28,11 +28,17 @@ object WatchAppFrames {
      * is injected so a test can drive it past a departure and a boundary.
      */
     suspend fun tick(
-        received: WatchReceived,
+        stored: WatchReceived,
         topology: RouteTopology,
         clock: () -> Instant,
         emit: (TileFrame?) -> Unit,
     ) {
+        // As the tile's schedule does: a check dated after the start (the clock moved back) stays
+        // untrusted for the whole run, so a later redraw can't start showing it once its instant
+        // passes, with nothing scheduled at its expiry to take it away again.
+        val received = (stored as? WatchReceived.Received)
+            ?.let { it.copy(envelope = it.envelope.withoutFutureChecks(clock())) }
+            ?: stored
         val envelope = (received as? WatchReceived.Received)?.envelope
         while (true) {
             val now = clock()

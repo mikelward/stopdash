@@ -5,6 +5,8 @@ import app.stopdash.data.WatchStarKey
 import app.stopdash.data.toPersisted
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LineRef
+import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.RoutePattern
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.Staleness
@@ -14,6 +16,7 @@ import app.stopdash.domain.Terminating
 import java.time.Instant
 import kotlin.time.toJavaDuration
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -229,5 +232,85 @@ class ComplicationTimelineTest {
         assertEquals(true, ComplicationTimeline.shows(env, StarredRow("940GA", "73", "inbound"), fetched))
         // Still filtered once its only (terminating) service has left, not resurrected as empty.
         assertEquals(false, ComplicationTimeline.shows(env, StarredRow("940GA", "73", "outbound"), fetched.plusSeconds(200)))
+    }
+
+    @Test
+    fun `a disrupted line's entries are marked until the check expires, then split and cleared`() {
+        val check = LineStatusCheck(LineStatus("victoria", 6, "Severe Delays"), fetched.minusSeconds(180))
+        val env = envelope(stop("940GA", listOf(departure(240)))).let { it.copy(lineStatuses = listOf(check.toPersisted())) }
+        val entries = ComplicationTimeline.entries(env, fetched)
+        val expiry = fetched.plusSeconds(120)
+        assertEquals("Severe Delays", (entries.at(fetched) as ComplicationContent.Departure).disruption)
+        assertTrue(entries.any { it.start == expiry })
+        assertNull((entries.at(expiry) as ComplicationContent.Departure).disruption)
+    }
+
+    @Test
+    fun `a check that outlives the stop's times keeps the stale entry marked until it expires`() {
+        val check = LineStatusCheck(LineStatus("victoria", 6, "Severe Delays"), fetched.plusSeconds(60))
+        val env = envelope(stop("940GA", listOf(departure(900)))).let { it.copy(lineStatuses = listOf(check.toPersisted())) }
+        val boundary = fetched.plusSeconds(300)
+        // Built when the envelope arrives, after the check was made.
+        val entries = ComplicationTimeline.entries(env, fetched.plusSeconds(60))
+        assertEquals("Severe Delays", (entries.at(boundary) as ComplicationContent.Stale).disruption)
+        assertNull((entries.at(fetched.plusSeconds(360)) as ComplicationContent.Stale).disruption)
+        // Built after the stop's boundary, the stale entry is marked the same way.
+        val late = ComplicationTimeline.entries(env, boundary.plusSeconds(10))
+        assertEquals("Severe Delays", (late.at(boundary.plusSeconds(10)) as ComplicationContent.Stale).disruption)
+    }
+
+    @Test
+    fun `a live suspension at a stale stop still leads the default row`() {
+        val staleStop = stop("940GA", emptyList(), line = "waterloo-city").copy(fetchedAt = fetched.minusSeconds(320))
+        val check = LineStatusCheck(LineStatus("waterloo-city", 5, "Suspended"), fetched.minusSeconds(30))
+        val env = envelope(stop("940GB", listOf(departure(120))), staleStop).copy(lineStatuses = listOf(check.toPersisted()))
+        assertEquals("waterloo-city", ComplicationTimeline.widgetRows(env, fetched).first().lineId)
+    }
+
+    @Test
+    fun `a default suspension hands over to the next row when its check expires`() {
+        val suspended = stop("940GA", emptyList(), line = "waterloo-city")
+        val check = LineStatusCheck(LineStatus("waterloo-city", 5, "Suspended"), fetched.minusSeconds(120))
+        val env = envelope(suspended, stop("940GB", listOf(departure(240)))).copy(lineStatuses = listOf(check.toPersisted()))
+        val entries = ComplicationTimeline.entries(env, fetched)
+        assertEquals("Suspended", (entries.at(fetched) as ComplicationContent.Empty).disruption)
+        // At the check's expiry the widget's first row is Victoria's, and so is the complication's.
+        val after = entries.at(fetched.plusSeconds(180)) as ComplicationContent.Departure
+        assertEquals("Victoria", after.lineName)
+        assertEquals(fetched.plusSeconds(240), after.at)
+    }
+
+    @Test
+    fun `a disrupted default row whose train has gone hands over when its check expires`() {
+        // Victoria's last train leaves at +90, leaving only its status; the check expires at +310.
+        val victoria = stop("940GA", listOf(departure(90)))
+        val central = stop("940GB", listOf(departure(340, line = "central", destination = "Ealing")), line = "central")
+            .copy(fetchedAt = fetched.plusSeconds(60))
+        val check = LineStatusCheck(LineStatus("victoria", 6, "Severe Delays"), fetched.plusSeconds(10))
+        val env = envelope(victoria, central).copy(lineStatuses = listOf(check.toPersisted()))
+        val entries = ComplicationTimeline.entries(env, fetched.plusSeconds(60))
+        assertEquals("Victoria", (entries.at(fetched.plusSeconds(60)) as ComplicationContent.Departure).lineName)
+        // At the expiry the widget's first row is Central's, and so is the complication's.
+        val after = entries.at(fetched.plusSeconds(310)) as ComplicationContent.Departure
+        assertEquals("Central", after.lineName)
+    }
+
+    @Test
+    fun `a check from the future never marks the complication`() {
+        val check = LineStatusCheck(LineStatus("victoria", 6, "Severe Delays"), fetched.plusSeconds(60))
+        val env = envelope(stop("940GA", listOf(departure(240)))).copy(lineStatuses = listOf(check.toPersisted()))
+        val entries = ComplicationTimeline.entries(env, fetched)
+        assertTrue(entries.none { (it.content as? ComplicationContent.Departure)?.disruption != null })
+        assertTrue(entries.none { (it.content as? ComplicationContent.Empty)?.disruption != null })
+        assertTrue(entries.none { (it.content as? ComplicationContent.Stale)?.disruption != null })
+    }
+
+    @Test
+    fun `a lone suspension is the default row, marked, never no data`() {
+        val stop = stop("940GA", emptyList(), line = "waterloo-city")
+        val check = LineStatusCheck(LineStatus("waterloo-city", 5, "Suspended"), fetched)
+        val env = envelope(stop).copy(lineStatuses = listOf(check.toPersisted()))
+        val first = ComplicationTimeline.entries(env, fetched).first().content as ComplicationContent.Empty
+        assertEquals("Suspended", first.disruption)
     }
 }

@@ -267,12 +267,16 @@ the watch app ships would break pairing between old and new installs.
     the envelope carries them too.
   - The watch then shows a missing stop's absence as "some stops couldn't be refreshed", the
     widget's form, never a clean "updated just now".
-- **Disruptions: the widget has them, the watch doesn't yet.** The snapshot now keeps each shown
-  line's status check, stamped with when TfL gave it (`DeparturesSnapshot.lineStatuses`), and the
-  widget withholds each mark at the shared staleness threshold from its own check. The envelope
-  doesn't carry the checks yet: *Disruptions on the watch* in `TODO.md` adds them, and the watch
-  then withholds each disruption at the same expiry. Stop closures stay off both: they have no
-  age-stamped rendering.
+- **Disruptions, as the widget has them.** The snapshot keeps each shown line's status check,
+  stamped with when TfL gave it (`DeparturesSnapshot.lineStatuses`), and the envelope carries the
+  checks for the lines its stops show (`WatchEnvelope.lineStatuses`, additive, so an older watch
+  app ignores it). The tile, the app and the complication mark a disrupted line the way the widget
+  does ("⚠ Severe Delays", a suspended line with no countdown as its status alone) and withhold
+  each mark at the same expiry, the shared staleness threshold from its own check time: the
+  tile's timeline and the app's ticker break there, and a complication entry spanning it is split.
+  A line with no live check (never checked, the lookup failed, the check aged out) turns the
+  tile's and the app's note to "Couldn't check for disruptions" and the tile's foot to Refresh.
+  Stop closures still stay off: they have no age-stamped rendering.
 - **When:** on every snapshot write that already pokes the widget, and on every change to the
   starred rows (starring or unstarring updates only the star store, not the snapshot, so it's a
   trigger of its own). Both happen whenever the watch app is
@@ -537,8 +541,8 @@ it before committing to the design.
 2. **Done.** Extract `:domain` into its own module, and move the route topology asset and
    loader into the shared Android library module (refactor only).
 
-   Disruptions on the watch additionally wait on the widget's age-stamped status item in
-   `TODO.md`. The steps below ship without disruptions until it lands. The widget's
+   Disruptions on the watch waited on the widget's age-stamped status item in `TODO.md`; both
+   have landed. The widget's
    refresh-failure / incompleteness item, by contrast, is a **hard prerequisite of step 4**,
    because the watch mustn't present an incomplete refresh as complete.
 3. **Done.** Move the snapshot format into shared code, versioned and carrying the starred-row

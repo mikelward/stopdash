@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -53,6 +55,8 @@ fun WatchHomeScreen(frame: TileFrame?, notice: RefreshNotice.Kind? = null, onRef
                 item { Stamp(frame) }
                 if (frame.stale || frame.partial) {
                     item { Note(stringResource(if (frame.stale) R.string.tile_out_of_date else R.string.watch_partly_out_of_date), Warning) }
+                } else if (frame.statusUnknown) {
+                    item { Note(stringResource(R.string.watch_disruptions_unknown), Warning) }
                 }
                 if (frame.omitted > 0) {
                     item { Note(pluralStringResource(R.plurals.watch_more_stops_on_phone, frame.omitted, frame.omitted)) }
@@ -104,6 +108,7 @@ private fun Line(line: TileLine) {
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp).semantics { contentDescription = line.spoken },
         )
         is TileLine.Departure -> DepartureRow(line.row)
+        is TileLine.Disruption -> DisruptionRow(line)
         TileLine.OnlyHidden -> Note(stringResource(R.string.tile_only_hidden))
         is TileLine.EmptyStop -> {
             val empty = stringResource(if (line.uncertain) R.string.tile_may_be_out_of_date else R.string.tile_no_departures)
@@ -134,6 +139,29 @@ private fun DepartureRow(row: TileRow) {
             Destination(row, Modifier.weight(1f).padding(horizontal = 4.dp))
             Countdown(row)
         }
+    }
+}
+
+/**
+ * A disrupted line's "⚠ Severe Delays": beside its pill when the line has no countdown, else under
+ * its departures, indented past the pill so it reads as part of that service (as on the tile).
+ */
+@Composable
+private fun DisruptionRow(line: TileLine.Disruption) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+    ) {
+        if (line.alone) Pill(line.row) else Spacer(Modifier.width(36.dp))
+        Text(
+            text = "⚠ ${line.description}",
+            style = MaterialTheme.typography.bodySmall,
+            color = Warning,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).padding(start = 4.dp)
+                .semantics { contentDescription = "Disrupted: ${line.description}" },
+        )
     }
 }
 

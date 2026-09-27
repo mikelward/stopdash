@@ -5,6 +5,8 @@ import app.stopdash.data.WatchStarKey
 import app.stopdash.data.toPersisted
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LineRef
+import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
@@ -96,5 +98,20 @@ class WatchAppFramesTest {
         assertTrue("nothing changes once stale, so the ticker ends", job.isCompleted)
         // It re-rendered only at instants where something could change: a bounded count, not a poll.
         assertTrue(frames.size < 20)
+    }
+
+    @Test
+    fun `a check from the future stays unshown for the whole ticker run`() = runTest {
+        val frames = mutableListOf<TileFrame?>()
+        val clock = { fetched.plusMillis(testScheduler.currentTime) }
+        val check = LineStatusCheck(LineStatus("victoria", 6, "Severe Delays"), fetched.plusSeconds(60))
+        val stored = received(stop("940GA", listOf(departure(90), departure(200))))
+            .let { it.copy(envelope = it.envelope.copy(lineStatuses = listOf(check.toPersisted()))) }
+        val job = launch { WatchAppFrames.tick(stored, RouteTopology.EMPTY, clock) { frames += it } }
+        runCurrent()
+        // Past the check's instant: still not shown, as the tile and complication leave it.
+        advanceTimeBy(120_000)
+        assertTrue(frames.none { (it as? TileFrame.Rows)?.lines.orEmpty().any { l -> l is TileLine.Disruption } })
+        job.cancel()
     }
 }
