@@ -36,6 +36,7 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onChild
+import androidx.compose.ui.test.filter
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -359,6 +360,21 @@ class TripScreenScreenshotTest {
         composeRule.onNode(hasText("Kensington") and hasAnyAncestor(hasTestTag("narrow")), useUnmergedTree = true).assertExists()
         composeRule.onNode(hasText("Hammersmith") and hasAnyAncestor(hasTestTag("narrow")), useUnmergedTree = true).assertExists()
         composeRule.onNode(hasTestTag("narrow"), useUnmergedTree = true).onChild().assert(hasContentDescription(name))
+    }
+
+    // The arrival is as large as the first ride's times (maintainer, 2026-09-27): when the trip gets
+    // there matters as much as when it leaves.
+    @Test
+    fun a_route_cards_arrival_is_as_large_as_its_times() {
+        show(planned)
+        fun fontSizeOf(node: androidx.compose.ui.test.SemanticsNodeInteraction): androidx.compose.ui.unit.TextUnit {
+            val results = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+            node.fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!(results)
+            return results.single().layoutInput.style.fontSize
+        }
+        val arrival = fontSizeOf(composeRule.onAllNodes(hasTestTag("tripArrival"), useUnmergedTree = true).onFirst())
+        val times = fontSizeOf(composeRule.onAllNodes(hasTestTag("firstRideTimes"), useUnmergedTree = true).onFirst())
+        assertEquals(times, arrival)
     }
 
     @Test
