@@ -49,6 +49,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
+import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.StationMatch
 import java.util.Locale
@@ -263,8 +264,17 @@ private val GROUP_NAMES_IN_SENTENCE = mapOf(
 )
 
 /** The hidden groups' names, in menu order ("Train, Bus"), for the banner and empty states. */
-internal fun hiddenGroupsLabel(hidden: Set<String>): String =
-    ModeGroups.hiddenGroups(hidden).joinToString(", ") { groupName(it) }
+internal fun hiddenGroupsLabel(hidden: Set<String>): String {
+    // Hidden lines follow the groups: one by its name ("Northern line"), more by their count, so the
+    // banner stays one line however many are hidden.
+    val lines = HiddenModes.hiddenLineLabels(hidden)
+    val linesPart = when (lines.size) {
+        0 -> emptyList()
+        1 -> lines
+        else -> listOf("${lines.size} lines")
+    }
+    return (ModeGroups.hiddenGroups(hidden).map { groupName(it) } + linesPart).joinToString(", ")
+}
 
 private val GROUP_NAMES = mapOf(
     "tube" to "Tube & DLR",

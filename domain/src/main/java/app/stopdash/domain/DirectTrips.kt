@@ -63,7 +63,7 @@ object DirectTrips {
             val departures = stop.departures.filter { departure ->
                 val lineId = departure.lineId
                 when {
-                    HiddenModes.isHidden(departure.mode, hidden) -> false
+                    HiddenModes.isHidden(departure.mode, lineId, hidden) -> false
                     // No line to follow: it may well call there, so never a silent "no".
                     lineId.isBlank() -> {
                         unresolved = true
@@ -103,7 +103,7 @@ object DirectTrips {
                 }
             }
             val lines = stop.lines.filter { line ->
-                if (HiddenModes.isHidden(line.mode, hidden)) return@filter false
+                if (HiddenModes.isHidden(line, hidden)) return@filter false
                 if (line.id !in sequences) {
                     pending = true
                     return@filter false
@@ -174,8 +174,8 @@ object DirectTrips {
     /** The lines to load routes for: every line departing from or declared at [stops], less [hidden] modes. */
     fun lineIds(stops: List<StopArrivals>, hidden: Set<String> = emptySet()): List<String> =
         stops.flatMap { stop ->
-            stop.departures.filterNot { HiddenModes.isHidden(it.mode, hidden) }.map { it.lineId } +
-                stop.lines.filterNot { HiddenModes.isHidden(it.mode, hidden) }.map { it.id }
+            stop.departures.filterNot { HiddenModes.isHidden(it.mode, it.lineId, hidden) }.map { it.lineId } +
+                stop.lines.filterNot { HiddenModes.isHidden(it, hidden) }.map { it.id }
         }
             .filter { it.isNotBlank() }
             .distinct()

@@ -2,6 +2,7 @@ package app.stopdash.domain
 
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -44,5 +45,31 @@ class HiddenModesTest {
         val rows = listOf(row("bus"), row("tube"), row("bus", closure = "Stop closed"))
         assertEquals(listOf("tube", "bus"), HiddenModes.rows(rows, setOf("BUS")).map { it.mode })
         assertEquals("Stop closed", HiddenModes.rows(rows, setOf("bus")).last().stopDisruption)
+    }
+
+    @Test
+    fun `a hidden line goes by itself, its mode's other lines stay`() {
+        val now = Instant.EPOCH
+        fun row(lineId: String, mode: String) = DepartureRow(
+            stopId = "940GZZLUXXX", stopName = "Example", lineId = lineId, lineName = lineId, direction = "",
+            directionKey = "", destination = "", mode = mode, upcoming = emptyList(), fetchedAt = now,
+        )
+        val hidden = setOf(HiddenModes.lineKey("Northern", "Northern line"))
+        val rows = listOf(row("northern", "tube"), row("victoria", "tube"), row("northern", "bus"))
+        // Matched by line id, whatever its case; the mode isn't hidden, so the other tube line stays.
+        assertEquals(listOf("victoria"), HiddenModes.rows(rows, hidden).map { it.lineId })
+        assertTrue(HiddenModes.isHidden(LineRef("northern", "Northern", "tube"), hidden))
+        assertFalse(HiddenModes.isHidden("tube", hidden))
+        assertFalse(HiddenModes.isLineHidden("", hidden))
+        assertEquals(listOf("Northern line"), HiddenModes.hiddenLineLabels(hidden))
+    }
+
+    @Test
+    fun `a stop serving only hidden lines is dropped, as one serving only hidden modes is`() {
+        val stops = listOf(stop("busOnly", "bus"), stop("mixed", "bus", "tram"))
+        val hidden = setOf(HiddenModes.lineKey("bus-busOnly", "1"), HiddenModes.lineKey("bus-mixed", "2"))
+        val kept = HiddenModes.stops(stops, hidden)
+        assertEquals(listOf("mixed"), kept.map { it.id })
+        assertEquals(listOf("tram"), kept.single().lines.map { it.mode })
     }
 }

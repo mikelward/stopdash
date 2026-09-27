@@ -10,6 +10,7 @@ import androidx.compose.ui.test.performTouchInput
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
@@ -118,6 +119,11 @@ class StarLongPressTest {
         composeRule.onNodeWithText("Hide all Tube & DLR services").performClick()
         assertEquals("tube", hidden)
         assertNull(toggled)
+
+        // Or just the row's own line, handed over as its key.
+        composeRule.onNodeWithText("Brixton").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Hide Victoria line").performClick()
+        assertEquals(HiddenModes.lineKey("victoria", "Victoria line"), hidden)
 
         composeRule.onNodeWithText("Brixton").performTouchInput { longClick() }
         composeRule.onNodeWithText("Pin to top").performClick()

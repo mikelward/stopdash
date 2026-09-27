@@ -355,6 +355,14 @@ The app finds stops two ways:
   runs. While any mode is hidden, **a one-line banner** over the list names them ("Bus hidden") with
   **"Show all"**, which brings them back from the same fix without a new lookup, so a shorter list
   never passes for all there is (principle 2). The hidden set is a setting, kept on the device.
+  **A single line hides the same way** (maintainer, 2026-09-27): a row's long press, and a trip
+  card's for each line its legs ride, also offer **"Hide ‹line›"** ("Hide Northern line", "Hide
+  134"), for a rider of the mode who never takes that line. A hidden line is left out everywhere a
+  hidden mode is — the list, its stop picking, trips, the widget and the watch — and the banner
+  names it with the hidden groups ("Northern line hidden"), counting several ("2 lines hidden");
+  "Show all" brings lines back with the modes. It lives in the same hidden set as the modes, so
+  everything that follows one follows the other. A place's header doesn't offer lines: a busy one
+  would list dozens.
 
 ### Departures
 

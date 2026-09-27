@@ -20,9 +20,13 @@ object ModeGroups {
         Group("coach", setOf("coach")),
     )
 
-    /** The group [mode] belongs to; an unknown mode is its own group. */
+    /**
+     * The group [mode] belongs to; an unknown mode is its own group. A hidden line's
+     * [HiddenModes.lineKey] is a group of its own, kept as it is, so hiding and showing it go the
+     * same way a mode's do.
+     */
     fun of(mode: String): Group =
-        ALL.firstOrNull { g -> g.modes.any { it.equals(mode, ignoreCase = true) } }
+        if (HiddenModes.isLineKey(mode)) Group(mode, setOf(mode)) else ALL.firstOrNull { g -> g.modes.any { it.equals(mode, ignoreCase = true) } }
             ?: Group(mode.lowercase(), setOf(mode.lowercase()))
 
     /**
@@ -31,9 +35,9 @@ object ModeGroups {
      */
     fun isHidden(group: Group, hidden: Set<String>): Boolean = group.modes.any { HiddenModes.isHidden(it, hidden) }
 
-    /** The groups with any mode hidden, in menu order, for the banner that names them. */
+    /** The groups with any mode hidden, in menu order, for the banner that names them; hidden lines aren't groups. */
     fun hiddenGroups(hidden: Set<String>): List<Group> =
-        (ALL + hidden.map(::of)).distinctBy { it.key }.filter { g -> g.modes.any { HiddenModes.isHidden(it, hidden) } }
+        (ALL + hidden.filterNot(HiddenModes::isLineKey).map(::of)).distinctBy { it.key }.filter { g -> g.modes.any { HiddenModes.isHidden(it, hidden) } }
 
     /** [hidden] with all of [group] hidden (or shown again when [hide] is false). */
     fun withGroup(hidden: Set<String>, group: Group, hide: Boolean): Set<String> =

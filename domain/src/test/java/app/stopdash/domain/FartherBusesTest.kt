@@ -54,6 +54,17 @@ class FartherBusesTest {
     }
 
     @Test
+    fun `a hidden route isn't named, and a place with only hidden routes gives no candidate`() {
+        val hidden = setOf(HiddenModes.lineKey("73", "73"))
+        val candidates = FartherBuses.candidates(
+            listOf(cluster("J1", 600.0, pole("J1A", "J1", "73", "390")), cluster("J2", 700.0, pole("J2A", "J2", "73"))),
+            hidden = hidden,
+        )
+        assertEquals(listOf("J1"), candidates.map { it.key })
+        assertEquals(listOf(bus("390")), candidates.single().lines)
+    }
+
+    @Test
     fun `a candidate's routes are its bus routes only, not another mode it also serves`() {
         val mixed = cluster(
             "J1", 600.0,

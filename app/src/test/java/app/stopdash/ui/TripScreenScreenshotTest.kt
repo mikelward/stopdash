@@ -18,6 +18,7 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.dp
+import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineRef
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -302,6 +303,13 @@ class TripScreenScreenshotTest {
         composeRule.onNodeWithText("Hide all Tube & DLR services").performClick()
         composeRule.waitForIdle()
         assertEquals(listOf("tube"), hidden)
+        // Each leg's line too, by itself.
+        menus.onFirst().performSemanticsAction(SemanticsActions.OnLongClick)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Hide Windrush line").assertIsDisplayed()
+        composeRule.onNodeWithText("Hide Jubilee line").performClick()
+        composeRule.waitForIdle()
+        assertEquals(listOf("tube", HiddenModes.lineKey("jubilee", "Jubilee line")), hidden)
     }
 
     @Test

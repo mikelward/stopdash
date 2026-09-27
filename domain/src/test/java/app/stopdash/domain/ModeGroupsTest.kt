@@ -30,4 +30,15 @@ class ModeGroupsTest {
         assertEquals(listOf("tube", "bus"), ModeGroups.hiddenGroups(hidden).map { it.key })
         assertFalse(ModeGroups.isHidden(ModeGroups.of("tram"), hidden))
     }
+
+    @Test
+    fun `a hidden line is a group of its own, kept as it is, and never named as a mode group`() {
+        val key = HiddenModes.lineKey("northern", "Northern line")
+        val line = ModeGroups.of(key)
+        assertEquals(setOf(key), line.modes)
+        val hidden = ModeGroups.withGroup(setOf("bus"), line, hide = true)
+        assertEquals(setOf("bus", key), hidden)
+        assertEquals(listOf("bus"), ModeGroups.hiddenGroups(hidden).map { it.key })
+        assertEquals(setOf("bus"), ModeGroups.withGroup(hidden, line, hide = false))
+    }
 }
