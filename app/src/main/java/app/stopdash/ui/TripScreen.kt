@@ -339,44 +339,6 @@ internal fun shownTrains(
 }
 
 /**
- * The trains a leg's cards show: its line's trains at the boarding stop heading the same way as the
- * [usable] ones (so a train for another branch is shown too, never used to time the route). With no
- * usable train to take a direction from, the way is the one whose route ([sequences]) leaves the
- * boarding stop for the leg's next stop, so other-branch trains still show when they're all that's
- * due; with no route to tell by, none.
- */
-internal fun lineTrains(
-    state: TripViewModel.State,
-    leg: TripLeg,
-    now: Instant,
-    usable: List<Departure>,
-    sequences: Map<String, LineSequence?> = emptyMap(),
-): List<Departure> {
-    val stop = state.live[leg.fromId] ?: return usable
-    val line = stop.departures.filter { it.lineId == leg.lineId }
-    val directions = if (usable.isNotEmpty()) {
-        usable.mapTo(HashSet()) { it.direction }
-    } else {
-        val next = leg.path.firstOrNull()
-        val sequence = sequences[leg.lineId]?.callingAt(leg.fromId)
-        if (next == null || sequence == null) return usable
-        line.filter { train ->
-            leavesAlongLeg(train, leg, sequences)?.let { return@filter it }
-            // A bus blind often names an area, not a stop, so no one path resolves. A bus pole serves
-            // one direction: the bus goes this way when every route through the pole goes on to the
-            // leg's next stop.
-            if (!train.mode.equals("bus", ignoreCase = true)) return@filter false
-            val onward = sequence.routes.flatMap { route ->
-                route.stopIds.indices.filter { route.stopIds[it] == leg.fromId && it < route.stopIds.lastIndex }
-                    .map { route.stopIds[it + 1] }
-            }
-            onward.isNotEmpty() && onward.all { isStop(sequence, it, next) }
-        }.mapTo(HashSet()) { it.direction }
-    }
-    return Countdown.upcoming(line.filter { it.direction in directions }, now)
-}
-
-/**
  * Each of [state]'s routes timed from [now], best first; null until there is a plan. A route riding
  * a [hidden] mode is left out, as the list leaves out its departures. While the rider's position
  * isn't confirmed ([originUnconfirmed]: a re-locate in flight, failed, or approximate), no route is
@@ -1009,11 +971,11 @@ private fun FirstLegRow(
 ) {
     val leg = estimate.route.legs[index]
     val usable = legTrains(state, leg, now, sequences)
-    // The line's trains this way, the other branch's too; those the rider can't use (leaving too
-    // soon, or not calling where they get off) are grayed. While the route is still being checked,
-    // the line's trains as the main screen shows them, timing nothing.
+    // The trains that run along the leg's route, never another branch's; those the rider can't reach
+    // in time are grayed. While the route is still being checked, the line's trains as the main
+    // screen shows them, timing nothing.
     val pending = pendingTrains(state, leg, now, sequences)
-    val trains = pending.ifEmpty { null } ?: usable?.let { lineTrains(state, leg, now, it, sequences) }
+    val trains = pending.ifEmpty { null } ?: usable
     // A train that may skip the stop the rider gets off at (another terminus, or a named branch) stays
     // grayed, and is read as still being checked, until the route check vouches for it.
     val checking = uncheckedPending(pending, leg)
@@ -1220,9 +1182,9 @@ private fun WalkLink(text: String) {
 }
 
 /**
- * A ride leg's rows as its card shows them: each destination on its own row, the leg's line's
- * other-branch trains too (the way the leg goes), as the list would; only the usable ones time the
- * route. Stale arrivals show none (D4). While the route is checked, the line's trains as the main
+ * A ride leg's rows as its card shows them: each destination on its own row, only the trains that
+ * run along the leg's route ([legTrains]), never another branch's (maintainer, 2026-09-27): the
+ * rider sees only trains they can take. Stale arrivals show none (D4). While the route is checked, the line's trains as the main
  * screen shows them, less those on a named branch that may skip the stop the rider gets off at
  * (they join once the check vouches) — unless [withUnchecked]: a list card's line row shows those
  * grayed, so the row it opens, and that page, are built from the same trains.
@@ -1236,7 +1198,7 @@ internal fun legRows(
 ): List<DepartureRow> {
     val pending = if (withUnchecked) pendingTrains(state, leg, now, sequences) else pendingCardTrains(state, leg, now, sequences)
     val trains = pending
-        .ifEmpty { legTrains(state, leg, now, sequences)?.let { lineTrains(state, leg, now, it, sequences) }.orEmpty() }
+        .ifEmpty { legTrains(state, leg, now, sequences).orEmpty() }
     return DepartureRows.forStop(
         leg.fromId,
         leg.fromName,
