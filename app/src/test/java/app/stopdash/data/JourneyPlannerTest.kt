@@ -1,6 +1,8 @@
 package app.stopdash.data
 
+import app.stopdash.domain.Coordinates
 import app.stopdash.domain.TflException
+import app.stopdash.domain.TripDestination
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -44,7 +46,7 @@ class JourneyPlannerTest {
     @Test
     fun `asks the Planner between two stop ids`() = runTest {
         var captured: HttpRequestData? = null
-        client(fixture, capture = { captured = it }).journeys("910GHGHI", "940GZZLUCYF")
+        client(fixture, capture = { captured = it }).journeys("910GHGHI", TripDestination.Stop("940GZZLUCYF"))
         val url = checkNotNull(captured).url
         assertEquals("/Journey/JourneyResults/910GHGHI/to/940GZZLUCYF", url.encodedPath)
         assertEquals("EXAMPLE", url.parameters["app_key"])
@@ -52,8 +54,38 @@ class JourneyPlannerTest {
     }
 
     @Test
+    fun `asks the Planner to a place by its coordinate`() = runTest {
+        var captured: HttpRequestData? = null
+        // A favorite (or resolved postcode) at a coordinate — synthetic, no real place (SPEC *Privacy*).
+        client(fixture, capture = { captured = it })
+            .journeys("910GHGHI", TripDestination.Place(Coordinates(51.5, -0.12), "X1 9XX"))
+        val url = checkNotNull(captured).url
+        assertEquals("/Journey/JourneyResults/910GHGHI/to/51.5,-0.12", url.encodedPath)
+    }
+
+    @Test
+    fun `reads a walk to a place at a coordinate as the trip's end`() = runTest {
+        // Constructed: the final leg walks from a stop to a coordinate (no naptanId), as TfL routes to a
+        // place. Synthetic coordinate/name — no real place.
+        val body =
+            """
+            { "journeys": [ { "legs": [ {
+              "departureTime": "2026-09-27T09:00:00", "arrivalTime": "2026-09-27T09:06:00",
+              "mode": { "id": "walking", "name": "walking" },
+              "departurePoint": { "naptanId": "940GZZLUKSX", "commonName": "King's Cross" },
+              "arrivalPoint": { "commonName": "X1 9XX", "lat": 51.5, "lon": -0.12 }
+            } ] } ] }
+            """.trimIndent()
+        val walk = client(body).journeys("940GZZLUKSX", TripDestination.Place(Coordinates(51.5, -0.12), "X1 9XX"))
+            .single().legs.single()
+        assertTrue(walk.isWalk)
+        assertEquals("X1 9XX", walk.toName)
+        assertEquals("", walk.toId) // a coordinate has no stop id to fetch arrivals at
+    }
+
+    @Test
     fun `reads each route's legs, lines, ends, times and change`() = runTest {
-        val routes = client(fixture).journeys("910GHGHI", "940GZZLUCYF")
+        val routes = client(fixture).journeys("910GHGHI", TripDestination.Stop("940GZZLUCYF"))
         assertEquals(3, routes.size)
         val first = routes[0]
         assertEquals(listOf("mildmay", "jubilee"), first.rides.map { it.lineId })
@@ -74,7 +106,7 @@ class JourneyPlannerTest {
 
     @Test
     fun `reads a walk at the end of a route`() = runTest {
-        val route = client(fixture).journeys("910GHGHI", "940GZZLUCYF")[2]
+        val route = client(fixture).journeys("910GHGHI", TripDestination.Stop("940GZZLUCYF"))[2]
         assertEquals(listOf("windrush", "elizabeth"), route.rides.map { it.lineId })
         val walk = route.legs.last()
         assertTrue(walk.isWalk)
@@ -88,7 +120,7 @@ class JourneyPlannerTest {
     fun `a walk to a station's entrance goes by the station, not its street`() = runTest {
         val fixture = checkNotNull(javaClass.getResource("/fixtures/journey_results_archway_to_cannon_street.json")).readText()
         // The Planner names it "Cannon Street, Cannon Street Rail Station".
-        val walk = client(fixture).journeys("940GZZLUACY", "910GCANONST")[1].legs.last()
+        val walk = client(fixture).journeys("940GZZLUACY", TripDestination.Stop("910GCANONST"))[1].legs.last()
         assertTrue(walk.isWalk)
         assertEquals("Cannon Street", walk.toName)
     }
@@ -96,7 +128,7 @@ class JourneyPlannerTest {
     @Test
     fun `a leg keeps its stops' names alongside their ids, cleaned`() = runTest {
         val fixture = checkNotNull(javaClass.getResource("/fixtures/journey_results_archway_to_cannon_street.json")).readText()
-        val ride = client(fixture).journeys("940GZZLUACY", "910GCANONST").first().legs.first()
+        val ride = client(fixture).journeys("940GZZLUACY", TripDestination.Stop("910GCANONST")).first().legs.first()
         assertEquals(ride.path.size, ride.pathNames.size)
         assertEquals("940GZZLUTFP", ride.path.first())
         assertEquals("Tufnell Park", ride.pathNames.first())
@@ -106,7 +138,7 @@ class JourneyPlannerTest {
     fun `a train's heading drops the branch the Planner names after it`() = runTest {
         val fixture = checkNotNull(javaClass.getResource("/fixtures/journey_results_kennington_to_archway.json")).readText()
         // The Planner names it "High Barnet Station via Charing Cross"; the train's front reads "High Barnet".
-        val ride = client(fixture).journeys("940GZZLUKNG", "940GZZLUACY").first().rides.single()
+        val ride = client(fixture).journeys("940GZZLUKNG", TripDestination.Stop("940GZZLUACY")).first().rides.single()
         assertEquals(listOf("High Barnet"), ride.headings)
     }
 
@@ -114,7 +146,7 @@ class JourneyPlannerTest {
     fun `drops a route with a leg it can't read, and says how many`() = runTest {
         val broken = fixture.replaceFirst("\"departureTime\": \"2026-09-26T07:37:00\"", "\"departureTime\": \"soon\"")
         val warnings = mutableListOf<String>()
-        val routes = client(broken, warn = { warnings += it }).journeys("910GHGHI", "940GZZLUCYF")
+        val routes = client(broken, warn = { warnings += it }).journeys("910GHGHI", TripDestination.Stop("940GZZLUCYF"))
         assertEquals(2, routes.size)
         assertEquals(listOf("journey planner: 1 of 3 routes unreadable"), warnings)
     }
@@ -122,7 +154,7 @@ class JourneyPlannerTest {
     @Test
     fun `drops a route riding from or to a stop the Planner didn't name`() = runTest {
         val broken = fixture.replaceFirst("\"naptanId\": \"910GSTFD\"", "\"naptanId\": null")
-        val routes = client(broken).journeys("910GHGHI", "940GZZLUCYF")
+        val routes = client(broken).journeys("910GHGHI", TripDestination.Stop("940GZZLUCYF"))
         assertEquals(2, routes.size)
         assertTrue(routes.none { route -> route.rides.any { it.toId.isBlank() || it.fromId.isBlank() } })
     }
@@ -175,7 +207,7 @@ class JourneyPlannerTest {
     fun `journeys offered but none readable is a failure, not no routes`() {
         val broken = fixture.replace(Regex("\"departureTime\": \"[^\"]+\""), "\"departureTime\": \"soon\"")
         assertThrows(TflException.Unreachable::class.java) {
-            kotlinx.coroutines.runBlocking { client(broken).journeys("910GHGHI", "940GZZLUCYF") }
+            kotlinx.coroutines.runBlocking { client(broken).journeys("910GHGHI", TripDestination.Stop("940GZZLUCYF")) }
         }
     }
 
@@ -183,7 +215,7 @@ class JourneyPlannerTest {
     fun `an end the Planner can't place gives no routes, not a failure`() = runTest {
         val warnings = mutableListOf<String>()
         val routes = client("{}", status = HttpStatusCode.MultipleChoices, warn = { warnings += it })
-            .journeys("910GHGHI", "HUBEXAMPLE")
+            .journeys("910GHGHI", TripDestination.Stop("HUBEXAMPLE"))
         assertEquals(emptyList<Any>(), routes)
         assertEquals(listOf("journey planner: HTTP 300"), warnings)
     }
@@ -192,7 +224,7 @@ class JourneyPlannerTest {
     fun `a rate-limited Planner is the honest rate-limited state`() {
         assertThrows(TflException.RateLimited::class.java) {
             kotlinx.coroutines.runBlocking {
-                client("{}", status = HttpStatusCode.TooManyRequests).journeys("910GHGHI", "940GZZLUCYF")
+                client("{}", status = HttpStatusCode.TooManyRequests).journeys("910GHGHI", TripDestination.Stop("940GZZLUCYF"))
             }
         }
     }
@@ -202,7 +234,7 @@ class JourneyPlannerTest {
         // A recorded Planner answer, trimmed: its bus legs' ends are stop pairs ("490G…", which TfL
         // gives no arrivals for) naming their poles, and the last ends at a pole with no pair at all.
         val body = checkNotNull(javaClass.getResource("/fixtures/journey_results_trafalgar_square_to_archway_bus.json")).readText()
-        val legs = client(body).journeys("490G000832", "940GZZLUACY").single().legs
+        val legs = client(body).journeys("490G000832", TripDestination.Stop("940GZZLUACY")).single().legs
         assertEquals(listOf("walking", "bus", "bus"), legs.map { it.mode })
         assertEquals("490013767A", legs[1].fromId)
         assertEquals("490000252S", legs[1].toId)
@@ -218,7 +250,7 @@ class JourneyPlannerTest {
     fun `a bus to a bus station is headed by its place, as its blind reads`() = runTest {
         // Recorded, trimmed: the Planner's 43 runs to "London Bridge Bus Station"; its buses read "London Bridge".
         val body = checkNotNull(javaClass.getResource("/fixtures/journey_results_archway_to_london_bridge_bus.json")).readText()
-        val bus = client(body).journeys("940GZZLUACY", "940GZZLULNB").single().rides.single()
+        val bus = client(body).journeys("940GZZLUACY", TripDestination.Stop("940GZZLULNB")).single().rides.single()
         assertEquals(listOf("London Bridge"), bus.headings)
     }
 }

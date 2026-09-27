@@ -54,10 +54,21 @@ data class TripRoute(val legs: List<TripLeg>) {
 }
 
 /**
- * Plans a trip between two stops by TfL id, behind a domain interface so the trip's logic is tested
- * against recorded fixtures (SPEC *Testing*). Returns the Planner's routes in its own order; throws
- * a [TflException] on a transport or decode failure, as [TflClient] does.
+ * Where a trip is planned **to** (SPEC *Trips* / D9): a known TfL [Stop] by id, or a [Place] at a
+ * coordinate — a favorite, or a resolved postcode — which TfL routes to with a final walk leg. Kept a
+ * type rather than a bare string so a coordinate destination can't be mistaken for a stop id (it has
+ * no live arrivals to fetch; SPEC D9).
+ */
+sealed interface TripDestination {
+    data class Stop(val id: String) : TripDestination
+    data class Place(val coordinate: Coordinates, val name: String) : TripDestination
+}
+
+/**
+ * Plans a trip from a stop to a [TripDestination], behind a domain interface so the trip's logic is
+ * tested against recorded fixtures (SPEC *Testing*). Returns the Planner's routes in its own order;
+ * throws a [TflException] on a transport or decode failure, as [TflClient] does.
  */
 interface JourneyPlanner {
-    suspend fun journeys(fromId: String, toId: String): List<TripRoute>
+    suspend fun journeys(fromId: String, to: TripDestination): List<TripRoute>
 }
