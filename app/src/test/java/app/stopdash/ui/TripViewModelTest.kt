@@ -1119,6 +1119,52 @@ class TripViewModelTest {
     )
 
     @Test
+    fun `a card's first-ride times gray only what leaves before the rider reaches the stop`() {
+        // Red at 6 is quick to B and times the best route; green at 3 is slower but catchable after a
+        // 2 min walk: it mustn't be grayed because the best route boards later.
+        val viaRed = TripRoute(listOf(leg("red", "A", "B", 6, 11), leg("blue", "B", "C", 13, 23)))
+        val viaGreen = TripRoute(listOf(leg("green", "A", "B", 3, 18), leg("blue", "B", "C", 20, 30)))
+        val green = LineSequence(routes = listOf(LineRoute("A ↔ End", listOf("A", "B", "End"))), stopNames = red.stopNames)
+        val sequences = mapOf("red" to red, "green" to green, "blue" to blue)
+        val state = TripViewModel.State(
+            routes = listOf(viaRed, viaGreen),
+            live = mapOf(
+                "A" to TripViewModel.StopLive(listOf(train("red", "End", 6), train("green", "End", 3), train("green", "End", 1)), now),
+                "B" to TripViewModel.StopLive(listOf(train("blue", "C", 13), train("blue", "C", 20)), now),
+            ),
+        )
+        val access = Duration.ofMinutes(2)
+        val card = tripCards(checkNotNull(tripEstimates(state, now, access, sequences))).single()
+        assertEquals(viaRed, card.first().route)
+        val times = cardTimes(card, state, now, access, sequences)
+        assertEquals(listOf(at(1) to false, at(3) to true, at(6) to true), times.shown.map { (train, catchable) -> train.expectedArrival to catchable })
+        assertEquals(at(2), times.reachable)
+    }
+
+    @Test
+    fun `a card's first-ride times wait for every line before showing any`() {
+        // Red and green from the same stop pair: red's route is known, green's isn't yet, so which
+        // side its buses use isn't either. Red's times alone would read as the whole card's.
+        fun fromPair(route: TripRoute) = TripRoute(listOf(route.legs[0].copy(fromArea = "A")) + route.legs.drop(1))
+        val viaRed = fromPair(TripRoute(listOf(leg("red", "A", "B", 6, 11), leg("blue", "B", "C", 13, 23))))
+        val viaGreen = fromPair(TripRoute(listOf(leg("green", "A", "B", 3, 18), leg("blue", "B", "C", 20, 30))))
+        val state = TripViewModel.State(
+            routes = listOf(viaRed, viaGreen),
+            live = mapOf("A" to TripViewModel.StopLive(listOf(train("red", "End", 6), train("green", "End", 3)), now)),
+        )
+        val loading = mapOf("red" to red, "blue" to blue)
+        val card = tripCards(checkNotNull(tripEstimates(state, now, Duration.ZERO, loading))).single()
+        assertEquals(2, card.size)
+        val times = cardTimes(card, state, now, Duration.ZERO, loading)
+        assertTrue(times.loading)
+        assertTrue(times.shown.isEmpty())
+        // Once green's route is in too, both show.
+        val green = LineSequence(routes = listOf(LineRoute("A ↔ End", listOf("A", "B", "End"))), stopNames = red.stopNames)
+        val loaded = cardTimes(card, state, now, Duration.ZERO, loading + ("green" to green))
+        assertEquals(listOf(at(3), at(6)), loaded.shown.map { it.first.expectedArrival })
+    }
+
+    @Test
     fun `a leg counts only trains whose route calls where the rider gets off`() {
         val state = TripViewModel.State(
             routes = listOf(route),

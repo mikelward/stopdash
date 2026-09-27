@@ -861,31 +861,30 @@ stops their ride rows name (below) (maintainer, 2026-09-27). Routes whose first 
 same two stops by the same mode and then ride the same lines — the 43 or the 134 to Highgate
 station, then the Northern line — **share a card**: its header shows that leg's lines as **one pill
 cut diagonally** ("43/134", read as "43 or 134"), then the later lines and the best of their
-arrivals; under it, a live row for each of those lines, best first (maintainer, 2026-09-26). Tapping
+arrivals, and its first ride's row times every one of those lines together (below). Tapping
 the card opens its best route. **Every route looks alike** — no
-route is expanded — as a card whose top row is its lines' pills in order (no station names, no
-arrows), a ⚠ where a leg is disrupted, and **duration · arrival** ("22 min · 08:24") at the end,
-where a number of changes might otherwise go; the duration is from now to that arrival, so it
-takes in the same walks, waits and legs. The pills wrap onto a second line when a route has
-many legs, and the time drops below them when it doesn't fit beside them. Under the top row, a
+route is expanded — as a card whose top row says where it starts, **"From ‹stop›"**, and
+**duration · arrival** ("22 min · 08:24") at the end, the stop's name cut before the time is
+(maintainer, 2026-09-27; the lines moved to the rows below); the duration is from now to that
+arrival, so it takes in the same walks, waits and legs. Under the top row, a
 row per ride names **where it gets off** — its line pill (the first ride's lines as the same cut
-pill) and the stop — so cards riding the same lines but changing at different stations read apart
-(maintainer, 2026-09-27); walks between rides are left to the route's page. Under those is the
-first leg's live row, the train the rider would catch now, **the main screen's row for that stop and
-line** — the same row, not a lookalike (maintainer, 2026-09-26): the line's pill, the destinations its
-trains show, a ⚠ just left of the times when the line is disrupted, and the times. The card is one
-choice, so tapping anywhere on it — the top row or that live row — opens the trip that row times
-(maintainer, 2026-09-27), and a long press anywhere on it offers **"Hide all ‹group› services"** for
+pill), a ⚠ beside it when that line is disrupted, and the stop — so cards riding the same lines but changing at different stations read apart
+(maintainer, 2026-09-27); walks between rides are left to the route's page. The first ride's row
+also carries its **live times**, every line on the card together in time order ("1 · 3 · 5 min"):
+each is a way to the same change, so only when matters, not which line, and the card stays four
+rows tall rather than growing a row per line (maintainer, 2026-09-27, replacing a live row per
+line). The stop's name is cut before the times are. A screen reader still hears each time with its
+destination. The card is one choice, so tapping anywhere on it opens its best route, and a long
+press anywhere on it offers **"Hide all ‹group› services"** for
 every group any of its legs rides, so a slow tube leg can be hidden from the card as readily as the
 bus that starts it. The open route's leg rows still open their line's page and offer "Hide ‹mode›"
-for their own line, as on the list. While the
-line's route is still being checked, it shows the line's live trains at that stop (those heading for
+for their own line, as on the list. While a
+line's route is still being checked, the times take the line's live trains at that stop (those heading for
 the Planner's terminus, whether or not a name adds a place such as "(London)") as the main screen
 does, timing nothing until the check vouches for them: only a bus to the terminus on no named branch
 shows plain meanwhile, and one that may skip the rider's stop (another terminus, a named branch such
-as "via Bank", or any rail service, which may run fast to the same terminus) grayed until then;
-before any live train, the Planner's terminus (never the stop the leg gets off at, which reads as
-the line's destination), failing that "from" the boarding stop. The times read "Loading" until the
+as "via Bank", or any rail service, which may run fast to the same terminus) grayed until then.
+The times read "Loading" until the
 boarding stop's arrivals arrive, and "–" when none can be vouched for (*Text is chosen to fit its
 space*). A bus stop the Planner names by its stop pair (a road's two poles) boards at the pole its
 bus uses, worked out from the line's route: the pole the Planner names can be the other side of the

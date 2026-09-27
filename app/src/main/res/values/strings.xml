@@ -225,8 +225,8 @@
     <!-- A route's first-leg times while its boarding stop's arrivals are still being fetched: one
          word that fits the times slot, no ellipsis (SPEC *Text is chosen to fit its space*). -->
     <string name="trip_times_loading">Loading</string>
-    <!-- A route's first leg with no train to show yet: where the rider boards it ("from Muswell Hill Road"). -->
-    <string name="trip_first_leg_from">from %1$s</string>
+    <!-- A trip card's top row: the stop its routes start from, before duration · arrival. -->
+    <string name="trip_from">From %1$s</string>
     <string name="trip_walk">%1$d min walk to %2$s</string>
     <!-- Time allowed to change between two rides, shown between their cards. -->
     <!-- A first-leg train for screen readers: its countdown ("3 min") and destination. -->
