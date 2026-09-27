@@ -1,5 +1,6 @@
 package app.stopdash.data
 
+import app.stopdash.domain.PostcodeResolution
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TflRateLimiter
 import io.ktor.client.HttpClient
@@ -965,24 +966,28 @@ class KtorTflClientTest {
 
     @Test
     fun `resolves a postcode TfL geocodes directly to its origin point`() = runTest {
-        val candidates = client(postcodeResolvedJson).resolvePostcode("X1 9XX")
-        assertEquals(1, candidates.size)
-        assertEquals("X1 9XX", candidates[0].name)
-        assertEquals(51.53, candidates[0].coordinate.latitude, 1e-9)
-        assertEquals(-0.11, candidates[0].coordinate.longitude, 1e-9)
+        val resolution = client(postcodeResolvedJson).resolvePostcode("X1 9XX")
+        // A 200 direct resolution: unambiguous, so the caller may adopt it (SPEC D9).
+        assertTrue(resolution is PostcodeResolution.Resolved)
+        val place = (resolution as PostcodeResolution.Resolved).place
+        assertEquals("X1 9XX", place.name)
+        assertEquals(51.53, place.coordinate.latitude, 1e-9)
+        assertEquals(-0.11, place.coordinate.longitude, 1e-9)
     }
 
     @Test
     fun `offers every look-alike place when TfL disambiguates a postcode`() = runTest {
-        val candidates = client(postcodeDisambiguationJson, status = HttpStatusCode.MultipleChoices)
+        val resolution = client(postcodeDisambiguationJson, status = HttpStatusCode.MultipleChoices)
             .resolvePostcode("X1 9XX")
-        assertEquals(listOf("X1 9XX", "X1 9XY"), candidates.map { it.name })
-        assertEquals(51.53, candidates[0].coordinate.latitude, 1e-9)
-        assertEquals(-0.11, candidates[1].coordinate.longitude, 1e-9)
+        assertTrue(resolution is PostcodeResolution.Options)
+        val places = (resolution as PostcodeResolution.Options).places
+        assertEquals(listOf("X1 9XX", "X1 9XY"), places.map { it.name })
+        assertEquals(51.53, places[0].coordinate.latitude, 1e-9)
+        assertEquals(-0.11, places[1].coordinate.longitude, 1e-9)
     }
 
     @Test
-    fun `keeps a prime-meridian point but drops missing and (0,0) coordinates`() = runTest {
+    fun `a disambiguation surviving to one place is still Options, never a resolution`() = runTest {
         val json =
             """
             { "fromLocationDisambiguation": { "disambiguationOptions": [
@@ -991,12 +996,16 @@ class KtorTflClientTest {
               { "place": { "commonName": "X1 9XZ" } }
             ] } }
             """.trimIndent()
-        val candidates = client(json, status = HttpStatusCode.MultipleChoices).resolvePostcode("X1 9XX")
-        // Only the Greenwich-meridian point survives: London sits on lon 0.0, so it's a real place;
-        // the (0,0) unset sentinel and the coordinate-less place both drop.
-        assertEquals(listOf("X1 9XX"), candidates.map { it.name })
-        assertEquals(51.50, candidates[0].coordinate.latitude, 1e-9)
-        assertEquals(0.0, candidates[0].coordinate.longitude, 1e-9)
+        val resolution = client(json, status = HttpStatusCode.MultipleChoices).resolvePostcode("X1 9XX")
+        // A 300 stays a disambiguation even when only one option carries a position — the caller must not
+        // auto-adopt it as if TfL had resolved the postcode (SPEC D9). Only the Greenwich-meridian point
+        // survives: London sits on lon 0.0, so it's a real place; the (0,0) unset sentinel and the
+        // coordinate-less place both drop.
+        assertTrue(resolution is PostcodeResolution.Options)
+        val places = (resolution as PostcodeResolution.Options).places
+        assertEquals(listOf("X1 9XX"), places.map { it.name })
+        assertEquals(51.50, places[0].coordinate.latitude, 1e-9)
+        assertEquals(0.0, places[0].coordinate.longitude, 1e-9)
     }
 
     @Test

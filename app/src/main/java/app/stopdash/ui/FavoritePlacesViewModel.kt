@@ -10,6 +10,7 @@ import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoritePlacesStore
 import app.stopdash.domain.FixedLocation
 import app.stopdash.domain.PlaceCandidate
+import app.stopdash.domain.PostcodeResolution
 import app.stopdash.domain.PostcodeResolver
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationIndex
@@ -41,9 +42,10 @@ import kotlinx.coroutines.withContext
  * [StationFinder.searchStations], `/StopPoint/Search`) and nowhere else, and never logged; only its
  * kind — a status is logged on failure (SPEC *Privacy*). A match with no inline position is resolved
  * on pick from its stops' members ([StationFinder.stationStops] → center); only a result whose stops
- * carry no position at all can't anchor a place and stays unselectable (SPEC D9). Editing a place keeps its saved coordinate until
- * the user picks a new location. Postcode/place resolution (SPEC D9's Journey Planner disambiguation)
- * is a follow-up; v1 resolves via the stop/station search.
+ * carry no position at all can't anchor a place and stays unselectable (SPEC D9). Editing a place keeps
+ * its saved coordinate until the user picks a new location. A **postcode** the user types resolves
+ * itself through TfL's Journey Planner (SPEC D9): unambiguous, so the one place it names is adopted
+ * straight away, and only a genuine multi-place answer offers a chooser.
  *
  * The editor's draft (kind, label and picked coordinate) is mirrored into [SavedStateHandle], so a
  * process death while adding/editing restores the in-progress place rather than dropping it. The typed
@@ -55,7 +57,7 @@ class FavoritePlacesViewModel(
     private val finder: StationFinder,
     // Resolves a typed postcode to place candidates (TfL Journey Planner). Defaults to a no-op so the
     // other surfaces/tests that don't exercise postcodes need no resolver; production passes the client.
-    private val postcodes: PostcodeResolver = PostcodeResolver { emptyList() },
+    private val postcodes: PostcodeResolver = PostcodeResolver { PostcodeResolution.None },
     private val io: CoroutineDispatcher = Dispatchers.IO,
     // The bundled station index, so the picker matches on the device as the user types and returns the
     // same ranked list as From…/To… (SPEC *Finding stops*); loaded once, off the main thread, on first
@@ -246,6 +248,9 @@ class FavoritePlacesViewModel(
                     unresolvableIds = emptySet(), resolveFailedIds = emptySet(),
                 )
             }
+            // A complete postcode resolves itself (debounced), so the happy path is type → Save; while
+            // it's still partial there's nothing to look up yet (SPEC D9).
+            if (UkPostcode.isComplete(query)) startPostcodeResolve(query, debounce = true)
         } else {
             startSearch(query)
         }
@@ -315,21 +320,35 @@ class FavoritePlacesViewModel(
     private fun adopt(match: StationMatch, coordinate: Coordinates) = adoptLocation(match.name, coordinate)
 
     /**
-     * Look up the typed postcode and offer the place(s) it names (SPEC D9). A no-op unless the query is a
-     * complete postcode ([UkPostcode.isComplete]); the caller only enables the affordance then. Nothing
-     * is auto-picked — the user chooses a candidate ([onPickCandidate]). The postcode is the rider's own
-     * input, sent to TfL like a routing query and never logged (SPEC *Privacy*).
+     * Re-run a failed postcode lookup at once, without the user retyping. A complete postcode resolves
+     * itself as it's typed ([onQueryChange]); this is only the retry entry for a failed one.
      */
     fun resolvePostcode() {
-        if (savingNow()) return
         val query = _state.value.editor?.query ?: return
+        startPostcodeResolve(query, debounce = false)
+    }
+
+    /**
+     * Look up [query] as a postcode and adopt the place it names (SPEC D9). A full postcode is
+     * unambiguous, so a single resolved place is adopted straight away — the happy path is type → Save;
+     * only a genuine multi-place disambiguation offers a chooser ([onPickCandidate]), and an empty or
+     * failed lookup is shown honestly (a failure stays retryable). [debounce]d when fired automatically
+     * on typing, so a postcode typed key by key makes one request; immediate on an explicit retry. The
+     * postcode is the rider's own input, sent to TfL like a routing query and never logged (*Privacy*).
+     */
+    private fun startPostcodeResolve(query: String, debounce: Boolean) {
+        if (savingNow()) return
         val code = UkPostcode.format(query) ?: return
         postcode?.cancel()
         updateEditor {
             it.copy(postcodeResolving = true, postcodeFailed = false, postcodeNoResults = false, postcodeCandidates = emptyList())
         }
         postcode = viewModelScope.launch {
-            val candidates = try {
+            // Coalesce keystrokes; a newer query cancels this job (via onQueryChange), so a stale one
+            // that slips through the debounce is dropped by the guard below.
+            if (debounce) delay(debounceMillis)
+            if (_state.value.editor?.query != query) return@launch
+            val resolution = try {
                 withContext(io) { postcodes.resolvePostcode(code) }
             } catch (e: CancellationException) {
                 throw e
@@ -343,13 +362,17 @@ class FavoritePlacesViewModel(
             }
             // Ignore a completion the user has moved on from.
             if (_state.value.editor?.query != query) return@launch
-            updateEditor {
-                it.copy(
-                    postcodeResolving = false,
-                    postcodeCandidates = candidates,
-                    postcodeNoResults = candidates.isEmpty(),
-                    postcodeFailed = false,
-                )
+            when (resolution) {
+                // A direct resolution is unambiguous: adopt it, so the user goes straight to Save (like
+                // picking a stop). A 300 disambiguation is a guess even when it survives to one place, so
+                // it never lands here — TfL flags the two apart (SPEC D9).
+                is PostcodeResolution.Resolved ->
+                    adoptLocation(resolution.place.name, resolution.place.coordinate)
+                // TfL couldn't place it uniquely: let the rider choose, however many it offers.
+                is PostcodeResolution.Options ->
+                    updateEditor { it.copy(postcodeResolving = false, postcodeCandidates = resolution.places) }
+                PostcodeResolution.None ->
+                    updateEditor { it.copy(postcodeResolving = false, postcodeNoResults = true) }
             }
         }
     }
