@@ -910,6 +910,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             cards still show the line's ⚠. Apply the dismissals there as the list does, keeping
             a dismissed line's status out of the warnings without reading it as unchecked.
       - [ ] **Arrows between a route's pills** if space permits (dropped for width, 2026-09-26).
+      - [ ] **Show a route's fare** (maintainer, 2026-09-27). The Planner response a trip already
+            fetches carries one per journey (`journeys[].fare`, ignored today): `totalCost` in
+            pence, and per fare its zones, `peak`/`offPeak`, `chargeLevel`, `isHopperFare` and the
+            taps. No extra request. Open: where it fits on a card (width is short), whether to show
+            the fare that applies now or both peak and off-peak, caps and Hopper, and what to show
+            when a journey has none (some mixes, e.g. National Rail, may lack it).
       - [x] **Shared-leg pill**: a leg several routes serve alike (buses 43 and 134 share the stops
             to Highgate station) as one diagonally cut pill carrying both routes, and a live row per
             line in the one card (maintainer, 2026-09-26).
