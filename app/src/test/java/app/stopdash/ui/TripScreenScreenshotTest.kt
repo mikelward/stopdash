@@ -278,7 +278,9 @@ class TripScreenScreenshotTest {
         // One line, nothing cut: clipped at a word, "Arrival unknown" read as "Arrival" (and
         // "44 min · est. 10:29" as "44 min · est.").
         assertEquals(1, layout.lineCount)
-        assertTrue("arrival clipped", !layout.hasVisualOverflow)
+        assertEquals(text.length, layout.getLineEnd(0))
+        assertTrue("arrival ellipsized", !layout.isLineEllipsized(0))
+        assertTrue("arrival clipped", layout.getLineRight(0) - layout.getLineLeft(0) <= layout.size.width + 1f)
     }
 
     // Under each card's header, a row per ride with where it gets off, so two routes on the same
@@ -291,19 +293,18 @@ class TripScreenScreenshotTest {
         composeRule.onAllNodesWithText("Canada Water", useUnmergedTree = true).assertCountEquals(1)
         composeRule.onAllNodesWithText("Whitechapel", useUnmergedTree = true).onFirst().assertExists()
         composeRule.onAllNodesWithText("Canary Wharf", useUnmergedTree = true).assertCountEquals(2)
+        // The top row says where each starts, in place of the lines' pills.
+        composeRule.onAllNodesWithText("From Highbury & Islington", useUnmergedTree = true).assertCountEquals(2)
     }
 
     @Test
-    fun a_route_cards_line_row_is_the_main_screens_row() {
+    fun a_route_cards_first_ride_times_are_part_of_the_card() {
         show(planned.copy(statuses = planned.statuses + ("windrush" to LineStatus("windrush", 6, "Severe Delays"))))
-        // The disrupted Windrush warns on each card's line row, just left of its times, as a row on
-        // the main screen does — not only beside the card's pill.
-        // In the tree a screen reader gets: two cards start on the Windrush, each warning beside
-        // its pill and on its line row.
-        assertEquals(4, composeRule.onAllNodesWithContentDescription("Severe Delays").fetchSemanticsNodes().size)
+        // The disrupted Windrush warns beside each card's pill: two cards start on the Windrush.
+        assertEquals(2, composeRule.onAllNodesWithContentDescription("Severe Delays").fetchSemanticsNodes().size)
         captureSnapshot("trip-routes-disrupted.png")
-        // The line row is one of its card's choices (maintainer, 2026-09-27): none opens its line's
-        // page, and tapped, it opens the route it times.
+        // The first ride's times are part of the card (maintainer, 2026-09-27): none opens its line's
+        // page, and tapped, they open the card's route.
         val details = composeRule.activity.getString(R.string.departure_details)
         composeRule.onAllNodes(
             SemanticsMatcher("opens its line's page") { it.config.getOrElseNullable(SemanticsActions.OnClick) { null }?.label == details },
@@ -326,12 +327,12 @@ class TripScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        // Anywhere on a card — its top row and its line row alike — a long press opens the card's menu.
+        // Anywhere on a card, a long press opens the card's menu: one per card.
         val more = composeRule.activity.getString(R.string.more_actions)
         val menus = composeRule.onAllNodes(
             SemanticsMatcher("long-presses to its menu") { it.config.getOrElseNullable(SemanticsActions.OnLongClick) { null }?.label == more },
         )
-        assertEquals(6, menus.fetchSemanticsNodes().size)
+        assertEquals(3, menus.fetchSemanticsNodes().size)
         // The first card rides the Windrush then the Jubilee: both groups, not just the first leg's.
         menus.onFirst().performSemanticsAction(SemanticsActions.OnLongClick)
         composeRule.waitForIdle()
@@ -572,26 +573,19 @@ class TripScreenScreenshotTest {
     }
 
     @Test
-    fun a_first_leg_with_no_train_yet_shows_its_terminus() {
-        val heading = viaStratford.copy(legs = listOf(viaStratford.legs[0].copy(headings = listOf("Stratford"))) + viaStratford.legs.drop(1))
-        show(planned.copy(routes = listOf(heading, viaCanadaWater), live = emptyMap()))
-        fun shows(text: String) = hasText(text) or hasContentDescription(text)
-        // The Planner's terminus where it gave one; where it gave none, where to board.
-        composeRule.onAllNodes(shows("Stratford")).onFirst().assertExists()
-        composeRule.onAllNodes(shows("from Highbury & Islington")).onFirst().assertExists()
-        // Never the stop the leg gets off at, read as its destination: only the header's ride rows
-        // name it, as where the ride gets off.
-        composeRule.onAllNodes(shows("Canada Water") and !hasAnyAncestor(hasTestTag("rideStops")), useUnmergedTree = true)
-            .assertCountEquals(0)
-        composeRule.onAllNodes(shows("Canada Water") and hasAnyAncestor(hasTestTag("rideStops")), useUnmergedTree = true)
-            .onFirst().assertExists()
-        // The boarding stop's arrivals aren't in yet: its times say so rather than show a dash.
-        composeRule.onAllNodes(hasText("Loading")).onFirst().assertExists()
+    fun a_first_ride_with_no_train_yet_says_its_times_are_loading() {
+        show(planned.copy(routes = listOf(viaStratford, viaCanadaWater), live = emptyMap()))
+        // The boarding stop's arrivals aren't in yet: the first ride's times say so rather than show
+        // a dash, beside the stop it gets off at.
+        composeRule.onAllNodes(hasText("Loading") and hasAnyAncestor(hasTestTag("rideStops")), useUnmergedTree = true)
+            .assertCountEquals(2)
+        composeRule.onAllNodesWithText("Canada Water", useUnmergedTree = true).onFirst().assertExists()
     }
 
     @Test
     fun trip_shared_first_leg() {
-        // Either bus from one stop to Canada Water, then the Jubilee: one card, a cut 47/188 pill, a row each.
+        // Either bus from one stop to Canada Water, then the Jubilee: one card, a cut 47/188 pill, and
+        // both buses' times together on the first ride's row (maintainer, 2026-09-27).
         val busStop = "490000001A" to "Surrey Docks"
         val busStation = "490000002B" to "Canada Water Bus Station"
         fun bus(line: String, departs: Long) = TripRoute(
@@ -629,8 +623,11 @@ class TripScreenScreenshotTest {
             ),
         )
         composeRule.onNodeWithContentDescription("47 or 188").assertIsDisplayed()
-        composeRule.onAllNodesWithText("Catford").onFirst().assertExists()
-        composeRule.onAllNodesWithText("North Greenwich").onFirst().assertExists()
+        // The soonest three the rider can reach (a 2 min walk), whichever bus: 47, 188, 47.
+        composeRule.onNodeWithText("4 · 6 · 12 min", useUnmergedTree = true).assertExists()
+        // A screen reader still hears where each goes.
+        composeRule.onAllNodesWithContentDescription("Catford", substring = true, useUnmergedTree = true).onFirst().assertExists()
+        composeRule.onAllNodesWithContentDescription("North Greenwich", substring = true, useUnmergedTree = true).onFirst().assertExists()
         captureSnapshot("trip-shared-first-leg.png")
     }
 

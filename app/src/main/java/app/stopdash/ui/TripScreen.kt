@@ -691,7 +691,7 @@ private fun TripContent(
                     cards == null -> TripPlaceholder(state, onRetry)
                     open != null -> RouteLegs(open, state, now, access, sequences, onRetry, alerts.dismissed, onHideMode, ::openDetail)
                     else -> RouteList(
-                        cards, state, now, sequences, onRetry, alerts.dismissed,
+                        cards, state, now, access, sequences, onRetry, alerts.dismissed,
                         onOpen = { setOpenKey(routeKey(it.route)) },
                         onHideMode = onHideMode,
                     )
@@ -795,6 +795,8 @@ private fun RouteList(
     cards: List<List<TripTiming.Estimate>>,
     state: TripViewModel.State,
     now: Instant,
+    // The walk to the trip's first stop: the card's times gray what leaves before the rider gets there.
+    access: Duration,
     sequences: Map<String, LineSequence?>,
     onRetry: () -> Unit,
     // The alerts dismissed (as on the list): their ⚠ doesn't show on a card.
@@ -828,9 +830,9 @@ private fun RouteList(
         if (cards.isEmpty()) {
             item(key = "none") { Text(stringResource(R.string.trip_no_routes), style = MaterialTheme.typography.bodyLarge) }
         }
-        // Routes sharing their first leg's stop and their later lines are one card: one header, and
-        // a row for each first-leg line. The card is one choice (maintainer, 2026-09-27): tapping the
-        // header opens the best of its routes, a line row the route it times, and a long press
+        // Routes sharing every stop but differing in their first line are one card: one header, a
+        // row per ride, and the first ride's times for every line together. The card is one choice
+        // (maintainer, 2026-09-27): tapping it opens the best of its routes, and a long press
         // anywhere offers to hide each group any of its legs rides.
         items(cards, key = { cardKey(it.first().route) }) { card ->
             val modes = remember(card) { cardModes(card) }
@@ -854,19 +856,9 @@ private fun RouteList(
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        RouteSummary(card, shownStatuses(state.statuses, dismissed))
-                        RideStops(card)
-                    }
-                    card.forEach { estimate ->
-                        val first = estimate.route.legs.indexOfFirst { !it.isWalk }
-                        if (first >= 0) {
-                            HorizontalDivider()
-                            FirstLegRow(
-                                estimate, first, state, now, sequences, dismissed,
-                                onOpen = { onOpen(estimate) },
-                                onLongPress = onLongPress,
-                            )
-                        }
+                        val statuses = shownStatuses(state.statuses, dismissed)
+                        CardHeader(card, statuses)
+                        RideStops(card, statuses, remember(card, state, now, access, sequences) { cardTimes(card, state, now, access, sequences) }, now)
                     }
                 }
                 if (onHideMode != null) {
@@ -926,11 +918,7 @@ private fun RouteSummary(card: List<TripTiming.Estimate>, statuses: Map<String, 
             // A disrupted line's ⚠ sits beside its own pill (and wraps with it), so it's clear which
             // leg it qualifies; beside a cut pill, for any of its lines.
             val lines = if (index == 0) firstLines else listOf(leg)
-            // Beside a cut pill, every disrupted line's details, each by its line.
-            val disrupted = lines.mapNotNull { line -> statuses[line.lineId]?.takeIf { it.disrupted }?.let { line to it } }
-            val warning = disrupted.singleOrNull()?.second?.description
-                ?: disrupted.map { (line, status) -> stringResource(R.string.trip_line_status, line.lineName, status.description) }
-                    .takeIf { it.isNotEmpty() }?.joinToString("; ")
+            val warning = linesWarning(lines, statuses)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 SharedLinePill(
                     lines.map { LineRef(it.lineId, it.lineName, it.mode) },
@@ -955,12 +943,63 @@ private fun RouteSummary(card: List<TripTiming.Estimate>, statuses: Map<String, 
 }
 
 /**
+ * The first ride's trains for a card, every line on it together (maintainer, 2026-09-27): each is a
+ * way to the same change, so which line doesn't matter, only when. [shown] is at most
+ * [SHOWN_TRAINS] in time order, each with whether the rider can use it ([shownTrains]); [checking]
+ * those whose route is still being checked; [loading] while any line's times aren't in yet (its
+ * boarding stop's arrivals, or at a bus stop pair its route), when [shown] is empty.
+ */
+internal data class CardTimes(
+    val shown: List<Pair<Departure, Boolean>>,
+    val checking: Set<Departure>,
+    val reachable: Instant,
+    val loading: Boolean,
+)
+
+/**
+ * [card]'s first-ride trains ([CardTimes]): each route's usable trains along its first ride
+ * ([legTrains]), or while its route is checked the line's trains as the main screen shows them
+ * ([pendingTrains]), grayed until vouched for, merged and timed from when the rider reaches the
+ * stop: the walk there ([access]) and any walk before the first ride, never the train a route
+ * happens to be timed from, which would gray another line's earlier train the rider can catch.
+ */
+internal fun cardTimes(
+    card: List<TripTiming.Estimate>,
+    state: TripViewModel.State,
+    now: Instant,
+    access: Duration,
+    sequences: Map<String, LineSequence?>,
+): CardTimes {
+    val trains = ArrayList<Departure>()
+    val usable = HashSet<Departure>()
+    val checking = HashSet<Departure>()
+    var loading = false
+    card.forEach { estimate ->
+        val leg = estimate.route.legs.firstOrNull { !it.isWalk } ?: return@forEach
+        val live = legTrains(state, leg, now, sequences)
+        val pending = pendingTrains(state, leg, now, sequences)
+        val unchecked = uncheckedPending(pending, leg)
+        trains += pending.ifEmpty { null } ?: live.orEmpty()
+        usable += live.orEmpty() + pending.filterNot { it in unchecked }
+        checking += unchecked
+        loading = loading || legLoading(state, leg, sequences)
+    }
+    val legs = card.first().route.legs
+    val walks = legs.takeWhile { it.isWalk }
+    val reachable = walks.fold(now.plus(access)) { at, walk -> at.plus(walk.run).plus(walk.changeAfter) }
+    // While any line's times are still loading, none show: the others alone would read as all of them.
+    val shown = if (loading) emptyList() else shownTrains(trains.distinct(), reachable, usable = { it in usable })
+    return CardTimes(shown, checking, reachable, loading)
+}
+
+/**
  * Under a card's header, a row per ride of its best route: the ride's line pill (the first ride's
- * lines as one cut pill, as in the header) and the stop it gets off at. Walks between rides are left
- * out; the route's own page has them.
+ * lines as one cut pill, as in the header) and the stop it gets off at, the first ride's also with
+ * [times], every line's trains together; the stop's name is cut before the times are. Walks between
+ * rides are left out; the route's own page has them.
  */
 @Composable
-private fun RideStops(card: List<TripTiming.Estimate>) {
+private fun RideStops(card: List<TripTiming.Estimate>, statuses: Map<String, LineStatus>, times: CardTimes, now: Instant) {
     val rides = card.first().route.rides
     val firstLines = card.mapNotNull { it.route.rides.firstOrNull() }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.testTag("rideStops")) {
@@ -971,6 +1010,8 @@ private fun RideStops(card: List<TripTiming.Estimate>) {
                     lines.map { LineRef(it.lineId, it.lineName, it.mode) },
                     lines.map { it.lineName }.reduce { a, b -> stringResource(R.string.trip_lines_either, a, b) },
                 )
+                // A disrupted line's ⚠ beside its own pill; beside a cut pill, for any of its lines.
+                linesWarning(lines, statuses)?.let { DisruptionWarningGlyph(it, Modifier.padding(start = 4.dp)) }
                 Text(
                     text = ride.toName,
                     style = MaterialTheme.typography.bodyLarge,
@@ -978,8 +1019,61 @@ private fun RideStops(card: List<TripTiming.Estimate>) {
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f).padding(start = 8.dp),
                 )
+                if (index == 0) {
+                    // Graying is lost on TalkBack: each time is read with its destination, and whether it's usable.
+                    val description = times.shown.map { (train, catchable) ->
+                        val time = Countdown.mergedLabel(listOf(train), now)
+                        val to = train.destination.ifBlank { ride.toName }
+                        stringResource(trainDescription(train, catchable, train in times.checking, times.reachable), time, to)
+                    }.joinToString(", ")
+                    Text(
+                        text = trainTimes(times.shown, now, loading = times.loading),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .padding(start = 12.dp)
+                            .then(if (times.shown.isEmpty()) Modifier else Modifier.semantics { contentDescription = description }),
+                    )
+                }
             }
         }
+    }
+}
+
+/** The ⚠'s wording for [lines]' disruptions in [statuses]; beside a cut pill, each by its line. Null when none is disrupted. */
+@Composable
+private fun linesWarning(lines: List<TripLeg>, statuses: Map<String, LineStatus>): String? {
+    val disrupted = lines.mapNotNull { line -> statuses[line.lineId]?.takeIf { it.disrupted }?.let { line to it } }
+    return disrupted.singleOrNull()?.second?.description
+        ?: disrupted.map { (line, status) -> stringResource(R.string.trip_line_status, line.lineName, status.description) }
+            .takeIf { it.isNotEmpty() }?.joinToString("; ")
+}
+
+/**
+ * A list card's top row (maintainer, 2026-09-27): where the trip starts, "From ‹stop›", and the best
+ * route's duration · arrival. Its lines are the ride rows below ([RideStops]), each with its ⚠. A walk
+ * only route reads as the open route's summary does ([RouteSummary]).
+ */
+@Composable
+private fun CardHeader(card: List<TripTiming.Estimate>, statuses: Map<String, LineStatus>) {
+    val estimate = card.first()
+    val first = estimate.route.rides.firstOrNull() ?: return RouteSummary(card, statuses)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = stringResource(R.string.trip_from, first.fromName),
+            style = MaterialTheme.typography.titleSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = arrivalText(estimate),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            modifier = Modifier.padding(start = 12.dp),
+        )
     }
 }
 
@@ -993,89 +1087,6 @@ private fun arrivalText(estimate: TripTiming.Estimate): String {
     } else {
         stringResource(R.string.trip_duration_arrival_estimated, minutes, clock)
     }
-}
-
-/**
- * The first leg's line and its live trains, those the rider can't reach in time grayed — drawn as a
- * route row on the main screen ([RouteRow]): its pill, destination, a ⚠ left of the times when the
- * line is disrupted. It's one of its card's choices, so a tap opens its route ([onOpen]) and a long
- * press the card's menu ([onLongPress]), not the line's page and "Hide ‹mode›" a list row offers.
- */
-@Composable
-private fun FirstLegRow(
-    estimate: TripTiming.Estimate,
-    index: Int,
-    state: TripViewModel.State,
-    now: Instant,
-    sequences: Map<String, LineSequence?>,
-    dismissed: Set<DismissedAlert>,
-    // The card's tap and long press: this row is one of the card's choices, so it opens its route.
-    onOpen: () -> Unit,
-    onLongPress: (() -> Unit)?,
-) {
-    val leg = estimate.route.legs[index]
-    val usable = legTrains(state, leg, now, sequences)
-    // The trains that run along the leg's route, never another branch's; those the rider can't reach
-    // in time are grayed. While the route is still being checked, the line's trains as the main
-    // screen shows them, timing nothing.
-    val pending = pendingTrains(state, leg, now, sequences)
-    val trains = pending.ifEmpty { null } ?: usable
-    // A train that may skip the stop the rider gets off at (another terminus, or a named branch) stays
-    // grayed, and is read as still being checked, until the route check vouches for it.
-    val checking = uncheckedPending(pending, leg)
-    val usableSet = usable.orEmpty().toSet() + pending.filterNot { it in checking }
-    val reachable = estimate.legs.getOrNull(index)?.board ?: estimate.start
-    val shown = shownTrains(trains.orEmpty(), reachable, usable = { it in usableSet })
-    // The page follows the soonest train the rider can catch, else the soonest shown.
-    val followed = (shown.firstOrNull { it.second } ?: shown.firstOrNull())?.first
-    val focus = followed?.let { RouteFocus(it.destination, it.branch) }
-    // The row its line's page opens from, as the open route's leg opens it: the live row holding
-    // that train (a line's trains can split by direction or platform), else its line and status
-    // alone. Its status is a disruption only, so it drives the ⚠ — unless dismissed, as on the list.
-    val row = remember(state, leg, now, sequences, followed, dismissed) {
-        legRowFor(DepartureRows.withoutDismissed(legRows(state, leg, now, sequences, withUnchecked = true), dismissed), followed)
-            ?: withDismissedMarked(legStatusRow(state, leg, now), dismissed)
-    }
-    LineRouteRow(
-        row = row,
-        isStarred = false,
-        starrable = false,
-        onToggleStar = {},
-        onOpenDetail = { _, _ -> onOpen() },
-        focus = focus,
-        onHideMode = null,
-        onOpenInstead = onOpen,
-        onLongPressInstead = onLongPress,
-        // Every destination the times cover, so a time is never read as another train's; shortened
-        // as the list shortens a destination (full, then the standard abbreviations, then its floor)
-        // before it would elide. With no live train to show, the terminus of the Planner's service,
-        // as the train's front shows it (never the stop the rider gets off at, which read as the
-        // line's destination); failing that, where they board.
-        destination = { modifier ->
-            val destinations = shown.map { (train, _) -> train.destination }.filter { it.isNotBlank() }.distinct()
-            DestinationsLabel(
-                names = destinations.ifEmpty { leg.headings }
-                    .ifEmpty { listOf(stringResource(R.string.trip_first_leg_from, leg.fromName)) },
-                modifier = modifier,
-            )
-        },
-        times = {
-            // Graying is lost on TalkBack: each time is read with its destination, and whether it's usable.
-            val description = shown.map { (train, catchable) ->
-                val time = Countdown.mergedLabel(listOf(train), now)
-                val to = train.destination.ifBlank { leg.toName }
-                stringResource(trainDescription(train, catchable, train in checking, reachable), time, to)
-            }.joinToString(", ")
-            Text(
-                // No arrivals yet for the boarding stop (never fetched; a failed fetch is kept as failed).
-                text = trainTimes(shown, now, loading = legLoading(state, leg, sequences)),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                modifier = if (shown.isEmpty()) Modifier else Modifier.semantics { contentDescription = description },
-            )
-        },
-    )
 }
 
 /**
@@ -1100,30 +1111,6 @@ internal fun destinationsLadder(names: List<String>): List<String> = listOf(
     names.joinToString(", ") { DestinationAbbreviations.abbreviate(it) },
     names.joinToString(", ") { DestinationAbbreviations.floor(it) },
 ).distinct()
-
-/** [names] joined, in the longest form of [destinationsLadder] that fits; "…" only below the floor. */
-@Composable
-private fun DestinationsLabel(names: List<String>, modifier: Modifier = Modifier) {
-    val style = MaterialTheme.typography.titleMedium
-    val ladder = remember(names) { destinationsLadder(names) }
-    BoxWithConstraints(modifier = modifier) {
-        val measurer = rememberTextMeasurer()
-        val fontScale = LocalDensity.current.fontScale
-        val max = constraints.maxWidth
-        val display = remember(ladder, style, fontScale, max) {
-            ladder.firstOrNull { measurer.measure(it, style, maxLines = 1).size.width <= max } ?: ladder.last()
-        }
-        Text(
-            text = display,
-            style = style,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .fillMaxWidth()
-                .then(if (display != ladder.first()) Modifier.semantics { contentDescription = ladder.first() } else Modifier),
-        )
-    }
-}
 
 /**
  * "3 · 11 min" in time order, trains the rider can't use grayed; "Loading" while the boarding stop's
