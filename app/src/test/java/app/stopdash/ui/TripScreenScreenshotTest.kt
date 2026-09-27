@@ -894,8 +894,12 @@ class TripScreenScreenshotTest {
         // the activity's window doesn't draw.
         captureSnapshot("trip-overflow.png")
         composeRule.onNodeWithContentDescription(composeRule.activity.getString(R.string.menu_more)).performClick()
-        composeRule.onNodeWithText(composeRule.activity.getString(R.string.update_available)).assertExists()
-        composeRule.onNodeWithText(composeRule.activity.getString(R.string.menu_about)).assertExists()
+        val update = composeRule.onNodeWithText(composeRule.activity.getString(R.string.update_available))
+            .getUnclippedBoundsInRoot()
+        val about = composeRule.onNodeWithText(composeRule.activity.getString(R.string.menu_about))
+            .getUnclippedBoundsInRoot()
+        // "Update available" sits last, so the screen's own items keep their positions.
+        assertTrue(update.top > about.top)
         composeRule.onNodeWithText(composeRule.activity.getString(R.string.menu_send_bug_report)).performClick()
         assertEquals(1, reported)
     }

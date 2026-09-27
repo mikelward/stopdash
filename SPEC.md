@@ -1443,7 +1443,8 @@ platform draws them, and the watch's list already scales its edges.
 ### Update indicator
 
 When Google Play reports a newer version, the departures overflow (⋮) icon carries a small
-red dot, and the menu gains an "Update available" item that opens the Play listing — Play
+red dot, and the menu gains an "Update available" item — at the bottom, so the other items
+keep their positions whether or not an update is pending — that opens the Play listing — Play
 does the download and install. It is a lightweight nudge, not a banner: a dot costs no row
 or top-bar width, and there is no in-app update flow to shoehorn a download/restart UI into.
 The loading screens also surface the same nudge as an outlined **Update available** button
