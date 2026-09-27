@@ -1,103 +1,104 @@
 package app.stopdash.ui
 
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.material3.Button
-import app.stopdash.domain.DismissedAlert
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarHost
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.MutableState
-import kotlin.coroutines.cancellation.CancellationException
-import app.stopdash.domain.TflException
-import androidx.compose.runtime.produceState
-import androidx.compose.runtime.key
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.width
-import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import app.stopdash.domain.RouteStopsRepository
-import app.stopdash.domain.DestinationAbbreviations
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.Countdown
 import app.stopdash.domain.Departure
-import app.stopdash.domain.DepartureRows
-import app.stopdash.domain.RouteFocus
 import app.stopdash.domain.DepartureRow
+import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.DirectTrips
+import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.Headway
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.RouteFocus
 import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.RouteStops
+import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopGrouping
+import app.stopdash.domain.TflException
 import app.stopdash.domain.TripLeg
-import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTiming
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.toKotlinDuration
 
 /**
@@ -1082,18 +1083,29 @@ private fun RideStops(card: List<TripTiming.Estimate>, statuses: Map<String, Lin
         val start = rides.firstOrNull()
         val minutes = walk.toMinutes().toInt()
         if (start != null && minutes > 0) {
-            val description = stringResource(R.string.trip_walk_first, minutes, start.fromName)
+            val description = stringResource(R.string.trip_walk_first, start.fromName, minutes)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.testTag("walkToStart").clearAndSetSemantics { contentDescription = description },
             ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_walk),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
-                )
+                // The walker takes the pills' room, so the stop starts where a ride's does beside its pill (a
+                // disrupted ride's ⚠ puts its stop further in):
+                // the card's pills, unseen, give the slot its width in the same pass.
+                Box(contentAlignment = Alignment.Center) {
+                    rides.forEachIndexed { index, ride ->
+                        val lines = if (index == 0) firstLines else listOf(ride)
+                        SharedLinePill(lines.map { LineRef(it.lineId, it.lineName, it.mode) }, "", Modifier.alpha(0f))
+                    }
+                    Icon(
+                        painter = painterResource(R.drawable.ic_walk),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
                 ShortenedName(start.fromName, MaterialTheme.typography.bodyLarge, Modifier.weight(1f).padding(start = 8.dp))
+                // In the times column, to set against the first train's; in parentheses, as how long
+                // the walk takes, not a time.
                 Text(
                     text = stringResource(R.string.trip_walk_minutes, minutes),
                     style = MaterialTheme.typography.titleMedium,
@@ -1310,11 +1322,11 @@ private fun RouteLegs(
         statusNote(state, estimate.unchecked)?.let { checking -> item(key = "status") { StatusUnknown(checking) } }
         val firstStop = estimate.route.legs.firstOrNull()?.fromName
         if (access > Duration.ZERO && firstStop != null) {
-            item(key = "access") { WalkLink(stringResource(R.string.trip_walk_first, access.toMinutes().toInt(), firstStop)) }
+            item(key = "access") { WalkLink(stringResource(R.string.trip_walk_first, firstStop, access.toMinutes().toInt())) }
         }
         estimate.route.legs.forEachIndexed { index, leg ->
             if (leg.isWalk) {
-                item(key = "leg$index") { WalkLink(stringResource(R.string.trip_walk, leg.run.toMinutes().toInt(), leg.toName)) }
+                item(key = "leg$index") { WalkLink(stringResource(R.string.trip_walk, leg.toName, leg.run.toMinutes().toInt())) }
             } else {
                 item(key = "leg$index") { RideLeg(leg, index == 0, state, now, sequences, dismissed, onOpenDetail, onHideMode) }
                 // A change the Planner allows time for after this ride (not a walk leg of its own):

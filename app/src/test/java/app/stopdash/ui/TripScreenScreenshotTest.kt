@@ -308,7 +308,7 @@ class TripScreenScreenshotTest {
         // Above the rides, the walk to where each starts: 2 min, so a train sooner than that reads
         // as grayed for a reason. It takes the place of "From ‹stop›" in the top row.
         composeRule.onAllNodes(hasTestTag("walkToStart"), useUnmergedTree = true).assertCountEquals(2)
-        composeRule.onAllNodesWithContentDescription("~2 min walk to Highbury & Islington", useUnmergedTree = true).assertCountEquals(2)
+        composeRule.onAllNodesWithContentDescription("Walk to Highbury & Islington (~2 min)", useUnmergedTree = true).assertCountEquals(2)
         composeRule.onAllNodesWithText("From", substring = true, useUnmergedTree = true).assertCountEquals(0)
     }
 
