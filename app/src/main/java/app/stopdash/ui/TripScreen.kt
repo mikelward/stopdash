@@ -378,9 +378,7 @@ internal fun tripEstimates(
     hidden: Set<String> = emptySet(),
     originUnconfirmed: Boolean = false,
 ): List<TripTiming.Estimate>? {
-    val routes = state.routes
-        ?.filterNot { route -> route.rides.any { HiddenModes.isHidden(it.mode, it.lineId, hidden) } }
-        ?.let(TripViewModel::bestOf) ?: return null
+    val routes = state.shownRoutes(hidden)?.let(TripViewModel::bestOf) ?: return null
     val notRunning = TripTiming.notRunning(state.statuses.values)
     // A line with no status known (left out of TfL's answer, or a failed check) can't be vouched
     // for as running.
@@ -434,7 +432,7 @@ internal fun cardKey(route: TripRoute): String {
  * at once, even on a screen shown again with nothing settled yet.
  */
 internal fun sequenceLineIds(state: TripViewModel.State, hidden: Set<String>, settled: List<String>): List<String> =
-    if (state.planning && state.plannedAt == null) settled else timedLineIds(state.routes.orEmpty(), hidden)
+    if (state.planning && state.plannedAt == null) settled else timedLineIds(state.shownRoutes(hidden).orEmpty(), hidden)
 
 /** The lines of the routes a trip times: not riding a [hidden] mode, and within the cap ([TripViewModel.bestOf]). */
 internal fun timedLineIds(routes: List<TripRoute>, hidden: Set<String>): List<String> =

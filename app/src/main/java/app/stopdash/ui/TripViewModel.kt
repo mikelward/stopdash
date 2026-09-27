@@ -17,6 +17,7 @@ import app.stopdash.domain.TflClient
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripRoute
+import app.stopdash.domain.withoutDetours
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
@@ -82,6 +83,11 @@ class TripViewModel(
     // The activity's failed-write flags, so a dismiss that didn't take is said on whichever screen
     // shows next, as the list's are.
     writeFailures: WriteFailures = WriteFailures(),
+    // Every stop of the destination, for dropping routes that pass it ([withoutDetours]):
+    // [destinations] keep one of a complex's bus stops for the Planner, but a route that passes any of
+    // them has reached it. Each id maps to its stop, so a bus stop's poles and its "490G…" area
+    // are one stop when one route passes it and another gets off there.
+    destinationIds: Map<String, String> = stopIds(destinations).associateWith { it },
 ) : ViewModel() {
     /** One boarding stop's last arrivals and when they were fetched; [failed] when the last fetch failed. */
     data class StopLive(val departures: List<Departure>, val fetchedAt: Instant, val failed: Boolean = false)
@@ -106,17 +112,44 @@ class TripViewModel(
         // Each bus stop pair's poles the trip has looked up (and so fetches): a leg may board at one
         // before its arrivals are in, reading "Loading" meanwhile. A pair whose lookup failed is absent.
         val areaPoles: Map<String, List<String>> = emptyMap(),
-    )
+        // Every id of the destination, each to its stop, for leaving out the routes that pass it
+        // ([shownRoutes]); empty in a state built without them.
+        val destinationStops: Map<String, String> = emptyMap(),
+    ) {
+        /**
+         * [routes] as shown: without those riding a [hidden] mode, then without the detours
+         * ([withoutDetours]) the rest beat. In that order, so a route the rider hid never takes out
+         * one they can see; the plan itself keeps every route, so showing a mode again brings back
+         * what it beat.
+         */
+        fun shownRoutes(hidden: Set<String>): List<TripRoute>? = routes
+            ?.filterNot { route -> route.rides.any { HiddenModes.isHidden(it.mode, it.lineId, hidden) } }
+            ?.let { withoutDetours(it, destinationStops.keys, destinationStops) }
+    }
 
     private val _state = MutableStateFlow(
-        plans.get(fromId, destinations)?.let { (routes, at) -> State(routes = routes, plannedAt = at, statusUnknown = linesOf(routes)) } ?: State(),
+        (plans.get(fromId, destinations)?.let { (routes, at) -> State(routes = routes, plannedAt = at, statusUnknown = linesOf(routes)) } ?: State())
+            .copy(destinationStops = stopIds(destinations).associateWith { it } + destinationIds),
     )
     val state: StateFlow<State> = _state.asStateFlow()
 
     private var job: Job? = null
 
-    /** Modes the rider hid: routes riding them are neither shown nor fetched for. Set by the screen. */
+    /**
+     * Modes the rider hid: routes riding them are neither shown nor fetched for. Set by the screen.
+     * A change that times routes not timed before (a mode shown again, one hidden that beat a
+     * detour ([State.shownRoutes]), or one hidden that lets a later route into the soonest few)
+     * fetches their live times at once rather than on the next tick.
+     */
     var hiddenModes: Set<String> = emptySet()
+        set(value) {
+            if (value == field) return
+            // The routes timed and fetched for: those shown, within the cap ([bestOf]), since a
+            // hidden mode can also move a route already shown into the soonest few.
+            val before = bestOf(_state.value.shownRoutes(field).orEmpty())
+            field = value
+            if (_state.value.routes != null && bestOf(_state.value.shownRoutes(value).orEmpty()).any { route -> before.none { it === route } }) refresh()
+        }
 
     /**
      * The route open on screen ([routeKey]), held here rather than by the screen, so it stays open
@@ -165,7 +198,9 @@ class TripViewModel(
             // Shown again (a rotation, a return): take any newer arrivals another screen fetched
             // meanwhile, and refresh only if a boarding stop's are still over [ArrivalsCache.TTL]
             // old, rather than fetch everything again or wait for the minute tick.
-            val routes = _state.value.routes ?: return
+            // The routes a refresh fetches for ([refreshLive]): a route not shown, or past the cap,
+            // is never fetched, so its stops would read as stale on every return.
+            val routes = _state.value.shownRoutes(hiddenModes)?.let(::bestOf) ?: return
             _state.update { it.copy(live = cached(routes, it.live)) }
             val now = clock()
             val live = _state.value.live
@@ -276,6 +311,8 @@ class TripViewModel(
                         // Nothing yet from any stop keeps "Planning…" (or the last plan) rather than
                         // say there's no route while others are still answering.
                         if (!progressive || gathered.isEmpty()) return@launch
+                        // Every route stays in the plan; a detour another stop's answer beats is
+                        // left out where it's shown ([State.shownRoutes]).
                         val shown = gathered.toList()
                         // A first answer after a failed plan clears its error: the routes it brings stand,
                         // timed at once from any boarding stop's arrivals another screen just fetched.
@@ -294,6 +331,11 @@ class TripViewModel(
             return
         }
         val routes = gathered.toList()
+        // A route to one of the destination's stops that rides through another and comes back isn't
+        // shown when another route gets off there no later: the rider would get off the first time.
+        val visible = State(routes = routes, destinationStops = _state.value.destinationStops).shownRoutes(hiddenModes).orEmpty()
+        val shown = routes.count { route -> route.rides.none { HiddenModes.isHidden(it.mode, it.lineId, hiddenModes) } }
+        if (shown > visible.size) warn("journey planner: ${shown - visible.size} of $shown routes pass the destination")
         val at = clock()
         // Only a whole plan is kept for reuse: a partial one is planned again on the next open.
         if (failed == null) plans.put(fromId, destinations, routes, at)
@@ -314,9 +356,7 @@ class TripViewModel(
     private suspend fun refreshLive() {
         // Routes riding a hidden mode aren't shown, so their stops and lines aren't fetched either.
         // Only the routes the screen times (the soonest few of those shown) are fetched for.
-        val routes = _state.value.routes
-            ?.filterNot { route -> route.rides.any { HiddenModes.isHidden(it.mode, it.lineId, hiddenModes) } }
-            ?.let(::bestOf) ?: return
+        val routes = _state.value.shownRoutes(hiddenModes)?.let(::bestOf) ?: return
         val lines = routes.flatMap { route -> route.rides.map { it.lineId } }.distinct()
         // Arrivals another screen fetched since show at once; only a stop not fetched within
         // [ArrivalsCache.TTL] is asked for again. Refreshing from the start, so the trip reads as
@@ -430,6 +470,10 @@ class TripViewModel(
 
     companion object {
         private const val KEY_OPEN_ROUTE = "openRoute"
+
+        // The stops among [destinations]; a place has none, so no route to it is a detour.
+        private fun stopIds(destinations: List<TripDestination>): List<String> =
+            destinations.filterIsInstance<TripDestination.Stop>().map { it.id }
 
         private fun boardingStops(routes: List<TripRoute>): List<String> =
             routes.flatMap { route -> route.rides.map { it.fromId } }.filter { it.isNotBlank() }.distinct()

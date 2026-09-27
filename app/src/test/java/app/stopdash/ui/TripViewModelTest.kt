@@ -352,6 +352,122 @@ class TripViewModelTest {
         assertNotNull(plans.get("A", listOf(TripDestination.Place(coord, "Home"))))
     }
 
+    // Planned to the complex's far stop, E, a route that rides through C, one stop on to F, and comes
+    // back is no way there when a route gets off at C sooner: the rider would take that one. It's
+    // dropped, and the log says how many.
+    @Test
+    fun `a route through the destination is dropped when another gets off there no later`() = runTest(dispatcher) {
+        val onward = leg("red", "B", "F", 18, 30).copy(path = listOf("C", "F"))
+        val back = TripRoute(listOf(leg("blue", "A", "B", 5, 15), onward, leg("bus", "F", "E", 33, 40)))
+        val planner = FakePlanner(emptyList()).apply { byDestination = mapOf("C" to listOf(route), "E" to listOf(back)) }
+        val warnings = mutableListOf<String>()
+        val trip = TripViewModel(planner, FakeClient(mutableMapOf()), "A", listOf("C", "E").map { TripDestination.Stop(it) }, warn = { warnings += it }, clock = { now }, plans = TripPlans(), io = dispatcher)
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf(route), trip.state.value.shownRoutes(emptySet()))
+        assertTrue(warnings.any { it.contains("1 of 2 routes pass the destination") })
+        // The plan keeps it: only where it's shown is it left out.
+        assertEquals(setOf(route, back), trip.state.value.routes?.toSet())
+    }
+
+    // A bus pole planned to keeps its stop area as its stop: the planning target doesn't make it a
+    // stop of its own, apart from the sibling pole across the road.
+    @Test
+    fun `a planned pole stays one stop with its sibling`() {
+        val trip = TripViewModel(
+            FakePlanner(emptyList()), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("P1")), clock = { now }, plans = TripPlans(), io = dispatcher,
+            destinationIds = mapOf("P1" to "G", "P2" to "G", "G" to "G"),
+        )
+        assertEquals("G", trip.state.value.destinationStops["P1"])
+    }
+
+    // The only route beating the detour rides a mode the rider hid: the detour is all they can see,
+    // so it stays, and comes and goes with the setting without a re-plan.
+    @Test
+    fun `a hidden route doesn't take out a detour the rider can see`() = runTest(dispatcher) {
+        val onward = leg("red", "B", "F", 18, 30).copy(path = listOf("C", "F"))
+        val back = TripRoute(listOf(leg("blue", "A", "B", 5, 15), onward, leg("bus", "F", "E", 33, 40)))
+        val byBus = TripRoute(listOf(leg("25", "A", "C", 5, 20).copy(mode = "bus")))
+        val planner = FakePlanner(emptyList()).apply { byDestination = mapOf("C" to listOf(byBus), "E" to listOf(back)) }
+        val client = FakeClient(mutableMapOf())
+        val trip = TripViewModel(planner, client, "A", listOf("C", "E").map { TripDestination.Stop(it) }, clock = { now }, plans = TripPlans(), io = dispatcher)
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf(byBus), trip.state.value.shownRoutes(emptySet()))
+        assertEquals(listOf(back), trip.state.value.shownRoutes(setOf("bus")))
+        // Hiding buses brings the detour back: its change stops' times are fetched at once.
+        assertTrue("B" !in client.asked)
+        trip.hiddenModes = setOf("bus")
+        advanceUntilIdle()
+        assertTrue("B" in client.asked)
+    }
+
+    // A detour another route beats is never fetched for, so a return to the screen right after a
+    // refresh fetches nothing again.
+    @Test
+    fun `a return to the screen doesn't refetch for a route that isn't shown`() = runTest(dispatcher) {
+        val onward = leg("red", "B", "F", 18, 30).copy(path = listOf("C", "F"))
+        val back = TripRoute(listOf(leg("blue", "A", "B", 5, 15), onward, leg("bus", "F", "E", 33, 40)))
+        val direct = TripRoute(listOf(leg("green", "D", "C", 5, 20)))
+        val planner = FakePlanner(emptyList()).apply { byDestination = mapOf("C" to listOf(direct), "E" to listOf(back)) }
+        val client = FakeClient(mutableMapOf())
+        val trip = TripViewModel(planner, client, "A", listOf("C", "E").map { TripDestination.Stop(it) }, clock = { now }, plans = TripPlans(), io = dispatcher)
+        trip.refreshFor(null)
+        advanceUntilIdle()
+        assertTrue("B" !in client.asked)
+        val asked = client.asked.size
+        trip.refreshFor(null)
+        advanceUntilIdle()
+        assertEquals(asked, client.asked.size)
+    }
+
+    // Six bus routes fill the routes timed; hiding buses lets the seventh, a tube, in, and its stop
+    // is fetched at once, though it was in the plan (and shown) all along.
+    @Test
+    fun `hiding a mode fetches a route it lets into the soonest few`() = runTest(dispatcher) {
+        val buses = (1..6).map { TripRoute(listOf(leg("b$it", "S$it", "C", 5, 10L + it).copy(mode = "bus"))) }
+        val tube = TripRoute(listOf(leg("red", "T", "C", 5, 30)))
+        val client = FakeClient(mutableMapOf())
+        val trip = TripViewModel(
+            FakePlanner(buses + tube), client, "A", listOf(TripDestination.Stop("C")), clock = { now }, plans = TripPlans(), io = dispatcher,
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue("T" !in client.asked)
+        trip.hiddenModes = setOf("bus")
+        advanceUntilIdle()
+        assertTrue("T" in client.asked)
+    }
+
+    // The route getting off at C arrives after the detour gets to E: the detour is the quicker way
+    // there, so both stand.
+    @Test
+    fun `a route through the destination stays when the one getting off there is later`() = runTest(dispatcher) {
+        val onward = leg("red", "B", "F", 18, 22).copy(path = listOf("C", "F"))
+        val back = TripRoute(listOf(leg("blue", "A", "B", 5, 15), onward, leg("bus", "F", "E", 23, 26)))
+        val planner = FakePlanner(emptyList()).apply { byDestination = mapOf("C" to listOf(route), "E" to listOf(back)) }
+        val trip = TripViewModel(planner, FakeClient(mutableMapOf()), "A", listOf("C", "E").map { TripDestination.Stop(it) }, clock = { now }, plans = TripPlans(), io = dispatcher)
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(setOf(route, back), trip.state.value.routes?.toSet())
+    }
+
+    // A complex's second bus stop, G, isn't planned to (one bus stop stands for them all), so no
+    // route gets off there: a detour through it may be the only way the plan found, and it stays.
+    @Test
+    fun `a route through a destination stop nothing else gets off at stays`() = runTest(dispatcher) {
+        val onward = leg("red", "B", "F", 18, 30).copy(path = listOf("G", "F"))
+        val back = TripRoute(listOf(leg("blue", "A", "B", 5, 15), onward, leg("bus", "F", "E", 33, 40)))
+        val planner = FakePlanner(emptyList()).apply { byDestination = mapOf("C" to listOf(route), "E" to listOf(back)) }
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf("C", "E").map { TripDestination.Stop(it) }, clock = { now }, plans = TripPlans(), io = dispatcher,
+            destinationIds = listOf("C", "E", "G").associateWith { it },
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(setOf(route, back), trip.state.value.routes?.toSet())
+    }
+
     @Test
     fun `a stop that fails leaves the others' routes, says so, and isn't kept for reuse`() = runTest(dispatcher) {
         val planner = FakePlanner(emptyList()).apply {

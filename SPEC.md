@@ -1012,7 +1012,13 @@ to the rider, or the *From…* station's own stop), and a picked **station compl
 TfL's `HUB…`) is planned to **once per station code** — never merged, since neither names nor ids
 tell a station's platform variant from another station — **plus once to one of its bus stops** (the Planner walks between
 stands), the requests in parallel (maintainer, 2026-09-26: the best way there whatever the line or
-mode). The answers merge, and of the routes not riding a hidden mode, the six arriving soonest by
+mode). A route that reaches one of the complex's stops and rides on — through it, or on from a change
+there, to another of its stops — is dropped when another route gets off at that stop and arrives no
+later by the Planner's times: planned to the bus stop, the Planner can ride through King's Cross to
+Angel and bus back, where the rider would get off the first time. A detour nothing beats stays, as it
+may be the only way the plan found (maintainer, 2026-09-27), and only a route the rider can see beats
+one: a route riding a hidden mode never takes out one they can, and showing the mode again brings
+back what it beats. The answers merge, and of the routes not riding a hidden mode, the six arriving soonest by
 the Planner's timetable are timed; routes show as each answer lands. If some stations can't be planned to, the others'
 routes stand and the trip says "Couldn't plan to every station", with a retry; only a whole plan is
 reused. Not the complex's centre point: that ended every trip at a street address with a walk and
