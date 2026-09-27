@@ -64,7 +64,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -2975,7 +2974,7 @@ internal fun StopGroupHeader(
  * The long-press menu of a near-me header or row (SPEC *Finding stops → Hiding a mode*): an
  * optional [leading] item (a row's pin/unpin), then "Hide ‹mode›" for each of [modes], then "Hide
  * ‹line›" for each of [lines], each handed to [onHideMode] as its [HiddenModes.lineKey]. Wrapped in
- * [FontSizeWindow] like the overflow menu, so the chosen text size reaches it.
+ * [StopDashMenu] like the overflow menu, so it looks the same and the chosen text size reaches it.
  */
 @Composable
 internal fun HideModeMenu(
@@ -2986,30 +2985,28 @@ internal fun HideModeMenu(
     leading: (@Composable () -> Unit)? = null,
     lines: List<LineRef> = emptyList(),
 ) {
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, modifier = Modifier.pinchFontSizeHost()) {
-        FontSizeWindow {
-            leading?.invoke()
-            // One item per group the modes fall in ("Hide all train services" for Thameslink or the Overground);
-            // hiding it hides the whole group, as the overflow menu's checkbox does.
-            modes.map(ModeGroups::of).distinctBy { it.key }.forEach { group ->
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.hide_mode, groupNameInSentence(group))) },
-                    onClick = {
-                        onDismiss()
-                        onHideMode(group.modes.first())
-                    },
-                )
-            }
-            lines.distinctBy { it.id.lowercase() }.forEach { line ->
-                val label = lineLabel(line.name.ifBlank { line.id }, line.mode)
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.hide_line, label)) },
-                    onClick = {
-                        onDismiss()
-                        onHideMode(HiddenModes.lineKey(line.id, label))
-                    },
-                )
-            }
+    StopDashMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        leading?.invoke()
+        // One item per group the modes fall in ("Hide all train services" for Thameslink or the Overground);
+        // hiding it hides the whole group, as the overflow menu's checkbox does.
+        modes.map(ModeGroups::of).distinctBy { it.key }.forEach { group ->
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.hide_mode, groupNameInSentence(group))) },
+                onClick = {
+                    onDismiss()
+                    onHideMode(group.modes.first())
+                },
+            )
+        }
+        lines.distinctBy { it.id.lowercase() }.forEach { line ->
+            val label = lineLabel(line.name.ifBlank { line.id }, line.mode)
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.hide_line, label)) },
+                onClick = {
+                    onDismiss()
+                    onHideMode(HiddenModes.lineKey(line.id, label))
+                },
+            )
         }
     }
 }
