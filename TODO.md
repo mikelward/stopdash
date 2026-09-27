@@ -1284,6 +1284,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       then reads "Stop or postcode". UX (maintainer, 2026-09-27): when the text **looks like a
       postcode**, don't search each keystroke — show a **top placeholder row "Postcode: N…"** the user
       can tap once it's a complete postcode, which then resolves it.
+      **postcode format detection** — DONE (domain `UkPostcode`): structural, full-UK-coverage
+      recognizer (not a London area allow-list, since TfL plans beyond the London postal areas) —
+      `looksLikePartial` gates the "Postcode" affordance while typing, `isComplete` gates resolvability,
+      `format` canonicalizes. Still to wire: the resolver itself (Journey Planner disambiguation seam in
+      `KtorTflClient.journeys`) and the favorite-setup UX (placeholder row + candidate chooser).
       **resolve-the-coordinate-on-pick** — DONE (favorite setup): a picked match with no inline lat/lon
       is resolved from its stops' center (`stationStops(id)` → `FixedLocation.centerOf`) on tap, with a
       per-row spinner; a result whose stops carry no position stays shown but unselectable ("no
