@@ -5,6 +5,9 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.JourneyCall
+import app.stopdash.domain.LineRef
+import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.WidgetJourney
@@ -294,7 +297,9 @@ class WidgetModelTest {
         // A stale snapshot spends the note's budget; a fresh one keeps the full budget.
         val departures = (1..6).map { departure("line$it", it * 60L) }
         val stale = DeparturesSnapshot(listOf(stop("490000001A", departures, now.minusSeconds(900))), now.minusSeconds(900))
-        val fresh = DeparturesSnapshot(listOf(stop("490000001A", departures, now)), now)
+        // Fresh and every line checked: nothing for a note to say.
+        val checks = (1..6).associate { "line$it" to LineStatusCheck(LineStatus("line$it", LineStatus.GOOD_SERVICE, "Good Service"), now) }
+        val fresh = DeparturesSnapshot(listOf(stop("490000001A", departures, now)), now, lineStatuses = checks)
         assertEquals(3, widgetModel(stale, now, maxLines = 4, maxLinesWithNote = 3).rows.size)
         assertEquals(4, widgetModel(fresh, now, maxLines = 4, maxLinesWithNote = 3).rows.size)
     }
@@ -467,6 +472,23 @@ class WidgetModelTest {
     }
 
     @Test
+    fun `a journey line's suspension with no trains shows in the journey band, once`() {
+        val suspended = LineStatus("b1", 5, "Suspended")
+        val origin = stop("490000009Z", emptyList(), now)
+            .copy(lines = listOf(LineRef("b1", "B1", "bus")))
+        val journeys = listOf(WidgetJourney("490000009Z", setOf(JourneyCall("b1", "Hill", null))))
+        val checks = mapOf("b1" to LineStatusCheck(suspended, now))
+        // A journey-only origin: the suspension is the journey's row, not "no departures".
+        val only = DeparturesSnapshot(listOf(origin), now, journeys = journeys, journeyOnlyStopIds = setOf("490000009Z"), lineStatuses = checks)
+        val rows = widgetModel(only, now).rows.map { it.row }
+        assertEquals(listOf("b1"), rows.map { it.lineId })
+        assertEquals(suspended, rows.single().status)
+        // A nearby origin: the same row, not repeated below the band.
+        val nearby = only.copy(journeyOnlyStopIds = emptySet())
+        assertEquals(listOf("b1"), widgetModel(nearby, now).rows.map { it.row.lineId })
+    }
+
+    @Test
     fun `a journey-only stop shows nothing until its journey is worked out`() {
         val snapshot = DeparturesSnapshot(
             stops = listOf(
@@ -556,5 +578,113 @@ class WidgetModelTest {
         assertTrue(model.uncertain)
         assertTrue(model.rows.isEmpty())
         assertFalse(widgetModel(DeparturesSnapshot(stops = emptyList(), fetchedAt = now), now).hasData)
+    }
+
+    private val severe = LineStatus("victoria", 6, "Severe Delays")
+
+    @Test
+    fun `a disrupted line's row carries its status, which costs a line of the budget`() {
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(stop("490A", listOf(departure("victoria", 120), departure("jubilee", 240)), now)),
+            fetchedAt = now,
+            lineStatuses = mapOf("victoria" to LineStatusCheck(severe, now)),
+        )
+        val model = widgetModel(snapshot, now, maxLines = 2)
+        // Two lines: Victoria's countdown and its status; Jubilee no longer fits.
+        assertEquals(listOf("victoria"), model.rows.map { it.row.lineId })
+        assertEquals(severe, model.rows.single().row.status)
+        // With room for all three, both rows show, only Victoria marked.
+        val roomy = widgetModel(snapshot, now, maxLines = 3)
+        assertEquals(listOf(severe, null), roomy.rows.map { it.row.status })
+    }
+
+    @Test
+    fun `a status past the staleness threshold is withheld, like an old countdown`() {
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(stop("490A", listOf(departure("victoria", 900)), now)),
+            fetchedAt = now,
+            lineStatuses = mapOf("victoria" to LineStatusCheck(severe, now.minusSeconds(300))),
+        )
+        assertNull(widgetModel(snapshot, now).rows.single().row.status)
+    }
+
+    @Test
+    fun `a suspended line with no predictions shows as its status alone`() {
+        val suspended = LineStatus("waterloo-city", 5, "Suspended")
+        val stop = stop("490A", listOf(departure("victoria", 120)), now)
+            .copy(lines = listOf(LineRef("victoria", "Victoria", "tube"), LineRef("waterloo-city", "Waterloo & City", "tube")))
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(stop),
+            fetchedAt = now,
+            lineStatuses = mapOf("waterloo-city" to LineStatusCheck(suspended, now)),
+        )
+        val rows = widgetModel(snapshot, now).rows
+        // The warning leads, as on the in-app list.
+        assertEquals(listOf("waterloo-city", "victoria"), rows.map { it.row.lineId })
+        assertTrue(rows.first().groups.isEmpty())
+        assertEquals(suspended, rows.first().row.status)
+    }
+
+    @Test
+    fun `a fresh row whose line has no live check says disruptions couldn't be checked`() {
+        val stop = stop("490A", listOf(departure("victoria", 120)), now)
+        val unchecked = DeparturesSnapshot(stops = listOf(stop), fetchedAt = now)
+        assertTrue(widgetModel(unchecked, now).statusUnknown)
+        val good = LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service")
+        val checked = unchecked.copy(lineStatuses = mapOf("victoria" to LineStatusCheck(good, now)))
+        assertFalse(widgetModel(checked, now).statusUnknown)
+        // An aged-out check is no check.
+        val aged = unchecked.copy(lineStatuses = mapOf("victoria" to LineStatusCheck(good, now.minusSeconds(300))))
+        assertTrue(widgetModel(aged, now).statusUnknown)
+    }
+
+    @Test
+    fun `the unchecked note takes the note's line of the budget`() {
+        val stop = stop("490A", listOf(departure("victoria", 120), departure("jubilee", 240)), now)
+        val model = widgetModel(DeparturesSnapshot(stops = listOf(stop), fetchedAt = now), now, maxLines = 2, maxLinesWithNote = 1)
+        assertEquals(1, model.rows.size)
+    }
+
+    @Test
+    fun `a suspension stays marked past its stop's boundary while its own check is live`() {
+        val suspended = LineStatus("waterloo-city", 5, "Suspended")
+        val stop = stop("490A", emptyList(), now.minusSeconds(320))
+            .copy(lines = listOf(LineRef("waterloo-city", "Waterloo & City", "tube")))
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(stop),
+            fetchedAt = now.minusSeconds(320),
+            lineStatuses = mapOf("waterloo-city" to LineStatusCheck(suspended, now.minusSeconds(60))),
+        )
+        assertEquals(suspended, widgetModel(snapshot, now).rows.single().row.status)
+    }
+
+    @Test
+    fun `a live suspension at a stale stop isn't pushed below the cap by fresh rows`() {
+        val suspended = LineStatus("waterloo-city", 5, "Suspended")
+        val good = LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service")
+        val staleStop = stop("490A", emptyList(), now.minusSeconds(320))
+            .copy(lines = listOf(LineRef("waterloo-city", "Waterloo & City", "tube")))
+        val freshStop = stop("490B", listOf(departure("victoria", 120)), now)
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(freshStop, staleStop),
+            fetchedAt = now,
+            lineStatuses = mapOf(
+                "waterloo-city" to LineStatusCheck(suspended, now.minusSeconds(30)),
+                "victoria" to LineStatusCheck(good, now),
+            ),
+        )
+        val model = widgetModel(snapshot, now, maxLines = 1, maxLinesWithNote = 1)
+        assertEquals(listOf("waterloo-city"), model.rows.map { it.row.lineId })
+    }
+
+    @Test
+    fun `an unchecked line that doesn't fit raises no note`() {
+        val good = LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service")
+        // Victoria (checked) fits; Jubilee (unchecked) is below the cap.
+        val stop = stop("490A", listOf(departure("victoria", 120), departure("jubilee", 240)), now)
+        val snapshot = DeparturesSnapshot(listOf(stop), now, lineStatuses = mapOf("victoria" to LineStatusCheck(good, now)))
+        val model = widgetModel(snapshot, now, maxLines = 1, maxLinesWithNote = 1)
+        assertFalse(model.statusUnknown)
+        assertEquals(listOf("victoria"), model.rows.map { it.row.lineId })
     }
 }

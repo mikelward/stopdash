@@ -4,6 +4,8 @@ import androidx.datastore.core.DataStore
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.JourneyCall
+import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.WidgetJourney
 import app.stopdash.domain.WidgetJourneyCheck
 import app.stopdash.domain.WidgetJourneysReport
@@ -446,5 +448,76 @@ class DataStoreSnapshotStoreTest {
         assertFalse(after.stops.single { it.stopId == "940GZZLUKSX" }.arrivalsFresh)
         assertEquals(emptySet<String>(), after.missingStopIds)
         assertTrue("940GZZLUKSX" !in after.journeyOnlyStopIds)
+    }
+
+    private fun check(severity: Int, at: Instant) =
+        LineStatusCheck(LineStatus("victoria", severity, if (severity == LineStatus.GOOD_SERVICE) "Good Service" else "Severe Delays"), at)
+
+    @Test
+    fun `saveIfStopsMatch keeps the app's newer line check over the worker's older one`() = runTest {
+        val backing = FakeDataStore(null)
+        val store = DataStoreSnapshotStore(backing)
+        // The app checked at +60 s: good service.
+        store.save(snapshot().copy(lineStatuses = mapOf("victoria" to check(LineStatus.GOOD_SERVICE, now.plusSeconds(60)))))
+        // A worker that loaded earlier comes back with its older "severe" verdict.
+        val worker = snapshot().copy(lineStatuses = mapOf("victoria" to check(6, now)))
+        assertTrue(store.saveIfStopsMatch(worker, listOf("940GZZLUOXC")))
+        assertEquals(LineStatus.GOOD_SERVICE, store.load()!!.lineStatuses.getValue("victoria").status.severity)
+        // And a newer worker verdict replaces the app's.
+        val newer = snapshot().copy(lineStatuses = mapOf("victoria" to check(6, now.plusSeconds(120))))
+        assertTrue(store.saveIfStopsMatch(newer, listOf("940GZZLUOXC")))
+        assertEquals(6, store.load()!!.lineStatuses.getValue("victoria").status.severity)
+    }
+
+    @Test
+    fun `saveKeepingJourneys keeps each line's newest check`() = runTest {
+        val backing = FakeDataStore(null)
+        val store = DataStoreSnapshotStore(backing)
+        store.save(snapshot().copy(lineStatuses = mapOf("victoria" to check(6, now.plusSeconds(60)))))
+        store.saveKeepingJourneys(snapshot().copy(lineStatuses = mapOf("victoria" to check(LineStatus.GOOD_SERVICE, now))))
+        assertEquals(now.plusSeconds(60), store.load()!!.lineStatuses.getValue("victoria").checkedAt)
+    }
+
+    @Test
+    fun `pruning a stop drops the checks for lines only it showed`() = runTest {
+        val backing = FakeDataStore(null)
+        val store = DataStoreSnapshotStore(backing)
+        val other = StopArrivals(
+            "940GZZLUKSX", "King's Cross St. Pancras",
+            listOf(Departure("northern", "Northern", "inbound", "Morden", null, now.plusSeconds(60), "tube")), now,
+        )
+        store.save(
+            snapshot().copy(
+                stops = snapshot().stops + other,
+                lineStatuses = mapOf(
+                    "victoria" to check(6, now),
+                    "northern" to check(6, now).let { it.copy(status = it.status.copy(lineId = "northern")) },
+                ),
+            ),
+        )
+        store.pruneStops(listOf("940GZZLUKSX"))
+        assertEquals(setOf("victoria"), store.load()!!.lineStatuses.keys)
+    }
+
+    @Test
+    fun `a journey report keeps the stored line checks`() = runTest {
+        val backing = FakeDataStore(null)
+        val store = DataStoreSnapshotStore(backing)
+        store.save(snapshot().copy(lineStatuses = mapOf("victoria" to check(6, now))))
+        val pin = WidgetJourney("940GZZLUOXC", setOf(JourneyCall("victoria", "Brixton", null)), key = "j1")
+        store.updateWidgetJourneys(pinning(pin), emptyList())
+        assertEquals(setOf("victoria"), store.load()!!.lineStatuses.keys)
+    }
+
+    @Test
+    fun `a worker's newer no-verdict check replaces the stored disruption`() = runTest {
+        val backing = FakeDataStore(null)
+        val store = DataStoreSnapshotStore(backing, clock = { now.plusSeconds(200) })
+        store.save(snapshot().copy(lineStatuses = mapOf("victoria" to check(6, now))))
+        val worker = snapshot().copy(lineStatuses = mapOf("victoria" to LineStatusCheck.noVerdict("victoria", now.plusSeconds(120))))
+        assertTrue(store.saveIfStopsMatch(worker, listOf("940GZZLUOXC")))
+        val stored = store.load()!!
+        assertFalse(stored.lineStatuses.getValue("victoria").known)
+        assertTrue(stored.liveLineStatuses(now.plusSeconds(130)).isEmpty())
     }
 }

@@ -5,6 +5,9 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.testing.WorkManagerTestInitHelper
+import app.stopdash.domain.DeparturesSnapshot
+import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusCheck
 import java.time.Instant
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
@@ -39,7 +42,8 @@ class WidgetStalenessRedrawTest {
     private fun wm() = WorkManager.getInstance(context)
 
     private fun scheduledWork(): List<WorkInfo> =
-        wm().getWorkInfosForUniqueWork(WIDGET_STALENESS_WORK).get()
+        wm().getWorkInfosForUniqueWork(WIDGET_STALENESS_WORK).get() +
+            wm().getWorkInfosForUniqueWork(WIDGET_STALENESS_WORK_NEXT).get()
 
     private fun enqueuedCount() = scheduledWork().count { it.state == WorkInfo.State.ENQUEUED }
 
@@ -95,5 +99,36 @@ class WidgetStalenessRedrawTest {
         assertEquals(0, enqueuedCount())
         scheduleStalenessRedrawFor(context, snapshotFetchedAt = null, now = now)
         assertEquals(0, enqueuedCount())
+    }
+
+    @Test
+    fun `a snapshot arms a redraw while any boundary is ahead, and none once all are past`() {
+        // The delay itself (earliest of the arrivals' and each check's expiry) is the pure
+        // DeparturesSnapshot.nextBoundary (LineStatusCheckTest).
+        val check = LineStatusCheck(LineStatus("victoria", 6, "Severe Delays"), now.minusSeconds(200))
+        val fresh = DeparturesSnapshot(stops = emptyList(), fetchedAt = now.minusSeconds(30), lineStatuses = mapOf("victoria" to check))
+        scheduleStalenessRedrawFor(context, fresh, now)
+        assertEquals(1, enqueuedCount())
+        cancelWidgetStalenessRedraw(context)
+        scheduleStalenessRedrawFor(context, fresh.copy(fetchedAt = now.minusSeconds(600)), now.plusSeconds(600))
+        assertEquals(0, enqueuedCount())
+    }
+
+    @Test
+    fun `a redraw scheduled from within a running one takes the other slot, leaving it be`() {
+        applyStalenessRedrawPlan(wm(), remaining = 2.minutes)
+        assertEquals(1, wm().getWorkInfosForUniqueWork(WIDGET_STALENESS_WORK).get().count { it.state == WorkInfo.State.ENQUEUED })
+        // The redraw in the first slot is running and its render schedules the next boundary.
+        applyStalenessRedrawPlan(wm(), remaining = 3.minutes, running = WIDGET_STALENESS_WORK)
+        assertEquals(
+            "the running slot is neither replaced nor cancelled",
+            1,
+            wm().getWorkInfosForUniqueWork(WIDGET_STALENESS_WORK).get().count { it.state == WorkInfo.State.ENQUEUED },
+        )
+        assertEquals(1, wm().getWorkInfosForUniqueWork(WIDGET_STALENESS_WORK_NEXT).get().count { it.state == WorkInfo.State.ENQUEUED })
+        // A render with nothing running goes back to the first slot and drops the other.
+        applyStalenessRedrawPlan(wm(), remaining = 4.minutes, running = null)
+        assertEquals(1, enqueuedCount())
+        assertEquals(1, wm().getWorkInfosForUniqueWork(WIDGET_STALENESS_WORK).get().count { it.state == WorkInfo.State.ENQUEUED })
     }
 }

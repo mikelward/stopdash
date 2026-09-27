@@ -1688,7 +1688,20 @@ polling cadence, and not a data refresh (fetching new data while the app isn't d
 widget stays deferred, D5). The snapshot also records which of the stops it should show a
 refresh asked for but couldn't get, with nothing earlier to fall back on; while any is missing
 the widget says its stops are partly out of date, so a first refresh where one stop failed never
-reads as complete (principle 1). **Interim data source**: until Phase 2's user-chosen watched stops exist, the
+reads as complete (principle 1). **Disruptions reach the widget too** (D3): the snapshot keeps each
+shown line's last status check, stamped with when TfL gave it, so a delayed or suspended line's
+rows carry the same "⚠ Severe Delays" mark as in the app, and a disrupted line with no countdown
+shows as its status alone. A mark is withheld once its check is as old as a stale countdown (the
+shared threshold, D4), never asserted on an old verdict: the widget redraws itself at the first
+check's expiry as it does at the arrivals' boundary. A live countdown whose line has no current
+check (never checked, the lookup failed, TfL left it out of its answer, or the check aged out)
+makes the widget say "Couldn't
+check for disruptions", as the app does, rather than read as verified-clean. The widget's own
+refresh re-checks the lines with the arrivals. A mark takes a line of the widget's height, and is never the line dropped
+to fit another departure. Good-service verdicts are kept too, so when the app and the widget's
+refresh both write, each line keeps whichever check is newer. Stop closures are still not
+persisted: they have no age-stamped rendering. A disruption dismissed in the app is still marked
+on the widget, which has no room for the dismissal and errs toward showing a warning. **Interim data source**: until Phase 2's user-chosen watched stops exist, the
 widget shows the last *nearby* set the app fetched — "the stops near where you last
 opened the app". Phase 2 replaces that with the watched stops; a live-refresh cadence for
 the widget when the app isn't driving it is deferred (D5).

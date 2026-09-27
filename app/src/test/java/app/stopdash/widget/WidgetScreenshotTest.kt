@@ -14,6 +14,9 @@ import androidx.test.core.app.ApplicationProvider
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusCheck
+import app.stopdash.domain.STATUS_DIRECTION_KEY
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.StopArrivals
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -115,6 +118,28 @@ class WidgetScreenshotTest {
                 ),
             ),
             dark = true,
+        )
+    }
+
+    @Test
+    fun `a disrupted line is marked, and a suspended one shows as its status`() {
+        val suspended = row("waterloo-city", "Waterloo & City", "", 0).copy(
+            directionKey = STATUS_DIRECTION_KEY,
+            upcoming = emptyList(),
+            status = LineStatus("waterloo-city", 5, "Suspended"),
+        )
+        val delayed = row("victoria", "Victoria", "Brixton", 120).copy(status = LineStatus("victoria", 6, "Severe Delays"))
+        capture(
+            "widget-disrupted.png",
+            WidgetModel(
+                hasData = true,
+                stale = false,
+                uncertain = false,
+                stamp = "Updated just now",
+                // Three lines, inside the default widget's four: the suspension, then a countdown
+                // and its status, as the budget would choose them.
+                rows = listOf(WidgetRowModel(suspended, emptyList()), rowModel(delayed)),
+            ),
         )
     }
 
@@ -261,6 +286,11 @@ class WidgetScreenshotTest {
                 ),
             ),
             fetchedAt = now.minusSeconds(30),
+            // Both lines checked good with the arrivals, as a complete refresh leaves them: these
+            // captures are about the line budget, not the "couldn't check" note.
+            lineStatuses = listOf("northern", "district").associateWith {
+                LineStatusCheck(LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service"), now.minusSeconds(30))
+            },
         )
         // The same budgets StopDashWidget.provideGlance derives for this size and font.
         val stacked = widgetRowsStacked(size.width, fontScale)

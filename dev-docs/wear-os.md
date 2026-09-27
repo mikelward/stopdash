@@ -267,13 +267,12 @@ the watch app ships would break pairing between old and new installs.
     the envelope carries them too.
   - The watch then shows a missing stop's absence as "some stops couldn't be refreshed", the
     widget's form, never a clean "updated just now".
-- **No disruptions, until the widget has them.** The persisted snapshot deliberately carries no
-  line status or disruption (`DeparturesSnapshot` KDoc): a point-in-time closure that ages would
-  assert something StopDash can no longer stand behind. The watch follows the widget here.
-  Disruptions reach the watch only after *Carry disruption / line-status into the widget* in
-  `TODO.md` lands. That item adds an age-stamped status to the snapshot, with the SPEC reasoning
-  and an expiry after which a disruption is withheld rather than shown. The watch then carries
-  the same checked-at time and withholds each disruption at the same expiry.
+- **Disruptions: the widget has them, the watch doesn't yet.** The snapshot now keeps each shown
+  line's status check, stamped with when TfL gave it (`DeparturesSnapshot.lineStatuses`), and the
+  widget withholds each mark at the shared staleness threshold from its own check. The envelope
+  doesn't carry the checks yet: *Disruptions on the watch* in `TODO.md` adds them, and the watch
+  then withholds each disruption at the same expiry. Stop closures stay off both: they have no
+  age-stamped rendering.
 - **When:** on every snapshot write that already pokes the widget, and on every change to the
   starred rows (starring or unstarring updates only the star store, not the snapshot, so it's a
   trigger of its own). Both happen whenever the watch app is

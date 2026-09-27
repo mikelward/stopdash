@@ -36,6 +36,7 @@ import androidx.glance.text.TextAlign
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import app.stopdash.MainActivity
+import app.stopdash.R
 import app.stopdash.StopdashDebugLog
 import app.stopdash.data.HiddenModesSetting
 import app.stopdash.data.DataStoreSnapshotStore
@@ -49,6 +50,7 @@ import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.DestinationGroup
 import app.stopdash.domain.JourneyCall
+import app.stopdash.domain.isStatusOnly
 import app.stopdash.domain.RelativeTime
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.Staleness
@@ -59,6 +61,7 @@ import app.stopdash.domain.StopGrouping
 import app.stopdash.domain.abbreviateBranch
 import app.stopdash.domain.lineCode
 import app.stopdash.ui.hiddenGroupsLabel
+import app.stopdash.ui.BudgetedRow
 import app.stopdash.ui.BudgetedRows
 import app.stopdash.ui.groupHeaderTitle
 import app.stopdash.ui.lineFillColor
@@ -133,7 +136,7 @@ class StopDashWidget : GlanceAppWidget() {
         // the render path itself: first add, host rebind, and the app's updateAll after a fetch
         // all go through here, so each arms the flip from the snapshot it just drew — and a host
         // with no widget never runs this, so a widgetless user is never scheduled for (SPEC D4).
-        scheduleStalenessRedrawFor(context, snapshot?.fetchedAt, now)
+        scheduleStalenessRedrawFor(context, snapshot, now)
         // A widget render means a widget exists, so resume the opt-in live-refresh chain if the
         // setting is on and it isn't already running — the worker retires the chain when the last
         // widget is removed, and this restarts it after one is re-added (SPEC D5, Codex P1 on #56).
@@ -218,6 +221,10 @@ internal data class WidgetModel(
     // The hidden modes' names ("Bus, Tram") when every departure left is one of theirs, so the
     // empty widget says they're hidden rather than that none are due; null otherwise.
     val onlyHidden: String? = null,
+    // A fresh row shown whose line has no live status check (never checked, the lookup failed, or
+    // the check aged out): the widget says so rather than let its countdown read as verified-clean
+    // (SPEC D3), as the app's "Couldn't check for disruptions" banner does.
+    val statusUnknown: Boolean = false,
 )
 
 /**
@@ -310,8 +317,11 @@ internal fun widgetModel(
     // watched stops replace the interim nearby source (TODO).
     // One row per direction, not per platform: a split row costs a line and a header of the widget's
     // tight budget. A merged row names its platform in the header only when every train agrees on it.
-    val ordered = DepartureRows.across(snapshot.stops, now, splitPlatforms = false)
-        .sortedBy { if (Staleness.isStale(Duration.between(it.fetchedAt, now).toKotlinDuration())) 1 else 0 }
+    // With the line statuses still young enough to stand behind (SPEC D3/D4): a disrupted line's
+    // rows carry its status, and a suspended line with no predictions gets a status row.
+    val ordered = DepartureRows.freshFirst(
+        DepartureRows.across(snapshot.stops, now, snapshot.liveLineStatuses(now), splitPlatforms = false, statusRowsWhenStale = true),
+    ) { Staleness.isStale(Duration.between(it.fetchedAt, now).toKotlinDuration()) }
     // Bound the widget by total RENDERED lines, not outer rows: a branching (line, direction)
     // row expands to one line per destination/branch group, and the widget has a fixed height,
     // so a single multi-destination service must not push later services off the bottom. Fill
@@ -332,24 +342,47 @@ internal fun widgetModel(
         val (band, rest) = rows.partition { it in journeyBand }
         return StopGrouping.groupByStop(band, warningsLead = false) + StopGrouping.groupByStop(rest, warningsLead = false)
     }
-    // The same condition WidgetContent draws the note under (a stamp is always set here).
-    val fullBudget = if (stale || uncertain) maxLinesWithNote else maxLines
-    // No room for a line under the full header: the compact layout (no title row) makes more room;
-    // if even that fits none, the widget is too small to show a whole departure.
-    val compact = fullBudget < 1
-    val budget = if (compact) maxLinesCompact else fullBudget
+    // Whether a drawn row with a live countdown has a line with no current status check (a stale
+    // row's countdown is withheld anyway): the widget then says it couldn't check for disruptions.
+    fun unchecked(chosen: List<BudgetedRow>) = chosen.any { c ->
+        c.groups.isNotEmpty() && !Staleness.isStale(Duration.between(c.row.fetchedAt, now).toKotlinDuration()) &&
+            !snapshot.statusKnown(c.row.lineId, now)
+    }
+    fun layout(withNote: Boolean): Triple<Boolean, Int, List<BudgetedRow>> {
+        // The same condition WidgetContent draws the note under (a stamp is always set here).
+        val fullBudget = if (withNote) maxLinesWithNote else maxLines
+        // No room for a line under the full header: the compact layout (no title row) makes more
+        // room; if even that fits none, the widget is too small to show a whole departure.
+        val compact = fullBudget < 1
+        val budget = if (compact) maxLinesCompact else fullBudget
+        // The line-budgeted rows and their stop headers, chosen the way every glanceable surface
+        // chooses them (the watch tile too): see [BudgetedRows.select].
+        return Triple(compact, budget, BudgetedRows.select(pinned, budget, WIDGET_MAX_TIMES, topology, ::grouped))
+    }
+    var (compact, budget, chosen) = layout(withNote = stale || uncertain)
+    // The unchecked note is judged on the rows that fit, not every candidate, so it never speaks for
+    // a line the user can't see. It takes a line of the budget (the compact layout puts it in place
+    // of the stamp instead), so the rows are chosen again with room for it and judged once more: a
+    // row the note's line pushed out takes its note with it.
+    var statusUnknown = unchecked(chosen)
+    if (statusUnknown && !stale && !uncertain && !compact) {
+        val (c2, b2, again) = layout(withNote = true)
+        compact = c2
+        budget = b2
+        chosen = again
+        statusUnknown = unchecked(again)
+    }
     // Only when there's a departure to fit: with none, the empty states ("No upcoming departures",
     // "may be out of date") are the honest message and fit any size.
     val tooSmall = budget < 1 && pinned.isNotEmpty()
-    // The line-budgeted rows and their stop headers, chosen the way every glanceable surface
-    // chooses them (the watch tile too): see [BudgetedRows.select].
-    val rows = BudgetedRows.select(pinned, budget, WIDGET_MAX_TIMES, topology, ::grouped).map {
+    val rows = chosen.map {
         WidgetRowModel(it.row, it.groups, it.header?.let { header -> WidgetHeader(header.text, header.spoken) })
     }
     return WidgetModel(
         hasData = true,
         stale = stale,
         uncertain = uncertain,
+        statusUnknown = statusUnknown,
         stamp = "Updated ${RelativeTime.formatAge(age.toKotlinDuration())}",
         rows = rows,
         compact = compact,
@@ -371,15 +404,23 @@ internal fun pinJourneys(ordered: List<DepartureRow>, snapshot: DeparturesSnapsh
     val calls = snapshot.journeys.groupBy({ it.originId }, { it.calls }).mapValues { (_, c) -> c.flatten().toSet() }
     return ordered.mapNotNull { row ->
         val at = calls[row.stopId] ?: return@mapNotNull null
+        // A journey line's suspension with no predicted train is the journey's news: it stays, as
+        // its status alone, rather than the journey reading as having no departure.
+        if (journeyStatusRow(row, at)) return@mapNotNull row
         val calling = row.upcoming.filter { JourneyCall.of(it) in at }
         if (calling.isEmpty()) null else row.copy(upcoming = calling, destination = calling.first().destination)
     }.sortedWith(
         compareBy(
-            { if (Staleness.isStale(Duration.between(it.fetchedAt, now).toKotlinDuration())) 1 else 0 },
-            { it.upcoming.first().expectedArrival },
+            // A status-only row has no countdown to go stale (only a live check reaches it), and leads.
+            { if (!it.isStatusOnly && Staleness.isStale(Duration.between(it.fetchedAt, now).toKotlinDuration())) 1 else 0 },
+            { it.upcoming.firstOrNull()?.expectedArrival ?: Instant.MIN },
         ),
     )
 }
+
+/** Whether [row] is a status-only row for a line one of the journeys from its stop ([at]) rides. */
+private fun journeyStatusRow(row: DepartureRow, at: Set<JourneyCall>) =
+    row.isStatusOnly && at.any { it.lineId == row.lineId }
 
 /**
  * [ordered] without what [pinJourneys] lifted out: a journey-only stop (not nearby) shows nothing
@@ -390,6 +431,8 @@ internal fun withoutJourneys(ordered: List<DepartureRow>, snapshot: DeparturesSn
     return ordered.mapNotNull { row ->
         if (row.stopId in snapshot.journeyOnlyStopIds) return@mapNotNull null
         val at = calls[row.stopId] ?: return@mapNotNull row
+        // Lifted into the journey band by [pinJourneys]; not shown twice.
+        if (journeyStatusRow(row, at)) return@mapNotNull null
         if (row.upcoming.isEmpty()) return@mapNotNull row
         val rest = row.upcoming.filterNot { JourneyCall.of(it) in at }
         if (rest.isEmpty()) null else row.copy(upcoming = rest, destination = rest.first().destination)
@@ -423,6 +466,7 @@ internal fun WidgetContent(
                 model.stamp == null -> null
                 model.stale -> "Tap to refresh"
                 model.uncertain -> "Some stops out of date"
+                model.statusUnknown -> LocalContext.current.getString(R.string.disruptions_unknown)
                 else -> null
             }
             // A narrow widget has no room for "Updated 14 min ago" beside the title, so it drops the
@@ -439,6 +483,7 @@ internal fun WidgetContent(
                     model.stamp == null -> null
                     model.stale -> "Tap to refresh"
                     model.uncertain -> "Partly stale"
+                    model.statusUnknown -> LocalContext.current.getString(R.string.disruptions_unknown)
                     else -> stamp
                 }
                 status?.let { WidgetStatusLine(it) }
@@ -592,6 +637,21 @@ private fun WidgetRow(rowModel: WidgetRowModel, now: Instant, fontScale: Float, 
     // Every line carries its own pill, as every row in the in-app card does, so a branch's second
     // destination never reads as belonging to a different (pill-less) service.
     Column(modifier = GlanceModifier.fillMaxWidth()) {
+        // A disrupted line with no countdown to show (its status row): the pill and the status on
+        // one line, so the disruption isn't left out for want of a departure (SPEC D3).
+        if (rowModel.groups.isEmpty()) {
+            row.status?.let { status ->
+                Row(
+                    modifier = GlanceModifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    WidgetPill(row, fontScale)
+                    Spacer(GlanceModifier.width(8.dp))
+                    WidgetDisruption(status.description, GlanceModifier.defaultWeight())
+                }
+            }
+            return@Column
+        }
         rowModel.groups.forEachIndexed { index, group ->
             if (index > 0) Spacer(GlanceModifier.height(4.dp))
             val label = widgetLineLabel(row, group)
@@ -623,7 +683,30 @@ private fun WidgetRow(rowModel: WidgetRowModel, now: Instant, fontScale: Float, 
                 }
             }
         }
+        // The line's disruption under its countdowns, so they aren't read as a normal service
+        // (SPEC D3). Its line was counted in the budget ([BudgetedRows.select]).
+        // Stacked rows put the destination under the pill, so the status lines up with it there;
+        // otherwise it's indented to the destination column (the pill's width plus the 8dp gap),
+        // so it reads as part of this service rather than a row of its own.
+        row.status?.let { status ->
+            Spacer(GlanceModifier.height(4.dp))
+            Row(modifier = GlanceModifier.fillMaxWidth()) {
+                if (!stacked) Spacer(GlanceModifier.width(widgetPillWidth(fontScale) + 8.dp))
+                WidgetDisruption(status.description, GlanceModifier.defaultWeight())
+            }
+        }
     }
+}
+
+/** A disrupted line's status, "⚠ Severe Delays", in the error color, as the in-app card marks it. */
+@androidx.compose.runtime.Composable
+private fun WidgetDisruption(description: String, modifier: GlanceModifier) {
+    Text(
+        text = "⚠ $description",
+        maxLines = 1,
+        modifier = modifier.semantics { contentDescription = "Disrupted: $description" },
+        style = TextStyle(color = GlanceTheme.colors.error, fontWeight = FontWeight.Medium, fontSize = 12.sp),
+    )
 }
 
 /**
@@ -653,6 +736,10 @@ private fun WidgetCountdown(text: String, stale: Boolean) {
         ),
     )
 }
+
+/** A pill's whole width at [fontScale]: its label slot (see [WidgetPill]) plus 8dp padding each side. */
+private fun widgetPillWidth(fontScale: Float) =
+    WIDGET_PILL_LABEL_WIDTH * fontScale.coerceAtMost(WIDGET_PILL_MAX_SCALE) + 16.dp
 
 /** The line pill — short code visible, full line name to TalkBack, fixed-width so a column of
  *  pills and the labels beside them line up (SPEC fixed-width pill invariant). */

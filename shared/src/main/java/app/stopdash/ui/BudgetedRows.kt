@@ -10,7 +10,10 @@ import app.stopdash.domain.StopGrouping
 /** A stop header above a group of rows: the place's one-line [text] and what a screen reader hears. */
 data class GroupHeader(val text: String, val spoken: String)
 
-/** A chosen row, the destination lines of it that fit, and the header drawn above it, if any. */
+/**
+ * A chosen row, the destination lines of it that fit, and the header drawn above it, if any. A row
+ * with a [DepartureRow.status] also draws its status line, which [BudgetedRows.select] counts.
+ */
 data class BudgetedRow(val row: DepartureRow, val groups: List<DestinationGroup>, val header: GroupHeader?)
 
 /**
@@ -53,25 +56,34 @@ object BudgetedRows {
         // groupings (place plus split, read from each row), so a chosen group looks up its
         // full-context twin.
         val allLines = pinned.map { DepartureRows.destinationLines(it, maxTimes, topology) }
-        val candidates = pinned.filterIndexed { i, _ -> allLines[i].isNotEmpty() }
+        // A disrupted line with no countdown (a suspended line, its status row) is shown too: its
+        // status line is all it has, and leaving it out would hide the disruption (SPEC D3).
+        fun shows(row: DepartureRow, lines: List<DestinationGroup>) = lines.isNotEmpty() || row.status != null
+        val candidates = pinned.filterIndexed { i, row -> shows(row, allLines[i]) }
         val fullGroups = StopGrouping.groupByStop(candidates, warningsLead = false).associateBy { it.key }
         fun context(group: StopGroup): StopGroup = fullGroups[group.key] ?: group
         fun headed(group: StopGroup): Boolean = headersOn && context(group).showHeader
         fun cost(rows: List<DepartureRow>): Int = grouped(rows).sumOf { group ->
-            (if (headed(group)) 1 else 0) + group.rows.sumOf { shownLines.getValue(it).size }
+            (if (headed(group)) 1 else 0) + group.rows.sumOf { shownLines.getValue(it).size + statusLines(it) }
         }
         for ((row, lines) in pinned.zip(allLines)) {
-            if (lines.isEmpty()) continue
+            if (!shows(row, lines)) continue
             selected += row
             shownLines[row] = lines
             val over = cost(selected) - budget
             if (over <= 0) continue
             // Over budget: a branching row may still fit with fewer of its destination lines (each
-            // line dropped saves exactly one); otherwise it's skipped. The scan never stops early: a
+            // line dropped saves exactly one); otherwise it's skipped. A row's status line is never
+            // the one dropped: a countdown without its disruption is the failure the mark prevents. The scan never stops early: a
             // row that opens a new group pays for its header too, so a later row of an already-shown
             // group may still fit after one that couldn't. The rows are few; checking each is cheap.
             if (lines.size - over >= 1) {
                 shownLines[row] = lines.take(lines.size - over)
+            } else if (row.status != null && over <= lines.size) {
+                // Room for the status but no countdown beside it: the disrupted line shows as its
+                // status alone, so it isn't dropped for want of a line (and the surface never falls
+                // to a "No departures" it can't stand behind).
+                shownLines[row] = emptyList()
             } else {
                 selected.removeAt(selected.lastIndex)
                 shownLines.remove(row)
@@ -94,4 +106,7 @@ object BudgetedRows {
             }
         }
     }
+
+    /** The lines [row]'s status costs: one when it has one to show. */
+    private fun statusLines(row: DepartureRow): Int = if (row.status != null) 1 else 0
 }

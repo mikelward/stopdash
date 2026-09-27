@@ -7,6 +7,8 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
+import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.Staleness
 import java.time.Duration as JavaDuration
 import java.time.Instant
@@ -17,6 +19,20 @@ import kotlinx.coroutines.CancellationException
 
 /** Unique-work name so each scheduled redraw REPLACEs the previous one — at most one pending. */
 internal const val WIDGET_STALENESS_WORK = "stopdash-widget-staleness-redraw"
+
+/**
+ * The second slot the next boundary goes into while a redraw in [WIDGET_STALENESS_WORK] is running
+ * (and the other way round). With more than one boundary ahead (a line check's expiry, then the
+ * arrivals'), the render a redraw triggers schedules the next one; REPLACE on the running redraw's
+ * own name would cancel it before its render commits, so the successor takes the other slot.
+ */
+internal const val WIDGET_STALENESS_WORK_NEXT = "stopdash-widget-staleness-redraw-next"
+
+private const val SLOT_KEY = "slot"
+
+/** The slot of the redraw running now in this process, if any; set by [WidgetStalenessWorker]. */
+@Volatile
+internal var runningStalenessSlot: String? = null
 
 /**
  * Arms (or cancels) the one-shot render-only redraw at the staleness boundary of the snapshot
@@ -37,6 +53,16 @@ internal const val WIDGET_STALENESS_WORK = "stopdash-widget-staleness-redraw"
  * once stale (the boundary redraw re-renders, finds the snapshot already stale, and cancels) —
  * negligible battery, not a polling cadence (a live *refresh* cadence stays deferred, SPEC D5).
  */
+internal fun scheduleStalenessRedrawFor(context: Context, snapshot: DeparturesSnapshot?, now: Instant) {
+    // The snapshot's next change on its own: its staleness boundary, or a line check's expiry
+    // (a disruption's mark goes, or a line turns unchecked), whichever is first. The redraw there
+    // re-renders and arms the next one, until none is left.
+    val boundary = snapshot?.nextBoundary(now)
+    val remaining = boundary?.let { JavaDuration.between(now, it).toKotlinDuration() } ?: Duration.ZERO
+    applyStalenessRedrawPlan(WorkManager.getInstance(context.applicationContext), remaining)
+}
+
+/** The arrivals-only form of [scheduleStalenessRedrawFor]: the boundary of a snapshot fetched at [snapshotFetchedAt]. */
 internal fun scheduleStalenessRedrawFor(context: Context, snapshotFetchedAt: Instant?, now: Instant) {
     val remaining = if (snapshotFetchedAt == null) {
         Duration.ZERO
@@ -59,20 +85,33 @@ internal fun scheduleStalenessRedrawFor(context: Context, snapshotFetchedAt: Ins
  * render REPLACEs it. Cancelling when the widget is *removed* is [cancelWidgetStalenessRedraw],
  * driven from `onDelete`, not from a render.
  */
-internal fun applyStalenessRedrawPlan(workManager: WorkManager, remaining: Duration) {
+internal fun applyStalenessRedrawPlan(
+    workManager: WorkManager,
+    remaining: Duration,
+    running: String? = runningStalenessSlot,
+) {
     if (remaining == Duration.ZERO) return
+    // Into the slot that isn't running a redraw right now, so a successor scheduled from within a
+    // redraw's own render never replaces (cancels) it; the other slot's pending wake, if it isn't
+    // the running one, is dropped so only one boundary is ever pending.
+    val target = if (running == WIDGET_STALENESS_WORK) WIDGET_STALENESS_WORK_NEXT else WIDGET_STALENESS_WORK
+    val other = if (target == WIDGET_STALENESS_WORK) WIDGET_STALENESS_WORK_NEXT else WIDGET_STALENESS_WORK
     workManager.enqueueUniqueWork(
-        WIDGET_STALENESS_WORK,
+        target,
         ExistingWorkPolicy.REPLACE,
         OneTimeWorkRequestBuilder<WidgetStalenessWorker>()
             .setInitialDelay(remaining.inWholeMilliseconds, TimeUnit.MILLISECONDS)
+            .setInputData(workDataOf(SLOT_KEY to target))
             .build(),
     )
+    if (other != running) workManager.cancelUniqueWork(other)
 }
 
 /** Cancels a pending staleness redraw — called when the last widget instance is removed. */
 internal fun cancelWidgetStalenessRedraw(context: Context) {
-    WorkManager.getInstance(context.applicationContext).cancelUniqueWork(WIDGET_STALENESS_WORK)
+    val workManager = WorkManager.getInstance(context.applicationContext)
+    workManager.cancelUniqueWork(WIDGET_STALENESS_WORK)
+    workManager.cancelUniqueWork(WIDGET_STALENESS_WORK_NEXT)
 }
 
 /**
@@ -84,7 +123,14 @@ class WidgetStalenessWorker(appContext: Context, params: WorkerParameters) :
     CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result =
         try {
-            StopDashWidget().updateAll(applicationContext)
+            // Marks this slot running while the render it triggers schedules the next boundary
+            // ([applyStalenessRedrawPlan]), so that one goes into the other slot.
+            runningStalenessSlot = inputData.getString(SLOT_KEY) ?: WIDGET_STALENESS_WORK
+            try {
+                StopDashWidget().updateAll(applicationContext)
+            } finally {
+                runningStalenessSlot = null
+            }
             Result.success()
         } catch (e: CancellationException) {
             throw e

@@ -27,8 +27,11 @@ import app.stopdash.data.WatchRefreshOutcome
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.TflException
+import app.stopdash.domain.LineStatus
+import app.stopdash.domain.TflClient
 import app.stopdash.domain.WidgetRefresh
 import app.stopdash.ui.ARRIVALS_REUSE
+import app.stopdash.ui.LINE_STATUS_REUSE
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.TimeUnit
@@ -166,6 +169,9 @@ suspend fun applyWidgetRefreshSetting(context: Context, enabled: Boolean) {
  * Re-fetches arrivals for the widget's persisted stops and saves the refreshed snapshot (which
  * pokes the widget to re-render), then schedules the next tick — the opt-in "live widget" loop
  * (SPEC D5). Reads no location (D1): it refreshes exactly the stops already in the snapshot.
+ *
+ * Its stops' line statuses are re-checked in the same cycle, so the widget's disruption marks stay
+ * as fresh as its countdowns (SPEC D3).
  *
  * Best-effort throughout: a failed cycle keeps the last-good on the widget and still reschedules,
  * so a transient TfL error doesn't break the chain; cancellation propagates. The chain stops only
@@ -354,7 +360,7 @@ internal suspend fun refreshStoredSnapshot(
                 warn = ::logWidgetSnapshotWarning,
             ))
             ran = true
-            val refreshed = WidgetRefresh.refreshedArrivals(
+            val arrivalsRefreshed = WidgetRefresh.refreshedArrivals(
                 prior,
                 Instant.now(),
                 // Skip a stop the app fetched moments ago: same data, same shared rate budget.
@@ -379,6 +385,15 @@ internal suspend fun refreshStoredSnapshot(
                         WatchRefreshOutcome.Failure.UNREACHABLE
                     }
                     null
+                }
+            }
+            // With fresh arrivals, their lines' statuses too, in one request (lines checked moments
+            // ago reused), so a disrupted service stays marked while its countdowns are live (SPEC
+            // D3). A failed lookup keeps the prior checks, which then age out like a countdown (D4);
+            // it doesn't fail the refresh, whose arrivals are still good.
+            val refreshed = arrivalsRefreshed?.let { snapshot ->
+                WidgetRefresh.refreshedLineStatuses(snapshot, Instant.now(), reuse = LINE_STATUS_REUSE, answeredAt = Instant::now) { lineIds ->
+                    widgetLineStatuses(client, lineIds)
                 }
             }
             savedNothing = refreshed == null
@@ -416,3 +431,23 @@ internal suspend fun refreshStoredSnapshot(
     val tried = attempted.get()
     return SnapshotRefreshReport(prior.stops.size, succeeded.get(), prior.stops.size - tried, failures.toList(), savedNothing, saved)
 }
+
+/**
+ * The widget refresh's status lookup for [lineIds]: TfL's answer, or null when the call failed, so
+ * the prior checks age out ([WidgetRefresh.refreshedLineStatuses]). TfL not recognising any of the
+ * lines (a National Rail-only set) is an answer, not a failure: an empty one, so each line gets a
+ * no-verdict check and isn't asked about again until that check is past the reuse window, as the
+ * app remembers the lines TfL doesn't know.
+ */
+internal suspend fun widgetLineStatuses(client: TflClient, lineIds: Set<String>): List<LineStatus>? =
+    try {
+        client.lineStatuses(lineIds)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: TflException.NotFound) {
+        logWidgetSnapshotWarning("widget refresh: TfL doesn't know ${lineIds.size} line(s); recorded as no verdict")
+        emptyList()
+    } catch (e: Exception) {
+        logWidgetSnapshotWarning("widget refresh line status failed for ${lineIds.size} line(s): ${e::class.simpleName}")
+        null
+    }
