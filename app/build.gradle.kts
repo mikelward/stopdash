@@ -80,6 +80,17 @@ val anyReleaseKeystoreVarSet = releaseKeystorePath != null || releaseKeystorePas
 val releaseSigningConfigured = releaseKeystorePath != null && releaseKeystorePassword != null &&
     releaseKeyAlias != null && releaseKeyPassword != null
 
+// Which launcher icon and name each build wears, so a phone carrying both the
+// Play build and a debug build says which is which from the home screen and the
+// app list (the debug build co-installs as `.debug`). Keyed on the build type
+// alone, as in the sibling apps. The shipping label stays a string resource so it
+// can be localized; the badged one is a literal that never reaches a store
+// listing. The in-app header keeps @string/app_name: it is baked into screenshots.
+val releaseLauncherIcon = "@mipmap/ic_launcher"
+val debugLauncherIcon = "@mipmap/ic_launcher_debug"
+val releaseAppLabel = "@string/app_name"
+val debugAppLabel = "StopDash Debug"
+
 android {
     namespace = "app.stopdash"
     compileSdk = 37
@@ -139,6 +150,8 @@ android {
             // Only the release build is a real Play app, so only it checks Play for an
             // available update (drives the overflow "update available" dot).
             buildConfigField("boolean", "PLAY_UPDATE_CHECKS_ENABLED", "true")
+            manifestPlaceholders["launcherIcon"] = releaseLauncherIcon
+            manifestPlaceholders["appLabel"] = releaseAppLabel
         }
         debug {
             // Suffixed so a debug build co-installs beside a release-signed
@@ -147,6 +160,8 @@ android {
             // The `.debug` applicationId isn't a Play app, so an update check there only
             // ever fails — never run it (PlayUpdateChecker gates on this).
             buildConfigField("boolean", "PLAY_UPDATE_CHECKS_ENABLED", "false")
+            manifestPlaceholders["launcherIcon"] = debugLauncherIcon
+            manifestPlaceholders["appLabel"] = debugAppLabel
         }
     }
 

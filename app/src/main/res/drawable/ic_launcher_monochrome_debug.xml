@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- The plain mark (ic_launcher_foreground), unscaled: the badge sits below
+         it rather than shrinking it. Keep the paths in step with the plain
+         foreground. -->
+    <path android:fillColor="#E32017" android:pathData="M25.5,39.5 h37 a3.5,3.5 0 0 1 0,7 h-37 a3.5,3.5 0 0 1 0,-7 z" />
+    <path android:fillColor="#0098D4" android:pathData="M25.5,50.5 h37 a3.5,3.5 0 0 1 0,7 h-37 a3.5,3.5 0 0 1 0,-7 z" />
+    <path android:fillColor="#FFD300" android:pathData="M25.5,61.5 h37 a3.5,3.5 0 0 1 0,7 h-37 a3.5,3.5 0 0 1 0,-7 z" />
+    <path android:fillColor="#000000" android:pathData="M60.5,54 a3.5,3.5 0 1 0 7,0 a3.5,3.5 0 1 0 -7,0 z" />
+    <path android:strokeColor="#000000" android:strokeWidth="7" android:strokeLineCap="butt" android:pathData="M64,54 L84,54" />
+    <path android:strokeColor="#000000" android:strokeWidth="7" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M77,47 L84,54 L77,61" />
+    <!-- Themed icons tint this whole layer one color, so the "DEBUG" lettering
+         is cut out of the bar (one even-odd path) rather than drawn over it,
+         where it would vanish into the bar. The lettering is Simmo's debug badge
+         (traced from Liberation Sans Bold, SIL OFL 1.1), authored on a 512-unit
+         grid and scaled to this 108dp viewport. The bar starts at 70dp, just
+         below the mark's yellow line, so it covers none of the mark. -->
+    <group
+        android:scaleX="0.2109375"
+        android:scaleY="0.2109375">
+        <path
+            android:fillColor="#FFFFFF"
+            android:fillType="evenOdd"
+            android:pathData="M0,331.9 H512 V512 H0 Z M196.58 360.05Q196.58 365.47 194.46 369.50Q192.34 373.54 188.45 375.68Q184.56 377.81 179.54 377.81H165.38V342.81H178.05Q186.90 342.81 191.74 347.27Q196.58 351.73 196.58 360.05ZM189.21 360.05Q189.21 354.41 186.28 351.44Q183.34 348.48 177.90 348.48H172.71V372.15H178.92Q183.64 372.15 186.42 368.89Q189.21 365.64 189.21 360.05Z M203.14 377.81V342.81H230.66V348.48H210.47V357.27H229.15V362.93H210.47V372.15H231.68V377.81Z M269.12 367.83Q269.12 372.60 265.54 375.20Q261.96 377.81 255.60 377.81H238.09V342.81H254.11Q260.52 342.81 263.81 345.04Q267.10 347.26 267.10 351.61Q267.10 354.59 265.45 356.64Q263.80 358.69 260.42 359.41Q264.67 359.90 266.89 362.08Q269.12 364.25 269.12 367.83ZM259.73 352.60Q259.73 350.24 258.22 349.25Q256.72 348.25 253.76 348.25H245.42V356.92H253.81Q256.92 356.92 258.32 355.84Q259.73 354.76 259.73 352.60ZM261.76 367.26Q261.76 362.34 254.71 362.34H245.42V372.37H254.98Q258.51 372.37 260.14 371.09Q261.76 369.81 261.76 367.26Z M290.40 378.31Q283.17 378.31 279.34 374.78Q275.50 371.25 275.50 364.70V342.81H282.83V364.13Q282.83 368.27 284.80 370.42Q286.78 372.57 290.60 372.57Q294.53 372.57 296.64 370.32Q298.75 368.08 298.75 363.88V342.81H306.08V364.32Q306.08 370.98 301.97 374.65Q297.85 378.31 290.40 378.31Z M330.22 372.57Q333.08 372.57 335.76 371.74Q338.44 370.91 339.91 369.62V364.77H331.36V359.36H346.62V372.22Q343.83 375.08 339.37 376.69Q334.92 378.31 330.02 378.31Q321.48 378.31 316.88 373.58Q312.29 368.85 312.29 360.15Q312.29 351.51 316.91 346.90Q321.53 342.29 330.20 342.29Q342.52 342.29 345.87 351.41L339.11 353.44Q338.02 350.79 335.69 349.42Q333.35 348.05 330.20 348.05Q325.03 348.05 322.35 351.18Q319.66 354.31 319.66 360.15Q319.66 366.09 322.43 369.33Q325.20 372.57 330.22 372.57Z" />
+    </group>
+</vector>
