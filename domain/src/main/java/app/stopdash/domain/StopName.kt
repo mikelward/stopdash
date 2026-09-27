@@ -34,6 +34,8 @@ fun cleanStopName(raw: String): String {
         " DLR Station",
         " Rail Station",
         " Overground Station",
+        " Bus Station",
+        " Coach Station",
         " Station",
     )
     for (suffix in suffixes) {
