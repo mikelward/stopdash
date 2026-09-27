@@ -226,6 +226,7 @@ class TripScreenScreenshotTest {
         state: TripViewModel.State,
         routeStops: RouteStopsRepository = RouteStopsRepository(source),
         menu: AppMenuActions? = null,
+        access: Duration = Duration.ofMinutes(2),
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -234,7 +235,7 @@ class TripScreenScreenshotTest {
                     title = "To Canary Wharf",
                     state = state,
                     now = now,
-                    access = Duration.ofMinutes(2),
+                    access = access,
                     routeStops = routeStops,
                     onBack = {},
                     onRetry = {},
@@ -295,10 +296,35 @@ class TripScreenScreenshotTest {
         composeRule.onAllNodesWithText("Canary Wharf", useUnmergedTree = true).assertCountEquals(2)
         // A later ride says how often its line runs, from its live trains: the Elizabeth line at 14,
         // 18 and 24 is every 4 to 6 minutes. The Jubilee, with one train known, says nothing.
-        composeRule.onAllNodesWithText("Every 4–6 min", useUnmergedTree = true).assertCountEquals(1)
-        composeRule.onAllNodesWithText("Every", substring = true, useUnmergedTree = true).assertCountEquals(1)
-        // The top row says where each starts, in place of the lines' pills.
+        // ↻ for "every", to save width, read out as the word.
+        composeRule.onAllNodesWithText("↻ 4–6 min", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onAllNodesWithText("↻", substring = true, useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onAllNodesWithContentDescription("Every 4 to 6 min", useUnmergedTree = true).assertCountEquals(1)
+        // Above the rides, the walk to where each starts: 2 min, so a train sooner than that reads
+        // as grayed for a reason. It takes the place of "From ‹stop›" in the top row.
+        composeRule.onAllNodes(hasTestTag("walkToStart"), useUnmergedTree = true).assertCountEquals(2)
+        composeRule.onAllNodesWithContentDescription("~2 min walk to Highbury & Islington", useUnmergedTree = true).assertCountEquals(2)
+        composeRule.onAllNodesWithText("From", substring = true, useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    // A first stop right there has no walk to show: the top row says where the trip starts instead.
+    @Test
+    fun a_route_card_with_no_walk_says_where_it_starts() {
+        show(planned.copy(routes = listOf(viaCanadaWater, viaWhitechapel)), access = Duration.ZERO)
+        composeRule.onAllNodes(hasTestTag("walkToStart"), useUnmergedTree = true).assertCountEquals(0)
         composeRule.onAllNodesWithText("From Highbury & Islington", useUnmergedTree = true).assertCountEquals(2)
+    }
+
+    @Test
+    fun an_arrivals_range_ends_in_minutes_within_its_hour() {
+        val arrival = Instant.parse("2026-09-26T10:26:00Z") // 11:26 in London
+        assertEquals("34", arrivalEnd(arrival, Duration.ofMinutes(8)))
+        assertEquals("12:04", arrivalEnd(Instant.parse("2026-09-26T10:56:00Z"), Duration.ofMinutes(8)))
+        // Under three minutes it's no range at all.
+        assertEquals(null, arrivalEnd(arrival, Duration.ofMinutes(2)))
+        assertEquals("29", arrivalEnd(arrival, Duration.ofMinutes(3)))
+        // Across the autumn clock change the hour repeats: 01:58 BST + 8 min is 01:06 GMT, shown whole.
+        assertEquals("01:06", arrivalEnd(Instant.parse("2026-10-25T00:58:00Z"), Duration.ofMinutes(8)))
     }
 
     @Test

@@ -208,6 +208,13 @@
     <string name="trip_duration_arrival">%1$d min · ~%2$s</string>
     <!-- The same, with a leg timed from the Planner's timetable because no live train is known yet. -->
     <string name="trip_duration_arrival_estimated">%1$d min · est. %2$s</string>
+    <!-- An estimated arrival that may be some minutes later, waiting for a frequent line: the
+         duration's range, then the arrival's (%3$s–%4$s, the end without its hour when that's the
+         same: "11:26–34"). -->
+    <string name="trip_duration_arrival_range">%1$d–%2$d min · est. %3$s–%4$s</string>
+    <!-- An estimated arrival a longer wait for a frequent line could make later by an amount nothing
+         times (it could miss a connection): "or later", as "+". %1$d is minutes, %2$s a clock time. -->
+    <string name="trip_duration_arrival_open">%1$d+ min · est. %2$s+</string>
     <!-- A route whose Planner train is missed with no live train known: no honest arrival to give. -->
     <string name="trip_arrival_unknown">Arrival unknown</string>
     <!-- Between a leg's card and the next: how far it rides. %1$d stops, %2$s where it gets off. -->
@@ -225,12 +232,19 @@
     <!-- A route's first-leg times while its boarding stop's arrivals are still being fetched: one
          word that fits the times slot, no ellipsis (SPEC *Text is chosen to fit its space*). -->
     <string name="trip_times_loading">Loading</string>
-    <!-- A trip card's top row: the stop its routes start from, before duration · arrival. -->
+    <!-- A trip card's top row when its first stop is right there: the stop, before duration · arrival. -->
     <string name="trip_from">From %1$s</string>
-    <!-- How often a later ride's line runs, from its live trains: a steady service. %1$d is minutes. -->
-    <string name="trip_headway">Every %1$d min</string>
+    <!-- A trip card's walk to its first stop, after the stop's name: its minutes. -->
+    <string name="trip_walk_minutes">%1$d min</string>
+    <!-- How often a later ride's line runs, from its live trains, ↻ for "every" to save width: a
+         steady service. %1$d is minutes. -->
+    <string name="trip_headway">↻ %1$d min</string>
     <!-- The same, as a range: the middle half of the gaps between trains. -->
-    <string name="trip_headway_range">Every %1$d–%2$d min</string>
+    <string name="trip_headway_range">↻ %1$d–%2$d min</string>
+    <!-- How often a later ride's line runs, for screen readers, in place of the ↻ form. -->
+    <string name="trip_headway_description">Every %1$d min</string>
+    <!-- The same, as a range. -->
+    <string name="trip_headway_range_description">Every %1$d to %2$d min</string>
     <string name="trip_walk">%1$d min walk to %2$s</string>
     <!-- Time allowed to change between two rides, shown between their cards. -->
     <!-- A first-leg train for screen readers: its countdown ("3 min") and destination. -->
