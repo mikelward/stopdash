@@ -11,6 +11,7 @@ import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlacesSet
+import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.StationMatch
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -140,6 +141,31 @@ class FavoritePlacesScreenshotTest {
         )
         composeRule.onNodeWithText("Selected: Oxford Circus").assertIsDisplayed()
         captureSnapshot("favorite-places-editor-selected.png")
+    }
+
+    @Test
+    fun favorite_places_editor_postcode() {
+        // The query is a postcode, resolved to a couple of candidate places to choose from (SPEC D9).
+        // Synthetic postcodes/coordinates — no real place (SPEC *Privacy*).
+        show(
+            FavoritePlacesViewModel.State(
+                places = FavoritePlacesSet.Loaded(emptyList()),
+                loaded = true,
+                editor = FavoritePlacesViewModel.Editor(
+                    kind = FavoriteKind.CUSTOM,
+                    existingId = null,
+                    label = "",
+                    query = "X1 9XX",
+                    postcodeCandidates = listOf(
+                        PlaceCandidate("X1 9XX", Coordinates(51.5, -0.12)),
+                        PlaceCandidate("X1 9XY", Coordinates(51.5, -0.11)),
+                    ),
+                ),
+            ),
+        )
+        composeRule.onNodeWithText("Postcode X1 9XX").assertIsDisplayed()
+        composeRule.onNodeWithText("X1 9XY").assertIsDisplayed()
+        captureSnapshot("favorite-places-editor-postcode.png")
     }
 
     private fun captureSnapshot(name: String, widthPx: Int = 1080, heightPx: Int = 1920) {

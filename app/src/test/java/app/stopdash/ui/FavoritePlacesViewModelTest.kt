@@ -7,6 +7,8 @@ import app.stopdash.domain.FavoritePlaces
 import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoritePlacesStore
 import app.stopdash.domain.IndexedStation
+import app.stopdash.domain.PlaceCandidate
+import app.stopdash.domain.PostcodeResolver
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StationMatch
@@ -209,6 +211,150 @@ class FavoritePlacesViewModelTest {
         assertEquals(-0.12, c.longitude, 1e-9)
         assertEquals("Somewhere Road", editor.placeName)
         assertTrue(editor.canSave)
+    }
+
+    @Test
+    fun `resolving a complete postcode offers its candidates without auto-picking`() = runTest {
+        val candidates = listOf(
+            PlaceCandidate("X1 9XX", Coordinates(51.50, -0.10)),
+            PlaceCandidate("X1 9XY", Coordinates(51.52, -0.12)),
+        )
+        val model = FavoritePlacesViewModel(
+            FakeStore(), FakeFinder(), postcodes = { candidates },
+            io = dispatcher, debounceMillis = 300, newId = { "id-1" },
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("X1 9XX")
+        advanceUntilIdle()
+        model.resolvePostcode()
+        advanceUntilIdle()
+        val editor = model.state.value.editor!!
+        assertEquals(candidates, editor.postcodeCandidates)
+        assertFalse(editor.postcodeResolving)
+        assertNull(editor.coordinate) // nothing auto-picked; the user chooses
+    }
+
+    @Test
+    fun `picking a postcode candidate adopts its coordinate`() = runTest {
+        val candidate = PlaceCandidate("X1 9XX", Coordinates(51.50, -0.10))
+        val model = FavoritePlacesViewModel(
+            FakeStore(), FakeFinder(), postcodes = { listOf(candidate) },
+            io = dispatcher, debounceMillis = 300, newId = { "id-1" },
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("X1 9XX")
+        advanceUntilIdle()
+        model.resolvePostcode()
+        advanceUntilIdle()
+        model.onPickCandidate(candidate)
+        advanceUntilIdle()
+        val editor = model.state.value.editor!!
+        assertEquals(Coordinates(51.50, -0.10), editor.coordinate)
+        assertEquals("X1 9XX", editor.placeName)
+        assertTrue(editor.postcodeCandidates.isEmpty())
+        assertTrue(editor.canSave)
+    }
+
+    @Test
+    fun `a postcode resolve failure is retryable`() = runTest {
+        var attempt = 0
+        val candidate = PlaceCandidate("X1 9XX", Coordinates(51.50, -0.10))
+        val model = FavoritePlacesViewModel(
+            FakeStore(), FakeFinder(),
+            postcodes = {
+                attempt++
+                if (attempt == 1) throw TflException.Offline(null) else listOf(candidate)
+            },
+            io = dispatcher, debounceMillis = 300, newId = { "id-1" },
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("X1 9XX")
+        advanceUntilIdle()
+        model.resolvePostcode()
+        advanceUntilIdle()
+        assertTrue(model.state.value.editor!!.postcodeFailed)
+        // Tapping again retries, and this time it resolves.
+        model.resolvePostcode()
+        advanceUntilIdle()
+        val editor = model.state.value.editor!!
+        assertFalse(editor.postcodeFailed)
+        assertEquals(listOf(candidate), editor.postcodeCandidates)
+    }
+
+    @Test
+    fun `resolvePostcode is a no-op until the postcode is complete`() = runTest {
+        var calls = 0
+        val model = FavoritePlacesViewModel(
+            FakeStore(), FakeFinder(), postcodes = { calls++; emptyList() },
+            io = dispatcher, debounceMillis = 300, newId = { "id-1" },
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("X1") // a partial postcode
+        advanceUntilIdle()
+        model.resolvePostcode()
+        advanceUntilIdle()
+        assertEquals(0, calls) // not resolvable yet, so no request
+        assertTrue(model.state.value.editor!!.postcodeCandidates.isEmpty())
+    }
+
+    @Test
+    fun `changing the query clears postcode candidates`() = runTest {
+        val model = FavoritePlacesViewModel(
+            FakeStore(), FakeFinder(),
+            postcodes = { listOf(PlaceCandidate("X1 9XX", Coordinates(51.5, -0.1))) },
+            io = dispatcher, debounceMillis = 300, newId = { "id-1" },
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("X1 9XX")
+        advanceUntilIdle()
+        model.resolvePostcode()
+        advanceUntilIdle()
+        assertTrue(model.state.value.editor!!.postcodeCandidates.isNotEmpty())
+        model.onQueryChange("X2 9YY")
+        advanceUntilIdle()
+        assertTrue(model.state.value.editor!!.postcodeCandidates.isEmpty())
+    }
+
+    @Test
+    fun `a postcode-shaped query is not sent to the station search`() = runTest {
+        var searchCalls = 0
+        val model = FavoritePlacesViewModel(
+            FakeStore(),
+            FakeFinder(search = { searchCalls++; emptyList() }),
+            postcodes = { emptyList() },
+            io = dispatcher, debounceMillis = 300, newId = { "id-1" },
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("X1 9XX") // a postcode: resolved via the Journey Planner on tap, not searched
+        advanceUntilIdle()
+        assertEquals(0, searchCalls)
+        // A plain two-letter prefix is how station names start ("Ox" → Oxford Circus), so it still searches.
+        model.onQueryChange("Ox")
+        advanceUntilIdle()
+        assertTrue(searchCalls >= 1)
+    }
+
+    @Test
+    fun `a postcode that resolves to nothing reports no places`() = runTest {
+        val model = FavoritePlacesViewModel(
+            FakeStore(), FakeFinder(), postcodes = { emptyList() },
+            io = dispatcher, debounceMillis = 300, newId = { "id-1" },
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("X1 9XX")
+        advanceUntilIdle()
+        model.resolvePostcode()
+        advanceUntilIdle()
+        val editor = model.state.value.editor!!
+        assertTrue(editor.postcodeNoResults)
+        assertTrue(editor.postcodeCandidates.isEmpty())
     }
 
     @Test

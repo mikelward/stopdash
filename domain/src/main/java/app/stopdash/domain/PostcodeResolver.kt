@@ -19,6 +19,6 @@ data class PlaceCandidate(val name: String, val coordinate: Coordinates)
  * one), or empty when TfL places it nowhere. Throws a [TflException] on a transport or decode failure,
  * as [TflClient] does — the surface renders that honestly rather than as "no results".
  */
-interface PostcodeResolver {
+fun interface PostcodeResolver {
     suspend fun resolvePostcode(postcode: String): List<PlaceCandidate>
 }
