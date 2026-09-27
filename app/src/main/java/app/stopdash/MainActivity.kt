@@ -83,6 +83,7 @@ import app.stopdash.data.DataStoreAppSettings
 import app.stopdash.data.DistanceUnitsSetting
 import app.stopdash.data.logAppSettingsWarning
 import app.stopdash.data.DataStoreDismissedAlertsStore
+import app.stopdash.data.DataStoreFavoritePlacesStore
 import app.stopdash.data.DataStoreStarredRowsStore
 import app.stopdash.data.KtorTflClient
 import app.stopdash.data.RouteTopologyStore
@@ -144,6 +145,8 @@ import app.stopdash.domain.FixedLocation
 import app.stopdash.ui.hereTripTiers
 import app.stopdash.ui.HereTripTiers
 import app.stopdash.ui.ProvideDistanceSystem
+import app.stopdash.ui.FavoritePlacesScreen
+import app.stopdash.ui.FavoritePlacesViewModel
 import app.stopdash.ui.SettingsScreen
 import app.stopdash.ui.StationPlaceholderScreen
 import app.stopdash.ui.StationSearchScreen
@@ -390,6 +393,9 @@ class MainActivity : ComponentActivity() {
                 // own Back closes it.
                 var licensesOpen by rememberSaveable { mutableStateOf(false) }
                 var settingsOpen by rememberSaveable { mutableStateOf(false) }
+                // The favorite-places editor (SPEC D9), opened from Settings and layered above it, so
+                // its Back returns to Settings.
+                var favoritePlacesOpen by rememberSaveable { mutableStateOf(false) }
                 val openLicenses = { licensesOpen = true }
                 // "Find a station" (SPEC *Finding stops*): the search, and the station opened from it
                 // (its TfL id and name). Hosted as overlays like Settings, so the near-me departures
@@ -505,7 +511,7 @@ class MainActivity : ComponentActivity() {
                     ),
                 ) {
                     NearbyArea(
-                        overlayOpen = licensesOpen || settingsOpen || stationSearchOpen || openStationId != null,
+                        overlayOpen = licensesOpen || settingsOpen || favoritePlacesOpen || stationSearchOpen || openStationId != null,
                         aboveOverlay = {
                             ForegroundReturnLatcher(
                                 isReady = { nearbyViewModel.state.value is NearbyStopsViewModel.State.Ready },
@@ -517,6 +523,44 @@ class MainActivity : ComponentActivity() {
                             // Licenses wins if both are somehow set; each closes via its own Back.
                             if (licensesOpen) {
                                 LicensesScreen(onBack = { licensesOpen = false })
+                            } else if (favoritePlacesOpen) {
+                                // Layered above Settings; its Back returns there (settingsOpen stays set).
+                                val favoritePlacesModel: FavoritePlacesViewModel = viewModel(
+                                    key = "favorite-places",
+                                    factory = viewModelFactory {
+                                        initializer {
+                                            FavoritePlacesViewModel(
+                                                DataStoreFavoritePlacesStore.from(
+                                                    applicationContext,
+                                                    warn = ::logStarWarning,
+                                                ),
+                                                stationFinder,
+                                                // The same bundled index From…/To… search uses, so the
+                                                // picker matches identically (SPEC *Finding stops*).
+                                                loadIndex = { StationIndexStore.load(applicationContext) },
+                                                // Restores an in-progress add/edit draft across process death.
+                                                savedState = createSavedStateHandle(),
+                                                warn = ::logStarWarning,
+                                            )
+                                        }
+                                    },
+                                )
+                                val favoritePlacesState by favoritePlacesModel.state
+                                    .collectAsStateWithLifecycle()
+                                FavoritePlacesScreen(
+                                    state = favoritePlacesState,
+                                    onBack = { favoritePlacesOpen = false },
+                                    onStartAdd = favoritePlacesModel::startAdd,
+                                    onStartEdit = favoritePlacesModel::startEdit,
+                                    onDelete = favoritePlacesModel::delete,
+                                    onQueryChange = favoritePlacesModel::onQueryChange,
+                                    onPick = favoritePlacesModel::onPick,
+                                    onLabelChange = favoritePlacesModel::onLabelChange,
+                                    onSave = favoritePlacesModel::commit,
+                                    onCancelEditor = favoritePlacesModel::cancelEditor,
+                                    onRetrySearch = favoritePlacesModel::retrySearch,
+                                    onDismissWriteError = favoritePlacesModel::dismissWriteError,
+                                )
                             } else if (!settingsOpen) {
                                 StationSearchArea(
                                     stationId = openStationId,
@@ -591,6 +635,7 @@ class MainActivity : ComponentActivity() {
                                     distanceUnitsLoaded = distanceUnitsLoaded,
                                     distanceUnitsWriteFailed = distanceUnitsWriteFailed,
                                     onDismissDistanceUnitsError = DistanceUnitsSetting::writeFailureShown,
+                                    onOpenFavoritePlaces = { favoritePlacesOpen = true },
                                     onBack = { settingsOpen = false },
                                 )
                             }

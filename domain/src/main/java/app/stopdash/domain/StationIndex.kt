@@ -111,6 +111,23 @@ class StationIndex(
     fun station(id: String): StationMatch? = byId[id]?.let { StationMatch(it.id, it.name, it.modes) }
 
     /**
+     * The bundled station's own public position, when the index has one. Used to anchor a favorite
+     * place from a bundled match even when TfL's search (which normally lends the position back) is
+     * unreachable (SPEC D9). Search/rank leave [StationMatch] positionless; this fills it by id.
+     */
+    fun positionOf(id: String): Coordinates? {
+        val station = byId[id]
+        val lat = station?.latitude
+        val lon = station?.longitude
+        if (lat != null && lon != null) return Coordinates(lat, lon)
+        // A hub record carries no position of its own; derive a center from its positioned members,
+        // so a bundled interchange (King's Cross St. Pancras) is still selectable offline.
+        val members = stations.filter { it.hubId == id && it.latitude != null && it.longitude != null }
+        if (members.isEmpty()) return null
+        return Coordinates(members.mapNotNull { it.latitude }.average(), members.mapNotNull { it.longitude }.average())
+    }
+
+    /**
      * This index with [yours] added (SPEC *Finding stops → Find a station*): the user's starred,
      * opened and lately shown stops that the bundled list lacks — bus stops, mostly — so they match
      * as the user types instead of after TfL's search, and the user's own stops lead their tier.

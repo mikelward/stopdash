@@ -29,6 +29,26 @@ class StationIndexTest {
     }
 
     @Test
+    fun `positionOf returns a station's own coordinate and a hub's member center`() {
+        val positioned = StationIndex(
+            listOf(
+                IndexedStation("HUBKGX", "King's Cross St. Pancras", listOf("tube")),
+                IndexedStation("940GZZLUKSX", "King's Cross St. Pancras", listOf("tube"), hubId = "HUBKGX", latitude = 51.53, longitude = -0.12),
+                IndexedStation("940GNRKSX", "King's Cross", listOf("national-rail"), hubId = "HUBKGX", latitude = 51.53, longitude = -0.124),
+                IndexedStation("940GZZLUOXC", "Oxford Circus", listOf("tube"), latitude = 51.5, longitude = -0.14),
+            ),
+        )
+        // A station with its own position.
+        assertEquals(Coordinates(51.5, -0.14), positioned.positionOf("940GZZLUOXC"))
+        // A hub carries none; its center is the average of its positioned members.
+        val hub = positioned.positionOf("HUBKGX")!!
+        assertEquals(51.53, hub.latitude, 1e-9)
+        assertEquals(-0.122, hub.longitude, 1e-9)
+        // An id the index doesn't hold.
+        assertEquals(null, positioned.positionOf("490000000A"))
+    }
+
+    @Test
     fun `CX finds Charing Cross`() {
         assertEquals("940GZZLUCHX", index.search("cx").first().id)
     }

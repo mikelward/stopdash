@@ -90,6 +90,17 @@ TfL names it) is kept the same way, and forgotten once you unstar it. The search
 and matches your starred stops and the stops the app has lately shown you, all read on the
 device; none of that is sent anywhere either.
 
+**Favorite places** (Home, Work, School or a place of your own, saved from Settings) are stored by
+**location**. When you add or edit one, the stop or station you type is sent to TfL's stop search,
+once you pause typing, to find its position — the same search *Find a station* uses. That text isn't
+saved, logged or sent anywhere else. (Entering a **postcode** is a planned addition; v1 finds a place
+by its nearest stop or station.) The saved place — its
+coordinate, its label, and the **name of the stop or station it resolved to** (shown under the label,
+e.g. "Oxford Circus") — is kept on the device with your other settings, so it rides your own Android
+backup and device transfer like the rest (above); it is never logged or put in a bug report, and
+deleting the place or clearing the app's data removes it. (Routing to a saved place is not part of
+this release.)
+
 **Trips with a change** (*To…* from the near-me list or a *From…* station) send both ends of the
 trip together to **TfL's Journey Planner**, as stop ids: the stop nearest you (or the *From…*
 station) and the stop you picked. When you pick a station complex such as King's Cross St.
@@ -192,7 +203,10 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
 - a **failed Play update check, or a failed attempt to open the Play listing** (release
   builds only — see *What leaves the device*): the caught exception's class name (e.g.
   `IllegalStateException`), or a fixed "no app to open the Play listing" reason — never any
-  Play account, device, or version detail.
+  Play account, device, or version detail,
+- a **favorite-place storage failure**: that reading, saving, or deleting a saved place, or
+  searching for one, failed — by the caught exception's class name (e.g. `IOException`) —
+  never the place's label, its coordinate, or the typed search text.
 
 The log **never** carries:
 

@@ -22,6 +22,10 @@ import kotlinx.serialization.Serializable
 internal data class PersistedFavoritePlaces(
     val version: Int = CURRENT_VERSION,
     val places: List<PersistedFavoritePlace> = emptyList(),
+    // A durable tombstone written when a corrupt file is discarded: it survives process death, so the
+    // loss is still surfaced (Discarded) on a later launch rather than reading as an empty list. A
+    // normal write clears it (default false). Codex.
+    val discarded: Boolean = false,
 ) {
     companion object {
         /** The current on-disk format. Bump when a field's meaning changes incompatibly, or when a

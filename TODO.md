@@ -1269,6 +1269,34 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         finer **street-address autocomplete** (its own resolver recipient
         + privacy review); quick-nav **chips at the top of the main page** to route straight to
         Home/Work; "show whichever you're *not* near / by time of day" (Later).
+    - Progress: the persistence layer (`FavoritePlacesStore`) landed in #271; the Settings
+      **"Favorite places"** editor (add/edit/delete via a **stop/station** picker, disclosing the setup
+      lookup send in SPEC *Trips*/D9 + `docs/PRIVACY.md`) is #275. Still to do, in order:
+      **a shared place search** (maintainer, 2026-09-27): reuse/extend the fuzzy finder
+      (`StationIndex` + TfL) and add **postcode/place resolution** (the Journey Planner
+      disambiguation), wired into **From…, To… and favorite setup alike** for consistency — the field
+      then reads "Stop or postcode". UX (maintainer, 2026-09-27): when the text **looks like a
+      postcode**, don't search each keystroke — show a **top placeholder row "Postcode: N…"** the user
+      can tap once it's a complete postcode, which then resolves it. Fold in
+      **resolve-the-coordinate-on-pick**: when a picked match
+      carries no inline lat/lon, take its stop's center (`stationStops(id)` → `FixedLocation.centerOf`,
+      as To… already does) so it's selectable, leaving only a truly unplaceable result disabled (v1
+      #275 just shows those unselectable). Also **disambiguate same-name results** across all three
+      surfaces (maintainer via Codex, 2026-09-27): two same-named places TfL keeps distinct (>250 m
+      apart, e.g. two bus-only "Church Street"s) render identically — name + modes are all `StationMatch`
+      carries. Add a distinguishing line (a locality/parent-area name, or the nearest cross-reference)
+      to the shared result row so From…, To… and favorite setup all show it; needs a new field on
+      `StationMatch` (TfL doesn't return locality on `/StopPoint/Search` today, so this may need a
+      parent-`StopPoint` lookup or the search's `commonName`/`additionalProperties`). Then **routing to
+      a favorite** (plan `to = lat,lon`, the
+      coordinate-routing privacy disclosure lands with it); and the **To… Home/Work pins**. The
+      Settings list is edit-only until routing lands.
+- [ ] **Alias en-GB spellings to the other English locales** (maintainer, 2026-09-27) — Android
+      doesn't fall back en-GB → en-AU/en-NZ/en-IE/etc., so an Australian device on English shows the
+      en-US base ("Favorite", "Metres"→"Meters"). Add `values-en-rAU` (and the other en-* the audience
+      needs) carrying the same British overrides as `values-en-rGB`, or restructure so one shared file
+      backs them all; extend `EnGbStringsTest` to cover the aliased locales so a new override can't be
+      added to en-GB alone.
 - [ ] Per-stop line/direction filters (D2).
 - [ ] **Filter or rank by a destination the user enters, and let them save favorite
       destinations** — the user names where they're going (or picks a saved favorite) and

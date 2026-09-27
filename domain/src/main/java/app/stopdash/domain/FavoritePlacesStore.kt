@@ -17,6 +17,15 @@ sealed interface FavoritePlacesSet {
 
     /** A stored list exists but was written by a newer build; it is preserved untouched. */
     data object Unavailable : FavoritePlacesSet
+
+    /**
+     * A stored file existed but was **unreadable (corrupt)** and has been discarded, so the user's
+     * prior favorites are lost. The list is empty and **writable** — the user can add places again —
+     * which is why this is distinct from [Unavailable] (a newer-schema file, preserved and *not*
+     * overwritten) and from an empty [Loaded] (a genuinely new user): the surface can say the data was
+     * lost rather than silently showing "nothing saved" (SPEC principle 2 / *never lose work silently*).
+     */
+    data object Discarded : FavoritePlacesSet
 }
 
 /**

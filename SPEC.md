@@ -1909,11 +1909,18 @@ Mirrors the sibling fleet:
   the flat-list-vs-swipe-card choice is the remaining open call, to settle from real use.
 - **D9 — Home, Work and other favorite places are saved by *coordinate*, routed to directly.**
   A favorite stores a **coordinate + a label** (e.g. "Home") plus a **stable role** — Home, Work,
-  School, or custom — and a stable id, so the reserved Home/Work slots are identified by role, not by
-  the mutable, possibly-duplicated label (a custom place may reuse the word "Home"; a label may change
-  on edit or with localization). The coordinate is resolved in v1 from a **place or
+  School, or custom — a stable id, and the **resolved place name** (the stop/station the coordinate
+  came from, shown under the label; it also rides Android backup, *Privacy*), so the reserved
+  Home/Work slots are identified by role, not by the mutable, possibly-duplicated label (a custom
+  place may reuse the word "Home"; a label may change on edit or with localization). The coordinate is resolved in v1 from a **place or
   postcode via TfL** (its `/StopPoint/Search` matches usually carry lat/lon, and the Journey Planner's
-  disambiguation resolves a postcode/place to one — no third-party geocoder, £0). A match TfL gives
+  disambiguation resolves a postcode/place to one — no third-party geocoder, £0). **The first editor
+  slice resolves via the stop/station search** (`/StopPoint/Search`, field "Stop or station");
+  **postcode/place resolution** (the Journey Planner disambiguation above) is the immediate follow-up,
+  after which the field reads "Stop or postcode". The stop/station the user types during setup is
+  **sent to TfL's stop search** (the *Find a station* path), once typing pauses, to resolve the
+  coordinate — the same send as the station search; it is not saved, logged, or sent anywhere else
+  (*Privacy*, `docs/PRIVACY.md`). A match TfL gives
   **no position** for can't anchor a favorite (which needs a coordinate), so it is **unselectable in
   favorite setup only** and a favorite is saved only once a coordinate resolves; such a match stays a
   valid **ordinary** *To…* destination, which routes by stop id and needs no coordinate. A trip is planned
