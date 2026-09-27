@@ -1277,11 +1277,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       disambiguation), wired into **From…, To… and favorite setup alike** for consistency — the field
       then reads "Stop or postcode". UX (maintainer, 2026-09-27): when the text **looks like a
       postcode**, don't search each keystroke — show a **top placeholder row "Postcode: N…"** the user
-      can tap once it's a complete postcode, which then resolves it. Fold in
-      **resolve-the-coordinate-on-pick**: when a picked match
-      carries no inline lat/lon, take its stop's center (`stationStops(id)` → `FixedLocation.centerOf`,
-      as To… already does) so it's selectable, leaving only a truly unplaceable result disabled (v1
-      #275 just shows those unselectable). Also **disambiguate same-name results** across all three
+      can tap once it's a complete postcode, which then resolves it.
+      **resolve-the-coordinate-on-pick** — DONE (favorite setup): a picked match with no inline lat/lon
+      is resolved from its stops' center (`stationStops(id)` → `FixedLocation.centerOf`) on tap, with a
+      per-row spinner; a result whose stops carry no position stays shown but unselectable ("no
+      location"), while a transient lookup failure (TfL unreachable) is shown as **retryable** (tap the
+      row again), never as "no location". Still to fold the same fallback into From…/To… if/when they
+      need a coordinate.
+      Also **disambiguate same-name results** across all three
       surfaces (maintainer via Codex, 2026-09-27): two same-named places TfL keeps distinct (>250 m
       apart, e.g. two bus-only "Church Street"s) render identically — name + modes are all `StationMatch`
       carries. Add a distinguishing line (a locality/parent-area name, or the nearest cross-reference)

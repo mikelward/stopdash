@@ -108,6 +108,9 @@ class FavoritePlacesScreenshotTest {
                     label = "",
                     query = "oxf",
                     results = listOf(oxford, positionless),
+                    // The positionless result was tapped and couldn't be resolved, so it's shown as
+                    // unselectable ("No location for this result").
+                    unresolvableIds = setOf(positionless.id),
                 ),
             ),
         )
