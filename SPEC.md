@@ -863,10 +863,19 @@ station, then the Northern line — **share a card**: its header shows that leg'
 cut diagonally** ("43/134", read as "43 or 134"), then the later lines and the best of their
 arrivals, and its first ride's row times every one of those lines together (below). Tapping
 the card opens its best route. **Every route looks alike** — no
-route is expanded — as a card whose top row says where it starts, **"From ‹stop›"**, and
-**duration · arrival** ("22 min · 08:24") at the end, the stop's name cut before the time is
-(maintainer, 2026-09-27; the lines moved to the rows below); the duration is from now to that
-arrival, so it takes in the same walks, waits and legs. Under the top row, a
+route is expanded — as a card whose top row is its **duration · arrival** ("22 min · 08:24"); the
+duration is from now to that arrival, so it takes in the same walks, waits and legs. Where waiting
+for a frequent line past its predictions (below) could make it later, by three minutes or more, both
+show as a **range** ("41–49 min · est. 11:26–34", the end's hour dropped within the same hour to
+save width): from no wait up to the line's longer typical gap, the route timed again with each such
+wait at its longest, so a wait that misses the next leg's train counts that too. Where that later
+route can't be timed at all (the connection missed, nothing else known), it reads as open-ended
+("41+ min · est. 11:26+"). It counts waiting only, not a slow run, and ranking still goes by the earliest arrival (maintainer,
+2026-09-27). Under the top row, the **walk to where it starts** has a row of its own — a walker, the
+first stop, and its minutes — since it's why a train too soon to reach is grayed, and it reads as the
+route's first leg (maintainer, 2026-09-27, replacing "From ‹stop›" in the top row). A first stop
+under a minute away has no walk row; the top row says **"From ‹stop›"** before the arrival instead,
+the stop's name cut before the time is. Then a
 row per ride names **where it gets off** — its line pill (the first ride's lines as the same cut
 pill), a ⚠ beside it when that line is disrupted, and the stop — so cards riding the same lines but changing at different stations read apart
 (maintainer, 2026-09-27); walks between rides are left to the route's page. The first ride's row
@@ -874,7 +883,7 @@ also carries its **live times**, every line on the card together in time order (
 each is a way to the same change, so only when matters, not which line, and the card stays four
 rows tall rather than growing a row per line (maintainer, 2026-09-27, replacing a live row per
 line). The stop's name is cut before the times are. A **later ride's row** says instead how often
-its line runs, **"Every 2–4 min"**: the rider isn't there yet, so its countdowns say nothing they can
+its line runs, **"↻ 2–4 min"** (↻ for "every", to save width; a screen reader hears "Every 2 to 4 min"): the rider isn't there yet, so its countdowns say nothing they can
 use. It is the middle half of the gaps between that leg's live trains (those along its route), so a
 bunched pair or one long gap doesn't set it, and it shows only with at least three trains known
 (maintainer, 2026-09-27); no extra fetch, since each leg's boarding stop is already fetched. A screen reader still hears each time with its

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -49,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
@@ -63,6 +65,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import app.stopdash.domain.RouteStopsRepository
@@ -431,6 +434,7 @@ internal fun routeKey(route: TripRoute): String =
 private const val SHOWN_TRAINS = 3
 
 private val CLOCK: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private val MINUTE: DateTimeFormatter = DateTimeFormatter.ofPattern("mm")
 private val LONDON: ZoneId = ZoneId.of("Europe/London")
 
 /**
@@ -858,8 +862,9 @@ private fun RouteList(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         val statuses = shownStatuses(state.statuses, dismissed)
-                        CardHeader(card, statuses)
-                        RideStops(card, statuses, remember(card, state, now, access, sequences) { cardTimes(card, state, now, access, sequences) }, now)
+                        val walk = remember(card, access) { walkToStart(card.first().route, access) }
+                        CardHeader(card, statuses, walk)
+                        RideStops(card, statuses, remember(card, state, now, access, sequences) { cardTimes(card, state, now, access, sequences) }, now, walk)
                     }
                 }
                 if (onHideMode != null) {
@@ -1001,16 +1006,55 @@ internal fun cardTimes(
 }
 
 /**
- * Under a card's header, a row per ride of its best route: the ride's line pill (the first ride's
- * lines as one cut pill, as in the header) and the stop it gets off at, the first ride's also with
- * [times], every line's trains together; the stop's name is cut before the times are. Walks between
- * rides are left out; the route's own page has them.
+ * How long the walk to [route]'s first ride takes: to its first stop ([access]) and any walk before
+ * the ride. Whole minutes.
+ */
+internal fun walkToStart(route: TripRoute, access: Duration): Duration =
+    route.legs.takeWhile { it.isWalk }.fold(access) { total, walk -> total.plus(walk.run) }
+
+/**
+ * Under a card's header, the [walk] to the first ride's stop when there is one (maintainer,
+ * 2026-09-27: it says why a train too soon to reach is grayed), then a row per ride of its best
+ * route: the ride's line pill (the first ride's lines as one cut pill) and the stop it gets off at,
+ * the first ride's also with [times], every line's trains together, and each later one's with how
+ * often it runs; a stop's name is cut before the times are. Walks between rides are left out; the
+ * route's own page has them.
  */
 @Composable
-private fun RideStops(card: List<TripTiming.Estimate>, statuses: Map<String, LineStatus>, times: CardTimes, now: Instant) {
+private fun RideStops(card: List<TripTiming.Estimate>, statuses: Map<String, LineStatus>, times: CardTimes, now: Instant, walk: Duration) {
     val rides = card.first().route.rides
     val firstLines = card.mapNotNull { it.route.rides.firstOrNull() }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.testTag("rideStops")) {
+        val start = rides.firstOrNull()
+        val minutes = walk.toMinutes().toInt()
+        if (start != null && minutes > 0) {
+            val description = stringResource(R.string.trip_walk_first, minutes, start.fromName)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.testTag("walkToStart").clearAndSetSemantics { contentDescription = description },
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_walk),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    text = start.fromName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).padding(start = 8.dp),
+                )
+                Text(
+                    text = stringResource(R.string.trip_walk_minutes, minutes),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 12.dp),
+                )
+            }
+        }
         rides.forEachIndexed { index, ride ->
             val lines = if (index == 0) firstLines else listOf(ride)
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1029,8 +1073,15 @@ private fun RideStops(card: List<TripTiming.Estimate>, statuses: Map<String, Lin
                 )
                 if (index > 0) {
                     times.headways.getOrNull(index - 1)?.let { headway ->
+                        val even = headway.min == headway.max
+                        // ↻ saves width (maintainer, 2026-09-27); TalkBack reads it as "Every".
+                        val description = if (even) {
+                            stringResource(R.string.trip_headway_description, headway.min)
+                        } else {
+                            stringResource(R.string.trip_headway_range_description, headway.min, headway.max)
+                        }
                         Text(
-                            text = if (headway.min == headway.max) {
+                            text = if (even) {
                                 stringResource(R.string.trip_headway, headway.min)
                             } else {
                                 stringResource(R.string.trip_headway_range, headway.min, headway.max)
@@ -1038,7 +1089,7 @@ private fun RideStops(card: List<TripTiming.Estimate>, statuses: Map<String, Lin
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
-                            modifier = Modifier.padding(start = 12.dp),
+                            modifier = Modifier.padding(start = 12.dp).semantics { contentDescription = description },
                         )
                     }
                 }
@@ -1074,28 +1125,30 @@ private fun linesWarning(lines: List<TripLeg>, statuses: Map<String, LineStatus>
 }
 
 /**
- * A list card's top row (maintainer, 2026-09-27): where the trip starts, "From ‹stop›", and the best
- * route's duration · arrival. Its lines are the ride rows below ([RideStops]), each with its ⚠. A walk
- * only route reads as the open route's summary does ([RouteSummary]).
+ * A list card's top row: the best route's duration · arrival, alone when the [walk] to its first
+ * stop has a row of its own below ([RideStops]); otherwise after where the trip starts, "From
+ * ‹stop›". Its lines are the ride rows below, each with its ⚠. A walk-only route reads as the open
+ * route's summary does ([RouteSummary]).
  */
 @Composable
-private fun CardHeader(card: List<TripTiming.Estimate>, statuses: Map<String, LineStatus>) {
+private fun CardHeader(card: List<TripTiming.Estimate>, statuses: Map<String, LineStatus>, walk: Duration) {
     val estimate = card.first()
     val first = estimate.route.rides.firstOrNull() ?: return RouteSummary(card, statuses)
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            text = stringResource(R.string.trip_from, first.fromName),
-            style = MaterialTheme.typography.titleSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
+        if (walk.toMinutes() < 1) {
+            Text(
+                text = stringResource(R.string.trip_from, first.fromName),
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).padding(end = 12.dp),
+            )
+        }
         Text(
             text = arrivalText(estimate),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
-            modifier = Modifier.padding(start = 12.dp),
         )
     }
 }
@@ -1105,12 +1158,35 @@ private fun arrivalText(estimate: TripTiming.Estimate): String {
     val arrival = estimate.arrival ?: return stringResource(R.string.trip_arrival_unknown)
     val minutes = (estimate.duration ?: Duration.ZERO).toMinutes().toInt()
     val clock = CLOCK.format(arrival.atZone(LONDON))
-    return if (estimate.basis == TripTiming.Basis.LIVE) {
-        stringResource(R.string.trip_duration_arrival, minutes, clock)
-    } else {
-        stringResource(R.string.trip_duration_arrival_estimated, minutes, clock)
+    val slack = estimate.slack
+    val end = slack?.let { arrivalEnd(arrival, it) }
+    return when {
+        // A longer wait could miss a connection nothing else times: no latest to give, so say it may be later.
+        slack == null -> stringResource(R.string.trip_duration_arrival_open, minutes, clock)
+        // A wait for a frequent line could make it a few minutes later: say how many, once they matter.
+        end != null -> stringResource(R.string.trip_duration_arrival_range, minutes, minutes + slack.toMinutes().toInt(), clock, end)
+        estimate.basis == TripTiming.Basis.LIVE -> stringResource(R.string.trip_duration_arrival, minutes, clock)
+        else -> stringResource(R.string.trip_duration_arrival_estimated, minutes, clock)
     }
 }
+
+/**
+ * The end of an [arrival]'s range when its [slack] is enough to show ([SHOWN_SLACK_MINUTES]):
+ * minutes alone within the same hour ("11:26–34", to save width), else the clock (also across a clock
+ * change, where the hour repeats); null for no range.
+ */
+internal fun arrivalEnd(arrival: Instant, slack: Duration): String? {
+    if (slack.toMinutes() < SHOWN_SLACK_MINUTES) return null
+    val latest = arrival.plus(slack).atZone(LONDON)
+    val start = arrival.atZone(LONDON)
+    // Across the autumn clock change 01:58 BST + 8 min is 01:06 GMT: the same hour on the clock
+    // face, so the offset must match too, or "01:58–06" would run backward.
+    val sameHour = latest.hour == start.hour && latest.toLocalDate() == start.toLocalDate() && latest.offset == start.offset
+    return if (sameHour) MINUTE.format(latest) else CLOCK.format(latest)
+}
+
+/** The fewest minutes of [TripTiming.Estimate.slack] an arrival shows as a range; less reads as noise. */
+internal const val SHOWN_SLACK_MINUTES = 3
 
 /**
  * How TalkBack reads a first-leg train: plain when [catchable]; "can't catch" when it leaves before the
