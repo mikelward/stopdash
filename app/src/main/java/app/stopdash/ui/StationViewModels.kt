@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.DirectTrips
+import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FixedLocation
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationIndex
@@ -54,6 +55,11 @@ class StationSearchViewModel(
     // The user's own stops, read from the device each time the search opens ([refreshYours]). The
     // loader handles its own read failures: whatever it can't read is simply not listed.
     private val loadYours: suspend () -> YourStops = { YourStops.EMPTY },
+    // The user's saved favorite places (SPEC D9), read from the device each time the search opens.
+    // Only a To… picker offers them (they're trip destinations, not stops to browse), so the default
+    // is none. Null means the read couldn't complete (as opposed to an empty list = genuinely none),
+    // so the picker says so honestly and offers a retry rather than pretending there are none.
+    private val loadPlaces: suspend () -> List<FavoritePlace>? = { emptyList() },
     // Remembers a station opened from the search, for the recent list; blocking, run on [io].
     private val recordOpen: suspend (StationMatch) -> Unit = {},
     private val io: CoroutineDispatcher = Dispatchers.IO,
@@ -68,6 +74,13 @@ class StationSearchViewModel(
         // (false) until the first read lands, so the screen doesn't flash its prompt first.
         val favorites: List<StationMatch> = emptyList(),
         val recent: List<StationMatch> = emptyList(),
+        // The user's saved favorite places, offered at the top of a To… picker so they can route to
+        // one without typing (SPEC D9). Empty outside a To… picker, which passes no [onOpenPlace].
+        val favoritePlaces: List<FavoritePlace> = emptyList(),
+        // The last places read couldn't complete (transient I/O, or a newer-schema file this build
+        // can't read): the picker shows an honest, retryable notice instead of silently implying there
+        // are none (SPEC principle 2). A discarded corrupt file reads as genuinely empty, not failed.
+        val favoritePlacesFailed: Boolean = false,
         val yoursRead: Boolean = false,
     )
 
@@ -126,7 +139,15 @@ class StationSearchViewModel(
         search?.cancel()
         savedState.remove<String>(KEY_QUERY)
         remoteFor = null
-        _state.update { State(favorites = it.favorites, recent = it.recent, yoursRead = it.yoursRead) }
+        _state.update {
+            State(
+                favorites = it.favorites,
+                recent = it.recent,
+                favoritePlaces = it.favoritePlaces,
+                favoritePlacesFailed = it.favoritePlacesFailed,
+                yoursRead = it.yoursRead,
+            )
+        }
     }
 
     /**
@@ -177,9 +198,21 @@ class StationSearchViewModel(
             // A star the device couldn't name may be a listed station: name it from the bundled list.
             val loaded = loadYours()
             val named = if (loaded.unnamedStarred.isEmpty()) loaded else loaded.namedFrom(index.await())
+            // Read alongside the stops so the To… picker shows both from the same open; independent, so
+            // a places read failure never drops the stops. Null = couldn't read (a retryable notice),
+            // distinct from an empty list (genuinely no saved places).
+            val places = loadPlaces()
             named.also { read ->
                 if (generation == yoursGeneration) {
-                    _state.update { it.copy(favorites = read.favorites, recent = read.recent, yoursRead = true) }
+                    _state.update {
+                        it.copy(
+                            favorites = read.favorites,
+                            recent = read.recent,
+                            favoritePlaces = places.orEmpty(),
+                            favoritePlacesFailed = places == null,
+                            yoursRead = true,
+                        )
+                    }
                 }
             }
         }

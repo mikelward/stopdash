@@ -122,6 +122,7 @@ import app.stopdash.domain.CachingStopFinder
 import app.stopdash.domain.NearbyStopsCache
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoritePlace
+import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StopMap
 import app.stopdash.ui.BugReportConsentDialog
@@ -821,6 +822,15 @@ class MainActivity : ComponentActivity() {
                                             herePicking = false
                                             hereToId = match.id
                                             hereToName = match.name
+                                        },
+                                        // A favorite place picked in the To… list routes to its
+                                        // coordinate (as Settings' route-to does): the coordinate is the
+                                        // destination, so there's no stop id.
+                                        onOpenPlace = { place ->
+                                            herePicking = false
+                                            hereToId = null
+                                            hereToName = place.name
+                                            hereFavorite = place
                                         },
                                         // Back from the search returns to the trip, or to the list when
                                         // no destination was picked yet.
@@ -1908,6 +1918,9 @@ class MainActivity : ComponentActivity() {
         favorite: TripDestination.Place? = null,
         onPlanTo: () -> Unit,
         onPickTo: (StationMatch) -> Unit,
+        // Set only where the trip can route to a saved favorite place (the near-me To… picker): tapping
+        // one in the picker routes to its coordinate (SPEC D9). Null hides the picker's Places section.
+        onOpenPlace: ((TripDestination.Place) -> Unit)? = null,
         onClosePicker: () -> Unit,
         onClose: () -> Unit,
         foregroundReturnPending: Boolean,
@@ -1950,6 +1963,13 @@ class MainActivity : ComponentActivity() {
                         createSavedStateHandle(),
                         loadIndex = { StationIndexStore.load(appContext) },
                         loadYours = { loadYourStops(appContext, recents) },
+                        // Favorite places only where this trip can route to one (near-me To…); a From…
+                        // trip passes no [onOpenPlace] and reads none.
+                        loadPlaces = if (onOpenPlace != null) {
+                            { loadFavoritePlaces(appContext) }
+                        } else {
+                            { emptyList() }
+                        },
                         recordOpen = { recents.add(it) },
                         warn = ::logDepartureWarning,
                     )
@@ -1989,6 +2009,19 @@ class MainActivity : ComponentActivity() {
                     if (toId == null) close() else onClosePicker()
                 },
                 hint = stringResource(R.string.station_search_to_hint),
+                // Tapping a favorite place routes the trip to its coordinate: drop any prior To…
+                // stores, forget the search, and hand the destination up (which sets the trip's
+                // favorite, so the branch above falls through to the trip).
+                onOpenPlace = onOpenPlace?.let { route ->
+                    { place ->
+                        toStores.clearAll()
+                        search.clear()
+                        route(place)
+                    }
+                },
+                // Re-reads the saved places for the Retry when their read failed (offered only where the
+                // picker shows them).
+                onRetryPlaces = onOpenPlace?.let { { search.refreshYours() } },
             )
             return
         }
@@ -3021,6 +3054,28 @@ private suspend fun loadYourStops(context: Context, recents: FileRecentStationsS
         unnamedStarred = unnamed,
     )
 }
+
+/**
+ * The user's saved favorite places for a To… picker (SPEC D9), read once from the process-wide store.
+ * Null means the read **couldn't complete** — a transient I/O failure, or a newer-schema file this
+ * build can't read (the favorites are still there, just unreadable) — so the picker shows a retryable
+ * notice rather than pretending there are none (SPEC principle 2). A **discarded** corrupt file reads
+ * as an honest empty list (the favorites are gone, and a Settings notice covers that loss). Any error
+ * is logged without a coordinate (AGENTS *Privacy* / *Error handling*).
+ */
+private suspend fun loadFavoritePlaces(context: Context): List<FavoritePlace>? =
+    try {
+        when (val set = DataStoreFavoritePlacesStore.from(context, warn = ::logStarWarning).places().first()) {
+            is FavoritePlacesSet.Loaded -> set.places
+            FavoritePlacesSet.Discarded -> emptyList()
+            FavoritePlacesSet.Unavailable -> null
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        logDepartureWarning("find a station: favorite places unreadable (${e::class.simpleName})")
+        null
+    }
 
 private inline fun <T> readOrEmpty(what: String, read: () -> List<T>): List<T> =
     try {
