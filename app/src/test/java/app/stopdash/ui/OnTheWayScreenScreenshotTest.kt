@@ -6,6 +6,7 @@ import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import app.stopdash.domain.ActiveTrip
@@ -150,6 +151,9 @@ class OnTheWayScreenScreenshotTest {
         show(trip, TripProgress.Waiting(mildmay, at(4)))
         composeRule.onNodeWithText("Board Mildmay at Highbury & Islington").assertIsDisplayed()
         composeRule.onNodeWithText("Due in 4 min").assertIsDisplayed()
+        // The walk between the rides is a walker in the pills' column, not the word "Walk".
+        composeRule.onNodeWithContentDescription("Walk").assertIsDisplayed()
+        composeRule.onNodeWithText("Walk").assertDoesNotExist()
         captureSnapshot("on-the-way-waiting.png")
     }
 

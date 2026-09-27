@@ -2,6 +2,7 @@ package app.stopdash.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
@@ -29,9 +31,12 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -142,7 +147,7 @@ internal fun OnTheWayScreen(
             }
             if (trip != null) {
                 itemsIndexed(trip.route.legs, key = { index, _ -> "leg$index" }) { index, leg ->
-                    LegLine(leg, current = index == trip.legIndex, done = index < trip.legIndex)
+                    LegLine(leg, trip.route.rides, current = index == trip.legIndex, done = index < trip.legIndex)
                 }
             }
         }
@@ -197,13 +202,26 @@ internal fun nextStepText(progress: TripProgress?, now: Instant, current: Boolea
     }
 }
 
-/** One leg of the route: its line and ends, the leg the rider is on in bold, done legs muted. */
+/**
+ * One leg of the route: its line and ends, the leg the rider is on in bold, done legs muted. A walk
+ * shows a walker in the room the [rides]' pills take, so its text lines up with theirs, as on a trip
+ * card.
+ */
 @Composable
-private fun LegLine(leg: TripLeg, current: Boolean, done: Boolean) {
+private fun LegLine(leg: TripLeg, rides: List<TripLeg>, current: Boolean, done: Boolean) {
     val color = if (done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         if (leg.isWalk) {
-            Text(stringResource(R.string.on_the_way_walk_leg), style = MaterialTheme.typography.labelLarge, color = color)
+            // The route's pills, unseen, give the slot its width in the same pass.
+            Box(contentAlignment = Alignment.Center) {
+                rides.forEach { LinePill(it.lineName, it.lineId, it.mode, Modifier.alpha(0f).clearAndSetSemantics {}) }
+                Icon(
+                    painter = painterResource(R.drawable.ic_walk),
+                    contentDescription = stringResource(R.string.on_the_way_walk_leg),
+                    tint = color,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
         } else {
             LinePill(leg.lineName, leg.lineId, leg.mode)
         }
