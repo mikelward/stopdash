@@ -51,6 +51,21 @@ fun cleanStopName(raw: String): String {
     return name
 }
 
+private val STATION_WORD_ABBREVIATIONS = mapOf("international" to "Intl")
+
+/**
+ * A **display-only** shortening of a stop name: long words a rider doesn't need spelled out on a sign,
+ * today "International" → "Intl" (maintainer, 2026-09-27), so a name like "King's Cross & St Pancras
+ * International" fits a row (SPEC *Concise copy*).
+ *
+ * Never fold this into [cleanStopName] or any name used to **match** alert text: disruption matching
+ * relies on the full spelling TfL uses, and unlike a stripped suffix, "Intl" is *not* a substring of
+ * "International", so abbreviating a matched alias would make a disruption at that station go unseen
+ * (SPEC *Disruptions*). Whole-word and case-insensitive; spacing is preserved.
+ */
+fun abbreviateStationName(name: String): String =
+    name.split(" ").joinToString(" ") { word -> STATION_WORD_ABBREVIATIONS[word.lowercase()] ?: word }
+
 private const val VIA = " via "
 private const val BRANCH_SUFFIX = " Branch"
 

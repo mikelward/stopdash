@@ -149,4 +149,13 @@ class StopNameTest {
         assertEquals("Canada Water", cleanStopName("Canada Water Bus Station"))
         assertEquals("Victoria", cleanStopName("Victoria Coach Station"))
     }
+
+    @Test
+    fun `abbreviateStationName shortens International to Intl for display`() {
+        assertEquals("King's Cross & St Pancras Intl", abbreviateStationName("King's Cross & St Pancras International"))
+        // Whole word only — a name that merely starts with the letters is untouched.
+        assertEquals("Internationalist Hall", abbreviateStationName("Internationalist Hall"))
+        // Display only: cleanStopName keeps the full spelling, which disruption matching needs.
+        assertEquals("St Pancras International", cleanStopName("St Pancras International"))
+    }
 }
