@@ -1340,8 +1340,9 @@ the Open Government Licence v3.0. A test pins the credits so a rewording can't d
 
 An overflow-menu entry opens a Settings screen, hosted at the activity top level like the
 licenses screen (an overlay whose own Back closes it) rather than through a navigation graph
-— stopdash still has no nav library. Its first setting is the opt-in "refresh widget every
-minute" toggle (D5). The screen composable is UI-only: it reflects the setting and reports a
+— stopdash still has no nav library. Its first row opens the favorite-places editor (D9);
+the opt-in "refresh widget every minute" toggle (D5) follows below it. The screen composable
+is UI-only for the toggle: it reflects the setting and reports a
 change, while persistence (a typed DataStore, mirroring the starred-rows store) and the
 refresh scheduler (WorkManager) are wired by the activity, so the screen stays
 JVM/Robolectric-renderable without touching Android services.
