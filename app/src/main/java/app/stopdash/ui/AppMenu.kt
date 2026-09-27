@@ -49,9 +49,9 @@ val LocalAppMenu = compositionLocalOf<AppMenuActions?> { null }
 
 /**
  * A top bar's overflow button and its menu, as every screen shows them: the button with a red dot
- * while an update is available ([updateAvailable]), and the menu opening from it — "Update
- * available" first when there is one, then the screen's [items], each given a `close` to call as
- * it acts. The menu opens its own window, which doesn't inherit the theme's scaled density or pinch
+ * while an update is available ([updateAvailable]), and the menu opening from it — the screen's
+ * [items], each given a `close` to call as it acts, then "Update available" last when there is
+ * one, so the other items never shift. The menu opens its own window, which doesn't inherit the theme's scaled density or pinch
  * handler: [FontSizeWindow] re-applies the chosen size to the items, and [pinchFontSizeHost] lets a
  * pinch resize while it's open (SPEC *Display size*); the host consumes only a two-finger pinch.
  */
@@ -85,6 +85,9 @@ internal fun AppOverflowMenu(
             }
         }
         StopDashMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            items { expanded = false }
+            // Last, not first: the screen's own items keep the same positions whether or not an
+            // update is pending, so a tap learned by position never lands on the Play listing.
             if (updateAvailable) {
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.update_available)) },
@@ -94,7 +97,6 @@ internal fun AppOverflowMenu(
                     },
                 )
             }
-            items { expanded = false }
         }
     }
 }
