@@ -857,8 +857,11 @@ or bus stop picked from the station search, never an address or a map point — 
 nearest stop of any mode (the Planner walks on to a better one itself), or from the *From…* station when one is set.
 This is the ordinary search flow; **any saved favorite** is the exception, planning to its
 saved coordinate rather than a picked stop (D9) — the coordinate goes only to TfL, which walks the last leg.
-Every favorite is routed by tapping it in the Settings *"Favorite places"* list; Home and Work are
-**additionally** pinned atop this To… menu for quick access. The search page keeps its look (each
+Every favorite is routed by tapping it — in the Settings *"Favorite places"* list, or at the **top of
+the To… picker**, which lists **all** the saved favorite places before any typing (maintainer,
+2026-09-27, broadening an earlier Home/Work-only framing) so the rider routes to a saved place in one
+tap without leaving the trip. If that list can't be read it says so with a **Retry**, rather than
+hiding the section as "no places" (principle 2); station search stays usable meanwhile. The search page keeps its look (each
 result's name over its modes); it gains only a "From" chip naming the start ("Here", or the *From…*
 station). The trip opens on a **list of routes, best first**: ordered first by how far StopDash
 stands behind each route (tiers, below — usable before not, fully live before "est."), and within a
@@ -2004,11 +2007,12 @@ Mirrors the sibling fleet:
   rest of the user's config and rides Android backup / device transfer (a user-controlled platform
   channel, *Privacy*), and is handled like watched-stop data — never in the debug log or any pushed
   artifact. Favorites (Home, Work, School, custom) are managed from a Settings **"Favorite places"**
-  row, and **tapping a favorite there routes to it**, so every saved favorite is reachable — not only
-  Home and Work. Home and Work **additionally** pin at the top of the trip screen's **To…** menu
-  (whose own search stays **stop/station** fuzzy search — stations and bus stops, per *Trips*, not
-  addresses): set → route there; unset → prompt once to add it, the field reading
-  "Stop or postcode". Ratified by the maintainer 2026-09-26, superseding an earlier `TODO.md`
+  row, and **tapping a favorite there routes to it**. The trip screen's **To…** picker **additionally
+  lists all** the saved favorite places at its top, before any typing, so a rider routes to a saved
+  place in one tap without leaving the trip (maintainer, 2026-09-27, broadening an earlier framing that
+  pinned only Home and Work and prompted to add an unset one — the picker just lists what is saved;
+  adding a place stays in Settings). Its own search stays **stop/station** fuzzy search — stations and
+  bus stops, per *Trips*, not addresses. Ratified by the maintainer 2026-09-26, superseding an earlier `TODO.md`
   note that treated the Journey API as a non-goal and left the privacy call open — that note predated
   trip planning. Routing to a point with a last-leg walk **is door-to-door routing, now in scope**
   (see *Non-goals*). A finer **street-address autocomplete** for entry is a later opt-in — it adds an

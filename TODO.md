@@ -859,6 +859,16 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             station page falls back to its stops' departures with no *To…*. Plan from a plannable
             member of the station's resolved stops rather than drop the action (the Planner takes
             no interchange `HUB…` id; `PlanTargets` rejects them).
+      - [x] **Favorite places at the top of the To… picker** (maintainer, 2026-09-27): the near-me
+            To… picker lists all saved favorite places before any typing, under a *Places* heading
+            above *Recent*/*Starred*; tapping one routes the trip to its coordinate (D9), as the
+            Settings route-to path does. UI-only (renders from the search state), and the picker still
+            works by typing when there are none. Two follow-ups:
+        - [ ] **Extend to the From-station To… picker**: it shares `HereTripArea` but passes no
+              `onOpenPlace`, so it shows no places yet. Needs its own favorite state (like
+              `hereFavorite`) threaded through `StationSearchArea`/`FromStationArea`.
+        - [ ] **Hide a favorite that duplicates a nearby stop** (maintainer, 2026-09-27): when a saved
+              place sits at a stop already listed, one of them is redundant in the picker.
       - [ ] **Delete the unreachable direct-trips page path**: `LookDepartures`' `destination` and
             `hereTiers` are always null now. Delete their branches and everything only they reach
             (find it by a repo-wide search: `rememberTripView`, `tripMessages`, `tripLoaded`,
