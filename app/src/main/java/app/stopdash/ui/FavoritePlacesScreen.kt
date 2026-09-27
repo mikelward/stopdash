@@ -44,7 +44,8 @@ import app.stopdash.domain.UkPostcode
  * The favorite-places editor (SPEC D9), reached from Settings and hosted as an activity-level overlay
  * like [LicensesScreen]/[SettingsScreen], so its own Back closes it. It lists the saved places with
  * add/edit/delete; a place is saved by coordinate, resolved from a stop/postcode the user types
- * (sent only to TfL). Routing to a favorite is a later slice; here the list is edit-only.
+ * (sent only to TfL). Tapping a place plans a trip to it ([onRouteTo]) from the rider's current
+ * location; Edit and Delete stay on the row.
  *
  * UI-only: it reflects [state] and reports intents through the callbacks, so it stays
  * JVM/Robolectric-renderable for the screenshot test without a store or network.
@@ -53,6 +54,7 @@ import app.stopdash.domain.UkPostcode
 fun FavoritePlacesScreen(
     state: FavoritePlacesViewModel.State,
     onBack: () -> Unit,
+    onRouteTo: (FavoritePlace) -> Unit,
     onStartAdd: (FavoriteKind, String) -> Unit,
     onStartEdit: (FavoritePlace) -> Unit,
     onDelete: (String) -> Unit,
@@ -119,6 +121,7 @@ fun FavoritePlacesScreen(
                     PlacesList(
                         places = state.places,
                         loaded = state.loaded,
+                        onRouteTo = onRouteTo,
                         onStartAdd = onStartAdd,
                         onStartEdit = onStartEdit,
                         onDelete = onDelete,
@@ -145,6 +148,7 @@ fun FavoritePlacesScreen(
 private fun PlacesList(
     places: FavoritePlacesSet,
     loaded: Boolean,
+    onRouteTo: (FavoritePlace) -> Unit,
     onStartAdd: (FavoriteKind, String) -> Unit,
     onStartEdit: (FavoritePlace) -> Unit,
     onDelete: (String) -> Unit,
@@ -193,7 +197,12 @@ private fun PlacesList(
         )
     }
     list.forEach { place ->
-        PlaceRow(place = place, onEdit = { onStartEdit(place) }, onDelete = { onDelete(place.id) })
+        PlaceRow(
+            place = place,
+            onRoute = { onRouteTo(place) },
+            onEdit = { onStartEdit(place) },
+            onDelete = { onDelete(place.id) },
+        )
     }
     // Add buttons: the reserved kinds only while unset (they are single slots); a custom place always.
     // Labels are resolved here in composable scope, then handed to the (non-composable) click lambdas.
@@ -234,15 +243,22 @@ private fun AddButton(labelRes: Int, tag: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun PlaceRow(place: FavoritePlace, onEdit: () -> Unit, onDelete: () -> Unit) {
+private fun PlaceRow(place: FavoritePlace, onRoute: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit) {
+    // Tapping the row plans a trip to the place (SPEC D9); Edit and Delete are their own controls.
+    // TalkBack reads the row as "Plan a trip to ‹label›" so the primary action is clear, not just the name.
+    val routeDescription = stringResource(R.string.favorite_place_route_description, place.label)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onEdit)
+            .clickable(onClick = onRoute)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .semantics(mergeDescendants = true) { contentDescription = routeDescription },
+        ) {
             Text(text = place.label, style = MaterialTheme.typography.bodyLarge)
             place.placeName?.takeIf { it.isNotBlank() && it != place.label }?.let { name ->
                 Text(
@@ -254,8 +270,15 @@ private fun PlaceRow(place: FavoritePlace, onEdit: () -> Unit, onDelete: () -> U
                 )
             }
         }
-        Spacer(modifier = Modifier.width(16.dp))
-        // TalkBack reads the place name, not just "Delete", so the right row's action is clear.
+        Spacer(modifier = Modifier.width(8.dp))
+        // TalkBack names the place, not just "Edit"/"Delete", so the right row's action is clear.
+        val editDescription = stringResource(R.string.favorite_place_edit_description, place.label)
+        TextButton(
+            onClick = onEdit,
+            modifier = Modifier
+                .testTag("edit-${place.id}")
+                .semantics { contentDescription = editDescription },
+        ) { Text(stringResource(R.string.favorite_place_edit)) }
         val deleteDescription = stringResource(R.string.favorite_place_delete_description, place.label)
         TextButton(
             onClick = onDelete,
