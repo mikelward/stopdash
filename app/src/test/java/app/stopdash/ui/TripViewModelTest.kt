@@ -13,9 +13,13 @@ import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.JourneyPlanner
+import app.stopdash.domain.HiddenModes
+import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.StopGroup
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.RideLines
 import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.RouteStops
 import app.stopdash.domain.StopDisruption
@@ -1336,6 +1340,215 @@ class TripViewModelTest {
         val times = cardTimes(card, state, now, access, sequences)
         assertEquals(listOf(at(1) to false, at(3) to true, at(6) to true), times.shown.map { (train, catchable) -> train.expectedArrival to catchable })
         assertEquals(at(2), times.reachable)
+    }
+
+    // Red and green both run A → B → End, calling at nothing between A and B; red is the Planner's.
+    private val greenAlike = LineSequence(routes = listOf(LineRoute("A ↔ End", listOf("A", "B", "End"))), stopNames = red.stopNames)
+    private val viaRedOnly = TripRoute(listOf(leg("red", "A", "B", 6, 11), leg("blue", "B", "C", 13, 23)))
+    private fun redAndGreenAt(vararg trains: Departure) = TripViewModel.State(
+        routes = listOf(viaRedOnly),
+        live = mapOf(
+            "A" to TripViewModel.StopLive(trains.toList(), now),
+            "B" to TripViewModel.StopLive(listOf(train("blue", "C", 10), train("blue", "C", 20)), now),
+        ),
+    )
+
+    @Test
+    fun `a line serving the same two stops rides beside the Planner's, as an equal`() {
+        // Green isn't in the plan: its trains at A are how it's found, and its route says it runs to B.
+        // Every line checked as running, so green's trains may time the ride.
+        val state = redAndGreenAt(train("red", "End", 6), train("green", "End", 3)).copy(
+            statuses = listOf("red", "green", "blue").associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") },
+        )
+        val sequences = mapOf("red" to red, "green" to greenAlike, "blue" to blue)
+        val lines = rideLines(state.routes.orEmpty(), state, sequences)
+        val ride = viaRedOnly.rides.first()
+        assertEquals(listOf("red", "green"), lines.getValue(ride).legs.map { it.lineId })
+        assertEquals(listOf("red", "green"), lines.getValue(ride).timed.map { it.lineId })
+        // Its route is loaded for that: a line at a ride's boarding stop is asked for.
+        assertTrue("green" in sequenceLineIds(state, emptySet(), emptyList()))
+        // One pill for both, and both lines' trains on the first-ride row.
+        val card = tripCards(checkNotNull(tripEstimates(state, now, Duration.ZERO, sequences, lines = lines))).single()
+        assertEquals(listOf("red", "green"), cardRideLines(card, 0, lines).map { it.lineId })
+        assertEquals(listOf(at(3), at(6)), cardTimes(card, state, now, Duration.ZERO, sequences, lines).shown.map { it.first.expectedArrival })
+        // Green at 3 reaches B at 8, in time for blue at 10; red at 6 reaches it at 11, after it.
+        val alone = tripEstimates(state, now, Duration.ZERO, sequences, lines = emptyMap())!!.single()
+        val together = tripEstimates(state, now, Duration.ZERO, sequences, lines = lines)!!.single()
+        assertTrue(together.arrival!!.isBefore(alone.arrival))
+    }
+
+    @Test
+    fun `another line times a ride only once it's checked as running`() {
+        val sequences = mapOf("red" to red, "green" to greenAlike, "blue" to blue)
+        val ride = viaRedOnly.rides.first()
+        fun timedLines(statuses: Map<String, LineStatus>): Set<String> {
+            val state = redAndGreenAt(train("red", "End", 6), train("green", "End", 3)).copy(statuses = statuses)
+            return rideTrains(state, ride, now, sequences, rideLines(state.routes.orEmpty(), state, sequences))
+                .orEmpty().mapTo(HashSet()) { it.lineId }
+        }
+        val good = LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service")
+        // Unchecked, green's trains don't time the ride; checked and running, they do; suspended, not.
+        assertEquals(setOf("red"), timedLines(mapOf("red" to good)))
+        assertEquals(setOf("red", "green"), timedLines(mapOf("red" to good, "green" to good.copy(lineId = "green"))))
+        assertEquals(setOf("red"), timedLines(mapOf("red" to good, "green" to LineStatus("green", 20, "Service Closed"))))
+    }
+
+    @Test
+    fun `another line at a boarding stop has its status checked in the same refresh, apart from the plan's`() = runTest(dispatcher) {
+        val client = FakeClient(mutableMapOf("A" to listOf(train("red", "End", 2), train("green", "End", 3))))
+        val trip = model(FakePlanner(listOf(route)), client)
+        // Green is first seen in this refresh's arrivals, and checked straight after, not a tick later.
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue("green" in trip.state.value.statuses)
+        // Left out of TfL's answer, it isn't one of the plan's lines to say couldn't be checked.
+        client.omitLines = setOf("green")
+        val fresh = model(FakePlanner(listOf(route)), client)
+        fresh.refresh()
+        advanceUntilIdle()
+        assertTrue("green" !in fresh.state.value.statuses)
+        assertEquals(emptySet<String>(), fresh.state.value.statusUnknown)
+    }
+
+    @Test
+    fun `another line's trains read as checking on the card until it's checked as running`() {
+        val sequences = mapOf("red" to red, "green" to greenAlike, "blue" to blue)
+        val good = listOf("red", "blue").associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") }
+        val state = redAndGreenAt(train("red", "End", 6), train("green", "End", 3)).copy(statuses = good)
+        val lines = rideLines(state.routes.orEmpty(), state, sequences)
+        val card = tripCards(checkNotNull(tripEstimates(state, now, Duration.ZERO, sequences, lines = lines))).single()
+        val unchecked = cardTimes(card, state, now, Duration.ZERO, sequences, lines)
+        val green = unchecked.shown.single { it.first.lineId == "green" }
+        assertEquals(false, green.second)
+        assertTrue(green.first in unchecked.checking)
+        val checked = state.copy(statuses = good + ("green" to LineStatus("green", LineStatus.GOOD_SERVICE, "Good Service")))
+        assertEquals(true, cardTimes(card, checked, now, Duration.ZERO, sequences, lines).shown.single { it.first.lineId == "green" }.second)
+    }
+
+    @Test
+    fun `a quiet line sits under its own stop's group, or a header of its own`() {
+        val row = { stopId: String -> DepartureRows.forStop(stopId, "Stop", listOf(train("red", "End", 2)), now).single() }
+        val north = StopGroup("Stop", "north", true, listOf(row("Pn")))
+        val atPn = leg("green", "Pn", "B", 5, 15)
+        val atPs = leg("amber", "Ps", "B", 5, 15)
+        val (placed, rest) = placeQuiet(listOf(north), listOf(atPn, atPs))
+        assertEquals(listOf(atPn), placed.getValue(north))
+        assertEquals(listOf(listOf(atPs)), rest)
+    }
+
+    @Test
+    fun `an open ride shows another line's countdowns only once it's checked as running`() {
+        val sequences = mapOf("red" to red, "green" to greenAlike, "blue" to blue)
+        val red = viaRedOnly.rides.first()
+        val green = red.copy(lineId = "green", lineName = "green")
+        val state = redAndGreenAt(train("red", "End", 6), train("green", "End", 3))
+        val unchecked = rideLegRows(red, listOf(red, green), state, now, sequences, emptySet())
+        assertTrue(unchecked.getValue(red).isNotEmpty())
+        assertEquals(emptyList<DepartureRow>(), unchecked.getValue(green))
+        val good = state.copy(statuses = mapOf("green" to LineStatus("green", LineStatus.GOOD_SERVICE, "Good Service")))
+        assertTrue(rideLegRows(red, listOf(red, green), good, now, sequences, emptySet()).getValue(green).isNotEmpty())
+    }
+
+    @Test
+    fun `another line at a pole whose refresh failed doesn't time the ride`() {
+        val red = viaRedOnly.rides.first()
+        val green = red.copy(lineId = "green", lineName = "green", fromId = "A2")
+        val good = mapOf("green" to LineStatus("green", LineStatus.GOOD_SERVICE, "Good Service"))
+        val base = redAndGreenAt(train("red", "End", 6)).copy(statuses = good)
+        val lines = mapOf(red to RideLines(listOf(red, green), listOf(red, green)))
+        val atA2 = LineSequence(routes = listOf(LineRoute("A2 ↔ End", listOf("A2", "B", "End"))), stopNames = this.red.stopNames + ("A2" to "A"))
+        val sequences = mapOf("red" to this.red, "green" to atA2, "blue" to blue)
+        val fresh = base.copy(live = base.live + ("A2" to TripViewModel.StopLive(listOf(train("green", "End", 3)), now)))
+        assertEquals(setOf("red", "green"), rideTrains(fresh, red, now, sequences, lines)?.map { it.lineId }?.toSet())
+        val failed = base.copy(live = base.live + ("A2" to TripViewModel.StopLive(listOf(train("green", "End", 3)), now, failed = true)))
+        assertEquals(setOf("red"), rideTrains(failed, red, now, sequences, lines)?.map { it.lineId }?.toSet())
+    }
+
+    @Test
+    fun `a failed refresh at another line's pole is named like the Planner's own`() {
+        // Green boards at the other pole of the ride's stop, whose refresh failed: its held trains
+        // mustn't read as fresh, so that pole is named in the banner too.
+        val red = viaRedOnly.rides.first()
+        val green = red.copy(lineId = "green", lineName = "green", fromId = "A2", fromName = "A (other side)")
+        val state = redAndGreenAt(train("red", "End", 6)).let { it.copy(live = it.live + ("A2" to TripViewModel.StopLive(emptyList(), now, failed = true))) }
+        val lines = mapOf(red to RideLines(listOf(red, green), listOf(red)))
+        val estimates = checkNotNull(tripEstimates(state, now, Duration.ZERO, mapOf("red" to this.red, "blue" to blue), lines = lines))
+        assertEquals(listOf("A (other side)"), failedStops(estimates, state, lines))
+        assertEquals(emptyList<String>(), failedStops(estimates, state, emptyMap()))
+    }
+
+    @Test
+    fun `a ride's stop count shows only where every line takes that many`() {
+        val red = leg("red", "A", "B", 5, 15).copy(path = listOf("B"))
+        assertEquals(1, rideStops(listOf(red, red.copy(lineId = "green"))))
+        assertNull(rideStops(listOf(red, red.copy(lineId = "green", path = listOf("Z", "B")))))
+    }
+
+    @Test
+    fun `a card offers to hide every line its pill names`() {
+        val sequences = mapOf("red" to red, "green" to greenAlike, "blue" to blue)
+        val state = redAndGreenAt(train("red", "End", 6), train("green", "End", 3))
+        val lines = rideLines(state.routes.orEmpty(), state, sequences)
+        val card = tripCards(checkNotNull(tripEstimates(state, now, Duration.ZERO, sequences, lines = lines))).single()
+        assertEquals(listOf("red", "green", "blue"), cardLines(card, lines).map { it.id })
+    }
+
+    @Test
+    fun `a quiet line goes under only the first of its stop's groups`() {
+        // A stop split by platform is two groups for one stop: the line shows once, not under both.
+        val row = { stopId: String -> DepartureRows.forStop(stopId, "Stop", listOf(train("red", "End", 2)), now).single() }
+        val one = StopGroup("Stop", "Platform 1", true, listOf(row("Pn")))
+        val two = StopGroup("Stop", "Platform 2", true, listOf(row("Pn")))
+        val atPn = leg("green", "Pn", "B", 5, 15)
+        val (placed, rest) = placeQuiet(listOf(one, two), listOf(atPn))
+        assertEquals(listOf(atPn), placed.getValue(one))
+        assertEquals(emptyList<TripLeg>(), placed.getValue(two))
+        assertEquals(emptyList<List<TripLeg>>(), rest)
+    }
+
+    @Test
+    fun `a line reaching the same stop another way shows but doesn't time the ride`() {
+        // Green calls at Z first: its trains are real and shown, but red's time on board isn't green's.
+        val longWay = LineSequence(routes = listOf(LineRoute("A ↔ End", listOf("A", "Z", "B", "End"))), stopNames = red.stopNames + ("Z" to "Z"))
+        val state = redAndGreenAt(train("red", "End", 6), train("green", "End", 3))
+        val sequences = mapOf("red" to red, "green" to longWay, "blue" to blue)
+        val lines = rideLines(state.routes.orEmpty(), state, sequences).getValue(viaRedOnly.rides.first())
+        assertEquals(listOf("red", "green"), lines.legs.map { it.lineId })
+        assertEquals(listOf("red"), lines.timed.map { it.lineId })
+    }
+
+    @Test
+    fun `a line at another stop, missing the change, hidden, or not yet loaded isn't one`() {
+        val state = redAndGreenAt(train("red", "End", 6), train("green", "End", 3))
+        val ride = viaRedOnly.rides.first()
+        val cases = mapOf(
+            // It boards at A2, which the trip doesn't fetch: another stop, even if nearby.
+            "another stop" to mapOf("green" to greenAlike.copy(routes = listOf(LineRoute("A2 ↔ B", listOf("A2", "B"))))),
+            "misses the change" to mapOf("green" to greenAlike.copy(routes = listOf(LineRoute("A ↔ End", listOf("A", "End"))))),
+            "not loaded" to emptyMap(),
+        )
+        for ((why, sequences) in cases) {
+            assertEquals(why, listOf("red"), rideLines(state.routes.orEmpty(), state, sequences + ("red" to red)).getValue(ride).legs.map { it.lineId })
+        }
+        val hidden = rideLines(state.routes.orEmpty(), state, mapOf("red" to red, "green" to greenAlike), hidden = setOf(HiddenModes.lineKey("green", "Green")))
+        assertEquals(listOf("red"), hidden.getValue(ride).legs.map { it.lineId })
+    }
+
+    @Test
+    fun `a road's two poles are one stop for another line`() {
+        // Bus 2 stops at the northbound pole of the pair the Planner's bus 1 boards at, and at a pole of
+        // the pair it gets off at, calling at the same pair between.
+        val two = road.copy(routes = listOf(LineRoute("North", listOf("Bn", "Xn", "Cn"))))
+        val ride = onPoles(plannerBus, mapOf("1" to road))
+        val state = TripViewModel.State(
+            routes = listOf(TripRoute(listOf(ride))),
+            live = mapOf("Bn" to TripViewModel.StopLive(listOf(train("1", "C", 4).copy(mode = "bus"), train("2", "C", 2).copy(mode = "bus")), now)),
+            areaPoles = mapOf("BG" to listOf("Bn", "Bs")),
+        )
+        val lines = rideLines(state.routes.orEmpty(), state, mapOf("1" to road, "2" to two)).getValue(ride)
+        assertEquals(listOf("1", "2"), lines.legs.map { it.lineId })
+        assertEquals("Bn" to "Cn", lines.legs[1].let { it.fromId to it.toId })
+        assertEquals(listOf("1", "2"), lines.timed.map { it.lineId })
     }
 
     @Test

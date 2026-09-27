@@ -884,8 +884,17 @@ stops their ride rows name (below) (maintainer, 2026-09-27). Routes whose first 
 same two stops by the same mode and then ride the same lines — the 43 or the 134 to Highgate
 station, then the Northern line — **share a card**: its header shows that leg's lines as **one pill
 cut diagonally** ("43/134", read as "43 or 134"), then the later lines and the best of their
-arrivals, and its first ride's row times every one of those lines together (below). Tapping
-the card opens its best route. **Every route looks alike** — no
+arrivals, and its first ride's row times every one of those lines together (below). **Every ride**
+also takes in the lines the Planner didn't name that serve **its own two stops** (maintainer,
+2026-09-27): another line of the same mode whose route runs from the ride's boarding stop to its
+getting-off stop rides beside the Planner's as an equal — on that ride's pill, its trains among the
+ride's times and headway, and a departure row of its own on the open route. "Stop" is strict: the
+same stop, a road's two poles counting as one, never an interchange's other stops, so every walk and
+change stays as the Planner gave it. Such a line is found among the boarding stop's arrivals (or the
+plan's other rides), and needs its route loaded to vouch that it reaches the stop. Only a line that
+also calls at the same stops in between shares the ride's time on board and times the route; one that
+gets there another way still shows its trains, but a route is never timed as if it rode that way.
+Tapping the card opens its best route. **Every route looks alike** — no
 route is expanded — as a card whose top row is its **duration · arrival** ("22 min · 08:24"); the
 duration is from now to that arrival, so it takes in the same walks, waits and legs. Where waiting
 for a frequent line past its predictions (below) could make it later, by three minutes or more, both
