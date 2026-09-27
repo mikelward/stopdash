@@ -102,16 +102,19 @@ itself), the same as choosing a stop. The saved place — its
 coordinate, its label, and the **name of the stop or station it resolved to** (shown under the label,
 e.g. "Oxford Circus") — is kept on the device with your other settings, so it rides your own Android
 backup and device transfer like the rest (above); it is never logged or put in a bug report, and
-deleting the place or clearing the app's data removes it. (Routing to a saved place is not part of
-this release.)
+deleting the place or clearing the app's data removes it. Tapping a saved place plans a trip to it
+from where you are (see **Trips with a change** below).
 
 **Trips with a change** (*To…* from the near-me list or a *From…* station) send both ends of the
 trip together to **TfL's Journey Planner**, as stop ids: the stop nearest you (or the *From…*
 station) and the stop you picked. When you pick a station complex such as King's Cross St.
 Pancras, the Planner is asked once for each of its stations and once for its bus stops, each
-request carrying the same start. Your coordinates are never sent to the Planner; the nearest
+request carrying the same start. Your own coordinates are not sent as the start; the nearest
 stop's id stands in for where you are, which says no more than the nearby-stops lookup already
-does. The Planner is asked when a trip opens, about every 15 minutes while it stays on screen, and
+does. The one exception is a trip **to a saved favorite**, whose stored **coordinate** is sent as
+the destination — the Planner walks the last leg to it — while the favorite's name and id stay on
+your device. That coordinate is the same **Location** data the app already shares with TfL, so it
+adds no Play Data Safety category. The Planner is asked when a trip opens, about every 15 minutes while it stays on screen, and
 when you tap *Try again*; while a trip is on screen, the departures at each stop where a route
 boards are fetched from TfL like any other stop's, along with its lines' status. The plan is held
 in memory only, never saved or logged beyond coarse diagnostics (a stop id, an HTTP status), and
