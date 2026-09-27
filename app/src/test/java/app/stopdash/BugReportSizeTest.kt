@@ -115,7 +115,7 @@ class BugReportSizeTest {
         // The library's cut takes the middle of the stop list, not the log at the end.
         assertTrue("${report.length}", report.length <= DebugReport.MAX_REPORT_CHARS)
         assertTrue(report.contains("processExit reason=anr"))
-        assertTrue(report.startsWith("StopDash bug report"))
+        assertTrue(report.startsWith("LDN Go bug report"))
     }
 
     @Test

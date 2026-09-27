@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build stopdash's bundled step-free access table from TfL's station data (SPEC *Step-free*).
+"""Build LDN Go's bundled step-free access table from TfL's station data (SPEC *Step-free*).
 
 Writes the JSON the app reads as `assets/stations/step_free.json`: for each station platform
 TfL describes, by stop (its NaPTAN stop area, the id the app's departures carry) and line, how far

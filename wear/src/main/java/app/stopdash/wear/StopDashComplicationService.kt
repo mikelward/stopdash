@@ -80,7 +80,7 @@ class StopDashComplicationService : SuspendingTimelineComplicationDataSourceServ
     companion object {
         private const val TAG = "StopDash.Complication"
 
-        /** Asks the system for a fresh timeline for every StopDash complication, after a new envelope. */
+        /** Asks the system for a fresh timeline for every LDN Go complication, after a new envelope. */
         fun requestUpdate(context: Context) {
             ComplicationDataSourceUpdateRequester
                 .create(context, ComponentName(context, StopDashComplicationService::class.java))

@@ -25,7 +25,7 @@ import org.junit.Test
 
 /**
  * The route detail's stop list for Thameslink, against a recorded
- * `/Line/thameslink/Route/Sequence/inbound` (three of its routes, trimmed to the fields stopdash
+ * `/Line/thameslink/Route/Sequence/inbound` (three of its routes, trimmed to the fields LDN Go
  * reads; public network data only) and the bundled station index. TfL lists St Pancras's
  * Thameslink departures under the station's domestic-platforms id, which no route calls at: the
  * sequence calls at the low-level (`LL`) id instead, and King's Cross shares the interchange. The

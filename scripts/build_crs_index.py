@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build stopdash's bundled National Rail station codes from NaPTAN (SPEC *National Rail*).
+"""Build LDN Go's bundled National Rail station codes from NaPTAN (SPEC *National Rail*).
 
 Writes the JSON the app reads as `assets/stations/crs_codes.json`: for every active rail
 station in NaPTAN (the DfT's stop database, area 910), its railway location code (TIPLOC) and

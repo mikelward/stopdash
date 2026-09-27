@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build stopdash's bundled station index from TfL (SPEC *Finding stops → Find a station*).
+"""Build LDN Go's bundled station index from TfL (SPEC *Finding stops → Find a station*).
 
 Writes the JSON the app reads as `assets/stations/station_index.json`: every tube, DLR,
 Overground, Elizabeth line, tram, National Rail and pier station in and around London, plus
@@ -30,7 +30,7 @@ import urllib.request
 
 BASE = "https://api.tfl.gov.uk"
 STOP_TYPES = ["NaptanMetroStation", "NaptanRailStation", "NaptanFerryPort"]
-# The modes stopdash shows departures for, bus aside (bus stops come from the live search).
+# The modes LDN Go shows departures for, bus aside (bus stops come from the live search).
 MODES = {"tube", "dlr", "overground", "elizabeth-line", "national-rail", "tram", "river-bus", "cable-car"}
 # Greater London with a margin, so a TfL stop just past the boundary (Watford Junction, Epping)
 # stays, while TfL's National Rail stations across the country don't bloat the index.
@@ -211,7 +211,7 @@ def platform_ids(stop):
 
 
 def lines_by_mode(stop):
-    """The lines serving [stop] per mode stopdash indexes, from TfL's lineModeGroups: a map of
+    """The lines serving [stop] per mode LDN Go indexes, from TfL's lineModeGroups: a map of
     mode to sorted line ids, holding only modes with lines (empty for none). Buses are left out."""
     lines = {}
     for group in stop.get("lineModeGroups") or []:

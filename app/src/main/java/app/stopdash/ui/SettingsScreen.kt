@@ -93,7 +93,7 @@ fun SettingsScreen(
     railApiKey: String = "",
     onRailApiKeyChange: (String) -> Unit = {},
     railApiKeyLoaded: Boolean = true,
-    // The "Help make StopDash better" opt-in (SPEC *Privacy*): off by default; null until the stored
+    // The "Help make LDN Go better" opt-in (SPEC *Privacy*): off by default; null until the stored
     // choice is read, when the switch is disabled so a slow read can't present "off" to act on.
     telemetryOptIn: Boolean? = false,
     onTelemetryOptInChange: (Boolean) -> Unit = {},
@@ -327,7 +327,7 @@ fun SettingsScreen(
 
 /**
  * The optional TfL `app_key` control (SPEC D7): a title + one-line explanation, a paste field, and
- * a Save (with a Clear once a key is stored). StopDash works keyless; a user's own free key raises
+ * a Save (with a Clear once a key is stored). LDN Go works keyless; a user's own free key raises
  * the request budget ~50→~500 req/min.
  *
  * [apiKey] is the saved value; the field edits a local [draft] seeded from it, so typing doesn't

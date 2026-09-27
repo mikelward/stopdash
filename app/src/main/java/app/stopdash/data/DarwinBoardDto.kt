@@ -19,7 +19,7 @@ import kotlinx.serialization.Serializable
 
 /**
  * A National Rail departure board as Darwin's Live Departure Board service returns it (the Rail
- * Data Marketplace's `GetDepartureBoard`): the fields stopdash reads, the rest ignored.
+ * Data Marketplace's `GetDepartureBoard`): the fields LDN Go reads, the rest ignored.
  */
 @Serializable
 data class DarwinBoardDto(
@@ -52,7 +52,7 @@ private val UK = ZoneId.of("Europe/London")
 fun DarwinBoardDto.toDepartures(warn: (String) -> Unit = {}): List<Departure> = toBoard(warn).departures
 
 /**
- * The board as stopdash shows it (SPEC principle 1): each train with an expected time, as an absolute
+ * The board as LDN Go shows it (SPEC principle 1): each train with an expected time, as an absolute
  * instant so its countdown runs like a TfL prediction, and apart from them each canceled train and
  * each "Delayed" with no estimate, at its scheduled time and never counted down ([RailBoard.untimed]).
  * Left out: a train with no operator, and the TfL-run services TfL's own feed already carries. Times

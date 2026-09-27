@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 
 /**
  * TfL's `/StopPoint/Search?query=` response — the name search behind "Find a station" (SPEC
- * *Finding stops*). Only the fields stopdash maps are declared; the client ignores the rest.
+ * *Finding stops*). Only the fields LDN Go maps are declared; the client ignores the rest.
  */
 @Serializable
 data class TflSearchResponseDto(

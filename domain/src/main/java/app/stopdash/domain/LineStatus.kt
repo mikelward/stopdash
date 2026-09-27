@@ -8,7 +8,7 @@ import java.time.LocalDate
  * more statuses per line; this carries the worst of them. A line is disrupted whenever any
  * status is not a good service ([GOOD_SERVICE]), so a delayed or suspended line is marked
  * rather than have its countdowns shown as if they could be trusted (SPEC principle 1 —
- * never show a departure stopdash doesn't stand behind).
+ * never show a departure LDN Go doesn't stand behind).
  *
  * [description] is the short chip label: TfL's own wording for the shown status ("Severe
  * Delays", "Suspended", "Good Service") where that already names the disruption, else a

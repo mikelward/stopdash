@@ -5,7 +5,7 @@ import app.stopdash.domain.UsageEvent
 
 /**
  * Where the app's custom usage events go (SPEC *Privacy*): to Analytics, and only while the rider
- * has opted in to **Help make StopDash better**. Each event carries categories and buckets only
+ * has opted in to **Help make LDN Go better**. Each event carries categories and buckets only
  * ([UsageEvent]); nothing a call site passes is sent as it is.
  *
  * An event is dropped, not held, while the stored choice hasn't loaded or reads no, and in a build

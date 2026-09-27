@@ -616,7 +616,7 @@ internal fun WidgetContent(
             }
             when {
                 !model.hasData ->
-                    WidgetMessage("Open StopDash to load departures")
+                    WidgetMessage("Open LDN Go to load departures")
                 // Not even one whole departure fits at this size and font: say how to fix it, rather
                 // than show a departure without its line or destination, or claim there are none.
                 model.tooSmall ->
@@ -662,7 +662,7 @@ private fun WidgetHeaderRow(stamp: String?) {
         // out — a large system font at the narrowest size — so the stamp, which carries the
         // freshness the widget must never hide (SPEC D4), always keeps its full width.
         Text(
-            text = "StopDash",
+            text = "LDN Go",
             maxLines = 1,
             modifier = GlanceModifier.defaultWeight(),
             style = TextStyle(

@@ -12,7 +12,7 @@ import java.time.LocalDate
 import kotlinx.serialization.Serializable
 
 /**
- * One line from TfL's `/Line/{ids}/Status` response. Only the fields stopdash maps are
+ * One line from TfL's `/Line/{ids}/Status` response. Only the fields LDN Go maps are
  * declared; the client's `Json { ignoreUnknownKeys = true }` drops the rest. A line
  * carries a list of [TflLineStatusEntryDto] — usually one ("Good Service"), several when
  * disrupted.

@@ -3,7 +3,7 @@ package app.stopdash.domain
 import java.time.Duration
 
 /**
- * The custom usage events sent with **Help make StopDash better** on (SPEC *Privacy*, maintainer
+ * The custom usage events sent with **Help make LDN Go better** on (SPEC *Privacy*, maintainer
  * 2026-09-24): what was used and how it went, never what it was used on. Every parameter value is a
  * category or a bucket from the closed vocabulary here, so no stop, line, journey, search text or
  * coordinate can reach one: nothing a caller passes is sent as it is.

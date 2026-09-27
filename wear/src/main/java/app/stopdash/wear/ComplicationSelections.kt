@@ -23,7 +23,7 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
 
 /**
- * The row each StopDash complication is set to, by its instance id, as the user picked it (none: it
+ * The row each LDN Go complication is set to, by its instance id, as the user picked it (none: it
  * shows the default row). The set is synced to the phone ([WatchSyncContract.COMPLICATION_ROWS_PATH])
  * so the phone keeps those rows in every envelope; row identities only, never anything else.
  */

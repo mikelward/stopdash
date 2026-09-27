@@ -30,7 +30,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
  * The device's position via the framework [LocationManager] — no Play Services dependency,
  * so nothing is added to what the app ships (SPEC *Cost and reliability*). **Precise where
  * granted**: a coarse fix put the nearest stop up to ~1 km off (a stop half a mile away read
- * as nearest), so stopdash requests `ACCESS_FINE_LOCATION` and, when it is held, reads GPS as
+ * as nearest), so LDN Go requests `ACCESS_FINE_LOCATION` and, when it is held, reads GPS as
  * well as the fused/network providers; with only `ACCESS_COARSE_LOCATION` granted it degrades
  * to the coarse-safe providers rather than failing (maintainer, 2026-09-19).
  *

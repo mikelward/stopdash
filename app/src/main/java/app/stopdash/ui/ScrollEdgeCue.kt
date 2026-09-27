@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
 
 /**
  * The "more this way" cue at a scrollable edge: a short fade into the screen's background with a
- * chevron on a plate centered over it. StopDash's lists scroll straight to their own edge, so a
+ * chevron on a plate centered over it. LDN Go's lists scroll straight to their own edge, so a
  * list that happens to end near the bottom of the screen read the same as one cut off mid-content;
  * a fade alone was too easy to miss (maintainer, 2026-09-26).
  */

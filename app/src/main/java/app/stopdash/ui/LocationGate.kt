@@ -50,7 +50,7 @@ import java.time.Instant
  *   overflow's dot, as on the departures cold load.
  * - [NoLocation][NearbyStopsViewModel.State.NoLocation] / [Empty][NearbyStopsViewModel.State.Empty]
  *   / [Failed][NearbyStopsViewModel.State.Failed] — the reason and a **Try again**; Empty also says
- *   StopDash shows only London's stops, the usual reason there are none.
+ *   LDN Go shows only London's stops, the usual reason there are none.
  *
  * Every state has the app bar every screen has (maintainer, 2026-10-02): the mark, the name, and
  * the overflow with what makes sense before any stop is found — From…, Settings, Send bug report and
@@ -86,7 +86,7 @@ fun LocationGate(
     // it, or whose fix or lookup failed, can still look a station up. The overflow's From… too. Null
     // hides both.
     onFindStation: (() -> Unit)? = null,
-    // Open StopDash's own Settings, from the overflow ([onOpenSettings] is the system's app settings,
+    // Open LDN Go's own Settings, from the overflow ([onOpenSettings] is the system's app settings,
     // for the permission). Null offers no item.
     onOpenStopDashSettings: (() -> Unit)? = null,
     // Open About from the overflow, hosted by the caller above the gate, so a lookup finishing while

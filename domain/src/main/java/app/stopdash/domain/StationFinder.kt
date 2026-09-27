@@ -31,7 +31,7 @@ interface StationFinder {
     /**
      * The stops under station/hub [id] that carry departures — a hub's stations, a station itself,
      * a bus stop area's poles — with their served lines, from TfL `/StopPoint/{id}`. Empty when the
-     * id resolves to nothing stopdash shows departures for. Throws like [searchStations].
+     * id resolves to nothing LDN Go shows departures for. Throws like [searchStations].
      */
     suspend fun stationStops(id: String): List<StopLocation>
 }

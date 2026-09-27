@@ -989,7 +989,7 @@ object DepartureRows {
      * `direction` is the intended key, but it omits it on some services; when it is
      * blank, falling back to `direction` alone would merge opposite directions into
      * one row that then mislabels a countdown (SPEC principle 1 — never present a
-     * departure stopdash can't stand behind). So a blank direction falls back to the
+     * departure LDN Go can't stand behind). So a blank direction falls back to the
      * platform (which usually names the direction, e.g. "Northbound - Platform 1")
      * and then the destination, both unambiguous enough to keep the groups apart.
      * A present `direction` is used as-is, so two platforms of the same direction

@@ -4,7 +4,7 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Precise location for the nearby-stops search: a coarse fix put the nearest stop up to
-         ~1 km off (a stop half a mile away read as nearest), so stopdash requests FINE and uses
+         ~1 km off (a stop half a mile away read as nearest), so LDN Go requests FINE and uses
          it when granted (maintainer, 2026-09-19). COARSE stays declared so the runtime dialog
          offers the precise/approximate choice and an approximate grant still finds stops,
          degraded. Location is sent to TfL on demand only, to find stops, never on a background
@@ -29,7 +29,7 @@
          Console location declaration before it ships. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
-    <!-- StopDash shows no ads: strip the advertising-ID and ad-attribution permissions the Firebase
+    <!-- LDN Go shows no ads: strip the advertising-ID and ad-attribution permissions the Firebase
          Analytics dependency would otherwise merge in. -->
     <uses-permission
         android:name="com.google.android.gms.permission.AD_ID"
@@ -100,7 +100,7 @@
         </provider>
 
         <!-- Telemetry never starts on its own: collection stays off until StopdashApp applies the
-             persisted "Help make StopDash better" choice, and both SDKs then remember the applied
+             persisted "Help make LDN Go better" choice, and both SDKs then remember the applied
              value across process starts. Inert in builds without a Firebase config
              (dev-docs/firebase.md). -->
         <meta-data

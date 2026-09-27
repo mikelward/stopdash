@@ -371,7 +371,7 @@ fun MainScreen(
     onRouteToPlace: (TripDestination.Place) -> Unit = {},
     // A long press on a chip opens the places' own screen, to edit them; null offers no long press.
     onEditFavoritePlaces: (() -> Unit)? = null,
-    // Answers the "Help make StopDash better" question from its card atop the near-me list
+    // Answers the "Help make LDN Go better" question from its card atop the near-me list
     // ([TelemetryInviteCard]); null (answered, or still loading) shows no card.
     onTelemetryInviteAnswer: ((Boolean) -> Unit)? = null,
 ) {

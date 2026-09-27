@@ -51,7 +51,7 @@ class KeyRejectedFrameTest {
             }
         }
 
-        composeRule.onNodeWithText("Couldn't save your API key change; it resets when StopDash restarts").assertExists()
+        composeRule.onNodeWithText("Couldn't save your API key change; it resets when LDN Go restarts").assertExists()
         composeRule.onNodeWithText("Clear key").assertDoesNotExist()
         composeRule.onNodeWithText("Try again").performClick()
         composeRule.runOnIdle { assertEquals(1, retries) }

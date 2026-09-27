@@ -73,7 +73,7 @@ import okhttp3.Dispatcher
  *
  * [appKey] is read per request, not captured at construction, so a key the user pastes
  * in Settings takes effect on the next refresh without rebuilding the long-lived clients
- * (SPEC D7). A null/blank result means keyless access: stopdash ships no baked-in key, and
+ * (SPEC D7). A null/blank result means keyless access: LDN Go ships no baked-in key, and
  * a user may supply their own for the higher rate limit. `expectSuccess` makes a non-2xx
  * (e.g. 429 rate-limited) throw, which the caller turns into the honest user-facing state
  * rather than a silent empty list.
@@ -250,7 +250,7 @@ class KtorTflClient(
                 }.body<TflJourneyResultsDto>()
             } catch (e: RedirectResponseException) {
                 // 300: the Planner couldn't place an end and offers look-alike places instead. The
-                // trip has no route StopDash can stand behind, so none is shown. The two ends together
+                // trip has no route LDN Go can stand behind, so none is shown. The two ends together
                 // are a trip the rider chose, so neither is logged (SPEC *Privacy*).
                 warn("$source: HTTP ${e.response.status.value}")
                 return@tflRequest emptyList()
