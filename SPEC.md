@@ -227,7 +227,11 @@ The app finds stops two ways:
   screen's button, since it needs no location) searches
   TfL's stops by name as the user types (a short pause after the last letter, and at least
   two letters, so a name costs one request rather than one per keystroke). Each match shows
-  its name and modes; picking one opens **the near-me list as if you stood at that station**
+  its name and modes on one line, the name given priority (ellipsized only when it must; the modes
+  bounded to a share of the row so a many-mode station can't squeeze it). A long word a rider needn't
+  see spelled out is abbreviated **for display only** — today *International* → *Intl* (maintainer,
+  2026-09-27) — while the full name still backs stop matching and disruption text, which need TfL's own
+  spelling. Picking a match opens **the near-me list as if you stood at that station**
   (maintainer, 2026-09-24): the station's own stops (distance 0) and the other stops around it,
   chosen, ordered and folded exactly as near me is, with distances from the station, and the same
   *farther* cards and hidden-mode behavior (maintainer, 2026-09-25: the cards replace the
