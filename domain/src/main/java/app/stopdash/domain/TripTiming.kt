@@ -12,8 +12,9 @@ import kotlin.math.ceil
  *
  * A leg with no live train in reach falls back to the Planner's own time for it while the rider can
  * still make the Planner's departure ([Basis.ESTIMATED]). Past that, a line running every few minutes
- * ([FREQUENT_MODES]) whose live trains all leave before the rider reaches it — its predictions end
- * short of them — is boarded as they arrive ([Basis.ESTIMATED]); anything else, nothing says when the
+ * ([FREQUENT_MODES], its predictions showing it: [runsFrequently]) whose live trains all leave before
+ * the rider reaches it — its predictions end short of them — is boarded as they arrive
+ * ([Basis.ESTIMATED]); anything else, nothing says when the
  * next train leaves, so the arrival is withheld ([Basis.UNKNOWN]) rather than guessed.
  */
 object TripTiming {
@@ -84,10 +85,11 @@ object TripTiming {
                     // rider gets there: on a line every few minutes, the next one is about then. Not on a
                     // line with no trains (done for the night), one not running (its last predictions
                     // may outlive it), nor one whose arrivals failed, even with its last ones held.
-                    // And only where its predictions run far enough ahead to have stopped at the feed's
-                    // horizon: a last one soon after now may be the night's final train.
+                    // And only where its predictions show it running every few minutes now: how far
+                    // ahead they reach says nothing, since TfL predicts only trains already running,
+                    // so near a line's start they end within 15 minutes all day.
                     leg.mode.lowercase() in FREQUENT_MODES && leg.lineId !in notRunning && current(index) &&
-                        !trains.isNullOrEmpty() && !trains.maxOf { it.expectedArrival }.isBefore(now.plus(PREDICTION_HORIZON)) -> {
+                        runsFrequently(trains.orEmpty()) -> {
                         if (basis == Basis.LIVE) basis = Basis.ESTIMATED
                         LegTiming(ready, ready.plus(leg.run), null, false)
                     }
@@ -133,10 +135,21 @@ object TripTiming {
     val FREQUENT_MODES = setOf("tube", "dlr", "overground", "elizabeth-line")
 
     /**
-     * How far ahead a frequent line's predictions must reach to be read as running on past them: TfL
-     * predicts about half an hour ahead, so a last prediction sooner than this may be the last train.
+     * Whether [trains] (a leg's live trains, in any order) show its line running every few minutes
+     * now: at least [FREQUENT_MIN_TRAINS] of them, none following the one before by more than
+     * [FREQUENT_MAX_GAP]. Around the night's last trains they thin out and fail this.
      */
-    val PREDICTION_HORIZON: Duration = Duration.ofMinutes(20)
+    fun runsFrequently(trains: List<Departure>): Boolean {
+        if (trains.size < FREQUENT_MIN_TRAINS) return false
+        val times = trains.map { it.expectedArrival }.sorted()
+        return times.zipWithNext().all { (a, b) -> Duration.between(a, b) <= FREQUENT_MAX_GAP }
+    }
+
+    /** How many predicted trains show a line running frequently ([runsFrequently]). */
+    const val FREQUENT_MIN_TRAINS = 3
+
+    /** The longest wait between predicted trains on a line running every few minutes. */
+    val FREQUENT_MAX_GAP: Duration = Duration.ofMinutes(10)
 
     /** TfL `statusSeverity` values for a line not running: closed, suspended, planned closure, not running, service closed. */
     val NOT_RUNNING_SEVERITIES = setOf(1, 2, 4, 16, 20)
