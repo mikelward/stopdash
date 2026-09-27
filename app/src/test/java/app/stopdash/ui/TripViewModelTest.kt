@@ -849,6 +849,138 @@ class TripViewModelTest {
         assertEquals(listOf(listOf(redViaX), listOf(route, viaGreen)), cards.map { card -> card.map { it.route } })
     }
 
+    // A bus leg between synthetic stops (SPEC *Privacy*: no real stop or position), each end at a
+    // position given as a latitude offset from (0, 0); 0.001° is ~111 m.
+    private fun bus(lineId: String, from: String, to: String, fromAt: Double, toAt: Double, next: String = to) =
+        leg(lineId, from, to, 5, 15).copy(
+            mode = "bus",
+            fromName = if (from.startsWith("P")) "Example Gardens" else from,
+            toName = if (to.startsWith("S")) "Hub Station" else to,
+            fromPosition = fromAt to 0.0,
+            toPosition = toAt to 0.0,
+            path = listOf(next, to).distinct(),
+        )
+
+    private val change = leg("blue", "940HUB", "C", 20, 30).copy(fromName = "Hub", fromPosition = 0.0105 to 0.0)
+
+    @Test
+    fun `routes changing at different stops of one place share a card`() {
+        // Two lines' stops at the change are under different stop areas and no interchange, but
+        // are named alike and a road apart: one place, so one card.
+        val first = TripRoute(listOf(bus("b1", "P1", "S1", 0.0, 0.01).copy(toArea = "490GSA"), change))
+        val second = TripRoute(listOf(bus("b2", "P1", "S2", 0.0, 0.0108).copy(toArea = "490GSB"), change))
+        val state = TripViewModel.State(routes = listOf(first, second))
+        val places = tripPlaces(state.routes.orEmpty(), emptyMap())
+        val estimates = checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap(), places = places))
+        assertEquals(listOf(listOf(first, second)), tripCards(estimates, places).map { card -> card.map { it.route } })
+        // By stop pair alone, as before, they are two.
+        assertEquals(2, tripCards(estimates).size)
+    }
+
+    @Test
+    fun `each card's place key is its own, so the list never keys two cards alike`() {
+        // Two lines from one stop pair to same-named stops in no pair, far apart: once grouped by
+        // place they are two cards, where the stop-pair key alone gives both the same key.
+        val near = TripRoute(listOf(bus("b1", "P1", "Stand", 0.0, 0.01).copy(fromArea = "490GPAIR"), change))
+        val far = TripRoute(listOf(bus("b2", "P1", "Stand", 0.0, 0.05).copy(fromArea = "490GPAIR", toId = "Stand2"), change))
+        val state = TripViewModel.State(routes = listOf(near, far))
+        val places = tripPlaces(state.routes.orEmpty(), emptyMap())
+        val cards = tripCards(checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap(), places = places)), places)
+        assertEquals(2, cards.size)
+        assertEquals(cards.size, cards.map { cardKey(it.first().route, places) }.distinct().size)
+    }
+
+    // b2's route: from the shared stop, past M1 and the change's place (S2), then on to W.
+    private val b2Route = LineSequence(
+        routes = listOf(LineRoute("P1 ↔ W", listOf("P1", "M1", "S2", "W"), "inbound")),
+        stopNames = mapOf("P1" to "Example Gardens", "M1" to "Middle", "S2" to "Hub Station", "W" to "Elsewhere"),
+        stopPositions = mapOf("P1" to (0.0 to 0.0), "M1" to (0.005 to 0.0), "S2" to (0.0108 to 0.0), "W" to (0.03 to 0.0)),
+    )
+
+    @Test
+    fun `a line whose route runs the same stretch joins the card the Planner changed elsewhere from`() {
+        // The Planner rode b1 to the change, but changed from b2 at W; b2's route passes the change too.
+        val viaHub = TripRoute(listOf(bus("b1", "P1", "S1", 0.0, 0.01, next = "M1"), change))
+        val viaW = TripRoute(listOf(bus("b2", "P1", "W", 0.0, 0.03, next = "M1"), leg("blue", "W", "C", 25, 35)))
+        val state = TripViewModel.State(routes = listOf(viaHub, viaW))
+        val sequences = mapOf<String, LineSequence?>("b2" to b2Route)
+        val places = tripPlaces(state.routes.orEmpty(), sequences)
+        val estimates = checkNotNull(tripEstimates(state, now, Duration.ZERO, sequences, places = places))
+        val shared = tripCards(estimates, places).map { card -> card.map { it.route.rides.first().lineId } }
+        assertEquals(listOf("b1", "b2"), shared.first())
+        val alternative = estimates.map { it.route }.single { it.rides.first().lineId == "b2" && it.rides[1].fromId == "940HUB" }
+        assertEquals(listOf("M1", "S2"), alternative.rides.first().path)
+        // Its time on board is b1's for the same stretch.
+        assertEquals(viaHub.legs.first().run, alternative.rides.first().run)
+        // The route the Planner gave for b2 stands too.
+        assertTrue(estimates.any { it.route == viaW })
+    }
+
+    @Test
+    fun `a line's route that misses the change, or no route yet, adds nothing`() {
+        val viaHub = TripRoute(listOf(bus("b1", "P1", "S1", 0.0, 0.01, next = "M1"), change))
+        val viaW = TripRoute(listOf(bus("b2", "P1", "W", 0.0, 0.03, next = "M1"), leg("blue", "W", "C", 25, 35)))
+        val state = TripViewModel.State(routes = listOf(viaHub, viaW))
+        val missing = b2Route.copy(routes = listOf(LineRoute("P1 ↔ W", listOf("P1", "M1", "W"), "inbound")))
+        for (sequences in listOf(emptyMap(), mapOf<String, LineSequence?>("b2" to missing))) {
+            val places = tripPlaces(state.routes.orEmpty(), sequences)
+            val estimates = checkNotNull(tripEstimates(state, now, Duration.ZERO, sequences, places = places))
+            assertEquals(setOf(viaHub, viaW), estimates.map { it.route }.toSet())
+        }
+    }
+
+    @Test
+    fun `a line that leaves the stretch and rejoins it isn't given the ride's time`() {
+        // b2 reaches the change too, but by way of X, not M1: b1's time on board isn't b2's.
+        val viaHub = TripRoute(listOf(bus("b1", "P1", "S1", 0.0, 0.01, next = "M1"), change))
+        val viaW = TripRoute(listOf(bus("b2", "P1", "W", 0.0, 0.03, next = "X"), leg("blue", "W", "C", 25, 35)))
+        val detour = b2Route.copy(
+            routes = listOf(LineRoute("P1 ↔ W", listOf("P1", "X", "S2", "W"), "inbound")),
+            stopNames = b2Route.stopNames + ("X" to "Elsewhere Road"),
+            stopPositions = b2Route.stopPositions + ("X" to (0.02 to 0.0)),
+        )
+        val sequences = mapOf<String, LineSequence?>("b2" to detour, "b1" to b2Route)
+        val state = TripViewModel.State(routes = listOf(viaHub, viaW))
+        val places = tripPlaces(state.routes.orEmpty(), sequences)
+        val estimates = checkNotNull(tripEstimates(state, now, Duration.ZERO, sequences, places = places))
+        assertEquals(setOf(viaHub, viaW), estimates.map { it.route }.toSet())
+    }
+
+    // b2 planned from its own pole P2 of the place, its route calling at the place from [pole].
+    private fun otherPole(pole: String) = b2Route.copy(
+        routes = listOf(LineRoute("$pole ↔ W", listOf(pole, "M1", "S2", "W"), "inbound")),
+        stopNames = b2Route.stopNames + (pole to "Example Gardens"),
+        stopPositions = b2Route.stopPositions + (pole to (0.0002 to 0.0)),
+    )
+
+    @Test
+    fun `an alternative boards at the other line's own pole of the place`() {
+        // b2 stops at another pole of the place than b1, one the trip fetches for b2's own route.
+        val viaHub = TripRoute(listOf(bus("b1", "P1", "S1", 0.0, 0.01, next = "M1"), change))
+        val viaW = TripRoute(listOf(bus("b2", "P2", "W", 0.0002, 0.03, next = "M1"), leg("blue", "W", "C", 25, 35)))
+        val state = TripViewModel.State(routes = listOf(viaHub, viaW))
+        val sequences = mapOf<String, LineSequence?>("b2" to otherPole("P2"))
+        val places = tripPlaces(state.routes.orEmpty(), sequences)
+        assertEquals(places["P1"], places["P2"])
+        val estimates = checkNotNull(tripEstimates(state, now, Duration.ZERO, sequences, places = places))
+        val alternative = estimates.map { it.route }.single { it.rides.first().lineId == "b2" && it.rides[1].fromId == "940HUB" }
+        assertEquals("P2", alternative.rides.first().fromId)
+        assertEquals(listOf("b1", "b2"), tripCards(estimates, places).first().map { it.route.rides.first().lineId })
+    }
+
+    @Test
+    fun `an alternative boards only at a stop the trip already fetches`() {
+        // b2's route calls at the place only from P3, which no route boards at: no alternative.
+        val viaHub = TripRoute(listOf(bus("b1", "P1", "S1", 0.0, 0.01, next = "M1"), change))
+        val viaW = TripRoute(listOf(bus("b2", "P2", "W", 0.0002, 0.03, next = "M1"), leg("blue", "W", "C", 25, 35)))
+        val state = TripViewModel.State(routes = listOf(viaHub, viaW))
+        val sequences = mapOf<String, LineSequence?>("b2" to otherPole("P3"))
+        val places = tripPlaces(state.routes.orEmpty(), sequences)
+        assertEquals(places["P1"], places["P3"])
+        val estimates = checkNotNull(tripEstimates(state, now, Duration.ZERO, sequences, places = places))
+        assertEquals(setOf(viaHub, viaW), estimates.map { it.route }.toSet())
+    }
+
     @Test
     fun `a leg with no trains opens to its line's disruption, never a good service`() {
         val leg = route.legs[1]

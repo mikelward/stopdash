@@ -29,6 +29,8 @@ class FileActiveTripStoreTest {
                     t0, t0.plusSeconds(600), path = listOf("940GZZLUBMY", "940GZZLUWLO"),
                     pathNames = listOf("Bermondsey", "Waterloo"),
                     changeAfter = Duration.ofMinutes(3), headings = listOf("Stanmore"),
+                    // Synthetic positions, one end only: kept as given, the other still absent.
+                    fromPosition = 51.5 to -0.12,
                 ),
                 TripLeg(TripLeg.WALKING, "", "", "940GZZLUWLO", "Waterloo", "910GWLOO", "Waterloo", t0.plusSeconds(600), t0.plusSeconds(900)),
             ),

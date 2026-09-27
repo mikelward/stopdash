@@ -83,6 +83,7 @@ import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.PlaceStop
 import app.stopdash.domain.RouteFocus
 import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.RouteStops
@@ -90,6 +91,8 @@ import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopGrouping
+import app.stopdash.domain.StopPlace
+import app.stopdash.domain.StopPlaces
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
@@ -378,8 +381,13 @@ internal fun tripEstimates(
     sequences: Map<String, LineSequence?>,
     hidden: Set<String> = emptySet(),
     originUnconfirmed: Boolean = false,
+    places: Map<String, StopPlace> = tripPlaces(state.routes.orEmpty(), sequences),
 ): List<TripTiming.Estimate>? {
-    val routes = state.shownRoutes(hidden)?.let(TripViewModel::bestOf) ?: return null
+    // The routes timed, then each one's first ride by the other lines that make the same run
+    // ([withAlternatives]): after the cap, so an alternative never crowds out a route the Planner gave.
+    val routes = state.shownRoutes(hidden)?.let(TripViewModel::bestOf)
+        ?.let { withAlternatives(it, sequences, places) { leg, id -> id == leg.fromId || id in state.areaPoles[leg.fromArea].orEmpty() } }
+        ?: return null
     val notRunning = TripTiming.notRunning(state.statuses.values)
     // A line with no status known (left out of TfL's answer, or a failed check) can't be vouched
     // for as running.
@@ -403,28 +411,150 @@ internal fun tripEstimates(
 /**
  * [estimates] (best first, [tripEstimates]) as the list's cards, best first.
  *
- * Routes whose first ride goes between the same two stops by the same mode, then rides the same
- * lines, **share a card** (the 43 or the 134 to Highgate station, then the Northern line): one
- * header with the first ride's lines as a cut pill, and a row per line, best first.
+ * Routes whose first ride goes between the same two places ([StopPlaces]) by the same mode, then
+ * rides the same lines, **share a card** (the 43 or the 134 to Highgate station, then the Northern
+ * line): one header with the first ride's lines as a cut pill, and a row per line, best first.
+ * [places] is [tripPlaces]; without it, ends match by stop pair or stop alone.
  *
  * Ways riding the same lines in turn but changing elsewhere are cards of their own: each card names
  * where its rides get off, so they read apart (maintainer, 2026-09-27).
  */
-internal fun tripCards(estimates: List<TripTiming.Estimate>): List<List<TripTiming.Estimate>> =
+internal fun tripCards(
+    estimates: List<TripTiming.Estimate>,
+    places: Map<String, StopPlace> = emptyMap(),
+): List<List<TripTiming.Estimate>> =
     // Within a card, one route per first-ride line: the best.
-    estimates.groupBy { cardKey(it.route) }.values
+    estimates.groupBy { cardKey(it.route, places) }.values
         .map { group -> group.distinctBy { it.route.rides.firstOrNull()?.lineId } }
         .sortedBy { card -> estimates.indexOf(card.first()) }
 
-// Which card a route shares: its first ride's mode and ends (by stop pair for a bus, or by name at a
-// stop in no pair, as [onPoles] places it), and the lines after it with where each gets off, since
-// the card names those stops ([RideStops]) for every route on it; a route with no ride keeps its own.
-internal fun cardKey(route: TripRoute): String {
+// Which card a route shares: its first ride's mode and ends — by place ([places]) where known, else
+// by stop pair for a bus, or by name at a stop in no pair, as [onPoles] places it — and the lines
+// after it with where each gets off, since the card names those stops ([RideStops]) for every route
+// on it; a route with no ride keeps its own.
+internal fun cardKey(route: TripRoute, places: Map<String, StopPlace> = emptyMap()): String {
     val first = route.rides.firstOrNull() ?: return routeKey(route)
-    fun offAt(leg: TripLeg) = leg.toArea.ifEmpty { if (leg.fromArea.isNotEmpty()) leg.toName else leg.toId }
+    fun offAt(leg: TripLeg) = places[leg.toId]?.id ?: leg.toArea.ifEmpty { if (leg.fromArea.isNotEmpty()) leg.toName else leg.toId }
     val to = offAt(first)
     val after = route.rides.drop(1).joinToString("|") { "${it.mode}:${it.lineId}>${offAt(it)}" }
-    return "${first.mode}:${first.fromArea.ifEmpty { first.fromId }}>$to|$after"
+    val from = places[first.fromId]?.id ?: first.fromArea.ifEmpty { first.fromId }
+    return "${first.mode}:$from>$to|$after"
+}
+
+/**
+ * Each stop [routes] ride from or to, and each stop on their lines' routes ([sequences]), to its
+ * place ([StopPlaces]): the Planner's legs give a stop's name, position and stop pair; a line's route
+ * its name, position, pair and interchange. Nothing is fetched for it.
+ */
+internal fun tripPlaces(routes: List<TripRoute>, sequences: Map<String, LineSequence?>): Map<String, StopPlace> {
+    val legs = routes.flatMap { it.legs }.filterNot { it.isWalk }
+    val fromLegs = legs.flatMap { leg ->
+        listOf(
+            PlaceStop(leg.fromId, leg.fromName, leg.fromPosition?.first, leg.fromPosition?.second, area = leg.fromArea),
+            PlaceStop(leg.toId, leg.toName, leg.toPosition?.first, leg.toPosition?.second, area = leg.toArea),
+        )
+    }
+    val fromRoutes = legs.map { it.lineId }.distinct().mapNotNull { sequences[it] }.flatMap { sequence ->
+        sequence.routes.flatMap { it.stopIds }.distinct().map { id ->
+            val position = sequence.stopPositions[id]
+            PlaceStop(
+                id, sequence.stopNames[id].orEmpty(), position?.first, position?.second,
+                hub = sequence.stopHubs[id].orEmpty(), area = sequence.stopAreas[id].orEmpty(),
+            )
+        }
+    }
+    return StopPlaces.group(fromLegs + fromRoutes)
+}
+
+/**
+ * [routes] and, for each, its first ride by every other line some route rides first from the same
+ * place by the same mode, where that line's route ([sequences]) runs on to the ride's getting-off
+ * place: the 43 and the 134 both run from one stop to the station a Northern line change is at,
+ * though the Planner changed from the 43 elsewhere (SPEC *Trips with a change*), and it calls at the
+ * same places in between as the ride it stands beside (else its run isn't that ride's). Such a ride boards
+ * where its line's route calls in the place, only at a stop the trip already fetches ([fetched]: the
+ * card ride's or the other line's own boarding stop, or either's pair's poles), so it costs no
+ * request. Its time on board is the ride's it
+ * stands in for: the same run from the same place to the same place. The rest of the route is as
+ * the Planner gave it. A line whose route is not loaded, or which gives no single run, adds nothing.
+ */
+internal fun withAlternatives(
+    routes: List<TripRoute>,
+    sequences: Map<String, LineSequence?>,
+    places: Map<String, StopPlace>,
+    fetched: (TripLeg, String) -> Boolean,
+): List<TripRoute> {
+    if (places.isEmpty()) return routes
+    val firstRides = routes.mapNotNull { it.rides.firstOrNull() }.distinctBy { it.lineId }
+    val keys = routes.mapTo(HashSet(), ::routeKey)
+    val added = ArrayList<TripRoute>()
+    for (route in routes) {
+        val first = route.rides.firstOrNull() ?: continue
+        val from = places[first.fromId]?.id ?: continue
+        val to = places[first.toId]?.id ?: continue
+        for (other in firstRides) {
+            if (other.lineId == first.lineId || !other.mode.equals(first.mode, ignoreCase = true)) continue
+            if (places[other.fromId]?.id != from) continue
+            val sequence = sequences[other.lineId] ?: continue
+            val ride = sameRun(other, first, sequence, places, from, to) ?: continue
+            // Fetched as this card's boarding stop, or as the other line's own (its planned route
+            // is timed too), each with its pair's poles.
+            if (!fetched(first, ride.fromId) && !fetched(other, ride.fromId)) continue
+            val alternative = TripRoute(route.legs.map { if (it === first) ride else it })
+            if (keys.add(routeKey(alternative))) added += alternative
+        }
+    }
+    return if (added.isEmpty()) routes else routes + added
+}
+
+// [other]'s line riding [first]'s run, from place [from] to place [to], the way [other] rides (by its
+// next stop), as its route ([sequence]) gives it; null unless the route gives exactly one such run.
+private fun sameRun(
+    other: TripLeg,
+    first: TripLeg,
+    sequence: LineSequence,
+    places: Map<String, StopPlace>,
+    from: String,
+    to: String,
+): TripLeg? {
+    val next = other.path.firstOrNull()
+    val runs = sequence.routes.flatMap { route ->
+        val ids = route.stopIds
+        ids.indices.filter { places[ids[it]]?.id == from }.mapNotNull { i ->
+            // The last stop of the boarding place before leaving it, and the first of the other.
+            if (i + 1 < ids.size && places[ids[i + 1]]?.id == from) return@mapNotNull null
+            val j = (i + 1 until ids.size).firstOrNull { places[ids[it]]?.id == to } ?: return@mapNotNull null
+            val on = ids.subList(i + 1, j + 1)
+            if (next != null && on.none { isStop(sequence, it, next) }) return@mapNotNull null
+            ids[i] to on
+        }
+    }.distinct()
+    val (board, on) = runs.singleOrNull() ?: return null
+    // Borrowing [first]'s time on board holds only for the same stretch: the line must call at the
+    // same places in the same order in between. A line that leaves the road and rejoins it would be
+    // given a run it can't make, so any stop that can't be placed rules the ride out.
+    val areaPlaces = sequence.stopAreas.entries.mapNotNull { (stop, area) -> places[stop]?.id?.let { area to it } }.toMap()
+    fun between(stops: List<String?>): List<String?> =
+        stops.dropLastWhile { it == to }.fold(ArrayList<String?>()) { kept, place -> kept.apply { if (lastOrNull() != place || place == null) add(place) } }
+    val ridden = between(first.path.map { places[it]?.id ?: areaPlaces[it] })
+    val candidate = between(on.map { places[it]?.id })
+    if (ridden != candidate || null in ridden) return null
+    val off = on.last()
+    return other.copy(
+        fromId = board,
+        fromName = sequence.stopNames[board] ?: other.fromName,
+        toId = off,
+        toName = sequence.stopNames[off] ?: first.toName,
+        arrival = other.departure.plus(first.run),
+        path = on,
+        pathNames = on.map { sequence.stopNames[it].orEmpty() },
+        changeAfter = first.changeAfter,
+        // Placed already: a pair would have [onPoles] place it again, by the Planner's other stop.
+        fromArea = "",
+        toArea = "",
+        fromPosition = sequence.stopPositions[board],
+        toPosition = sequence.stopPositions[off],
+    )
 }
 
 /**
@@ -569,12 +699,14 @@ private fun TripContent(
             onDismiss = { showAbout = false },
         )
     }
-    val estimates = remember(state, now, access, sequences, hiddenModes, originUnconfirmed) {
-        tripEstimates(state, now, access, sequences, hiddenModes, originUnconfirmed)
+    // Each stop's place, worked out once per plan and route load rather than on every tick.
+    val places = remember(state.routes, sequences) { tripPlaces(state.routes.orEmpty(), sequences) }
+    val estimates = remember(state, now, access, sequences, hiddenModes, originUnconfirmed, places) {
+        tripEstimates(state, now, access, sequences, hiddenModes, originUnconfirmed, places)
     }
     // The list's cards; an open route is looked up among every way timed, so it stays open whichever
     // way its card shows.
-    val cards = remember(estimates) { estimates?.let(::tripCards) }
+    val cards = remember(estimates, places) { estimates?.let { tripCards(it, places) } }
     // The open route, kept twice: by the trip when it's given one ([openRoute]), which outlasts the
     // screen leaving composition (an overlay) and, saved by the trip, the process too; and saved with
     // the screen, for a trip that holds none. Read from the trip first; set in both.
@@ -751,7 +883,7 @@ private fun TripContent(
                     cards == null -> TripPlaceholder(state, onRetry)
                     open != null -> RouteLegs(open, state, now, access, sequences, onRetry, alerts.dismissed, onHideMode, ::openDetail)
                     else -> RouteList(
-                        cards, state, now, access, sequences, onRetry, alerts.dismissed,
+                        cards, places, state, now, access, sequences, onRetry, alerts.dismissed,
                         onOpen = { setOpenKey(routeKey(it.route)) },
                         onHideMode = onHideMode,
                     )
@@ -853,6 +985,8 @@ private fun PlanNotice(text: String, planning: Boolean, onRetry: () -> Unit) {
 @Composable
 private fun RouteList(
     cards: List<List<TripTiming.Estimate>>,
+    // The places the cards were grouped by ([tripCards]): each card's list key is its group's key.
+    places: Map<String, StopPlace>,
     state: TripViewModel.State,
     now: Instant,
     // The walk to the trip's first stop: the card's times gray what leaves before the rider gets there.
@@ -894,7 +1028,7 @@ private fun RouteList(
         // row per ride, and the first ride's times for every line together. The card is one choice
         // (maintainer, 2026-09-27): tapping it opens the best of its routes, and a long press
         // anywhere offers to hide each group any of its legs rides.
-        items(cards, key = { cardKey(it.first().route) }) { card ->
+        items(cards, key = { cardKey(it.first().route, places) }) { card ->
             val modes = remember(card) { cardModes(card) }
             var menuOpen by remember { mutableStateOf(false) }
             val onLongPress = if (onHideMode != null && modes.isNotEmpty()) ({ menuOpen = true }) else null

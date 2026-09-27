@@ -224,6 +224,22 @@ class JourneyPlannerTest {
     }
 
     @Test
+    fun `a leg keeps each end's position where the Planner gives one`() {
+        // Synthetic positions (SPEC *Privacy*); a point with only one axis has none.
+        val leg = TflJourneyLegDto(
+            departureTime = "2026-09-26T09:00:00",
+            arrivalTime = "2026-09-26T09:10:00",
+            departurePoint = TflJourneyPointDto("A", "A", lat = 51.5, lon = 0.0),
+            arrivalPoint = TflJourneyPointDto("B", "B", lat = 51.51),
+            routeOptions = listOf(TflJourneyRouteOptionDto(TflJourneyIdentifierDto("red", "Red"))),
+            mode = TflJourneyIdentifierDto("tube", "Tube"),
+        )
+        val route = checkNotNull(TflJourneyDto(listOf(leg)).toRouteOrNull(Instant.parse("2026-09-26T07:00:00Z")))
+        assertEquals(51.5 to 0.0, route.legs[0].fromPosition)
+        assertEquals(null, route.legs[0].toPosition)
+    }
+
+    @Test
     fun `journeys offered but none readable is a failure, not no routes`() {
         val broken = fixture.replace(Regex("\"departureTime\": \"[^\"]+\""), "\"departureTime\": \"soon\"")
         assertThrows(TflException.Unreachable::class.java) {
