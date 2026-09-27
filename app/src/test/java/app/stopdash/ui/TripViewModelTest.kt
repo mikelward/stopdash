@@ -724,8 +724,8 @@ class TripViewModelTest {
     }
 
     @Test
-    fun `other-branch trains still show when none is usable`() {
-        // Riding blue from B toward C (the fork past B2): only a train for D is due.
+    fun `a leg shows only the trains that run along its route, not another branch's`() {
+        // Riding blue from B toward C (the fork past B2): a train for C and one for D are due.
         val fork = LineSequence(
             routes = listOf(
                 LineRoute("B ↔ C", listOf("B", "B2", "C")),
@@ -735,28 +735,13 @@ class TripViewModelTest {
             stopNames = mapOf("B" to "B", "B2" to "B2", "C" to "C", "D" to "D"),
         )
         val leg = TripLeg("tube", "blue", "blue", "B", "B", "C", "C", at(20), at(30), path = listOf("B2", "C"))
+        val toC = train("blue", "C", 6)
         val toD = train("blue", "D", 4)
-        val back = train("blue", "B", 5).copy(direction = "inbound")
-        val state = TripViewModel.State(live = mapOf("B" to TripViewModel.StopLive(listOf(toD, back), now)))
-        assertEquals(listOf(toD), lineTrains(state, leg, now, emptyList(), mapOf("blue" to fork)))
-        // With no route to tell the way by, none.
-        assertEquals(emptyList<Departure>(), lineTrains(state, leg, now, emptyList()))
-    }
-
-    @Test
-    fun `another variant's bus still shows when none is usable, its blind naming an area`() {
-        // Bus 1 from B toward C; the variant to D is due, its blind reading "Town Centre".
-        val routes = LineSequence(
-            routes = listOf(
-                LineRoute("B ↔ C", listOf("B", "B2", "C")),
-                LineRoute("B ↔ D", listOf("B", "B2", "D")),
-            ),
-            stopNames = mapOf("B" to "B", "B2" to "B2", "C" to "C", "D" to "D"),
-        )
-        val leg = TripLeg("bus", "1", "1", "B", "B", "C", "C", at(20), at(30), path = listOf("B2", "C"))
-        val toD = train("1", "Town Centre", 4).copy(mode = "bus")
-        val state = TripViewModel.State(live = mapOf("B" to TripViewModel.StopLive(listOf(toD), now)))
-        assertEquals(listOf(toD), lineTrains(state, leg, now, emptyList(), mapOf("1" to routes)))
+        val both = TripViewModel.State(live = mapOf("B" to TripViewModel.StopLive(listOf(toD, toC), now)))
+        assertEquals(listOf(toC), legRows(both, leg, now, mapOf("blue" to fork)).flatMap { it.upcoming })
+        // With only the other branch's train due, none: it doesn't take the rider to C.
+        val onlyD = TripViewModel.State(live = mapOf("B" to TripViewModel.StopLive(listOf(toD), now)))
+        assertEquals(emptyList<Departure>(), legRows(onlyD, leg, now, mapOf("blue" to fork)).flatMap { it.upcoming })
     }
 
     @Test

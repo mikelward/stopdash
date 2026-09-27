@@ -920,7 +920,8 @@ the first first-leg train the rider can reach plus its run time gives the time a
 the change or walk time; the first live train there that the rider can reach starts the next leg,
 and so on to the end. A train only counts for a leg if its route **calls at that leg's alighting
 stop**, as a direct trip's trains must reach the destination (*Journeys*): on a branching line, a
-train for the other branch is shown but never used for the arrival. A train the list wouldn't count down — canceled, or with no time TfL
+train for the other branch isn't shown on the leg at all, so the rider sees only trains they can
+take (maintainer, 2026-09-27). A train the list wouldn't count down — canceled, or with no time TfL
 stands behind (*Disruptions*) — is never a reachable train: it is skipped for the arrival and the
 ordering, and shown as the list shows it.
 Run and change times are the Planner's, so the arrival reads "about". The same end-to-end arrival
