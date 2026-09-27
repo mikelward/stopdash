@@ -1348,19 +1348,23 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       `/StopPoint/{id}` lookup — extra request each, and unconfirmed it even yields an area name; (c)
       reverse-geocode each coordinate to an area — a **new external recipient** (Data Safety change +
       cost/privacy), so a maintainer decision, not to be added unilaterally. Needs a new field on
-      `StationMatch` whichever way. Then the **To… Home/Work pins**. The Settings list is edit-only until
-      routing lands.
+      `StationMatch` whichever way. Then the **To… Home/Work pins**.
       **routing to a favorite** — IN PROGRESS: plan `to = lat,lon` so tapping a favorite routes to it
       (the coordinate-routing privacy disclosure lands with it); TfL's Journey Planner accepts a
       coordinate endpoint (verified against a live response) and returns a final walk leg to the place.
       The trip starts from the rider's **current location, or an active From… override** (maintainer,
       2026-09-27). The **trip options page shows the From location as its first row**, tappable to change
       it (maintainer, 2026-09-27) — the From-override UX, landing with the trip-screen slice.
+      Slice 3a (entry point): landed — tapping a place in the Settings *Favorite places* list plans a
+      trip to its coordinate from the rider's current location (Edit/Delete stay on the row). Reuses the
+      here-trip's origin selection; the favorite (`TripDestination.Place`) skips the picker and hub
+      expansion. `docs/PRIVACY.md` now discloses the coordinate reaching the Planner (same **Location**
+      data, no new Data Safety category). Still to do (slice 3b): the tappable **From** first row on the
+      trip page to change the origin (maintainer's From-override UX); then the To… Home/Work pins.
       Slice 2 (`TripViewModel` plans to a `TripDestination.Place`): landed — its destination is now a
       list of `TripDestination`, a place is a single coordinate, and only ridden stops are fetched (a
       coordinate has none, SPEC D9); the final walk leg reads with the name the rider picked, not TfL's
-      label for the point. Still to wire the entry point (tap a favorite → route from here / From…) and
-      the coordinate-routing privacy disclosure.
+      label for the point.
       Slice 1 (typed `TripDestination`; the planner threads a `Place` coordinate to `to = lat,lon`)
       landed. Its coordinate-destination walk-leg test is **built from constructed JSON**: the recorded
       Journey Planner fixtures are all stop-to-stop and carry no `lat`/`lon`, and live TfL is unreachable
