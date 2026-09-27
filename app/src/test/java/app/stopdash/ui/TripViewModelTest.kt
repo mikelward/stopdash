@@ -637,14 +637,13 @@ class TripViewModelTest {
     }
 
     @Test
-    fun `ways riding the same lines are one card, the best timed`() {
-        // The same lines changing at another stop, the Planner arriving later.
+    fun `ways riding the same lines but changing elsewhere are cards of their own`() {
+        // The same lines changing at another stop, the Planner arriving later: each card names where
+        // its rides get off, so both are offered, best first.
         val elsewhere = TripRoute(listOf(leg("red", "A", "X", 5, 18), leg("blue", "X", "C", 22, 35)))
         val state = TripViewModel.State(routes = listOf(elsewhere, route))
         val estimates = checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap()))
-        assertEquals(listOf(listOf(route)), tripCards(estimates).map { card -> card.map { it.route } })
-        // Both stay timed, so either can stay open.
-        assertEquals(setOf(route, elsewhere), estimates.map { it.route }.toSet())
+        assertEquals(listOf(listOf(route), listOf(elsewhere)), tripCards(estimates).map { card -> card.map { it.route } })
         // Other lines are another card.
         val green = TripRoute(listOf(leg("red", "A", "B", 5, 15), leg("green", "B", "C", 20, 32)))
         assertEquals(2, tripCards(checkNotNull(tripEstimates(state.copy(routes = listOf(route, green)), now, Duration.ZERO, emptyMap()))).size)
@@ -665,13 +664,25 @@ class TripViewModelTest {
     }
 
     @Test
-    fun `a line sharing a leg shows in the shared card rather than on its own`() {
-        // Red is quickest changing at X, but also rides to B with green: it shows beside green.
+    fun `routes changing at different stations after the first ride don't share a card`() {
+        // Red or green to B, then blue, but green's route changes from blue to pink at Y, red's at X:
+        // the card names each ride's stop, so they can't both be it.
+        val redViaX = TripRoute(listOf(leg("red", "A", "B", 5, 12), leg("blue", "B", "X", 14, 18), leg("pink", "X", "C", 20, 26)))
+        val greenViaY = TripRoute(listOf(leg("green", "A", "B", 6, 13), leg("blue", "B", "Y", 15, 20), leg("pink", "Y", "C", 22, 28)))
+        val state = TripViewModel.State(routes = listOf(redViaX, greenViaY))
+        val cards = tripCards(checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap())))
+        assertEquals(listOf(listOf(redViaX), listOf(greenViaY)), cards.map { card -> card.map { it.route } })
+    }
+
+    @Test
+    fun `a line sharing a leg also shows in the shared card`() {
+        // Red is quickest changing at X, and also rides to B with green: its X card, then the B card
+        // with red beside green.
         val redViaX = TripRoute(listOf(leg("red", "A", "X", 4, 12), leg("blue", "X", "C", 14, 24)))
         val viaGreen = TripRoute(listOf(leg("green", "A", "B", 6, 16), leg("blue", "B", "C", 20, 30)))
         val state = TripViewModel.State(routes = listOf(redViaX, route, viaGreen))
         val cards = tripCards(checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap())))
-        assertEquals(listOf(listOf(route, viaGreen)), cards.map { card -> card.map { it.route } })
+        assertEquals(listOf(listOf(redViaX), listOf(route, viaGreen)), cards.map { card -> card.map { it.route } })
     }
 
     @Test

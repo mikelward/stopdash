@@ -22,6 +22,7 @@ import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineRef
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
@@ -278,6 +279,18 @@ class TripScreenScreenshotTest {
         // "44 min · est. 10:29" as "44 min · est.").
         assertEquals(1, layout.lineCount)
         assertTrue("arrival clipped", !layout.hasVisualOverflow)
+    }
+
+    // Under each card's header, a row per ride with where it gets off, so two routes on the same
+    // lines read apart by where they change.
+    @Test
+    fun a_route_card_names_where_each_ride_gets_off() {
+        show(planned.copy(routes = listOf(viaCanadaWater, viaWhitechapel)))
+        val stops = composeRule.onAllNodes(hasTestTag("rideStops"), useUnmergedTree = true)
+        stops.assertCountEquals(2)
+        composeRule.onAllNodesWithText("Canada Water", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onAllNodesWithText("Whitechapel", useUnmergedTree = true).onFirst().assertExists()
+        composeRule.onAllNodesWithText("Canary Wharf", useUnmergedTree = true).assertCountEquals(2)
     }
 
     @Test
@@ -566,8 +579,12 @@ class TripScreenScreenshotTest {
         // The Planner's terminus where it gave one; where it gave none, where to board.
         composeRule.onAllNodes(shows("Stratford")).onFirst().assertExists()
         composeRule.onAllNodes(shows("from Highbury & Islington")).onFirst().assertExists()
-        // Never the stop the leg gets off at, read as its destination.
-        composeRule.onAllNodes(shows("Canada Water")).assertCountEquals(0)
+        // Never the stop the leg gets off at, read as its destination: only the header's ride rows
+        // name it, as where the ride gets off.
+        composeRule.onAllNodes(shows("Canada Water") and !hasAnyAncestor(hasTestTag("rideStops")), useUnmergedTree = true)
+            .assertCountEquals(0)
+        composeRule.onAllNodes(shows("Canada Water") and hasAnyAncestor(hasTestTag("rideStops")), useUnmergedTree = true)
+            .onFirst().assertExists()
         // The boarding stop's arrivals aren't in yet: its times say so rather than show a dash.
         composeRule.onAllNodes(hasText("Loading")).onFirst().assertExists()
     }
