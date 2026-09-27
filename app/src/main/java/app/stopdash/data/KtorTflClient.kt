@@ -113,8 +113,20 @@ class KtorTflClient(
             if (routes.size < dto.journeys.size) {
                 warn("journey planner: ${dto.journeys.size - routes.size} of ${dto.journeys.size} routes unreadable")
             }
-            routes
+            // TfL names a coordinate arrival by whatever (if anything) sits there, not the favorite the
+            // rider picked, so the final walk leg reads with the name they know it by (SPEC D9). The
+            // last leg of every route to a place is that walk.
+            if (to is TripDestination.Place) routes.map { it.namedTo(to.name) } else routes
         }
+
+    // The route with its final leg named [name] when that leg ends at a bare coordinate (no stop id):
+    // the place the rider chose, in place of whatever TfL happened to call the point. A leg that ends
+    // at a real stop keeps its name, and an empty route is left as is.
+    private fun TripRoute.namedTo(name: String): TripRoute {
+        val last = legs.lastOrNull() ?: return this
+        if (last.toId.isNotBlank()) return this
+        return copy(legs = legs.dropLast(1) + last.copy(toName = name))
+    }
 
     override suspend fun resolvePostcode(postcode: String): List<PlaceCandidate> =
         tflRequest { key ->

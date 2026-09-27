@@ -7,6 +7,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import app.stopdash.R
 import app.stopdash.domain.ArrivalsCache
+import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DismissedAlertsStore
@@ -41,6 +42,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -129,7 +131,10 @@ class TripViewModelTest {
         plans: TripPlans = TripPlans(),
         toIds: List<String> = listOf("C"),
         arrivals: ArrivalsCache = ArrivalsCache(),
-    ) = TripViewModel(planner, client, "A", toIds, clock = { now }, plans = plans, io = dispatcher, arrivals = arrivals)
+    ) = TripViewModel(
+        planner, client, "A", toIds.map { TripDestination.Stop(it) },
+        clock = { now }, plans = plans, io = dispatcher, arrivals = arrivals,
+    )
 
     @Test
     fun `the open route outlasts the process and is forgotten with the trip`() {
@@ -138,13 +143,13 @@ class TripViewModelTest {
         val trip = ViewModelProvider.create(
             store,
             viewModelFactory {
-                initializer { TripViewModel(FakePlanner(listOf(route)), FakeClient(mutableMapOf()), "A", listOf("C"), io = dispatcher, savedState = saved) }
+                initializer { TripViewModel(FakePlanner(listOf(route)), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")), io = dispatcher, savedState = saved) }
             },
         )[TripViewModel::class]
         trip.openRoute.value = "red>blue"
         // A recreated process restores the handle: the new model opens the same route.
         val restored = TripViewModel(
-            FakePlanner(listOf(route)), FakeClient(mutableMapOf()), "A", listOf("C"), io = dispatcher,
+            FakePlanner(listOf(route)), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")), io = dispatcher,
             savedState = SavedStateHandle(mapOf("openRoute" to saved.get<String>("openRoute"))),
         )
         assertEquals("red>blue", restored.openRoute.value)
@@ -167,7 +172,7 @@ class TripViewModelTest {
         }
         val failures = WriteFailures()
         val trip = TripViewModel(
-            FakePlanner(listOf(route)), FakeClient(mutableMapOf()), "A", listOf("C"), io = dispatcher,
+            FakePlanner(listOf(route)), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")), io = dispatcher,
             dismissedStore = store, writeFailures = failures,
         )
         val delayed = LineStatus("blue", 9, "Minor Delays")
@@ -205,7 +210,7 @@ class TripViewModelTest {
         val key = MutableStateFlow<String?>(null)
         val client = FakeClient(mutableMapOf("A" to listOf(train("red", "B", 9))))
         val trip = TripViewModel(
-            FakePlanner(listOf(route)), client, "A", listOf("C"), clock = { now }, plans = TripPlans(), io = dispatcher,
+            FakePlanner(listOf(route)), client, "A", listOf(TripDestination.Stop("C")), clock = { now }, plans = TripPlans(), io = dispatcher,
             departureSourceChanges = key,
         )
         trip.refreshFor(null)
@@ -233,7 +238,7 @@ class TripViewModelTest {
             }
         }
         val trip = TripViewModel(
-            FakePlanner(listOf(route)), client, "A", listOf("C"), clock = { now }, plans = TripPlans(), io = dispatcher,
+            FakePlanner(listOf(route)), client, "A", listOf(TripDestination.Stop("C")), clock = { now }, plans = TripPlans(), io = dispatcher,
             departureSourceChanges = key,
         )
         trip.refresh()
@@ -307,7 +312,44 @@ class TripViewModelTest {
         assertEquals(2, planner.calls)
         assertEquals(setOf(route, toD), trip.state.value.routes?.toSet())
         assertFalse(trip.state.value.planIncomplete)
-        assertEquals(setOf(route, toD), plans.get("A", listOf("C", "D"))?.first?.toSet())
+        assertEquals(setOf(route, toD), plans.get("A", listOf("C", "D").map { TripDestination.Stop(it) })?.first?.toSet())
+    }
+
+    @Test
+    fun `plans to a place at a coordinate and fetches no arrivals there`() = runTest(dispatcher) {
+        // A route that rides A to B, then walks onto the place — a coordinate arrival, so a blank stop id.
+        val toPlace = TripRoute(
+            listOf(
+                leg("red", "A", "B", 5, 15),
+                TripLeg(
+                    mode = TripLeg.WALKING, lineId = "", lineName = "",
+                    fromId = "B", fromName = "B", toId = "", toName = "Home",
+                    departure = at(20), arrival = at(26),
+                ),
+            ),
+        )
+        val client = FakeClient(mutableMapOf("A" to listOf(train("red", "B", 6))))
+        val planner = FakePlanner(listOf(toPlace))
+        val trip = TripViewModel(
+            planner, client, "A", listOf(TripDestination.Place(Coordinates(51.5, -0.12), "Home")),
+            clock = { now }, plans = TripPlans(), io = dispatcher,
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(1, planner.calls)
+        assertEquals(listOf(toPlace), trip.state.value.routes)
+        // Only the ridden boarding stop is asked; the destination coordinate has no stop to fetch (SPEC D9).
+        assertEquals(listOf("A"), client.asked)
+    }
+
+    @Test
+    fun `a place's plan isn't reused after it's renamed`() {
+        val plans = TripPlans()
+        val coord = Coordinates(51.5, -0.12)
+        plans.put("A", listOf(TripDestination.Place(coord, "Home")), listOf(route), now)
+        // Renamed, same spot: the cached route's walk leg carries the old label, so it isn't reused.
+        assertNull(plans.get("A", listOf(TripDestination.Place(coord, "Mum's"))))
+        assertNotNull(plans.get("A", listOf(TripDestination.Place(coord, "Home"))))
     }
 
     @Test
@@ -323,7 +365,7 @@ class TripViewModelTest {
         assertEquals(listOf(route), trip.state.value.routes)
         assertTrue(trip.state.value.planIncomplete)
         assertNull(trip.state.value.planError)
-        assertNull(plans.get("A", listOf("C", "D")))
+        assertNull(plans.get("A", listOf("C", "D").map { TripDestination.Stop(it) }))
     }
 
     @Test
@@ -925,7 +967,7 @@ class TripViewModelTest {
     fun `a bus leg's boarding stop is fetched on every pole of its pair`() = runTest(dispatcher) {
         val client = FakeClient(mutableMapOf())
         val trip = TripViewModel(
-            FakePlanner(listOf(TripRoute(listOf(plannerBus)))), client, "A", listOf("C"), clock = { now }, plans = TripPlans(), io = dispatcher,
+            FakePlanner(listOf(TripRoute(listOf(plannerBus)))), client, "A", listOf(TripDestination.Stop("C")), clock = { now }, plans = TripPlans(), io = dispatcher,
             poles = { area -> if (area == "BG") listOf("Bn", "Bs") else emptyList() },
         )
         trip.refresh()
@@ -937,7 +979,7 @@ class TripViewModelTest {
     fun `a trip reads as checking while its bus stop pairs are looked up`() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
         val trip = TripViewModel(
-            FakePlanner(listOf(TripRoute(listOf(plannerBus)))), FakeClient(mutableMapOf()), "A", listOf("C"), clock = { now },
+            FakePlanner(listOf(TripRoute(listOf(plannerBus)))), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")), clock = { now },
             plans = TripPlans(), io = dispatcher, poles = { gate.await(); listOf("Bn", "Bs") },
         )
         trip.refresh()

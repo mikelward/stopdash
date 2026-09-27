@@ -164,6 +164,7 @@ import app.stopdash.ui.StationStopsViewModel
 import app.stopdash.ui.StopRef
 import app.stopdash.ui.TripScreen
 import app.stopdash.ui.TripViewModel
+import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripTiming
 import app.stopdash.ui.WriteFailures
@@ -2012,7 +2013,8 @@ class MainActivity : ComponentActivity() {
             factory = viewModelFactory {
                 initializer {
                     TripViewModel(
-                        journeyPlanner, departuresClient(appContext), fromStop.id, toStopIds, warn = ::logDepartureWarning,
+                        journeyPlanner, departuresClient(appContext), fromStop.id,
+                        toStopIds.map { TripDestination.Stop(it) }, warn = ::logDepartureWarning,
                         arrivals = ArrivalsCache.SHARED, departureSourceChanges = RailApiKeySetting.changes,
                         poles = { area -> routeStops(appContext).loadPoles(area).map { it.id } },
                         savedState = createSavedStateHandle(),
