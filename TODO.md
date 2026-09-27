@@ -1356,6 +1356,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       The trip starts from the rider's **current location, or an active From… override** (maintainer,
       2026-09-27). The **trip options page shows the From location as its first row**, tappable to change
       it (maintainer, 2026-09-27) — the From-override UX, landing with the trip-screen slice.
+      Slice 2 (`TripViewModel` plans to a `TripDestination.Place`): landed — its destination is now a
+      list of `TripDestination`, a place is a single coordinate, and only ridden stops are fetched (a
+      coordinate has none, SPEC D9); the final walk leg reads with the name the rider picked, not TfL's
+      label for the point. Still to wire the entry point (tap a favorite → route from here / From…) and
+      the coordinate-routing privacy disclosure.
       Slice 1 (typed `TripDestination`; the planner threads a `Place` coordinate to `to = lat,lon`)
       landed. Its coordinate-destination walk-leg test is **built from constructed JSON**: the recorded
       Journey Planner fixtures are all stop-to-stop and carry no `lat`/`lon`, and live TfL is unreachable
