@@ -873,7 +873,11 @@ pill), a ⚠ beside it when that line is disrupted, and the stop — so cards ri
 also carries its **live times**, every line on the card together in time order ("1 · 3 · 5 min"):
 each is a way to the same change, so only when matters, not which line, and the card stays four
 rows tall rather than growing a row per line (maintainer, 2026-09-27, replacing a live row per
-line). The stop's name is cut before the times are. A screen reader still hears each time with its
+line). The stop's name is cut before the times are. A **later ride's row** says instead how often
+its line runs, **"Every 2–4 min"**: the rider isn't there yet, so its countdowns say nothing they can
+use. It is the middle half of the gaps between that leg's live trains (those along its route), so a
+bunched pair or one long gap doesn't set it, and it shows only with at least three trains known
+(maintainer, 2026-09-27); no extra fetch, since each leg's boarding stop is already fetched. A screen reader still hears each time with its
 destination. The card is one choice, so tapping anywhere on it opens its best route, and a long
 press anywhere on it offers **"Hide all ‹group› services"** for
 every group any of its legs rides, so a slow tube leg can be hidden from the card as readily as the

@@ -227,6 +227,10 @@
     <string name="trip_times_loading">Loading</string>
     <!-- A trip card's top row: the stop its routes start from, before duration · arrival. -->
     <string name="trip_from">From %1$s</string>
+    <!-- How often a later ride's line runs, from its live trains: a steady service. %1$d is minutes. -->
+    <string name="trip_headway">Every %1$d min</string>
+    <!-- The same, as a range: the middle half of the gaps between trains. -->
+    <string name="trip_headway_range">Every %1$d–%2$d min</string>
     <string name="trip_walk">%1$d min walk to %2$s</string>
     <!-- Time allowed to change between two rides, shown between their cards. -->
     <!-- A first-leg train for screen readers: its countdown ("3 min") and destination. -->
