@@ -391,6 +391,39 @@ class TripViewModelTest {
         assertEquals(3, warnings.size)
     }
 
+    // A withheld arrival means the Planner's own departure for a leg is missed: a plan old enough
+    // is asked for again at once, so its timetable says when the next one leaves. Once per plan.
+    @Test
+    fun `a withheld arrival plans again once the plan is old enough, once per plan`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        val warnings = mutableListOf<String>()
+        val trip = TripViewModel(planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")), warn = { warnings += it }, clock = { now }, plans = TripPlans(), io = dispatcher)
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(1, planner.calls)
+        val why = TripTiming.Withheld(1, "bus", "9", TripTiming.Reason.INFREQUENT, 2, Duration.ofMinutes(4), null, Duration.ofMinutes(3))
+        // A fresh plan isn't asked again: its departures haven't moved on.
+        now = now.plus(Duration.ofMinutes(4))
+        trip.noteWithheld(mapOf("r" to why))
+        advanceUntilIdle()
+        assertEquals(1, planner.calls)
+        now = now.plus(TripViewModel.REPLAN_WITHHELD)
+        trip.noteWithheld(mapOf("r" to why))
+        advanceUntilIdle()
+        assertEquals(2, planner.calls)
+        // The re-plan says which leg and why, even when the per-route line was already logged.
+        assertTrue(warnings.any { it.startsWith("trip re-planned (plan 9 min old): arrival withheld at leg 2 (bus 9): infrequent") })
+        // The new plan is fresh again: the next withheld tick waits for it to age.
+        trip.noteWithheld(mapOf("r" to why))
+        advanceUntilIdle()
+        assertEquals(2, planner.calls)
+        // Nothing withheld asks nothing.
+        now = now.plus(TripViewModel.REPLAN_WITHHELD)
+        trip.noteWithheld(mapOf("r" to null))
+        advanceUntilIdle()
+        assertEquals(2, planner.calls)
+    }
+
     // A bus pole planned to keeps its stop area as its stop: the planning target doesn't make it a
     // stop of its own, apart from the sibling pole across the road.
     @Test

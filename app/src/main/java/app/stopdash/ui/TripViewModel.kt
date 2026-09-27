@@ -261,6 +261,12 @@ class TripViewModel(
      * same leg withholds it for the same reason, so the minute tick doesn't repeat it (SPEC principle
      * 2: a withheld arrival leaves its reason). [withheld] maps each timed route's key to its reason,
      * or null when its arrival shows.
+     *
+     * A withheld arrival means the rider can't make the Planner's own departure for a leg, and its
+     * live trains don't say when the next leaves; the Planner's timetable does, from a fresh plan. So
+     * one plan at least [REPLAN_WITHHELD] old is planned again at once (maintainer, 2026-09-27),
+     * rather than keep "Arrival unknown" until [PLAN_REUSE] runs out: once per plan, so a withheld
+     * arrival asks at most every [REPLAN_WITHHELD], never in a loop.
      */
     fun noteWithheld(withheld: Map<String, TripTiming.Withheld?>) {
         for ((key, why) in withheld) {
@@ -271,6 +277,23 @@ class TripViewModel(
             val same = "${why.leg}:${why.lineId}:${why.reason}"
             if (withheldLogged.put(key, same) != same) warn("trip arrival withheld: ${why.describe()}")
         }
+        withheld.values.firstNotNullOfOrNull { it }?.let(::replanWithheld)
+    }
+
+    // The plan (by when it was made) last planned again for a withheld arrival: once per plan.
+    private var replannedFrom: Instant? = null
+
+    // Says which leg and why on every re-plan: the per-route line above is logged once per reason,
+    // so a withheld arrival that outlives a re-plan would otherwise leave the next one unexplained.
+    private fun replanWithheld(why: TripTiming.Withheld) {
+        val state = _state.value
+        val at = state.plannedAt ?: return
+        // A failed plan waits for Retry; one in flight will bring its own departures.
+        if (state.planError != null || state.planning) return
+        if (at == replannedFrom || Duration.between(at, clock()) < REPLAN_WITHHELD) return
+        replannedFrom = at
+        warn("trip re-planned (plan ${Duration.between(at, clock()).toMinutes()} min old): arrival withheld at ${why.describe()}")
+        start(replan = true)
     }
 
     /** Plans again now, after a failure. During a refresh, plans again once it ends. */
@@ -535,6 +558,12 @@ class TripViewModel(
 
         /** How long a plan is reused before the Planner is asked again. */
         val PLAN_REUSE: Duration = Duration.ofMinutes(15)
+
+        /**
+         * How old a plan must be before a withheld arrival plans again ([noteWithheld]): long enough
+         * that a fresh plan's departures have moved on, and a cap on how often it asks.
+         */
+        val REPLAN_WITHHELD: Duration = Duration.ofMinutes(5)
     }
 }
 

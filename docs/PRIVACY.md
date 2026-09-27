@@ -116,7 +116,7 @@ stop's id stands in for where you are, which says no more than the nearby-stops 
 does. The one exception is a trip **to a saved favorite**, whose stored **coordinate** is sent as
 the destination — the Planner walks the last leg to it — while the favorite's name and id stay on
 your device. That coordinate is the same **Location** data the app already shares with TfL, so it
-adds no Play Data Safety category. The Planner is asked when a trip opens, about every 15 minutes while it stays on screen, and
+adds no Play Data Safety category. The Planner is asked when a trip opens, about every 15 minutes while it stays on screen (every 5 while a route's arrival can't be told without a fresh plan), and
 when you tap *Try again*; while a trip is on screen, the departures at each stop where a route
 boards are fetched from TfL like any other stop's, along with its lines' status. The plan is held
 in memory only, never saved or logged beyond coarse diagnostics (a stop id, an HTTP status), and

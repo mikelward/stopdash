@@ -1003,7 +1003,10 @@ its two predictions withheld its route). Otherwise the Planner's train is missed
 leaves (a National Rail or tram leg, a bus seen only once or far apart, a line with no trains, or arrivals that failed), so StopDash
 **withholds that route's arrival** rather than guess a wait: the route shows "arrival unknown" in place of duration · arrival, and
 sorts after every route in its tier that has an arrival, until a refresh brings live trains for the
-leg. Otherwise its arrival reads **"est."** instead of "about", and within
+leg. Since the Planner's timetable does say when the next one leaves, a withheld arrival on a plan at
+least 5 minutes old plans the trip again at once rather than wait out the 15-minute reuse (maintainer,
+2026-09-27): once per plan, so it asks at most every 5 minutes, and each time the log says which leg
+withheld the arrival and why. Otherwise its arrival reads **"est."** instead of "about", and within
 its tier it sorts **after every route whose legs are all live**, so an estimate is never listed first
 while a live-confirmed route exists. Walks
 between stations show as a dotted link with the Planner's minutes. **Every walk the Planner includes counts** toward which
