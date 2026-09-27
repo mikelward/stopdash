@@ -58,9 +58,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
+import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.StationMatch
+import app.stopdash.domain.TripDestination
 import app.stopdash.domain.abbreviateStationName
 import java.util.Locale
 
@@ -82,6 +84,12 @@ fun StationSearchScreen(
     autoFocus: Boolean = true,
     // The field's placeholder: "To station or stop" when picking a To… destination.
     hint: String? = null,
+    // Set only by a To… picker: offers the user's saved favorite places at the top of the pre-query
+    // list, each routed to as a coordinate (SPEC D9). Null elsewhere (a plain station browse has no
+    // trip to route), which hides the section.
+    onOpenPlace: ((TripDestination.Place) -> Unit)? = null,
+    // Re-reads the saved places, for the Retry shown when their read failed. Null hides the retry.
+    onRetryPlaces: (() -> Unit)? = null,
 ) {
     BackHandler(onBack = onBack)
     val focus = remember { FocusRequester() }
@@ -137,8 +145,19 @@ fun StationSearchScreen(
                     // Before anything is typed, the user's own stops, to pick without typing. Nothing
                     // until they're read, so the prompt doesn't flash up and then give way.
                     state.query.isBlank() && !state.yoursRead -> Unit
-                    state.query.isBlank() && (state.favorites.isNotEmpty() || state.recent.isNotEmpty()) ->
-                        YourStopsList(state.favorites, state.recent, onOpenStation)
+                    state.query.isBlank() && (
+                        state.favorites.isNotEmpty() || state.recent.isNotEmpty() ||
+                            (onOpenPlace != null && (state.favoritePlaces.isNotEmpty() || state.favoritePlacesFailed))
+                        ) ->
+                        YourStopsList(
+                            favoritePlaces = state.favoritePlaces,
+                            favoritePlacesFailed = state.favoritePlacesFailed,
+                            favorites = state.favorites,
+                            recent = state.recent,
+                            onOpenStation = onOpenStation,
+                            onOpenPlace = onOpenPlace,
+                            onRetryPlaces = onRetryPlaces,
+                        )
                     else -> Message(stringResource(R.string.station_search_prompt))
                 }
                 StationSearchViewModel.Result.NoMatches -> Message(stringResource(R.string.station_search_no_matches))
@@ -189,9 +208,21 @@ fun StationSearchScreen(
 /** The search field's value for [query] on arrival: the text, with the cursor after it. */
 internal fun queryFieldValue(query: String): TextFieldValue = TextFieldValue(query, TextRange(query.length))
 
-/** The user's recent picks, most recent first, then their starred stops not picked lately, each under its heading. */
+/**
+ * Before anything is typed: the user's saved [favoritePlaces] (a To… picker only — [onOpenPlace] set),
+ * then their recent picks, then their starred stops not picked lately, each under its heading. Places
+ * lead so a rider routing home taps once without typing (maintainer, 2026-09-27).
+ */
 @Composable
-private fun YourStopsList(favorites: List<StationMatch>, recent: List<StationMatch>, onOpenStation: (StationMatch) -> Unit) {
+private fun YourStopsList(
+    favoritePlaces: List<FavoritePlace>,
+    favoritePlacesFailed: Boolean,
+    favorites: List<StationMatch>,
+    recent: List<StationMatch>,
+    onOpenStation: (StationMatch) -> Unit,
+    onOpenPlace: ((TripDestination.Place) -> Unit)?,
+    onRetryPlaces: (() -> Unit)?,
+) {
     val listState = rememberLazyListState()
     LazyColumn(
         modifier = Modifier
@@ -200,21 +231,91 @@ private fun YourStopsList(favorites: List<StationMatch>, recent: List<StationMat
             .scrollEdgeCue(listState, scrollCueColors(MaterialTheme.colorScheme.background)),
         state = listState,
     ) {
+        if (onOpenPlace != null && (favoritePlaces.isNotEmpty() || favoritePlacesFailed)) {
+            item(key = "heading-places") { SectionHeading(stringResource(R.string.station_search_places)) }
+            if (favoritePlaces.isNotEmpty()) {
+                items(favoritePlaces, key = { "place-${it.id}" }) { place ->
+                    val name = favoritePlaceName(place)
+                    PlaceRow(name, onClick = { onOpenPlace(TripDestination.Place(place.coordinate, name)) })
+                    HorizontalDivider()
+                }
+            } else {
+                // Read failed (not genuinely empty): say so honestly with a Retry, rather than hide the
+                // section as "no places" (SPEC principle 2). Station search below stays usable.
+                item(key = "places-error") {
+                    PlacesError(onRetryPlaces)
+                    HorizontalDivider()
+                }
+            }
+        }
         listOf(R.string.station_search_recent to recent, R.string.station_search_starred to favorites).forEach { (heading, stops) ->
             if (stops.isEmpty()) return@forEach
-            item(key = "heading-$heading") {
-                Text(
-                    stringResource(heading),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
-                )
-            }
+            item(key = "heading-$heading") { SectionHeading(stringResource(heading)) }
             items(stops, key = { "$heading-${it.id}" }) { match ->
                 MatchRow(match, onClick = { onOpenStation(match) })
                 HorizontalDivider()
             }
         }
+    }
+}
+
+/** The name a favorite is known by, used for its row and the trip's destination: its label, or its
+ *  resolved place name when the label is blank (mirrors the Settings route-to path). */
+private fun favoritePlaceName(place: FavoritePlace): String = place.label.ifBlank { place.placeName.orEmpty() }
+
+/** A section heading over one group of the pre-query list ("Places", "Recent", "Starred"). */
+@Composable
+private fun SectionHeading(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
+    )
+}
+
+/** The Places section when the saved places couldn't be read: an honest line with a Retry, rather
+ *  than hiding the section as if there were none (SPEC principle 2). */
+@Composable
+private fun PlacesError(onRetry: (() -> Unit)?) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            stringResource(R.string.station_search_places_error),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        if (onRetry != null) {
+            TextButton(onClick = onRetry) { Text(stringResource(R.string.route_stops_retry)) }
+        }
+    }
+}
+
+/** A favorite place in the pre-query list: its name alone (no modes — it's a coordinate, not a stop),
+ *  on one line at the 48dp tap target, matching [MatchRow]'s density. */
+@Composable
+private fun PlaceRow(name: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .heightIn(min = 48.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            name,
+            style = MaterialTheme.typography.bodyLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 

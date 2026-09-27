@@ -2,6 +2,8 @@ package app.stopdash.ui
 
 import androidx.lifecycle.SavedStateHandle
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.FavoriteKind
+import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.IndexedStation
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.StationIndex
@@ -51,6 +53,33 @@ class StationViewModelsTest {
 
     private fun searchVm(finder: StationFinder, saved: SavedStateHandle = SavedStateHandle()) =
         StationSearchViewModel(finder, saved, io = dispatcher, debounceMillis = 300)
+
+    @Test
+    fun `a To picker lists saved favorite places, kept across a clear`() = runTest {
+        val places = listOf(FavoritePlace("home", FavoriteKind.HOME, "Home", Coordinates(51.5, -0.12)))
+        val vm = StationSearchViewModel(FakeFinder(), io = dispatcher, debounceMillis = 300, loadPlaces = { places })
+        advanceUntilIdle()
+        assertEquals(places, vm.state.value.favoritePlaces)
+        assertFalse(vm.state.value.favoritePlacesFailed)
+        assertTrue(vm.state.value.yoursRead)
+        // Closing the picker forgets the query but keeps the favorites, so reopening shows them at once.
+        vm.onQueryChange("oxf")
+        vm.clear()
+        assertEquals(places, vm.state.value.favoritePlaces)
+        assertEquals("", vm.state.value.query)
+    }
+
+    @Test
+    fun `a favorite-places read failure is a retryable state, not silently empty`() = runTest {
+        // Null from the loader = couldn't read (as opposed to an empty list = genuinely none).
+        val vm = StationSearchViewModel(FakeFinder(), io = dispatcher, debounceMillis = 300, loadPlaces = { null })
+        advanceUntilIdle()
+        assertTrue(vm.state.value.favoritePlaces.isEmpty())
+        assertTrue(vm.state.value.favoritePlacesFailed)
+        // Kept across a clear, so reopening still shows the honest notice until the next read.
+        vm.clear()
+        assertTrue(vm.state.value.favoritePlacesFailed)
+    }
 
     @Test
     fun `a query restored after process death is kept and searched again`() = runTest {

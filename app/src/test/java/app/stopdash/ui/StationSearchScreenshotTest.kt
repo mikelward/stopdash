@@ -9,7 +9,11 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import app.stopdash.domain.Coordinates
+import app.stopdash.domain.FavoriteKind
+import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.StationMatch
+import app.stopdash.domain.TripDestination
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Assert.assertEquals
@@ -91,6 +95,74 @@ class StationSearchScreenshotTest {
         composeRule.onNodeWithContentDescription("King's Cross & St Pancras International, National Rail · Tube")
             .assertIsDisplayed()
         captureSnapshot("station-search-long-names.png")
+    }
+
+    @Test
+    fun station_search_to_places() {
+        // The To… picker offers saved favorite places at the top, before any typing, so a rider routes
+        // home in one tap. Synthetic coordinates and generic labels — no user data.
+        var routed: TripDestination.Place? = null
+        composeRule.setContent {
+            StopDashTheme {
+                StationSearchScreen(
+                    state = StationSearchViewModel.State(
+                        favoritePlaces = listOf(
+                            FavoritePlace("home", FavoriteKind.HOME, "Home", Coordinates(51.5, -0.12)),
+                            FavoritePlace("work", FavoriteKind.WORK, "Work", Coordinates(51.51, -0.10)),
+                        ),
+                        recent = listOf(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))),
+                        yoursRead = true,
+                    ),
+                    onQueryChange = {},
+                    onOpenStation = {},
+                    onRetry = {},
+                    onBack = {},
+                    autoFocus = false,
+                    hint = "To station or stop",
+                    onOpenPlace = { routed = it },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Places").assertIsDisplayed()
+        composeRule.onNodeWithText("Home").assertIsDisplayed()
+        // Places lead the list, above the recent stops.
+        val placesTop = composeRule.onNodeWithText("Places").fetchSemanticsNode().boundsInRoot.top
+        assertTrue(placesTop < composeRule.onNodeWithText("Recent").fetchSemanticsNode().boundsInRoot.top)
+        captureSnapshot("station-search-to-places.png")
+        composeRule.onNodeWithText("Home").performClick()
+        assertEquals(TripDestination.Place(Coordinates(51.5, -0.12), "Home"), routed)
+    }
+
+    @Test
+    fun station_search_to_places_error() {
+        // The saved places couldn't be read: the To… picker says so with a Retry rather than hiding the
+        // section as "no places", and station search stays usable below.
+        var retried = false
+        composeRule.setContent {
+            StopDashTheme {
+                StationSearchScreen(
+                    state = StationSearchViewModel.State(
+                        favoritePlacesFailed = true,
+                        recent = listOf(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))),
+                        yoursRead = true,
+                    ),
+                    onQueryChange = {},
+                    onOpenStation = {},
+                    onRetry = {},
+                    onBack = {},
+                    autoFocus = false,
+                    hint = "To station or stop",
+                    onOpenPlace = {},
+                    onRetryPlaces = { retried = true },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Couldn't load your places").assertIsDisplayed()
+        captureSnapshot("station-search-to-places-error.png")
+        composeRule.onNodeWithText("Retry").performClick()
+        assertTrue(retried)
     }
 
     @Test
