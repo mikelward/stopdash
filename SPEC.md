@@ -479,7 +479,9 @@ detail view. The destination elides to a
 single line, so a long one ("Harrow & Wealdstone") truncates rather than wrapping the card
 taller or pushing the countdown off the edge. The destination's **station-type suffix is
 trimmed** the way stop names are — TfL's "Brixton Underground Station" shows as "Brixton"
-(*Concise copy*); the bare " Station" is dropped too, so a terminus like "Battersea Power
+(*Concise copy*); "Bus Station" and "Coach Station" go whole the same way ("Canada Water Bus
+Station" → "Canada Water", the bus pill saying it's a bus, maintainer 2026-09-27); the bare
+" Station" is dropped too, so a terminus like "Battersea Power
 Station" reads "Battersea Power". A trailing **line-name parenthetical** is dropped the same
 way — "Hammersmith (H&C Line)" shows as "Hammersmith", since the pill already names the line —
 while a *geographic* parenthetical with no line ("Stratford (London)") is kept. A short list of **hardcoded display renames** shortens a

@@ -142,4 +142,11 @@ class StopNameTest {
         assertEquals("High Street, Kensington", pointName("High Street, Kensington"))
         assertEquals("Bank", pointName("Bank Underground Station"))
     }
+
+    // "Bus Station" goes whole, as the other types do: the row's bus pill already says it's a bus.
+    @Test
+    fun `drops a bus or coach station suffix whole`() {
+        assertEquals("Canada Water", cleanStopName("Canada Water Bus Station"))
+        assertEquals("Victoria", cleanStopName("Victoria Coach Station"))
+    }
 }
