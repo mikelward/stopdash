@@ -87,7 +87,7 @@ fun SettingsScreen(
     railApiKey: String = "",
     onRailApiKeyChange: (String) -> Unit = {},
     railApiKeyLoaded: Boolean = true,
-    // The "Help make StopDash better" opt-in (SPEC *Privacy*): off by default; null until the stored
+    // The "Help make LDNGo better" opt-in (SPEC *Privacy*): off by default; null until the stored
     // choice is read, when the switch is disabled so a slow read can't present "off" to act on.
     telemetryOptIn: Boolean? = false,
     onTelemetryOptInChange: (Boolean) -> Unit = {},

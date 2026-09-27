@@ -371,7 +371,7 @@ internal fun FontSizeWindow(content: @Composable () -> Unit) {
 }
 
 /**
- * The pinch, for a surface inside a window the app opens. "Two fingers anywhere in StopDash" is
+ * The pinch, for a surface inside a window the app opens. "Two fingers anywhere in LDNGo" is
  * what the setting promises, so a window that opens its own composition (a popup, a dialog) hosts
  * its own gesture — a pointer handler no more crosses the boundary than a density does. Apply it to
  * the surface *containing* the text so one pinch spans the whole window. No-op outside the theme;

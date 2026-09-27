@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 import java.io.IOException
 
-/** Where the "Help make StopDash better" choice is kept. */
+/** Where the "Help make LDNGo better" choice is kept. */
 interface ConsentStore {
     /** The stored choice, or null if the user has never answered. Blocking. */
     fun read(): Boolean?

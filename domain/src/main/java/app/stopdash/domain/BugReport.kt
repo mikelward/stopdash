@@ -46,7 +46,7 @@ object BugReport {
         // report is the one place they leave the device (consent-gated, SPEC *Privacy*).
         recentPositions: List<String> = emptyList(),
     ): String = buildString {
-        appendLine("StopDash bug report")
+        appendLine("LDNGo bug report")
         appendLine("version: ${header.versionName} (${header.versionCode})")
         appendLine("device: ${header.device}, Android ${header.androidRelease} (API ${header.sdkInt})")
         appendLine("captured: ${header.capturedAt}")

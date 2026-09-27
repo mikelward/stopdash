@@ -34,7 +34,7 @@ class BugReportTest {
 
         assertEquals(
             """
-            StopDash bug report
+            LDNGo bug report
             version: 1.0.120+abc1234 (120)
             device: Google Pixel 8, Android 15 (API 35)
             captured: 2026-09-21T14:30:00Z

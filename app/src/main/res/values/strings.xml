@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The en-US base (tools:locale): en-GB overrides only what differs, in values-en-rGB. -->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
-    <string name="app_name">StopDash</string>
+    <string name="app_name">LDNGo</string>
 
     <string name="stale_stamp">Tap to refresh</string>
     <!-- Pending stamp shown before the first snapshot is available (cold start, while the
@@ -112,7 +112,7 @@
     <string name="modes_hidden">%1$s hidden</string>
     <string name="modes_show_all">Show all</string>
     <!-- Snackbar when a change of hidden modes couldn't be saved: it holds until the app restarts. -->
-    <string name="hidden_modes_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
+    <string name="hidden_modes_write_failed">Couldn\'t save that; it resets when LDNGo restarts</string>
     <!-- The near-me list's empty state while modes are hidden, instead of "no departures": the
          hidden modes may be running. The argument lists them ("Bus, Tram"). -->
     <string name="modes_hidden_empty">Nothing else to show with %1$s hidden</string>
@@ -135,7 +135,7 @@
          honest about the location leaving the device, since it does — it's sent to TfL to
          find nearby stops (SPEC Privacy). -->
     <string name="location_title">Departures near you</string>
-    <string name="location_rationale">StopDash shows the stops nearest you. Your location is sent to TfL only to find them.</string>
+    <string name="location_rationale">LDNGo shows the stops nearest you. Your location is sent to TfL only to find them.</string>
     <string name="location_allow">Allow location</string>
     <string name="location_finding">Finding stops near you…</string>
     <string name="location_no_fix">Couldn\'t get your location</string>
@@ -338,7 +338,7 @@
     <string name="settings_text_size_value">%1$d%%</string>
     <string name="settings_text_size_reset">Reset</string>
     <string name="settings_text_size_content_description">Text size, %1$d percent</string>
-    <string name="settings_telemetry_title">Help make StopDash better</string>
+    <string name="settings_telemetry_title">Help make LDNGo better</string>
     <string name="settings_telemetry_summary">Share crash reports and usage stats. Never your stops, journeys or precise location.</string>
     <string name="settings_pinch_title">Pinch to resize text</string>
     <string name="settings_pinch_summary">Spread or pinch two fingers anywhere in the app to change the text size.</string>
@@ -348,9 +348,9 @@
     <string name="settings_distance_units_meters">Meters</string>
     <string name="settings_distance_units_yards">Yards</string>
     <string name="settings_distance_units_feet">Feet</string>
-    <string name="settings_distance_units_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
+    <string name="settings_distance_units_write_failed">Couldn\'t save that; it resets when LDNGo restarts</string>
 
-    <!-- Optional user TfL app_key (SPEC D7). StopDash works keyless; a user's own free key raises
+    <!-- Optional user TfL app_key (SPEC D7). LDNGo works keyless; a user's own free key raises
          the request budget. The key is a credential, kept on-device and never logged. -->
     <string name="settings_api_key_title">TfL API key</string>
     <string name="settings_api_key_summary">Optional. Paste your own free TfL API key for a higher refresh limit.</string>
@@ -433,9 +433,9 @@
     <string name="bug_report_consent_continue">Continue</string>
     <string name="action_cancel">Cancel</string>
     <!-- Subject line and share-sheet / clipboard labels for the report. -->
-    <string name="bug_report_subject">StopDash bug report</string>
+    <string name="bug_report_subject">LDNGo bug report</string>
     <string name="bug_report_chooser_title">Send bug report</string>
-    <string name="bug_report_clipboard_label">StopDash bug report</string>
+    <string name="bug_report_clipboard_label">LDNGo bug report</string>
     <!-- Toasts when the share sheet didn't open (the report is on the clipboard) or nothing landed. -->
     <string name="bug_report_copied">Bug report copied to clipboard</string>
     <string name="bug_report_failed">Couldn\'t share the bug report</string>

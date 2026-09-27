@@ -63,7 +63,7 @@ class WidgetContentTest {
         provideComposable {
             WidgetContent(WidgetModel(hasData = false, stale = false, uncertain = false, stamp = null, rows = emptyList()), now)
         }
-        onNode(hasText("Open StopDash")).assertExists()
+        onNode(hasText("Open LDNGo")).assertExists()
     }
 
     @Test
@@ -120,7 +120,7 @@ class WidgetContentTest {
             )
         }
         onNode(hasTextEqualTo("Partly stale")).assertExists()
-        onNode(hasTextEqualTo("StopDash")).assertDoesNotExist()
+        onNode(hasTextEqualTo("LDNGo")).assertDoesNotExist()
         onNode(hasTextEqualTo(lineCode("victoria", "tube"))).assertExists()
         onNode(hasText("Brixton")).assertExists()
     }
