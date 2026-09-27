@@ -931,6 +931,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             gets there, at night too. Weigh against: a timetable misses stop closures and diversions
             that live predictions reflect (the maintainer's guess, 2026-09-27), and a bus in traffic
             runs off schedule.
+      - [ ] **Prune a route that passes near a single-stop destination** (maintainer, 2026-09-27):
+            routes through a station complex go when a route getting off there arrives no later
+            (SPEC *Trips with a change*). A single stop has no complex, so a route passing a station
+            steps from it and coming back isn't caught. Judge it by distance from the destination,
+            which needs a position for each stop a route calls at (the Planner gives one only for
+            each leg's ends) and a cutoff to settle.
       - [ ] **Check a trip's boarding stops for disruptions** (Codex on PR 259, 2026-09-26): a trip
             fetches its lines' status but not its stops' own disruptions (a closure, a moved stop),
             so a leg's line page can't say "No disruptions reported" and reads "Couldn't check"

@@ -2003,15 +2003,18 @@ class MainActivity : ComponentActivity() {
         // interchange is looked up first and planned to at each of its stations and its bus stops,
         // the best way there whatever the line or mode. A favorite is a coordinate the Planner routes
         // to directly (a final walk leg), so it needs neither a lookup nor a hub expansion (SPEC D9).
+        // A route passing any of destinationIds (each to its stop) has already arrived.
         val destinations: List<TripDestination>
         val destKey: String
+        val destinationIds: Map<String, String>
         if (favorite != null) {
             destinations = listOf(favorite)
             destKey = "place:${favorite.coordinate.latitude},${favorite.coordinate.longitude}"
+            destinationIds = emptyMap()
         } else {
             val toStopId = checkNotNull(toId) { "a To… trip has a destination once past the picker" }
-            val toStopIds = if (!toStopId.startsWith(HUB_PREFIX)) {
-                listOf(toStopId)
+            val (toStopIds, ids) = if (!toStopId.startsWith(HUB_PREFIX)) {
+                listOf(toStopId) to mapOf(toStopId to toStopId)
             } else {
                 val toOwner = remember(toStopId) { toStores.ownerFor(toStopId, this@MainActivity) }
                 val toModel: StationStopsViewModel = viewModel(
@@ -2033,10 +2036,17 @@ class MainActivity : ComponentActivity() {
                     )
                     return
                 }
-                PlanTargets.of(members.map { PlanTargets.Member(it.id, it.lines) }).ifEmpty { listOf(members.first().id) }
+                PlanTargets.of(members.map { PlanTargets.Member(it.id, it.lines) }).ifEmpty { listOf(members.first().id) } to
+                    // A bus pole's stop area ("490G…") too: the Planner can name a call by either, and
+                    // the poles of one area are one stop to get off at.
+                    members.flatMap { member ->
+                        val stop = member.clusterId.ifBlank { member.id }
+                        listOf(member.id, member.clusterId).filter { it.isNotBlank() }.map { it to stop }
+                    }.toMap()
             }
             destinations = toStopIds.map { TripDestination.Stop(it) }
             destKey = toStopIds.joinToString(",")
+            destinationIds = ids
         }
         // From a From… station, one of its own stops (the neighbors around it are no start); else
         // the stop nearest the rider.
@@ -2059,6 +2069,7 @@ class MainActivity : ComponentActivity() {
                         savedState = createSavedStateHandle(),
                         dismissedStore = DataStoreDismissedAlertsStore.from(appContext, warn = ::logDepartureWarning),
                         writeFailures = writeFailures,
+                        destinationIds = destinationIds,
                     )
                 }
             },

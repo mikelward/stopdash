@@ -17,6 +17,7 @@ import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import app.stopdash.domain.TripRoute
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -263,6 +264,18 @@ class JourneyPlannerTest {
         assertEquals("490G000804", legs[1].fromArea)
         assertEquals("490G000850", legs[1].toArea)
         assertEquals("", legs[2].toArea)
+    }
+
+    @Test
+    fun `a bus leg ending at a stop pair arrives there, whatever ids its path ends with`() = runTest {
+        // The same recorded answer: the first bus's path ends with the pair's other pole and then the
+        // pair itself, before the pole the Planner names as its end. Planned to that pair, the route
+        // arrives there; it doesn't pass through it.
+        val body = checkNotNull(javaClass.getResource("/fixtures/journey_results_trafalgar_square_to_archway_bus.json")).readText()
+        val route = client(body).journeys("490G000832", TripDestination.Stop("940GZZLUACY")).single()
+        val first = TripRoute(route.legs.take(2))
+        val pair = setOf(route.legs[1].toId, route.legs[1].toArea) + route.legs[1].path.takeLast(2)
+        assertTrue(!first.passesThrough(pair))
     }
 
     @Test
