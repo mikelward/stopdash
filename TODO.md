@@ -1335,16 +1335,34 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       location"), while a transient lookup failure (TfL unreachable) is shown as **retryable** (tap the
       row again), never as "no location". Still to fold the same fallback into From…/To… if/when they
       need a coordinate.
-      Also **disambiguate same-name results** across all three
-      surfaces (maintainer via Codex, 2026-09-27): two same-named places TfL keeps distinct (>250 m
-      apart, e.g. two bus-only "Church Street"s) render identically — name + modes are all `StationMatch`
-      carries. Add a distinguishing line (a locality/parent-area name, or the nearest cross-reference)
-      to the shared result row so From…, To… and favorite setup all show it; needs a new field on
-      `StationMatch` (TfL doesn't return locality on `/StopPoint/Search` today, so this may need a
-      parent-`StopPoint` lookup or the search's `commonName`/`additionalProperties`). Then **routing to
-      a favorite** (plan `to = lat,lon`, the
-      coordinate-routing privacy disclosure lands with it); and the **To… Home/Work pins**. The
-      Settings list is edit-only until routing lands.
+      Also **disambiguate same-name results** across all three surfaces (maintainer via Codex,
+      2026-09-27): two same-named places TfL keeps distinct (>250 m apart, e.g. several bus-only "Church
+      Street"s) render identically — name + modes are all `StationMatch` carries. **For now: show the
+      full stop name and let the rider choose** (maintainer, 2026-09-27) — most collisions differ in the
+      full name (a distinguishing word, or a road/area prefix); only the handful of truly-identical ones
+      stay ambiguous. Finer disambiguation is **parked** — confirmed that
+      TfL `/StopPoint/Search` returns **no locality/suburb/postcode** (only `id`, `name`, `modes`,
+      `lat`/`lon`, and `towards`/`zone` on *some* stops; verified against a live "Church Street" search).
+      Options for later, in rough order of appeal: (a) show `towards`/`zone` where TfL provides them —
+      cheap, partial (helps some buses/trams, not the plain "Church Street"s); (b) a per-result parent
+      `/StopPoint/{id}` lookup — extra request each, and unconfirmed it even yields an area name; (c)
+      reverse-geocode each coordinate to an area — a **new external recipient** (Data Safety change +
+      cost/privacy), so a maintainer decision, not to be added unilaterally. Needs a new field on
+      `StationMatch` whichever way. Then the **To… Home/Work pins**. The Settings list is edit-only until
+      routing lands.
+      **routing to a favorite** — IN PROGRESS: plan `to = lat,lon` so tapping a favorite routes to it
+      (the coordinate-routing privacy disclosure lands with it); TfL's Journey Planner accepts a
+      coordinate endpoint (verified against a live response) and returns a final walk leg to the place.
+      The trip starts from the rider's **current location, or an active From… override** (maintainer,
+      2026-09-27). The **trip options page shows the From location as its first row**, tappable to change
+      it (maintainer, 2026-09-27) — the From-override UX, landing with the trip-screen slice.
+      Slice 1 (typed `TripDestination`; the planner threads a `Place` coordinate to `to = lat,lon`)
+      landed. Its coordinate-destination walk-leg test is **built from constructed JSON**: the recorded
+      Journey Planner fixtures are all stop-to-stop and carry no `lat`/`lon`, and live TfL is unreachable
+      from CI (maintainer-approved blind build). The decoded point shape (`commonName` + `lat`/`lon`, no
+      `naptanId`) is verified against the live JourneyResults sample the maintainer captured. **Record a
+      sanitized coordinate-route fixture** once a device can capture one, and swap it in for the
+      constructed body.
 - [ ] **Alias en-GB spellings to the other English locales** (maintainer, 2026-09-27) — Android
       doesn't fall back en-GB → en-AU/en-NZ/en-IE/etc., so an Australian device on English shows the
       en-US base ("Favorite", "Metres"→"Meters"). Add `values-en-rAU` (and the other en-* the audience
