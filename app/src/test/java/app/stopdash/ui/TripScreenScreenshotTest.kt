@@ -16,6 +16,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.dp
 import app.stopdash.domain.LineRef
 import androidx.compose.ui.test.assertCountEquals
@@ -263,20 +264,44 @@ class TripScreenScreenshotTest {
         // In the tree a screen reader gets: two cards start on the Windrush, each warning beside
         // its pill and on its line row.
         assertEquals(4, composeRule.onAllNodesWithContentDescription("Severe Delays").fetchSemanticsNodes().size)
-        // Every card's line row (three routes) keeps its own action to open its line's page: the
-        // card doesn't swallow it.
-        val details = composeRule.activity.getString(R.string.departure_details)
-        val rowActions = composeRule.onAllNodes(
-            SemanticsMatcher("opens its line's page") { it.config.getOrElseNullable(SemanticsActions.OnClick) { null }?.label == details },
-        )
-        assertEquals(3, rowActions.fetchSemanticsNodes().size)
         captureSnapshot("trip-routes-disrupted.png")
-        // Tapped, the line row opens its line's page (the card's top row still opens the route).
-        rowActions.onFirst().performClick()
+        // The line row is one of its card's choices (maintainer, 2026-09-27): none opens its line's
+        // page, and tapped, it opens the route it times.
+        val details = composeRule.activity.getString(R.string.departure_details)
+        composeRule.onAllNodes(
+            SemanticsMatcher("opens its line's page") { it.config.getOrElseNullable(SemanticsActions.OnClick) { null }?.label == details },
+        ).assertCountEquals(0)
+        composeRule.onAllNodesWithContentDescription(" min to ", substring = true).onFirst().performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodes(hasTestTag("tripRoutes")).assertCountEquals(0)
-        composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(0)
-        composeRule.onAllNodesWithText("Severe Delays", substring = true).onFirst().assertExists()
+        composeRule.onNodeWithTag("tripLegs").assertExists()
+    }
+
+    @Test
+    fun a_route_cards_long_press_offers_every_legs_mode() {
+        val hidden = mutableListOf<String>()
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {}, onHideMode = { hidden += it },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        // Anywhere on a card — its top row and its line row alike — a long press opens the card's menu.
+        val more = composeRule.activity.getString(R.string.more_actions)
+        val menus = composeRule.onAllNodes(
+            SemanticsMatcher("long-presses to its menu") { it.config.getOrElseNullable(SemanticsActions.OnLongClick) { null }?.label == more },
+        )
+        assertEquals(6, menus.fetchSemanticsNodes().size)
+        // The first card rides the Windrush then the Jubilee: both groups, not just the first leg's.
+        menus.onFirst().performSemanticsAction(SemanticsActions.OnLongClick)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Hide all train services").assertIsDisplayed()
+        composeRule.onNodeWithText("Hide all Tube & DLR services").performClick()
+        composeRule.waitForIdle()
+        assertEquals(listOf("tube"), hidden)
     }
 
     @Test

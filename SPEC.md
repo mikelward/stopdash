@@ -862,9 +862,12 @@ takes in the same walks, waits and legs. The pills wrap onto a second line when 
 many legs, and the time drops below them when it doesn't fit beside them. Under the top row is the
 first leg's live row, the train the rider would catch now, **the main screen's row for that stop and
 line** — the same row, not a lookalike (maintainer, 2026-09-26): the line's pill, the destinations its
-trains show, a ⚠ just left of the times when the line is disrupted, and the times; tapping it opens
-its line's page and a long press offers "Hide ‹mode›", as on the list (the card's top row still
-opens the route); the open route's leg rows offer the same. While the
+trains show, a ⚠ just left of the times when the line is disrupted, and the times. The card is one
+choice, so tapping anywhere on it — the top row or that live row — opens the trip that row times
+(maintainer, 2026-09-27), and a long press anywhere on it offers **"Hide all ‹group› services"** for
+every group any of its legs rides, so a slow tube leg can be hidden from the card as readily as the
+bus that starts it. The open route's leg rows still open their line's page and offer "Hide ‹mode›"
+for their own line, as on the list. While the
 line's route is still being checked, it shows the line's live trains at that stop (those heading for
 the Planner's terminus, whether or not a name adds a place such as "(London)") as the main screen
 does, timing nothing until the check vouches for them: only a bus to the terminus on no named branch

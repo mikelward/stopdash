@@ -2976,7 +2976,7 @@ internal fun StopGroupHeader(
  * [FontSizeWindow] like the overflow menu, so the chosen text size reaches it.
  */
 @Composable
-private fun HideModeMenu(
+internal fun HideModeMenu(
     expanded: Boolean,
     onDismiss: () -> Unit,
     modes: List<String>,
@@ -3488,6 +3488,10 @@ internal fun LineRouteRow(
     onHideMode: ((String) -> Unit)?,
     destination: @Composable RowScope.(Modifier) -> Unit,
     times: @Composable RowScope.() -> Unit,
+    // Set where the row is part of something bigger that owns its tap and long press (a trip's
+    // card): see [RouteRow].
+    onOpenInstead: (() -> Unit)? = null,
+    onLongPressInstead: (() -> Unit)? = null,
 ) {
     // Inner width ≈ screen minus the list's 16dp side padding and the row's 16dp padding.
     val cardInnerWidth = LocalConfiguration.current.screenWidthDp.dp - 64.dp
@@ -3499,6 +3503,8 @@ internal fun LineRouteRow(
         onOpenDetail = onOpenDetail,
         focus = focus,
         onHideMode = onHideMode,
+        onOpenInstead = onOpenInstead,
+        onLongPressInstead = onLongPressInstead,
     ) {
         LinePill(lineName = row.lineName, lineId = row.lineId, mode = row.mode, modifier = Modifier.widthIn(max = cardInnerWidth * 0.5f))
         destination(Modifier.weight(1f).padding(start = 8.dp, end = 12.dp))
@@ -3538,6 +3544,11 @@ internal fun RouteRow(
     // Makes a long press open a menu — the pin/unpin, then "Hide ‹mode›" for this row's mode (SPEC
     // *Finding stops → Hiding a mode*) — instead of pinning at once. Null keeps the direct pin.
     onHideMode: ((String) -> Unit)? = null,
+    // A tap that does this instead of opening the line's page, unlabeled like the card's own tap —
+    // a trip's card, where the row is one of the trip's choices, not a line to look up.
+    onOpenInstead: (() -> Unit)? = null,
+    // A long press that does this instead of the row's own pin or menu: the card's menu.
+    onLongPressInstead: (() -> Unit)? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
     val starActionLabel = stringResource(if (isStarred) R.string.unstar else R.string.star)
@@ -3547,9 +3558,15 @@ internal fun RouteRow(
     val currentToggleStar by rememberUpdatedState(onToggleStar)
     val currentOpenDetail by rememberUpdatedState(onOpenDetail)
     val currentFocus by rememberUpdatedState(focus)
-    val hideMode = row.mode.takeIf { onHideMode != null && it.isNotBlank() }
+    val currentOpenInstead by rememberUpdatedState(onOpenInstead)
+    val currentLongPressInstead by rememberUpdatedState(onLongPressInstead)
+    val opensInstead = onOpenInstead != null
+    val longPressesInstead = onLongPressInstead != null
+    val hideMode = row.mode.takeIf { onHideMode != null && it.isNotBlank() && !longPressesInstead }
     var menuOpen by remember { mutableStateOf(false) }
+    fun open() = currentOpenInstead?.invoke() ?: currentOpenDetail(currentRow, currentFocus)
     val onLongPress: ((Offset) -> Unit)? = when {
+        longPressesInstead -> { _ -> currentLongPressInstead?.invoke() }
         hideMode != null -> { _ -> menuOpen = true }
         starrable -> { _ -> currentToggleStar(currentRow) }
         else -> null
@@ -3559,16 +3576,17 @@ internal fun RouteRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .pointerInput(starrable, hideMode) {
+            .pointerInput(starrable, hideMode, longPressesInstead) {
                 detectTapGestures(
-                    onTap = { currentOpenDetail(currentRow, currentFocus) },
+                    onTap = { open() },
                     onLongPress = onLongPress,
                 )
             }
             .semantics {
                 isTraversalGroup = true
-                onClick(label = detailActionLabel) { currentOpenDetail(currentRow, currentFocus); true }
+                onClick(label = if (opensInstead) null else detailActionLabel) { open(); true }
                 when {
+                    longPressesInstead -> onLongClick(label = moreLabel) { currentLongPressInstead?.invoke(); true }
                     hideMode != null -> onLongClick(label = moreLabel) { menuOpen = true; true }
                     starrable -> onLongClick(label = starActionLabel) { currentToggleStar(currentRow); true }
                 }

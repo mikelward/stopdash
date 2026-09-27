@@ -6,6 +6,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -734,7 +735,6 @@ private fun TripContent(
                     else -> RouteList(
                         cards, state, now, sequences, onRetry, alerts.dismissed,
                         onOpen = { setOpenKey(routeKey(it.route)) },
-                        onOpenDetail = ::openDetail,
                         onHideMode = onHideMode,
                     )
                 }
@@ -842,8 +842,6 @@ private fun RouteList(
     // The alerts dismissed (as on the list): their ⚠ doesn't show on a card.
     dismissed: Set<DismissedAlert>,
     onOpen: (TripTiming.Estimate) -> Unit,
-    // A line row tapped: its line's page, as a row on the main screen opens it.
-    onOpenDetail: (TripLeg, DepartureRow, RouteFocus?) -> Unit,
     onHideMode: ((String) -> Unit)?,
 ) {
     LazyColumn(
@@ -873,28 +871,62 @@ private fun RouteList(
             item(key = "none") { Text(stringResource(R.string.trip_no_routes), style = MaterialTheme.typography.bodyLarge) }
         }
         // Routes sharing their first leg's stop and their later lines are one card: one header, and
-        // a row for each first-leg line. Tapping the header opens the best of them; a line row opens
-        // its line's page, as on the main screen.
+        // a row for each first-leg line. The card is one choice (maintainer, 2026-09-27): tapping the
+        // header opens the best of its routes, a line row the route it times, and a long press
+        // anywhere offers to hide each group any of its legs rides.
         items(cards, key = { cardKey(it.first().route) }) { card ->
-            // Only the top row opens the route: a clickable card would merge its line rows into
-            // itself, and a screen reader would lose each row's own action (its line's page).
-            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-                RouteSummary(
-                    card,
-                    shownStatuses(state.statuses, dismissed),
-                    Modifier.clickable { onOpen(card.first()) }.padding(horizontal = 16.dp, vertical = 12.dp),
-                )
-                card.forEach { estimate ->
-                    val first = estimate.route.legs.indexOfFirst { !it.isWalk }
-                    if (first >= 0) {
-                        HorizontalDivider()
-                        FirstLegRow(estimate, first, state, now, sequences, dismissed, onOpenDetail, onHideMode)
+            val modes = remember(card) { cardModes(card) }
+            var menuOpen by remember { mutableStateOf(false) }
+            val onLongPress = if (onHideMode != null && modes.isNotEmpty()) ({ menuOpen = true }) else null
+            val moreLabel = stringResource(R.string.more_actions)
+            Box {
+                // Each row takes the card's tap and long press itself: a clickable card would merge
+                // its rows into one, and a screen reader would lose the rows' own times.
+                OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                    RouteSummary(
+                        card,
+                        shownStatuses(state.statuses, dismissed),
+                        Modifier
+                            .combinedClickable(
+                                onLongClickLabel = onLongPress?.let { moreLabel },
+                                onLongClick = onLongPress,
+                                onClick = { onOpen(card.first()) },
+                            )
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                    )
+                    card.forEach { estimate ->
+                        val first = estimate.route.legs.indexOfFirst { !it.isWalk }
+                        if (first >= 0) {
+                            HorizontalDivider()
+                            FirstLegRow(
+                                estimate, first, state, now, sequences, dismissed,
+                                onOpen = { onOpen(estimate) },
+                                onLongPress = onLongPress,
+                            )
+                        }
                     }
+                }
+                if (onHideMode != null) {
+                    HideModeMenu(
+                        expanded = menuOpen,
+                        onDismiss = { menuOpen = false },
+                        modes = modes,
+                        onHideMode = onHideMode,
+                    )
                 }
             }
         }
     }
 }
+
+/** Every mode any route on a trip's card rides, in a stable order, for its "Hide all ‹group› services" menu. */
+internal fun cardModes(card: List<TripTiming.Estimate>): List<String> =
+    card.asSequence()
+        .flatMap { estimate -> estimate.route.rides.asSequence().map { it.mode } }
+        .filter { it.isNotBlank() }
+        .distinctBy { it.lowercase() }
+        .sortedBy(::modeName)
+        .toList()
 
 /**
  * A card's top row: its lines' pills in order — the first ride's lines as one cut pill when the
@@ -958,9 +990,10 @@ private fun arrivalText(estimate: TripTiming.Estimate): String {
 }
 
 /**
- * The first leg's line and its live trains, those the rider can't reach in time grayed — drawn and
- * handled as a route row on the main screen ([RouteRow]): its pill, destination, a ⚠ left of the
- * times when the line is disrupted, a tap opening the line's page and a long press its "Hide ‹mode›".
+ * The first leg's line and its live trains, those the rider can't reach in time grayed — drawn as a
+ * route row on the main screen ([RouteRow]): its pill, destination, a ⚠ left of the times when the
+ * line is disrupted. It's one of its card's choices, so a tap opens its route ([onOpen]) and a long
+ * press the card's menu ([onLongPress]), not the line's page and "Hide ‹mode›" a list row offers.
  */
 @Composable
 private fun FirstLegRow(
@@ -970,8 +1003,9 @@ private fun FirstLegRow(
     now: Instant,
     sequences: Map<String, LineSequence?>,
     dismissed: Set<DismissedAlert>,
-    onOpenDetail: (TripLeg, DepartureRow, RouteFocus?) -> Unit,
-    onHideMode: ((String) -> Unit)?,
+    // The card's tap and long press: this row is one of the card's choices, so it opens its route.
+    onOpen: () -> Unit,
+    onLongPress: (() -> Unit)?,
 ) {
     val leg = estimate.route.legs[index]
     val usable = legTrains(state, leg, now, sequences)
@@ -1001,9 +1035,11 @@ private fun FirstLegRow(
         isStarred = false,
         starrable = false,
         onToggleStar = {},
-        onOpenDetail = { tapped, tappedFocus -> onOpenDetail(leg, tapped, tappedFocus) },
+        onOpenDetail = { _, _ -> onOpen() },
         focus = focus,
-        onHideMode = onHideMode,
+        onHideMode = null,
+        onOpenInstead = onOpen,
+        onLongPressInstead = onLongPress,
         // Every destination the times cover, so a time is never read as another train's; shortened
         // as the list shortens a destination (full, then the standard abbreviations, then its floor)
         // before it would elide. With no live train to show, the terminus of the Planner's service,
