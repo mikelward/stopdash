@@ -4,11 +4,17 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -43,15 +49,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.StationMatch
+import app.stopdash.domain.abbreviateStationName
 import java.util.Locale
 
 /**
@@ -210,16 +220,57 @@ private fun YourStopsList(favorites: List<StationMatch>, recent: List<StationMat
 
 @Composable
 private fun MatchRow(match: StationMatch, onClick: () -> Unit) {
-    Column(
+    // One line per result (name, then its modes on the right) so more fit on screen. The name takes
+    // priority — it fills the row (pushing the modes to the right edge) and gets every pixel the modes
+    // don't need, so a long name like "King's Cross & St Pancras International" shows as much as fits
+    // and ellipsizes only what's left. The modes are bounded and single-line, so a many-mode station
+    // (Stratford's five modes) can't grow to squeeze the name to nothing or wrap at large text scales.
+    val modes = modesLabel(match.modes)
+    // The clickable merges its children, so TalkBack reads one label for the whole row: give it the
+    // FULL station name (not the visual "Intl" abbreviation) plus the modes. A per-child description
+    // would be read alone and drop the modes; the visual modes text can ellipsize, but this doesn't.
+    val spoken = if (modes.isEmpty()) match.name else "${match.name}, $modes"
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            // 8dp padding keeps the denser look; the min height holds the row at Android's 48dp tap
+            // target, which a one-mode row's ~40dp would otherwise miss (more so at large text scales).
+            .heightIn(min = 48.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .semantics { contentDescription = spoken },
+        contentAlignment = Alignment.CenterStart,
     ) {
-        Text(match.name, style = MaterialTheme.typography.bodyLarge)
-        val modes = modesLabel(match.modes)
-        if (modes.isNotEmpty()) {
-            Text(modes, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // Bound the modes to a fraction of the row rather than a fixed dp, so the cap scales with the
+        // window: on a narrow (320dp) screen a 200dp cap would leave the name too little, but 45% keeps
+        // the name the majority at any width. It's a max, not a fixed width — a short mode list uses
+        // only its intrinsic width, so the name still gets everything the modes don't need.
+        val modesMax = maxWidth * 0.45f
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                // Display-only shortening (International → Intl); the full name still backs matching and,
+                // via [spoken] above, the screen-reader label.
+                abbreviateStationName(match.name),
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            if (modes.isNotEmpty()) {
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    modes,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.widthIn(max = modesMax),
+                )
+            }
         }
     }
 }

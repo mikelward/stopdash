@@ -6,6 +6,7 @@ import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import app.stopdash.domain.StationMatch
@@ -65,6 +66,31 @@ class StationSearchScreenshotTest {
         captureSnapshot("station-search-matches.png")
         composeRule.onNodeWithText("King's Cross Station").performClick()
         assertEquals("490G00000001", opened?.id)
+    }
+
+    @Test
+    fun station_search_long_names() {
+        // The two hard cases on one row each: a very long name with few modes (the name keeps priority
+        // and ellipsizes only what's left, the short modes shown in full on the right), and a short name
+        // with many modes (the modes bounded and ellipsized so they can't squeeze the name). Public
+        // station names only.
+        show(
+            StationSearchViewModel.State(
+                query = "st",
+                result = StationSearchViewModel.Result.Matches(
+                    listOf(
+                        StationMatch("HUBKGX", "King's Cross & St Pancras International", listOf("national-rail", "tube")),
+                        StationMatch("HUBSRA", "Stratford", listOf("dlr", "elizabeth-line", "national-rail", "overground", "tube")),
+                    ),
+                ),
+            ),
+        )
+        composeRule.onNodeWithText("Stratford").assertIsDisplayed()
+        // The row merges into one TalkBack label: the FULL name (not the visual "Intl") plus the modes,
+        // so the abbreviation and the modes' visual ellipsis don't reach the screen reader.
+        composeRule.onNodeWithContentDescription("King's Cross & St Pancras International, National Rail · Tube")
+            .assertIsDisplayed()
+        captureSnapshot("station-search-long-names.png")
     }
 
     @Test
