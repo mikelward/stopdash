@@ -8,6 +8,7 @@ import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoritePlacesStore
+import app.stopdash.domain.FixedLocation
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StationMatch
@@ -35,8 +36,9 @@ import kotlinx.coroutines.withContext
  * matches with the same bundled [StationIndex] plus TfL merge and ranking the From…/To… search uses
  * (SPEC *Finding stops*), so it behaves identically; the typed query is sent to TfL (via
  * [StationFinder.searchStations], `/StopPoint/Search`) and nowhere else, and never logged; only its
- * kind — a status is logged on failure (SPEC *Privacy*). A match TfL gives no position for can't
- * anchor a place, so it isn't selectable (SPEC D9). Editing a place keeps its saved coordinate until
+ * kind — a status is logged on failure (SPEC *Privacy*). A match with no inline position is resolved
+ * on pick from its stops' members ([StationFinder.stationStops] → center); only a result whose stops
+ * carry no position at all can't anchor a place and stays unselectable (SPEC D9). Editing a place keeps its saved coordinate until
  * the user picks a new location. Postcode/place resolution (SPEC D9's Journey Planner disambiguation)
  * is a follow-up; v1 resolves via the stop/station search.
  *
@@ -101,6 +103,16 @@ class FavoritePlacesViewModel(
         // reserved default (Home/Work/School), which a pick then leaves untouched.
         val labelFromPick: Boolean = false,
         val saving: Boolean = false,
+        // A result the user tapped that had no inline position: its coordinate is being resolved from
+        // the stop's members (TfL stationStops → center), so that row shows a spinner. Null when none.
+        val resolvingId: String? = null,
+        // Results with **definitively** no location (the lookup succeeded but the stop has no positioned
+        // members): shown, but unselectable — not a transient failure. Reset per search. Codex.
+        val unresolvableIds: Set<String> = emptySet(),
+        // Results whose resolve **failed transiently** (TfL/network unreachable): distinct from
+        // unresolvable — the row says so and stays tappable to retry, rather than presenting a temporary
+        // outage as "no location". Reset per search. Codex.
+        val resolveFailedIds: Set<String> = emptySet(),
     ) {
         val editing: Boolean get() = existingId != null
         val canSave: Boolean get() = coordinate != null && label.isNotBlank() && !saving
@@ -110,6 +122,7 @@ class FavoritePlacesViewModel(
     val state: StateFlow<State> = _state.asStateFlow()
 
     private var search: Job? = null
+    private var resolve: Job? = null
 
     // Bumped whenever the editor is opened, replaced or closed, so an in-flight save can tell whether
     // the editor it started for is still the one on screen (see [commit]). Not changed by field edits
@@ -142,6 +155,7 @@ class FavoritePlacesViewModel(
     /** Begin adding a place of [kind]; [defaultLabel] pre-fills the label (e.g. "Home"). */
     fun startAdd(kind: FavoriteKind, defaultLabel: String) {
         search?.cancel()
+        resolve?.cancel()
         // Every new place gets its id now (persisted with the draft), so a save retried after a failure
         // or restored after process death reuses it and keeps a stable id — a reserved kind upserts by
         // kind, but a changing id would still break identity for anything that references it (Codex).
@@ -151,6 +165,7 @@ class FavoritePlacesViewModel(
     /** Begin editing [place]; its saved location stands until the user picks a new one. */
     fun startEdit(place: FavoritePlace) {
         search?.cancel()
+        resolve?.cancel()
         setEditor(
             Editor(
                 kind = place.kind,
@@ -168,6 +183,7 @@ class FavoritePlacesViewModel(
 
     fun cancelEditor() {
         search?.cancel()
+        resolve?.cancel()
         setEditor(null)
     }
 
@@ -187,7 +203,8 @@ class FavoritePlacesViewModel(
         if (savingNow()) return // don't disturb a draft mid-write; completion would discard the change
         // Editing the query after a pick invalidates that selection: otherwise its coordinate would
         // linger and Save could store the old location under the new query/label (Codex P1).
-        updateEditor { it.copy(query = query, coordinate = null, placeName = null) }
+        resolve?.cancel()
+        updateEditor { it.copy(query = query, coordinate = null, placeName = null, resolvingId = null) }
         startSearch(query)
     }
 
@@ -196,14 +213,65 @@ class FavoritePlacesViewModel(
     private fun savingNow(): Boolean = _state.value.editor?.saving == true
 
     /**
-     * Adopt a picked search result as the place's location. Ignored for a match TfL gave no position
-     * for — those can't anchor a place (SPEC D9). A blank label takes the match name, so picking is
-     * enough to save a custom place named after the stop.
+     * Adopt a picked search result as the place's location. A match TfL already placed is adopted at
+     * once; one with no inline position has its coordinate **resolved from the stop's members** (TfL
+     * [StationFinder.stationStops] → [FixedLocation.centerOf], as To… does), so a station the bundled
+     * index and search both left positionless is still selectable. If the stop has no positioned members,
+     * or TfL 404s it ([TflException.NotFound], which won't change on retry), it is marked **unresolvable**
+     * (definitively no location, unselectable); if the lookup fails **transiently** (TfL/network down) it
+     * is marked **resolve-failed** — a state the row reports and can retry on another tap, never presented
+     * as "no location" (SPEC D9; TODO shared place search; Codex).
      */
     fun onPick(match: StationMatch) {
         if (savingNow()) return // frozen while saving (Codex)
-        val coordinate = match.coordinate() ?: return
+        if (_state.value.editor?.unresolvableIds?.contains(match.id) == true) return
+        val direct = match.coordinate()
+        if (direct != null) {
+            adopt(match, direct)
+            return
+        }
+        // No inline position: resolve it from the stop's members before giving up. Clear any prior
+        // transient failure on this row — this tap is the retry.
+        resolve?.cancel()
+        updateEditor { it.copy(resolvingId = match.id, resolveFailedIds = it.resolveFailedIds - match.id) }
+        resolve = viewModelScope.launch {
+            val center: Coordinates?
+            try {
+                center = FixedLocation.centerOf(withContext(io) { finder.stationStops(match.id) })
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: TflException.NotFound) {
+                // 404: TfL doesn't know this stop, and its contract says retrying won't help — mark it
+                // unresolvable (definitively no location), never retryable.
+                warn("favorite place resolve failed: ${e.javaClass.simpleName}")
+                if (_state.value.editor?.resolvingId == match.id) {
+                    updateEditor { it.copy(resolvingId = null, unresolvableIds = it.unresolvableIds + match.id) }
+                }
+                return@launch
+            } catch (e: Exception) {
+                warn("favorite place resolve failed: ${e.javaClass.simpleName}")
+                // Ignore a failure the user has moved on from.
+                if (_state.value.editor?.resolvingId == match.id) {
+                    updateEditor { it.copy(resolvingId = null, resolveFailedIds = it.resolveFailedIds + match.id) }
+                }
+                return@launch
+            }
+            // Ignore a completion the user has moved on from (a newer pick/search changed resolvingId).
+            if (_state.value.editor?.resolvingId != match.id) return@launch
+            if (center != null) {
+                adopt(match, center)
+            } else {
+                // Placed nowhere — the lookup succeeded but the stop has no positioned members: keep it
+                // shown but unselectable, honestly (distinct from a transient failure above).
+                updateEditor { it.copy(resolvingId = null, unresolvableIds = it.unresolvableIds + match.id) }
+            }
+        }
+    }
+
+    /** Adopt [match] at [coordinate] as the editor's chosen location. */
+    private fun adopt(match: StationMatch, coordinate: Coordinates) {
         search?.cancel()
+        resolve?.cancel()
         updateEditor {
             // Fill the label from the stop only when it's blank or was itself auto-filled by an earlier
             // pick — so repicking after changing the query updates the name too, but a user-typed label
@@ -218,6 +286,7 @@ class FavoritePlacesViewModel(
                 results = emptyList(),
                 searching = false,
                 searchFailed = false,
+                resolvingId = null,
             )
         }
     }
@@ -304,12 +373,22 @@ class FavoritePlacesViewModel(
         search?.cancel()
         val trimmed = query.trim()
         if (trimmed.length < MIN_QUERY_LENGTH) {
-            updateEditor { it.copy(searching = false, results = emptyList(), searchFailed = false, remoteFailed = false) }
+            updateEditor {
+                it.copy(
+                    searching = false, results = emptyList(), searchFailed = false, remoteFailed = false,
+                    unresolvableIds = emptySet(), resolveFailedIds = emptySet(),
+                )
+            }
             return
         }
-        // Clear the previous query's results at once, so a stale match can't be tapped (and saved)
-        // during this query's debounce and request.
-        updateEditor { it.copy(searching = true, searchFailed = false, remoteFailed = false, results = emptyList()) }
+        // Clear the previous query's results (and any resolve outcomes) at once, so a stale match can't
+        // be tapped (and saved) during this query's debounce and request.
+        updateEditor {
+            it.copy(
+                searching = true, searchFailed = false, remoteFailed = false, results = emptyList(),
+                unresolvableIds = emptySet(), resolveFailedIds = emptySet(),
+            )
+        }
         search = viewModelScope.launch {
             // The bundled index answers on the device at once (an abbreviation or code finds its
             // station before the pause is over); TfL's search (bus stops, newer stations) follows the
@@ -430,7 +509,11 @@ private fun StationIndex.withBundledPositions(matches: List<StationMatch>): List
         }
     }
 
-/** The match's coordinate when TfL placed it, else null (unselectable as a favorite, SPEC D9). */
+/**
+ * The match's inline coordinate when TfL placed it, else null — the caller resolves a null from the
+ * match's stops before treating it as unselectable (SPEC D9), so null is "no inline position", not
+ * "definitively unresolvable".
+ */
 fun StationMatch.coordinate(): Coordinates? {
     val lat = latitude ?: return null
     val lon = longitude ?: return null

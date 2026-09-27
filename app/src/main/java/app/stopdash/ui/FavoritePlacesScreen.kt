@@ -11,9 +11,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -319,7 +321,15 @@ private fun PlaceEditor(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        editor.results.forEach { match -> MatchResultRow(match = match, onPick = onPick) }
+        editor.results.forEach { match ->
+            MatchResultRow(
+                match = match,
+                resolving = editor.resolvingId == match.id,
+                unresolvable = match.id in editor.unresolvableIds,
+                resolveFailed = match.id in editor.resolveFailedIds,
+                onPick = onPick,
+            )
+        }
         // TfL's search failed but the bundled index matched: say bus stops weren't searched, as the
         // station search does, rather than presenting the local list as the whole answer.
         if (editor.remoteFailed) {
@@ -383,12 +393,21 @@ private fun WriteErrorRow(onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun MatchResultRow(match: StationMatch, onPick: (StationMatch) -> Unit) {
-    val positioned = match.coordinate() != null
+private fun MatchResultRow(
+    match: StationMatch,
+    resolving: Boolean,
+    unresolvable: Boolean,
+    resolveFailed: Boolean,
+    onPick: (StationMatch) -> Unit,
+) {
+    // Tappable unless it's already known unplaceable or currently being resolved. A positionless result
+    // is still tappable: the tap resolves its coordinate from the stop's members (TfL) before giving up.
+    // A transiently-failed resolve stays tappable too — the tap retries it.
+    val tappable = !unresolvable && !resolving
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (positioned) Modifier.clickable { onPick(match) } else Modifier)
+            .then(if (tappable) Modifier.clickable { onPick(match) } else Modifier)
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -396,30 +415,46 @@ private fun MatchResultRow(match: StationMatch, onPick: (StationMatch) -> Unit) 
             Text(
                 text = match.name,
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (positioned) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
+                color = if (unresolvable) {
                     MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onSurface
                 },
             )
-            if (!positioned) {
-                Text(
+            when {
+                // Definitively no location: shown, not tappable.
+                unresolvable -> Text(
                     text = stringResource(R.string.favorite_places_no_position),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            } else {
-                // The modes disambiguate two same-named places TfL kept distinct (>250 m apart), so the
-                // user doesn't pick the wrong coordinate — as the station search's rows do (Codex).
-                val modes = modesLabel(match.modes)
-                if (modes.isNotEmpty()) {
-                    Text(
-                        text = modes,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                // A transient lookup failure: say so and invite a retry (the row stays tappable) rather
+                // than presenting a temporary outage as "no location" (Codex).
+                resolveFailed -> Text(
+                    text = stringResource(R.string.favorite_places_resolve_failed),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                else -> {
+                    // The modes disambiguate two same-named places TfL kept distinct (>250 m apart), so
+                    // the user doesn't pick the wrong coordinate — as the station search's rows do (Codex).
+                    val modes = modesLabel(match.modes)
+                    if (modes.isNotEmpty()) {
+                        Text(
+                            text = modes,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
+        }
+        if (resolving) {
+            // Resolving this result's coordinate from the stop's members.
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp).testTag("resolving-${match.id}"),
+                strokeWidth = 2.dp,
+            )
         }
     }
 }

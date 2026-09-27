@@ -65,9 +65,10 @@ class FavoritePlacesViewModelTest {
 
     private class FakeFinder(
         val search: suspend (String) -> List<StationMatch> = { emptyList() },
+        val stops: suspend (String) -> List<StopLocation> = { emptyList() },
     ) : StationFinder {
         override suspend fun searchStations(query: String): List<StationMatch> = search(query)
-        override suspend fun stationStops(id: String): List<StopLocation> = emptyList()
+        override suspend fun stationStops(id: String): List<StopLocation> = stops(id)
     }
 
     /** A store whose read fails before the first emission (e.g. a DataStore IOException). */
@@ -116,16 +117,98 @@ class FavoritePlacesViewModelTest {
     }
 
     @Test
-    fun `a positionless match cannot anchor a place`() = runTest {
-        val model = vm(FakeStore(), FakeFinder(search = { listOf(positionless) }))
+    fun `a positionless match that can't be resolved is left unselectable`() = runTest {
+        // stationStops returns nothing, so there's no member center to anchor it.
+        val model = vm(FakeStore(), FakeFinder(search = { listOf(positionless) }, stops = { emptyList() }))
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
         model.onQueryChange("some")
         advanceUntilIdle()
         model.onPick(positionless)
+        advanceUntilIdle()
         val editor = model.state.value.editor!!
         assertNull(editor.coordinate)
         assertFalse(editor.canSave)
+        assertTrue(positionless.id in editor.unresolvableIds) // shown, but honestly unselectable
+    }
+
+    @Test
+    fun `a transient resolve failure is retryable, not marked no-location`() = runTest {
+        var attempt = 0
+        val members = listOf(StopLocation("490000000A1", "Somewhere Road", 51.5, -0.12))
+        val model = vm(
+            FakeStore(),
+            FakeFinder(
+                search = { listOf(positionless) },
+                stops = {
+                    attempt++
+                    if (attempt == 1) throw TflException.Offline(null) else members
+                },
+            ),
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("some")
+        advanceUntilIdle()
+        model.onPick(positionless)
+        advanceUntilIdle()
+        val failed = model.state.value.editor!!
+        assertTrue(positionless.id in failed.resolveFailedIds) // transient: retryable
+        assertFalse(positionless.id in failed.unresolvableIds) // NOT presented as "no location"
+        assertNull(failed.coordinate)
+        // Tapping again retries, and this time it resolves.
+        model.onPick(positionless)
+        advanceUntilIdle()
+        val resolved = model.state.value.editor!!
+        assertFalse(positionless.id in resolved.resolveFailedIds)
+        assertEquals(Coordinates(51.5, -0.12), resolved.coordinate)
+        assertTrue(resolved.canSave)
+    }
+
+    @Test
+    fun `a 404 resolve failure is unresolvable, not retryable`() = runTest {
+        // TfL 404s the stop: its contract says retrying won't help, so the row is marked unselectable,
+        // never offered as a retry (distinct from a transient failure above).
+        val model = vm(
+            FakeStore(),
+            FakeFinder(search = { listOf(positionless) }, stops = { throw TflException.NotFound(null) }),
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("some")
+        advanceUntilIdle()
+        model.onPick(positionless)
+        advanceUntilIdle()
+        val editor = model.state.value.editor!!
+        assertTrue(positionless.id in editor.unresolvableIds) // permanent: shown but unselectable
+        assertFalse(positionless.id in editor.resolveFailedIds) // NOT offered as a retry
+        assertNull(editor.coordinate)
+        assertFalse(editor.canSave)
+    }
+
+    @Test
+    fun `a positionless pick resolves its coordinate from the stop's members`() = runTest {
+        // The match has no inline position, but its stops do: their center anchors the place.
+        val members = listOf(
+            StopLocation("490000000A1", "Somewhere Road", 51.50, -0.10),
+            StopLocation("490000000A2", "Somewhere Road", 51.52, -0.14),
+        )
+        val model = vm(
+            FakeStore(),
+            FakeFinder(search = { listOf(positionless) }, stops = { members }),
+        )
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        model.onQueryChange("some")
+        advanceUntilIdle()
+        model.onPick(positionless)
+        advanceUntilIdle()
+        val editor = model.state.value.editor!!
+        val c = editor.coordinate!!
+        assertEquals(51.51, c.latitude, 1e-9) // mean of the members' latitudes
+        assertEquals(-0.12, c.longitude, 1e-9)
+        assertEquals("Somewhere Road", editor.placeName)
+        assertTrue(editor.canSave)
     }
 
     @Test

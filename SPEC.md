@@ -1927,10 +1927,13 @@ Mirrors the sibling fleet:
   after which the field reads "Stop or postcode". The stop/station the user types during setup is
   **sent to TfL's stop search** (the *Find a station* path), once typing pauses, to resolve the
   coordinate — the same send as the station search; it is not saved, logged, or sent anywhere else
-  (*Privacy*, `docs/PRIVACY.md`). A match TfL gives
-  **no position** for can't anchor a favorite (which needs a coordinate), so it is **unselectable in
-  favorite setup only** and a favorite is saved only once a coordinate resolves; such a match stays a
-  valid **ordinary** *To…* destination, which routes by stop id and needs no coordinate. A trip is planned
+  (*Privacy*, `docs/PRIVACY.md`). A match TfL gives no inline position for is **resolved on pick from
+  its stops' center** (`stationStops(id)` → mean of the members' positions, as *To…* already does), so
+  a station the search and bundled index both left positionless is still selectable; only a result whose
+  stops carry no position stays **unselectable in favorite setup** ("no location"), while a **transient**
+  lookup failure (TfL unreachable) is shown as retryable rather than as "no location" — neither is left
+  silently doing nothing. A favorite is saved only once a coordinate resolves; such an unplaceable match
+  stays a valid **ordinary** *To…* destination, which routes by stop id and needs no coordinate. A trip is planned
   to the **coordinate** (`to = lat,lon`): TfL picks the access stop and returns a final **walk leg to
   the place**, which the trip screen already renders. StopDash does **no nearest-stop snapping of its
   own** — TfL chooses the access stop, so a shut local station never breaks the trip — but the trip's

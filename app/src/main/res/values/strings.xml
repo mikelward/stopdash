@@ -293,6 +293,8 @@
     <string name="favorite_places_selected">Selected: %1$s</string>
     <!-- A match TfL gave no position for can\'t anchor a place (SPEC D9), so it isn\'t offered. -->
     <string name="favorite_places_no_position">No location for this result</string>
+    <!-- A picked result\'s location lookup failed transiently (TfL/network); the row stays tappable to retry. -->
+    <string name="favorite_places_resolve_failed">Couldn\'t locate this place. Tap to retry</string>
     <!-- Editor actions. -->
     <string name="favorite_place_save">Save</string>
     <string name="favorite_place_cancel">Cancel</string>
