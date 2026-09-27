@@ -1073,7 +1073,8 @@ them there:
   first, as the route does ("3 min to change"). A route that starts with a walk shows the walk
   first (maintainer, 2026-09-27), and its first ride's train is picked once it's done. The walk
   from where the rider is to where the route starts comes first of all, as the route shows it,
-  whether the route starts with a ride or a walk. A route with a **National Rail** train offers no
+  whether the route starts with a ride or a walk. Below it the route's legs are listed, a ride by
+  its pill and a walk by a walker in the pills' column, so every leg's stops line up. A route with a **National Rail** train offers no
   Start but says it can't be followed yet: its times come from National Rail's boards, which name
   no train to follow. **One trip at a time:** while one is on the way, a route offers **Open current
   trip** in Start's place; the trip is ended from its own screen.
