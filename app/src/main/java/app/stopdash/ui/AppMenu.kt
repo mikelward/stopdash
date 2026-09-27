@@ -2,9 +2,12 @@ package app.stopdash.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
@@ -81,23 +84,51 @@ internal fun AppOverflowMenu(
                 }
             }
         }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.pinchFontSizeHost(),
-        ) {
-            FontSizeWindow {
-                if (updateAvailable) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.update_available)) },
-                        onClick = {
-                            expanded = false
-                            onOpenAppListing()
-                        },
-                    )
-                }
-                items { expanded = false }
+        StopDashMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            if (updateAvailable) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.update_available)) },
+                    onClick = {
+                        expanded = false
+                        onOpenAppListing()
+                    },
+                )
+            }
+            items { expanded = false }
+        }
+    }
+}
+
+/**
+ * Every StopDash dropdown menu (the overflow menu, a row's or a trip card's long-press menu), styled
+ * alike (maintainer, 2026-09-27, as in the sibling Clothescast): Material 3's surface with
+ * corners rounded to [MENU_CORNER] rather than its near-square 4dp, and its items' text one step
+ * up, `bodyLarge` rather than `labelLarge`, so they read a little larger. The menu opens its own
+ * window, so it also re-applies the chosen font size ([FontSizeWindow]) and hosts the pinch
+ * ([pinchFontSizeHost]) there, as each menu did on its own before.
+ */
+@Composable
+internal fun StopDashMenu(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismissRequest,
+        shape = RoundedCornerShape(MENU_CORNER),
+        modifier = Modifier.pinchFontSizeHost(),
+    ) {
+        FontSizeWindow {
+            // A menu item sets its text from the theme's labelLarge: point that at bodyLarge here,
+            // inside the menu's own window, so every item takes it without each passing a style.
+            val typography = MaterialTheme.typography
+            MaterialTheme(typography = typography.copy(labelLarge = typography.bodyLarge)) {
+                Column { content() }
             }
         }
     }
 }
+
+/** A dropdown menu's corner radius: a soft card, not a sharp box. On the 4dp grid. */
+internal val MENU_CORNER = 12.dp

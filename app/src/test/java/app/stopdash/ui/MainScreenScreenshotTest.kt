@@ -230,6 +230,38 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithText("– Platform 6", substring = true).assertExists()
     }
 
+    // Every dropdown shares one style (maintainer, 2026-09-27, as in Clothescast): rounded corners and
+    // body-size items. The menu opens its own window, so this captures the whole screen, popup included,
+    // and checks the menu opens from the overflow button at the top right.
+    @OptIn(com.github.takahirom.roborazzi.ExperimentalRoborazziApi::class)
+    @Test
+    fun `the overflow menu opens from its button, rounded, with body-size items`() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        state = DeparturesUiState.Loading,
+                        now = Instant.parse("2026-09-18T08:00:00Z"),
+                        onRefresh = {},
+                        onFindStation = {},
+                        onPlanTo = {},
+                        onSetModeGroupShown = { _, _ -> },
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithContentDescription("More options").performClick()
+        composeRule.waitForIdle()
+        val settings = composeRule.onNodeWithText("Settings").fetchSemanticsNode()
+        val screenWidth = composeRule.activity.window.decorView.width
+        // Its right edge meets the screen's right side, below the top bar: dropped from the ⋮, not the row slot.
+        assertTrue("menu right edge ${settings.positionOnScreen.x + settings.size.width} of $screenWidth",
+            settings.positionOnScreen.x + settings.size.width > screenWidth * 0.75f)
+        val recording = System.getProperty("roborazzi.test.record") == "true"
+        val verifying = System.getProperty("roborazzi.test.verify") == "true"
+        if (recording || verifying) com.github.takahirom.roborazzi.captureScreenRoboImage("src/test/snapshots/images/main-overflow-menu.png")
+    }
+
     @Test
     fun `the near-me list's top bar carries the Directions button, light`() = nearMeWithDirections("main-directions.png", dark = false)
 
