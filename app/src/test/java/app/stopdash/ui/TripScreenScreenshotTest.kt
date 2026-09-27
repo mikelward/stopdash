@@ -257,6 +257,29 @@ class TripScreenScreenshotTest {
         captureSnapshot("trip-routes.png")
     }
 
+    // Three rides whose Planner train on the last is missed with no live one known, on a narrow
+    // screen: the pills leave room beside them for a word of the arrival, not all of it.
+    @Test
+    @Config(qualifiers = "w411dp-h720dp-420dpi")
+    fun a_route_arrival_that_does_not_fit_beside_its_pills_is_shown_whole() {
+        val threeRides = TripRoute(
+            listOf(
+                leg("overground", "windrush", "Windrush", highbury, whitechapel, 3, 16, 6, change = 3),
+                leg("elizabeth-line", "elizabeth", "Elizabeth line", whitechapelXr, canaryWharfXr, 19, 23, 2, change = 5),
+                leg("tube", "jubilee", "Jubilee", canaryWharf, canadaWaterTube, 32, 34, 1),
+            ),
+        )
+        show(planned.copy(routes = listOf(threeRides)))
+        val text = composeRule.activity.getString(R.string.trip_arrival_unknown)
+        val results = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        composeRule.onNodeWithText(text, useUnmergedTree = true).fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!(results)
+        val layout = results.single()
+        // One line, nothing cut: clipped at a word, "Arrival unknown" read as "Arrival" (and
+        // "44 min · est. 10:29" as "44 min · est.").
+        assertEquals(1, layout.lineCount)
+        assertTrue("arrival clipped", !layout.hasVisualOverflow)
+    }
+
     @Test
     fun a_route_cards_line_row_is_the_main_screens_row() {
         show(planned.copy(statuses = planned.statuses + ("windrush" to LineStatus("windrush", 6, "Severe Delays"))))

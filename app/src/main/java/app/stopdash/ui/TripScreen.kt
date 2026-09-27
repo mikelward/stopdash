@@ -56,6 +56,8 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -944,7 +946,11 @@ private fun RouteSummary(card: List<TripTiming.Estimate>, statuses: Map<String, 
             fontWeight = FontWeight.SemiBold,
             textAlign = TextAlign.End,
             maxLines = 1,
-            modifier = Modifier.weight(1f).padding(start = 12.dp),
+            overflow = TextOverflow.Ellipsis,
+            // A FlowRow keeps a weighted item on the pills' line when its min intrinsic width fits,
+            // which for text is its longest word: "Arrival unknown" stayed beside the pills and was
+            // cut to "Arrival". The whole line's width moves it below them instead.
+            modifier = Modifier.weight(1f).width(IntrinsicSize.Max).padding(start = 12.dp),
         )
     }
 }
