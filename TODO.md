@@ -923,6 +923,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             better: a timetable- or headway-based wait, and inferring or knowing whether the rider is
             already partway along the route (ties in with *On the way*), so a later leg is timed from
             where they are rather than from the stop they started at.
+      - [ ] **Consider a bus leg's timetable past its live predictions** (maintainer, 2026-09-27):
+            a bus reached past its predictions boards on arrival when two predictions show it
+            frequent, with a range up to a 10-minute wait; a bus seen once, or at night, still
+            withholds the arrival. TfL's timetable (`/Line/{id}/Timetable/{stop}`, one free request
+            per bus leg, cacheable for the day) would give the first scheduled bus after the rider
+            gets there, at night too. Weigh against: a timetable misses stop closures and diversions
+            that live predictions reflect (the maintainer's guess, 2026-09-27), and a bus in traffic
+            runs off schedule.
       - [ ] **Check a trip's boarding stops for disruptions** (Codex on PR 259, 2026-09-26): a trip
             fetches its lines' status but not its stops' own disruptions (a closure, a moved stop),
             so a leg's line page can't say "No disruptions reported" and reads "Couldn't check"

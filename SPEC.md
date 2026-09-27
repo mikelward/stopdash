@@ -964,8 +964,12 @@ predicted that far ahead) is boarded as they arrive, since those lines run every
 (maintainer, 2026-09-26) — as long as its predictions show it doing so now: several trains, none long
 after the one before, where thinning trains may be the night's last (maintainer, 2026-09-27). How far
 the predictions reach is no test: TfL predicts only trains already running, so near a line's start
-they end within about a quarter of an hour all day, which withheld routes changing there. Otherwise the Planner's train is missed and nothing says when the next one
-leaves (a National Rail, tram or bus leg, a line with no trains, or arrivals that failed), so StopDash
+they end within about a quarter of an hour all day, which withheld routes changing there. A bus
+leg is boarded on arrival the same way when its own predictions show it frequent now: TfL predicts a
+bus only about half an hour ahead, so two buses, the second soon after the first, are enough, and
+the arrival's range allows the longest wait a frequent line has (maintainer, 2026-09-27: a bus past
+its two predictions withheld its route). Otherwise the Planner's train is missed and nothing says when the next one
+leaves (a National Rail or tram leg, a bus seen only once or far apart, a line with no trains, or arrivals that failed), so StopDash
 **withholds that route's arrival** rather than guess a wait: the route shows "arrival unknown" in place of duration · arrival, and
 sorts after every route in its tier that has an arrival, until a refresh brings live trains for the
 leg. Otherwise its arrival reads **"est."** instead of "about", and within

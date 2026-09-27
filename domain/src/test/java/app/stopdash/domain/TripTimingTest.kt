@@ -125,6 +125,28 @@ class TripTimingTest {
         assertEquals(TripTiming.Basis.UNKNOWN, TripTiming.estimate(rail, now, Duration.ZERO, { live[it] }).basis)
     }
 
+    // TfL predicts a bus only about half an hour ahead: one every eight minutes shows two.
+    @Test
+    fun `a frequent bus past its live predictions is boarded on arrival, with a range`() {
+        val bus = TripRoute(listOf(twoLegs.legs[0], twoLegs.legs[1].copy(mode = "bus")))
+        // Red at 12 reaches B ready at 25; the bus's two predictions end at 22, the Planner's at 20 gone.
+        val live = mapOf(0 to listOf(train("red", 12)), 1 to listOf(train("blue", 14), train("blue", 22)))
+        val estimate = TripTiming.estimate(bus, now, Duration.ZERO, { live[it] })
+        assertEquals(TripTiming.Basis.ESTIMATED, estimate.basis)
+        assertEquals(at(25), estimate.legs[1].board)
+        assertEquals(at(35), estimate.arrival)
+        // Two predictions can't say the gap between buses: the wait is up to the longest a frequent one has.
+        assertEquals(TripTiming.FREQUENT_MAX_GAP, estimate.slack)
+        // Not one bus alone, nor two too far apart, which may be the night's last.
+        for (sparse in listOf(listOf(22L), listOf(8L, 22L))) {
+            val thin = mapOf(0 to listOf(train("red", 12)), 1 to sparse.map { train("blue", it) })
+            assertEquals(sparse.toString(), TripTiming.Basis.UNKNOWN, TripTiming.estimate(bus, now, Duration.ZERO, { thin[it] }).basis)
+        }
+        // A tram still isn't, however its predictions look: a wait there can be long.
+        val tram = TripRoute(listOf(twoLegs.legs[0], twoLegs.legs[1].copy(mode = "tram")))
+        assertEquals(TripTiming.Basis.UNKNOWN, TripTiming.estimate(tram, now, Duration.ZERO, { live[it] }).basis)
+    }
+
     // Near a line's start TfL predicts only the trains already running, so a line every few minutes
     // can show nothing past a quarter of an hour out, all day.
     @Test
