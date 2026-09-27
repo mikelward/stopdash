@@ -606,6 +606,58 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun an_open_ride_shows_every_line_between_its_stops_even_with_no_train() {
+        // A made-up second line serving Highbury & Islington and Canada Water as Windrush does, in the
+        // plan by a route of its own and with no train due: its own row on the open ride, which opens
+        // its line's page as the Planner's line's row does.
+        val testLine = LineSequence(
+            routes = listOf(LineRoute("Highbury ↔ Canada Water", listOf("910GHGHI", "910GWCHAPEL", "910GCNDAW"))),
+            stopNames = sequences.getValue("windrush").stopNames,
+        )
+        val withTestLine = object : RouteSequenceSource {
+            override suspend fun routeSequence(lineId: String, direction: String): LineSequence =
+                if (lineId == "testline") testLine else sequences.getValue(lineId)
+        }
+        val byTestLine = TripRoute(listOf(viaCanadaWater.legs[0].copy(lineId = "testline", lineName = "Test Line"), viaCanadaWater.legs[1]))
+        show(planned.copy(routes = listOf(viaCanadaWater, byTestLine)), routeStops = RouteStopsRepository(withTestLine))
+        // The card's pill names both lines as one ("Windrush or Test Line").
+        composeRule.onAllNodes(
+            hasClickAction() and hasContentDescription("Test Line", substring = true) and hasContentDescription("Jubilee"),
+        ).onFirst().performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(1)
+        composeRule.onNode(hasClickAction() and hasAnyDescendant(hasContentDescription("Test Line"))).performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(0)
+    }
+
+    @Test
+    fun another_line_not_yet_checked_shows_its_row_and_opens_its_page() {
+        // As above, but the made-up line has a train due and no status known: the open ride shows no
+        // countdown for it, only its row, and that row still opens its line's page.
+        val testLine = LineSequence(
+            routes = listOf(LineRoute("Highbury ↔ Canada Water", listOf("910GHGHI", "910GWCHAPEL", "910GCNDAW"))),
+            stopNames = sequences.getValue("windrush").stopNames,
+        )
+        val withTestLine = object : RouteSequenceSource {
+            override suspend fun routeSequence(lineId: String, direction: String): LineSequence =
+                if (lineId == "testline") testLine else sequences.getValue(lineId)
+        }
+        val byTestLine = TripRoute(listOf(viaCanadaWater.legs[0].copy(lineId = "testline", lineName = "Test Line"), viaCanadaWater.legs[1]))
+        val atHighbury = live.getValue(highbury.first)
+        val withTrain = live + (highbury.first to atHighbury.copy(departures = atHighbury.departures + train("testline", "Test Line", "overground", "Canada Water", 4, "Platform 2")))
+        show(planned.copy(routes = listOf(viaCanadaWater, byTestLine), live = withTrain), routeStops = RouteStopsRepository(withTestLine))
+        composeRule.onAllNodes(
+            hasClickAction() and hasContentDescription("Test Line", substring = true) and hasContentDescription("Jubilee"),
+        ).onFirst().performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(1)
+        composeRule.onNode(hasClickAction() and hasAnyDescendant(hasContentDescription("Test Line"))).performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(0)
+    }
+
+    @Test
     fun a_leg_with_no_trains_opens_to_its_stops() {
         // No live trains at Canada Water: the Jubilee leg's row opens its line's stops all the same.
         show(planned.copy(live = planned.live - canadaWaterTube.first))

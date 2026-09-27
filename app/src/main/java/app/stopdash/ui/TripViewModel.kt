@@ -370,8 +370,12 @@ class TripViewModel(
             // A departure source changed while this refresh's arrivals are out: they're from the old one.
             val source = sourceGeneration
             val stops = stopsOf(routes).filter { id -> _state.value.live[id]?.let { !recentEnough(it, now) } ?: true }
+            // And the other lines at the rides' boarding stops ([rideLineIds]), in the same request: one
+            // of them times a ride only once it's checked as running ([rideTrains]). Only the plan's own
+            // lines count toward the trip's "couldn't check" note.
+            val others = rideLineIds(routes, _state.value, hiddenModes).filterNot { it in lines }
             coroutineScope {
-                val statuses = async { fetchStatuses(lines) }
+                val statuses = async { fetchStatuses(lines + others) }
                 val live = stops.map { id -> async { id to fetchStop(id) } }.awaitAll()
                 val fetched = statuses.await()
                 val current = source == sourceGeneration
@@ -383,6 +387,14 @@ class TripViewModel(
                         statusUnknown = lines.filterTo(HashSet()) { it !in (fetched ?: state.statuses) },
                     )
                 }
+            }
+            // Lines first seen in this refresh's arrivals: checked now rather than a tick later, so one
+            // isn't shown for a minute with nothing said of its status. Merged in; a failure leaves
+            // them unchecked, so they neither show as catchable nor time a route, and once this refresh ends
+            // the trip says it couldn't check them ([RideLines.unchecked]) rather than still checking.
+            val late = rideLineIds(routes, _state.value, hiddenModes).filterNot { it in lines || it in others }
+            if (late.isNotEmpty() && source == sourceGeneration) {
+                fetchStatuses(late)?.let { found -> _state.update { it.copy(statuses = it.statuses + found) } }
             }
         } finally {
             _state.update { it.copy(refreshing = false) }

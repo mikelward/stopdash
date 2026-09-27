@@ -993,6 +993,20 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [x] **Shared-leg pill**: a leg several routes serve alike (buses 43 and 134 share the stops
             to Highgate station) as one diagonally cut pill carrying both routes, and a live row per
             line in the one card (maintainer, 2026-09-26).
+      - [x] **Every line between a ride's two stops** (maintainer, 2026-09-27): each ride also shows
+            the unnamed lines serving its own boarding and getting-off stops (strict same stop, a
+            road's two poles as one), as equals on its pill and with rows of their own.
+      - [ ] **On the way with a ride's other lines**: a started trip still follows only the
+            Planner's line for each ride, so boarding another of its lines isn't recognized.
+      - [ ] **Rank a route by any of a ride's lines** (Codex on #309): a route is ranked by its
+            Planner lines' status alone, so one whose Planner line is closed or unchecked still sinks
+            even when another checked, running line between the same stops could take the ride.
+            Changes how routes rank, so it's a follow-up rather than part of #309. Likewise a
+            route's freshness is judged at the Planner's pole alone: when that pole failed but another
+            line's pole is current, the frequent-service fallback is withheld though it could stand.
+      - [ ] **Merging by place, parked** (#306, maintainer, 2026-09-27): the same idea across an
+            interchange's stops (the 43 and 134 at Archway), set aside for strict same-stop; its
+            branch holds the place-based version if that's revisited.
     - [ ] **Star a From… To… trip as a journey**: the trip has no single starred line, which
           `StarredJourney` places its ends on, so it needs a line-free journey first.
     - [x] **To… from the near-me list** (maintainer, 2026-09-24): the overflow's *To…* starts
