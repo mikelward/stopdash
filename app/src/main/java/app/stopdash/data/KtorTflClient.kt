@@ -6,6 +6,8 @@ import app.stopdash.domain.HubInfo
 import app.stopdash.domain.JourneyPlanner
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.PlaceCandidate
+import app.stopdash.domain.PostcodeResolver
 import app.stopdash.domain.RouteSequenceSource
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationMatch
@@ -75,7 +77,7 @@ class KtorTflClient(
     // Sink for recoverable response oddities (an unparseable disruption date), coarse facts only —
     // a stop id, never a coordinate or key (SPEC *Privacy*). No-op by default (tests, widget).
     private val warn: (String) -> Unit = {},
-) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, JourneyPlanner, VehicleSource {
+) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, JourneyPlanner, PostcodeResolver, VehicleSource {
     override suspend fun journeys(fromId: String, toId: String): List<TripRoute> =
         tflRequest { key ->
             val dto = try {
@@ -104,6 +106,44 @@ class KtorTflClient(
                 warn("journey planner: ${dto.journeys.size - routes.size} of ${dto.journeys.size} routes unreadable")
             }
             routes
+        }
+
+    override suspend fun resolvePostcode(postcode: String): List<PlaceCandidate> =
+        tflRequest { key ->
+            try {
+                // Plan from the postcode to a fixed, always-resolvable interchange (King's Cross St
+                // Pancras): a valid postcode resolves and the journey's origin is its point; an
+                // ambiguous one 300s with look-alike places. Either way we read the place(s), never a
+                // route. The postcode is the rider's own input, so it isn't logged (SPEC *Privacy*).
+                val dto = httpClient.get(
+                    "$baseUrl/Journey/JourneyResults/${postcode.encodeURLPathPart()}/to/$POSTCODE_ANCHOR_ID",
+                ) {
+                    applyAppKey(key)
+                    allowSlowAnswer()
+                }.body<TflJourneyResultsDto>()
+                val candidate = dto.resolvedOriginCandidate()
+                // A journey was offered but its origin couldn't be read (a short or changed response):
+                // that's a decode failure, not "placed nowhere" — surface it as the retryable error the
+                // caller expects, never a false no-result (SPEC principle 2), as journeys() does.
+                if (candidate == null && dto.journeys.isNotEmpty()) {
+                    throw TflException.Unreachable("journey planner: postcode origin unreadable", null)
+                }
+                listOfNotNull(candidate)
+            } catch (e: RedirectResponseException) {
+                // 300: the Planner offers look-alike places for the postcode instead of one point.
+                val result = e.response.body<TflDisambiguationResultDto>()
+                val from = result.fromLocationDisambiguation
+                val candidates = result.toCandidates()
+                // A disambiguation that offers options — or says it has a list — but yields none decodable
+                // is schema drift, not "placed nowhere": surface it as retryable, symmetric with the 200
+                // path. (A renamed/absent options array would otherwise default to empty and pass.)
+                val offeredButUnreadable = candidates.isEmpty() &&
+                    (from.disambiguationOptions.isNotEmpty() || from.matchStatus.equals("list", ignoreCase = true))
+                if (offeredButUnreadable) {
+                    throw TflException.Unreachable("journey planner: disambiguation options unreadable", null)
+                }
+                candidates
+            }
         }
 
     override suspend fun arrivals(stopId: String): List<Departure> =
@@ -341,6 +381,13 @@ class KtorTflClient(
 
         /** The longest walk a planned trip may ask of the rider, in minutes (fixed for now). */
         const val MAX_WALKING_MINUTES: Int = 15
+
+        /**
+         * The fixed, always-resolvable destination the postcode resolver plans to — King's Cross St
+         * Pancras Underground, a major interchange (public TfL data, SPEC *Privacy*). Only the trip's
+         * resolved origin (or the `from` disambiguation) is read, never the route to it.
+         */
+        const val POSTCODE_ANCHOR_ID: String = "940GZZLUKSX"
 
         /** How many name-search matches to ask for — a screenful; a longer query narrows it. */
         const val SEARCH_MAX_RESULTS: Int = 20

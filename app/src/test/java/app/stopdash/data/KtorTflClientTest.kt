@@ -933,4 +933,120 @@ class KtorTflClientTest {
             runTest { client("{}", status = HttpStatusCode.InternalServerError).stationStops("HUBEXA") }
         }
     }
+
+    // Constructed Journey Planner responses for the postcode resolver (live TfL is unreachable here).
+    // Coordinates and names are synthetic; no postcode names a real place (SPEC *Privacy*).
+
+    // A postcode TfL geocodes outright (HTTP 200): the journey's first leg walks from the resolved
+    // point, which carries the coordinate.
+    private val postcodeResolvedJson =
+        """
+        { "journeys": [ { "legs": [ {
+          "mode": { "id": "walking", "name": "walking" },
+          "departurePoint": { "commonName": "X1 9XX", "lat": 51.53, "lon": -0.11 },
+          "arrivalPoint": { "commonName": "Anchor Station", "naptanId": "940GZZLUKSX" }
+        } ] } ] }
+        """.trimIndent()
+
+    // A postcode TfL can't pin to one point (HTTP 300): it offers look-alike places.
+    private val postcodeDisambiguationJson =
+        """
+        {
+          "fromLocationDisambiguation": {
+            "matchStatus": "list",
+            "disambiguationOptions": [
+              { "place": { "commonName": "X1 9XX", "lat": 51.53, "lon": -0.10 }, "matchQuality": 900 },
+              { "place": { "commonName": "X1 9XY", "lat": 51.54, "lon": -0.11 }, "matchQuality": 800 }
+            ]
+          },
+          "toLocationDisambiguation": { "matchStatus": "identified" }
+        }
+        """.trimIndent()
+
+    @Test
+    fun `resolves a postcode TfL geocodes directly to its origin point`() = runTest {
+        val candidates = client(postcodeResolvedJson).resolvePostcode("X1 9XX")
+        assertEquals(1, candidates.size)
+        assertEquals("X1 9XX", candidates[0].name)
+        assertEquals(51.53, candidates[0].coordinate.latitude, 1e-9)
+        assertEquals(-0.11, candidates[0].coordinate.longitude, 1e-9)
+    }
+
+    @Test
+    fun `offers every look-alike place when TfL disambiguates a postcode`() = runTest {
+        val candidates = client(postcodeDisambiguationJson, status = HttpStatusCode.MultipleChoices)
+            .resolvePostcode("X1 9XX")
+        assertEquals(listOf("X1 9XX", "X1 9XY"), candidates.map { it.name })
+        assertEquals(51.53, candidates[0].coordinate.latitude, 1e-9)
+        assertEquals(-0.11, candidates[1].coordinate.longitude, 1e-9)
+    }
+
+    @Test
+    fun `keeps a prime-meridian point but drops missing and (0,0) coordinates`() = runTest {
+        val json =
+            """
+            { "fromLocationDisambiguation": { "disambiguationOptions": [
+              { "place": { "commonName": "X1 9XX", "lat": 51.50, "lon": 0.0 } },
+              { "place": { "commonName": "X1 9XY", "lat": 0.0, "lon": 0.0 } },
+              { "place": { "commonName": "X1 9XZ" } }
+            ] } }
+            """.trimIndent()
+        val candidates = client(json, status = HttpStatusCode.MultipleChoices).resolvePostcode("X1 9XX")
+        // Only the Greenwich-meridian point survives: London sits on lon 0.0, so it's a real place;
+        // the (0,0) unset sentinel and the coordinate-less place both drop.
+        assertEquals(listOf("X1 9XX"), candidates.map { it.name })
+        assertEquals(51.50, candidates[0].coordinate.latitude, 1e-9)
+        assertEquals(0.0, candidates[0].coordinate.longitude, 1e-9)
+    }
+
+    @Test
+    fun `a disambiguation whose options are all unreadable is an error, not no-result`() {
+        // 300 with options offered but none decodable (no coordinate): schema drift, surfaced as a
+        // retryable error rather than a false no-result — symmetric with the 200 path.
+        val json =
+            """
+            { "fromLocationDisambiguation": { "disambiguationOptions": [
+              { "place": { "commonName": "X1 9XX" } },
+              { "place": { "commonName": "X1 9XY" } }
+            ] } }
+            """.trimIndent()
+        assertThrows(TflException::class.java) {
+            runTest { client(json, status = HttpStatusCode.MultipleChoices).resolvePostcode("X1 9XX") }
+        }
+    }
+
+    @Test
+    fun `a list-status disambiguation with no usable options is an error, not no-result`() {
+        // matchStatus says there's a list to choose from, but the options array is absent (a renamed or
+        // dropped field). Serialization defaults it to empty, so this must be caught as schema drift.
+        val json =
+            """
+            { "fromLocationDisambiguation": { "matchStatus": "list" } }
+            """.trimIndent()
+        assertThrows(TflException::class.java) {
+            runTest { client(json, status = HttpStatusCode.MultipleChoices).resolvePostcode("X1 9XX") }
+        }
+    }
+
+    @Test
+    fun `a resolved journey with an unreadable origin is an error, not no-result`() {
+        // 200 with a journey whose origin carries no coordinate: a decode/shape failure, surfaced as a
+        // retryable error rather than a false "the postcode places nowhere".
+        val json =
+            """
+            { "journeys": [ { "legs": [ { "departurePoint": { "commonName": "X1 9XX" } } ] } ] }
+            """.trimIndent()
+        assertThrows(TflException::class.java) {
+            runTest { client(json).resolvePostcode("X1 9XX") }
+        }
+    }
+
+    @Test
+    fun `requests the Journey Planner from the postcode to the anchor, url-encoded`() = runTest {
+        var captured: HttpRequestData? = null
+        client(postcodeResolvedJson, appKey = "EXAMPLE", capture = { captured = it }).resolvePostcode("X1 9XX")
+        val request = checkNotNull(captured)
+        assertEquals("/Journey/JourneyResults/X1%209XX/to/940GZZLUKSX", request.url.encodedPath)
+        assertEquals("EXAMPLE", request.url.parameters["app_key"])
+    }
 }

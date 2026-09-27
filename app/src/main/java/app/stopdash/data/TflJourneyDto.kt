@@ -105,6 +105,11 @@ data class TflJourneyPointDto(
     val commonName: String = "",
     // The one stop within [naptanId]: for a bus, the pole the rider stands at.
     val individualStopId: String? = null,
+    // The point's coordinate, present on a Planner point (a resolved postcode's origin carries it).
+    // Nullable so an omitted axis reads as absent — never confused with a real 0.0 (London sits on the
+    // prime meridian, so a valid longitude can be exactly 0.0); the postcode resolver reads these.
+    val lat: Double? = null,
+    val lon: Double? = null,
 ) {
     /**
      * The stop a leg boards or leaves at, as the live feed knows it. The Planner names a bus leg's
