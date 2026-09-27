@@ -1287,8 +1287,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       **postcode format detection** — DONE (domain `UkPostcode`): structural, full-UK-coverage
       recognizer (not a London area allow-list, since TfL plans beyond the London postal areas) —
       `looksLikePartial` gates the "Postcode" affordance while typing, `isComplete` gates resolvability,
-      `format` canonicalizes. Still to wire: the resolver itself (Journey Planner disambiguation seam in
-      `KtorTflClient.journeys`) and the favorite-setup UX (placeholder row + candidate chooser).
+      `format` canonicalizes. Still to wire: the favorite-setup UX (placeholder row + candidate chooser).
+      **postcode resolution** — DONE (`PostcodeResolver` + `KtorTflClient`): plans from the postcode to a
+      fixed interchange and reads the place, handling both the 200-resolved origin and the 300
+      disambiguation list. **Blind-built against constructed Journey Planner responses** (live TfL is
+      unreachable from CI, maintainer-approved for this) — **verify the assumed 200/300 shapes on a real
+      device and record a sanitized fixture before relying on it in the UI**.
       **resolve-the-coordinate-on-pick** — DONE (favorite setup): a picked match with no inline lat/lon
       is resolved from its stops' center (`stationStops(id)` → `FixedLocation.centerOf`) on tap, with a
       per-row spinner; a result whose stops carry no position stays shown but unselectable ("no
