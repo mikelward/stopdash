@@ -923,6 +923,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         - [x] The main view's pinned card (the near-me list; a station page is its own look).
         - [x] "Get off soon" on its own channel (sound, vibration), the permission asked on Start.
               Only while the app is open until the foreground service below lands.
+        - [ ] **A "time to board" alert** (maintainer, 2026-09-27): a heads-up as the rider's train
+              is about to arrive (or it's time to head for the platform), on its own channel so it
+              can be muted apart from "Get off soon". Today the wait shows only as a countdown on
+              the trip's screen and pinned card (and the ongoing notification, once it lands).
         - [ ] **Not to merge until the maintainer's Play declarations:** the ongoing notification
               with the app closed (a foreground service, which replaces the old *Step by step*
               item), and live location to see the train boarded and follow a bus.
