@@ -84,6 +84,25 @@ class JourneyPlannerTest {
     }
 
     @Test
+    fun `names the final walk leg for the place, not TfL's label for the coordinate`() = runTest {
+        // TfL labels a coordinate arrival with whatever sits at the point (here just the coordinate
+        // echoed back); the leg should read with the name the rider picked. Synthetic values — no real place.
+        val body =
+            """
+            { "journeys": [ { "legs": [ {
+              "departureTime": "2026-09-27T09:00:00", "arrivalTime": "2026-09-27T09:06:00",
+              "mode": { "id": "walking", "name": "walking" },
+              "departurePoint": { "naptanId": "940GZZLUKSX", "commonName": "King's Cross" },
+              "arrivalPoint": { "commonName": "51.5,-0.12", "lat": 51.5, "lon": -0.12 }
+            } ] } ] }
+            """.trimIndent()
+        val walk = client(body).journeys("940GZZLUKSX", TripDestination.Place(Coordinates(51.5, -0.12), "Home"))
+            .single().legs.single()
+        assertEquals("Home", walk.toName)
+        assertEquals("", walk.toId)
+    }
+
+    @Test
     fun `reads each route's legs, lines, ends, times and change`() = runTest {
         val routes = client(fixture).journeys("910GHGHI", TripDestination.Stop("940GZZLUCYF"))
         assertEquals(3, routes.size)

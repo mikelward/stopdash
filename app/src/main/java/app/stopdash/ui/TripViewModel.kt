@@ -38,7 +38,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * A trip with a change (SPEC *Trips with a change*): TfL's Journey Planner's routes from [fromId] to
- * [toIds], and the live arrivals and line statuses that time them. The plan is held in memory for
+ * [destinations], and the live arrivals and line statuses that time them. The plan is held in memory for
  * [PLAN_REUSE] and planned again after that; live times refresh on each [refresh], which the screen
  * calls on the list's own foreground tick, so nothing runs while the trip isn't on screen.
  *
@@ -49,9 +49,12 @@ class TripViewModel(
     private val planner: JourneyPlanner,
     private val client: TflClient,
     val fromId: String,
-    // The stops the trip is planned to: one, or one per station of a complex and one of its bus
-    // stops (SPEC *Trips with a change*), each asked in parallel and the answers merged.
-    val toIds: List<String>,
+    // Where the trip is planned to (SPEC *Trips with a change* / D9): usually a stop, or — for a
+    // complex — one per station and one of its bus stops, each asked in parallel and the answers
+    // merged; or a single place at a coordinate (a favorite, a resolved postcode), which TfL routes
+    // to with a final walk leg. A place has no stop to fetch arrivals at, so only ridden stops are
+    // (SPEC D9).
+    val destinations: List<TripDestination>,
     private val clock: () -> Instant = Instant::now,
     // Coarse facts only — a stop id, an error kind, never a coordinate (SPEC *Privacy*).
     private val warn: (String) -> Unit = {},
@@ -106,7 +109,7 @@ class TripViewModel(
     )
 
     private val _state = MutableStateFlow(
-        plans.get(fromId, toIds)?.let { (routes, at) -> State(routes = routes, plannedAt = at, statusUnknown = linesOf(routes)) } ?: State(),
+        plans.get(fromId, destinations)?.let { (routes, at) -> State(routes = routes, plannedAt = at, statusUnknown = linesOf(routes)) } ?: State(),
     )
     val state: StateFlow<State> = _state.asStateFlow()
 
@@ -257,12 +260,13 @@ class TripViewModel(
         var failure: TflException? = null
         try {
             coroutineScope {
-                for (toId in toIds) {
+                for (destination in destinations) {
                     launch {
                         val routes = try {
-                            withContext(io) { planner.journeys(fromId, TripDestination.Stop(toId)) }
+                            withContext(io) { planner.journeys(fromId, destination) }
                         } catch (e: TflException) {
-                            // Neither end is logged: together they're a trip the rider chose.
+                            // Neither end is logged: together they're a trip the rider chose (a
+                            // destination coordinate least of all, SPEC *Privacy*).
                             warn("trip plan failed: ${e::class.simpleName}")
                             failure = failure ?: e
                             return@launch
@@ -292,7 +296,7 @@ class TripViewModel(
         val routes = gathered.toList()
         val at = clock()
         // Only a whole plan is kept for reuse: a partial one is planned again on the next open.
-        if (failed == null) plans.put(fromId, toIds, routes, at)
+        if (failed == null) plans.put(fromId, destinations, routes, at)
         // A new plan's lines are unchecked until their status arrives: none passes as running
         // normally meanwhile (its last known status, if held, stands).
         _state.update {
@@ -465,17 +469,27 @@ class TripPlans {
     private val plans = LinkedHashMap<String, Pair<List<TripRoute>, Instant>>()
 
     @Synchronized
-    fun get(fromId: String, toIds: List<String>): Pair<List<TripRoute>, Instant>? = plans[key(fromId, toIds)]
+    fun get(fromId: String, destinations: List<TripDestination>): Pair<List<TripRoute>, Instant>? = plans[key(fromId, destinations)]
 
     @Synchronized
-    fun put(fromId: String, toIds: List<String>, routes: List<TripRoute>, at: Instant) {
-        val key = key(fromId, toIds)
+    fun put(fromId: String, destinations: List<TripDestination>, routes: List<TripRoute>, at: Instant) {
+        val key = key(fromId, destinations)
         plans.remove(key)
         plans[key] = routes to at
         while (plans.size > MAX) plans.remove(plans.keys.first())
     }
 
-    private fun key(fromId: String, toIds: List<String>) = "$fromId>${toIds.joinToString(",")}"
+    // A stop keys by id; a place keys by its coordinate and its name, so the same trip reopened within
+    // the reuse window finds its plan — but a place renamed (same spot) doesn't, since its cached
+    // route's final walk leg carries the old name (KtorTflClient stamps it in), and a stale label
+    // beats no reuse only when it's right.
+    private fun key(fromId: String, destinations: List<TripDestination>) =
+        "$fromId>${destinations.joinToString(",") { destKey(it) }}"
+
+    private fun destKey(destination: TripDestination) = when (destination) {
+        is TripDestination.Stop -> destination.id
+        is TripDestination.Place -> "${destination.coordinate.latitude},${destination.coordinate.longitude}|${destination.name}"
+    }
 
     companion object {
         const val MAX = 8
