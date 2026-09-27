@@ -372,12 +372,10 @@ internal fun tripEstimates(
     }
     // Journeys the Planner times differently but rides alike are one route here (one key): each is
     // timed, since a later timetable slot can still be caught when an earlier one can't, and the
-    // best stands for the route. Ways riding the same lines are all kept, for [tripCards] to choose.
+    // best stands for the route.
     return TripTiming.rank(estimates).distinctBy { routeKey(it.route) }
 }
 
-// The lines a route rides, in turn: what its card shows.
-private fun lineKey(route: TripRoute): String = route.rides.joinToString("|") { "${it.mode}:${it.lineId}" }
 
 /**
  * [estimates] (best first, [tripEstimates]) as the list's cards, best first.
@@ -386,27 +384,23 @@ private fun lineKey(route: TripRoute): String = route.rides.joinToString("|") { 
  * lines, **share a card** (the 43 or the 134 to Highgate station, then the Northern line): one
  * header with the first ride's lines as a cut pill, and a row per line, best first.
  *
- * Ways riding the same lines in turn but changing elsewhere read alike, so only one of them is
- * shown: the one in a shared card if any (so the lines that share a leg show together), else the
- * best.
+ * Ways riding the same lines in turn but changing elsewhere are cards of their own: each card names
+ * where its rides get off, so they read apart (maintainer, 2026-09-27).
  */
-internal fun tripCards(estimates: List<TripTiming.Estimate>): List<List<TripTiming.Estimate>> {
+internal fun tripCards(estimates: List<TripTiming.Estimate>): List<List<TripTiming.Estimate>> =
     // Within a card, one route per first-ride line: the best.
-    val groups = estimates.groupBy { cardKey(it.route) }.values
+    estimates.groupBy { cardKey(it.route) }.values
         .map { group -> group.distinctBy { it.route.rides.firstOrNull()?.lineId } }
-    val shared = groups.filter { it.size > 1 }.flatten().toSet()
-    val chosen = estimates.groupBy { lineKey(it.route) }.values
-        .map { alike -> alike.firstOrNull { it in shared } ?: alike.first() }.toSet()
-    return groups.map { group -> group.filter { it in chosen } }.filter { it.isNotEmpty() }
         .sortedBy { card -> estimates.indexOf(card.first()) }
-}
 
 // Which card a route shares: its first ride's mode and ends (by stop pair for a bus, or by name at a
-// stop in no pair, as [onPoles] places it), and the lines after it; a route with no ride keeps its own.
+// stop in no pair, as [onPoles] places it), and the lines after it with where each gets off, since
+// the card names those stops ([RideStops]) for every route on it; a route with no ride keeps its own.
 internal fun cardKey(route: TripRoute): String {
     val first = route.rides.firstOrNull() ?: return routeKey(route)
-    val to = first.toArea.ifEmpty { if (first.fromArea.isNotEmpty()) first.toName else first.toId }
-    val after = route.rides.drop(1).joinToString("|") { "${it.mode}:${it.lineId}" }
+    fun offAt(leg: TripLeg) = leg.toArea.ifEmpty { if (leg.fromArea.isNotEmpty()) leg.toName else leg.toId }
+    val to = offAt(first)
+    val after = route.rides.drop(1).joinToString("|") { "${it.mode}:${it.lineId}>${offAt(it)}" }
     return "${first.mode}:${first.fromArea.ifEmpty { first.fromId }}>$to|$after"
 }
 
@@ -847,17 +841,22 @@ private fun RouteList(
                 // Each row takes the card's tap and long press itself: a clickable card would merge
                 // its rows into one, and a screen reader would lose the rows' own times.
                 OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-                    RouteSummary(
-                        card,
-                        shownStatuses(state.statuses, dismissed),
-                        Modifier
+                    // The header, then a row per ride saying where it gets off (maintainer,
+                    // 2026-09-27): one tap target, so a card changing at Highgate reads apart from
+                    // one changing at Archway.
+                    Column(
+                        modifier = Modifier
                             .combinedClickable(
                                 onLongClickLabel = onLongPress?.let { moreLabel },
                                 onLongClick = onLongPress,
                                 onClick = { onOpen(card.first()) },
                             )
                             .padding(horizontal = 16.dp, vertical = 12.dp),
-                    )
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        RouteSummary(card, shownStatuses(state.statuses, dismissed))
+                        RideStops(card)
+                    }
                     card.forEach { estimate ->
                         val first = estimate.route.legs.indexOfFirst { !it.isWalk }
                         if (first >= 0) {
@@ -952,6 +951,35 @@ private fun RouteSummary(card: List<TripTiming.Estimate>, statuses: Map<String, 
             // cut to "Arrival". The whole line's width moves it below them instead.
             modifier = Modifier.weight(1f).width(IntrinsicSize.Max).padding(start = 12.dp),
         )
+    }
+}
+
+/**
+ * Under a card's header, a row per ride of its best route: the ride's line pill (the first ride's
+ * lines as one cut pill, as in the header) and the stop it gets off at. Walks between rides are left
+ * out; the route's own page has them.
+ */
+@Composable
+private fun RideStops(card: List<TripTiming.Estimate>) {
+    val rides = card.first().route.rides
+    val firstLines = card.mapNotNull { it.route.rides.firstOrNull() }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.testTag("rideStops")) {
+        rides.forEachIndexed { index, ride ->
+            val lines = if (index == 0) firstLines else listOf(ride)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SharedLinePill(
+                    lines.map { LineRef(it.lineId, it.lineName, it.mode) },
+                    lines.map { it.lineName }.reduce { a, b -> stringResource(R.string.trip_lines_either, a, b) },
+                )
+                Text(
+                    text = ride.toName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).padding(start = 8.dp),
+                )
+            }
+        }
     }
 }
 
