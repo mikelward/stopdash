@@ -46,11 +46,15 @@ class NearbyStopsViewModelTest {
     /** A location provider whose fix (and its confidence) can change between calls — for re-locate
      *  on refresh. It records the last [forceFresh] it was asked for, so a test can assert relocate
      *  forces a fresh fix (a cached one would re-resolve for the previous position). */
-    private class MutableLocation(var fix: Coordinates?, var isFallback: Boolean = false) : LocationProvider {
+    private class MutableLocation(
+        var fix: Coordinates?,
+        var isFallback: Boolean = false,
+        var accuracyMeters: Float? = null,
+    ) : LocationProvider {
         var lastForceFresh: Boolean? = null
         override suspend fun current(forceFresh: Boolean): LocationFix? {
             lastForceFresh = forceFresh
-            return fix?.let { LocationFix(it, isFallback = isFallback) }
+            return fix?.let { LocationFix(it, isFallback = isFallback, accuracyMeters = accuracyMeters) }
         }
     }
 
@@ -450,6 +454,12 @@ class NearbyStopsViewModelTest {
             preciseAsked++
             return precise
         }
+
+        /** The GPS answer's reported accuracy: sharp by default, [preciseAccuracy] to make it vague. */
+        var preciseAccuracy: Float? = 10f
+
+        override suspend fun preciseWithAccuracy(): LocationFix? =
+            precise()?.let { LocationFix(it, isFallback = false, accuracyMeters = preciseAccuracy) }
     }
 
     // [meters] due north of the origin.
@@ -466,6 +476,7 @@ class NearbyStopsViewModelTest {
         // GPS never answered: the set stays, flagged, with nothing to move to.
         assertEquals(LocationBanner.COARSE, model.locationBanner.value)
         assertEquals(null, model.refinement.value)
+        assertEquals(NearbyStopsViewModel.RiderFix(from = origin, at = origin, accurate = false), model.riderFix.value)
     }
 
     @Test
@@ -476,6 +487,56 @@ class NearbyStopsViewModelTest {
         assertEquals(null, model.locationBanner.value)
         assertEquals(null, model.refinement.value)
         assertEquals(origin, (model.state.value as NearbyStopsViewModel.State.Ready).location)
+        // The set stays at the coarse coordinate, so where the rider actually is rides alongside it,
+        // tied to the set it confirmed (the favorite chips measure from it).
+        assertEquals(NearbyStopsViewModel.RiderFix(from = origin, at = north(40.0), accurate = true), model.riderFix.value)
+    }
+
+    @Test
+    fun `a new location attempt drops the precise fix that confirmed the old set`() = runTest {
+        val location = CoarseThenPrecise(coarse = origin, precise = north(40.0))
+        val model = vm(location, FakeFinder { listOf(stop("b1", 80.0, "bus")) })
+        model.locate()
+        advanceUntilIdle()
+        assertEquals(north(40.0), model.riderFix.value?.at)
+        // The re-locate lands on the very same coarse coordinate, and GPS doesn't answer this time:
+        // the old precise fix must not stand in for where the rider is now (Codex).
+        location.precise = null
+        model.relocate()
+        // While the new fix is in flight the old set is still on screen, and still stands on the old
+        // confirmation: it isn't dropped until the new outcome is applied (Codex).
+        assertEquals(north(40.0), model.riderFix.value?.at)
+        advanceUntilIdle()
+        assertEquals(origin, (model.state.value as NearbyStopsViewModel.State.Ready).location)
+        assertEquals(NearbyStopsViewModel.RiderFix(from = origin, at = origin, accurate = false), model.riderFix.value)
+    }
+
+    @Test
+    fun `a vague precise answer confirms the set but isn't accurate`() = runTest {
+        // GPS answered near the coarse fix, but reports 300 m: the set is confirmed, the chips don't
+        // act on it (Codex).
+        val location = CoarseThenPrecise(coarse = origin, precise = north(40.0)).apply { preciseAccuracy = 300f }
+        val model = vm(location, FakeFinder { listOf(stop("b1", 80.0, "bus")) })
+        model.locate()
+        advanceUntilIdle()
+        assertEquals(null, model.locationBanner.value)
+        assertEquals(NearbyStopsViewModel.RiderFix(from = origin, at = north(40.0), accurate = false), model.riderFix.value)
+    }
+
+    @Test
+    fun `the rider fix carries the fix's own accuracy, not the banner's`() = runTest {
+        // An approximate-only grant: not flagged coarse (no banner), but kilometer-scale (Codex).
+        val location = MutableLocation(origin, accuracyMeters = 1_500f)
+        val model = vm(location, FakeFinder { listOf(stop("b1", 80.0, "bus")) })
+        model.locate()
+        advanceUntilIdle()
+        assertEquals(null, model.locationBanner.value)
+        assertEquals(NearbyStopsViewModel.RiderFix(from = origin, at = origin, accurate = false), model.riderFix.value)
+        // A GPS-grade fix is accurate.
+        location.accuracyMeters = 10f
+        model.relocate()
+        advanceUntilIdle()
+        assertEquals(true, model.riderFix.value?.accurate)
     }
 
     @Test

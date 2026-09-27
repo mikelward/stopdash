@@ -61,6 +61,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -122,6 +123,7 @@ import app.stopdash.domain.CachingStopFinder
 import app.stopdash.domain.NearbyStopsCache
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoritePlace
+import app.stopdash.domain.FavoriteShortcuts
 import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StopMap
@@ -158,6 +160,7 @@ import app.stopdash.ui.hereTripTiers
 import app.stopdash.ui.HereTripTiers
 import app.stopdash.ui.ProvideDistanceSystem
 import app.stopdash.ui.FavoritePlacesScreen
+import app.stopdash.ui.favoriteRouteName
 import app.stopdash.ui.FavoritePlacesViewModel
 import app.stopdash.ui.SettingsScreen
 import app.stopdash.ui.StationPlaceholderScreen
@@ -468,6 +471,39 @@ class MainActivity : ComponentActivity() {
                     hereToName = ""
                     hereFavorite = null
                 }
+                // Plan a trip to a saved favorite place from the rider's current location (SPEC D9):
+                // drop the list's departures and open the here-trip over the nearby set. The name is
+                // the one the rider knows it by, used for the title and the walk-to leg. The one path
+                // for Settings' list and the near-me list's chips.
+                val routeToPlace: (TripDestination.Place) -> Unit = { place ->
+                    listStores.clearAll()
+                    hereFavorite = place
+                    hereToId = null
+                    hereToName = place.name
+                    herePicking = false
+                    hereTripOpen = true
+                }
+                // The saved favorite places, for the near-me list's route chips (SPEC D9 → *Routing
+                // from the near-me list*). Collected from the first frame, so the list has them by
+                // the time it has a fix to show, and re-emitted on every edit. A place list this
+                // build can't read (or one discarded) offers no chips here: Settings and the To…
+                // picker are where that is said, with a Retry; the main list doesn't repeat it.
+                val favoritePlacesStore = remember {
+                    DataStoreFavoritePlacesStore.from(applicationContext, warn = ::logStarWarning)
+                }
+                // Null whenever the places can't be read — before the store's first answer, and while
+                // it reports a read outage (Unavailable, which it retries): "not read" is not "no
+                // places", so no row shows and the chips' hysteresis memory is left as it was rather
+                // than rewritten against an empty list (Codex). A discarded (corrupt) file is a real
+                // loss, so it reads as empty.
+                val savedPlaces: List<FavoritePlace>? by remember(favoritePlacesStore) {
+                    favoritePlacesStore.places().map { set -> savedPlacesOf(set) }
+                }.collectAsStateWithLifecycle(initialValue = null)
+                // Which of those the rider was last found at (FavoriteShortcuts' hysteresis memory).
+                // Held here, above the overlays and saved across recreation, so a trip into Settings
+                // or a rotation doesn't bring back a place still inside the 200–250 m band. Keys only
+                // (an id and a coordinate hash), no coordinate.
+                var hiddenPlaceIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
 
                 // App settings + the opt-in "live widget" refresh (SPEC D5). The setting is
                 // collected here and applied to the scheduler at start — so an enabled toggle
@@ -691,13 +727,7 @@ class MainActivity : ComponentActivity() {
                                     // over the nearby set, and leave Settings (SPEC D9). The label is the
                                     // name the rider knows it by, used for the title and the walk-to leg.
                                     onRouteTo = { place ->
-                                        listStores.clearAll()
-                                        val destName = place.label.ifBlank { place.placeName.orEmpty() }
-                                        hereFavorite = TripDestination.Place(place.coordinate, destName)
-                                        hereToId = null
-                                        hereToName = destName
-                                        herePicking = false
-                                        hereTripOpen = true
+                                        routeToPlace(TripDestination.Place(place.coordinate, favoriteRouteName(place)))
                                         favoritePlacesOpen = false
                                         settingsOpen = false
                                     },
@@ -882,6 +912,11 @@ class MainActivity : ComponentActivity() {
                                             hereTripOpen = true
                                             herePicking = true
                                         },
+                                        favoritePlaces = savedPlaces,
+                                        onRouteToPlace = routeToPlace,
+                                        riderFix = nearbyViewModel.riderFix,
+                                        hiddenPlaceIds = hiddenPlaceIds.toSet(),
+                                        onHiddenPlaceIds = { hiddenPlaceIds = it.toList() },
                                         updateAvailable = updateAvailable.value,
                                         onOpenAppListing = ::openPlayListing,
                                         onSendBugReport = requestBugReport,
@@ -1141,6 +1176,20 @@ class MainActivity : ComponentActivity() {
         onFindStation: () -> Unit,
         // "To…" from the near-me list (SPEC *Finding stops → From… To…*).
         onPlanTo: () -> Unit,
+        // The saved favorite places, offered as route chips atop the list less those the rider is at
+        // (SPEC D9 → *Routing from the near-me list*), and the trip a tap opens. Empty (a From…
+        // station's page) shows no row.
+        // Null while the store hasn't answered yet: no row, and the hysteresis memory is left as it
+        // was (a restored memory must survive the placeholder).
+        favoritePlaces: List<FavoritePlace>? = emptyList(),
+        onRouteToPlace: (TripDestination.Place) -> Unit = {},
+        // Where the rider is for the shown set, and whether it is accurate enough to hide a place on:
+        // the chips' "already there" test reads this, never the banner's absence (Codex).
+        riderFix: StateFlow<NearbyStopsViewModel.RiderFix?> = MutableStateFlow(null),
+        // The places hidden last time (the hysteresis memory, hoisted above the overlays), and where
+        // the new answer goes.
+        hiddenPlaceIds: Set<String> = emptySet(),
+        onHiddenPlaceIds: (Set<String>) -> Unit = {},
         // Play reports a newer version — the overflow gets its red dot and "Update available"
         // item. Threaded from the activity's [updateAvailable] state, refreshed on each resume.
         updateAvailable: Boolean,
@@ -1259,6 +1308,33 @@ class MainActivity : ComponentActivity() {
             val relocatingNow by relocating.collectAsStateWithLifecycle()
             val refreshing = departuresRefreshing || relocatingNow
             val locationBannerNow by locationBanner.collectAsStateWithLifecycle()
+            // The places the rider isn't already at: hidden within 200 m on an accurate fix, back past
+            // 250 m (FavoriteShortcuts). Position and confidence come from the model's RiderFix for
+            // this very set — a coarse set confirmed in place stands at the precise fix, and an
+            // approximate-only grant is rough even with no banner (Codex) — and any banner (a stale
+            // or failed fix) makes it rough too. The previous answer is read unobserved and handed
+            // back after the frame, so the band holds a place's state from one fix to the next
+            // without this frame recomposing on its own write.
+            val riderFixNow by riderFix.collectAsStateWithLifecycle()
+            val rider = riderFixNow?.takeIf { it.from == ready.location }
+            val riderAt = rider?.at ?: ready.location
+            val riderAccurate = locationBannerNow == null && rider?.accurate == true
+            val latestHiddenPlaceIds by rememberUpdatedState(hiddenPlaceIds)
+            val hiddenPlaceIdsNow = remember(favoritePlaces, riderAt, riderAccurate) {
+                favoritePlaces?.let { places ->
+                    FavoriteShortcuts.hiddenIds(
+                        places,
+                        riderAt,
+                        precise = riderAccurate,
+                        hiddenBefore = Snapshot.withoutReadObservation { latestHiddenPlaceIds },
+                    )
+                }
+            }
+            SideEffect { if (hiddenPlaceIdsNow != null && hiddenPlaceIdsNow != hiddenPlaceIds) onHiddenPlaceIds(hiddenPlaceIdsNow) }
+            val shownPlaces = remember(favoritePlaces, hiddenPlaceIdsNow, riderAccurate) {
+                if (favoritePlaces == null || hiddenPlaceIdsNow == null) emptyList()
+                else FavoriteShortcuts.shown(favoritePlaces, hiddenPlaceIdsNow, precise = riderAccurate)
+            }
             val hiddenModes by HiddenModesSetting.changes.collectAsStateWithLifecycle()
             // The nearest station of each rail line nothing nearby reaches, from the
             // bundled index (read off the main thread, once per process): no request.
@@ -1611,6 +1687,8 @@ class MainActivity : ComponentActivity() {
                     onOpenFarther = { place -> if (!relocatingNow) fartherModels.open(place, ready.location) },
                     onSendBugReport = onSendBugReport,
                     locationBanner = locationBannerNow,
+                    favoritePlaces = shownPlaces,
+                    onRouteToPlace = onRouteToPlace,
                     // Hiding filters the list at once; the hidden mode's stops stop being fetched
                     // from the next re-locate. Showing them again re-picks the set from the same
                     // fix, so they come back now (SPEC *Finding stops → Hiding a mode*).
@@ -3083,6 +3161,18 @@ private suspend fun loadYourStops(context: Context, recents: FileRecentStationsS
  * as an honest empty list (the favorites are gone, and a Settings notice covers that loss). Any error
  * is logged without a coordinate (AGENTS *Privacy* / *Error handling*).
  */
+/**
+ * The saved places the near-me list's chips can use from one store answer (SPEC D9): the list when
+ * read, empty when a corrupt file was discarded (the places are really gone), and null when the store
+ * can't be read right now — a newer-schema file or a retried read outage — so the caller shows no row
+ * and keeps its "already there" memory rather than treating the places as deleted.
+ */
+internal fun savedPlacesOf(set: FavoritePlacesSet): List<FavoritePlace>? = when (set) {
+    is FavoritePlacesSet.Loaded -> set.places
+    FavoritePlacesSet.Discarded -> emptyList()
+    FavoritePlacesSet.Unavailable -> null
+}
+
 private suspend fun loadFavoritePlaces(context: Context): List<FavoritePlace>? =
     try {
         when (val set = DataStoreFavoritePlacesStore.from(context, warn = ::logStarWarning).places().first()) {

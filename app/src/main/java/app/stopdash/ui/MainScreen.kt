@@ -149,6 +149,8 @@ import app.stopdash.domain.RelativeTime
 import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.StarredRow
+import app.stopdash.domain.FavoritePlace
+import app.stopdash.domain.TripDestination
 import app.stopdash.domain.JourneyCall
 import app.stopdash.domain.JourneyChange
 import app.stopdash.domain.JourneyEnd
@@ -349,6 +351,11 @@ fun MainScreen(
     // The empty list's text in place of "No upcoming departures": a To… filter's "No direct
     // services to ‹place› soon".
     emptyMessage: String? = null,
+    // The saved favorite places to offer as route chips atop the near-me list (SPEC D9 → *Routing
+    // from the near-me list*), already less the ones the rider is at; [onRouteToPlace] plans a trip
+    // to the one tapped. Empty (the default, and on a station's page) shows no row.
+    favoritePlaces: List<FavoritePlace> = emptyList(),
+    onRouteToPlace: (TripDestination.Place) -> Unit = {},
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     // Overflow-menu and About-dialog visibility. Saved so an open dialog survives rotation.
@@ -1297,6 +1304,10 @@ fun MainScreen(
                         emptyMessage = if (platformRows != null) null else emptyMessage,
                         // A journey heading opens the journey's own view (from the full list only).
                         onOpenJourney = { journey -> journeyViewKey = journey.key },
+                        // The full near-me list only: not a platform or station drill-down, nor a
+                        // searched station's page, each of which is about one place.
+                        favoritePlaces = if (platformRows != null || stationTitle != null) emptyList() else favoritePlaces,
+                        onRouteToPlace = onRouteToPlace,
                     )
                 }
 
@@ -1435,6 +1446,9 @@ private fun LoadedContent(
     // Whether a loading card that lands on screen is held as a card (see [DepartureList]).
     holdLanded: Boolean = false,
     pendingTracker: PendingTracker = remember { PendingTracker() },
+    // The favorite places to offer as route chips atop the list (see [MainScreen]); empty for none.
+    favoritePlaces: List<FavoritePlace> = emptyList(),
+    onRouteToPlace: (TripDestination.Place) -> Unit = {},
 ) {
     // Hiding a mode applies to the loading cards too, as to the loaded rows.
     val shownPending = remember(pending, hiddenModes) { visiblePending(pending, hiddenModes) }
@@ -1518,6 +1532,18 @@ private fun LoadedContent(
                         .scrollEdgeCue(scrollState, scrollCueColors(MaterialTheme.colorScheme.background))
                         .verticalScroll(scrollState),
                 ) {
+                    // No list to lead, so the place chips head the empty state, inside its scroller so
+                    // they move with it (Codex): nothing near has departures, just when a route
+                    // elsewhere is wanted. Centered like the rest, and inset already by [Centered].
+                    if (favoritePlaces.isNotEmpty()) {
+                        FavoriteChips(
+                            favoritePlaces,
+                            onRouteToPlace,
+                            Modifier.padding(bottom = 16.dp),
+                            contentPadding = PaddingValues(0.dp),
+                            centered = true,
+                        )
+                    }
                     // A stale snapshot with nothing left can't be read as "no departures"
                     // — the data is too old to trust that conclusion, and newer ones may
                     // exist (SPEC D4). Prompt a refresh instead of asserting an empty list.
@@ -1589,6 +1615,8 @@ private fun LoadedContent(
                     onRevealFar = onRevealFar,
                     // Not in a journey's own view, nor when every nearby row is already on a journey
                     // card above.
+                    favoritePlaces = favoritePlaces,
+                    onRouteToPlace = onRouteToPlace,
                     nearbyEmptyNote = if (rows.isEmpty() && !journeyView && !nearbyShownAbove && shownPending.isEmpty() && dismissedClosures.isEmpty()) {
                         // With modes hidden, say so rather than "no departures": they may be running.
                         if (hiddenModes.isNotEmpty()) {
@@ -1755,6 +1783,9 @@ private fun DepartureList(
     onUnstarJourney: ((StarredJourney) -> Unit)? = null,
     // Why the near-me part is empty, shown under the journey cards when there are no nearby rows.
     nearbyEmptyNote: String? = null,
+    // The favorite places to route to, as a chip row atop the list (near-me only); empty for none.
+    favoritePlaces: List<FavoritePlace> = emptyList(),
+    onRouteToPlace: (TripDestination.Place) -> Unit = {},
     modifier: Modifier,
 ) {
     // The units near-me distances are written in: the Settings choice, resolved against the locale;
@@ -1999,6 +2030,12 @@ private fun DepartureList(
     ) {
         // A closure alert keys on its stop and hub so a recycled row can't carry another
         // alert's expanded state onto it.
+        // The saved places to route to, first of all (SPEC D9 → *Routing from the near-me list*): an
+        // item of the list, so it scrolls away with it rather than taking a pinned row's space. No
+        // padding of its own — the list's 16dp inset already lines it up with the cards.
+        if (favoritePlaces.isNotEmpty()) {
+            item(key = "favorite-chips") { FavoriteChips(favoritePlaces, onRouteToPlace, contentPadding = PaddingValues(0.dp)) }
+        }
         // Starred journeys lead the list (SPEC *Journeys*): each a header naming the direction shown,
         // tappable to show the other, over a card of just the trains that call at the far end.
         journeyItems(journeyCards)

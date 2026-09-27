@@ -869,6 +869,16 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               `hereFavorite`) threaded through `StationSearchArea`/`FromStationArea`.
         - [ ] **Hide a favorite that duplicates a nearby stop** (maintainer, 2026-09-27): when a saved
               place sits at a stop already listed, one of them is redundant in the picker.
+      - [x] **Favorite places as chips atop the near-me list** (maintainer, 2026-09-27): one row of
+            chips, the list's first item (it scrolls away with the list), a tap routing as the Settings
+            and To… paths do; a place within 200 m of an accurate fix is left out (back past 250 m),
+            and an approximate fix (or an approximate-only grant) hides nothing. Needs a device check that the chip row reads well
+            above the journey cards and that the radius feels right at a real front door.
+        - [ ] **Favorite chips on the "no stops nearby" screen** (Codex on #315): with nothing in
+              range the list gives way to the location gate, which has no chips. A chip there needs
+              the trip from here to plan from the rider's coordinate rather than from nearby stops
+              (it takes its origins from the nearby set today), or it would open a trip with nowhere
+              to start. Deferred from #315 to keep that PR to the list itself.
       - [x] **To… a geocoded place or postcode** (maintainer, 2026-09-27): the To… search now offers
             geocoded places (landmark, address, postcode) beneath the stop matches, each tagged
             *Place*/*Postcode*; tapping one plans to its coordinate (D9). TfL's Journey Planner is the

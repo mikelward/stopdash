@@ -248,7 +248,7 @@ private fun YourStopsList(
             item(key = "heading-places") { SectionHeading(stringResource(R.string.station_search_places)) }
             if (favoritePlaces.isNotEmpty()) {
                 items(favoritePlaces, key = { "place-${it.id}" }) { place ->
-                    val name = favoritePlaceName(place)
+                    val name = favoriteRouteName(place)
                     PlaceRow(name, onClick = { onOpenPlace(TripDestination.Place(place.coordinate, name)) })
                     HorizontalDivider()
                 }
@@ -272,9 +272,6 @@ private fun YourStopsList(
     }
 }
 
-/** The name a favorite is known by, used for its row and the trip's destination: its label, or its
- *  resolved place name when the label is blank (mirrors the Settings route-to path). */
-private fun favoritePlaceName(place: FavoritePlace): String = place.label.ifBlank { place.placeName.orEmpty() }
 
 /** A section heading over one group of the pre-query list ("Places", "Recent", "Starred"). */
 @Composable

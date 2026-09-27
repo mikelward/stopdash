@@ -7,6 +7,7 @@ import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.text.LinkAnnotation
@@ -44,6 +45,10 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import app.stopdash.domain.CollapsedPlaces
+import app.stopdash.domain.Coordinates
+import app.stopdash.domain.FavoriteKind
+import app.stopdash.domain.FavoritePlace
+import app.stopdash.domain.TripDestination
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
@@ -228,6 +233,99 @@ class MainScreenScreenshotTest {
         // D8): the Underground and Overground stops share the place name and split by platform.
         composeRule.onNodeWithText("– Platform 1", substring = true).assertExists()
         composeRule.onNodeWithText("– Platform 6", substring = true).assertExists()
+    }
+
+    // Stock stand-in places on synthetic coordinates, never a real person's (SPEC *Privacy*).
+    private val places = listOf(
+        FavoritePlace("home", FavoriteKind.HOME, "Home", Coordinates(51.5, -0.12)),
+        FavoritePlace("work", FavoriteKind.WORK, "Work", Coordinates(51.51, -0.09)),
+        FavoritePlace("gym", FavoriteKind.CUSTOM, "Gym", Coordinates(51.52, -0.1)),
+    )
+
+    @Test
+    fun `the near-me list leads with a chip per favorite place, light`() = favoriteChips("main-favorite-chips.png", dark = false)
+
+    @Test
+    fun `the near-me list leads with a chip per favorite place, dark`() = favoriteChips("main-favorite-chips-dark.png", dark = true)
+
+    private fun favoriteChips(name: String, dark: Boolean) {
+        var routed: TripDestination.Place? = null
+        capture(name, dark = dark) {
+            MainScreen(
+                DeparturesUiState.Loaded(stops(now.minusSeconds(60)), now.minusSeconds(60), lineStatuses = statuses()),
+                now,
+                {},
+                favoritePlaces = places,
+                onRouteToPlace = { routed = it },
+            )
+        }
+        composeRule.onNodeWithTag("favoriteChips").assertExists()
+        // A tap plans to the place's coordinate under the name the rider knows it by (SPEC D9).
+        composeRule.onNodeWithContentDescription("Plan a trip to Work").performClick()
+        assertEquals(TripDestination.Place(Coordinates(51.51, -0.09), "Work"), routed)
+    }
+
+    @Test
+    fun `the favorite chips scroll away with the list`() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                MainScreen(
+                    DeparturesUiState.Loaded(stops(now.minusSeconds(60)), now.minusSeconds(60)),
+                    now,
+                    {},
+                    favoritePlaces = places,
+                )
+            }
+        }
+        composeRule.onNodeWithTag("favoriteChips").assertExists()
+        // The first item of the list, not a pinned row: scrolled past, it leaves the screen.
+        // The list, not the chips' own sideways row, which scrolls too.
+        composeRule.onNode(hasScrollToIndexAction() and !hasTestTag("favoriteChips")).performScrollToIndex(4)
+        composeRule.onNodeWithTag("favoriteChips").assertDoesNotExist()
+    }
+
+    @Test
+    fun `with nothing near, the favorite chips still offer a route`() {
+        var routed: TripDestination.Place? = null
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                MainScreen(
+                    DeparturesUiState.Loaded(emptyList(), now.minusSeconds(30)),
+                    now,
+                    {},
+                    favoritePlaces = places,
+                    onRouteToPlace = { routed = it },
+                )
+            }
+        }
+        composeRule.onNodeWithContentDescription("Plan a trip to Home").performClick()
+        assertEquals("Home", routed?.name)
+    }
+
+    @Test
+    fun `a station's page shows no chip row`() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                MainScreen(
+                    DeparturesUiState.Loaded(stops(now.minusSeconds(60)), now.minusSeconds(60)),
+                    now,
+                    {},
+                    stationTitle = "Whitechapel",
+                    favoritePlaces = places,
+                )
+            }
+        }
+        composeRule.onNodeWithTag("favoriteChips").assertDoesNotExist()
+    }
+
+    @Test
+    fun `no favorites, no chip row`() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                MainScreen(DeparturesUiState.Loaded(stops(now.minusSeconds(60)), now.minusSeconds(60)), now, {})
+            }
+        }
+        composeRule.onNodeWithTag("favoriteChips").assertDoesNotExist()
     }
 
     // Every dropdown shares one style (maintainer, 2026-09-27, as in Clothescast): rounded corners and
