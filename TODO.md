@@ -1309,7 +1309,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       **postcode format detection** — DONE (domain `UkPostcode`): structural, full-UK-coverage
       recognizer (not a London area allow-list, since TfL plans beyond the London postal areas) —
       `looksLikePartial` gates the "Postcode" affordance while typing, `isComplete` gates resolvability,
-      `format` canonicalizes. Still to wire: the favorite-setup UX (placeholder row + candidate chooser).
+      `format` canonicalizes.
+      **postcode entry in favorite setup** — DONE (favorite setup only): the editor field reads "Stop or
+      postcode"; a query that `looksLikePartial` shows a top "Postcode …" row, tappable once complete,
+      that resolves via `PostcodeResolver` and offers the candidate places to choose from (not
+      auto-picked); picking one adopts its coordinate like a stop. Still to do: **on-device validation of
+      the resolver's assumed 200/300 shapes** (see below) before this is trusted; then From…/To… postcode
+      entry, same-name disambiguation, routing to a favorite, and the To… Home/Work pins.
       **postcode resolution** — DONE (`PostcodeResolver` + `KtorTflClient`): plans from the postcode to a
       fixed interchange and reads the place, handling both the 200-resolved origin and the 300
       disambiguation list. **Blind-built against constructed Journey Planner responses** (live TfL is

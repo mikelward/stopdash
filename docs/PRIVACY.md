@@ -92,9 +92,13 @@ device; none of that is sent anywhere either.
 
 **Favorite places** (Home, Work, School or a place of your own, saved from Settings) are stored by
 **location**. When you add or edit one, the stop or station you type is sent to TfL's stop search,
-once you pause typing, to find its position — the same search *Find a station* uses. That text isn't
-saved, logged or sent anywhere else. (Entering a **postcode** is a planned addition; v1 finds a place
-by its nearest stop or station.) The saved place — its
+once you pause typing, to find its position — the same search *Find a station* uses. You can instead
+type a **postcode**: when you tap to look it up, it is sent to **TfL's Journey Planner**, which returns
+the place(s) it names for you to choose from. A postcode is the same kind of location data the app
+already sends to plan a trip — no new kind of data leaves the device. Either way the text you type in
+the search field isn't saved, logged or sent anywhere else; only the place you then **choose** is
+saved — by its coordinate and the name it resolved to (for a postcode, that name may be the postcode
+itself), the same as choosing a stop. The saved place — its
 coordinate, its label, and the **name of the stop or station it resolved to** (shown under the label,
 e.g. "Oxford Circus") — is kept on the device with your other settings, so it rides your own Android
 backup and device transfer like the rest (above); it is never logged or put in a bug report, and

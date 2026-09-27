@@ -1950,15 +1950,23 @@ Mirrors the sibling fleet:
   School, or custom — a stable id, and the **resolved place name** (the stop/station the coordinate
   came from, shown under the label; it also rides Android backup, *Privacy*), so the reserved
   Home/Work slots are identified by role, not by the mutable, possibly-duplicated label (a custom
-  place may reuse the word "Home"; a label may change on edit or with localization). The coordinate is resolved in v1 from a **place or
-  postcode via TfL** (its `/StopPoint/Search` matches usually carry lat/lon, and the Journey Planner's
-  disambiguation resolves a postcode/place to one — no third-party geocoder, £0). **The first editor
-  slice resolves via the stop/station search** (`/StopPoint/Search`, field "Stop or station");
-  **postcode/place resolution** (the Journey Planner disambiguation above) is the immediate follow-up,
-  after which the field reads "Stop or postcode". The stop/station the user types during setup is
-  **sent to TfL's stop search** (the *Find a station* path), once typing pauses, to resolve the
-  coordinate — the same send as the station search; it is not saved, logged, or sent anywhere else
-  (*Privacy*, `docs/PRIVACY.md`). A match TfL gives no inline position for is **resolved on pick from
+  place may reuse the word "Home"; a label may change on edit or with localization). The coordinate is resolved from a **stop/station or a
+  postcode via TfL** (its `/StopPoint/Search` matches usually carry lat/lon, and the **Journey Planner**
+  resolves a postcode — no third-party geocoder, £0); the favorite-setup field reads **"Stop or
+  postcode"**. A typed stop/station is **sent to TfL's stop search** (the *Find a station* path), once
+  typing pauses, to resolve the coordinate — the same send as the station search. When the text instead
+  **looks like a postcode**, the editor offers a **"Postcode …" row** (from two characters, the same
+  floor station completions use) that, once the postcode is complete, the user taps to resolve via the
+  Journey Planner — which either geocodes it to one point or returns **candidate places**; the user
+  **chooses** one (never auto-picked), and picking it adopts its coordinate exactly as picking a stop
+  does. A postcode-shaped query (a digit present) is **not also sent to the stop search** — only the
+  Journey Planner, on tap — so it costs one request, not two (a plain two-letter prefix, how a station
+  name starts, still searches). Postcode entry is **favorite-setup only** for now (From… and To… stay
+  stop/station fuzzy search). The **search query text is not persisted** (it isn't written to saved
+  state, `FavoritePlacesStore`, or backup — *Privacy*, `docs/PRIVACY.md`); the place the user then
+  **chooses** is saved by its coordinate and its resolved name exactly as a chosen station is — and for
+  a postcode that name may be the postcode itself, no more revealing than the coordinate already stored
+  beside it. A match TfL gives no inline position for is **resolved on pick from
   its stops' center** (`stationStops(id)` → mean of the members' positions, as *To…* already does), so
   a station the search and bundled index both left positionless is still selectable; only a result whose
   stops carry no position stays **unselectable in favorite setup** ("no location"), while a **transient**
