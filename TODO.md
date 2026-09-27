@@ -1317,19 +1317,21 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       **a shared place search** (maintainer, 2026-09-27): reuse/extend the fuzzy finder
       (`StationIndex` + TfL) and add **postcode/place resolution** (the Journey Planner
       disambiguation), wired into **From…, To… and favorite setup alike** for consistency — the field
-      then reads "Stop or postcode". UX (maintainer, 2026-09-27): when the text **looks like a
-      postcode**, don't search each keystroke — show a **top placeholder row "Postcode: N…"** the user
-      can tap once it's a complete postcode, which then resolves it.
+      then reads "Stop or postcode". UX (maintainer, 2026-09-27, revised): a postcode-shaped query
+      isn't sent to the stop search; a **complete** postcode **resolves itself** (no tap) and its single
+      place is adopted automatically — see the DONE note below.
       **postcode format detection** — DONE (domain `UkPostcode`): structural, full-UK-coverage
       recognizer (not a London area allow-list, since TfL plans beyond the London postal areas) —
       `looksLikePartial` gates the "Postcode" affordance while typing, `isComplete` gates resolvability,
       `format` canonicalizes.
       **postcode entry in favorite setup** — DONE (favorite setup only): the editor field reads "Stop or
-      postcode"; a query that `looksLikePartial` shows a top "Postcode …" row, tappable once complete,
-      that resolves via `PostcodeResolver` and offers the candidate places to choose from (not
-      auto-picked); picking one adopts its coordinate like a stop. Still to do: **on-device validation of
-      the resolver's assumed 200/300 shapes** (see below) before this is trusted; then From…/To… postcode
-      entry, same-name disambiguation, routing to a favorite, and the To… Home/Work pins.
+      postcode". UX revised (maintainer, 2026-09-27): a complete postcode **resolves itself** (no "Look
+      up" tap — the earlier tap-first flow added steps the happy path didn't need), and since a postcode
+      is unambiguous its **single place is adopted automatically** (type → Save); a partial one shows a
+      passive "Postcode …" hint, and only a genuine multi-place answer offers a chooser, an empty/failed
+      lookup shown honestly (failure retryable). Still to do: **on-device validation of the resolver's
+      assumed 200/300 shapes** (see below) before this is trusted; then From…/To… postcode entry,
+      same-name disambiguation, and the To… Home/Work pins.
       **postcode resolution** — DONE (`PostcodeResolver` + `KtorTflClient`): plans from the postcode to a
       fixed interchange and reads the place, handling both the 200-resolved origin and the 300
       disambiguation list. **Blind-built against constructed Journey Planner responses** (live TfL is

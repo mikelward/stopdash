@@ -1969,12 +1969,14 @@ Mirrors the sibling fleet:
   resolves a postcode — no third-party geocoder, £0); the favorite-setup field reads **"Stop or
   postcode"**. A typed stop/station is **sent to TfL's stop search** (the *Find a station* path), once
   typing pauses, to resolve the coordinate — the same send as the station search. When the text instead
-  **looks like a postcode**, the editor offers a **"Postcode …" row** (from two characters, the same
-  floor station completions use) that, once the postcode is complete, the user taps to resolve via the
-  Journey Planner — which either geocodes it to one point or returns **candidate places**; the user
-  **chooses** one (never auto-picked), and picking it adopts its coordinate exactly as picking a stop
-  does. A postcode-shaped query (a digit present) is **not also sent to the stop search** — only the
-  Journey Planner, on tap — so it costs one request, not two (a plain two-letter prefix, how a station
+  **looks like a postcode**, a **complete** one **resolves itself** through the Journey Planner (as the
+  stop search resolves a station on a pause — no extra tap), which either geocodes it to one point or
+  returns **candidate places**. A postcode is unambiguous, so a **single place is adopted straight away**
+  (type → Save); only a genuine **multi-place** answer offers a chooser the user **picks** from, and an
+  empty or failed lookup is shown honestly (a failure stays retryable). While the postcode is still
+  partial the editor shows only a passive "Postcode …" hint (from two characters, the same floor station
+  completions use). A postcode-shaped query (a digit present) is **not also sent to the stop search** —
+  only the Journey Planner — so it costs one request, not two (a plain two-letter prefix, how a station
   name starts, still searches). Postcode entry is **favorite-setup only** for now (From… and To… stay
   stop/station fuzzy search). The **search query text is not persisted** (it isn't written to saved
   state, `FavoritePlacesStore`, or backup — *Privacy*, `docs/PRIVACY.md`); the place the user then
