@@ -662,9 +662,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         while shown; the long press hides by the same groups.
   - [ ] **Hide one line at a place** ("Hide Thameslink here") and **hide one platform/pole** (its
         card collapses to the header; a stop none of whose cards show isn't fetched).
-  - [ ] **Hide an individual line everywhere** (maintainer, 2026-09-27), e.g. the Northern or
-        Central line, not just its whole mode: offered beside "Hide all ‹group› services" in the
-        near-me long-press menus and a trip card's menu, which would then list each line its legs ride.
+  - [x] **Hide an individual line everywhere** (maintainer, 2026-09-27), e.g. the Northern or
+        Central line, not just its whole mode: "Hide ‹line›" beside "Hide all ‹group› services" in a
+        near-me row's long-press menu and a trip card's menu (each line its legs ride). Not on a
+        place's header, where a busy place would list dozens.
   - [ ] **A "Hidden" list in Settings** to unhide one item at a time, and an **Undo** snackbar
         right after hiding, once there's more than modes to hide.
   - [ ] **Skip the National Rail board for a hidden National Rail mode** at a station that also

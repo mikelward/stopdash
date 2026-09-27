@@ -310,7 +310,7 @@ class TripViewModel(
         // Routes riding a hidden mode aren't shown, so their stops and lines aren't fetched either.
         // Only the routes the screen times (the soonest few of those shown) are fetched for.
         val routes = _state.value.routes
-            ?.filterNot { route -> route.rides.any { HiddenModes.isHidden(it.mode, hiddenModes) } }
+            ?.filterNot { route -> route.rides.any { HiddenModes.isHidden(it.mode, it.lineId, hiddenModes) } }
             ?.let(::bestOf) ?: return
         val lines = routes.flatMap { route -> route.rides.map { it.lineId } }.distinct()
         // Arrivals another screen fetched since show at once; only a stop not fetched within

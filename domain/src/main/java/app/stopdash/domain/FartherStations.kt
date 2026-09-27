@@ -120,7 +120,7 @@ object FartherStations {
         for ((station, meters) in candidates) {
             for (reason in reasonsOf(station)) {
                 val mode = reason.line.mode
-                if (mode !in MODES || HiddenModes.isHidden(mode, hidden) || isReached(reason)) continue
+                if (mode !in MODES || HiddenModes.isHidden(mode, reason.line.id, hidden) || isReached(reason)) continue
                 nearestByReason.putIfAbsent(reason, station to meters)
             }
         }

@@ -147,7 +147,7 @@ internal fun hereOriginIds(
     hidden: Set<String>,
 ): List<String> {
     // A stop with no routes has nothing to take anywhere, so it's never an origin.
-    fun shown(stop: StopRef) = stop.lines.any { !HiddenModes.isHidden(it.mode, hidden) }
+    fun shown(stop: StopRef) = stop.lines.any { !HiddenModes.isHidden(it, hidden) }
     val candidates = nearby.filter(::shown).mapTo(HashSet()) { it.id }
     return DirectTrips.originIds(
         eager.filter(::shown).map { it.id },

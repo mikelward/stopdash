@@ -26,3 +26,13 @@ fun takesLineSuffix(lineName: String, mode: String): Boolean {
 
 /** A trailing parenthesized alias, e.g. " (LNR)". */
 private val TRAILING_ALIAS = Regex("""\s*\([^()]*\)$""")
+
+/**
+ * How a line is named on its own in a sentence, as "Hide ‹line›" and its banner say it: a tube or
+ * named Overground line as "Northern line" ([takesLineSuffix]), anything else by its TfL name ("134",
+ * "Elizabeth line", "Thameslink").
+ */
+fun lineLabel(lineName: String, mode: String): String {
+    val name = lineName.trim()
+    return if (takesLineSuffix(name, mode)) "$name line" else name
+}

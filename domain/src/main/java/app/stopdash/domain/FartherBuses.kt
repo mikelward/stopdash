@@ -49,7 +49,7 @@ object FartherBuses {
     ): List<StopLocation> =
         eager.flatMap { it.stops }.filter { stop ->
             stop.lines.any { line ->
-                line.mode.isNotBlank() && !line.mode.equals(MODE, ignoreCase = true) && !HiddenModes.isHidden(line.mode, hidden)
+                line.mode.isNotBlank() && !line.mode.equals(MODE, ignoreCase = true) && !HiddenModes.isHidden(line, hidden)
             }
         }
 
@@ -85,7 +85,9 @@ object FartherBuses {
             val lines = LinkedHashMap<String, LineRef>()
             for (stop in stops) {
                 for (line in stop.lines) {
-                    if (line.mode.equals(MODE, ignoreCase = true) && line.id.isNotBlank()) lines.putIfAbsent(line.id, line)
+                    if (line.mode.equals(MODE, ignoreCase = true) && line.id.isNotBlank() && !HiddenModes.isLineHidden(line.id, hidden)) {
+                        lines.putIfAbsent(line.id, line)
+                    }
                 }
             }
             if (lines.isEmpty()) return@mapNotNull null

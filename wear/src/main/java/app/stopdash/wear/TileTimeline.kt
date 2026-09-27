@@ -283,7 +283,7 @@ object TileTimeline {
                 minute = minute.plusSeconds(60)
             }
             for (departure in stop.departures) {
-                if (HiddenModes.isHidden(departure.mode, hidden)) continue
+                if (HiddenModes.isHidden(departure.mode, departure.lineId, hidden)) continue
                 val arrival = departure.expectedArrival
                 if (arrival <= now) continue
                 // It drops off the moment it departs; before that, its minute count goes down just

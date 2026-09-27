@@ -804,7 +804,7 @@ object DepartureRows {
         // The mode the widget's row carries, by the same rule ([resolvedMode]): never another
         // direction's, so the two can't disagree about a row whose predictions all omit it.
         val mode = resolvedMode(kept.sortedBy { it.expectedArrival }, line?.mode)
-        return !HiddenModes.isHidden(mode, hiddenModes)
+        return !HiddenModes.isHidden(mode, row.lineId, hiddenModes)
     }
 
     /**

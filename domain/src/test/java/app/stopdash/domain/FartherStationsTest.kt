@@ -105,6 +105,17 @@ class FartherStationsTest {
     }
 
     @Test
+    fun `a hidden line gets no button, and its mode's other lines still do`() {
+        val picked = FartherStations.pick(
+            listOf(near, lineC, lineD),
+            here,
+            reached = reached("tube" to "northern"),
+            hidden = setOf(HiddenModes.lineKey("victoria", "Victoria line")),
+        )
+        assertEquals(listOf("940GLINED"), picked.map { it.station.id })
+    }
+
+    @Test
     fun `a station serving two unreached lines is one card`() {
         val both = station("940GBOTH", "Both", 1_500.0, tube("piccadilly", "victoria"))
         val picked = FartherStations.pick(listOf(near, both, lineC, ground), here, reached("tube" to "northern"))

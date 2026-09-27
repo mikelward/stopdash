@@ -43,4 +43,12 @@ class ServiceNameTest {
         assertFalse(takesLineSuffix("Avanti West Coast", "national-rail"))
         assertFalse(takesLineSuffix("Tram", "tram"))
     }
+
+    @Test
+    fun `a line is named alone as its riders say it`() {
+        assertEquals("Northern line", lineLabel("Northern", "tube"))
+        assertEquals("Mildmay line", lineLabel("Mildmay", "overground"))
+        assertEquals("Elizabeth line", lineLabel("Elizabeth line", "elizabeth-line"))
+        assertEquals("134", lineLabel("134", "bus"))
+    }
 }

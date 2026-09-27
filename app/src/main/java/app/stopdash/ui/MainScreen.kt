@@ -143,6 +143,7 @@ import app.stopdash.domain.FartherBuses
 import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.HiddenModes
+import app.stopdash.domain.lineLabel
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.NoTimes
 import app.stopdash.domain.RelativeTime
@@ -2361,7 +2362,7 @@ internal fun visiblePending(pending: List<StopRef>, hiddenModes: Set<String>): L
     if (hiddenModes.isEmpty()) return pending
     return pending.mapNotNull { stop ->
         if (stop.lines.isEmpty()) return@mapNotNull stop
-        val kept = stop.lines.filterNot { HiddenModes.isHidden(it.mode, hiddenModes) }
+        val kept = stop.lines.filterNot { HiddenModes.isHidden(it, hiddenModes) }
         when {
             kept.isEmpty() -> null
             kept.size == stop.lines.size -> stop
@@ -2594,7 +2595,7 @@ internal fun aboveLoadedRows(keys: List<Any>, alwaysHold: Set<Any> = emptySet())
 /** [place] without a hidden mode's lines, or null when it served only hidden modes. */
 internal fun withoutHidden(place: PendingPlace, hiddenModes: Set<String>): PendingPlace? {
     if (hiddenModes.isEmpty() || place.place.lines.isEmpty()) return place
-    val kept = place.place.lines.filterNot { HiddenModes.isHidden(it.mode, hiddenModes) }
+    val kept = place.place.lines.filterNot { HiddenModes.isHidden(it, hiddenModes) }
     return if (kept.isEmpty()) null else place.copy(place = place.place.copy(lines = kept))
 }
 
@@ -2972,7 +2973,8 @@ internal fun StopGroupHeader(
 
 /**
  * The long-press menu of a near-me header or row (SPEC *Finding stops → Hiding a mode*): an
- * optional [leading] item (a row's pin/unpin), then "Hide ‹mode›" for each of [modes]. Wrapped in
+ * optional [leading] item (a row's pin/unpin), then "Hide ‹mode›" for each of [modes], then "Hide
+ * ‹line›" for each of [lines], each handed to [onHideMode] as its [HiddenModes.lineKey]. Wrapped in
  * [FontSizeWindow] like the overflow menu, so the chosen text size reaches it.
  */
 @Composable
@@ -2982,6 +2984,7 @@ internal fun HideModeMenu(
     modes: List<String>,
     onHideMode: (String) -> Unit,
     leading: (@Composable () -> Unit)? = null,
+    lines: List<LineRef> = emptyList(),
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, modifier = Modifier.pinchFontSizeHost()) {
         FontSizeWindow {
@@ -2994,6 +2997,16 @@ internal fun HideModeMenu(
                     onClick = {
                         onDismiss()
                         onHideMode(group.modes.first())
+                    },
+                )
+            }
+            lines.distinctBy { it.id.lowercase() }.forEach { line ->
+                val label = lineLabel(line.name.ifBlank { line.id }, line.mode)
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.hide_line, label)) },
+                    onClick = {
+                        onDismiss()
+                        onHideMode(HiddenModes.lineKey(line.id, label))
                     },
                 )
             }
@@ -3609,6 +3622,8 @@ internal fun RouteRow(
             expanded = menuOpen,
             onDismiss = { menuOpen = false },
             modes = listOf(hideMode),
+            // Just this row's line too ("Hide Northern line"), for a rider of the mode who never takes it.
+            lines = if (row.lineId.isNotBlank()) listOf(LineRef(row.lineId, row.lineName, row.mode)) else emptyList(),
             onHideMode = { mode -> onHideMode?.invoke(mode) },
             leading = if (starrable) {
                 {

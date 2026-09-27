@@ -353,7 +353,7 @@ internal fun tripEstimates(
     originUnconfirmed: Boolean = false,
 ): List<TripTiming.Estimate>? {
     val routes = state.routes
-        ?.filterNot { route -> route.rides.any { HiddenModes.isHidden(it.mode, hidden) } }
+        ?.filterNot { route -> route.rides.any { HiddenModes.isHidden(it.mode, it.lineId, hidden) } }
         ?.let(TripViewModel::bestOf) ?: return null
     val notRunning = TripTiming.notRunning(state.statuses.values)
     // A line with no status known (left out of TfL's answer, or a failed check) can't be vouched
@@ -418,7 +418,7 @@ internal fun sequenceLineIds(state: TripViewModel.State, hidden: Set<String>, se
 
 /** The lines of the routes a trip times: not riding a [hidden] mode, and within the cap ([TripViewModel.bestOf]). */
 internal fun timedLineIds(routes: List<TripRoute>, hidden: Set<String>): List<String> =
-    TripViewModel.bestOf(routes.filterNot { route -> route.rides.any { HiddenModes.isHidden(it.mode, hidden) } })
+    TripViewModel.bestOf(routes.filterNot { route -> route.rides.any { HiddenModes.isHidden(it.mode, it.lineId, hidden) } })
         .flatMap { route -> route.rides.map { it.lineId } }.distinct()
 
 /** A route's identity across refreshes and re-ranking: its lines and stops in order. */
@@ -874,12 +874,22 @@ private fun RouteList(
                         onDismiss = { menuOpen = false },
                         modes = modes,
                         onHideMode = onHideMode,
+                        lines = cardLines(card),
                     )
                 }
             }
         }
     }
 }
+
+/** Every line any route on a trip's card rides, in the order they're ridden, for its "Hide ‹line›" items. */
+internal fun cardLines(card: List<TripTiming.Estimate>): List<LineRef> =
+    card.asSequence()
+        .flatMap { estimate -> estimate.route.rides.asSequence() }
+        .filter { it.lineId.isNotBlank() }
+        .map { LineRef(it.lineId, it.lineName, it.mode) }
+        .distinctBy { it.id.lowercase() }
+        .toList()
 
 /** Every mode any route on a trip's card rides, in a stable order, for its "Hide all ‹group› services" menu. */
 internal fun cardModes(card: List<TripTiming.Estimate>): List<String> =

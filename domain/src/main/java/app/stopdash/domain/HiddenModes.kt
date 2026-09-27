@@ -8,10 +8,42 @@ package app.stopdash.domain
  * mode never hides a closed stop the user still rides from; a stop serving only hidden modes isn't
  * checked, since its closure matters only to a rider of that mode. Modes compare case-insensitively,
  * as TfL's mode ids are lowercase but not guaranteed so.
+ *
+ * The same set holds single hidden lines ("Hide Northern line"), each as a [lineKey]: a line hides
+ * just as a mode does, only narrower, and sharing the set means everything that already follows the
+ * hidden modes (the widget, the watch, "Show all") follows the lines too. A mode id never starts
+ * with [LINE_PREFIX], so the two can't be confused.
  */
 object HiddenModes {
+    /** The prefix of a hidden line's entry in the set. */
+    const val LINE_PREFIX = "line:"
+
+    /**
+     * The set entry hiding line [lineId]: `line:<id>=<label>`, carrying the [label] the banner names
+     * it by ("Northern line"), since the banner has no line data of its own to look it up in.
+     */
+    fun lineKey(lineId: String, label: String): String = "$LINE_PREFIX${lineId.lowercase()}=$label"
+
+    /** Whether [entry] hides a line rather than a mode. */
+    fun isLineKey(entry: String): Boolean = entry.startsWith(LINE_PREFIX)
+
+    /** The hidden lines' labels, in the order they were hidden. */
+    fun hiddenLineLabels(hidden: Set<String>): List<String> =
+        hidden.filter(::isLineKey).map { it.substringAfter('=', it.removePrefix(LINE_PREFIX)) }
+
     /** Whether [mode] is one of [hidden]. */
     fun isHidden(mode: String, hidden: Set<String>): Boolean = hidden.any { it.equals(mode, ignoreCase = true) }
+
+    /** Whether line [lineId] is hidden by itself. */
+    fun isLineHidden(lineId: String, hidden: Set<String>): Boolean =
+        lineId.isNotBlank() && hidden.any { isLineKey(it) && it.substringBefore('=').removePrefix(LINE_PREFIX).equals(lineId, ignoreCase = true) }
+
+    /** Whether a service of [mode] on line [lineId] is hidden, by its mode or its line. */
+    fun isHidden(mode: String, lineId: String, hidden: Set<String>): Boolean =
+        isHidden(mode, hidden) || isLineHidden(lineId, hidden)
+
+    /** Whether [line] is hidden, by its mode or by itself. */
+    fun isHidden(line: LineRef, hidden: Set<String>): Boolean = isHidden(line.mode, line.id, hidden)
 
     /**
      * [stops] without their hidden-mode lines, and without a stop left serving nothing: it isn't
@@ -22,7 +54,7 @@ object HiddenModes {
         if (hidden.isEmpty()) return stops
         return stops.mapNotNull { stop ->
             if (stop.lines.isEmpty()) return@mapNotNull stop
-            val kept = stop.lines.filterNot { isHidden(it.mode, hidden) }
+            val kept = stop.lines.filterNot { isHidden(it, hidden) }
             when {
                 kept.isEmpty() -> null
                 kept.size == stop.lines.size -> stop
@@ -31,9 +63,9 @@ object HiddenModes {
         }
     }
 
-    /** [rows] without a hidden mode's departures and status rows; stop-closure rows always stay. */
+    /** [rows] without a hidden mode's or line's departures and status rows; stop-closure rows always stay. */
     fun rows(rows: List<DepartureRow>, hidden: Set<String>): List<DepartureRow> {
         if (hidden.isEmpty()) return rows
-        return rows.filter { it.stopDisruption != null || !isHidden(it.mode, hidden) }
+        return rows.filter { it.stopDisruption != null || !isHidden(it.mode, it.lineId, hidden) }
     }
 }

@@ -101,6 +101,10 @@
          reads mid-sentence ("bus", "Tube & DLR"); "all … services" says the whole group goes, not
          just this row (maintainer, 2026-09-25). -->
     <string name="hide_mode">Hide all %1$s services</string>
+    <!-- The same menu's item hiding just this line everywhere, beside hiding its whole mode
+         (maintainer, 2026-09-27). The argument names the line as it reads alone ("Northern line",
+         "134"). -->
+    <string name="hide_line">Hide %1$s</string>
     <!-- Screen-reader label for the long press that opens that menu. -->
     <string name="more_actions">Options</string>
     <!-- One-line banner over the near-me list while modes are hidden; the argument lists them
