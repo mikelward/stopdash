@@ -18,6 +18,7 @@ import app.stopdash.domain.StopLocation
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.TflRateLimiter
 import app.stopdash.domain.TflRequestPool
+import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.VehicleCall
 import app.stopdash.domain.VehicleSource
@@ -78,10 +79,17 @@ class KtorTflClient(
     // a stop id, never a coordinate or key (SPEC *Privacy*). No-op by default (tests, widget).
     private val warn: (String) -> Unit = {},
 ) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, JourneyPlanner, PostcodeResolver, VehicleSource {
-    override suspend fun journeys(fromId: String, toId: String): List<TripRoute> =
+    override suspend fun journeys(fromId: String, to: TripDestination): List<TripRoute> =
         tflRequest { key ->
+            // A stop goes by id; a place goes by its coordinate ("lat,lon"), which TfL routes to with a
+            // final walk leg (SPEC D9). The coordinate is the rider's chosen destination, so — like the
+            // trip's ends — it isn't logged (SPEC *Privacy*).
+            val toParam = when (to) {
+                is TripDestination.Stop -> to.id
+                is TripDestination.Place -> "${to.coordinate.latitude},${to.coordinate.longitude}"
+            }
             val dto = try {
-                httpClient.get("$baseUrl/Journey/JourneyResults/$fromId/to/$toId") {
+                httpClient.get("$baseUrl/Journey/JourneyResults/$fromId/to/$toParam") {
                     // No leg asks the rider to walk longer than this (the Planner's default allows
                     // far more, offering an all-walk route beside the rides).
                     parameter("maxWalkingMinutes", MAX_WALKING_MINUTES)

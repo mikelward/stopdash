@@ -15,6 +15,7 @@ import app.stopdash.domain.JourneyPlanner
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.TflException
+import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripRoute
 import java.time.Duration
 import java.time.Instant
@@ -259,7 +260,7 @@ class TripViewModel(
                 for (toId in toIds) {
                     launch {
                         val routes = try {
-                            withContext(io) { planner.journeys(fromId, toId) }
+                            withContext(io) { planner.journeys(fromId, TripDestination.Stop(toId)) }
                         } catch (e: TflException) {
                             // Neither end is logged: together they're a trip the rider chose.
                             warn("trip plan failed: ${e::class.simpleName}")

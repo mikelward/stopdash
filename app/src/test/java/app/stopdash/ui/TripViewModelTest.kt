@@ -20,6 +20,7 @@ import app.stopdash.domain.RouteStops
 import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.TflException
+import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTiming
@@ -89,12 +90,17 @@ class TripViewModelTest {
         var byDestination: Map<String, List<TripRoute>> = emptyMap()
         var failFor: Set<String> = emptySet()
         var delays: Map<String, Long> = emptyMap()
-        override suspend fun journeys(fromId: String, toId: String): List<TripRoute> {
+        override suspend fun journeys(fromId: String, to: TripDestination): List<TripRoute> {
             calls++
-            delays[toId]?.let { delay(it) }
+            // Keyed by the stop id (or a place's name), matching how these tests plan by destination.
+            val key = when (to) {
+                is TripDestination.Stop -> to.id
+                is TripDestination.Place -> to.name
+            }
+            delays[key]?.let { delay(it) }
             failWith?.let { throw it }
-            if (toId in failFor) throw TflException.Offline(null)
-            return byDestination[toId] ?: routes
+            if (key in failFor) throw TflException.Offline(null)
+            return byDestination[key] ?: routes
         }
     }
 
