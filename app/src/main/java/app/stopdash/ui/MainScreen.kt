@@ -4275,54 +4275,9 @@ internal fun DestinationLine(
 @Composable
 private fun RowScope.DestinationLabelContent(label: String, branch: String?, modifier: Modifier) {
     if (branch == null) {
-        val style = MaterialTheme.typography.titleMedium
-        val abbreviated = remember(label) { DestinationAbbreviations.abbreviate(label) }
-        val floor = remember(label) { DestinationAbbreviations.floor(label) }
-        if (abbreviated == label && floor == label) {
-            // Nothing to shorten (a one-word name, no mapped words): show it, and elide with a single
-            // "…" (never a mid-glyph cut) only if the countdown leaves too little room.
-            Text(
-                text = label,
-                style = style,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = modifier,
-            )
-        } else {
-            // Measure the ladder and show the longest form that fits — full, then word-abbreviated
-            // ("East Finchley" → "E. Finchley"), then the floor ("Battersea Power" → "Battersea P.") —
-            // eliding with a single "…" only below the floor (SPEC destination-label — shorten before
-            // eliding, and never cut mid-glyph).
-            BoxWithConstraints(modifier = modifier) {
-                val measurer = rememberTextMeasurer()
-                // Key each measurement on the font scale, not the text alone: a display-size /
-                // accessibility resize grows the text while the row's px width is unchanged, so a
-                // width cached on the string would stay stale and the shrink never fire.
-                val fontScale = LocalDensity.current.fontScale
-                fun widthOf(text: String) = measurer.measure(text, style, maxLines = 1).size.width
-                val fullWidth = remember(label, style, fontScale) { widthOf(label) }
-                val abbrevWidth = remember(abbreviated, style, fontScale) { widthOf(abbreviated) }
-                val max = constraints.maxWidth
-                val display = when {
-                    fullWidth <= max -> label
-                    abbrevWidth <= max -> abbreviated
-                    else -> floor
-                }
-                Text(
-                    text = display,
-                    style = style,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    // Keep the full name for a screen reader when the visible text is shortened.
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .then(
-                            if (display != label) Modifier.semantics { contentDescription = label }
-                            else Modifier,
-                        ),
-                )
-            }
-        }
+        // The longest of full, word-abbreviated and floor that fits, eliding with a single "…" only
+        // below the floor (SPEC destination-label — shorten before eliding, never cut mid-glyph).
+        ShortenedName(label, MaterialTheme.typography.titleMedium, modifier)
     } else {
         // The branch is the cue that tells a branching line's two trunks apart, so it is kept whole:
         // the branch lays out at its natural width and the terminus takes the leftover, shrinking

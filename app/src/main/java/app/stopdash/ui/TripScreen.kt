@@ -1039,13 +1039,7 @@ private fun RideStops(card: List<TripTiming.Estimate>, statuses: Map<String, Lin
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(20.dp),
                 )
-                Text(
-                    text = start.fromName,
-                    style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f).padding(start = 8.dp),
-                )
+                ShortenedName(start.fromName, MaterialTheme.typography.bodyLarge, Modifier.weight(1f).padding(start = 8.dp))
                 Text(
                     text = stringResource(R.string.trip_walk_minutes, minutes),
                     style = MaterialTheme.typography.titleMedium,
@@ -1064,13 +1058,8 @@ private fun RideStops(card: List<TripTiming.Estimate>, statuses: Map<String, Lin
                 )
                 // A disrupted line's ⚠ beside its own pill; beside a cut pill, for any of its lines.
                 linesWarning(lines, statuses)?.let { DisruptionWarningGlyph(it, Modifier.padding(start = 4.dp)) }
-                Text(
-                    text = ride.toName,
-                    style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f).padding(start = 8.dp),
-                )
+                // Shortened as the main screen's destinations are, before any "…" (SPEC destination-label).
+                ShortenedName(ride.toName, MaterialTheme.typography.bodyLarge, Modifier.weight(1f).padding(start = 8.dp))
                 if (index > 0) {
                     times.headways.getOrNull(index - 1)?.let { headway ->
                         val even = headway.min == headway.max
@@ -1136,13 +1125,15 @@ private fun CardHeader(card: List<TripTiming.Estimate>, statuses: Map<String, Li
     val first = estimate.route.rides.firstOrNull() ?: return RouteSummary(card, statuses)
     Row(verticalAlignment = Alignment.CenterVertically) {
         if (walk.toMinutes() < 1) {
-            Text(
-                text = stringResource(R.string.trip_from, first.fromName),
-                style = MaterialTheme.typography.titleSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f).padding(end = 12.dp),
-            )
+            // "From ‹stop›" around a stand-in for the stop, so the words around it are drawn whole and
+            // only the name shortens and elides.
+            val from = stringResource(R.string.trip_from, "\u0000")
+            val style = MaterialTheme.typography.titleSmall
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                from.substringBefore('\u0000').takeIf { it.isNotEmpty() }?.let { Text(it, style = style, maxLines = 1, softWrap = false) }
+                ShortenedName(first.fromName, style, Modifier.weight(1f, fill = false))
+                from.substringAfter('\u0000', "").takeIf { it.isNotEmpty() }?.let { Text(it, style = style, maxLines = 1, softWrap = false) }
+            }
         }
         Text(
             text = arrivalText(estimate),

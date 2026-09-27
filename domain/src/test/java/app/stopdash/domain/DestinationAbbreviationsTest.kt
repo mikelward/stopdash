@@ -97,4 +97,36 @@ class DestinationAbbreviationsTest {
         assertEquals("Brixton", floor("Brixton"))
         assertEquals("", floor(""))
     }
+
+    @Test
+    fun `lane shortens to ln`() {
+        assertEquals("Wood Ln", abbrev("Wood Lane"))
+        assertEquals("Turnpike Ln", floor("Turnpike Lane"))
+    }
+
+    @Test
+    fun `market shortens to mkt`() {
+        assertEquals("Bush Mkt", abbrev("Bush Market"))
+    }
+
+    // A named word keeps the rest whole: "Canada Water Bus Stn" before it floors to initials.
+    @Test
+    fun `station shortens to stn`() {
+        assertEquals("Canada Water Bus Stn", abbrev("Canada Water Bus Station"))
+        assertEquals("Canada Water Bus Stn", floor("Canada Water Bus Station"))
+    }
+
+    // A station TfL names for two places ("Shepherd's Bush Market / Wood Lane") shortens each alike,
+    // the slash and its spacing kept.
+    @Test
+    fun `each part of a slash-separated name shortens on its own`() {
+        assertEquals("Wood Ln / White City Rd", abbrev("Wood Lane / White City Road"))
+        assertEquals("Wood Ln/N. Acton", abbrev("Wood Lane/North Acton"))
+        // Each part floors to its own identity: a mapped word where one maps, else first word + initials.
+        assertEquals("Shepherd's Bush Mkt / Wood Ln", floor("Shepherd's Bush Market / Wood Lane"))
+        assertEquals("Battersea P. / Elephant & C.", floor("Battersea Power / Elephant & Castle"))
+        // Idempotent, and a bare slash is left alone.
+        assertEquals("Wood Ln / White City Rd", abbrev(abbrev("Wood Lane / White City Road")))
+        assertEquals("/", floor("/"))
+    }
 }
