@@ -939,9 +939,11 @@ D4) falls back to the
 Planner's own time for it, as long as the rider can reach the Planner's departure for that leg
 (the legs before it, or the walk from "Here", get the rider there in time). A Tube, DLR, Overground
 or Elizabeth line leg the rider reaches past its live predictions (its trains running, just not
-predicted that far ahead, its predictions reaching at least 20 minutes out) is boarded as they
-arrive, since those lines run every few minutes (maintainer, 2026-09-26); predictions ending sooner may
-be the night's last train. Otherwise the Planner's train is missed and nothing says when the next one
+predicted that far ahead) is boarded as they arrive, since those lines run every few minutes
+(maintainer, 2026-09-26) — as long as its predictions show it doing so now: several trains, none long
+after the one before, where thinning trains may be the night's last (maintainer, 2026-09-27). How far
+the predictions reach is no test: TfL predicts only trains already running, so near a line's start
+they end within about a quarter of an hour all day, which withheld routes changing there. Otherwise the Planner's train is missed and nothing says when the next one
 leaves (a National Rail, tram or bus leg, a line with no trains, or arrivals that failed), so StopDash
 **withholds that route's arrival** rather than guess a wait: the route shows "arrival unknown" in place of duration · arrival, and
 sorts after every route in its tier that has an arrival, until a refresh brings live trains for the
