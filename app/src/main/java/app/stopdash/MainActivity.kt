@@ -644,6 +644,9 @@ class MainActivity : ComponentActivity() {
                                                     warn = ::logStarWarning,
                                                 ),
                                                 stationFinder,
+                                                // The same TfL client resolves a typed postcode to places
+                                                // (it implements PostcodeResolver) — favorite setup only.
+                                                postcodes = stationFinder,
                                                 // The same bundled index From…/To… search uses, so the
                                                 // picker matches identically (SPEC *Finding stops*).
                                                 loadIndex = { StationIndexStore.load(applicationContext) },
@@ -664,6 +667,8 @@ class MainActivity : ComponentActivity() {
                                     onDelete = favoritePlacesModel::delete,
                                     onQueryChange = favoritePlacesModel::onQueryChange,
                                     onPick = favoritePlacesModel::onPick,
+                                    onResolvePostcode = favoritePlacesModel::resolvePostcode,
+                                    onPickCandidate = favoritePlacesModel::onPickCandidate,
                                     onLabelChange = favoritePlacesModel::onLabelChange,
                                     onSave = favoritePlacesModel::commit,
                                     onCancelEditor = favoritePlacesModel::cancelEditor,

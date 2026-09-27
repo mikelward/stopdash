@@ -36,7 +36,9 @@ import app.stopdash.R
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlacesSet
+import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.StationMatch
+import app.stopdash.domain.UkPostcode
 
 /**
  * The favorite-places editor (SPEC D9), reached from Settings and hosted as an activity-level overlay
@@ -56,6 +58,8 @@ fun FavoritePlacesScreen(
     onDelete: (String) -> Unit,
     onQueryChange: (String) -> Unit,
     onPick: (StationMatch) -> Unit,
+    onResolvePostcode: () -> Unit = {},
+    onPickCandidate: (PlaceCandidate) -> Unit = {},
     onLabelChange: (String) -> Unit,
     onSave: () -> Unit,
     onCancelEditor: () -> Unit,
@@ -125,6 +129,8 @@ fun FavoritePlacesScreen(
                         loaded = state.loaded,
                         onQueryChange = onQueryChange,
                         onPick = onPick,
+                        onResolvePostcode = onResolvePostcode,
+                        onPickCandidate = onPickCandidate,
                         onLabelChange = onLabelChange,
                         onSave = onSave,
                         onRetrySearch = onRetrySearch,
@@ -266,6 +272,8 @@ private fun PlaceEditor(
     loaded: Boolean,
     onQueryChange: (String) -> Unit,
     onPick: (StationMatch) -> Unit,
+    onResolvePostcode: () -> Unit,
+    onPickCandidate: (PlaceCandidate) -> Unit,
     onLabelChange: (String) -> Unit,
     onSave: () -> Unit,
     onRetrySearch: () -> Unit,
@@ -281,6 +289,18 @@ private fun PlaceEditor(
             modifier = Modifier.fillMaxWidth().testTag("placeSearchField"),
         )
         Spacer(modifier = Modifier.height(8.dp))
+        // When the text looks like a postcode, offer to resolve it (a station name search would never
+        // match one). Shown above the station results; only a complete postcode is tappable (SPEC D9).
+        val showingPostcode = editor.coordinate == null && UkPostcode.looksLikePartial(editor.query)
+        if (showingPostcode) {
+            PostcodeSection(
+                query = editor.query,
+                editor = editor,
+                onResolve = onResolvePostcode,
+                onPickCandidate = onPickCandidate,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+        }
         when {
             editor.searching -> Text(
                 text = stringResource(R.string.favorite_places_searching),
@@ -309,8 +329,10 @@ private fun PlaceEditor(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,
             )
+            // The postcode section is the answer for a postcode-shaped query, so don't also say the
+            // station search found "no matches" beneath it (Codex).
             editor.query.trim().length >= FavoritePlacesViewModel.MIN_QUERY_LENGTH &&
-                editor.results.isEmpty() -> Text(
+                editor.results.isEmpty() && !showingPostcode -> Text(
                 text = stringResource(R.string.station_search_no_matches),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -389,6 +411,86 @@ private fun WriteErrorRow(onDismiss: () -> Unit) {
         TextButton(onClick = onDismiss, modifier = Modifier.testTag("dismissWriteError")) {
             Text(stringResource(R.string.action_dismiss))
         }
+    }
+}
+
+/**
+ * The postcode affordance shown above the station results when the query looks like a postcode: a
+ * tappable row that resolves a complete postcode (SPEC D9), a spinner while it resolves, the resolved
+ * place candidates to choose from, or a retry/"no places" state.
+ */
+@Composable
+private fun PostcodeSection(
+    query: String,
+    editor: FavoritePlacesViewModel.Editor,
+    onResolve: () -> Unit,
+    onPickCandidate: (PlaceCandidate) -> Unit,
+) {
+    val code = UkPostcode.format(query) ?: query.trim().uppercase()
+    val complete = UkPostcode.isComplete(query)
+    when {
+        editor.postcodeResolving -> Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("postcodeResolving"),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.favorite_places_postcode_resolving, code),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+        }
+        editor.postcodeCandidates.isNotEmpty() -> Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = stringResource(R.string.favorite_places_postcode_heading, code),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 4.dp),
+            )
+            editor.postcodeCandidates.forEach { candidate ->
+                Text(
+                    text = candidate.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onPickCandidate(candidate) }
+                        .padding(vertical = 8.dp)
+                        .testTag("postcodeCandidate"),
+                )
+            }
+        }
+        editor.postcodeFailed -> Text(
+            text = stringResource(R.string.favorite_places_postcode_failed),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onResolve() }
+                .padding(vertical = 8.dp)
+                .testTag("postcodeFailed"),
+        )
+        editor.postcodeNoResults -> Text(
+            text = stringResource(R.string.favorite_places_postcode_none, code),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("postcodeNone"),
+        )
+        // Not yet looked up: the affordance. Tappable only once the postcode is complete.
+        else -> Text(
+            text = stringResource(
+                if (complete) R.string.favorite_places_postcode_lookup else R.string.favorite_places_postcode_partial,
+                code,
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (complete) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (complete) Modifier.clickable { onResolve() } else Modifier)
+                .padding(vertical = 8.dp)
+                .testTag("postcodeRow"),
+        )
     }
 }
 

@@ -9,10 +9,13 @@ import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoritePlacesStore
 import app.stopdash.domain.FixedLocation
+import app.stopdash.domain.PlaceCandidate
+import app.stopdash.domain.PostcodeResolver
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.TflException
+import app.stopdash.domain.UkPostcode
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -50,6 +53,9 @@ import kotlinx.coroutines.withContext
 class FavoritePlacesViewModel(
     private val store: FavoritePlacesStore,
     private val finder: StationFinder,
+    // Resolves a typed postcode to place candidates (TfL Journey Planner). Defaults to a no-op so the
+    // other surfaces/tests that don't exercise postcodes need no resolver; production passes the client.
+    private val postcodes: PostcodeResolver = PostcodeResolver { emptyList() },
     private val io: CoroutineDispatcher = Dispatchers.IO,
     // The bundled station index, so the picker matches on the device as the user types and returns the
     // same ranked list as From…/To… (SPEC *Finding stops*); loaded once, off the main thread, on first
@@ -113,6 +119,16 @@ class FavoritePlacesViewModel(
         // unresolvable — the row says so and stays tappable to retry, rather than presenting a temporary
         // outage as "no location". Reset per search. Codex.
         val resolveFailedIds: Set<String> = emptySet(),
+        // Postcode entry (SPEC D9): when the query looks like a postcode, the screen offers a "Postcode"
+        // row; tapping a complete one resolves it to place candidates the user chooses from (never
+        // auto-picked). These track that lookup; all reset when the query changes.
+        val postcodeResolving: Boolean = false,
+        val postcodeCandidates: List<PlaceCandidate> = emptyList(),
+        // The lookup ran and returned nothing (TfL places the postcode nowhere) — distinct from "not yet
+        // looked up", so the row can say "no places" rather than re-offer the tap.
+        val postcodeNoResults: Boolean = false,
+        // The lookup failed (TfL unreachable): the row says so and stays tappable to retry.
+        val postcodeFailed: Boolean = false,
     ) {
         val editing: Boolean get() = existingId != null
         val canSave: Boolean get() = coordinate != null && label.isNotBlank() && !saving
@@ -123,6 +139,7 @@ class FavoritePlacesViewModel(
 
     private var search: Job? = null
     private var resolve: Job? = null
+    private var postcode: Job? = null
 
     // Bumped whenever the editor is opened, replaced or closed, so an in-flight save can tell whether
     // the editor it started for is still the one on screen (see [commit]). Not changed by field edits
@@ -156,6 +173,7 @@ class FavoritePlacesViewModel(
     fun startAdd(kind: FavoriteKind, defaultLabel: String) {
         search?.cancel()
         resolve?.cancel()
+        postcode?.cancel()
         // Every new place gets its id now (persisted with the draft), so a save retried after a failure
         // or restored after process death reuses it and keeps a stable id — a reserved kind upserts by
         // kind, but a changing id would still break identity for anything that references it (Codex).
@@ -166,6 +184,7 @@ class FavoritePlacesViewModel(
     fun startEdit(place: FavoritePlace) {
         search?.cancel()
         resolve?.cancel()
+        postcode?.cancel()
         setEditor(
             Editor(
                 kind = place.kind,
@@ -184,6 +203,7 @@ class FavoritePlacesViewModel(
     fun cancelEditor() {
         search?.cancel()
         resolve?.cancel()
+        postcode?.cancel()
         setEditor(null)
     }
 
@@ -202,10 +222,33 @@ class FavoritePlacesViewModel(
     fun onQueryChange(query: String) {
         if (savingNow()) return // don't disturb a draft mid-write; completion would discard the change
         // Editing the query after a pick invalidates that selection: otherwise its coordinate would
-        // linger and Save could store the old location under the new query/label (Codex P1).
+        // linger and Save could store the old location under the new query/label (Codex P1). A pending
+        // postcode lookup and any candidates it offered belong to the old text, so drop them too.
         resolve?.cancel()
-        updateEditor { it.copy(query = query, coordinate = null, placeName = null, resolvingId = null) }
-        startSearch(query)
+        postcode?.cancel()
+        updateEditor {
+            it.copy(
+                query = query, coordinate = null, placeName = null, resolvingId = null,
+                postcodeResolving = false, postcodeCandidates = emptyList(),
+                postcodeNoResults = false, postcodeFailed = false,
+            )
+        }
+        // A postcode-shaped query goes to the Journey Planner when the user taps the "Postcode" row, not
+        // to the stop search — so don't also fire an automatic /StopPoint/Search for it (SPEC D9; a
+        // needless request otherwise). The **digit** is the discriminator: a plain two-letter prefix is
+        // how station names start ("Ba" → Bank), so those still search; a query with a digit ("N1",
+        // "SW1A") is a postcode, not a station name.
+        if (UkPostcode.looksLikePartial(query) && query.any(Char::isDigit)) {
+            search?.cancel()
+            updateEditor {
+                it.copy(
+                    searching = false, results = emptyList(), searchFailed = false, remoteFailed = false,
+                    unresolvableIds = emptySet(), resolveFailedIds = emptySet(),
+                )
+            }
+        } else {
+            startSearch(query)
+        }
     }
 
     // True while a save is in flight: the editor's inputs are frozen (also disabled in the UI), so a
@@ -269,9 +312,59 @@ class FavoritePlacesViewModel(
     }
 
     /** Adopt [match] at [coordinate] as the editor's chosen location. */
-    private fun adopt(match: StationMatch, coordinate: Coordinates) {
+    private fun adopt(match: StationMatch, coordinate: Coordinates) = adoptLocation(match.name, coordinate)
+
+    /**
+     * Look up the typed postcode and offer the place(s) it names (SPEC D9). A no-op unless the query is a
+     * complete postcode ([UkPostcode.isComplete]); the caller only enables the affordance then. Nothing
+     * is auto-picked — the user chooses a candidate ([onPickCandidate]). The postcode is the rider's own
+     * input, sent to TfL like a routing query and never logged (SPEC *Privacy*).
+     */
+    fun resolvePostcode() {
+        if (savingNow()) return
+        val query = _state.value.editor?.query ?: return
+        val code = UkPostcode.format(query) ?: return
+        postcode?.cancel()
+        updateEditor {
+            it.copy(postcodeResolving = true, postcodeFailed = false, postcodeNoResults = false, postcodeCandidates = emptyList())
+        }
+        postcode = viewModelScope.launch {
+            val candidates = try {
+                withContext(io) { postcodes.resolvePostcode(code) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                warn("favorite place postcode resolve failed: ${e.javaClass.simpleName}")
+                // Ignore a failure the user has moved on from (a newer query cancels/replaces this).
+                if (_state.value.editor?.query == query) {
+                    updateEditor { it.copy(postcodeResolving = false, postcodeFailed = true) }
+                }
+                return@launch
+            }
+            // Ignore a completion the user has moved on from.
+            if (_state.value.editor?.query != query) return@launch
+            updateEditor {
+                it.copy(
+                    postcodeResolving = false,
+                    postcodeCandidates = candidates,
+                    postcodeNoResults = candidates.isEmpty(),
+                    postcodeFailed = false,
+                )
+            }
+        }
+    }
+
+    /** Adopt a resolved postcode [candidate] as the place's location, like picking a search result. */
+    fun onPickCandidate(candidate: PlaceCandidate) {
+        if (savingNow()) return
+        adoptLocation(candidate.name, candidate.coordinate)
+    }
+
+    /** Adopt a chosen place [name] at [coordinate] — a picked station, or a resolved postcode candidate. */
+    private fun adoptLocation(name: String, coordinate: Coordinates) {
         search?.cancel()
         resolve?.cancel()
+        postcode?.cancel()
         updateEditor {
             // Fill the label from the stop only when it's blank or was itself auto-filled by an earlier
             // pick — so repicking after changing the query updates the name too, but a user-typed label
@@ -279,14 +372,18 @@ class FavoritePlacesViewModel(
             val deriveLabel = it.label.isBlank() || it.labelFromPick
             it.copy(
                 coordinate = coordinate,
-                placeName = match.name,
-                label = if (deriveLabel) match.name else it.label,
+                placeName = name,
+                label = if (deriveLabel) name else it.label,
                 labelFromPick = deriveLabel,
-                query = match.name,
+                query = name,
                 results = emptyList(),
                 searching = false,
                 searchFailed = false,
                 resolvingId = null,
+                postcodeResolving = false,
+                postcodeCandidates = emptyList(),
+                postcodeNoResults = false,
+                postcodeFailed = false,
             )
         }
     }
