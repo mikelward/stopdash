@@ -46,6 +46,7 @@ import io.ktor.http.encodeURLPathPart
 import io.ktor.serialization.kotlinx.json.json
 import java.io.IOException
 import java.net.UnknownHostException
+import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -94,6 +95,9 @@ class KtorTflClient(
     // The lookup decodes a ~150 KB response a line, so it runs off the main thread; a test swaps in
     // its own dispatcher to await it.
     private val alertDirectionDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    // The time a line alert's start is judged against ([AlertStart]): work starting on a later
+    // day is planned, not a disruption. Injected so a test can pin it.
+    private val clock: () -> Instant = Instant::now,
 ) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, JourneyPlanner, PostcodeResolver, PlaceSearch, VehicleSource {
     override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed): List<TripRoute> =
         tflRequest { key ->
@@ -330,7 +334,9 @@ class KtorTflClient(
         lookUpAlertDirections(lines)
         val directions = alertDirections?.takeIf { alertDirectionScope != null }
         return lines.mapNotNull { line ->
-            line.toLineStatus { reason -> directions?.directionsOf(line.id, reason) }
+            line.toLineStatus(clock(), onBadDate = { warn("line ${line.id}: unreadable alert posting date") }) { reason ->
+                directions?.directionsOf(line.id, reason)
+            }
                 // Marked while a lookup for it runs, so the caller asks again next refresh instead
                 // of reusing this unsplit answer for its whole reuse window (Codex, PR #334).
                 ?.let { if (directions?.anyUnknown(line) == true) it.copy(awaitingDirections = true) else it }

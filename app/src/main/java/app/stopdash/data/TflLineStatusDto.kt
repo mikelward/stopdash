@@ -1,9 +1,13 @@
 package app.stopdash.data
 
+import app.stopdash.domain.AlertStart
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.ResolvedDisruption
 import app.stopdash.domain.mostSevereDisruption
 import app.stopdash.domain.resolveDisruption
+import java.time.Instant
+import java.time.LocalDate
 import kotlinx.serialization.Serializable
 
 /**
@@ -30,7 +34,23 @@ data class TflLineStatusEntryDto(
     // Only filled in by a `?detail=true` request ([LineAlertDirections]): the plain one leaves
     // `affectedRoutes` empty, and the detail is ~40× the size, so it is fetched once per new alert.
     val disruption: TflLineDisruptionDto? = null,
+    // When TfL posted the alert (`fromDate`) — not when the work starts, which only the text says
+    // ([AlertStart]), but the anchor that places a start written without its year.
+    val validityPeriods: List<TflValidityPeriodDto> = emptyList(),
 )
+
+@Serializable
+data class TflValidityPeriodDto(
+    val fromDate: String? = null,
+)
+
+/** When TfL posted this entry: its earliest `fromDate`, or null when it gave none. */
+fun TflLineStatusEntryDto.postedAt(): Instant? =
+    validityPeriods.mapNotNull { period -> period.fromDate?.let { runCatching { Instant.parse(it) }.getOrNull() } }.minOrNull()
+
+/** The `fromDate`s TfL gave for this entry that can't be read, so none of them anchors a year. */
+fun TflLineStatusEntryDto.unreadablePostedDates(): List<String> =
+    validityPeriods.mapNotNull { it.fromDate?.takeIf { raw -> runCatching { Instant.parse(raw) }.isFailure } }
 
 @Serializable
 data class TflLineDisruptionDto(
@@ -66,7 +86,7 @@ fun TflLineStatusEntryDto.affectedDirections(): Set<String> =
  * TfL's `isNow` flag is deliberately **not** used to hide a "future" alert: it reads `false`
  * even for planned closures currently in effect (a Sunday Overground closure in progress),
  * so it marks "unplanned", not "current", and filtering on it would hide live disruptions —
- * telling current from future needs the dates in the text.
+ * telling current from future needs the dates in the text, which [now] enables below.
  *
  * An **empty `lineStatuses`** (which the tolerant DTO accepts) is *unknown*, not good
  * service: manufacturing a clean status from absent data would show ordinary countdowns for
@@ -76,33 +96,72 @@ fun TflLineStatusEntryDto.affectedDirections(): Set<String> =
  * [directionsOf] gives the directions an alert's reason was found to affect ([LineAlertDirections]),
  * or null when not looked up; from it the status is also reduced per direction
  * ([LineStatus.byDirection]), so a row only carries alerts for the way it is going.
+ *
+ * Given [now], an alert whose text says it starts on a later day ([AlertStart]) is kept out of the
+ * disruption and listed in [LineStatus.planned] instead; one that can't be dated, or whose posting
+ * date can't be read ([onBadDate] is told), counts as under way. Without [now] every alert counts as under way, as before.
  */
-fun TflLineDto.toLineStatus(directionsOf: (reason: String) -> Set<String>? = { null }): LineStatus? {
+fun TflLineDto.toLineStatus(
+    now: Instant? = null,
+    // Told of a posting date that can't be read, the raw value only (TfL's public text, no user data).
+    onBadDate: (String) -> Unit = {},
+    directionsOf: (reason: String) -> Set<String>? = { null },
+): LineStatus? {
     if (lineStatuses.isEmpty()) return null
-    val disrupted = lineStatuses
+    val today = now?.atZone(AlertStart.ZONE)?.toLocalDate()
+    val alerts = lineStatuses
         .filter { it.statusSeverity != LineStatus.GOOD_SERVICE }
-        .map { it to resolveDisruption(it.statusSeverityDescription, it.statusSeverity, it.reason) }
-    val worst = mostSevereDisruption(disrupted.map { it.second })
-    return if (worst != null) {
-        val whole = worst.toLineStatus(id)
-        // Each direction's worst, from the alerts that apply to it: its own, plus any whose
-        // direction isn't known (counted for both, so an unlooked-up alert is never hidden). Kept
-        // only when it differs from the line-wide status somewhere, so an unsplit line stays lean.
-        val byDirection = LineAlertDirections.DIRECTIONS.associateWith { direction ->
-            mostSevereDisruption(
-                disrupted.filter { (entry, _) -> directionsOf(entry.reason)?.contains(direction) ?: true }.map { it.second },
-            )?.toLineStatus(id) ?: LineStatus(id, LineStatus.GOOD_SERVICE, GOOD_SERVICE_LABEL)
+        .map { entry ->
+            Alert(
+                entry = entry,
+                resolved = resolveDisruption(entry.statusSeverityDescription, entry.statusSeverity, entry.reason),
+                // Set only for work that hasn't started ([AlertStart]); null is under way, or unknown.
+                startsOn = now?.takeIf { entry.readablePostedDate(onBadDate) }
+                    ?.let { AlertStart.startDate(entry.reason, it, entry.postedAt()) }?.takeIf { it.isAfter(today) },
+            )
         }
-        whole.copy(byDirection = byDirection.takeIf { split -> split.values.any { it != whole } }.orEmpty())
-    } else {
-        // Non-empty, all good service: name the good status.
-        LineStatus(
-            lineId = id,
-            severity = LineStatus.GOOD_SERVICE,
-            description = lineStatuses.first().statusSeverityDescription.ifBlank { GOOD_SERVICE_LABEL },
-        )
+    // A good status names TfL's own good wording where it gave one; a line whose only alerts are
+    // still to come is a good service now, never named after the alert ("Special Service").
+    val good = LineStatus(
+        lineId = id,
+        severity = LineStatus.GOOD_SERVICE,
+        description = lineStatuses.firstOrNull { it.statusSeverity == LineStatus.GOOD_SERVICE }
+            ?.statusSeverityDescription?.ifBlank { null } ?: GOOD_SERVICE_LABEL,
+    )
+    // The worst alert under way among those [applies] to, else good service, with the ones still to
+    // come beside it, soonest first.
+    fun reduce(applies: (TflLineStatusEntryDto) -> Boolean): LineStatus {
+        val mine = alerts.filter { applies(it.entry) }
+        val current = mostSevereDisruption(mine.filter { it.startsOn == null }.map { it.resolved })
+        val planned = mine.mapNotNull { alert ->
+            alert.startsOn?.let { PlannedAlert(alert.resolved.label, alert.resolved.fullText, it, alert.resolved.severity, alert.resolved.isFallback) }
+        }.sortedBy { it.startsOn }.distinct()
+        return (current?.toLineStatus(id) ?: good).copy(planned = planned)
     }
+    val whole = reduce { true }
+    if (alerts.isEmpty()) return whole
+    // Each direction's own, from the alerts that apply to it: its own, plus any whose direction
+    // isn't known (counted for both, so an unlooked-up alert is never hidden). Kept only when it
+    // differs from the line-wide status somewhere, so an unsplit line stays lean.
+    val byDirection = LineAlertDirections.DIRECTIONS.associateWith { direction ->
+        reduce { entry -> directionsOf(entry.reason)?.contains(direction) ?: true }
+    }
+    return whole.copy(byDirection = byDirection.takeIf { split -> split.values.any { it != whole } }.orEmpty())
 }
+
+// False when TfL gave a posting date that can't be read: without the anchor a missing year is a
+// guess, so the alert stays under way, the safe side (Codex, PR #337), and the oddity is reported.
+private fun TflLineStatusEntryDto.readablePostedDate(onBadDate: (String) -> Unit): Boolean {
+    val bad = unreadablePostedDates()
+    bad.forEach(onBadDate)
+    return bad.isEmpty()
+}
+
+private class Alert(
+    val entry: TflLineStatusEntryDto,
+    val resolved: ResolvedDisruption,
+    val startsOn: LocalDate?,
+)
 
 private fun ResolvedDisruption.toLineStatus(lineId: String): LineStatus =
     LineStatus(
@@ -112,6 +171,7 @@ private fun ResolvedDisruption.toLineStatus(lineId: String): LineStatus =
         // The chosen disruption's prose, for the route detail view; null when TfL named
         // the status but gave no reason (nothing to expand beyond the chip label).
         fullText = fullText.ifBlank { null },
+        isFallback = isFallback,
     )
 
 private const val GOOD_SERVICE_LABEL = "Good Service"

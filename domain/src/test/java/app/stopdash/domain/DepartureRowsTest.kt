@@ -622,6 +622,105 @@ class DepartureRowsTest {
     }
 
     @Test
+    fun `planned work reaches the row without flagging it`() {
+        val planned = PlannedAlert("Part Closure", "No service on Saturday 3 October.", java.time.LocalDate.of(2026, 10, 3))
+        val rows = DepartureRows.forStop(
+            "940GZZLUVIC", "Victoria",
+            listOf(departure("victoria", "Victoria", "outbound", "Brixton", 120)),
+            now, mapOf("victoria" to LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(planned))),
+        )
+        assertNull(rows.single().status)
+        assertEquals(listOf(planned), rows.single().plannedAlerts)
+    }
+
+    @Test
+    fun `planned work whose day has come is flagged, however old its status`() {
+        // Sorted as to come when fetched; by the time these rows are drawn its day has come
+        // (a later status check failed and this one was kept) — Codex, PR #337.
+        val planned = PlannedAlert("Part Closure", "No service on Friday 18 September.", java.time.LocalDate.of(2026, 9, 18), 5)
+        val rows = DepartureRows.across(
+            listOf(StopArrivals("940GZZLUVIC", "Victoria", listOf(departure("victoria", "Victoria", "outbound", "Brixton", 120)), fetchedAt = now)),
+            now, mapOf("victoria" to LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(planned))),
+        )
+        assertEquals("Part Closure", rows.single().status?.description)
+        assertEquals(emptyList<PlannedAlert>(), rows.single().plannedAlerts)
+    }
+
+    @Test
+    fun `a dismissed notice of work to come still flags the work once it starts`() {
+        // The ⓘ was put away; the disruption, on its day, is a new thing to see (SPEC *Disruptions*).
+        val planned = PlannedAlert("Part Closure", "No service on Friday 18 September.", java.time.LocalDate.of(2026, 9, 18), 5)
+        val statuses = mapOf("victoria" to LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(planned)))
+        val rows = DepartureRows.withoutDismissed(
+            DepartureRows.across(
+                listOf(StopArrivals("940GZZLUVIC", "Victoria", listOf(departure("victoria", "Victoria", "outbound", "Brixton", 120)), fetchedAt = now)),
+                now, statuses,
+            ),
+            setOf(DismissedAlert.ofPlanned("victoria", planned)),
+        )
+        assertEquals("Part Closure", rows.single().status?.description)
+    }
+
+    @Test
+    fun `a planned alert shown as started keeps its dismissal while its status is reused`() {
+        // Fetched the day before and reused past midnight: rows show it as under way, and dismissing
+        // it there must survive the next reconcile over the same status (Codex, PR #337).
+        val planned = PlannedAlert("Part Closure", "No service on Friday 18 September.", java.time.LocalDate.of(2026, 9, 18), 5)
+        val statuses = mapOf("victoria" to LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(planned)))
+        val shown = LineStatus.asOf(statuses, now).getValue("victoria")
+        assertTrue(DismissedAlert.ofLineStatus(shown) in DepartureRows.liveLineStatusAlerts(statuses, now))
+        assertTrue(DismissedAlert.ofPlanned("victoria", planned) in DepartureRows.liveLineStatusAlerts(statuses, now))
+    }
+
+    @Test
+    fun `a dismissed planned alert leaves its rows, and stays live while it's coming`() {
+        val first = PlannedAlert("Part Closure", "No service on Saturday 3 October.", java.time.LocalDate.of(2026, 10, 3))
+        val second = PlannedAlert("Diversion", "Buses divert from 12 October.", java.time.LocalDate.of(2026, 10, 12))
+        val statuses = mapOf("victoria" to LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(first, second)))
+        val rows = DepartureRows.forStop(
+            "940GZZLUVIC", "Victoria", listOf(departure("victoria", "Victoria", "outbound", "Brixton", 120)), now, statuses,
+        )
+        val dismissal = DismissedAlert.of(rows.single().copy(plannedAlerts = listOf(first)))
+        assertEquals(DismissedAlert.ofPlanned("victoria", first), dismissal)
+
+        val kept = DepartureRows.withoutDismissed(rows, setOf(checkNotNull(dismissal)))
+        assertEquals(listOf(second), kept.single().plannedAlerts)
+        assertTrue(dismissal in DepartureRows.liveLineStatusAlerts(statuses))
+    }
+
+    @Test
+    fun `dismissing a status-only row's disruption keeps its undismissed planned work`() {
+        val planned = PlannedAlert("Part Closure", "No service on Saturday 3 October.", java.time.LocalDate.of(2026, 10, 3))
+        val suspended = LineStatus("victoria", 2, "Suspended", planned = listOf(planned))
+        val rows = DepartureRows.across(
+            listOf(StopArrivals("940GZZLUVIC", "Victoria", emptyList(), fetchedAt = now, lines = listOf(LineRef("victoria", "Victoria", "tube")))),
+            now,
+            mapOf("victoria" to suspended),
+        )
+        val kept = DepartureRows.withoutDismissed(rows, setOf(DismissedAlert.ofLineStatus(suspended))).single()
+        assertNull(kept.status)
+        assertTrue(kept.statusDismissed)
+        assertEquals(listOf(planned), kept.plannedAlerts)
+        // With the planned alert dismissed too, the row has nothing left to carry.
+        assertTrue(
+            DepartureRows.withoutDismissed(
+                rows, setOf(DismissedAlert.ofLineStatus(suspended), DismissedAlert.ofPlanned("victoria", planned)),
+            ).isEmpty(),
+        )
+    }
+
+    @Test
+    fun `a status-only row carries the line's planned work too`() {
+        val planned = PlannedAlert("Part Closure", "No service on Saturday 3 October.", java.time.LocalDate.of(2026, 10, 3))
+        val rows = DepartureRows.across(
+            listOf(StopArrivals("940GZZLUVIC", "Victoria", emptyList(), fetchedAt = now, lines = listOf(LineRef("victoria", "Victoria", "tube")))),
+            now,
+            mapOf("victoria" to LineStatus("victoria", 2, "Suspended", planned = listOf(planned))),
+        )
+        assertEquals(listOf(planned), rows.single { it.lineId == "victoria" }.plannedAlerts)
+    }
+
+    @Test
     fun `a direction's own alert counts among the live ones, so its dismissal isn't pruned`() {
         val whole = LineStatus("bus1", 5, "Diversion", "Both ways")
         val outbound = LineStatus("bus1", 5, "Diversion", "Southbound only")

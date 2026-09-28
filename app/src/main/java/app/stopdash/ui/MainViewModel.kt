@@ -1084,7 +1084,7 @@ class MainViewModel(
             lineStatusRequests = if (toQuery.isNotEmpty()) 1 else 0
             // With nothing left to ask, the cached verdicts stand on their own.
             if (lineIds.isNotEmpty() && toQuery.isEmpty()) {
-                lineStatuses = cachedStatuses.filter { it.disrupted }.associateBy { it.lineId }
+                lineStatuses = cachedStatuses.filter { it.hasAlerts }.associateBy { it.lineId }
                 determinedLineIds = cachedStatuses.mapTo(mutableSetOf()) { it.lineId }
             }
             if (toQuery.isNotEmpty()) {
@@ -1101,7 +1101,7 @@ class MainViewModel(
                         lineStatusOmitted.remove(it.lineId)
                     }
                     val statuses = cachedStatuses + fetched
-                    lineStatuses = statuses.filter { it.disrupted }.associateBy { it.lineId }
+                    lineStatuses = statuses.filter { it.hasAlerts }.associateBy { it.lineId }
                     // A line TfL returned no determinable status for is unknown, not
                     // clean — flag it so those rows aren't shown as verified-clean
                     // (the client drops such lines, so they're absent here).
@@ -1133,13 +1133,13 @@ class MainViewModel(
                         lineStatusOmitted[it] = answeredAt
                         lineStatusCache.remove(it)
                     }
-                    lineStatuses = cachedStatuses.filter { it.disrupted }.associateBy { it.lineId }
+                    lineStatuses = cachedStatuses.filter { it.hasAlerts }.associateBy { it.lineId }
                     determinedLineIds = cachedStatuses.mapTo(mutableSetOf()) { it.lineId }
                     warn("line status: TfL doesn't know line(s) ${toQuery.joinToString(",")}; not asked again")
                 } catch (e: Exception) {
                     // Only the cached verdicts are determined, so every line this request was for
                     // reads undetermined — the flag the callers derive is set (SPEC principle 1).
-                    lineStatuses = cachedStatuses.filter { it.disrupted }.associateBy { it.lineId }
+                    lineStatuses = cachedStatuses.filter { it.hasAlerts }.associateBy { it.lineId }
                     determinedLineIds = cachedStatuses.mapTo(mutableSetOf()) { it.lineId }
                     warn("line status fetch failed for ${toQuery.joinToString(",")}: ${reason(e)}")
                 }
@@ -1901,7 +1901,7 @@ class MainViewModel(
     ) {
         // Includes each near-me folded card's identity, so its dismissal isn't pruned as not-live.
         val live = DepartureRows.liveStopClosureAlerts(DepartureRows.across(shownStops, clock(), lineStatuses)) +
-            DepartureRows.liveLineStatusAlerts(lineStatuses)
+            DepartureRows.liveLineStatusAlerts(lineStatuses, clock())
         fun placeOf(stop: StopRef) = stopPlaceKey(stop.hubId, stop.clusterId, stop.name, stop.id)
         // A place with any member whose disruption lookup failed this cycle is not fully known, so it
         // is excluded from the checked set and its dismissals are retained.

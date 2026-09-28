@@ -2,6 +2,9 @@
 
 package app.stopdash.ui
 
+import androidx.compose.ui.platform.LocalConfiguration
+import app.stopdash.domain.PlannedAlert
+import java.time.format.DateTimeFormatter
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.LinkInteractionListener
@@ -111,6 +114,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -1020,6 +1024,10 @@ fun MainScreen(
                 { onDismissAlert(detailRow) }
             } else {
                 null
+            },
+            // One planned alert dismissed on its own: passed as a row standing for just that alert.
+            onDismissPlanned = { planned ->
+                onDismissAlert(detailRow.copy(status = null, stopDisruption = null, plannedAlerts = listOf(planned)))
             },
             journeys = journeys,
             onToggleJourney = onToggleJourney,
@@ -3454,7 +3462,9 @@ internal fun StopGroupCard(
                         // ellipsizes) when space is tight; the status text is unweighted, so the Row
                         // reserves its width — the status can't be squeezed to zero.
                         Box(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
+                            // Its disruption dismissed, planned work it still carries is noted instead.
                             row.status?.let { status -> DisruptionChip(status.description) }
+                                ?: row.plannedAlerts.firstOrNull()?.let { planned -> PlannedAlertGlyph(planned) }
                         }
                         // A dash when the line's source answered with no trains; "No data" when no
                         // source did; "No key" (a tap away in Settings) for a National Rail line a
@@ -3570,6 +3580,9 @@ internal fun LineRouteRow(
         LinePill(lineName = row.lineName, lineId = row.lineId, mode = row.mode, modifier = Modifier.widthIn(max = cardInnerWidth * 0.5f))
         destination(Modifier.weight(1f).padding(start = 8.dp, end = 12.dp))
         row.status?.let { status -> DisruptionWarningGlyph(status.description, Modifier.padding(end = 8.dp)) }
+            // Work still to come notes the row without flagging it: the disruption ⚠ wins when
+            // both apply, and the page lists both (SPEC *Disruptions*).
+            ?: row.plannedAlerts.firstOrNull()?.let { planned -> PlannedAlertGlyph(planned, Modifier.padding(end = 8.dp)) }
         times()
     }
 }
@@ -3709,6 +3722,86 @@ internal fun DisruptionWarningGlyph(description: String, modifier: Modifier = Mo
             traversalIndex = -1f
         },
     )
+}
+
+/**
+ * The note on a route row for work that hasn't started ([PlannedAlert]): an ⓘ in the muted text
+ * color, not the error one, since nothing is wrong yet — the row's countdowns stand. Announced
+ * first, like [DisruptionWarningGlyph], as the alert and the day it starts.
+ */
+@Composable
+internal fun PlannedAlertGlyph(alert: PlannedAlert, modifier: Modifier = Modifier) {
+    val description = stringResource(R.string.planned_alert_description, alert.label, plannedDate(alert))
+    Text(
+        text = "ⓘ",
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier.semantics {
+            contentDescription = description
+            traversalIndex = -1f
+        },
+    )
+}
+
+/** The day [alert] starts, short and in the rider's own locale ("13 Oct"). */
+@Composable
+internal fun plannedDate(alert: PlannedAlert): String {
+    val locale = LocalConfiguration.current.locales[0]
+    return remember(alert.startsOn, locale) {
+        alert.startsOn.format(DateTimeFormatter.ofPattern("d MMM", locale))
+    }
+}
+
+/**
+ * A planned alert on a route's page: its label in a neutral chip with the day it starts beside it,
+ * then TfL's text collapsed to its first line, in the muted surface rather than the error one.
+ */
+@Composable
+private fun PlannedAlertBlock(alert: PlannedAlert, modifier: Modifier = Modifier, onDismiss: (() -> Unit)? = null) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            // Outlined and neutral: a filled tint reads as a warning, and nothing is wrong yet.
+            Surface(
+                color = Color.Transparent,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                shape = RoundedCornerShape(8.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            ) {
+                Text(
+                    text = "ⓘ ${alert.label}",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+            }
+            Text(
+                text = stringResource(R.string.planned_alert_from, plannedDate(alert)),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f).padding(start = 8.dp),
+            )
+            // Every service alert is dismissible (SPEC *Disruptions*), a planned one on its own.
+            if (onDismiss != null) {
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = stringResource(R.string.alert_dismiss),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+        }
+        if (alert.fullText.isNotBlank()) {
+            CollapsibleStatus(
+                text = alert.fullText,
+                title = null,
+                modifier = Modifier.padding(top = 8.dp),
+                container = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }
 
 /**
@@ -3933,6 +4026,8 @@ internal fun RouteDetailScreen(
     // Dismisses the line's status alert (SPEC *Disruptions*): hidden until TfL changes its severity
     // or wording. Null shows no dismiss control.
     onDismissAlert: (() -> Unit)? = null,
+    // Dismisses one of the row's planned alerts ([DepartureRow.plannedAlerts]); null offers no ×.
+    onDismissPlanned: ((PlannedAlert) -> Unit)? = null,
     // The starred journeys (SPEC *Journeys*): a station on the stop list with one from this stop is
     // starred, and tapping a station stars or unstars the journey there. Null (a bus, whose return
     // leaves from another pole, or a caller without journeys) leaves the stations inert.
@@ -4165,6 +4260,15 @@ internal fun RouteDetailScreen(
                         modifier = Modifier.padding(top = 8.dp),
                     )
                 }
+            }
+            // Work still to come, after any disruption now: each with the day it starts, so a
+            // closure next month reads as notice, not as today's trouble (SPEC *Disruptions*).
+            row.plannedAlerts.forEach { planned ->
+                PlannedAlertBlock(
+                    planned,
+                    Modifier.padding(top = 12.dp),
+                    onDismiss = onDismissPlanned?.let { dismiss -> { dismiss(planned) } },
+                )
             }
             // The disruption-check state, independent of staleness (the two caveats are separate
             // facts, both shown when both apply — Codex): "couldn't check" whenever this row's line

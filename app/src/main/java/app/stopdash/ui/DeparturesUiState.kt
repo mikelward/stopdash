@@ -35,8 +35,9 @@ sealed interface DeparturesUiState {
      * anything.
      *
      * [lineStatuses] carries the disruptions found for the shown lines (keyed by line id,
-     * disrupted lines only), so a delayed or suspended line's rows are marked rather than
-     * shown as trustworthy (SPEC *Disruptions* / D3). [disruptionUnknown] is true when the
+     * only lines with an alert — disrupted now, or with planned work to come), so a delayed or
+     * suspended line's rows are marked rather than shown as trustworthy (SPEC *Disruptions* /
+     * D3), and a line with work still to come can note it. [disruptionUnknown] is true when the
      * status lookup itself failed while arrivals succeeded: the disruption state of some of
      * these departures was never checked, so the screen says so rather than pass them off as
      * verified-clean (SPEC *Disruptions*).

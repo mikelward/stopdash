@@ -24,6 +24,7 @@ import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.RouteFocus
 import app.stopdash.domain.RouteStop
 import app.stopdash.domain.RouteSequenceSource
@@ -36,6 +37,7 @@ import app.stopdash.domain.StopArrivals
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import java.time.Instant
+import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -203,6 +205,55 @@ class RouteDetailScreenScreenshotTest {
         composeRule.onNodeWithText(reason, substring = true).assertIsDisplayed()
 
         captureSnapshot("route-detail-disrupted.png")
+    }
+
+    @Test
+    fun plannedWork_isListedWithItsStartNotFlagged() {
+        // Work that hasn't started: listed with the day it starts, in the muted style, while the
+        // line reads as it does today — no disruption chip, no dismiss.
+        val planned = PlannedAlert(
+            label = "Part Closure",
+            fullText = "Saturday 3 October: no service between Station A and Station B. Use local buses.",
+            startsOn = LocalDate.of(2026, 10, 3),
+        )
+        val stop = StopArrivals(
+            stopId = "940GZZLUVIC",
+            stopName = "Victoria",
+            departures = listOf(
+                Departure("victoria", "Victoria", "northbound", "Walthamstow Central", null, now.plusSeconds(120), "tube"),
+            ),
+            fetchedAt = now,
+        )
+        val statuses = mapOf("victoria" to LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(planned)))
+        val row = DepartureRows.across(listOf(stop), now, statuses).first { it.upcoming.isNotEmpty() }
+        assertEquals(null, row.status)
+        val dismissed = mutableListOf<PlannedAlert>()
+        composeRule.setContent {
+            StopDashTheme {
+                RouteDetailScreen(
+                    row = row,
+                    isStarred = false,
+                    starrable = true,
+                    disruptionUnknown = false,
+                    stale = false,
+                    now = now,
+                    onToggleStar = {},
+                    onBack = {},
+                    onDismissAlert = {},
+                    onDismissPlanned = { dismissed += it },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("ⓘ Part Closure").assertIsDisplayed()
+        composeRule.onNodeWithText("From 3 Oct").assertIsDisplayed()
+        composeRule.onNodeWithText(planned.fullText, substring = true).assertIsDisplayed()
+        // Only the planned alert's own ×: there is no disruption to dismiss.
+        composeRule.onNodeWithContentDescription("Dismiss alert").performClick()
+        assertEquals(listOf(planned), dismissed)
+
+        captureSnapshot("route-detail-planned.png")
     }
 
     @Test

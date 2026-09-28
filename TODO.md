@@ -1792,18 +1792,25 @@ Builds on Phase 1's minimal line-status marking.
               its way also hid a row with no direction (most rail, a status-only row), even when
               the other way had its own alert. `DepartureRows.withoutDismissed` now shows the
               other way's alert there, as the widget and watch do (`LineStatusCheck.shown`).
-        - [ ] **Upcoming planned work as info** (maintainer, 2026-09-28): read the start date out
+        - [ ] **Trip cards by direction too**: a collapsed trip card's ⚠ and ⓘ read the line-wide
+              status, not the leg's direction, so a card riding the unaffected way still shows a
+              one-direction alert (Codex, PR #337). A leg carries no TfL direction until its trains
+              are seen; derive the card's marks from its direction-resolved rows instead.
+        - [ ] **Planned work's ⓘ on the widget and watch**: they persist a line check without its
+              planned work, so a line whose only alert is still to come shows as a clean
+              line there (it showed the ⚠ before), with no ⓘ in its place (Codex, PR #337). Needs
+              `planned` persisted with the check (and the watch envelope, a privacy-doc check) and
+              the glyph drawn by both surfaces. A check is refetched on the widget's own schedule,
+              so work that has started still reaches them as a disruption.
+        - [x] **Upcoming planned work as info** (maintainer, 2026-09-28): read the start date out
               of the reason text ("from 13 Oct 07:00"; `validityPeriods.fromDate` is when TfL posted
               it, not when it starts) and show a not-yet-started alert with an info icon instead of
               as a disruption. `category` is `PlannedWork`/`RealTime`/`Information`; `isNow` is
               true for `RealTime` and mostly false for `PlannedWork`, current or not.
-      - **Current-vs-future must come from the dates in the text, not `isNow`.** TfL's
-        `validityPeriods[].isNow` reads `false` even for planned closures in effect right now
-        (observed 2026-09-20, a Sunday: every live Overground/tube part-closure was `isNow:
-        false`), so it marks "unplanned", not "current". A not-yet-started diversion currently
-        shows a chip today (the safe side — an extra chip beats a hidden disruption); parsing the
-        reason's dates is what would let a not-yet-started one be held back without hiding a
-        genuinely-current one.
+      - [x] **Current-vs-future comes from the dates in the text, not `isNow`** (landed with
+            *Upcoming planned work as info* above). `validityPeriods[].isNow` reads `false` even
+            for planned closures in effect (observed 2026-09-20), so it marks "unplanned", not
+            "current"; the start is read from the reason instead (`AlertStart`).
       - Decide **whether to show a disruption at all** when it's not relevant to most journeys
         through the stop (the observed case was a detour miles away), with any relevance test
         still erring toward showing over hiding (SPEC principle 1 — a wrongly-hidden real

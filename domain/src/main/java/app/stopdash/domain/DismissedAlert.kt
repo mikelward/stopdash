@@ -56,12 +56,26 @@ data class DismissedAlert(
             )
 
         /**
+         * The dismissal identity of a line's **planned** alert ([PlannedAlert]): the line, and the
+         * alert's start, label and prose, so a moved date or new wording shows it again. Keyed on the
+         * line like a status, so dismissing it on one row clears it on every row it reaches.
+         */
+        fun ofPlanned(lineId: String, alert: PlannedAlert): DismissedAlert =
+            DismissedAlert(
+                alertKey = lineAlertKey(lineId),
+                contentSignature = listOf(PLANNED, alert.startsOn.toString(), alert.label, alert.fullText)
+                    .joinToString(WINDOW_SEPARATOR),
+            )
+
+        /**
          * The dismissal identity of whatever alert [row] carries — its stop closure, else its line's
          * status — or null when the row carries none (nothing to dismiss).
          */
         fun of(row: DepartureRow): DismissedAlert? = when {
             row.stopDisruption != null -> ofStopClosure(row)
             row.status != null -> ofLineStatus(row.status)
+            // A row standing for one planned alert (the page's dismiss passes one): that alert.
+            row.plannedAlerts.isNotEmpty() -> ofPlanned(row.lineId, row.plannedAlerts.first())
             else -> null
         }
 
@@ -69,6 +83,10 @@ data class DismissedAlert(
         // dismissal stored before windows were keyed still matches). A unit separator never occurs
         // in notice text.
         private const val WINDOW_SEPARATOR = "\u001F"
+
+        // Leads a planned alert's signature, so it never matches a status's (which leads with a
+        // severity number).
+        private const val PLANNED = "planned"
     }
 }
 
