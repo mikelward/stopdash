@@ -1114,6 +1114,10 @@ Medium is its average and the default) — so a brisk walker isn't shown a ten-m
 six, nor told a train is out of reach that isn't (maintainer, 2026-09-28). It is one setting, chosen
 in Settings or from a dropdown atop a trip's routes, and a change there plans the trip again at once,
 since every walk and the connections after it were timed at the old pace. Plans are kept per pace.
+The request names the Planner's modes (its own default set, walking among them): left to its
+defaults, the Planner accepts `walkingSpeed` but times every walk in a route that rides at its
+average, so the setting changed nothing (2026-09-28). Named, the pace times each walk and so which
+connections it offers, while the routes stay those it offers by default.
 
 **One stop per end, every station of a complex.** The Planner takes a single stop or station id for
 each end, not an interchange's or a folded search result's several stands, and it leans toward the
