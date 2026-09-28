@@ -1,20 +1,31 @@
 package app.stopdash.ui
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -26,7 +37,8 @@ import app.stopdash.domain.TripDestination
 
 /**
  * The saved favorite places as one row of chips atop the near-me list (SPEC D9 → *Routing from the
- * near-me list*): a tap plans a trip there, as the same place does in Settings or the To… picker.
+ * near-me list*): a tap plans a trip there, as the same place does in Settings or the To… picker, and
+ * a long press opens the places' own screen to edit them ([onEditPlaces]; null offers none).
  * The caller has already left out the places the rider is at ([app.stopdash.domain.FavoriteShortcuts]);
  * the row scrolls sideways when the chips don't fit, and scrolls away with the list.
  */
@@ -40,7 +52,9 @@ internal fun FavoriteChips(
     contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp),
     // Centers the chips when they fit (the empty state, whose text is centered); start-aligned in the list.
     centered: Boolean = false,
+    onEditPlaces: (() -> Unit)? = null,
 ) {
+    val editLabel = stringResource(R.string.favorite_places_edit_action)
     LazyRow(
         modifier = modifier.fillMaxWidth().testTag("favoriteChips"),
         contentPadding = contentPadding,
@@ -52,28 +66,25 @@ internal fun FavoriteChips(
             val shows = if (hasPlaceIcon(place.icon)) place.chipLabel else ChipLabel.NAME
             // TalkBack hears the action, not just the name, as on the Settings row.
             val description = stringResource(R.string.favorite_place_route_description, name)
-            AssistChip(
+            PlaceChip(
                 onClick = { onRouteTo(TripDestination.Place(place.coordinate, name)) },
+                onLongClick = onEditPlaces,
+                onLongClickLabel = editLabel,
                 // The place's own icon, its name, or both, as the rider chose (maintainer, 2026-09-28);
                 // never a generic icon, which said nothing the name didn't. An icon-only chip carries
                 // the icon as its label, so it sits centered; TalkBack still hears the name.
                 leadingIcon = if (shows == ChipLabel.BOTH) {
-                    { PlaceIcon(place.icon, Modifier.size(AssistChipDefaults.IconSize)) }
+                    { PlaceIcon(place.icon, Modifier.size(CHIP_ICON_SIZE)) }
                 } else {
                     null
                 },
                 label = {
                     if (shows == ChipLabel.ICON) {
-                        PlaceIcon(place.icon, Modifier.size(AssistChipDefaults.IconSize))
+                        PlaceIcon(place.icon, Modifier.size(CHIP_ICON_SIZE))
                     } else {
                         Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 },
-                // The icon takes the label's color whether it leads the name or stands alone, rather
-                // than the accent a chip's leading icon gets by default.
-                colors = AssistChipDefaults.assistChipColors(
-                    leadingIconContentColor = MaterialTheme.colorScheme.onSurface,
-                ),
                 modifier = Modifier
                     .testTag("favoriteChip-${place.id}")
                     .semantics { contentDescription = description },
@@ -81,6 +92,55 @@ internal fun FavoriteChips(
         }
     }
 }
+
+/**
+ * An outlined chip drawn to Material's assist-chip measures (at least 32dp tall, 8dp corners, a 1dp
+ * outline, 16dp end padding, 8dp start padding before an icon and 16dp without one, 8dp between icon
+ * and label), built here because Material's own chip takes no long press. The icon takes the label's
+ * color rather than an accent. Its touch target is 48dp tall, as Material's is.
+ */
+@Composable
+private fun PlaceChip(
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)?,
+    onLongClickLabel: String,
+    leadingIcon: (@Composable () -> Unit)?,
+    label: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(8.dp)
+    Box(
+        modifier = modifier
+            .minimumInteractiveComponentSize()
+            // At least 32dp, growing with the text at a large font scale rather than clipping it.
+            .heightIn(min = 32.dp)
+            .clip(shape)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+            .combinedClickable(
+                role = Role.Button,
+                onClick = onClick,
+                onLongClick = onLongClick,
+                onLongClickLabel = onLongClick?.let { onLongClickLabel },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+            ProvideTextStyle(MaterialTheme.typography.labelLarge) {
+                Row(
+                    modifier = Modifier.padding(start = if (leadingIcon != null) 8.dp else 16.dp, end = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    leadingIcon?.invoke()
+                    label()
+                }
+            }
+        }
+    }
+}
+
+// Material's chip icon size.
+private val CHIP_ICON_SIZE = 18.dp
 
 /** The name a favorite is known by: its label, or its resolved place name when the label is blank
  *  (as the Settings route-to and the To… picker name it). */

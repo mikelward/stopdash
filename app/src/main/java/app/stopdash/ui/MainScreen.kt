@@ -356,6 +356,8 @@ fun MainScreen(
     // to the one tapped. Empty (the default, and on a station's page) shows no row.
     favoritePlaces: List<FavoritePlace> = emptyList(),
     onRouteToPlace: (TripDestination.Place) -> Unit = {},
+    // A long press on a chip opens the places' own screen, to edit them; null offers no long press.
+    onEditFavoritePlaces: (() -> Unit)? = null,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     // Overflow-menu and About-dialog visibility. Saved so an open dialog survives rotation.
@@ -1308,6 +1310,7 @@ fun MainScreen(
                         // searched station's page, each of which is about one place.
                         favoritePlaces = if (platformRows != null || stationTitle != null) emptyList() else favoritePlaces,
                         onRouteToPlace = onRouteToPlace,
+                        onEditFavoritePlaces = onEditFavoritePlaces,
                     )
                 }
 
@@ -1449,6 +1452,7 @@ private fun LoadedContent(
     // The favorite places to offer as route chips atop the list (see [MainScreen]); empty for none.
     favoritePlaces: List<FavoritePlace> = emptyList(),
     onRouteToPlace: (TripDestination.Place) -> Unit = {},
+    onEditFavoritePlaces: (() -> Unit)? = null,
 ) {
     // Hiding a mode applies to the loading cards too, as to the loaded rows.
     val shownPending = remember(pending, hiddenModes) { visiblePending(pending, hiddenModes) }
@@ -1540,6 +1544,7 @@ private fun LoadedContent(
                             favoritePlaces,
                             onRouteToPlace,
                             Modifier.padding(bottom = 16.dp),
+                            onEditPlaces = onEditFavoritePlaces,
                             contentPadding = PaddingValues(0.dp),
                             centered = true,
                         )
@@ -1617,6 +1622,7 @@ private fun LoadedContent(
                     // card above.
                     favoritePlaces = favoritePlaces,
                     onRouteToPlace = onRouteToPlace,
+                    onEditFavoritePlaces = onEditFavoritePlaces,
                     nearbyEmptyNote = if (rows.isEmpty() && !journeyView && !nearbyShownAbove && shownPending.isEmpty() && dismissedClosures.isEmpty()) {
                         // With modes hidden, say so rather than "no departures": they may be running.
                         if (hiddenModes.isNotEmpty()) {
@@ -1786,6 +1792,7 @@ private fun DepartureList(
     // The favorite places to route to, as a chip row atop the list (near-me only); empty for none.
     favoritePlaces: List<FavoritePlace> = emptyList(),
     onRouteToPlace: (TripDestination.Place) -> Unit = {},
+    onEditFavoritePlaces: (() -> Unit)? = null,
     modifier: Modifier,
 ) {
     // The units near-me distances are written in: the Settings choice, resolved against the locale;
@@ -2034,7 +2041,7 @@ private fun DepartureList(
         // item of the list, so it scrolls away with it rather than taking a pinned row's space. No
         // padding of its own — the list's 16dp inset already lines it up with the cards.
         if (favoritePlaces.isNotEmpty()) {
-            item(key = "favorite-chips") { FavoriteChips(favoritePlaces, onRouteToPlace, contentPadding = PaddingValues(0.dp)) }
+            item(key = "favorite-chips") { FavoriteChips(favoritePlaces, onRouteToPlace, contentPadding = PaddingValues(0.dp), onEditPlaces = onEditFavoritePlaces) }
         }
         // Starred journeys lead the list (SPEC *Journeys*): each a header naming the direction shown,
         // tappable to show the other, over a card of just the trains that call at the far end.
