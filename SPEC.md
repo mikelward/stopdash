@@ -888,7 +888,9 @@ same two stops by the same mode and then ride the same lines — the 43 or the 1
 station, then the Northern line — **share a card**: its header shows that leg's lines as **one pill
 cut diagonally** ("43/134", read as "43 or 134"; each part as wide as its own code, never narrower
 than a two-character one, so the cut pill stays compact yet a one-character route keeps room of its
-own — maintainer, 2026-09-28), then the later lines and the best of their
+own — maintainer, 2026-09-28; three or more lines show the first, then "…" in the second's color,
+"43/…", so the pill stays two parts wide however many lines share the leg, with every line still
+in its accessible label and the ride's times — maintainer, 2026-09-28), then the later lines and the best of their
 arrivals, and its first ride's row times every one of those lines together (below). **Every ride**
 also takes in the lines the Planner didn't name that serve **its own two stops** (maintainer,
 2026-09-27): another line of the same mode whose route runs from the ride's boarding stop to its

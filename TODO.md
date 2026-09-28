@@ -1563,6 +1563,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       ("43/134") sizes each part to its own code, never narrower than a two-character one, so it
       no longer comes out half again as wide as the pills beside it (maintainer, 2026-09-28).
       Follow-up: see it on a device.
+- [x] **Cut pills for three or more lines** — the first line, then "…" in the second's color
+      ("43/…"), so the pill stays two parts wide (maintainer, 2026-09-28). Follow-up: see it on a
+      device, and reconsider naming every line if the rest turn out to be missed.
 - [x] **Codes for National Rail services.** First-three-letters collided (Southern and
       Southeastern both → "SOU"), so a rail operator now shows its initials — the capitals in a
       multi-word name (East Midlands Railway → EMR, Greater Anglia → GA), the initialism a rider
