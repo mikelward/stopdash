@@ -5,11 +5,20 @@ import android.graphics.Canvas
 import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.click
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Departure
 import app.stopdash.domain.TripLeg
@@ -176,10 +185,35 @@ class OnTheWayScreenScreenshotTest {
         val trains = listOf(jubileeTrain("Stanmore", 21), jubileeTrain("Stanmore", 24), jubileeTrain("Wembley Park", 27))
         // The walk ends at 24: the 21-minute train leaves first, so it's grayed.
         show(walking, TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, trains, readyAt = at(24)))
-        composeRule.onNodeWithText("From Stratford").assertIsDisplayed()
         composeRule.onNodeWithText("21 · 24 min").assertIsDisplayed()
+        // Under the ride they board, not over the route: below its row, and below the walk's.
+        val board = composeRule.onNodeWithTag("onTheWayTrains").getUnclippedBoundsInRoot()
+        val ride = composeRule.onNodeWithText("Stratford → Canary Wharf").getUnclippedBoundsInRoot()
+        assertTrue(board.top >= ride.bottom)
+        // Nothing to open from here: no row takes a tap or announces one.
+        assertTrue(composeRule.onAllNodes(hasClickAction() and hasAnyDescendant(hasText("Stanmore"))).fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithText("Wembley Park").assertIsDisplayed()
         captureSnapshot("on_the_way_walking_next_trains")
+    }
+
+    @Test
+    fun a_board_row_with_nothing_to_open_leaves_the_touch_to_what_holds_it() {
+        // No tap and no long press: the row takes no gesture at all, so a touch goes through.
+        var touched = false
+        val group = app.stopdash.domain.StopGrouping.groupByStop(
+            app.stopdash.domain.DepartureRows.forStop("940GZZLUSTD", "Stratford", listOf(jubileeTrain("Stanmore", 21)), now),
+        ).single()
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                androidx.compose.foundation.layout.Box(
+                    androidx.compose.ui.Modifier.pointerInput(Unit) { detectTapGestures(onTap = { touched = true }) },
+                ) {
+                    StopGroupCard(group, now, starred = emptySet(), onToggleStar = {}, starringAvailable = false, onOpenDetail = null)
+                }
+            }
+        }
+        composeRule.onNodeWithText("Stanmore").performTouchInput { click() }
+        assertTrue(touched)
     }
 
     @Test
@@ -220,7 +254,6 @@ class OnTheWayScreenScreenshotTest {
                 OnTheWayScreen(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), false, now, {}, {}, nextTrains = next)
             }
         }
-        composeRule.onNodeWithText("From Stratford").assertIsDisplayed()
         composeRule.onNodeWithText("Loading").assertIsDisplayed()
     }
 

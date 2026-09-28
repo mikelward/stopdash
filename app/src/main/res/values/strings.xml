@@ -524,9 +524,7 @@
     <string name="on_the_way_walk">Walk to %1$s</string>
     <string name="on_the_way_walk_time">About %1$d min</string>
     <string name="on_the_way_walk_leg">Walk</string>
-    <string name="on_the_way_trains_from">From %1$s</string>
     <string name="on_the_way_trains_loading">Loading</string>
-    <string name="on_the_way_times">%1$s min</string>
     <string name="on_the_way_trains_checking">Checking more lines…</string>
     <string name="on_the_way_trains_unchecked">Couldn\'t check every line</string>
     <string name="on_the_way_trains_none">None going to %1$s</string>

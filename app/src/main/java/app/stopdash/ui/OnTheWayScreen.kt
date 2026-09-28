@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -31,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -40,16 +40,15 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Departure
 import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.StopGrouping
+import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.cleanStopName
 import app.stopdash.domain.TripLeg
@@ -126,7 +125,14 @@ internal fun OnTheWayScreen(
             modifier = Modifier.fillMaxSize().padding(padding).testTag("onTheWay"),
         ) {
             item(key = "next") { NextStep(progress, now, current) }
-            if (nextTrains != null && trip != null) item(key = "nextTrains") { NextTrainsSection(nextTrains, now) }
+            // The next ride's trains go under its own row below (maintainer, 2026-09-28); here only
+            // if that ride isn't among the legs still ahead, so they're never lost.
+            val nextAt = if (nextTrains != null && trip != null) {
+                trip.route.legs.indices.firstOrNull { it >= trip.legIndex && trip.route.legs[it] == nextTrains.ride }
+            } else {
+                null
+            }
+            if (nextTrains != null && trip != null && nextAt == null) item(key = "nextTrains") { NextTrainsSection(nextTrains, now) }
             if (endFailed && trip != null) {
                 item(key = "endFailed") {
                     Text(
@@ -173,8 +179,11 @@ internal fun OnTheWayScreen(
                 }
             }
             if (trip != null) {
-                itemsIndexed(trip.route.legs, key = { index, _ -> "leg$index" }) { index, leg ->
-                    LegLine(leg, trip.route.rides, current = index == trip.legIndex, done = index < trip.legIndex)
+                trip.route.legs.forEachIndexed { index, leg ->
+                    item(key = "leg$index") {
+                        LegLine(leg, trip.route.rides, current = index == trip.legIndex, done = index < trip.legIndex)
+                    }
+                    if (index == nextAt && nextTrains != null) item(key = "nextTrains") { NextTrainsSection(nextTrains, now) }
                 }
             }
         }
@@ -199,6 +208,8 @@ data class NextTrains(
     val stale: Boolean = false,
     val failed: Boolean = false,
     val readyAt: Instant? = null,
+    // When the board was read: its rows' age, as the departures board ages a stop's.
+    val fetchedAt: Instant? = null,
 )
 
 /**
@@ -227,20 +238,24 @@ internal fun rememberNextTrains(
     val routes = LocalRouteStops.current
     LaunchedEffect(routes, found.misses) { routes?.reportMisses(found.misses) }
     val stale = Staleness.isStale(Duration.between(fetchedAt, now).toKotlinDuration())
-    return NextTrains(board.ride, found.trains, pending = found.pending, unresolved = found.unresolved, stale = stale, failed = board.failed, readyAt = readyAt)
+    return NextTrains(board.ride, found.trains, pending = found.pending, unresolved = found.unresolved, stale = stale, failed = board.failed, readyAt = readyAt, fetchedAt = fetchedAt)
 }
 
-/** The next ride's trains, a row per line and terminus, soonest first ([NextTrains]). */
+/**
+ * The next ride's trains ([NextTrains]) under that ride's own row, drawn as the departures board
+ * draws a stop (maintainer, 2026-09-28): its platform header over the board's own card, a row per
+ * line and terminus with its next few times, so they read as the board rather than as another step.
+ * A time due before the rider can be there is grayed. Nothing to open from here: a row takes no tap
+ * and announces no action.
+ */
 @Composable
 private fun NextTrainsSection(next: NextTrains, now: Instant) {
-    Column(Modifier.fillMaxWidth().testTag("onTheWayTrains"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            stringResource(R.string.on_the_way_trains_from, next.ride.fromName),
-            style = MaterialTheme.typography.titleSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+    val groups = remember(next, now) {
+        StopGrouping.groupByStop(
+            DepartureRows.forStop(next.ride.fromId, next.ride.fromName, next.trains, now, fetchedAt = next.fetchedAt ?: now),
         )
-        val rows = next.trains.groupBy { Triple(it.lineId, it.destination, it.branch) }.values.toList()
+    }
+    Column(Modifier.fillMaxWidth().testTag("onTheWayTrains"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         // A failed update is said whatever else shows: the rows may be the last good board's.
         if (next.failed) NoteText(stringResource(R.string.on_the_way_failed))
         if (next.stale) {
@@ -248,56 +263,37 @@ private fun NextTrainsSection(next: NextTrains, now: Instant) {
             return@Column
         }
         if (next.failed && next.trains.isEmpty()) return@Column
-        rows.forEach { trains -> NextTrainsRow(trains, now, next.readyAt) }
+        groups.forEach { group ->
+            StopGroupHeader(group.stopName, group.qualifier, distanceLabel = null, firstOnScreen = false)
+            StopGroupCard(
+                group,
+                now,
+                starred = emptySet(),
+                onToggleStar = {},
+                starringAvailable = false,
+                onOpenDetail = null,
+                grayBefore = next.readyAt,
+            )
+        }
         // What the rows may be missing, said rather than left to be taken as the whole answer.
         when {
-            next.pending && rows.isEmpty() -> NoteText(stringResource(R.string.on_the_way_trains_loading))
+            next.pending && groups.isEmpty() -> NoteText(stringResource(R.string.on_the_way_trains_loading))
             next.pending -> NoteText(stringResource(R.string.on_the_way_trains_checking))
             next.unresolved -> NoteText(stringResource(R.string.on_the_way_trains_unchecked))
-            rows.isEmpty() -> NoteText(stringResource(R.string.on_the_way_trains_none, next.ride.toName))
+            groups.isEmpty() -> NoteText(stringResource(R.string.on_the_way_trains_none, next.ride.toName))
         }
     }
 }
 
 @Composable
 private fun NoteText(text: String) {
-    Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+    )
 }
-
-/** One line and terminus: its pill, where it's going, and its next few times ("2 · 7 · 12 min"). */
-@Composable
-private fun NextTrainsRow(trains: List<Departure>, now: Instant, readyAt: Instant?) {
-    val first = trains.first()
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        LinePill(first.lineName, first.lineId, first.mode)
-        Text(
-            cleanStopName(first.destination) + first.branch?.let { "/$it" }.orEmpty(),
-            style = MaterialTheme.typography.bodyLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        val gray = MaterialTheme.colorScheme.outline
-        val shown = trains.take(NEXT_TIMES)
-        val unit = stringResource(R.string.on_the_way_times, "")
-        Text(
-            buildAnnotatedString {
-                shown.forEachIndexed { i, train ->
-                    if (i > 0) append(" · ")
-                    val minutes = minutesUntil(now, train.expectedArrival).toString()
-                    // Gone before the rider can be on the platform: shown, but grayed.
-                    if (readyAt != null && train.expectedArrival.isBefore(readyAt)) withStyle(SpanStyle(color = gray)) { append(minutes) } else append(minutes)
-                }
-                append(unit)
-            },
-            style = MaterialTheme.typography.bodyLarge,
-            maxLines = 1,
-        )
-    }
-}
-
-// How many of a row's trains show: enough to see the gaps, few enough to stay on one line.
-private const val NEXT_TIMES = 3
 
 /** The card at the top: what the rider does next, from [progress]. */
 @Composable
