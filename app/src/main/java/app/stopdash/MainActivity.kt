@@ -450,6 +450,9 @@ class MainActivity : ComponentActivity() {
                 // The favorite-places editor (SPEC D9), opened from Settings and layered above it, so
                 // its Back returns to Settings.
                 var favoritePlacesOpen by rememberSaveable { mutableStateOf(false) }
+                // The saved places were opened by a long press in a From… station's To… search: a place
+                // picked there routes that station's trip, not one from here (Codex, #347).
+                var placesFromStation by rememberSaveable { mutableStateOf(false) }
                 val openLicenses = { licensesOpen = true }
                 // "Find a station" (SPEC *Finding stops*): the search, and the station opened from it
                 // (its TfL id and name). Hosted as overlays like Settings, so the near-me departures
@@ -751,13 +754,24 @@ class MainActivity : ComponentActivity() {
                                     .collectAsStateWithLifecycle()
                                 FavoritePlacesScreen(
                                     state = favoritePlacesState,
-                                    onBack = { favoritePlacesOpen = false },
+                                    onBack = {
+                                        favoritePlacesOpen = false
+                                        placesFromStation = false
+                                    },
                                     // Tap a favorite → plan a trip to its coordinate from the rider's
                                     // current location: drop the list's departures, open the here-trip
                                     // over the nearby set, and leave Settings (SPEC D9). The label is the
                                     // name the rider knows it by, used for the title and the walk-to leg.
                                     onRouteTo = { place ->
-                                        routeToPlace(TripDestination.Place(place.coordinate, favoriteRouteName(place)))
+                                        val destination = TripDestination.Place(place.coordinate, favoriteRouteName(place))
+                                        // From a station's To… search, the station's trip goes there; the
+                                        // station stays open, so routing from here would sit hidden under it.
+                                        if (placesFromStation && openStationId != null) {
+                                            stationTo = stationTo.pickPlace(destination)
+                                        } else {
+                                            routeToPlace(destination)
+                                        }
+                                        placesFromStation = false
                                         favoritePlacesOpen = false
                                         settingsOpen = false
                                     },
@@ -779,6 +793,10 @@ class MainActivity : ComponentActivity() {
                                 )
                             } else if (!settingsOpen) {
                                 StationSearchArea(
+                                    onEditPlaces = {
+                                        placesFromStation = true
+                                        favoritePlacesOpen = true
+                                    },
                                     stationId = openStationId,
                                     stationName = openStationName,
                                     onOpenStation = { match ->
@@ -893,6 +911,7 @@ class MainActivity : ComponentActivity() {
                                         // A favorite place picked in the To… list routes to its
                                         // coordinate (as Settings' route-to does): the coordinate is the
                                         // destination, so there's no stop id.
+                                        onEditPlaces = { favoritePlacesOpen = true },
                                         onOpenPlace = { place ->
                                             herePicking = false
                                             hereToId = null
@@ -1755,6 +1774,8 @@ class MainActivity : ComponentActivity() {
         // The station's To…: its search and destination, and each change to them.
         to: ToChoice = ToChoice.NONE,
         onTo: (ToChoice) -> Unit = {},
+        // A long press on a To… place chip: the saved places' own screen.
+        onEditPlaces: (() -> Unit)? = null,
     ) {
         // Captured once, so lambdas the retained ViewModels keep close over the application, not
         // this Activity (which a rotation destroys).
@@ -1852,6 +1873,7 @@ class MainActivity : ComponentActivity() {
                 onBackToNearMe = closeSearch,
                 to = to,
                 onTo = onTo,
+                onEditPlaces = onEditPlaces,
             )
         }
     }
@@ -1874,6 +1896,7 @@ class MainActivity : ComponentActivity() {
         onBackToNearMe: () -> Unit,
         to: ToChoice,
         onTo: (ToChoice) -> Unit,
+        onEditPlaces: (() -> Unit)? = null,
     ) {
         val fromNearby: NearbyStopsViewModel = viewModel(
             key = "from-nearby",
@@ -1972,6 +1995,7 @@ class MainActivity : ComponentActivity() {
                 fromName = stationName,
                 fromStopIds = stationStopIds,
                 onLocate = onBackToNearMe,
+                onEditPlaces = onEditPlaces,
             )
         } else {
             DeparturesForStops(
@@ -2057,6 +2081,8 @@ class MainActivity : ComponentActivity() {
         // stop serves the trip best — a station a walk away, not only the stop nearest (maintainer,
         // 2026-09-28). Null plans from the stop (a From… station).
         here: Coordinates? = null,
+        // A long press on a To… place chip: the saved places' own screen, to edit them.
+        onEditPlaces: (() -> Unit)? = null,
         // The crosshairs from a From… station's trip: back to the near-me list. Null re-locates.
         onLocate: (() -> Unit)? = null,
     ) {
@@ -2143,6 +2169,7 @@ class MainActivity : ComponentActivity() {
                 // Re-reads the saved places for the Retry when their read failed (offered only where the
                 // picker shows them).
                 onRetryPlaces = onOpenPlace?.let { { search.refreshYours() } },
+                onEditPlaces = onEditPlaces,
             )
             return
         }

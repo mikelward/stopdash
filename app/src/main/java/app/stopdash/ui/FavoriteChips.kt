@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
@@ -36,8 +37,8 @@ import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.TripDestination
 
 /**
- * The saved favorite places as one row of chips atop the near-me list (SPEC D9 → *Routing from the
- * near-me list*): a tap plans a trip there, as the same place does in Settings or the To… picker, and
+ * The saved favorite places as one row of chips atop the near-me list and the From…/To… searches
+ * (SPEC D9 → *Routing from the near-me list*): a tap plans a trip there, as the same place does in Settings or the To… picker, and
  * a long press opens the places' own screen to edit them ([onEditPlaces]; null offers none).
  * The caller has already left out the places the rider is at ([app.stopdash.domain.FavoriteShortcuts]);
  * the row scrolls sideways when the chips don't fit, and scrolls away with the list.
@@ -53,6 +54,12 @@ internal fun FavoriteChips(
     // Centers the chips when they fit (the empty state, whose text is centered); start-aligned in the list.
     centered: Boolean = false,
     onEditPlaces: (() -> Unit)? = null,
+    // The From… search leads the row with "Here", the rider's own position, behind the crosshair
+    // (maintainer, 2026-09-28). Null leaves it out, as everywhere else.
+    onHere: (() -> Unit)? = null,
+    // Overrides each place's own choice of what its chip shows: the To… and From… searches have room
+    // for the icon and the name (SPEC *Routing from the near-me list*). Null follows the place.
+    labelOverride: ChipLabel? = null,
 ) {
     val editLabel = stringResource(R.string.favorite_places_edit_action)
     LazyRow(
@@ -60,10 +67,22 @@ internal fun FavoriteChips(
         contentPadding = contentPadding,
         horizontalArrangement = if (centered) Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally) else Arrangement.spacedBy(8.dp),
     ) {
+        if (onHere != null) {
+            item(key = "here") {
+                PlaceChip(
+                    onClick = onHere,
+                    onLongClick = null,
+                    onLongClickLabel = editLabel,
+                    leadingIcon = { Icon(CrosshairIcon, contentDescription = null, modifier = Modifier.size(CHIP_ICON_SIZE)) },
+                    label = { Text(stringResource(R.string.from_here), maxLines = 1) },
+                    modifier = Modifier.testTag("stationSearchHere"),
+                )
+            }
+        }
         items(places, key = { it.id }) { place ->
             val name = favoriteRouteName(place)
             // An icon this build can't draw falls back to the name.
-            val shows = if (hasPlaceIcon(place.icon)) place.chipLabel else ChipLabel.NAME
+            val shows = if (hasPlaceIcon(place.icon)) labelOverride ?: place.chipLabel else ChipLabel.NAME
             // TalkBack hears the action, not just the name, as on the Settings row.
             val description = stringResource(R.string.favorite_place_route_description, name)
             PlaceChip(

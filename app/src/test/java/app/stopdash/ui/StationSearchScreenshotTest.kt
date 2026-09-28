@@ -20,6 +20,10 @@ import app.stopdash.domain.TripDestination
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Assert.assertEquals
+import app.stopdash.domain.ChipLabel
+import app.stopdash.domain.FavoritePlaceIcon
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.longClick
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -105,13 +109,17 @@ class StationSearchScreenshotTest {
         // The To… picker offers saved favorite places at the top, before any typing, so a rider routes
         // home in one tap. Synthetic coordinates and generic labels — no user data.
         var routed: TripDestination.Place? = null
+        var edited = false
         composeRule.setContent {
             StopDashTheme {
                 StationSearchScreen(
                     state = StationSearchViewModel.State(
                         favoritePlaces = listOf(
                             FavoritePlace("home", FavoriteKind.HOME, "Home", Coordinates(51.5, -0.12)),
-                            FavoritePlace("work", FavoriteKind.WORK, "Work", Coordinates(51.51, -0.10)),
+                            FavoritePlace(
+                                "work", FavoriteKind.WORK, "Work", Coordinates(51.51, -0.10),
+                                icon = FavoritePlaceIcon.WORK, chipShows = ChipLabel.ICON,
+                            ),
                         ),
                         recent = listOf(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))),
                         yoursRead = true,
@@ -123,18 +131,24 @@ class StationSearchScreenshotTest {
                     autoFocus = false,
                     hint = "To station or stop",
                     onOpenPlace = { routed = it },
+                    onEditPlaces = { edited = true },
                 )
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Places").assertIsDisplayed()
-        composeRule.onNodeWithText("Home").assertIsDisplayed()
-        // Places lead the list, above the recent stops.
-        val placesTop = composeRule.onNodeWithText("Places").fetchSemanticsNode().boundsInRoot.top
+        // The places are one row of chips leading the list, above the recent stops; no "Here" on To….
+        val placesTop = composeRule.onNodeWithTag("favoriteChip-home").fetchSemanticsNode().boundsInRoot.top
         assertTrue(placesTop < composeRule.onNodeWithText("Recent").fetchSemanticsNode().boundsInRoot.top)
+        assertEquals(placesTop, composeRule.onNodeWithTag("favoriteChip-work").fetchSemanticsNode().boundsInRoot.top)
+        composeRule.onNodeWithTag("stationSearchHere").assertDoesNotExist()
+        // Room for both: a place set to show only its icon on the near-me list still shows its name here.
+        composeRule.onNodeWithText("Work").assertIsDisplayed()
         captureSnapshot("station-search-to-places.png")
-        composeRule.onNodeWithText("Home").performClick()
+        composeRule.onNodeWithTag("favoriteChip-home").performClick()
         assertEquals(TripDestination.Place(Coordinates(51.5, -0.12), "Home"), routed)
+        // A long press edits the places, as on the near-me list's chips.
+        composeRule.onNodeWithTag("favoriteChip-work").performTouchInput { longClick() }
+        assertTrue(edited)
     }
 
     @Test
