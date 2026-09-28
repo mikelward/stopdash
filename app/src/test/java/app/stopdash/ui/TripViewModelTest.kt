@@ -26,6 +26,7 @@ import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripDestination
+import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTiming
@@ -96,8 +97,11 @@ class TripViewModelTest {
         var byDestination: Map<String, List<TripRoute>> = emptyMap()
         var failFor: Set<String> = emptySet()
         var delays: Map<String, Long> = emptyMap()
-        override suspend fun journeys(fromId: String, to: TripDestination): List<TripRoute> {
+        // Where each call planned from, in order.
+        val origins = mutableListOf<TripOrigin>()
+        override suspend fun journeys(from: TripOrigin, to: TripDestination): List<TripRoute> {
             calls++
+            origins += from
             // Keyed by the stop id (or a place's name), matching how these tests plan by destination.
             val key = when (to) {
                 is TripDestination.Stop -> to.id
@@ -305,6 +309,96 @@ class TripViewModelTest {
 
     // To a complex's other station, D, by another line.
     private val toD = TripRoute(listOf(leg("red", "A", "B", 5, 15), leg("green", "B", "D", 18, 25)))
+
+    @Test
+    fun `a trip from here plans from the rider's position, and again once they've moved a block`() = runTest(dispatcher) {
+        // Synthetic positions (SPEC *Privacy*): the second ~55 m on, the third ~220 m on.
+        var at = Coordinates(51.5, -0.12)
+        val planner = FakePlanner(listOf(route))
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+            clock = { now }, plans = TripPlans(), io = dispatcher, origin = { TripOrigin.Here(at) },
+        )
+        trip.refreshFor(1)
+        advanceUntilIdle()
+        assertEquals(listOf<TripOrigin>(TripOrigin.Here(Coordinates(51.5, -0.12))), planner.origins)
+        // A fix's wander keeps the plan.
+        at = Coordinates(51.5005, -0.12)
+        trip.refreshFor(2)
+        advanceUntilIdle()
+        assertEquals(1, planner.calls)
+        // A block on, the first walk would be from where they were: planned again from here.
+        at = Coordinates(51.502, -0.12)
+        trip.refreshFor(3)
+        advanceUntilIdle()
+        assertEquals(2, planner.calls)
+        assertEquals(TripOrigin.Here(Coordinates(51.502, -0.12)), planner.origins.last())
+    }
+
+    @Test
+    fun `a trip from a stop plans from the stop and never re-plans for a move`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        val trip = model(planner, FakeClient(mutableMapOf()))
+        trip.refreshFor(1)
+        advanceUntilIdle()
+        trip.refreshFor(2)
+        advanceUntilIdle()
+        assertEquals(listOf<TripOrigin>(TripOrigin.Stop("A")), planner.origins)
+    }
+
+    @Test
+    fun `a reused plan from here re-plans once the rider has moved from where it was made`() = runTest(dispatcher) {
+        val plans = TripPlans()
+        val destinations = listOf(TripDestination.Stop("C"))
+        plans.put("A", destinations, listOf(route), now, TripOrigin.Here(Coordinates(51.5, -0.12)))
+        val planner = FakePlanner(listOf(route))
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", destinations, clock = { now }, plans = plans, io = dispatcher,
+            origin = { TripOrigin.Here(Coordinates(51.502, -0.12)) },
+        )
+        // Shown at once from the reused plan, and planned again from where the rider is now.
+        assertEquals(listOf(route), trip.state.value.routes)
+        trip.refreshFor(1)
+        advanceUntilIdle()
+        assertEquals(1, planner.calls)
+    }
+
+    @Test
+    fun `a plan from a stop isn't reused for a trip from here that keys on the same stop, nor the other way`() = runTest(dispatcher) {
+        val plans = TripPlans()
+        val destinations = listOf(TripDestination.Stop("C"))
+        plans.put("A", destinations, listOf(route), now, TripOrigin.Stop("A"))
+        assertNull(plans.get("A", destinations, here = true))
+        val planner = FakePlanner(listOf(route))
+        val here = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", destinations, clock = { now }, plans = plans, io = dispatcher,
+            origin = { TripOrigin.Here(Coordinates(51.5, -0.12)) },
+        )
+        // Nothing to show at once: the stop's plan opens with no walk from the rider.
+        assertNull(here.state.value.routes)
+        here.refreshFor(1)
+        advanceUntilIdle()
+        assertEquals(1, planner.calls)
+        // And the plan from here doesn't stand in for the stop's.
+        assertNotNull(plans.get("A", destinations, here = true))
+        assertEquals(now, plans.get("A", destinations)?.second)
+    }
+
+    @Test
+    fun `an origin the screen sets after the model is made is what the next plan starts from`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+            clock = { now }, plans = TripPlans(), io = dispatcher, origin = { TripOrigin.Here(Coordinates(51.5, -0.12)) },
+        )
+        trip.refreshFor(1)
+        advanceUntilIdle()
+        // A rotation recomposes over the retained model: the new composition's origin replaces the old.
+        trip.origin = { TripOrigin.Here(Coordinates(51.502, -0.12)) }
+        trip.refreshFor(2)
+        advanceUntilIdle()
+        assertEquals(TripOrigin.Here(Coordinates(51.502, -0.12)), planner.origins.last())
+    }
 
     @Test
     fun `a complex is planned to each of its stops and the answers merged`() = runTest(dispatcher) {

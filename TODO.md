@@ -916,8 +916,15 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [x] **Plan to every station of a complex** (maintainer, 2026-09-26: the best way to King's
             Cross St. Pancras whatever the line or mode): once per station code plus one bus
             stop, in parallel, merged, the soonest six routes timed.
-      - [ ] **Configurable walking limit** (maintainer, 2026-09-26): the Planner's
-            `maxWalkingMinutes`, fixed at 15 for now.
+      - [x] **Plan a trip from here from the rider's position** (maintainer, 2026-09-28), not the
+            nearest stop: from a bus stop the Planner only offered a bus to the Tube, never the walk to
+            it. Re-plans 150 m on from where it was planned. Needs a device check that the walk-to-station
+            route now appears and its first walk reads right on the card and on the way.
+      - [ ] **From chip on the To… picker and ahead of the favorite chips** (maintainer, 2026-09-28),
+            labeled "Here" by default: next PR.
+      - [ ] **Configurable walking limit and pace** (maintainer, 2026-09-26; dropdowns at the top of
+            the routes page suggested 2026-09-28): the Planner's `maxWalkingMinutes`, fixed at 15 for
+            now, and `walkingSpeed` (slow / average / fast), which now times the walk from here too.
       - [ ] **Mode toggles** at the top of a trip, remembered across trips (the Planner's `mode=`).
       - [ ] **Avoid a line**: request `includeAlternativeRoutes` and drop routes using it, since
             the Planner has no line exclusion (each returned route names its lines, so filtering

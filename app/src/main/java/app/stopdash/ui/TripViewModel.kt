@@ -15,7 +15,9 @@ import app.stopdash.domain.JourneyPlanner
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.TflException
+import app.stopdash.domain.NearestStops
 import app.stopdash.domain.TripDestination
+import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTiming
 import app.stopdash.domain.withoutDetours
@@ -39,7 +41,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * A trip with a change (SPEC *Trips with a change*): TfL's Journey Planner's routes from [fromId] to
+ * A trip with a change (SPEC *Trips with a change*): TfL's Journey Planner's routes from [origin] to
  * [destinations], and the live arrivals and line statuses that time them. The plan is held in memory for
  * [PLAN_REUSE] and planned again after that; live times refresh on each [refresh], which the screen
  * calls on the list's own foreground tick, so nothing runs while the trip isn't on screen.
@@ -50,6 +52,8 @@ import kotlinx.coroutines.withContext
 class TripViewModel(
     private val planner: JourneyPlanner,
     private val client: TflClient,
+    // Keys the trip's plans for reuse ([TripPlans]): a *From…* station's stop, or from here the stop
+    // nearest the rider, so a move to a new nearest stop is a new trip.
     val fromId: String,
     // Where the trip is planned to (SPEC *Trips with a change* / D9): usually a stop, or — for a
     // complex — one per station and one of its bus stops, each asked in parallel and the answers
@@ -89,7 +93,15 @@ class TripViewModel(
     // them has reached it. Each id maps to its stop, so a bus stop's poles and its "490G…" area
     // are one stop when one route passes it and another gets off there.
     destinationIds: Map<String, String> = stopIds(destinations).associateWith { it },
+    // Where the Planner plans from, read at each plan: from here the rider's latest fix, so TfL walks
+    // from where they are to whichever stop serves the trip best (SPEC *Trips with a change*); from a
+    // *From…* station, its stop. The stop [fromId] by default. The screen replaces it ([origin]) each
+    // time it composes over this retained model, so it never reads a discarded composition's fix.
+    origin: () -> TripOrigin = { TripOrigin.Stop(fromId) },
 ) : ViewModel() {
+    /** Where the next plan starts ([TripOrigin]); set by the screen on every composition. */
+    var origin: () -> TripOrigin = origin
+
     /** One boarding stop's last arrivals and when they were fetched; [failed] when the last fetch failed. */
     data class StopLive(val departures: List<Departure>, val fetchedAt: Instant, val failed: Boolean = false)
 
@@ -129,7 +141,7 @@ class TripViewModel(
     }
 
     private val _state = MutableStateFlow(
-        (plans.get(fromId, destinations)?.let { (routes, at) -> State(routes = routes, plannedAt = at, statusUnknown = linesOf(routes)) } ?: State())
+        (plans.get(fromId, destinations, origin() is TripOrigin.Here)?.let { (routes, at) -> State(routes = routes, plannedAt = at, statusUnknown = linesOf(routes)) } ?: State())
             .copy(destinationStops = stopIds(destinations).associateWith { it } + destinationIds),
     )
     val state: StateFlow<State> = _state.asStateFlow()
@@ -195,6 +207,15 @@ class TripViewModel(
      * retained model doesn't fetch everything again.
      */
     fun refreshFor(repickId: Long?) {
+        // A first showing, or a new re-pick, that finds the rider [REPLAN_MOVE_METERS] or more from where
+        // the plan walks from: its first walk is from there, so the trip plans again from here rather
+        // than time it wrong (a plan reused from earlier, or one made before they walked on).
+        if ((!started || repickId != seenRepick) && movedFromPlan()) {
+            started = true
+            seenRepick = repickId
+            start(replan = true)
+            return
+        }
         if (started && repickId == seenRepick) {
             // Shown again (a rotation, a return): take any newer arrivals another screen fetched
             // meanwhile, and refresh only if a boarding stop's are still over [ArrivalsCache.TTL]
@@ -211,6 +232,15 @@ class TripViewModel(
         started = true
         seenRepick = repickId
         refresh()
+    }
+
+    // Where the plan shown was planned from; null until one is (a reused plan carries its own).
+    private var plannedFrom: TripOrigin? = plans.origin(fromId, destinations, origin() is TripOrigin.Here)
+
+    private fun movedFromPlan(): Boolean {
+        val from = (plannedFrom as? TripOrigin.Here)?.coordinate ?: return false
+        val now = (origin() as? TripOrigin.Here)?.coordinate ?: return false
+        return NearestStops.distanceMeters(from.latitude, from.longitude, now.latitude, now.longitude) >= REPLAN_MOVE_METERS
     }
 
     private val _dismissed = MutableStateFlow<Set<DismissedAlert>>(emptySet())
@@ -337,12 +367,14 @@ class TripViewModel(
         val gathered = mutableListOf<TripRoute>()
         var answered = 0
         var failure: TflException? = null
+        // One origin for every destination's request, so the answers merge as one plan from one place.
+        val from = origin()
         try {
             coroutineScope {
                 for (destination in destinations) {
                     launch {
                         val routes = try {
-                            withContext(io) { planner.journeys(fromId, destination) }
+                            withContext(io) { planner.journeys(from, destination) }
                         } catch (e: TflException) {
                             // Neither end is logged: together they're a trip the rider chose (a
                             // destination coordinate least of all, SPEC *Privacy*).
@@ -382,7 +414,8 @@ class TripViewModel(
         if (shown > visible.size) warn("journey planner: ${shown - visible.size} of $shown routes pass the destination")
         val at = clock()
         // Only a whole plan is kept for reuse: a partial one is planned again on the next open.
-        if (failed == null) plans.put(fromId, destinations, routes, at)
+        if (failed == null) plans.put(fromId, destinations, routes, at, from)
+        plannedFrom = from
         // A new plan's lines are unchecked until their status arrives: none passes as running
         // normally meanwhile (its last known status, if held, stands).
         _state.update {
@@ -560,6 +593,12 @@ class TripViewModel(
         val PLAN_REUSE: Duration = Duration.ofMinutes(15)
 
         /**
+         * How far the rider moves from where a trip from here was planned before it plans again: its
+         * first walk is from there (SPEC *Trips with a change*). A block or so, well past a fix's wander.
+         */
+        const val REPLAN_MOVE_METERS = 150.0
+
+        /**
          * How old a plan must be before a withheld arrival plans again ([noteWithheld]): long enough
          * that a fresh plan's departures have moved on, and a cap on how often it asks.
          */
@@ -572,16 +611,27 @@ class TripViewModel(
  * if the same trip reopens within 15 minutes). Never written to storage; bounded to [MAX] trips.
  */
 class TripPlans {
-    private val plans = LinkedHashMap<String, Pair<List<TripRoute>, Instant>>()
+    private class Held(val routes: List<TripRoute>, val at: Instant, val from: TripOrigin?)
+
+    private val plans = LinkedHashMap<String, Held>()
+
+    // [here]: whether the plan starts from the rider's position rather than the stop [fromId]. The two
+    // are kept apart, since the same nearest stop can be a From… station's own stop, and a plan from
+    // here opens with a walk from the rider that one from the stop doesn't have.
+    @Synchronized
+    fun get(fromId: String, destinations: List<TripDestination>, here: Boolean = false): Pair<List<TripRoute>, Instant>? =
+        plans[key(fromId, destinations, here)]?.let { it.routes to it.at }
+
+    /** Where the plan [get] returns was planned from: from here, the rider's position then. */
+    @Synchronized
+    fun origin(fromId: String, destinations: List<TripDestination>, here: Boolean = false): TripOrigin? =
+        plans[key(fromId, destinations, here)]?.from
 
     @Synchronized
-    fun get(fromId: String, destinations: List<TripDestination>): Pair<List<TripRoute>, Instant>? = plans[key(fromId, destinations)]
-
-    @Synchronized
-    fun put(fromId: String, destinations: List<TripDestination>, routes: List<TripRoute>, at: Instant) {
-        val key = key(fromId, destinations)
+    fun put(fromId: String, destinations: List<TripDestination>, routes: List<TripRoute>, at: Instant, from: TripOrigin? = null) {
+        val key = key(fromId, destinations, from is TripOrigin.Here)
         plans.remove(key)
-        plans[key] = routes to at
+        plans[key] = Held(routes, at, from)
         while (plans.size > MAX) plans.remove(plans.keys.first())
     }
 
@@ -589,8 +639,8 @@ class TripPlans {
     // the reuse window finds its plan — but a place renamed (same spot) doesn't, since its cached
     // route's final walk leg carries the old name (KtorTflClient stamps it in), and a stale label
     // beats no reuse only when it's right.
-    private fun key(fromId: String, destinations: List<TripDestination>) =
-        "$fromId>${destinations.joinToString(",") { destKey(it) }}"
+    private fun key(fromId: String, destinations: List<TripDestination>, here: Boolean) =
+        "${if (here) "here@" else ""}$fromId>${destinations.joinToString(",") { destKey(it) }}"
 
     private fun destKey(destination: TripDestination) = when (destination) {
         is TripDestination.Stop -> destination.id

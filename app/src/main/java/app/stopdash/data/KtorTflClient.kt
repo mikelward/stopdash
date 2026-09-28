@@ -21,6 +21,7 @@ import app.stopdash.domain.TflClient
 import app.stopdash.domain.TflRateLimiter
 import app.stopdash.domain.TflRequestPool
 import app.stopdash.domain.TripDestination
+import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.VehicleCall
 import app.stopdash.domain.VehicleSource
@@ -93,8 +94,15 @@ class KtorTflClient(
     // its own dispatcher to await it.
     private val alertDirectionDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, JourneyPlanner, PostcodeResolver, PlaceSearch, VehicleSource {
-    override suspend fun journeys(fromId: String, to: TripDestination): List<TripRoute> =
+    override suspend fun journeys(from: TripOrigin, to: TripDestination): List<TripRoute> =
         tflRequest { key ->
+            // From here, the rider's own coordinate ("lat,lon"): TfL walks from it to the stop that
+            // serves the trip best, the same position the nearby lookup already sends (SPEC *Trips
+            // with a change*). Never logged, as neither end is.
+            val fromParam = when (from) {
+                is TripOrigin.Stop -> from.id
+                is TripOrigin.Here -> "${from.coordinate.latitude},${from.coordinate.longitude}"
+            }
             // A stop goes by id; a place goes by its coordinate ("lat,lon"), which TfL routes to with a
             // final walk leg (SPEC D9). The coordinate is the rider's chosen destination, so — like the
             // trip's ends — it isn't logged (SPEC *Privacy*).
@@ -103,7 +111,7 @@ class KtorTflClient(
                 is TripDestination.Place -> "${to.coordinate.latitude},${to.coordinate.longitude}"
             }
             val dto = try {
-                httpClient.get("$baseUrl/Journey/JourneyResults/$fromId/to/$toParam") {
+                httpClient.get("$baseUrl/Journey/JourneyResults/$fromParam/to/$toParam") {
                     // No leg asks the rider to walk longer than this (the Planner's default allows
                     // far more, offering an all-walk route beside the rides).
                     parameter("maxWalkingMinutes", MAX_WALKING_MINUTES)
@@ -130,8 +138,19 @@ class KtorTflClient(
             // TfL names a coordinate arrival by whatever (if anything) sits there, not the favorite the
             // rider picked, so the final walk leg reads with the name they know it by (SPEC D9). The
             // last leg of every route to a place is that walk.
-            if (to is TripDestination.Place) routes.map { it.namedTo(to.name) } else routes
+            val named = if (to is TripDestination.Place) routes.map { it.namedTo(to.name) } else routes
+            if (from is TripOrigin.Here) named.map { it.fromHere() } else named
         }
+
+    // The route with its first leg's start unnamed when it starts at the rider's coordinate (no stop
+    // id): TfL names that point by whatever sits there, often the coordinate itself, which is neither
+    // useful on screen nor anything to keep in the trip on the way. A walk from where the rider set
+    // off names only where it goes, as the walk to the first stop always has.
+    private fun TripRoute.fromHere(): TripRoute {
+        val first = legs.firstOrNull() ?: return this
+        if (first.fromId.isNotBlank() || first.fromArea.isNotBlank()) return this
+        return TripRoute(listOf(first.copy(fromName = "", fromAt = null)) + legs.drop(1))
+    }
 
     // The route with its final leg named [name] when that leg ends at a bare coordinate (no stop id):
     // the place the rider chose, in place of whatever TfL happened to call the point. A leg that ends

@@ -3,6 +3,8 @@ package app.stopdash.data
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripDestination
+import app.stopdash.domain.TripOrigin
+import app.stopdash.domain.journeys
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -19,6 +21,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import app.stopdash.domain.TripRoute
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -62,6 +65,36 @@ class JourneyPlannerTest {
             .journeys("910GHGHI", TripDestination.Place(Coordinates(51.5, -0.12), "X1 9XX"))
         val url = checkNotNull(captured).url
         assertEquals("/Journey/JourneyResults/910GHGHI/to/51.5,-0.12", url.encodedPath)
+    }
+
+    @Test
+    fun `asks the Planner from the rider's position`() = runTest {
+        var captured: HttpRequestData? = null
+        // Synthetic position, no real place (SPEC *Privacy*).
+        client(fixture, capture = { captured = it })
+            .journeys(TripOrigin.Here(Coordinates(51.5, -0.12)), TripDestination.Stop("940GZZLUCYF"))
+        assertEquals("/Journey/JourneyResults/51.5,-0.12/to/940GZZLUCYF", checkNotNull(captured).url.encodedPath)
+    }
+
+    @Test
+    fun `a walk from the rider's position leaves its start unnamed, a walk from a stop keeps it`() = runTest {
+        // Constructed: TfL echoes the coordinate as the start's name. Synthetic values — no real place.
+        val body =
+            """
+            { "journeys": [ { "legs": [ {
+              "departureTime": "2026-09-27T09:00:00", "arrivalTime": "2026-09-27T09:06:00",
+              "mode": { "id": "walking", "name": "walking" },
+              "departurePoint": { "commonName": "51.5, -0.12", "lat": 51.5, "lon": -0.12 },
+              "arrivalPoint": { "naptanId": "940GZZLUKSX", "commonName": "King's Cross" }
+            } ] } ] }
+            """.trimIndent()
+        val here = client(body).journeys(TripOrigin.Here(Coordinates(51.5, -0.12)), TripDestination.Stop("940GZZLUKSX")).single().legs.first()
+        assertEquals("", here.fromName)
+        assertNull(here.fromAt)
+        assertEquals("King's Cross", here.toName)
+        val stopBody = body.replace("\"commonName\": \"51.5, -0.12\"", "\"naptanId\": \"940GZZLUACY\", \"commonName\": \"Archway\"")
+        val fromStop = client(stopBody).journeys(TripOrigin.Here(Coordinates(51.5, -0.12)), TripDestination.Stop("940GZZLUKSX")).single().legs.first()
+        assertEquals("Archway", fromStop.fromName)
     }
 
     @Test

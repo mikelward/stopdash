@@ -877,8 +877,12 @@ kept on the device with the rest of the user's config and never logged (*Privacy
 
 *Planned* (maintainer, 2026-09-26; mocked the same day). *To…* — on the near-me list, one tap on the
 app bar's **Directions** button (maintainer, 2026-09-26; the overflow keeps its *To…* too) — plans a trip to a **stop** — a station
-or bus stop picked from the station search, never an address or a map point — from the rider's
-nearest stop of any mode (the Planner walks on to a better one itself), or from the *From…* station when one is set.
+or bus stop picked from the station search, never an address or a map point — from **where the rider
+is**: the fix the near-me list was found from goes to the Planner as the trip's start, and it walks
+from there to whichever stop serves the trip best — a station ten minutes' walk away as readily as
+the bus stop at the corner (maintainer, 2026-09-28: starting at the nearest stop only ever offered
+routes from that stop, so a bus to the Tube was offered and the walk to the Tube never was). From the
+*From…* station, when one is set, it plans from that station's own stop.
 This is the ordinary search flow; **any saved favorite** is the exception, planning to its
 saved coordinate rather than a picked stop (D9) — the coordinate goes only to TfL, which walks the last leg.
 Every favorite is routed by tapping it — in the Settings *"Favorite places"* list, as a **chip atop
@@ -1017,12 +1021,11 @@ disruptions, until a check succeeds.
 
 **TfL's Journey Planner chooses the lines and changes; StopDash's live arrivals give the times**
 (principle 1). The first leg counts down like any row. From "Here", the rider still has to reach the
-first stop. The list's distance is a straight line, not a walkable path, so the walk is
-estimated **conservatively** on the phone: that distance stretched for detours, at an unhurried pace,
-shown as the route's first dotted link ("Walk to ‹stop› (~7 min)") so the rider sees the assumption. First-leg
-trains that leave before the rider can get there are grayed; the estimate errs toward graying a
-train that could be caught rather than offering one that can't (from a *From…* station the rider is
-taken to be there already). A later leg shows the change station's live
+first stop: the Planner's own **first walk leg**, from their position along real streets, is that walk,
+shown as the route's first dotted link ("Walk to ‹stop› (7 min)"), and first-leg trains that leave
+before the rider can get there are grayed (from a *From…* station the rider is taken to be there
+already). The Planner walks at its average pace; letting the rider set theirs is a follow-up
+(`TODO.md`). A later leg shows the change station's live
 trains, with those the rider can't reach in time grayed. The **arrival is worked out leg by leg**:
 the first first-leg train the rider can reach plus its run time gives the time at the change, plus
 the change or walk time; the first live train there that the rider can reach starts the next leg,
@@ -1065,9 +1068,11 @@ better one), between stations, and after the last ride to the picked stop.
 placeholder; the Planner call runs off the render path. A plan is kept in memory for the trip and
 reused if the same trip is reopened within 15 minutes. From "Here", a re-locate (the crosshairs, or
 a fresh fix) that resolves to a different nearest stop discards the plan and re-plans at once,
-showing "Planning…" rather than the old station's routes. Any new fix, even one that resolves to
-the same stop, keeps the plan but recomputes the walk to the first stop and re-ranks the
-routes, so the reachable first-leg trains follow the rider. While a re-locate is in flight, or after
+showing "Planning…" rather than the old routes. A new fix that keeps the same nearest stop keeps the
+plan while the rider is within **150 m** of where it was planned from (a fix's wander, or a few steps);
+once they are farther, the plan's first walk is from somewhere they've left, so the trip plans again
+from where they are, keeping the old routes up meanwhile, so the reachable first-leg trains follow
+the rider. A plan reused from earlier is held to the same test when the trip opens. While a re-locate is in flight, or after
 one that fails (which keeps the old stop, as on the list, and shows the list's location banner over
 the trip), the origin is unconfirmed: until a fix is confirmed again, the walk is
 from the last confirmed position and every route's arrival reads "est." at best, never live-confirmed. A plan older than that is re-planned, on open
@@ -1083,14 +1088,14 @@ trip if one is held, never a blank. Retry is disabled while its call is in fligh
 and falls back the same way; it is retried on the next refresh. Nothing retries in a loop:
 Planner and arrivals requests go through the same rate limiter as every TfL request.
 
-**Walking** is capped at 15 minutes per walk (the Planner's `maxWalkingMinutes`), so it never offers
-a long walk beside the rides; configurable later.
+**Walking** is capped at 15 minutes per walk (the Planner's `maxWalkingMinutes`), the walk from where
+the rider is included, so it never offers a long walk beside the rides; configurable later.
 
 **One stop per end, every station of a complex.** The Planner takes a single stop or station id for
 each end, not an interchange's or a folded search result's several stands, and it leans toward the
 end's own mode: aimed at King's Cross St. Pancras's Underground station it offered a change onto the
-Metropolitan line where Thameslink runs direct to St Pancras. So the start is one stop (the nearest
-to the rider, or the *From…* station's own stop), and a picked **station complex** (an interchange,
+Metropolitan line where Thameslink runs direct to St Pancras. So the start is one place (the rider's
+position, or the *From…* station's own stop), and a picked **station complex** (an interchange,
 TfL's `HUB…`) is planned to **once per station code** — never merged, since neither names nor ids
 tell a station's platform variant from another station — **plus once to one of its bus stops** (the Planner walks between
 stands), the requests in parallel (maintainer, 2026-09-26: the best way there whatever the line or
@@ -1108,14 +1113,17 @@ didn't lift the lean. An ordinary pick is planned to as picked, the Planner walk
 stretch itself where a neighboring stop serves the trip better, so a same-named stand the search
 folded into the result is reached on foot rather than lost.
 
-**What leaves the phone:** both ends of an ordinary trip go to TfL's Journey Planner as stop ids —
-the nearest stop's id stands in for the rider's position, never a coordinate. **The one exception is
-routing to a saved favorite place (D9): its stored *coordinate* is sent as the destination** — still
-the **Location** type already declared, sent only to TfL, no new Data Safety type; this section and
-`docs/PRIVACY.md` are updated to match when that routing ships (tracked in `TODO.md`). It is free and keyless
+**What leaves the phone:** a trip from here sends the **rider's position** to TfL's Journey Planner as
+its start (maintainer, 2026-09-28): the fix the near-me list was found from, usually one the nearby
+lookup has just sent TfL, though when a recent lookup of the same spot was reused from the device
+the trip is what sends it; the destination goes as a stop id, or — routing to a saved favorite place (D9) — as
+its stored **coordinate**. All of it is the **Location** type already declared, sent only to TfL, no
+new Data Safety type. An earlier design sent the nearest stop's id in place of the position; that
+narrowing cost the routes the rider most wanted (the walk to a station rather than a bus to it) and
+protected nothing TfL didn't already have, so it is not to be reinstated as a privacy measure. It is free and keyless
 (within TfL's anonymous budget). The Planner is called when a trip opens without a plan under 15
 minutes old (the plan is held in memory only, so a trip reopened after process death re-plans), again
-every 15 minutes while the screen stays visible, on a re-locate to a new nearest stop, and once
+every 15 minutes while the screen stays visible, on a re-locate to a new nearest stop or 150 m on from where it was planned, and once
 per tap of Retry: about four calls an hour for a trip left open, plus one per re-locate or Retry the
 rider makes. To a station complex each of those is one call per station plus one for its bus stops
 (about six at King's Cross, two or three at a typical interchange): about 24 an hour at King's Cross. Ranking needs every listed route's live trains, so each refresh fetches arrivals

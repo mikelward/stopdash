@@ -119,6 +119,7 @@ import app.stopdash.domain.StopMap
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.ToChoice
 import app.stopdash.domain.TripDestination
+import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripTiming
 import app.stopdash.domain.YourStops
@@ -846,9 +847,10 @@ class MainActivity : ComponentActivity() {
                                             hereOriginIds(state.eagerStops, state.nearbyStops, state.distanceMeters, hidden)
                                                 .mapNotNull { byId[it] }
                                         },
-                                        // The Planner starts from the nearest stop of any mode, hidden or
-                                        // not (it walks on to a better one); hidden modes filter its routes.
+                                        // The nearest stop of any mode, hidden or not, keys the trip; the
+                                        // Planner starts from where the rider is ([here]).
                                         anchors = state.nearbyStops,
+                                        here = state.location,
                                         distanceMeters = state.distanceMeters,
                                         clusters = state.eager + state.more,
                                         hiddenModes = hidden,
@@ -2023,6 +2025,10 @@ class MainActivity : ComponentActivity() {
         fromName: String? = null,
         // A From… station's own stops: its trip starts at one of them, never a neighbor.
         fromStopIds: Set<String> = emptySet(),
+        // The rider's position, for a trip from here: the Planner plans from it, walking to whichever
+        // stop serves the trip best — a station a walk away, not only the stop nearest (maintainer,
+        // 2026-09-28). Null plans from the stop (a From… station).
+        here: Coordinates? = null,
         // The crosshairs from a From… station's trip: back to the near-me list. Null re-locates.
         onLocate: (() -> Unit)? = null,
     ) {
@@ -2169,13 +2175,16 @@ class MainActivity : ComponentActivity() {
             destinationIds = ids
         }
         // From a From… station, one of its own stops (the neighbors around it are no start); else
-        // the stop nearest the rider.
+        // the stop nearest the rider, which keys the trip (a move to a new nearest stop plans afresh)
+        // while the Planner plans from [here].
         val starts = anchors.ifEmpty { origin }.filter { !it.id.startsWith(HUB_PREFIX) && it.lines.isNotEmpty() }
             .ifEmpty { origin.filterNot { it.id.startsWith(HUB_PREFIX) } }
         val fromStop = (starts.filter { it.id in fromStopIds }.ifEmpty { starts })
             .minByOrNull { distanceMeters[it.id] ?: Double.MAX_VALUE } ?: origin.first()
         // Keyed on both ends, so a relocation to a new nearest stop plans afresh.
         val tripKey = "${fromStop.id}>$destKey"
+        // Read at each plan, so a re-plan starts from the latest fix.
+        val latestHere by rememberUpdatedState(here)
         val owner = remember(tripKey) { stores.ownerFor(tripKey, this@MainActivity) }
         val trip: TripViewModel = viewModel(
             viewModelStoreOwner = owner,
@@ -2190,12 +2199,16 @@ class MainActivity : ComponentActivity() {
                         dismissedStore = DataStoreDismissedAlertsStore.from(appContext, warn = ::logDepartureWarning),
                         writeFailures = writeFailures,
                         destinationIds = destinationIds,
+                        origin = { latestHere?.let(TripOrigin::Here) ?: TripOrigin.Stop(fromStop.id) },
                     )
                 }
             },
         )
         val lifecycleOwner = LocalLifecycleOwner.current
         SideEffect { trip.hiddenModes = hiddenModes }
+        // The model outlives a rotation, and the origin it was made with reads that composition's
+        // fix: this composition's replaces it, so a later plan starts from the current one.
+        SideEffect { trip.origin = { latestHere?.let(TripOrigin::Here) ?: TripOrigin.Stop(fromStop.id) } }
         // A re-pick of the nearby set (a fresh fix, a retried location) that kept the same nearest
         // stop keeps this trip, but its walk and live times follow the new fix at once rather than
         // wait for the next tick.
@@ -2214,9 +2227,10 @@ class MainActivity : ComponentActivity() {
             ) { trip.refresh() }
         }
         val tripState by trip.state.collectAsStateWithLifecycle()
-        // From here the rider still has to reach the first stop; at a From… station they're at its
-        // own stops (a neighbor, when every own stop is hidden, is still a walk from it).
-        val access = if (fromStop.id in fromStopIds) Duration.ZERO else TripTiming.accessWalk(distanceMeters[fromStop.id] ?: 0.0)
+        // From here the Planner's own first walk leg takes the rider to the first stop, so there's no
+        // walk to add; at a From… station they're at its own stops (a neighbor, when every own stop is
+        // hidden, is still a walk from it).
+        val access = if (here != null || fromStop.id in fromStopIds) Duration.ZERO else TripTiming.accessWalk(distanceMeters[fromStop.id] ?: 0.0)
         TripScreen(
             title = title,
             state = tripState,
