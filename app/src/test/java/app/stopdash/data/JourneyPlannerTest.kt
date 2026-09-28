@@ -4,6 +4,7 @@ import app.stopdash.domain.Coordinates
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripOrigin
+import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.journeys
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -55,6 +56,16 @@ class JourneyPlannerTest {
         assertEquals("/Journey/JourneyResults/910GHGHI/to/940GZZLUCYF", url.encodedPath)
         assertEquals("EXAMPLE", url.parameters["app_key"])
         assertEquals("15", url.parameters["maxWalkingMinutes"])
+        // The Planner's own average unless the rider chose otherwise.
+        assertEquals("Average", url.parameters["walkingSpeed"])
+    }
+
+    @Test
+    fun `asks the Planner to time walks at the rider's speed`() = runTest {
+        var captured: HttpRequestData? = null
+        client(fixture, capture = { captured = it })
+            .journeys(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"), WalkingSpeed.FAST)
+        assertEquals("Fast", checkNotNull(captured).url.parameters["walkingSpeed"])
     }
 
     @Test

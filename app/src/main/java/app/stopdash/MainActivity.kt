@@ -70,6 +70,7 @@ import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.data.DataStoreStarredJourneysStore
 import app.stopdash.data.DataStoreStarredRowsStore
 import app.stopdash.data.DistanceUnitsSetting
+import app.stopdash.data.WalkingSpeedSetting
 import app.stopdash.data.FileActiveTripStore
 import app.stopdash.data.FileNearbyStopsStore
 import app.stopdash.data.FileRecentStationsStore
@@ -551,6 +552,9 @@ class MainActivity : ComponentActivity() {
                 val distanceUnits by DistanceUnitsSetting.changes.collectAsStateWithLifecycle()
                 val distanceUnitsLoaded by DistanceUnitsSetting.isLoaded.collectAsStateWithLifecycle()
                 val distanceUnitsWriteFailed by DistanceUnitsSetting.writeFailed.collectAsStateWithLifecycle()
+                val walkingSpeed by WalkingSpeedSetting.changes.collectAsStateWithLifecycle()
+                val walkingSpeedLoaded by WalkingSpeedSetting.isLoaded.collectAsStateWithLifecycle()
+                val walkingSpeedWriteFailed by WalkingSpeedSetting.writeFailed.collectAsStateWithLifecycle()
 
                 // The user's TfL app_key for the Settings field. Read from the store (the source of
                 // truth), so an external change — a restore, or the warmed holder's own write —
@@ -854,6 +858,11 @@ class MainActivity : ComponentActivity() {
                                     distanceUnitsLoaded = distanceUnitsLoaded,
                                     distanceUnitsWriteFailed = distanceUnitsWriteFailed,
                                     onDismissDistanceUnitsError = DistanceUnitsSetting::writeFailureShown,
+                                    walkingSpeed = walkingSpeed,
+                                    onWalkingSpeedChange = WalkingSpeedSetting::set,
+                                    walkingSpeedLoaded = walkingSpeedLoaded,
+                                    walkingSpeedWriteFailed = walkingSpeedWriteFailed,
+                                    onDismissWalkingSpeedError = WalkingSpeedSetting::writeFailureShown,
                                     onOpenFavoritePlaces = { favoritePlacesOpen = true },
                                     onBack = { settingsOpen = false },
                                 )
@@ -2278,6 +2287,7 @@ class MainActivity : ComponentActivity() {
                         writeFailures = writeFailures,
                         destinationIds = destinationIds,
                         origin = { latestHere?.let(TripOrigin::Here) ?: TripOrigin.Stop(fromStop.id) },
+                        walkingSpeed = WalkingSpeedSetting.changes.value,
                     )
                 }
             },
@@ -2287,6 +2297,9 @@ class MainActivity : ComponentActivity() {
         // The model outlives a rotation, and the origin it was made with reads that composition's
         // fix: this composition's replaces it, so a later plan starts from the current one.
         SideEffect { trip.origin = { latestHere?.let(TripOrigin::Here) ?: TripOrigin.Stop(fromStop.id) } }
+        // The walking-speed setting, from Settings or the picker atop the routes: a change plans again.
+        val walkingSpeed by WalkingSpeedSetting.changes.collectAsStateWithLifecycle()
+        SideEffect { trip.walkingSpeed = walkingSpeed }
         // A re-pick of the nearby set (a fresh fix, a retried location) that kept the same nearest
         // stop keeps this trip, but its walk and live times follow the new fix at once rather than
         // wait for the next tick.
@@ -2338,6 +2351,10 @@ class MainActivity : ComponentActivity() {
             onStart = LocalOnTheWay.current?.let { onTheWay -> { route -> onTheWay.start(route, toName, Instant.now().plus(access)) } },
             onOpenTrip = LocalOnTheWay.current?.takeIf { it.active }?.open,
             onWithheld = trip::noteWithheld,
+            walkingSpeed = walkingSpeed,
+            onWalkingSpeedChange = WalkingSpeedSetting::set,
+            walkingSpeedWriteFailed = WalkingSpeedSetting.writeFailed.collectAsStateWithLifecycle().value,
+            onWalkingSpeedWriteFailureShown = WalkingSpeedSetting::writeFailureShown,
         )
     }
 

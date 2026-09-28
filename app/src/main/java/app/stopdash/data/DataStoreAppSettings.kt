@@ -11,6 +11,7 @@ import app.stopdash.StopdashDebugLog
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.DEFAULT_FONT_SCALE
 import app.stopdash.domain.DistanceUnits
+import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.FontSizeSettings
 import app.stopdash.domain.clampFontScale
 import java.io.IOException
@@ -120,6 +121,13 @@ class DataStoreAppSettings internal constructor(
         dataStore.updateData { (it ?: PersistedSettings()).copy(distanceUnits = units.name) }
     }
 
+    override fun walkingSpeed(): Flow<WalkingSpeed> =
+        persisted().map { WalkingSpeed.fromStored(it?.walkingSpeed) }
+
+    override suspend fun setWalkingSpeed(speed: WalkingSpeed) {
+        dataStore.updateData { (it ?: PersistedSettings()).copy(walkingSpeed = speed.name) }
+    }
+
     // The shared read flow: DataStore's `data`, with a transient I/O read failure retried rather
     // than collapsed to a terminal default. A `catch`-and-emit would end the flow, leaving a
     // long-lived collector stuck at the default after storage recovered (Codex P2 on #56).
@@ -224,6 +232,9 @@ data class PersistedSettings(
     // The distance-units choice by enum name, or null for the default (follow the locale). A string,
     // not the enum, so a value a newer build adds reads back as the default rather than corrupting.
     val distanceUnits: String? = null,
+    // The walking-speed choice by enum name, or null for the Planner's average; a string for the same
+    // reason as [distanceUnits].
+    val walkingSpeed: String? = null,
 )
 
 /**

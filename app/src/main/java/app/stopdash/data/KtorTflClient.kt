@@ -22,6 +22,7 @@ import app.stopdash.domain.TflRateLimiter
 import app.stopdash.domain.TflRequestPool
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripOrigin
+import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.VehicleCall
 import app.stopdash.domain.VehicleSource
@@ -94,7 +95,7 @@ class KtorTflClient(
     // its own dispatcher to await it.
     private val alertDirectionDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, JourneyPlanner, PostcodeResolver, PlaceSearch, VehicleSource {
-    override suspend fun journeys(from: TripOrigin, to: TripDestination): List<TripRoute> =
+    override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed): List<TripRoute> =
         tflRequest { key ->
             // From here, the rider's own coordinate ("lat,lon"): TfL walks from it to the stop that
             // serves the trip best, the same position the nearby lookup already sends (SPEC *Trips
@@ -115,6 +116,8 @@ class KtorTflClient(
                     // No leg asks the rider to walk longer than this (the Planner's default allows
                     // far more, offering an all-walk route beside the rides).
                     parameter("maxWalkingMinutes", MAX_WALKING_MINUTES)
+                    // Every walk timed at the rider's own pace (their setting; the Planner's average by default).
+                    parameter("walkingSpeed", speed.plannerValue)
                     applyAppKey(key)
                     // The Planner can take several seconds to answer a trip it hasn't cached.
                     allowSlowAnswer()

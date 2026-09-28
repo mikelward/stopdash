@@ -61,6 +61,7 @@ import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
+import app.stopdash.domain.WalkingSpeed
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import java.time.Duration
@@ -269,6 +270,57 @@ class TripScreenScreenshotTest {
         // Screen readers hear each first-leg time with its destination.
         composeRule.onAllNodesWithContentDescription(" min to ", substring = true).onFirst().assertExists()
         captureSnapshot("trip-routes.png")
+    }
+
+    @Test
+    fun trip_routes_walking_speed() {
+        // The walking speed heads the routes (maintainer, 2026-09-28); a pick is reported to the setting.
+        var chosen: WalkingSpeed? = null
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf",
+                    state = planned,
+                    now = now,
+                    access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source),
+                    onBack = {},
+                    onRetry = {},
+                    walkingSpeed = WalkingSpeed.AVERAGE,
+                    onWalkingSpeedChange = { chosen = it },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Walking speed").assertIsDisplayed()
+        captureSnapshot("trip-routes-walking-speed.png")
+        composeRule.onNodeWithTag("walkingSpeed").performClick()
+        composeRule.onNodeWithTag("walkingSpeed-FAST").performClick()
+        assertEquals(WalkingSpeed.FAST, chosen)
+    }
+
+    @Test
+    fun a_walking_speed_that_did_not_save_is_said_once() {
+        var shown = 0
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf",
+                    state = planned,
+                    now = now,
+                    access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source),
+                    onBack = {},
+                    onRetry = {},
+                    onWalkingSpeedChange = {},
+                    walkingSpeedWriteFailed = true,
+                    onWalkingSpeedWriteFailureShown = { shown++ },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Couldn't save that", substring = true).assertIsDisplayed()
+        assertEquals(1, shown)
     }
 
     // Three rides whose Planner train on the last is missed with no live one known, on a narrow

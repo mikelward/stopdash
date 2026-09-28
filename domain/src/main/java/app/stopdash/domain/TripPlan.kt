@@ -166,7 +166,8 @@ sealed interface TripOrigin {
  * order; throws a [TflException] on a transport or decode failure, as [TflClient] does.
  */
 interface JourneyPlanner {
-    suspend fun journeys(from: TripOrigin, to: TripDestination): List<TripRoute>
+    /** Every walk in the routes is timed at [speed] ([WalkingSpeed], the rider's setting). */
+    suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed = WalkingSpeed.AVERAGE): List<TripRoute>
 }
 
 /** [JourneyPlanner.journeys] from the stop [fromId]. */

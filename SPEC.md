@@ -1102,7 +1102,12 @@ and falls back the same way; it is retried on the next refresh. Nothing retries 
 Planner and arrivals requests go through the same rate limiter as every TfL request.
 
 **Walking** is capped at 15 minutes per walk (the Planner's `maxWalkingMinutes`), the walk from where
-the rider is included, so it never offers a long walk beside the rides; configurable later.
+the rider is included, so it never offers a long walk beside the rides; configurable later. Every
+walk is timed at the rider's **walking speed** — Slow, Medium or Fast (the Planner's `walkingSpeed`;
+Medium is its average and the default) — so a brisk walker isn't shown a ten-minute walk they do in
+six, nor told a train is out of reach that isn't (maintainer, 2026-09-28). It is one setting, chosen
+in Settings or from a dropdown atop a trip's routes, and a change there plans the trip again at once,
+since every walk and the connections after it were timed at the old pace. Plans are kept per pace.
 
 **One stop per end, every station of a complex.** The Planner takes a single stop or station id for
 each end, not an interchange's or a folded search result's several stands, and it leans toward the

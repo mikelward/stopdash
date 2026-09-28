@@ -929,9 +929,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             route now appears and its first walk reads right on the card and on the way.
       - [ ] **From chip on the To… picker and ahead of the favorite chips** (maintainer, 2026-09-28),
             labeled "Here" by default: next PR.
-      - [ ] **Configurable walking limit and pace** (maintainer, 2026-09-26; dropdowns at the top of
-            the routes page suggested 2026-09-28): the Planner's `maxWalkingMinutes`, fixed at 15 for
-            now, and `walkingSpeed` (slow / average / fast), which now times the walk from here too.
+      - [x] **Walking speed** (maintainer, 2026-09-28): Slow / Medium / Fast, in Settings and atop a
+            trip's routes, sent as the Planner's `walkingSpeed`. Needs a device check that a faster
+            pace shortens the walks as expected.
+      - [ ] **Configurable walking limit**: the Planner's `maxWalkingMinutes`, fixed at 15 for now.
       - [ ] **Mode toggles** at the top of a trip, remembered across trips (the Planner's `mode=`).
       - [ ] **Avoid a line**: request `includeAlternativeRoutes` and drop routes using it, since
             the Planner has no line exclusion (each returned route names its lines, so filtering
@@ -1662,7 +1663,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       a chosen speed/margin; make the speed and whether it's on a setting. Explore from
       real use — a too-aggressive filter that hides a train the user could have jogged for
       is worse than showing it (SPEC principle 1).
-- [ ] **Configurable walking speed** (maintainer, 2026-09-28). A trip times the walk to its first
+- [ ] **Walking speed for the phone's own walk estimate** (maintainer, 2026-09-28). The rider's
+      walking speed now times every walk the Planner offers, a trip from here's first walk
+      included. What's left is the phone's own estimate, used only when a *From…* station's trip
+      starts at a neighboring stop and for the reachability filter above: it times the walk to its first
       stop at one fixed, deliberately slow pace (straight line × 1.4, about 4 km/h, rounded up to a
       minute), so for a faster walker it grays trains they could catch and reads the arrival later
       than it will be. Let the rider set their pace (or learn it), shared with the reachability
