@@ -880,7 +880,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         - [x] **An icon per place, and what its chip shows** (maintainer, 2026-09-28): a fixed set
               of monochrome Material Symbols; the chip shows the icon, the name, or both. Needs a
               device check that an icon-only chip reads clearly on the near-me list.
-        - [ ] **Long-press a place chip to open Favorite places** (maintainer, 2026-09-28).
+        - [x] **Long-press a place chip to open Favorite places** (maintainer, 2026-09-28).
         - [ ] **Favorite chips on the "no stops nearby" screen** (Codex on #315): with nothing in
               range the list gives way to the location gate, which has no chips. A chip there needs
               the trip from here to plan from the rider's coordinate rather than from nearby stops

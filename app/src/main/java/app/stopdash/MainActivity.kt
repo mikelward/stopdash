@@ -926,6 +926,8 @@ class MainActivity : ComponentActivity() {
                                         favoritePlaces = savedPlaces,
                                         today = today,
                                         onRouteToPlace = routeToPlace,
+                                        // A long press on a chip edits the places (maintainer, 2026-09-28).
+                                        onEditFavoritePlaces = { favoritePlacesOpen = true },
                                         riderFix = nearbyViewModel.riderFix,
                                         hiddenPlaceIds = hiddenPlaceIds.toSet(),
                                         onHiddenPlaceIds = { hiddenPlaceIds = it.toList() },
@@ -1199,6 +1201,7 @@ class MainActivity : ComponentActivity() {
         // keeps its "already there" memory for its next day (Codex).
         today: DayOfWeek? = null,
         onRouteToPlace: (TripDestination.Place) -> Unit = {},
+        onEditFavoritePlaces: (() -> Unit)? = null,
         // Where the rider is for the shown set, and whether it is accurate enough to hide a place on:
         // the chips' "already there" test reads this, never the banner's absence (Codex).
         riderFix: StateFlow<NearbyStopsViewModel.RiderFix?> = MutableStateFlow(null),
@@ -1706,6 +1709,7 @@ class MainActivity : ComponentActivity() {
                     locationBanner = locationBannerNow,
                     favoritePlaces = shownPlaces,
                     onRouteToPlace = onRouteToPlace,
+                    onEditFavoritePlaces = onEditFavoritePlaces,
                     // Hiding filters the list at once; the hidden mode's stops stop being fetched
                     // from the next re-locate. Showing them again re-picks the set from the same
                     // fix, so they come back now (SPEC *Finding stops → Hiding a mode*).

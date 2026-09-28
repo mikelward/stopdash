@@ -21,7 +21,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.click
@@ -30,6 +34,7 @@ import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
@@ -43,6 +48,7 @@ import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.height
 import app.stopdash.domain.ChipLabel
 import app.stopdash.domain.CollapsedPlaces
 import app.stopdash.domain.Coordinates
@@ -288,6 +294,49 @@ class MainScreenScreenshotTest {
         // Work shows both, and Gym (no icon) its name.
         composeRule.onNodeWithText("Work", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithText("Gym", useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun `a long press on a chip opens the places to edit them`() {
+        var edits = 0
+        var routed: TripDestination.Place? = null
+        composeRule.setContent {
+            MainScreen(
+                DeparturesUiState.Loaded(stops(now.minusSeconds(60)), now.minusSeconds(60), lineStatuses = statuses()),
+                now,
+                {},
+                favoritePlaces = places,
+                onRouteToPlace = { routed = it },
+                onEditFavoritePlaces = { edits++ },
+            )
+        }
+        val chip = composeRule.onNodeWithTag("favoriteChip-gym")
+        // TalkBack offers the long press by name.
+        chip.assert(
+            SemanticsMatcher("long press labeled") {
+                it.config.getOrNull(SemanticsActions.OnLongClick)?.label == "Edit favorite places"
+            },
+        )
+        chip.performTouchInput { longClick() }
+        assertEquals(1, edits)
+        assertEquals(null, routed)
+        // A plain tap still routes.
+        chip.performClick()
+        assertEquals(TripDestination.Place(Coordinates(51.52, -0.1), "Gym"), routed)
+    }
+
+    @Test
+    fun `a chip grows with large text rather than clipping it`() {
+        composeRule.setContent {
+            val density = LocalDensity.current
+            // At 3x the label alone is taller than the chip's 48dp touch target, which the tagged node's
+            // bounds include, so only a chip that grows with its text measures past 48dp.
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 3f)) {
+                FavoriteChips(places, onRouteTo = {})
+            }
+        }
+        val height = composeRule.onNodeWithTag("favoriteChip-gym").getUnclippedBoundsInRoot().height
+        assertTrue("chip is $height tall at 3x text", height > 48.dp)
     }
 
     @Test

@@ -329,6 +329,7 @@
     <!-- Editor actions. -->
     <string name="favorite_place_save">Save</string>
     <string name="favorite_place_show_on_main">Show on main screen</string>
+    <string name="favorite_places_edit_action">Edit favorite places</string>
     <string name="favorite_place_icon_title">Icon</string>
     <string name="favorite_place_chip_shows_title">Chip shows</string>
     <string name="favorite_place_chip_shows_icon">Icon</string>
