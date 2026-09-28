@@ -460,7 +460,9 @@ internal suspend fun reconcileWidgetDismissals(store: DismissedAlertsStore, answ
     try {
         store.reconcile(
             live = DepartureRows.liveLineStatusAlerts(answered.associateBy { it.lineId }),
-            checkedPlaces = answered.mapTo(HashSet()) { lineAlertKey(it.lineId) },
+            // A line still waiting on which way its alerts apply can't match a dismissal of one
+            // direction's alert yet, so it isn't counted as checked until the split lands.
+            checkedPlaces = answered.filterNot { it.awaitingDirections }.mapTo(HashSet()) { lineAlertKey(it.lineId) },
         )
     } catch (e: CancellationException) {
         throw e

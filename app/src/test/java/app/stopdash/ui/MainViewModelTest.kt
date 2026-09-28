@@ -3163,6 +3163,40 @@ class MainViewModelTest {
         assertEquals(emptySet<DismissedAlert>(), backing.value)
     }
 
+    @Test
+    fun `a line waiting on its alerts' directions keeps a one-way dismissal until the split lands`() = runTest(dispatcher) {
+        val northbound = LineStatus("141", 6, "Diversion", "Diverted northbound.")
+        val dismissal = DismissedAlert.ofLineStatus(northbound)
+        val backing = MutableStateFlow(setOf(dismissal))
+        val store = object : DismissedAlertsStore {
+            override fun dismissed() = backing
+            override suspend fun dismiss(alert: DismissedAlert) {
+                backing.value = Dismissed.dismiss(backing.value, alert)
+            }
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) {
+                backing.value = Dismissed.reconcile(backing.value, live, checkedPlaces)
+            }
+        }
+        var awaiting = true
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(
+                Departure("141", "141", "outbound", "Example", null, Instant.parse("2026-09-18T08:05:00Z"), mode = "bus"),
+            )
+            // Unsplit, so the northbound alert isn't among the line's statuses, until the lookup lands.
+            override suspend fun lineStatuses(lineIds: Collection<String>) =
+                listOf(LineStatus("141", 6, "Diversion", "Diverted both ways.", awaitingDirections = awaiting))
+            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
+        }
+        val vm = MainViewModel(client, listOf(StopRef("490000001A", "Example Road")), clock = { now }, io = dispatcher, dismissedStore = store)
+        advanceUntilIdle()
+        assertEquals(setOf(dismissal), backing.value)
+        // Split now, and the northbound alert isn't there: it ended, so it's forgotten.
+        awaiting = false
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(emptySet<DismissedAlert>(), backing.value)
+    }
+
     // Records closure lookups: each batched pole request and each single-stop request.
     private class ClosureCountingClient(
         private val poleResult: (List<String>) -> Map<String, List<StopDisruption>>,
