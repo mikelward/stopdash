@@ -872,15 +872,16 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [x] **Favorite places as chips atop the near-me list** (maintainer, 2026-09-27): one row of
             chips, the list's first item (it scrolls away with the list), a tap routing as the Settings
             and To… paths do; a place within 200 m of an accurate fix is left out (back past 250 m),
-            and an approximate fix (or an approximate-only grant) hides nothing. Needs a device check that the chip row reads well
-            above the journey cards and that the radius feels right at a real front door.
+            and an approximate fix (or an approximate-only grant) hides nothing. Checked on a device by the maintainer
+            (2026-09-28).
         - [x] **Days of the week per place** (maintainer, 2026-09-28): each place picks the days its
-              chip shows on (every day by default), in its editor. Needs a device check that the day
-              row reads well and that a chip comes and goes at midnight with the app open.
+              chip shows on (every day by default), in its editor. Checked on a device by the
+              maintainer (2026-09-28).
         - [x] **An icon per place, and what its chip shows** (maintainer, 2026-09-28): a fixed set
-              of monochrome Material Symbols; the chip shows the icon, the name, or both. Needs a
-              device check that an icon-only chip reads clearly on the near-me list.
-        - [x] **Long-press a place chip to open Favorite places** (maintainer, 2026-09-28).
+              of monochrome Material Symbols; the chip shows the icon, the name, or both. Checked on a
+              device by the maintainer (2026-09-28).
+        - [x] **Long-press a place chip to open Favorite places** (maintainer, 2026-09-28). Checked on
+              a device by the maintainer (2026-09-28).
         - [ ] **Favorite chips on the "no stops nearby" screen** (Codex on #315): with nothing in
               range the list gives way to the location gate, which has no chips. A chip there needs
               the trip from here to plan from the rider's coordinate rather than from nearby stops
