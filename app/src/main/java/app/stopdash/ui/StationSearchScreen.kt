@@ -1,12 +1,15 @@
 package app.stopdash.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,9 +19,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -31,11 +37,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,19 +52,28 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.ChipLabel
@@ -102,6 +119,11 @@ fun StationSearchScreen(
     // A long press on a place chip opens the saved places to edit them, as on the near-me list's
     // chips (SPEC *Routing from the near-me list*). Null offers none.
     onEditPlaces: (() -> Unit)? = null,
+    // Set by a To… picker: the bar becomes "From" over "To" (maintainer, 2026-09-28), the From row
+    // naming where the trip starts — [fromStation], or "Here" when null — and a tap changes it.
+    // Null keeps the plain search bar.
+    fromStation: String? = null,
+    onChangeFrom: (() -> Unit)? = null,
 ) {
     BackHandler(onBack = onBack)
     val focus = remember { FocusRequester() }
@@ -113,35 +135,78 @@ fun StationSearchScreen(
     // screen stays up the cursor sits wherever the user put it. Only the query itself is typed
     // into this field, so seeding from it once is enough to stay in step.
     var field by remember { mutableStateOf(queryFieldValue(state.query)) }
+    val onFieldChange = { value: TextFieldValue ->
+        val edited = value.text != field.text
+        field = value
+        // A tap or drag that only moves the cursor isn't a new query to search.
+        if (edited) onQueryChange(value.text)
+    }
+    val placeholder = hint ?: stringResource(R.string.station_search_hint)
+    val endsLabelWidth = rememberTripEndsLabelWidth()
+    // Under the From/To bar, the place chips start where the To field does, so they read as quick
+    // picks for it (maintainer, 2026-09-28); elsewhere at the screen's 16dp margin.
+    val chipsStart = if (onChangeFrom != null) tripEndsFieldStart(endsLabelWidth, LocalDensity.current) else 16.dp
     Scaffold(
         topBar = {
-            TopAppBar(
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
-                    }
-                },
-                title = {
-                    TextField(
+            if (onChangeFrom != null) {
+                TripEndsBar(
+                    fromStation = fromStation,
+                    onChangeFrom = onChangeFrom,
+                    onBack = onBack,
+                    labelWidth = endsLabelWidth,
+                ) { modifier ->
+                    BasicTextField(
                         value = field,
-                        onValueChange = { value ->
-                            val edited = value.text != field.text
-                            field = value
-                            // A tap or drag that only moves the cursor isn't a new query to search.
-                            if (edited) onQueryChange(value.text)
-                        },
-                        placeholder = { Text(hint ?: stringResource(R.string.station_search_hint)) },
+                        onValueChange = onFieldChange,
                         singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                         keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                        ),
-                        modifier = Modifier.fillMaxWidth().focusRequester(focus).testTag("stationSearchField"),
+                        modifier = modifier.focusRequester(focus).testTag("stationSearchField"),
+                        decorationBox = { inner ->
+                            EndField {
+                                // The placeholder under the (empty) text, so the cursor starts at its first letter.
+                                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                                    if (field.text.isEmpty()) {
+                                        Text(
+                                            placeholder,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                    inner()
+                                }
+                            }
+                        },
                     )
-                },
-            )
+                }
+            } else {
+                TopAppBar(
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                        }
+                    },
+                    title = {
+                        TextField(
+                            value = field,
+                            onValueChange = onFieldChange,
+                            placeholder = { Text(placeholder) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                            ),
+                            modifier = Modifier.fillMaxWidth().focusRequester(focus).testTag("stationSearchField"),
+                        )
+                    },
+                )
+            }
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -172,6 +237,8 @@ fun StationSearchScreen(
                             onRetryPlaces = onRetryPlaces,
                             onPickHere = onPickHere,
                             onEditPlaces = onEditPlaces,
+                            chipsStart = chipsStart,
+                            chipsTop = if (onChangeFrom != null) 0.dp else 8.dp,
                         )
                     else -> Message(stringResource(R.string.station_search_prompt))
                 }
@@ -247,6 +314,154 @@ fun StationSearchScreen(
 internal fun queryFieldValue(query: String): TextFieldValue = TextFieldValue(query, TextRange(query.length))
 
 /**
+ * The To… search's bar (maintainer, 2026-09-28): where the trip starts over where it goes, each row
+ * labeled, beside the back arrow. "From" names the start — "Here" behind the crosshair, or the From…
+ * station — and a tap opens the From… search to change it; "To" holds the search field ([toField],
+ * given the row's remaining width).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TripEndsBar(
+    fromStation: String?,
+    onChangeFrom: () -> Unit,
+    onBack: () -> Unit,
+    labelWidth: Dp,
+    toField: @Composable (Modifier) -> Unit,
+) {
+    val fromLabel = stringResource(R.string.trip_ends_from)
+    val toLabel = stringResource(R.string.trip_ends_to)
+    val labelStyle = MaterialTheme.typography.labelLarge
+    Surface(color = MaterialTheme.colorScheme.surface) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .windowInsetsPadding(TopAppBarDefaults.windowInsets)
+                // 4dp before the back arrow, as a top app bar insets its navigation icon. None below:
+                // the place chips sit close under the To field they serve (maintainer, 2026-09-28),
+                // with only the progress bar's 4dp slot and the chips' own touch target between.
+                .padding(start = ENDS_BAR_START, end = 16.dp, top = 8.dp)
+                .testTag("tripEndsBar"),
+            // The arrow sits level with the From row, both 48dp.
+            verticalAlignment = Alignment.Top,
+        ) {
+            // A fixed slot, so the fields (and the chips under them) start at [tripEndsFieldStart].
+            Box(modifier = Modifier.size(ENDS_BACK_SLOT), contentAlignment = Alignment.Center) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                }
+            }
+            Spacer(modifier = Modifier.width(ENDS_BACK_GAP))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // The From field says "From ‹start›" itself, so its label isn't read twice.
+                EndRow(fromLabel, labelWidth, labelStyle, readLabel = false) { FromField(fromStation, onChangeFrom, Modifier.weight(1f)) }
+                EndRow(toLabel, labelWidth, labelStyle, readLabel = true) { toField(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+/**
+ * The width both [TripEndsBar] labels take: the wider of "From" and "To", so the two fields start at
+ * the same edge whatever the font scale.
+ */
+@Composable
+private fun rememberTripEndsLabelWidth(): Dp {
+    val fromLabel = stringResource(R.string.trip_ends_from)
+    val toLabel = stringResource(R.string.trip_ends_to)
+    val labelStyle = MaterialTheme.typography.labelLarge
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    return remember(fromLabel, toLabel, labelStyle, density) {
+        with(density) {
+            maxOf(measurer.measure(fromLabel, labelStyle).size.width, measurer.measure(toLabel, labelStyle).size.width).toDp()
+        }
+    }
+}
+
+/**
+ * Where [TripEndsBar]'s fields start from the screen's edge, for anything to line up under them.
+ * Summed in whole pixels, each part rounded as the bar's layout rounds it, so what lines up under a
+ * field lands on its pixel rather than one off.
+ */
+private fun tripEndsFieldStart(labelWidth: Dp, density: Density): Dp = with(density) {
+    listOf(ENDS_BAR_START, ENDS_BACK_SLOT, ENDS_BACK_GAP, labelWidth, ENDS_LABEL_GAP).sumOf { it.roundToPx() }.toDp()
+}
+
+private val ENDS_BAR_START = 4.dp
+private val ENDS_BACK_SLOT = 48.dp
+private val ENDS_BACK_GAP = 4.dp
+private val ENDS_LABEL_GAP = 12.dp
+
+/** One labeled row of [TripEndsBar]: the label at [labelWidth], then its field. */
+@Composable
+private fun EndRow(
+    label: String,
+    labelWidth: Dp,
+    labelStyle: TextStyle,
+    readLabel: Boolean,
+    field: @Composable RowScope.() -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            label,
+            style = labelStyle,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            modifier = Modifier
+                .width(labelWidth)
+                .then(if (readLabel) Modifier else Modifier.clearAndSetSemantics {}),
+        )
+        Spacer(modifier = Modifier.width(ENDS_LABEL_GAP))
+        field()
+    }
+}
+
+/** A [TripEndsBar] field's box: the To search field's and the From row's alike. */
+@Composable
+private fun EndField(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clip(END_FIELD_SHAPE)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        content = content,
+    )
+}
+
+/** The From row's field: "Here" behind the crosshair, or the station's name; a tap changes it. */
+@Composable
+private fun FromField(station: String?, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val here = stringResource(R.string.from_here)
+    // TalkBack hears the full name ("From King's Cross & St Pancras International"), not the
+    // display abbreviation, and what a tap does.
+    val description = stringResource(R.string.trip_from, station ?: here)
+    val changeLabel = stringResource(R.string.trip_change_from)
+    EndField(
+        modifier = modifier
+            .clip(END_FIELD_SHAPE)
+            .clickable(role = Role.Button, onClickLabel = changeLabel, onClick = onClick)
+            .semantics { contentDescription = description }
+            .testTag("fromField"),
+    ) {
+        if (station == null) {
+            Icon(CrosshairIcon, contentDescription = null, modifier = Modifier.size(18.dp))
+        }
+        Text(
+            station?.let(::abbreviateStationName) ?: here,
+            style = MaterialTheme.typography.bodyLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+private val END_FIELD_SHAPE = RoundedCornerShape(8.dp)
+
+/**
  * Before anything is typed: the user's saved [favoritePlaces] (a To… picker only — [onOpenPlace] set),
  * then their recent picks, then their starred stops not picked lately, each under its heading. Places
  * lead so a rider routing home taps once without typing (maintainer, 2026-09-27).
@@ -262,6 +477,11 @@ private fun YourStopsList(
     onRetryPlaces: (() -> Unit)?,
     onPickHere: (() -> Unit)? = null,
     onEditPlaces: (() -> Unit)? = null,
+    // Where the chips start: the screen's margin, or the To field's edge under the From/To bar.
+    chipsStart: Dp = 16.dp,
+    // Space above the chips: none right under the From/To bar, so they sit close to the To field
+    // they serve.
+    chipsTop: Dp = 8.dp,
 ) {
     val listState = rememberLazyListState()
     LazyColumn(
@@ -279,7 +499,8 @@ private fun YourStopsList(
                 FavoriteChips(
                     places = places,
                     onRouteTo = { onOpenPlace?.invoke(it) },
-                    modifier = Modifier.padding(vertical = 8.dp),
+                    modifier = Modifier.padding(top = chipsTop, bottom = 8.dp),
+                    contentPadding = PaddingValues(start = chipsStart, end = 16.dp),
                     onEditPlaces = onEditPlaces,
                     onHere = onPickHere,
                     labelOverride = ChipLabel.BOTH,

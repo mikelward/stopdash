@@ -848,9 +848,20 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [ ] **Closure checks where the rider gets off** (each leg's alighting stop and the
             destination), from the list's few-minute cache; not yet fetched.
       - [ ] **Gray unreachable trains in the leg-by-leg cards** (the list's first-leg row does).
-      - [x] ~~**"From" chip on the destination search**~~ — built and then removed (maintainer,
-            2026-09-28): no "Here" chip on the near-me list or the *To…* search. "Here" stays only
-            as the first row of the *From…* search.
+      - [x] **From row on the destination search** (maintainer, 2026-09-28): the *To…* search's
+            bar is From over To, From naming the start ("Here" or the station) and changing it
+            through the *From…* search, what was typed for the destination carrying across.
+            Replaces a From chip built and removed the same day; the near-me list's chips still
+            have no "Here". Needs a device check of the bar's look and the round trips through the
+            search.
+      - [ ] **Decide: changing the start of a planned trip** (maintainer, 2026-09-28, undecided;
+            raised by Codex on #356). The From row lives in the *To…* search, which a planned trip
+            can't reopen, so today its start is changed by going back and planning again. The
+            leading option: tapping the trip's title reopens the From/To search with the
+            destination kept. A related, larger alternative: pick the new start in place in the
+            From field (Maps-style) rather than through the *From…* search and a station's page,
+            which would also retire the change-of-start bookkeeping (`OriginChange`) that drew four
+            review findings on #356.
       - [ ] **Decide: saved places in the *From…* chip row** (maintainer, 2026-09-28, undecided).
             The *From…* and *To…* searches share one chip row at the top (Here first on *From…*,
             then the places on *To…*); *From…* shows no places yet. The leading option: tapping one

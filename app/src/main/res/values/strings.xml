@@ -189,8 +189,15 @@
     <!-- A searched station's app-bar action: pick a destination, then keep only the departures that
          go there (SPEC *Finding stops → From… To…*). -->
     <string name="menu_to">To…</string>
-    <!-- Placeholder in the destination search opened by "To…". -->
-    <string name="station_search_to_hint">To station or stop</string>
+    <!-- Placeholder in the destination search opened by "To…", beside its "To" label; it finds
+         geocoded places too. -->
+    <string name="station_search_to_hint">Station, stop or place</string>
+    <!-- The To… search's bar labels its two rows (maintainer, 2026-09-28): where the trip starts over
+         where it goes. -->
+    <string name="trip_ends_from">From</string>
+    <string name="trip_ends_to">To</string>
+    <!-- What a tap on the To… search's From row does, read out by TalkBack. -->
+    <string name="trip_change_from">Change start</string>
     <!-- Over a To… list while lines' routes are still loading. -->
     <string name="trip_checking">Checking routes…</string>
     <!-- A To… list with nothing that goes there directly. %1$s is the destination. -->

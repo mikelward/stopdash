@@ -286,6 +286,25 @@ The app finds stops two ways:
   (*Privacy*), and *To…*'s own *Recent* remembers it on the device; a **saved favorite** instead sends
   its **coordinate** (D9); its name and stable id are **never sent to TfL** (they ride Android backup /
   device transfer with the rest of the user's config, per *Privacy*).
+- **Where a trip starts: the From row** (maintainer, 2026-09-28) — the *To…* search's bar is two
+  labeled rows, **From** over **To**, with the saved places' chips just below, lined up under the To
+  field as its quick picks. From names the start:
+  **"Here"** behind the crosshair when it's the rider's position, else the *From…* station's name; To
+  is the search field. A tap on From opens the *From…* station search, which heads its list with
+  **"Here"**. Picking a station there opens that station's *To…* search as soon as its stops are found
+  (its page's placeholder, with Retry, meanwhile: nothing can be planned until the new start is known),
+  "Here" (or the crosshair on a station's page, which means the same) returns to the near-me *To…*
+  search, and Back returns to the *To…* search the row was tapped in. The change is done only once a
+  station's *To…* search appears (the new one's, or on Back the original one's, reloaded): backing out
+  of a station still loading, one that failed, or one with nothing to start from (every mode there
+  hidden) returns to the *From…* search with the change still under way, so another station opens at
+  its *To…* search and Back or "Here" still lands where the row was tapped. So changing the start, or thinking better of it, never loses what was typed for
+  the destination: it carries to the new start's *To…* search. The start is chosen there, before the
+  destination; a planned trip has no From row of its own yet (`TODO.md`). Leaving a station to change
+  the start closes its page, which stops its refreshes. This replaces a From **chip** built and
+  removed earlier the same day; the near-me list's place chips still have no "Here", since a chip for
+  where the rider already is adds nothing. A saved place or geocoded address as the **start** is not
+  offered yet (`TODO.md`).
 - **To… a place or postcode** (maintainer, 2026-09-27) — the *To…* search offers **geocoded places**
   (a landmark, an address, a postcode) among the stop matches, each tagged *Place* or *Postcode* in
   the right column where a stop shows its modes; tapping one plans to its **coordinate** (a final walk
@@ -891,12 +910,12 @@ which offers **all** the saved favorite places before any typing (maintainer, 20
 an earlier Home/Work-only framing) so the rider routes to a saved place in one tap without leaving
 the trip. If that list can't be read it says so with a **Retry**, rather than
 hiding the section as "no places" (principle 2); station search stays usable meanwhile. The search page keeps its look (each
-result's name over its modes), with no "From" chip (maintainer, 2026-09-28): the start is the
-rider's position unless they picked a station with *From…*. **"Here"** appears only in the *From…*
-search, as the first chip of the same chip row the *To…* search's places sit in (behind the
-crosshair, shown before the rider's saved stops are read), and taps back to the rider's position;
-never on the *To…* search or the near-me list's place chips, since a trip to where the rider already
-is goes nowhere. The *From…* row holds no saved places yet: what a place as a start should do is
+result's name over its modes) under a **From-over-To bar** (maintainer, 2026-09-28): the start is
+the rider's position unless they picked a station with *From…* or changed it from the From row
+(*Where a trip starts*, above). **"Here"** as a pick appears only in the *From…* search, as the first
+chip of the same chip row the *To…* search's places sit in (behind the crosshair, shown before the
+rider's saved stops are read), and taps back to the rider's position; never among the *To…* search's
+or the near-me list's place chips, since a trip to where the rider already is goes nowhere. The *From…* row holds no saved places yet: what a place as a start should do is
 undecided (`TODO.md`). The trip opens on a **list of routes, best first**: ordered first by how far StopDash
 stands behind each route (tiers, below — usable before not, fully live before "est."), and within a
 tier by the earliest end-to-end arrival, worked out leg by leg from live trains (below). The first
