@@ -14,6 +14,7 @@ import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.HubInfo
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusBatch
 import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.lineAlertKey
 import app.stopdash.domain.NearbySelection
@@ -1081,7 +1082,7 @@ class MainViewModel(
                 lineStatusOmitted[id]?.let { at -> isWithin(at, now, lineStatusReuse) } == true
             }
             val toQuery = lineIds - cachedStatuses.mapTo(HashSet()) { it.lineId } - unknownLineIds - recentlyOmitted
-            lineStatusRequests = if (toQuery.isNotEmpty()) 1 else 0
+            lineStatusRequests = 0
             // With nothing left to ask, the cached verdicts stand on their own.
             if (lineIds.isNotEmpty() && toQuery.isEmpty()) {
                 lineStatuses = cachedStatuses.filter { it.hasAlerts }.associateBy { it.lineId }
@@ -1089,7 +1090,27 @@ class MainViewModel(
             }
             if (toQuery.isNotEmpty()) {
                 try {
-                    val fetched = withContext(io) { client.lineStatuses(toQuery) }
+                    // One call per request TfL accepts, each with its own outcome (LineStatusBatch), so
+                    // the stats count only what was sent and one part failing or unknown doesn't
+                    // discard the verdicts the others returned.
+                    val results = LineStatusBatch.request(toQuery) { chunk -> withContext(io) { client.lineStatuses(chunk) } }
+                    lineStatusRequests = results.requests
+                    val fetched = results.answers.flatMap { it.value }
+                    val unknown = results.unknown
+                    val failed = results.failed
+                    // Nothing answered at all: the whole lookup failed, as before it was split.
+                    if (!results.anyAnswered) throw checkNotNull(results.failure)
+                    if (failed.isNotEmpty()) {
+                        // Not answered, so not an omission: those lines read unchecked and are asked
+                        // again next refresh, while the verdicts the other requests returned stand.
+                        warn("line status fetch failed for ${failed.joinToString(",")}: ${results.failure?.let(::reason)}")
+                    }
+                    if (unknown.isNotEmpty()) {
+                        // TfL knows none of these lines: remembered, so a refresh doesn't ask again,
+                        // and marked omitted below like any line asked and left out.
+                        unknownLineIds += unknown
+                        warn("line status: TfL doesn't know line(s) ${unknown.joinToString(",")}; not asked again")
+                    }
                     // Stamped when TfL answered, not when this batch began: a slow batch neither loses
                     // the store's newest-wins merge to a check made meanwhile nor saves an answer
                     // already near its expiry (SPEC D3/D4).
@@ -1109,11 +1130,12 @@ class MainViewModel(
                     determinedLineIds = determined
                     // Asked and left out: remembered, so the widget's copy of an older verdict for it
                     // is replaced by "no verdict" rather than kept ([widgetLineChecks]).
-                    toQuery.filterNot { it in determined }.forEach {
+                    toQuery.filterNot { it in determined || it in failed }.forEach {
                         lineStatusOmitted[it] = answeredAt
                         lineStatusCache.remove(it)
                     }
-                    val undetermined = lineIds.filterNot { it in determined }
+                    // This refresh's unknown and failed lines were just named above.
+                    val undetermined = lineIds.filterNot { it in determined || it in unknown || it in failed }
                     if (undetermined.isNotEmpty()) {
                         // Name the specific lines so a persistent "couldn't check for disruptions" is
                         // diagnosable — a line id is a canned identifier, not user data (SPEC
@@ -1122,20 +1144,6 @@ class MainViewModel(
                     }
                 } catch (e: CancellationException) {
                     throw e
-                } catch (e: TflException.NotFound) {
-                    // TfL knows none of the lines asked about (it leaves an unknown one out of an
-                    // answer that has a known one): remembered, so a refresh doesn't ask again.
-                    unknownLineIds += toQuery
-                    // Like an omission: an answer with no verdict, which replaces any older one
-                    // for the widget rather than letting it keep showing that ([widgetLineChecks]).
-                    val answeredAt = clock()
-                    toQuery.forEach {
-                        lineStatusOmitted[it] = answeredAt
-                        lineStatusCache.remove(it)
-                    }
-                    lineStatuses = cachedStatuses.filter { it.hasAlerts }.associateBy { it.lineId }
-                    determinedLineIds = cachedStatuses.mapTo(mutableSetOf()) { it.lineId }
-                    warn("line status: TfL doesn't know line(s) ${toQuery.joinToString(",")}; not asked again")
                 } catch (e: Exception) {
                     // Only the cached verdicts are determined, so every line this request was for
                     // reads undetermined — the flag the callers derive is set (SPEC principle 1).

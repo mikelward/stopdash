@@ -104,11 +104,13 @@ object WidgetRefresh {
     /**
      * [snapshot] with its line statuses re-checked (SPEC D3): every line its stops show, less those
      * checked within [reuse] (the app's own check a moment ago, sharing the rate budget), asked in
-     * one [fetchStatuses] call and stamped by [answeredAt] once it returns — when TfL actually
-     * answered, so a slow call neither loses a merge to an earlier check nor lands already
-     * expiring ([now] decides only what to ask). A line TfL gave no status for gets a no-verdict
-     * check ([LineStatusCheck.known] false), so it isn't marked on a verdict nobody gave. A failed call ([fetchStatuses] returns null) leaves
-     * the prior checks as they were, to age out at the staleness threshold like a countdown (D4);
+     * one [fetchStatuses] call per request TfL accepts ([LineStatusBatch.request]) and stamped by
+     * [answeredAt] once they return — when TfL actually answered, so a slow call neither loses a
+     * merge to an earlier check nor lands already expiring ([now] decides only what to ask). A line
+     * TfL gave no status for gets a no-verdict check ([LineStatusCheck.known] false), so it isn't
+     * marked on a verdict nobody gave. A failed call ([fetchStatuses] returns null) leaves its lines'
+     * prior checks as they were, while the other calls' answers apply, to age out at the staleness
+     * threshold like a countdown (D4);
      * until a check is made the line reads as unchecked ([DeparturesSnapshot.statusKnown]).
      * Lines no longer shown are dropped either way.
      */
@@ -129,13 +131,16 @@ object WidgetRefresh {
             age.isNegative || age >= reuse || prior.status.awaitingDirections
         }
         if (toAsk.isEmpty()) return snapshot.copy(lineStatuses = kept)
-        val fetched = fetchStatuses(toAsk) ?: return snapshot.copy(lineStatuses = kept)
+        val results = LineStatusBatch.request(toAsk) { chunk -> fetchStatuses(chunk.toSet()) }
+        if (!results.anyAnswered) return snapshot.copy(lineStatuses = kept)
         val at = answeredAt()
-        val returned = fetched.filter { it.lineId in toAsk }.associate { it.lineId to LineStatusCheck(it, at) }
+        val returned = results.answers.flatMap { it.value }
+            .filter { it.lineId in toAsk }.associate { it.lineId to LineStatusCheck(it, at) }
         // A line asked about that TfL left out gets a no-verdict check, so it replaces the old one
         // here and in the store's merge alike, rather than the old disruption being kept (an absent
-        // entry reads as "nothing new") until it ages out.
-        val fresh = toAsk.associateWith { returned[it] ?: LineStatusCheck.noVerdict(it, at) }
+        // entry reads as "nothing new") until it ages out. Only lines in a request TfL answered: a
+        // failed one's lines keep their prior checks.
+        val fresh = results.answeredIds.filter { it in toAsk }.associateWith { returned[it] ?: LineStatusCheck.noVerdict(it, at) }
         return snapshot.copy(lineStatuses = LineStatusCheck.newest(kept, fresh, lines, at))
     }
 }

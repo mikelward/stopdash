@@ -15,6 +15,7 @@ import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FartherStations
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusBatch
 import app.stopdash.domain.NearbySelection
 import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.StopArrivals
@@ -3318,6 +3319,108 @@ class MainViewModelTest {
                 "departures fetch: 6 requests (3 departures, 1 closure, 1 closure batch, 1 line status, 0 hub) in 0 ms, 0 ms rate-limited",
             ),
         )
+    }
+
+    // A busy hub's lines: too long for one Line Status request (LineStatusBatch), so two are sent.
+    private val hubLines = listOf(
+        "214", "46", "63", "205", "30", "73", "390", "91", "circle", "hammersmith-city", "metropolitan",
+        "northern", "piccadilly", "victoria", "london-north-eastern-railway", "great-northern",
+        "hull-trains", "grand-central", "thameslink", "southeastern", "eurostar", "east-midlands-railway",
+        "avanti-west-coast", "west-midlands-trains", "n63", "n205", "n73", "n91", "lumo", "lioness",
+    )
+
+    private open inner class HubLinesClient : TflClient {
+        val statusCalls = mutableListOf<Collection<String>>()
+        override suspend fun arrivals(stopId: String) = hubLines.mapIndexed { i, id -> departure(id, id, 60L + i) }
+        override suspend fun lineStatuses(lineIds: Collection<String>): List<LineStatus> {
+            statusCalls += lineIds
+            return answer(lineIds)
+        }
+        open fun answer(lineIds: Collection<String>): List<LineStatus> = lineIds.map { LineStatus(it, 10, "Good Service") }
+        override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
+    }
+
+    @Test
+    fun `a line status lookup that fails on its first request counts only that request`() = runTest(dispatcher) {
+        val logged = mutableListOf<String>()
+        val client = object : HubLinesClient() {
+            override fun answer(lineIds: Collection<String>): List<LineStatus> = throw TflException.RateLimited(null)
+        }
+        MainViewModel(client, listOf(seeds[0]), clock = { now }, io = dispatcher, elapsedMillis = { 0L }, logStats = { logged += it })
+        advanceUntilIdle()
+
+        assertEquals(1, client.statusCalls.size)
+        assertTrue(logged.toString(), logged.single().contains(", 1 line status,"))
+    }
+
+    @Test
+    fun `a hub's lines are checked in requests TfL accepts, keeping the part it knows`() = runTest(dispatcher) {
+        val logged = mutableListOf<String>()
+        // TfL knows none of the first request's lines, and all of the second's.
+        val client = object : HubLinesClient() {
+            override fun answer(lineIds: Collection<String>): List<LineStatus> =
+                if ("lioness" in lineIds) super.answer(lineIds) else throw TflException.NotFound(null)
+        }
+        val vm = MainViewModel(client, listOf(seeds[0]), clock = { now }, io = dispatcher, elapsedMillis = { 0L }, logStats = { logged += it })
+        advanceUntilIdle()
+
+        assertEquals(2, client.statusCalls.size)
+        client.statusCalls.forEach { assertTrue(it.joinToString(",").length <= LineStatusBatch.MAX_SEGMENT_LENGTH) }
+        assertEquals(hubLines.toSet(), client.statusCalls.flatten().toSet())
+        assertTrue(logged.toString(), logged.single().contains(", 2 line status,"))
+        // The unknown part leaves the stop unchecked, but isn't asked about again.
+        assertTrue((vm.state.value as DeparturesUiState.Loaded).disruptionUnknown)
+        vm.refresh()
+        advanceUntilIdle()
+        assertFalse(client.statusCalls.drop(2).flatten().any { it == "214" })
+    }
+
+    @Test
+    fun `a later line status request failing keeps what the earlier one returned`() = runTest(dispatcher) {
+        // The first request answers (with a disruption on 214); the second is rate-limited.
+        val client = object : HubLinesClient() {
+            var failSecond = true
+            override fun answer(lineIds: Collection<String>): List<LineStatus> = when {
+                "lioness" in lineIds && failSecond -> throw TflException.RateLimited(null)
+                else -> lineIds.map { if (it == "214") LineStatus(it, 6, "Severe Delays") else LineStatus(it, 10, "Good Service") }
+            }
+        }
+        // A reuse window, so the refresh asks only about lines without a fresh verdict.
+        val vm = MainViewModel(client, listOf(seeds[0]), clock = { now }, io = dispatcher, lineStatusReuse = LINE_STATUS_REUSE)
+        advanceUntilIdle()
+
+        val state = vm.state.value as DeparturesUiState.Loaded
+        assertEquals("Severe Delays", state.lineStatuses.getValue("214").description)
+        // The failed part still reads unchecked.
+        assertTrue(state.disruptionUnknown)
+
+        // Not an omission: the next refresh asks the failed part again, and only that part.
+        client.failSecond = false
+        vm.refresh()
+        advanceUntilIdle()
+        val retried = client.statusCalls.drop(2).flatten()
+        assertTrue("lioness" in retried)
+        assertFalse("214" in retried)
+        assertFalse((vm.state.value as DeparturesUiState.Loaded).disruptionUnknown)
+    }
+
+    @Test
+    fun `an empty answer before a failed request still counts as answered`() = runTest(dispatcher) {
+        // TfL answers the first request with no statuses, then rate-limits the second.
+        val client = object : HubLinesClient() {
+            override fun answer(lineIds: Collection<String>): List<LineStatus> =
+                if ("lioness" in lineIds) throw TflException.RateLimited(null) else emptyList()
+        }
+        val vm = MainViewModel(client, listOf(seeds[0]), clock = { now }, io = dispatcher, lineStatusReuse = LINE_STATUS_REUSE)
+        advanceUntilIdle()
+        assertTrue((vm.state.value as DeparturesUiState.Loaded).disruptionUnknown)
+
+        // The empty answer is an omission, not re-asked within the window; the failed part is.
+        vm.refresh()
+        advanceUntilIdle()
+        val retried = client.statusCalls.drop(2).flatten()
+        assertTrue("lioness" in retried)
+        assertFalse("214" in retried)
     }
 
     // A client that records every arrivals fetch, so a test can assert a "More" tap fetches only the

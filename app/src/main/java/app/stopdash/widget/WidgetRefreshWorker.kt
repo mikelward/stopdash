@@ -410,8 +410,8 @@ internal suspend fun refreshStoredSnapshot(
                         null
                     }
                 }
-                // With fresh arrivals, their lines' statuses too, in one request (lines checked moments
-                // ago reused), so a disrupted service stays marked while its countdowns are live (SPEC
+                // With fresh arrivals, their lines' statuses too, in as few requests as TfL accepts
+                // (lines checked moments ago reused), so a disrupted service stays marked while its countdowns are live (SPEC
                 // D3). A failed lookup keeps the prior checks, which then age out like a countdown (D4);
                 // it doesn't fail the refresh, whose arrivals are still good.
                 var answered: List<LineStatus>? = null
@@ -422,7 +422,8 @@ internal suspend fun refreshStoredSnapshot(
                         reuse = LINE_STATUS_REUSE,
                         answeredAt = Instant::now,
                     ) { lineIds ->
-                        widgetLineStatuses(client, lineIds).also { answered = it }
+                        // Called once per request TfL accepts: every answered one's statuses count.
+                        widgetLineStatuses(client, lineIds)?.also { answered = answered.orEmpty() + it }
                     }
                 }
                 savedNothing = refreshed == null
