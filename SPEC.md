@@ -1760,8 +1760,17 @@ to fit another departure. Good-service verdicts are kept too, so when the app an
 refresh both write, each line keeps whichever check is newer. Stop closures are still not
 persisted: they have no age-stamped rendering. A line status dismissed in the app leaves the widget
 and the watch too (maintainer, 2026-09-28), at once, while its line still counts as checked, so its
-countdowns don't read as unverified, and whichever order the dismissal and a refresh's save land in; like the in-app dismissal it lasts only until the status
-changes (a new severity or wording), which is marked again. **Interim data source**: until Phase 2's user-chosen watched stops exist, the
+countdowns don't read as unverified; like the in-app dismissal it lasts only until the status
+changes (a new severity or wording), which is marked again. The dismissed set is the one place a
+dismissal lives: the widget applies it each time it draws and the phone each time it publishes to
+the watch, redrawing and republishing when it changes, rather than copying it into the stored
+snapshot. A copy there was overwritten by whichever writer saved last, and brought dismissed
+alerts back. A line's dismissal whose alert a refresh saw end or change is kept for one staleness window
+after, since what the widget has stored can lag that refresh, and forgetting it at once would show
+the ended alert there again. Kept that way, it hides only a check made before the end was seen,
+which is stale by the time the window closes, and the app's own screens, which show what they
+fetched, never apply it. So the same alert recurring is a new incident and shows everywhere at
+once, and no widget write can race it. **Interim data source**: until Phase 2's user-chosen watched stops exist, the
 widget shows the last *nearby* set the app fetched — "the stops near where you last
 opened the app". Phase 2 replaces that with the watched stops; a live-refresh cadence for
 the widget when the app isn't driving it is deferred (D5).

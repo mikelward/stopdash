@@ -30,6 +30,11 @@ class TestStopdashApp : StopdashApp() {
         // publisher with fakes.
     }
 
+    override fun installWidgetDismissalRedraw() {
+        // Intentionally empty — no widget host in the test suite, and no real dismissed-alerts
+        // DataStore to follow; WidgetDismissalRedrawTest drives the redraw with fakes.
+    }
+
     override fun installTelemetry() {
         // Intentionally empty — no Firebase in the test suite, and the consent holder and gate are
         // driven directly by their own tests.

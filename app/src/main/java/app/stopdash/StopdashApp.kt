@@ -19,6 +19,7 @@ import app.stopdash.telemetry.TelemetryConsent
 import app.stopdash.telemetry.TelemetryGate
 import app.stopdash.telemetry.startTelemetry
 import app.stopdash.watch.WatchSync
+import app.stopdash.widget.WidgetDismissalRedraw
 import app.stopdash.widget.StopDashWidget
 import com.mikelward.androidlog.DebugLog
 import com.mikelward.androidlog.android.DebugFileSink
@@ -106,6 +107,19 @@ open class StopdashApp : Application() {
         warmSharedState()
         installTelemetry()
         installWatchSync()
+        installWidgetDismissalRedraw()
+    }
+
+    /**
+     * Redraws the widget when the user's dismissed alerts change, since it applies them as it draws.
+     * `open` so the test [Application] can skip it; guarded like the watch sync.
+     */
+    protected open fun installWidgetDismissalRedraw() {
+        try {
+            WidgetDismissalRedraw.start(this, applicationScope)
+        } catch (e: Exception) {
+            StopdashDebugLog.warning("widget: dismissal redraw start failed: %s", e::class.simpleName)
+        }
     }
 
     /**

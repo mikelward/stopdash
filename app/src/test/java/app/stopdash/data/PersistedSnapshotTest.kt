@@ -264,13 +264,17 @@ class PersistedSnapshotTest {
     }
 
     @Test
-    fun `a dismissed check survives the round trip, and an older one reads as not dismissed`() {
+    fun `the stored snapshot never keeps a dismissal, written or read`() {
+        // Dismissals are applied where the snapshot is read (withDismissals), so a stored flag
+        // could only go stale.
         val check = LineStatusCheck(LineStatus("victoria", 6, "Severe Delays"), now, dismissed = true)
         val snapshot = sample().copy(lineStatuses = mapOf("victoria" to check))
-        assertEquals(snapshot, snapshot.toPersisted().toDomain())
-        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-        val older = """{"lineId":"victoria","severity":6,"description":"Severe Delays","checkedAtMillis":0}"""
-        assertEquals(false, json.decodeFromString(PersistedLineStatus.serializer(), older).dismissed)
+        assertEquals(false, snapshot.toPersisted().lineStatuses.single().dismissed)
+        // One an earlier build stored is ignored on the way back in.
+        val stored = snapshot.toPersisted().let { it.copy(lineStatuses = it.lineStatuses.map { s -> s.copy(dismissed = true) }) }
+        assertEquals(snapshot.copy(lineStatuses = mapOf("victoria" to check.copy(dismissed = false))), stored.toDomain())
+        // The line status itself (what the watch envelope carries) keeps it.
+        assertEquals(check, check.toPersisted().toDomain())
     }
 
     @Test

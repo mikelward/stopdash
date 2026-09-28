@@ -28,7 +28,6 @@ import app.stopdash.data.WatchRefreshOutcome
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.DepartureRows
-import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.lineAlertKey
 import app.stopdash.domain.TflException
@@ -396,23 +395,15 @@ internal suspend fun refreshStoredSnapshot(
             // ago reused), so a disrupted service stays marked while its countdowns are live (SPEC
             // D3). A failed lookup keeps the prior checks, which then age out like a countdown (D4);
             // it doesn't fail the refresh, whose arrivals are still good.
+            var answered: List<LineStatus>? = null
             val refreshed = arrivalsRefreshed?.let { snapshot ->
-                // A status the user dismissed in the app stays unmarked here too (SPEC *Disruptions*).
-                val dismissed = widgetDismissedAlerts(context)
-                var answered: List<LineStatus>? = null
                 WidgetRefresh.refreshedLineStatuses(
                     snapshot,
                     Instant.now(),
                     reuse = LINE_STATUS_REUSE,
                     answeredAt = Instant::now,
-                    dismissed = { DismissedAlert.ofLineStatus(it) in dismissed },
                 ) { lineIds ->
                     widgetLineStatuses(client, lineIds).also { answered = it }
-                }.also {
-                    // A dismissed disruption TfL now reports as resolved or changed is forgotten, as
-                    // the app's own refresh forgets it, so the same alert recurring while the app
-                    // stays closed is shown again rather than hidden.
-                    answered?.let { reconcileWidgetDismissals(DataStoreDismissedAlertsStore.from(context.applicationContext, warn = ::logWidgetSnapshotWarning), it) }
                 }
             }
             savedNothing = refreshed == null
@@ -424,13 +415,17 @@ internal suspend fun refreshStoredSnapshot(
                 // departures fresh over the new set. On a discard the newer in-app snapshot is
                 // already stored and has poked the widget itself (Codex P1 on #56).
                 saving = true
-                // A dismissal made while this cycle was fetching was read too late to mark its
-                // checks; the store's merge keeps the mark it already holds for the same alert
-                // ([LineStatusCheck.newest]).
                 val applied = WidgetSnapshotStore(context).saveIfStopsMatch(refreshed, prior.stops.map { it.stopId })
                 saving = false
                 saved = applied
                 if (!applied) logWidgetSnapshotWarning("widget refresh result discarded: stop set changed during fetch")
+                // A dismissed disruption TfL now reports as resolved or changed is forgotten, as the
+                // app's own refresh forgets it, so the same alert recurring while the app stays
+                // closed is shown again rather than hidden. Only once this refresh's statuses are
+                // stored; a discarded one leaves it to the app's own refresh.
+                if (applied) {
+                    answered?.let { reconcileWidgetDismissals(DataStoreDismissedAlertsStore.from(context.applicationContext, warn = ::logWidgetSnapshotWarning), it) }
+                }
             } else {
                 // Nothing fetched fresh: re-render so the unchanged snapshot ages honestly.
                 StopDashWidget().updateAll(context)
@@ -473,21 +468,6 @@ internal suspend fun reconcileWidgetDismissals(store: DismissedAlertsStore, answ
         logWidgetSnapshotWarning("widget refresh couldn't prune dismissed alerts: ${e::class.simpleName}")
     }
 }
-
-/**
- * The alerts the user dismissed in the app, for marking a refreshed line status dismissed. An
- * unreadable set reads as empty: the mark shows rather than a warning being hidden (SPEC
- * principle 2), and the failure is logged.
- */
-internal suspend fun widgetDismissedAlerts(context: Context): Set<DismissedAlert> =
-    try {
-        DataStoreDismissedAlertsStore.from(context.applicationContext, warn = ::logWidgetSnapshotWarning).dismissed().first()
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        logWidgetSnapshotWarning("widget refresh couldn't read dismissed alerts: ${e::class.simpleName}")
-        emptySet()
-    }
 
 /**
  * The widget refresh's status lookup for [lineIds]: TfL's answer, or null when the call failed, so

@@ -2,6 +2,7 @@ package app.stopdash.domain
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 
 /**
  * Reads and writes the persisted **dismissed alerts** — the stop-closure cards the user has tapped
@@ -20,6 +21,14 @@ interface DismissedAlertsStore {
     /** The current dismissed set, re-emitted on every change; empty when nothing is stored or the
      *  stored set is unreadable (fails safe — a dismissed card returns rather than a warning hides). */
     fun dismissed(): Flow<Set<DismissedAlert>>
+
+    /**
+     * The dismissals the widget and the watch apply to what the widget has stored: [dismissed],
+     * plus the ended line dismissals kept only for the widget's old copy of their alert
+     * ([Dismissals.ended]). Those aren't in [dismissed], so a screen showing what it fetched never
+     * hides a recurrence with one.
+     */
+    fun dismissals(): Flow<Dismissals> = dismissed().map { Dismissals(it) }
 
     /** Record [alert] as dismissed ([Dismissed.dismiss]: add-only; [reconcile] prunes obsolete ones). */
     suspend fun dismiss(alert: DismissedAlert)

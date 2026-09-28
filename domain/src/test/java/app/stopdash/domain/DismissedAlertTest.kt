@@ -1,6 +1,7 @@
 package app.stopdash.domain
 
 import java.time.Instant
+import kotlin.time.toJavaDuration
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -150,5 +151,28 @@ class DismissedAlertTest {
             setOf(first, second),
             Dismissed.reconcile(setOf(first, second), live = setOf(first, second), checkedPlaces = setOf("P")),
         )
+    }
+
+    @Test
+    fun `a dropped line dismissal is kept one staleness window from when its end was seen`() {
+        val now = java.time.Instant.parse("2026-09-18T08:00:00Z")
+        val severe = LineStatus("victoria", 6, "Severe Delays", "Signal failure.")
+        val dismissal = DismissedAlert.ofLineStatus(severe)
+        val closure = DismissedAlert("HUBKGX", "Station closed")
+        // First seen ended: kept, marked ended now. The widget doesn't carry closures, so that goes.
+        val first = Dismissed.keepingEnded(setOf(dismissal, closure), emptyMap(), emptySet(), now)
+        assertEquals(Dismissed.Kept(setOf(dismissal), mapOf(dismissal to now)), first)
+        // A later reconcile keeps its first-seen time, whether or not the alert is live again (an
+        // ended one only hides checks made before then, so a recurrence shows regardless).
+        val soon = now.plusSeconds(60)
+        assertEquals(first, Dismissed.keepingEnded(first.dismissed, first.ended, emptySet(), soon))
+        assertEquals(first, Dismissed.keepingEnded(first.dismissed, first.ended, setOf(dismissal), soon))
+        // Once the window has passed, every check it could hide is stale: gone.
+        val later = now.plus(Staleness.THRESHOLD.toJavaDuration())
+        assertEquals(Dismissed.Kept(emptySet(), emptyMap()), Dismissed.keepingEnded(first.dismissed, first.ended, emptySet(), later))
+        // An end time after now means the clock went back: it would hide a recurrence, so it goes.
+        assertEquals(Dismissed.Kept(emptySet(), emptyMap()), Dismissed.keepingEnded(first.dismissed, first.ended, emptySet(), now.minusSeconds(3_600)))
+        // An ordinary dismissal reconcile keeps is left as it is.
+        assertEquals(Dismissed.Kept(setOf(dismissal), emptyMap()), Dismissed.keepingEnded(setOf(dismissal), emptyMap(), setOf(dismissal), now))
     }
 }

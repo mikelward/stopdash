@@ -1,6 +1,7 @@
 package app.stopdash.data
 
 import app.stopdash.domain.DismissedAlert
+import java.time.Instant
 import kotlinx.serialization.Serializable
 
 /**
@@ -30,10 +31,23 @@ internal data class PersistedDismissedAlerts(
 internal data class PersistedDismissedAlert(
     val alertKey: String,
     val contentSignature: String,
+    // When a refresh saw this line alert end, for one kept a while for the widget's stored copy
+    // ([Dismissed.keepingEnded]). Null for an ordinary dismissal. Defaulted, so an older
+    // build's file reads as none ended, and an older build ignores it (it then keeps the entry as
+    // an ordinary dismissal, pruned by its own next refresh).
+    val endedAtMillis: Long? = null,
 )
 
-internal fun Set<DismissedAlert>.toPersisted(): PersistedDismissedAlerts =
-    PersistedDismissedAlerts(alerts = map { PersistedDismissedAlert(it.alertKey, it.contentSignature) })
+internal fun Set<DismissedAlert>.toPersisted(ended: Map<DismissedAlert, Instant> = emptyMap()): PersistedDismissedAlerts =
+    PersistedDismissedAlerts(
+        alerts = map { PersistedDismissedAlert(it.alertKey, it.contentSignature, ended[it]?.toEpochMilli()) },
+    )
+
+/** The entries marked ended ([PersistedDismissedAlert.endedAtMillis]); none for an unknown version. */
+internal fun PersistedDismissedAlerts.ended(): Map<DismissedAlert, Instant> {
+    if (version != PersistedDismissedAlerts.CURRENT_VERSION) return emptyMap()
+    return alerts.mapNotNull { a -> a.endedAtMillis?.let { DismissedAlert(a.alertKey, a.contentSignature) to Instant.ofEpochMilli(it) } }.toMap()
+}
 
 /**
  * The domain set, or null when the stored format is a version this build doesn't know — the caller

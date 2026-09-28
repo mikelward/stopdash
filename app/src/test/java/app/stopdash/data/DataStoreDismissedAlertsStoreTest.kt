@@ -89,4 +89,48 @@ class DataStoreDismissedAlertsStoreTest {
         // the old dismissals reappear as cards), never a lost warning.
         assertEquals(setOf(busStop), store.dismissed().first())
     }
+
+    @Test
+    fun `a line dismissal a refresh saw end is kept for the widget only, for one staleness window`() = runTest {
+        val start = java.time.Instant.parse("2026-09-18T08:00:00Z")
+        var now = start
+        val severe = app.stopdash.domain.LineStatus("victoria", 6, "Severe Delays", "Signal failure.")
+        val store = DataStoreDismissedAlertsStore(FakeDataStore(null), clock = { now })
+        val dismissal = DismissedAlert.ofLineStatus(severe)
+        val victoria = setOf(app.stopdash.domain.lineAlertKey("victoria"), "HUBKGX")
+        store.dismiss(dismissal)
+        store.dismiss(closure)
+        // A refresh learned both ended. The line one is kept for the widget's stored copy, which
+        // may still hold it, but isn't one the app's own screens apply: what they fetch is newer
+        // than the end, so the same alert there is a recurrence. The widget carries no closures.
+        store.reconcile(live = emptySet(), checkedPlaces = victoria)
+        assertEquals(app.stopdash.domain.Dismissals(emptySet(), mapOf(dismissal to start)), store.dismissals().first())
+        assertEquals(emptySet<DismissedAlert>(), store.dismissed().first())
+        // The clock goes back: an end time now in the future isn't applied, as it would hide a
+        // recurrence fetched since. Nor is it an ordinary dismissal.
+        now = start.minusSeconds(3_600)
+        assertEquals(app.stopdash.domain.Dismissals.NONE, store.dismissals().first())
+        // Once every check it could hide is stale, it goes.
+        now = start.plusSeconds(3_600)
+        store.reconcile(live = setOf(dismissal), checkedPlaces = victoria)
+        assertEquals(app.stopdash.domain.Dismissals.NONE, store.dismissals().first())
+    }
+
+    @Test
+    fun `dismissing an ended alert again makes it an ordinary dismissal`() = runTest {
+        val start = java.time.Instant.parse("2026-09-18T08:00:00Z")
+        var now = start
+        val severe = app.stopdash.domain.LineStatus("victoria", 6, "Severe Delays", "Signal failure.")
+        val store = DataStoreDismissedAlertsStore(FakeDataStore(null), clock = { now })
+        val dismissal = DismissedAlert.ofLineStatus(severe)
+        val victoria = setOf(app.stopdash.domain.lineAlertKey("victoria"))
+        store.dismiss(dismissal)
+        now = start.plusSeconds(60)
+        store.reconcile(live = emptySet(), checkedPlaces = victoria)
+        // It recurs, and the user dismisses the recurrence.
+        store.dismiss(dismissal)
+        now = start.plusSeconds(3_600)
+        store.reconcile(live = setOf(dismissal), checkedPlaces = victoria)
+        assertEquals(setOf(dismissal), store.dismissed().first())
+    }
 }

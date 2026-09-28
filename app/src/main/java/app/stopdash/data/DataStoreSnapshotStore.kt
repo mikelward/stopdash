@@ -8,16 +8,13 @@ import androidx.datastore.core.Serializer
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.dataStoreFile
 import app.stopdash.domain.DeparturesSnapshot
-import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.Terminating
 import app.stopdash.domain.WidgetJourneys
 import app.stopdash.domain.WidgetJourneysReport
-import app.stopdash.domain.alertFingerprint
 import java.io.InputStream
 import java.time.Instant
-import java.util.concurrent.atomic.AtomicReference
 import java.io.OutputStream
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -42,22 +39,6 @@ class DataStoreSnapshotStore internal constructor(
     // For merging line checks: one dated after it predates a clock rollback and loses.
     private val clock: () -> Instant = Instant::now,
 ) : SnapshotStore {
-    // Recent dismissals not yet in the stored snapshot: one made before anything is stored (first
-    // launch, the first save still in flight) has no snapshot to be recorded in, and must still
-    // reach that save. A write reads them inside its transform, under DataStore's write lock, so a
-    // dismissal recorded before its own write either lands in this write or runs after it; folds
-    // them in ([recentWith]) and, once stored, drops them here ([stored]), so the stored copy alone
-    // decides when one stops being replayed.
-    private val pendingDismissals = AtomicReference<List<PersistedRecentDismissal>>(emptyList())
-
-    private fun recentWith(
-        current: PersistedSnapshot?,
-        pending: List<PersistedRecentDismissal>,
-    ): List<PersistedRecentDismissal> = (current?.recentDismissals.orEmpty() + pending).distinct()
-
-    private fun stored(pending: List<PersistedRecentDismissal>) {
-        if (pending.isNotEmpty()) pendingDismissals.updateAndGet { it - pending.toSet() }
-    }
 
     override suspend fun load(): DeparturesSnapshot? = dataStore.data.first()?.toDomain()
 
@@ -65,15 +46,7 @@ class DataStoreSnapshotStore internal constructor(
     fun snapshots(): Flow<DeparturesSnapshot?> = dataStore.data.map { it?.toDomain() }
 
     override suspend fun save(snapshot: DeparturesSnapshot) {
-        val now = clock()
-        var pending = emptyList<PersistedRecentDismissal>()
-        // A replacement still keeps the recent dismissals, so a check of a just-dismissed alert this
-        // writer fetched before the dismissal comes out dismissed.
-        dataStore.updateData { current ->
-            pending = pendingDismissals.get()
-            withRecentDismissals(snapshot.toPersisted(), recentWith(current, pending), now)
-        }
-        stored(pending)
+        dataStore.updateData { snapshot.toPersisted() }
     }
 
     override suspend fun saveIfStopsMatch(
@@ -83,19 +56,18 @@ class DataStoreSnapshotStore internal constructor(
         val desired = snapshot.toPersisted()
         // Captured once, so the transform stays a pure function of `current` if DataStore re-runs it.
         val now = clock()
-        var pending = emptyList<PersistedRecentDismissal>()
         // The transform runs under DataStore's write lock, so the compare and the write are one
         // atomic step — no reload→save window a concurrent writer could slip through. Keep the
         // stored snapshot untouched when its stop set no longer matches what the caller worked
         // from (a newer write changed it), discarding the caller's now-stale result. The block
-        // stays a pure function of `current` and the pending dismissals it reads (it only records
-        // which it read), since DataStore may re-run it on a write conflict.
+        // stays a pure function of `current` (no captured mutable state), since DataStore may
+        // re-run it on a write conflict.
         // The widget's journeys are the app's to change, never this caller's: a match keeps the
         // stored ones, so a slow worker can't restore a pin the app has since dropped or changed.
         // So are each stop's nearer places ([app.stopdash.domain.Terminating]): they follow the
         // rider's location, which only the app knows, so a worker that loaded an older location's
         // snapshot can't restore its places over the app's newer ones.
-        fun keepingAppsOwn(current: PersistedSnapshot, pending: List<PersistedRecentDismissal>): PersistedSnapshot {
+        fun keepingAppsOwn(current: PersistedSnapshot): PersistedSnapshot {
             val nearerById = current.stops.associate { it.stopId to (it.nearerIds to it.nearerNames) }
             return desired.copy(
                 journeys = current.journeys,
@@ -109,15 +81,12 @@ class DataStoreSnapshotStore internal constructor(
                 // Line checks per line, newest wins: the app may have checked a line since this
                 // caller loaded, and an older verdict mustn't replace it.
                 lineStatuses = newestStatuses(current.lineStatuses, desired.lineStatuses, desired.stops, now),
-            ).let { withRecentDismissals(it, recentWith(current, pending), now) }
+            )
         }
         val written = dataStore.updateData { current ->
-            pending = pendingDismissals.get()
-            if (current != null && current.matchesStops(expectedStopIds)) keepingAppsOwn(current, pending) else current
+            if (current != null && current.matchesStops(expectedStopIds)) keepingAppsOwn(current) else current
         }
-        val matched = written != null && written == keepingAppsOwn(written, pending)
-        if (matched) stored(pending)
-        return matched
+        return written != null && written == keepingAppsOwn(written)
     }
 
     override suspend fun updateNearer(nearer: Map<String, Terminating.Nearer>) {
@@ -132,26 +101,6 @@ class DataStoreSnapshotStore internal constructor(
             }
             if (stops == current.stops) current else current.copy(stops = stops)
         }
-    }
-
-    override suspend fun dismissLineStatus(alert: DismissedAlert) {
-        // Pure function of `current` (DataStore may re-run it), atomic with the read, so a check a
-        // concurrent refresh just wrote is judged as it now stands.
-        // The dismissal is also remembered for a few minutes ([withRecentDismissals]), so a writer
-        // holding a check fetched before it (the widget's worker, mid-refresh) can't save that check
-        // back undismissed.
-        val now = clock()
-        val recent = PersistedRecentDismissal(alert.alertKey, alertFingerprint(alert), now.toEpochMilli())
-        val window = RECENT_DISMISSAL_WINDOW.toMillis()
-        pendingDismissals.updateAndGet { list -> list.filter { now.toEpochMilli() - it.atMillis < window } + recent }
-        var pending = emptyList<PersistedRecentDismissal>()
-        val written = dataStore.updateData { current ->
-            pending = pendingDismissals.get()
-            // Nothing stored yet: the pending copy carries it to the first save.
-            if (current == null || current.version !in PersistedSnapshot.READABLE_VERSIONS) return@updateData current
-            withRecentDismissals(current, recentWith(current, pending), now)
-        }
-        if (written != null && written.version in PersistedSnapshot.READABLE_VERSIONS) stored(pending)
     }
 
     override suspend fun pruneStops(departedStopIds: Collection<String>) {
@@ -190,11 +139,8 @@ class DataStoreSnapshotStore internal constructor(
     override suspend fun saveKeepingJourneys(snapshot: DeparturesSnapshot) {
         val desired = snapshot.toPersisted()
         val now = clock()
-        var pending = emptyList<PersistedRecentDismissal>()
-        // Pure function of `current` and the pending dismissals, atomic with the read under the
-        // write lock (see pruneStops).
+        // Pure function of `current`, atomic with the read under the write lock (see pruneStops).
         dataStore.updateData { current ->
-            pending = pendingDismissals.get()
             // A newer build's file isn't this one's to rewrite piecemeal: replace it outright.
             val journeys = current?.takeIf { it.version in PersistedSnapshot.READABLE_VERSIONS }?.journeys.orEmpty()
             val origins = journeys.mapTo(HashSet()) { it.originId }
@@ -232,15 +178,8 @@ class DataStoreSnapshotStore internal constructor(
                     stops,
                     now,
                 ),
-            ).let { merged ->
-                withRecentDismissals(
-                    merged,
-                    recentWith(current?.takeIf { it.version in PersistedSnapshot.READABLE_VERSIONS }, pending),
-                    now,
-                )
-            }
+            )
         }
-        stored(pending)
     }
 
     private fun keepingFresher(current: PersistedSnapshot?, desired: PersistedSnapshot): PersistedSnapshot {
@@ -266,9 +205,7 @@ class DataStoreSnapshotStore internal constructor(
             // A newer build's file: leave it rather than rewrite it in this build's format.
             if (current != null && current.version !in PersistedSnapshot.READABLE_VERSIONS) return@updateData current
             // Written as the current version: journeys and journey-only stops are version-2 fields.
-            // The domain form has no recent dismissals, so they're carried over from the stored copy.
             WidgetJourneys.apply(current?.toDomain(), report, origins)?.toPersisted()
-                ?.copy(recentDismissals = current?.recentDismissals.orEmpty())
         }
     }
 

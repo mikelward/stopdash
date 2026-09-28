@@ -67,6 +67,24 @@ data class DeparturesSnapshot(
         lineId.isNotBlank() && lineStatuses[lineId]?.let { it.known && it.isLive(now) } == true
 
     /**
+     * This snapshot as a glance surface shows it, given the user's [dismissals] in the app: each
+     * check they hide ([Dismissals.hide]) is marked [LineStatusCheck.dismissed], and every other
+     * check unmarked. Applied where the snapshot is read (the widget's draw, the watch's publish),
+     * never stored, so the dismissed set is the one place a dismissal lives and nothing can keep a
+     * stale copy of it.
+     */
+    fun withDismissals(dismissals: Dismissals): DeparturesSnapshot {
+        val marked = lineStatuses.mapValues { (_, check) ->
+            val isDismissed = dismissals.hide(check)
+            if (isDismissed == check.dismissed) check else check.copy(dismissed = isDismissed)
+        }
+        return if (marked == lineStatuses) this else copy(lineStatuses = marked)
+    }
+
+    /** [withDismissals] for [dismissed] active dismissals, none ended. */
+    fun withDismissals(dismissed: Set<DismissedAlert>): DeparturesSnapshot = withDismissals(Dismissals(dismissed))
+
+    /**
      * The next instant after [now] at which what this snapshot shows changes on its own: its
      * staleness boundary, or a line check's expiry (a disruption's mark goes, or a line becomes
      * unchecked). Null when none is left. A static surface schedules its redraw here, so a mark
@@ -111,9 +129,10 @@ data class LineStatusCheck(
     // line reads as unchecked. Its [status] is a placeholder that is never disrupted.
     val known: Boolean = true,
     // True when the user dismissed this status in the app (SPEC *Disruptions*): the line still
-    // counts as checked, so its countdowns read as vouched for, but its mark isn't shown. Set by
-    // whoever writes the check from the app's dismissed set, which a glance surface can't read; a
-    // changed status (a new severity or wording) is a new alert and comes back unset.
+    // counts as checked, so its countdowns read as vouched for, but its mark isn't shown. Only
+    // ever set by [DeparturesSnapshot.withDismissals] where the snapshot is read, never stored on
+    // the phone; the watch receives it already applied. A changed status (a new severity or
+    // wording) is a new alert and isn't marked.
     val dismissed: Boolean = false,
     // [status]'s full dismissal identity ([lineAlertFingerprint]), kept apart from [status] because
     // a stored check drops TfL's full reason: a reworded alert differs here even when its severity
@@ -140,10 +159,6 @@ data class LineStatusCheck(
          * verdict can overwrite the other's newer one; kept only for [lineIds] when given (the lines
          * the snapshot's stops still show), so a departed stop's lines don't linger. Given [now], a
          * check dated in the future (the clock moved back since) loses to one that isn't.
-         *
-         * The winner keeps its own [dismissed] flag, never the loser's: a flag inherited here would
-         * outlive the dismissal it came from. A writer racing a dismissal is covered by the store
-         * replaying recent dismissals on every save instead.
          */
         fun newest(
             a: Map<String, LineStatusCheck>,

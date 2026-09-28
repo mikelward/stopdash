@@ -19,7 +19,6 @@ import app.stopdash.domain.StopGroup
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
-import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.RideLines
 import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.RouteStops
@@ -176,27 +175,18 @@ class TripViewModelTest {
             override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) {}
         }
         val failures = WriteFailures()
-        // The widget's copy: a saved line dismissal is passed on at once, an unsaved one isn't.
-        val widgetMarked = mutableListOf<DismissedAlert>()
-        val widget = object : SnapshotStore by SnapshotStore.NONE {
-            override suspend fun dismissLineStatus(alert: DismissedAlert) {
-                widgetMarked += alert
-            }
-        }
         val trip = TripViewModel(
             FakePlanner(listOf(route)), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")), io = dispatcher,
-            dismissedStore = store, widgetDismissals = widget, writeFailures = failures,
+            dismissedStore = store, writeFailures = failures,
         )
         val delayed = LineStatus("blue", 9, "Minor Delays")
         val row = legStatusRow(TripViewModel.State(statuses = mapOf("blue" to delayed)), route.legs[1], now)
         trip.dismissAlert(row)
         advanceUntilIdle()
         assertEquals(setOf(DismissedAlert.ofLineStatus(delayed)), trip.dismissed.value)
-        assertEquals(listOf(DismissedAlert.ofLineStatus(delayed)), widgetMarked)
         failing = true
         trip.dismissAlert(row.copy(status = delayed.copy(description = "Severe Delays", severity = 6)))
         advanceUntilIdle()
-        assertEquals(1, widgetMarked.size)
         // Shared with the list's models, so whichever screen shows next says so.
         assertTrue(trip.dismissWriteFailed.value)
         assertTrue(failures.dismiss.value)

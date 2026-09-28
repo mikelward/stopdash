@@ -5,6 +5,9 @@ import app.stopdash.data.WatchEnvelopes
 import app.stopdash.data.WatchPayload
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DeparturesSnapshot
+import app.stopdash.domain.DismissedAlert
+import app.stopdash.domain.Dismissals
+import app.stopdash.domain.LineStatus
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
 import java.io.IOException
@@ -163,6 +166,69 @@ class WatchPublisherTest {
         assertEquals(0, requests.size)
         advanceTimeBy(2_001)
         assertEquals(listOf(snapshot(minutes = 3) to emptySet<StarredRow>()), requests)
+        job.cancel()
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `a change to the dismissed alerts is a request, since the envelope applies them`() = runTest {
+        val snapshots = MutableStateFlow<DeparturesSnapshot?>(snapshot(minutes = 1))
+        val stars = MutableStateFlow<Set<StarredRow>>(emptySet())
+        val dismissed = MutableStateFlow(Dismissals.NONE)
+        val requests = mutableListOf<Pair<DeparturesSnapshot?, Set<StarredRow>>>()
+        val job = launch { WatchPublisher.requests(snapshots, stars, dismissed = dismissed, window = 2.seconds).collect { requests += it } }
+        advanceTimeBy(2_001)
+        assertEquals(1, requests.size)
+        dismissed.value = Dismissals(setOf(DismissedAlert.ofLineStatus(LineStatus("victoria", 6, "Severe Delays"))))
+        advanceTimeBy(2_001)
+        assertEquals(2, requests.size)
+        job.cancel()
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `an unreadable dismissed set counts as none for the cue, and is retried`() = runTest {
+        val severe = Dismissals(setOf(DismissedAlert.ofLineStatus(LineStatus("victoria", 6, "Severe Delays"))))
+        var reads = 0
+        val source = kotlinx.coroutines.flow.flow {
+            reads++
+            if (reads <= 2) throw IOException("disk") else emit(severe)
+        }
+        val seen = mutableListOf<Dismissals>()
+        val job = launch { source.asPublishCue(retryMs = 1_000) { logged += it.orEmpty() }.collect { seen += it } }
+        runCurrent()
+        // At once, so the snapshot and stars aren't held back; only the first failure gives one.
+        assertEquals(listOf(Dismissals.NONE), seen)
+        advanceTimeBy(1_001)
+        assertEquals(2, reads)
+        advanceTimeBy(2_001)
+        assertEquals(listOf(Dismissals.NONE, severe), seen)
+        job.cancel()
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `a failure after the dismissed set recovered gives an empty cue again`() = runTest {
+        val severe = Dismissals(setOf(DismissedAlert.ofLineStatus(LineStatus("victoria", 6, "Severe Delays"))))
+        var reads = 0
+        val source = kotlinx.coroutines.flow.flow {
+            reads++
+            when (reads) {
+                1 -> throw IOException("disk")
+                2 -> { emit(severe); throw IOException("disk") }
+                else -> kotlinx.coroutines.awaitCancellation()
+            }
+        }
+        val seen = mutableListOf<Dismissals>()
+        val job = launch { source.asPublishCue(retryMs = 1_000) { logged += it.orEmpty() }.collect { seen += it } }
+        runCurrent()
+        advanceTimeBy(1_001)
+        // Failed, recovered, failed again: each run of failures starts with an empty cue, so the
+        // watch doesn't keep hiding what it can no longer vouch for.
+        assertEquals(listOf(Dismissals.NONE, severe, Dismissals.NONE), seen)
+        // And the backoff restarts from the first step.
+        advanceTimeBy(1_001)
+        assertEquals(3, reads)
         job.cancel()
     }
 
