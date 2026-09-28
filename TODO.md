@@ -2083,16 +2083,9 @@ and these carry the rest as their own PRs:
       Overground pills, the card grouping, and the app icon in the header. Landed: the stamp on
       the title row, a pill on every line, and stop headers (shared `groupHeaderTitle`).
 
-- [ ] **Judge a dismissal at read time, not as a stored flag** (Codex on PR #322, 2026-09-28,
-      deferred there). The widget snapshot stores a `dismissed` flag copied from the dismissed
-      set, so the two stores can disagree, and #322 took eight findings of writers racing a
-      dismissal. The last one is still open: if the dismissed set saves but marking the widget's
-      snapshot throws, and no later snapshot write happens in that process (live refresh off, the
-      user leaves), the widget and watch keep the mark until the next save. Proposed redesign:
-      drop the stored flag, and have the widget's render and the watch's envelope build read the
-      dismissed set (local DataStore, off the network) and judge each check's fingerprint there,
-      republishing when the set changes. That deletes the whole race class, and the 15-minute
-      replay with it. It's a design change, so the maintainer decides.
+- [x] **Judge a dismissal at read time, not as a stored flag** (Codex on PR #322; maintainer,
+      2026-09-28: "do it how you like"). The widget's draw and the watch publish apply the
+      dismissed set; nothing stores a copy, so no writer can bring a dismissed mark back.
 
 ## Phase 5 — Distribution and polish
 
@@ -2325,6 +2318,14 @@ and these carry the rest as their own PRs:
 
 Directions that would change what stopdash *is*, not steps in the London MVP. Recorded so
 they aren't re-derived; none is scheduled, and each needs the maintainer's go-ahead.
+
+- [ ] (Later, open call) **Sync settings across devices** (maintainer, 2026-09-28: "maybe not";
+      the phone stays the source of truth for now). Each setting (dismissals, stars, watched
+      stops) already lives in one store on the phone that every surface reads, so sync would be
+      those few sets, not copies spread through the widget's data. Dismissals merge easily (one
+      is only ever added, and a refresh drops it once TfL shows the alert ended); conflicts would
+      want a time on each entry (`dismissedAt`). Anything through a server is a privacy and Play
+      Data Safety decision: the stops someone watches say where they live and travel.
 
 - [ ] (Later, open call) **Other cities beyond London** (recorded 2026-09-19 at the
       maintainer's request). StopDash is TfL-specific today: the data layer talks only to

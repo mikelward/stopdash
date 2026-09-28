@@ -1,5 +1,8 @@
 package app.stopdash.domain
 
+import java.time.Instant
+import kotlin.time.toJavaDuration
+
 /**
  * A **dismissed alert**: the user tapped "dismiss" on a service alert — a stop-closure card or a
  * line's status — and it should stay hidden — but only until the alert's *content* changes, so a dismiss clears the notice you've
@@ -70,6 +73,27 @@ data class DismissedAlert(
 }
 
 /**
+ * The user's dismissals as the widget and the watch apply them to what the widget has stored
+ * ([DeparturesSnapshot.withDismissals]): the [active] ones, and the [ended] line dismissals kept
+ * only for the widget's old copy of their alert ([Dismissed.keepingEnded]), each with when its end
+ * was seen. An ended one hides only a check made before then, so it never hides a recurrence, and
+ * isn't in [active]: the app's own screens, which show what they fetched, never apply it.
+ */
+data class Dismissals(
+    val active: Set<DismissedAlert>,
+    val ended: Map<DismissedAlert, Instant> = emptyMap(),
+) {
+    /** Whether this hides [check]: an active dismissal of exactly its alert, or an ended one made after it. */
+    fun hide(check: LineStatusCheck): Boolean =
+        check.dismissedBy(active) ||
+            ended.any { (alert, endedAt) -> !check.checkedAt.isAfter(endedAt) && check.dismissedBy(setOf(alert)) }
+
+    companion object {
+        val NONE = Dismissals(emptySet())
+    }
+}
+
+/**
  * Pure rules for the dismissed set, kept out of the store so the membership logic is JVM-testable
  * without DataStore or Android (mirrors [Starred]/[WatchedStops]).
  */
@@ -100,6 +124,46 @@ object Dismissed {
         checkedPlaces: Set<String>,
     ): Set<DismissedAlert> =
         current.filterTo(mutableSetOf()) { it in live || it.alertKey !in checkedPlaces }
+
+    /**
+     * The dismissed set after a reconcile, and the [ended] line dismissals in it: ones a refresh saw
+     * end, kept for a while in case what the widget has stored still holds their alert, each with
+     * when that was seen.
+     */
+    data class Kept(val dismissed: Set<DismissedAlert>, val ended: Map<DismissedAlert, Instant>)
+
+    /**
+     * [reconciled] (what [reconcile] kept of [current]) with each dropped line dismissal kept for
+     * one staleness window ([Staleness.THRESHOLD]) from when its end was first seen. The widget and
+     * the watch apply the dismissed set to what the widget has stored
+     * ([DeparturesSnapshot.withDismissals]), which can lag, or be overtaken by, the refresh that
+     * learned the alert ended: its save failed, a slower one landed after it, or it was never the
+     * widget's to make (a searched station's page). Forgotten at once, the ended alert would show
+     * there again until the stored check aged out.
+     *
+     * A kept one is marked [Kept.ended], and only ever hides a check made before that time
+     * ([Dismissals.hide]), which is stale, and so not shown at all, by the time the window closes.
+     * The app's own screens never apply it. So an identical recurrence, or any newer check of the
+     * alert, shows everywhere at once, and no read of what the widget stores is needed: nothing
+     * can race it. Place dismissals aren't kept: the widget doesn't carry closures. One whose end
+     * time is after [now] (the clock went back) is dropped rather than kept.
+     */
+    fun keepingEnded(
+        current: Set<DismissedAlert>,
+        ended: Map<DismissedAlert, Instant>,
+        reconciled: Set<DismissedAlert>,
+        now: Instant,
+    ): Kept {
+        val window = Staleness.THRESHOLD.toJavaDuration()
+        val base = reconciled - ended.keys
+        val kept = (current - base)
+            .filter { it.alertKey.startsWith(LINE_ALERT_PREFIX) }
+            .associateWith { ended[it] ?: now }
+            // One from the future means the clock went back since: it would hide checks made after
+            // the end, a recurrence among them, so it goes.
+            .filterValues { !it.isAfter(now) && now.isBefore(it.plus(window)) }
+        return Kept(base + kept.keys, kept)
+    }
 }
 
 /**
@@ -107,7 +171,9 @@ object Dismissed {
  * key (a hub, StopArea or stop id — naptan-style codes) ever carries, so a line and a place can't
  * collide in the one dismissed set. Also what [Dismissed.reconcile] scopes a checked line by.
  */
-fun lineAlertKey(lineId: String): String = "line:$lineId"
+fun lineAlertKey(lineId: String): String = "$LINE_ALERT_PREFIX$lineId"
+
+private const val LINE_ALERT_PREFIX = "line:"
 
 /**
  * The stable place identity a stop-status row folds and dismisses on: the interchange
@@ -143,9 +209,6 @@ fun stopPlaceKey(hubId: String, clusterId: String, stopName: String, stopId: Str
  * dismissed. Not a secret: it only has to differ when the alert does.
  */
 fun lineAlertFingerprint(status: LineStatus): String = fingerprint(DismissedAlert.ofLineStatus(status).contentSignature)
-
-/** [alert]'s fingerprint, as [lineAlertFingerprint] gives it for the status it was made from. */
-fun alertFingerprint(alert: DismissedAlert): String = fingerprint(alert.contentSignature)
 
 /** Whether [alerts] holds a dismissal of the line alert whose fingerprint is [fingerprint]. */
 fun dismissedLine(alerts: Set<DismissedAlert>, lineId: String, fingerprint: String): Boolean =

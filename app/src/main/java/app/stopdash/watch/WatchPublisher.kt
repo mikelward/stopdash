@@ -3,6 +3,7 @@ package app.stopdash.watch
 import app.stopdash.data.WatchEnvelopes
 import app.stopdash.data.WatchPayload
 import app.stopdash.domain.DeparturesSnapshot
+import app.stopdash.domain.Dismissals
 import app.stopdash.domain.StarredRow
 import java.security.MessageDigest
 import java.time.Instant
@@ -133,8 +134,11 @@ class WatchPublisher(
             snapshots: Flow<DeparturesSnapshot?>,
             starred: Flow<Set<StarredRow>>,
             hiddenModes: Flow<Set<String>> = flowOf(emptySet()),
+            // The alerts the user dismissed: a change is a cue too, since the envelope is built with
+            // them applied ([DeparturesSnapshot.withDismissals]).
+            dismissed: Flow<Dismissals> = flowOf(Dismissals.NONE),
             window: Duration = COALESCE,
         ): Flow<Pair<DeparturesSnapshot?, Set<StarredRow>>> =
-            combine(snapshots, starred, hiddenModes) { snapshot, stars, _ -> snapshot to stars }.debounce(window)
+            combine(snapshots, starred, hiddenModes, dismissed) { snapshot, stars, _, _ -> snapshot to stars }.debounce(window)
     }
 }

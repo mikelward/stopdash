@@ -39,6 +39,8 @@ import app.stopdash.MainActivity
 import app.stopdash.R
 import app.stopdash.StopdashDebugLog
 import app.stopdash.data.HiddenModesSetting
+import app.stopdash.data.DataStoreDismissedAlertsStore
+import app.stopdash.domain.Dismissals
 import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.data.DataStoreStarredRowsStore
 import app.stopdash.data.RouteTopologyStore
@@ -132,12 +134,25 @@ class StopDashWidget : GlanceAppWidget() {
         // does, even a change that failed to save and holds only until restart. Its read waits for
         // the stored set on a cold start and is bounded, so it can delay this render but never hang it.
         val hiddenModes = HiddenModesSetting.loaded()
+        // The alerts the user dismissed in the app (SPEC *Disruptions*), read here rather than
+        // stored with the snapshot, so the widget always follows the app's dismissed set as it is
+        // now ([DeparturesSnapshot.withDismissals]). An unreadable set counts as none: the mark
+        // shows rather than a warning being hidden (SPEC principle 2).
+        val dismissals = try {
+            DataStoreDismissedAlertsStore.from(context, warn = ::logWidgetSnapshotWarning).dismissals().first()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logWidgetSnapshotWarning("widget dismissed read failed: ${e::class.simpleName}")
+            Dismissals.NONE
+        }
+        val shown = snapshot?.withDismissals(dismissals)
         val now = Instant.now()
         // Arm the one-shot staleness-boundary redraw from the snapshot we're about to render, on
         // the render path itself: first add, host rebind, and the app's updateAll after a fetch
         // all go through here, so each arms the flip from the snapshot it just drew — and a host
         // with no widget never runs this, so a widgetless user is never scheduled for (SPEC D4).
-        scheduleStalenessRedrawFor(context, snapshot, now)
+        scheduleStalenessRedrawFor(context, shown, now)
         // A widget render means a widget exists, so resume the opt-in live-refresh chain if the
         // setting is on and it isn't already running — the worker retires the chain when the last
         // widget is removed, and this restarts it after one is re-added (SPEC D5, Codex P1 on #56).
@@ -161,7 +176,7 @@ class StopDashWidget : GlanceAppWidget() {
             val fontScale = LocalContext.current.resources.configuration.fontScale
             val stacked = widgetRowsStacked(size.width, fontScale)
             val model = widgetModel(
-                snapshot,
+                shown,
                 now,
                 starred,
                 maxLines = widgetLineBudget(size.height, fontScale, stacked = stacked),

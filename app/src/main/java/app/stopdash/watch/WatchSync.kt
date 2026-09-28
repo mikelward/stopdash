@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.core.content.edit
 import android.content.SharedPreferences
 import app.stopdash.StopdashDebugLog
+import app.stopdash.data.DataStoreDismissedAlertsStore
 import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.data.WatchComplicationRows
 import app.stopdash.data.DataStoreStarredRowsStore
@@ -11,6 +12,7 @@ import app.stopdash.data.HiddenModesSetting
 import app.stopdash.data.WatchPayload
 import app.stopdash.data.WatchSyncContract
 import app.stopdash.domain.DeparturesSnapshot
+import app.stopdash.domain.Dismissals
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StarredRowSet
 import app.stopdash.widget.logWidgetSnapshotWarning
@@ -25,7 +27,13 @@ import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -184,6 +192,37 @@ object ComplicationRowsStore {
     }
 }
 
+/** The first wait before re-reading a failed dismissed set for the watch; doubled each time. */
+private const val DISMISSED_RETRY_MS = 500L
+
+/** The ceiling on that wait: a store that keeps failing is retried quietly, never given up on. */
+private const val DISMISSED_RETRY_MAX_MS = 30_000L
+
+/**
+ * This dismissed set as a publish cue ([WatchSync.dismissedChanges]): the first failure of a run
+ * gives an empty set, so the cue never holds back the other inputs and the watch republishes
+ * with nothing hidden, then the read is retried with capped backoff for as long as it's
+ * collected. A read that succeeds ends the run, so a later failure gives an empty set again and
+ * starts the backoff afresh.
+ */
+internal fun Flow<Dismissals>.asPublishCue(
+    retryMs: Long = DISMISSED_RETRY_MS,
+    maxRetryMs: Long = DISMISSED_RETRY_MAX_MS,
+    log: (String?) -> Unit,
+): Flow<Dismissals> = flow {
+    var failures = 0
+    emitAll(
+        onEach { failures = 0 }.retryWhen { e, _ ->
+            if (e is CancellationException) return@retryWhen false
+            log(e::class.simpleName)
+            if (failures == 0) emit(Dismissals.NONE)
+            delay((retryMs shl failures.coerceAtMost(6)).coerceAtMost(maxRetryMs))
+            failures++
+            true
+        },
+    )
+}
+
 /**
  * Wires the phone's watch sync (dev-docs/wear-os.md *Sync*): every stored snapshot and every star
  * change is published once it settles, a failure is retried by [WatchPublishWorker], and a watch
@@ -218,7 +257,9 @@ object WatchSync {
         val appContext = context.applicationContext
         return publishing.withLock {
             val (snapshot, stars) = try {
-                snapshots(appContext).first() to starred(appContext).first()
+                // Dismissals are applied here, where the envelope is built, rather than stored with
+                // the snapshot ([DeparturesSnapshot.withDismissals]).
+                snapshots(appContext).first()?.withDismissals(dismissals(appContext).first()) to starred(appContext).first()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -248,6 +289,32 @@ object WatchSync {
         DataStoreStarredRowsStore.from(context.applicationContext, warn = { StopdashDebugLog.warning("stars: %s", it) }).starred()
             .map { (it as? StarredRowSet.Loaded)?.starred ?: emptySet() }
 
+    private fun dismissedStore(context: Context) =
+        DataStoreDismissedAlertsStore.from(context.applicationContext, warn = { StopdashDebugLog.warning("watch: %s", it) })
+
+    /**
+     * The alerts the user dismissed in the app, for one publish. An unreadable set counts as none:
+     * the watch then shows the mark rather than hide a warning (SPEC principle 2), and the failure
+     * is logged.
+     */
+    fun dismissals(context: Context): Flow<Dismissals> =
+        dismissedStore(context).dismissals()
+            .catch { e ->
+                if (e is CancellationException) throw e
+                StopdashDebugLog.warning("watch: dismissed alerts unreadable: %s", e::class.simpleName)
+                emit(Dismissals.NONE)
+            }
+
+    /**
+     * The dismissed set as a publish cue: a read that fails is retried with capped backoff rather
+     * than ending the flow, which would leave every later dismissal off the watch until restart.
+     * The first failure also gives an empty set, since the publish cue waits for every input and
+     * an unreadable file must not hold back the snapshot and stars; the publish itself reads the
+     * set again, counting a failure as none.
+     */
+    fun dismissedChanges(context: Context): Flow<Dismissals> =
+        dismissedStore(context).dismissals().asPublishCue { StopdashDebugLog.warning("watch: dismissed alerts unreadable, retrying: %s", it) }
+
     /** Starts publishing for the life of the process. */
     fun start(context: Context, scope: CoroutineScope) {
         val appContext = context.applicationContext
@@ -265,7 +332,7 @@ object WatchSync {
             // keeps its last envelope meanwhile, which ages to stale on its own clock.
             WatchPublisher.keepCollecting(log = { StopdashDebugLog.warning("watch: %s", it) }) {
                 // Each settled change is a cue; the publish itself reads the latest stored state.
-                WatchPublisher.requests(snapshots(appContext), starred(appContext), HiddenModesSetting.changes).collect {
+                WatchPublisher.requests(snapshots(appContext), starred(appContext), HiddenModesSetting.changes, dismissedChanges(appContext)).collect {
                     if (publishCurrent(appContext, force = false) == WatchPublisher.Outcome.Failed) {
                         WatchPublishWorker.enqueue(appContext, force = false)
                     }

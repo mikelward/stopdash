@@ -131,26 +131,21 @@ class LineStatusCheckTest {
     }
 
     @Test
-    fun `a newer check keeps its own dismissal flag, not the older check's`() {
-        // A stale flag must not outlive a dismissal that has since been forgotten.
-        val stored = mapOf("victoria" to LineStatusCheck(severe, t0, dismissed = true))
-        val newer = mapOf("victoria" to LineStatusCheck(severe, t0.plusSeconds(60)))
-        for (merged in listOf(LineStatusCheck.newest(stored, newer), LineStatusCheck.newest(newer, stored))) {
-            val check = merged.getValue("victoria")
-            assertEquals(t0.plusSeconds(60), check.checkedAt)
-            assertEquals(false, check.dismissed)
-        }
-    }
-
-    @Test
-    fun `a refresh marks a status the user dismissed, judged on TfL's full answer`() = runTest {
-        val refreshed = WidgetRefresh.refreshedLineStatuses(
-            snapshot(emptyMap()),
-            t0,
-            dismissed = { it == severe },
-        ) { listOf(severe, severe.copy(lineId = "jubilee")) }
-        assertTrue(refreshed.lineStatuses.getValue("victoria").dismissed)
-        assertTrue(refreshed.liveLineStatuses(t0).isEmpty())
+    fun `dismissals are applied as the snapshot is read, and only to exactly that alert`() {
+        val jubilee = severe.copy(lineId = "jubilee")
+        val snap = snapshot(mapOf("victoria" to LineStatusCheck(severe, t0), "jubilee" to LineStatusCheck(jubilee, t0)))
+        val shown = snap.withDismissals(setOf(DismissedAlert.ofLineStatus(severe)))
+        assertTrue(shown.lineStatuses.getValue("victoria").dismissed)
+        assertEquals(setOf("jubilee"), shown.liveLineStatuses(t0).keys)
+        assertTrue(shown.statusKnown("victoria", t0))
+        // A reworded reason is a new alert: the old dismissal doesn't hide it.
+        val reworded = snapshot(mapOf("victoria" to LineStatusCheck(severe.copy(fullText = "New reason."), t0)))
+        assertEquals(false, reworded.withDismissals(setOf(DismissedAlert.ofLineStatus(severe))).lineStatuses.getValue("victoria").dismissed)
+        // A dismissal since forgotten un-marks it: the set as it is now is the whole answer.
+        assertEquals(false, shown.withDismissals(emptySet()).lineStatuses.getValue("victoria").dismissed)
+        // A no-verdict check is never dismissed.
+        val unknown = snapshot(mapOf("victoria" to LineStatusCheck.noVerdict("victoria", t0)))
+        assertEquals(unknown, unknown.withDismissals(setOf(DismissedAlert.ofLineStatus(severe))))
     }
 
     @Test
@@ -258,5 +253,18 @@ class LineStatusCheckTest {
         // Merged against the stored copy that still holds the disruption, the newer no-verdict wins.
         val merged = LineStatusCheck.newest(prior.lineStatuses, refreshed.lineStatuses, now = later)
         assertEquals(false, merged.getValue("victoria").known)
+    }
+
+    @Test
+    fun `an ended dismissal hides only a check made before its end was seen`() {
+        val endedAt = Instant.parse("2026-09-18T08:00:00Z")
+        val severe = LineStatus("victoria", 6, "Severe Delays", "Signal failure.")
+        val dismissals = Dismissals(emptySet(), mapOf(DismissedAlert.ofLineStatus(severe) to endedAt))
+        fun at(checkedAt: Instant) =
+            DeparturesSnapshot(emptyList(), checkedAt, lineStatuses = mapOf("victoria" to LineStatusCheck(severe, checkedAt)))
+        // The widget's old copy: hidden, as the user dismissed that alert.
+        assertEquals(true, at(endedAt.minusSeconds(30)).withDismissals(dismissals).lineStatuses.getValue("victoria").dismissed)
+        // The same alert in a check made after its end was seen is a recurrence: shown.
+        assertEquals(false, at(endedAt.plusSeconds(30)).withDismissals(dismissals).lineStatuses.getValue("victoria").dismissed)
     }
 }

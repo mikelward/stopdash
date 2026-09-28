@@ -31,14 +31,6 @@ interface SnapshotStore {
      */
     suspend fun updateWidgetJourneys(report: WidgetJourneysReport, origins: List<StopArrivals>) {}
 
-    /**
-     * Mark the stored check [alert] names dismissed ([LineStatusCheck.dismissed]), atomically with
-     * the read, when it still holds exactly that alert ([LineStatusCheck.dismissedBy], full reason
-     * included): the user dismissed it in the app, so the widget and the watch stop marking it too.
-     * A different stored status, a reworded one included, is a different alert and stays marked.
-     */
-    suspend fun dismissLineStatus(alert: DismissedAlert) {}
-
     /** Persist [snapshot] as the new last-good, replacing any previous one. */
     suspend fun save(snapshot: DeparturesSnapshot)
 
