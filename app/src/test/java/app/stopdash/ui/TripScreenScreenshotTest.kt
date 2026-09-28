@@ -21,6 +21,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -519,6 +520,29 @@ class TripScreenScreenshotTest {
         composeRule.onNodeWithText("┊  3 min to change").assertIsDisplayed()
         composeRule.onNodeWithText("2 stops to Canary Wharf").assertIsDisplayed()
         captureSnapshot("trip-route-legs.png")
+    }
+
+    @Test
+    fun an_open_routes_later_leg_grays_the_trains_that_leave_before_the_rider_gets_there() {
+        show(planned)
+        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.waitForIdle()
+        // The Windrush train in 3 min reaches Whitechapel at 16; with 3 min to change the rider is on
+        // the Elizabeth line's platform at 19, so its trains in 14 and 18 min leave too soon.
+        assertEquals(listOf("14", "18"), grayedTimes("14 · 18 · 24 min"))
+        // A screen reader hears which, since gray alone doesn't reach it.
+        composeRule.onNodeWithText("14 · 18 · 24 min")
+            .assertContentDescriptionEquals("14 min, can't catch, 18 min, can't catch, 24 min")
+        // The first leg is reached after the 2 min walk: its train in 3 min is caught, nothing grays,
+        // and its times are read as shown.
+        assertEquals(emptyList<String>(), grayedTimes("3 · 11 min"))
+        assertTrue(SemanticsProperties.ContentDescription !in composeRule.onNodeWithText("3 · 11 min").fetchSemanticsNode().config)
+    }
+
+    // The times a countdown shows grayed: those it styles apart from the rest of its label.
+    private fun grayedTimes(label: String): List<String> {
+        val text = composeRule.onNodeWithText(label).fetchSemanticsNode().config[SemanticsProperties.Text].single()
+        return text.spanStyles.map { text.text.substring(it.start, it.end) }
     }
 
     @Test

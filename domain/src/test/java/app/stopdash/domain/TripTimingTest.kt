@@ -76,6 +76,27 @@ class TripTimingTest {
     }
 
     @Test
+    fun `each leg is ready when the one before gets the rider there`() {
+        val live = mapOf(0 to listOf(train("red", 2)), 1 to listOf(train("blue", 14), train("blue", 16)))
+        val estimate = TripTiming.estimate(twoLegs, now, Duration.ofMinutes(1), { live[it] })
+        // The first leg once the walk to its stop is done; red at 2 reaches B at 12, plus 3 min to
+        // change: the blue train at 14 leaves too soon, the one at 16 doesn't.
+        assertEquals(at(1), TripTiming.readyAt(estimate, Duration.ofMinutes(1), 0))
+        assertEquals(at(15), TripTiming.readyAt(estimate, Duration.ofMinutes(1), 1))
+        // No leg past the route's end.
+        assertNull(TripTiming.readyAt(estimate, Duration.ofMinutes(1), 3))
+    }
+
+    @Test
+    fun `a leg after a withheld one has no time to be ready by`() {
+        // Red has no train in reach and its Planner departure has passed: withheld, so blue can't be timed.
+        val live = mapOf(0 to emptyList<Departure>(), 1 to listOf(train("blue", 21)))
+        val estimate = TripTiming.estimate(twoLegs, at(6), Duration.ZERO, { live[it] })
+        assertNull(estimate.legs[0].arrive)
+        assertNull(TripTiming.readyAt(estimate, Duration.ZERO, 1))
+    }
+
+    @Test
     fun `a leg with no live train falls back to the Planner while its departure is reachable`() {
         val live = mapOf(0 to listOf(train("red", 2)))
         val estimate = TripTiming.estimate(twoLegs, now, Duration.ZERO, { live[it] })

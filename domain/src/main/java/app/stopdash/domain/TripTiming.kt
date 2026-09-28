@@ -195,6 +195,19 @@ object TripTiming {
         return Estimate(route, basis, arrival, legs, blocked, now, unchecked, slack, withheld.takeIf { basis == Basis.UNKNOWN })
     }
 
+    /**
+     * When the rider is ready to board leg [index] of [estimate]'s route, as [estimate] timed it: at
+     * its first stop after the walk there ([access]) for the first leg, else when the leg before gets
+     * them there, plus any change time the Planner allows after it. Null when the leg before has no
+     * timing (its arrival withheld), so nothing can be said to leave too soon.
+     */
+    fun readyAt(estimate: Estimate, access: Duration, index: Int): Instant? {
+        if (index == 0) return estimate.start.plus(access)
+        val before = estimate.legs.getOrNull(index - 1) ?: return null
+        val leg = estimate.route.legs.getOrNull(index - 1) ?: return null
+        return before.arrive?.plus(leg.changeAfter)
+    }
+
     // Why [leg], reached at [ready] past its live [trains] and the Planner's departure, withholds the arrival.
     private fun withheldAt(
         index: Int,

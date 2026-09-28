@@ -1522,7 +1522,10 @@ private fun RouteLegs(
             if (leg.isWalk) {
                 item(key = "leg$index") { WalkLink(stringResource(R.string.trip_walk, leg.toName, leg.run.toMinutes().toInt())) }
             } else {
-                item(key = "leg$index") { RideLeg(leg, rideLines[leg]?.legs ?: listOf(leg), index == 0, state, now, sequences, dismissed, onOpenDetail, onHideMode) }
+                // Trains that leave before the rider gets to this leg's stop are grayed, as the list's
+                // first-leg row grays them.
+                val ready = TripTiming.readyAt(estimate, access, index)
+                item(key = "leg$index") { RideLeg(leg, rideLines[leg]?.legs ?: listOf(leg), index == 0, state, now, sequences, dismissed, onOpenDetail, onHideMode, ready) }
                 // A change the Planner allows time for after this ride (not a walk leg of its own):
                 // shown, since it decides which next train is in reach.
                 if (leg.changeAfter > Duration.ZERO && index < estimate.route.legs.lastIndex) {
@@ -1809,6 +1812,8 @@ private fun RideLeg(
     dismissed: Set<DismissedAlert>,
     onOpenDetail: (TripLeg, DepartureRow, RouteFocus?) -> Unit,
     onHideMode: ((String) -> Unit)?,
+    // When the rider can board ([TripTiming.readyAt]): a time before it is grayed; null grays none.
+    grayBefore: Instant?,
 ) {
     // Each line's rows; a line with none still gets a row of its own below, so every line the pill
     // names is on the page.
@@ -1832,6 +1837,7 @@ private fun RideLeg(
                 starringAvailable = false,
                 onOpenDetail = { row, focus -> onOpenDetail(legOf(row), row, focus) },
                 onHideMode = onHideMode,
+                grayBefore = grayBefore,
             )
             placed[group].orEmpty().forEach { line -> NoTrainsRow(line, state, now, sequences, dismissed, onOpenDetail, onHideMode) }
         }

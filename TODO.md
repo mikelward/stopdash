@@ -847,7 +847,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             warnings, the location banner and hidden modes.
       - [ ] **Closure checks where the rider gets off** (each leg's alighting stop and the
             destination), from the list's few-minute cache; not yet fetched.
-      - [ ] **Gray unreachable trains in the leg-by-leg cards** (the list's first-leg row does).
+      - [x] **Gray unreachable trains in the leg-by-leg cards** (the list's first-leg row does):
+            an opened route grays, on each ride, the trains that leave before the rider gets there.
       - [x] **From row on the destination search** (maintainer, 2026-09-28): the *To…* search's
             bar is From over To, From naming the start ("Here" or the station) and changing it
             through the *From…* search, what was typed for the destination carrying across.
