@@ -50,7 +50,7 @@ data class WatchEnvelope(
     /** The disruptions to mark at [now], as [DeparturesSnapshot.liveLineStatuses] judges them. */
     fun liveLineStatuses(now: Instant): Map<String, LineStatus> =
         lineStatuses.map { it.toDomain() }
-            .filter { it.known && it.status.disrupted && it.isLive(now) }
+            .filter { it.known && it.status.disrupted && !it.dismissed && it.isLive(now) }
             .associate { it.status.lineId to it.status }
 
     /** Whether [lineId] has a live check at [now], as [DeparturesSnapshot.statusKnown] judges it. */
@@ -175,7 +175,9 @@ object WatchEnvelopes {
 
         val hidden = hiddenModes.sorted()
         // The line checks for the lines the kept stops show, so a dropped stop's lines go with it.
-        val allStatuses = snapshot.lineStatuses.toPersistedStatuses()
+        // Less the alert fingerprint: only the phone matches a dismissal against it, and the
+        // watch reads the dismissed flag the phone already set.
+        val allStatuses = snapshot.lineStatuses.toPersistedStatuses().map { it.copy(fingerprint = null) }
         fun statusesFor(kept: List<PersistedStop>): List<PersistedLineStatus> {
             val lines = linesOfPersisted(kept)
             return allStatuses.filter { it.lineId in lines }

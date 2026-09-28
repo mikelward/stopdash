@@ -1723,8 +1723,10 @@ check for disruptions", as the app does, rather than read as verified-clean. The
 refresh re-checks the lines with the arrivals. A mark takes a line of the widget's height, and is never the line dropped
 to fit another departure. Good-service verdicts are kept too, so when the app and the widget's
 refresh both write, each line keeps whichever check is newer. Stop closures are still not
-persisted: they have no age-stamped rendering. A disruption dismissed in the app is still marked
-on the widget, which has no room for the dismissal and errs toward showing a warning. **Interim data source**: until Phase 2's user-chosen watched stops exist, the
+persisted: they have no age-stamped rendering. A line status dismissed in the app leaves the widget
+and the watch too (maintainer, 2026-09-28), at once, while its line still counts as checked, so its
+countdowns don't read as unverified, and whichever order the dismissal and a refresh's save land in; like the in-app dismissal it lasts only until the status
+changes (a new severity or wording), which is marked again. **Interim data source**: until Phase 2's user-chosen watched stops exist, the
 widget shows the last *nearby* set the app fetched — "the stops near where you last
 opened the app". Phase 2 replaces that with the watched stops; a live-refresh cadence for
 the widget when the app isn't driving it is deferred (D5).
@@ -1831,7 +1833,8 @@ failed Play update check's exception class — never a raw coordinate or the use
 the StopDash watch app, the phone sends it the widget's snapshot — its stops' names and IDs, their
 departures, the nearer-stop lists the terminating filter compares against (location-derived place
 data), the starred-row keys, the hidden modes, and TfL's public line status for the lines those
-stops serve, each with when it was checked — never a coordinate or a key. The line statuses are
+stops serve, each with when it was checked and whether the user dismissed it — never a
+coordinate or a key. The line statuses are
 public TfL data, and they name only lines the snapshot's stops already imply, so they add no Data
 Safety category. The watch sends back the rows its
 complications show and its refresh requests. It goes over Google Play services' Wearable Data Layer,

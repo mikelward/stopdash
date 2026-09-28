@@ -117,6 +117,9 @@ object WidgetRefresh {
         now: Instant,
         reuse: Duration = Duration.ZERO,
         answeredAt: () -> Instant = { now },
+        // Whether the user dismissed this status in the app ([LineStatusCheck.dismissed]), judged on
+        // TfL's full answer, as the app's dismissal is.
+        dismissed: (LineStatus) -> Boolean = { false },
         fetchStatuses: suspend (lineIds: Set<String>) -> List<LineStatus>?,
     ): DeparturesSnapshot {
         val lines = LineStatusCheck.linesOf(snapshot.stops)
@@ -129,7 +132,7 @@ object WidgetRefresh {
         if (toAsk.isEmpty()) return snapshot.copy(lineStatuses = kept)
         val fetched = fetchStatuses(toAsk) ?: return snapshot.copy(lineStatuses = kept)
         val at = answeredAt()
-        val returned = fetched.filter { it.lineId in toAsk }.associate { it.lineId to LineStatusCheck(it, at) }
+        val returned = fetched.filter { it.lineId in toAsk }.associate { it.lineId to LineStatusCheck(it, at, dismissed = dismissed(it)) }
         // A line asked about that TfL left out gets a no-verdict check, so it replaces the old one
         // here and in the store's merge alike, rather than the old disruption being kept (an absent
         // entry reads as "nothing new") until it ages out.

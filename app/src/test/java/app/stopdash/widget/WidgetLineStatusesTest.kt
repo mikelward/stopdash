@@ -40,4 +40,26 @@ class WidgetLineStatusesTest {
         val good = LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service")
         assertEquals(listOf(good), widgetLineStatuses(StatusClient { listOf(good) }, setOf("victoria")))
     }
+
+    @Test
+    fun `a refresh forgets a dismissal once TfL answers with a different status for its line`() = runTest {
+        val severe = LineStatus("victoria", 6, "Severe Delays", "Signal failure.")
+        val closure = app.stopdash.domain.DismissedAlert("940GEXAMPLE", "Closed")
+        var stored = setOf(app.stopdash.domain.DismissedAlert.ofLineStatus(severe), closure,
+            app.stopdash.domain.DismissedAlert.ofLineStatus(severe.copy(lineId = "jubilee")))
+        val store = object : app.stopdash.domain.DismissedAlertsStore {
+            override fun dismissed() = kotlinx.coroutines.flow.flowOf(stored)
+            override suspend fun dismiss(alert: app.stopdash.domain.DismissedAlert) {}
+            override suspend fun reconcile(live: Set<app.stopdash.domain.DismissedAlert>, checkedPlaces: Set<String>) {
+                stored = app.stopdash.domain.Dismissed.reconcile(stored, live, checkedPlaces)
+            }
+        }
+        // Victoria is good now; Jubilee wasn't asked about; the closure isn't a line.
+        reconcileWidgetDismissals(store, listOf(LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service")))
+        assertEquals(setOf(closure, app.stopdash.domain.DismissedAlert.ofLineStatus(severe.copy(lineId = "jubilee"))), stored)
+        // The same alert still live keeps its dismissal.
+        stored = stored + app.stopdash.domain.DismissedAlert.ofLineStatus(severe)
+        reconcileWidgetDismissals(store, listOf(severe))
+        assertEquals(true, app.stopdash.domain.DismissedAlert.ofLineStatus(severe) in stored)
+    }
 }

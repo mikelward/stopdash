@@ -108,6 +108,52 @@ class LineStatusCheckTest {
     }
 
     @Test
+    fun `a dismissed disruption isn't marked, but its line still counts as checked`() {
+        val snap = snapshot(mapOf("victoria" to LineStatusCheck(severe, t0, dismissed = true)))
+        assertTrue(snap.liveLineStatuses(t0.plusSeconds(60)).isEmpty())
+        assertTrue(snap.statusKnown("victoria", t0.plusSeconds(60)))
+        // Not dismissed, the same check is marked.
+        assertEquals(severe, snapshot(mapOf("victoria" to LineStatusCheck(severe, t0))).liveLineStatuses(t0)["victoria"])
+    }
+
+    @Test
+    fun `a dismissed disruption's expiry changes nothing drawn, unless its countdown turns unchecked`() {
+        // Checked 2 min before the fetch: it expires at +3 min, under the countdown fresh until +5.
+        val early = LineStatusCheck(severe, t0.minusSeconds(120), dismissed = true)
+        assertEquals(t0.plusSeconds(180), snapshot(mapOf("victoria" to early)).nextBoundary(t0))
+        // A line a stop only declares has no countdown to turn unchecked: only the arrivals' boundary.
+        val declared = DeparturesSnapshot(
+            stops = listOf(StopArrivals("A", "Stop A", emptyList(), t0, lines = listOf(LineRef("victoria", "Victoria", "tube")))),
+            fetchedAt = t0,
+            lineStatuses = mapOf("victoria" to early),
+        )
+        assertEquals(t0.plus(Duration.ofMinutes(5)), declared.nextBoundary(t0))
+    }
+
+    @Test
+    fun `a newer check keeps its own dismissal flag, not the older check's`() {
+        // A stale flag must not outlive a dismissal that has since been forgotten.
+        val stored = mapOf("victoria" to LineStatusCheck(severe, t0, dismissed = true))
+        val newer = mapOf("victoria" to LineStatusCheck(severe, t0.plusSeconds(60)))
+        for (merged in listOf(LineStatusCheck.newest(stored, newer), LineStatusCheck.newest(newer, stored))) {
+            val check = merged.getValue("victoria")
+            assertEquals(t0.plusSeconds(60), check.checkedAt)
+            assertEquals(false, check.dismissed)
+        }
+    }
+
+    @Test
+    fun `a refresh marks a status the user dismissed, judged on TfL's full answer`() = runTest {
+        val refreshed = WidgetRefresh.refreshedLineStatuses(
+            snapshot(emptyMap()),
+            t0,
+            dismissed = { it == severe },
+        ) { listOf(severe, severe.copy(lineId = "jubilee")) }
+        assertTrue(refreshed.lineStatuses.getValue("victoria").dismissed)
+        assertTrue(refreshed.liveLineStatuses(t0).isEmpty())
+    }
+
+    @Test
     fun `a slow lookup is stamped when TfL answered, not when the refresh began`() = runTest {
         val began = t0.plusSeconds(120)
         val answered = began.plusSeconds(200)

@@ -398,6 +398,20 @@ class WatchEnvelopeTest {
     }
 
     @Test
+    fun `a disruption dismissed on the phone isn't marked on the watch, and its line counts as checked`() {
+        val severe = LineStatus("victoria", 6, "Severe Delays")
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(stop("940GEXAMPLE1", listOf(departure(3)))),
+            fetchedAt = now,
+            lineStatuses = mapOf("victoria" to LineStatusCheck(severe, now, dismissed = true)),
+        )
+        val envelope = decoded(WatchEnvelopes.build(snapshot, emptySet(), now = now))
+        assertTrue(envelope.lineStatuses.single().dismissed)
+        assertTrue(envelope.liveLineStatuses(now).isEmpty())
+        assertTrue(envelope.statusKnown("victoria", now))
+    }
+
+    @Test
     fun `carries the kept stops' line checks, age-stamped, and marks only a live disruption`() {
         val severe = LineStatus("victoria", 6, "Severe Delays")
         val snapshot = DeparturesSnapshot(

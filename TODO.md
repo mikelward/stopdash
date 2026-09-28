@@ -2051,6 +2051,17 @@ and these carry the rest as their own PRs:
       Overground pills, the card grouping, and the app icon in the header. Landed: the stamp on
       the title row, a pill on every line, and stop headers (shared `groupHeaderTitle`).
 
+- [ ] **Judge a dismissal at read time, not as a stored flag** (Codex on PR #322, 2026-09-28,
+      deferred there). The widget snapshot stores a `dismissed` flag copied from the dismissed
+      set, so the two stores can disagree, and #322 took eight findings of writers racing a
+      dismissal. The last one is still open: if the dismissed set saves but marking the widget's
+      snapshot throws, and no later snapshot write happens in that process (live refresh off, the
+      user leaves), the widget and watch keep the mark until the next save. Proposed redesign:
+      drop the stored flag, and have the widget's render and the watch's envelope build read the
+      dismissed set (local DataStore, off the network) and judge each check's fingerprint there,
+      republishing when the set changes. That deletes the whole race class, and the 15-minute
+      replay with it. It's a design change, so the maintainer decides.
+
 ## Phase 5 — Distribution and polish
 
 - [x] **"Update available" indicator (maintainer, 2026-09-21).** A red dot on the
@@ -2337,14 +2348,6 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   the tile's `disruption` text and `WatchHome.DisruptionRow`. **To confirm:** on a device, that the
   reason reads at the default font (it's cut first at a large one), and the tile at a large font.
   Tapping "No key" doesn't open Settings on any glance surface.
-
-- [ ] **The widget marks a disruption the user dismissed in the app (autopilot, 2026-09-27).**
-  Taken: the widget shows every live line status, dismissed or not: it has no room for a dismiss
-  control, and SPEC's rule for dismissals errs toward a warning shown, never one hidden.
-  *Alternative:* filter the app's dismissed line statuses out when it writes the snapshot, and
-  re-save the snapshot on each dismissal so the widget follows. **Reversible:** one filter in
-  `MainViewModel.widgetLineChecks` plus a save on dismiss. **To confirm:** whether a dismissed
-  warning lingering on the widget reads as noise.
 
 - [ ] **Check and confirm: a line page with no trains names the alert's stations but lists none
   (maintainer asked for a call, 2026-09-26).** A status row (a suspension, no predictions) has no

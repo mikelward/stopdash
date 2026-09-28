@@ -135,3 +135,24 @@ fun stopPlaceKey(hubId: String, clusterId: String, stopName: String, stopId: Str
     val realCluster = clusterId.takeUnless { it.isBlank() || it == stopName }
     return hubId.ifBlank { realCluster ?: stopId }
 }
+
+/**
+ * A short, stable fingerprint of a line-status alert's full dismissal identity
+ * ([DismissedAlert.ofLineStatus]'s signature: severity, label and TfL's full reason), so a stored
+ * check that drops the full reason can still tell a reworded alert from the one the user
+ * dismissed. Not a secret: it only has to differ when the alert does.
+ */
+fun lineAlertFingerprint(status: LineStatus): String = fingerprint(DismissedAlert.ofLineStatus(status).contentSignature)
+
+/** [alert]'s fingerprint, as [lineAlertFingerprint] gives it for the status it was made from. */
+fun alertFingerprint(alert: DismissedAlert): String = fingerprint(alert.contentSignature)
+
+/** Whether [alerts] holds a dismissal of the line alert whose fingerprint is [fingerprint]. */
+fun dismissedLine(alerts: Set<DismissedAlert>, lineId: String, fingerprint: String): Boolean =
+    alerts.any { it.alertKey == lineAlertKey(lineId) && fingerprint(it.contentSignature) == fingerprint }
+
+private fun fingerprint(signature: String): String =
+    java.security.MessageDigest.getInstance("SHA-256")
+        .digest(signature.toByteArray(Charsets.UTF_8))
+        .take(8)
+        .joinToString("") { "%02x".format(it) }
