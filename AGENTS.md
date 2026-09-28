@@ -205,6 +205,19 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   guess and record it under `TODO.md`'s *Decisions needing review*; destructive or
   irreversible actions outside the loop, and privacy uncertainty (is this a coordinate? a
   watched stop?), still wait for a real answer.
+- **"Merge in order"** (or "drive in order") is drive whose merges yield to older PRs
+  close to landing. Merge by hand, never auto-merge (disarm any already armed). Just
+  before merging, check every open, non-draft, lower-numbered PR against the same base:
+  if one has ever passed Codex — a "didn't find any major issues" comment, or a green
+  `codex` commit status, on any head — and has had any activity (a push, review,
+  comment, reaction or state change) in the last 30 minutes, wait for it. Keep waiting
+  only while it still meets all of that, and at most 30 minutes in total across every
+  recheck; if it still does at the cap, merge anyway and name the PR you merged over.
+  When a wait ends, rerun the check for the other lower PRs. Waiting holds only the
+  merge: keep driving this PR meanwhile. Then sync — rebase onto the new base where the
+  ruleset requires branches up to date, or where it is `dirty` — and merge on the
+  verdict for its current head, a fresh one if that moved it, rerunning this check
+  first. Say which lower PR you waited on, or passed over as quiet.
 - **A red baseline is the next task** — get `./gradlew test`/`lint` green before pulling
   new work from `TODO.md`.
 
