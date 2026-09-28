@@ -64,6 +64,8 @@ import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.PlaceKind
+import app.stopdash.domain.SearchEntry
+import app.stopdash.domain.SearchResults
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.abbreviateStationName
@@ -178,20 +180,32 @@ fun StationSearchScreen(
                         modifier = Modifier.fillMaxSize().scrollEdgeCue(listState, scrollCueColors(MaterialTheme.colorScheme.background)),
                         state = listState,
                     ) {
-                        items(result.matches, key = { it.id }) { match ->
-                            MatchRow(match, onClick = { onOpenStation(match) })
-                            HorizontalDivider()
-                        }
-                        // Geocoded places for the query, after the stops, each tagged Place/Postcode and
-                        // routed to as a coordinate (SPEC D9). Only a To… picker sets onOpenPlace.
-                        if (onOpenPlace != null) {
-                            items(
-                                result.places,
-                                key = { "place-${it.name}@${it.coordinate.latitude},${it.coordinate.longitude}" },
-                            ) { place ->
-                                PlaceHitRow(place, onClick = { onOpenPlace(TripDestination.Place(place.coordinate, place.name)) })
-                                HorizontalDivider()
+                        // Stops and geocoded places in one list, ranked by how well each name matches, so a
+                        // place the query starts sits above a stop that only contains it (maintainer,
+                        // 2026-09-28). A place is tagged Place/Postcode and routed to as a coordinate (SPEC
+                        // D9); only a To… picker sets onOpenPlace, so only it lists places.
+                        val entries = SearchResults.merge(
+                            state.query.trim(),
+                            result.matches,
+                            if (onOpenPlace != null) result.places else emptyList(),
+                        )
+                        items(
+                            entries,
+                            key = { entry ->
+                                when (entry) {
+                                    is SearchEntry.Stop -> entry.match.id
+                                    is SearchEntry.Place -> entry.hit.let { "place-${it.name}@${it.coordinate.latitude},${it.coordinate.longitude}" }
+                                }
+                            },
+                        ) { entry ->
+                            when (entry) {
+                                is SearchEntry.Stop -> MatchRow(entry.match, onClick = { onOpenStation(entry.match) })
+                                is SearchEntry.Place -> PlaceHitRow(
+                                    entry.hit,
+                                    onClick = { onOpenPlace?.invoke(TripDestination.Place(entry.hit.coordinate, entry.hit.name)) },
+                                )
                             }
+                            HorizontalDivider()
                         }
                         // The bundled stations matched but TfL's search (bus stops) failed: say so under
                         // the matches rather than show them as the whole answer.
