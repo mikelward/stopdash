@@ -443,7 +443,7 @@ private fun PlaceEditor(
         if (hasPlaceIcon(editor.icon)) {
             Spacer(modifier = Modifier.height(16.dp))
             ChipShowsRow(
-                selected = editor.chipShows ?: ChipLabel.ICON,
+                selected = editor.chipShows ?: ChipLabel.BOTH,
                 enabled = !editor.saving,
                 onSelect = onChipShowsChange,
             )

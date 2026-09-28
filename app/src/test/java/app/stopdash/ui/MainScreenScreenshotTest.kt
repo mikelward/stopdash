@@ -245,12 +245,13 @@ class MainScreenScreenshotTest {
 
     // Stock stand-in places on synthetic coordinates, never a real person's (SPEC *Privacy*).
     private val places = listOf(
-        // Home shows its icon alone (the default), Work its icon and name, and Gym, with no icon, its name.
-        FavoritePlace("home", FavoriteKind.HOME, "Home", Coordinates(51.5, -0.12), icon = FavoritePlaceIcon.HOME),
+        // Home is set to show its icon alone, Work shows its icon and name (the default), and Gym, with
+        // no icon, its name.
         FavoritePlace(
-            "work", FavoriteKind.WORK, "Work", Coordinates(51.51, -0.09),
-            icon = FavoritePlaceIcon.WORK, chipShows = ChipLabel.BOTH,
+            "home", FavoriteKind.HOME, "Home", Coordinates(51.5, -0.12),
+            icon = FavoritePlaceIcon.HOME, chipShows = ChipLabel.ICON,
         ),
+        FavoritePlace("work", FavoriteKind.WORK, "Work", Coordinates(51.51, -0.09), icon = FavoritePlaceIcon.WORK),
         FavoritePlace("gym", FavoriteKind.CUSTOM, "Gym", Coordinates(51.52, -0.1)),
     )
 
