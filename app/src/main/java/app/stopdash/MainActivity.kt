@@ -721,6 +721,10 @@ class MainActivity : ComponentActivity() {
                                     notKept = notKept,
                                     endFailed = endFailed,
                                     appOpenOnly = appOpenOnly,
+                                    // The rider at a step the trip couldn't tell they'd reached (maintainer, 2026-09-28).
+                                    onGoTo = { from, index ->
+                                        ((application as? StopdashApp)?.applicationScope ?: onTheWayScope).launch { tracker.goTo(from, index) }
+                                    },
                                 )
                                 }
                             } else if (licensesOpen) {

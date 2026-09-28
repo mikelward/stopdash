@@ -122,8 +122,18 @@ class ActiveTripTracker(
             return true
         }
         if (_trip.value == null) {
-            _trip.value = kept
-            _progress.value = standing(kept, clock())
+            // A move saved just before the app died, before it could take back the "get off soon"
+            // for the leg left ([goTo]): taken back now. Marked on the trip, not guessed from its
+            // warning, which also lags an alert said just before the app died (Codex, PR #351).
+            val trip = if (kept.alertLeft) {
+                onGetOffSoonDone()
+                unsaved = true
+                kept.copy(alertLeft = false)
+            } else {
+                kept
+            }
+            _trip.value = trip
+            _progress.value = standing(trip, clock())
         }
         return true
     }
@@ -168,6 +178,43 @@ class ActiveTripTracker(
                 _starting.update { it - 1 }
             }
         }
+    }
+
+    /**
+     * The rider says they're at the start of leg [index] ([OnTheWay.atLeg]): **Next**, or a leg tapped.
+     * The trip moves there now, and a ride's train is picked at once, as a refresh would.
+     */
+    suspend fun goTo(from: Int, index: Int) = lock.withLock {
+        val before = _trip.value ?: return@withLock
+        if (_progress.value == TripProgress.Arrived) return@withLock
+        // Asked from leg [from], as the screen showed it: a refresh that moved the trip on while the
+        // tap waited makes it stale, and acting on it could send the trip back (Codex, PR #351).
+        if (before.legIndex != from) return@withLock
+        val now = clock()
+        // Never onto an arrival, which would forget the trip past any undoing ([OnTheWay.canGoTo]).
+        if (!OnTheWay.canGoTo(before, index, now)) return@withLock
+        // Leaving a leg whose "get off soon" was said, the move is saved marked as owing its
+        // take-back, which a restart settles if the app dies before it's done ([restore]).
+        val moved = OnTheWay.atLeg(before, index, now).copy(alertLeft = before.warnedLeg == before.legIndex)
+        // Saved before it's made: a move that can't be kept isn't made, and says so ([notKept]). A
+        // move made but not kept would leave the "get off soon" at odds with the trip a restart
+        // brings back, with no way to tell a taken-back alert from one the rider tapped away
+        // (Codex, PR #351). One cut short may or may not have landed, so it's saved again later.
+        unsaved = true
+        val saved = withContext(io) { save(moved) }
+        unsaved = !saved
+        _notKept.value = !saved
+        if (!saved) return@withLock
+        // The "get off soon" said for the leg left is done with: the stop it named isn't where they
+        // are. Its mark is cleared in the next save.
+        if (moved.alertLeft) {
+            onGetOffSoonDone()
+            unsaved = true
+        }
+        _trip.value = moved.copy(alertLeft = false)
+        _progress.value = standing(moved, now)
+        val boards = HashMap<TripLeg, Result<NextBoard>>()
+        if (step(null, boards)) step(null, boards)
     }
 
     /** End the trip: forgotten here and on the device. */

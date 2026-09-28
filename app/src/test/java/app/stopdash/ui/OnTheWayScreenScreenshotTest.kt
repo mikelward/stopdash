@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
@@ -68,10 +69,11 @@ class OnTheWayScreenScreenshotTest {
         alertsOff: Boolean = false,
         appOpenOnly: Boolean = false,
         nextTrains: NextTrains? = null,
+        onGoTo: (Int, Int) -> Unit = { _, _ -> },
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
-                OnTheWayScreen(trip, progress, failed, now, onEnd, onBack, current = current, notKept = notKept, endFailed = endFailed, alertsOff = alertsOff, appOpenOnly = appOpenOnly, nextTrains = nextTrains)
+                OnTheWayScreen(trip, progress, failed, now, onEnd, onBack, current = current, notKept = notKept, endFailed = endFailed, alertsOff = alertsOff, appOpenOnly = appOpenOnly, nextTrains = nextTrains, onGoTo = onGoTo)
             }
         }
     }
@@ -310,6 +312,53 @@ class OnTheWayScreenScreenshotTest {
         composeRule.onNodeWithText("Get off at Stratford").assertIsDisplayed()
         composeRule.onNodeWithText("Updating…").assertIsDisplayed()
         composeRule.onNodeWithText("Next stop").assertDoesNotExist()
+    }
+
+    @Test
+    fun next_and_a_tapped_leg_put_the_rider_at_that_leg() {
+        val went = mutableListOf<Pair<Int, Int>>()
+        show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(3)), onGoTo = { from, to -> went += from to to })
+        captureSnapshot("on-the-way-next.png")
+        composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoNext")).performClick()
+        composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoBack")).performClick()
+        composeRule.onNodeWithText("Stratford → Canary Wharf").performClick()
+        composeRule.onNodeWithText("Highbury & Islington → Stratford").performClick()
+        // The leg they're on already: nothing to move to.
+        composeRule.onNodeWithText("Stratford → Stratford").performClick()
+        assertEquals(listOf(1 to 2, 1 to 0, 1 to 2, 1 to 0), went)
+    }
+
+    @Test
+    fun next_is_off_on_the_last_leg() {
+        // Next there would arrive and forget the trip, with no Back to undo it.
+        show(trip.copy(legIndex = 2), TripProgress.Waiting(jubilee, at(26)))
+        composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoNext")).assertIsNotEnabled()
+        composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoBack")).assertIsDisplayed()
+    }
+
+    @Test
+    fun the_trip_buttons_wrap_rather_than_clip_at_large_text() {
+        // About the largest text offered (160% of a 200% system size): the buttons wrap, none clipped.
+        composeRule.setContent {
+            val base = androidx.compose.ui.platform.LocalDensity.current
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(base.density, fontScale = 3f),
+            ) {
+                StopDashTheme(dynamicColor = false) {
+                    OnTheWayScreen(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(3)), false, now, {}, {}, onGoTo = { _, _ -> })
+                }
+            }
+        }
+        captureSnapshot("on-the-way-buttons-large-text.png")
+        composeRule.onNodeWithText("End trip").assertIsDisplayed()
+        composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoBack")).assertIsDisplayed()
+        composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoNext")).assertIsDisplayed()
+    }
+
+    @Test
+    fun back_is_off_on_the_first_leg() {
+        show(trip, TripProgress.Waiting(mildmay, at(4)))
+        composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoBack")).assertIsNotEnabled()
     }
 
     @Test

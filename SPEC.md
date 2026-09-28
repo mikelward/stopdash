@@ -1193,7 +1193,18 @@ them there:
   such a walk takes one precise fix, and a rider within 150 m of the stop (the fix's uncertainty
   included) is there, so the ride's train is picked from then; without a fix, the walk runs its
   estimated time as before. The estimate errs long on purpose (it grays trains a rider might miss),
-  so it mustn't hold a rider already at the station on "Walk to…". While the rider walks to a ride,
+  so it mustn't hold a rider already at the station on "Walk to…". Where neither can tell — a
+  station far bigger than the one point the Planner places it at, a fix that never comes — the
+  rider says so (maintainer, 2026-09-28): **Next** (with **Back** beside it, End trip set apart at
+  the other end), or a tap on any leg in the list, puts them at the start of that leg now, as if
+  they'd just got there. A walk's time runs from then, a ride's train is picked at once from then,
+  and a "get off soon" said for the leg left is taken back; Back, or a tap on an earlier leg, goes
+  back to it, so a mistaken tap can be undone. Next, Back or a tap never moves the trip straight to
+  arriving — past the last leg, or onto a closing walk of no length — so Next is off there (off, not
+  gone, so the buttons never move): arriving forgets the trip, which nothing could undo, and End trip
+  is already the way out there. A move that can't be saved on the phone isn't made, and the screen
+  says the trip couldn't be saved: a trip restored after the app dies is always the one on screen,
+  so its "get off soon" is never at odds with it. While the rider walks to a ride,
   changes onto it or waits for it, **the trains at its boarding stop that take them on** are listed
   under that ride's own row in the route's legs, drawn as the departures board draws a stop — its
   platform header over the board's own outlined card — so they read as a board, not as another step

@@ -497,6 +497,12 @@
     <string name="on_the_way_end">End trip</string>
     <string name="on_the_way_done">Done</string>
     <string name="on_the_way_next">Next</string>
+    <!-- Moves the trip on to its next step, as if the rider had got there. -->
+    <string name="on_the_way_go_next">Next</string>
+    <!-- Moves the trip back to its previous step, to undo a Next tapped too soon. -->
+    <string name="on_the_way_go_back">Back</string>
+    <!-- A screen reader's name for tapping a step: the trip moves to it. -->
+    <string name="on_the_way_go_here">Go to this step</string>
     <!-- %1$s the line ("Jubilee"), %2$s the stop. -->
     <string name="on_the_way_board">Board %1$s at %2$s</string>
     <string name="on_the_way_due">Due in %1$d min</string>

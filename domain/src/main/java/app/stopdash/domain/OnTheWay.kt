@@ -11,7 +11,8 @@ import java.time.Instant
  * seen, so a loop train's later lap isn't taken for it). [boarded] once that train has left the boarding stop
  * (the rider is taken to be on it), first seen at [boardedAt]; [dueOffAt] when that train was last seen due where the rider gets
  * off (null until it's predicted that far); [warnedLeg] is the leg whose "get off soon" has been said,
- * so it's said once. Kept on the device only: where a rider is going is theirs (SPEC *Privacy*).
+ * so it's said once. [alertLeft] while a move off a leg whose "get off soon" was said ([atLeg]) is
+ * saved but that alert may not be taken back yet, so a restart takes it back. Kept on the device only: where a rider is going is theirs (SPEC *Privacy*).
  */
 data class ActiveTrip(
     val route: TripRoute,
@@ -25,6 +26,7 @@ data class ActiveTrip(
     val boardedAt: Instant? = null,
     val dueOffAt: Instant? = null,
     val warnedLeg: Int = -1,
+    val alertLeft: Boolean = false,
 ) {
     /** The leg the rider is on, or null once they've arrived. */
     val leg: TripLeg? get() = route.legs.getOrNull(legIndex)
@@ -437,6 +439,29 @@ object OnTheWay {
             vehicleId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null,
         )
     }
+
+    /**
+     * [trip] with the rider at the start of leg [index] at [now], because they said so (maintainer,
+     * 2026-09-28): **Next**, or a tap on a leg, for when location and the walk's time can't tell (a
+     * station far bigger than the point TfL places it at, no fix). The leg starts now, as if they'd
+     * just got there: a walk's time runs from now, a ride's train is picked from now, and a "get off
+     * soon" for it is said again. Past the last leg is arrived; an earlier leg goes back to it, so a
+     * tap made by mistake can be undone.
+     */
+    fun atLeg(trip: ActiveTrip, index: Int, now: Instant): ActiveTrip = trip.copy(
+        legIndex = index.coerceIn(0, trip.route.legs.size), legStartedAt = now,
+        vehicleId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, warnedLeg = -1,
+    )
+
+    /**
+     * Whether the rider can put [trip] at leg [index] at [now] ([atLeg]): a leg of the route, other
+     * than the one they're on, that the move doesn't carry straight through to arriving — past the
+     * last leg, or onto a closing walk of no length (the Planner allows one). Arriving forgets the trip,
+     * so no Back could undo it; End trip is the way out there (Codex, PR #351).
+     */
+    fun canGoTo(trip: ActiveTrip, index: Int, now: Instant): Boolean =
+        index in trip.route.legs.indices && index != trip.legIndex &&
+            advance(atLeg(trip, index, now), null, now).second != TripProgress.Arrived
 
     // When the rider boarded, as first seen: when the train was last due to leave the boarding stop
     // ([ActiveTrip.boardsAt], kept up to date as it ran late), not when a refresh first saw it gone, so

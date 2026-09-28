@@ -58,6 +58,8 @@ class ActiveTripTrackerTest {
     // What the tracker logged: never a stop or place (docs/PRIVACY.md).
     private val logged = mutableListOf<String>()
     private var alertsDone = 0
+    // What happened to the "get off soon" notification, in order: said or taken back.
+    private val alerts = mutableListOf<String>()
     // Holds a train's calls back until completed, as a slow TfL answer does.
     private var gate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
 
@@ -93,9 +95,13 @@ class ActiveTripTrackerTest {
         warn = { logged += it },
         onGetOffSoon = { _, riding ->
             warned += riding
+            alerts += "said ${riding.leg.toId}"
             alertPosts
         },
-        onGetOffSoonDone = { alertsDone++ },
+        onGetOffSoonDone = {
+            alertsDone++
+            alerts += "done"
+        },
     ).also { current = it }
 
     @Test
@@ -149,6 +155,108 @@ class ActiveTripTrackerTest {
         tracker.refresh()
         assertEquals(1, tracker.trip.value?.legIndex)
         assertEquals("3", tracker.trip.value?.vehicleId)
+    }
+
+    @Test
+    fun `Next puts the rider at the ride before the walk's time is up, and picks its train at once`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10))
+        departures["A"] = listOf(train("2", 3), train("3", 6))
+        trains["2"] = listOf(call("A", 3), call("B", 7), call("C", 11))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        tracker.start(TripRoute(listOf(toA, ride)), "C", readyAt = now)
+        now = at(2)
+        // Ten minutes by the clock, but the rider is at A after two: the next train they can catch is picked.
+        tracker.goTo(0, 1)
+        assertEquals(1, tracker.trip.value?.legIndex)
+        assertEquals("2", tracker.trip.value?.vehicleId)
+        assertEquals(TripProgress.Waiting(ride, at(3)), tracker.progress.value)
+        assertEquals(tracker.trip.value, kept)
+        // A tap on the leg they're on changes nothing, and none moves past the last: arriving would
+        // forget the trip with no Back to undo it.
+        tracker.goTo(1, 1)
+        assertEquals("2", tracker.trip.value?.vehicleId)
+        tracker.goTo(1, 2)
+        assertEquals(1, tracker.trip.value?.legIndex)
+        assertEquals(tracker.trip.value, kept)
+        // A tap made from a leg the trip has since moved off is stale: nothing moves.
+        tracker.goTo(0, 0)
+        assertEquals(1, tracker.trip.value?.legIndex)
+    }
+
+    @Test
+    fun `leaving a leg whose get off soon was said takes it back`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "D", "D", at(15), at(20))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        tracker.start(TripRoute(listOf(ride, walkOn)), "D", readyAt = now)
+        tracker.refresh()
+        now = at(12)
+        trains["3"] = listOf(call("C", 14))
+        tracker.refresh()
+        tracker.refresh()
+        assertEquals(1, warned.size)
+        // Off at C before TfL saw the train there: the stop the alert named is behind them.
+        val done = alertsDone
+        tracker.goTo(0, 1)
+        assertEquals(done + 1, alertsDone)
+        assertEquals(TripProgress.Walking(walkOn, at(17)), tracker.progress.value)
+    }
+
+    @Test
+    fun `a move that can't be saved isn't made, and says so`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "D", "D", at(15), at(20))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        tracker.start(TripRoute(listOf(ride, walkOn)), "D", readyAt = now)
+        tracker.refresh()
+        now = at(12)
+        trains["3"] = listOf(call("C", 14))
+        tracker.refresh()
+        tracker.refresh()
+        assertEquals("said C", alerts.last())
+        // The trip, and the alert, stay as a restart would bring them back.
+        saves = false
+        tracker.goTo(0, 1)
+        assertEquals(0, tracker.trip.value?.legIndex)
+        assertTrue(tracker.notKept.value)
+        assertEquals("said C", alerts.last())
+        // Tried again once saves work, it's made.
+        saves = true
+        tracker.goTo(0, 1)
+        assertEquals(1, tracker.trip.value?.legIndex)
+        assertFalse(tracker.notKept.value)
+        assertEquals("done", alerts.last())
+    }
+
+    @Test
+    fun `an alert left up by a moved trip saved just before the app died is taken back on restart`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "D", "D", at(15), at(20))
+        now = at(12)
+        // Kept on the walk after C, moved there off the warned ride: its alert is still owed.
+        val onDevice = ActiveTrip(TripRoute(listOf(ride, walkOn)), "D", t0, legIndex = 1, legStartedAt = at(12), alertLeft = true)
+        val restarted = tracker(dispatcher, load = { onDevice })
+        restarted.restore()
+        assertEquals(listOf("done"), alerts)
+        // Settled: the next save clears the mark, so a later restart doesn't take back a new alert.
+        restarted.refresh()
+        assertEquals(false, kept?.alertLeft)
+    }
+
+    @Test
+    fun `an alert said just before the app died, before it was saved as said, stays up on restart`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("C", 14))
+        now = at(12)
+        // On the ride, kept as not yet warned: the alert may be up already, and is the right one.
+        val onDevice = ActiveTrip(route, "C", t0, vehicleId = "3", boardsAt = at(6), boarded = true, boardedAt = at(6))
+        val restarted = tracker(dispatcher, load = { onDevice })
+        restarted.restore()
+        assertEquals(emptyList<String>(), alerts)
     }
 
     @Test
