@@ -1043,8 +1043,9 @@ disruptions, until a check succeeds.
 first stop: the Planner's own **first walk leg**, from their position along real streets, is that walk,
 shown as the route's first dotted link ("Walk to ‹stop› (7 min)"), and first-leg trains that leave
 before the rider can get there are grayed (from a *From…* station the rider is taken to be there
-already). The Planner walks at its average pace; letting the rider set theirs is a follow-up
-(`TODO.md`). A later leg shows the change station's live
+already). That walk is timed at the rider's walking speed (*Walking*, below); where a *From…*
+station's trip starts at a neighboring stop, the phone estimates the walk there itself, at the same
+speed. A later leg shows the change station's live
 trains, with those the rider can't reach in time grayed. The **arrival is worked out leg by leg**:
 the first first-leg train the rider can reach plus its run time gives the time at the change, plus
 the change or walk time; the first live train there that the rider can reach starts the next leg,

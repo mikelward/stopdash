@@ -2292,8 +2292,8 @@ class MainActivity : ComponentActivity() {
         val tripState by trip.state.collectAsStateWithLifecycle()
         // From here the Planner's own first walk leg takes the rider to the first stop, so there's no
         // walk to add; at a From… station they're at its own stops (a neighbor, when every own stop is
-        // hidden, is still a walk from it).
-        val access = if (here != null || fromStop.id in fromStopIds) Duration.ZERO else TripTiming.accessWalk(distanceMeters[fromStop.id] ?: 0.0)
+        // hidden, is still a walk from it, at the rider's own pace as the Planner's walks are).
+        val access = if (here != null || fromStop.id in fromStopIds) Duration.ZERO else TripTiming.accessWalk(distanceMeters[fromStop.id] ?: 0.0, walkingSpeed)
         TripScreen(
             title = title,
             state = tripState,

@@ -1669,16 +1669,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       a chosen speed/margin; make the speed and whether it's on a setting. Explore from
       real use — a too-aggressive filter that hides a train the user could have jogged for
       is worse than showing it (SPEC principle 1).
-- [ ] **Walking speed for the phone's own walk estimate** (maintainer, 2026-09-28). The rider's
-      walking speed now times every walk the Planner offers, a trip from here's first walk
-      included. What's left is the phone's own estimate, used only when a *From…* station's trip
-      starts at a neighboring stop and for the reachability filter above: it times the walk to its first
-      stop at one fixed, deliberately slow pace (straight line × 1.4, about 4 km/h, rounded up to a
-      minute), so for a faster walker it grays trains they could catch and reads the arrival later
-      than it will be. Let the rider set their pace (or learn it), shared with the reachability
-      filter above. Until that's settled, don't plan the first leg from when the rider reaches the
-      stop: at a slow assumed pace that would drop the best options for a fast walker (maintainer,
-      2026-09-28: think more before doing that for the first plan).
+- [x] **Walking speed for the phone's own walk estimate** (maintainer, 2026-09-28). The phone's
+      own estimate of the walk to a trip's first stop, used only when a *From…* station's trip starts
+      at a neighboring stop, takes the rider's walking speed at the Planner's own paces (measured
+      from its walk-only routes: in a straight line about 0.64, 0.90 and 1.14 m/s at Slow, Medium and
+      Fast, rounded up to a minute), in place of one fixed pace that read a third longer than the
+      Planner at Medium. The reachability filter above takes the same setting when it's built. Still open: don't plan the first leg from when the
+      rider reaches the stop — at an assumed pace that would drop the best options for a fast walker
+      (maintainer, 2026-09-28: think more before doing that for the first plan).
 - [ ] **Explore how a trip recalculates mid-route** (maintainer, 2026-09-28). A re-plan (the
       15-minute reuse, or 5 minutes while an arrival is withheld) asks the Planner from the trip's
       first stop at "now", however long ago the trip was opened or wherever the rider has got to.
