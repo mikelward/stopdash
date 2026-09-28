@@ -328,6 +328,7 @@
     <string name="favorite_places_postcode_none">No places for %1$s</string>
     <!-- Editor actions. -->
     <string name="favorite_place_save">Save</string>
+    <string name="favorite_place_show_on_main">Show on main screen</string>
     <string name="favorite_place_cancel">Cancel</string>
     <string name="favorite_place_edit">Edit</string>
     <!-- Content description for a place row\'s edit action; %1$s is the label. -->

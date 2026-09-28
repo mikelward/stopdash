@@ -1,43 +1,10 @@
 package app.stopdash
 
 import android.Manifest
-import app.stopdash.data.FileNearbyStopsStore
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.sync.Mutex
-import app.stopdash.domain.ArrivalsCache
-import app.stopdash.domain.CachingTflClient
-import app.stopdash.domain.ModeGroups
-import app.stopdash.domain.DepartureRow
-import app.stopdash.domain.JourneyEnd
-import androidx.compose.ui.res.stringResource
-import app.stopdash.ui.rememberTripView
-import app.stopdash.ui.hereOriginIds
-import app.stopdash.ui.fartherCardsKey
-import app.stopdash.ui.fartherReached
-import app.stopdash.ui.reachedStopIds
-import app.stopdash.ui.PendingTracker
-import app.stopdash.domain.DirectTrips
-import app.stopdash.domain.PlanTargets
-import app.stopdash.domain.stopPlace
-import app.stopdash.data.FileStarredPlacesStore
-import kotlinx.coroutines.flow.first
-import app.stopdash.widget.logWidgetSnapshotWarning
-import app.stopdash.domain.YourStops
-import app.stopdash.domain.StarredRowSet
-import app.stopdash.data.FileRecentStationsStore
-import app.stopdash.data.RecentSearches
-import app.stopdash.ui.OnTheWayScreen
-import app.stopdash.ui.OnTheWayActions
-import app.stopdash.ui.LocalOnTheWay
-import app.stopdash.ui.LocalOnTheWayBanner
-import app.stopdash.ui.OnTheWayBannerState
-import app.stopdash.ui.FollowActiveTrip
-import app.stopdash.ui.ActiveTripTracker
-import app.stopdash.data.FileActiveTripStore
-import app.stopdash.data.DataStoreSnapshotStore
-import app.stopdash.data.FileRouteStopsStore
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -51,39 +18,44 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.glance.appwidget.updateAll
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.createSavedStateHandle
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.HasDefaultViewModelProviderFactory
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -91,77 +63,98 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import app.stopdash.data.AndroidLocationProvider
 import app.stopdash.data.DataStoreAppSettings
-import app.stopdash.data.DistanceUnitsSetting
-import app.stopdash.data.logAppSettingsWarning
 import app.stopdash.data.DataStoreDismissedAlertsStore
 import app.stopdash.data.DataStoreFavoritePlacesStore
+import app.stopdash.data.DataStoreSnapshotStore
+import app.stopdash.data.DataStoreStarredJourneysStore
 import app.stopdash.data.DataStoreStarredRowsStore
+import app.stopdash.data.DistanceUnitsSetting
+import app.stopdash.data.FileActiveTripStore
+import app.stopdash.data.FileNearbyStopsStore
+import app.stopdash.data.FileRecentStationsStore
+import app.stopdash.data.FileRouteStopsStore
+import app.stopdash.data.FileStarredPlacesStore
+import app.stopdash.data.HiddenModesSetting
+import app.stopdash.data.KtorDarwinClient
 import app.stopdash.data.KtorTflClient
+import app.stopdash.data.RailApiKeySetting
+import app.stopdash.data.RailStationCodesStore
+import app.stopdash.data.RecentSearches
 import app.stopdash.data.RouteTopologyStore
-import app.stopdash.data.StationIndexStore
-import app.stopdash.domain.RecentPositions
-import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.data.SharedTflRateLimiter
 import app.stopdash.data.SharedTflRequestPool
-import app.stopdash.data.HiddenModesSetting
-import app.stopdash.data.RailApiKeySetting
-import app.stopdash.domain.TflClient
-import app.stopdash.domain.RailAwareTflClient
-import app.stopdash.data.RailStationCodesStore
-import app.stopdash.data.KtorDarwinClient
+import app.stopdash.data.StationIndexStore
 import app.stopdash.data.UserApiKeySetting
+import app.stopdash.data.logAppSettingsWarning
 import app.stopdash.domain.AppSettings
+import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.BugReport
-import java.io.IOException
-import app.stopdash.domain.Journeys
-import app.stopdash.data.DataStoreStarredJourneysStore
-import app.stopdash.ui.rememberFarReveal
-import app.stopdash.ui.rememberListStateFor
-import app.stopdash.ui.rememberPendingTracker
-import app.stopdash.domain.StarredJourney
 import app.stopdash.domain.CachingStopFinder
-import app.stopdash.domain.NearbyStopsCache
+import app.stopdash.domain.CachingTflClient
+import app.stopdash.domain.CollapsedPlaces
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.DepartureRow
+import app.stopdash.domain.DirectTrips
+import app.stopdash.domain.FartherBuses
+import app.stopdash.domain.FartherStations
 import app.stopdash.domain.FavoritePlace
-import app.stopdash.domain.FavoriteShortcuts
 import app.stopdash.domain.FavoritePlacesSet
+import app.stopdash.domain.FavoriteShortcuts
+import app.stopdash.domain.FixedLocation
+import app.stopdash.domain.JourneyEnd
+import app.stopdash.domain.Journeys
+import app.stopdash.domain.ModeGroups
+import app.stopdash.domain.NearbySelection
+import app.stopdash.domain.NearbyStopsCache
+import app.stopdash.domain.PlanTargets
+import app.stopdash.domain.RailAwareTflClient
+import app.stopdash.domain.RecentPositions
+import app.stopdash.domain.RouteStopsRepository
+import app.stopdash.domain.SnapshotStore
+import app.stopdash.domain.StarredJourney
+import app.stopdash.domain.StarredRowSet
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StopMap
-import app.stopdash.ui.BugReportConsentDialog
-import app.stopdash.ui.FontSizeSetting
-import app.stopdash.ui.LocalRouteStops
-import app.stopdash.ui.LocalAppMenu
-import app.stopdash.ui.AppMenuActions
-import app.stopdash.ui.LocalRouteTopology
-import app.stopdash.ui.LicensesScreen
+import app.stopdash.domain.TflClient
+import app.stopdash.domain.TripDestination
+import app.stopdash.domain.TripProgress
+import app.stopdash.domain.TripTiming
+import app.stopdash.domain.YourStops
+import app.stopdash.domain.stopPlace
 import app.stopdash.telemetry.TelemetryConsent
+import app.stopdash.ui.ARRIVALS_REUSE
+import app.stopdash.ui.ActiveTripTracker
+import app.stopdash.ui.AppMenuActions
+import app.stopdash.ui.BugReportConsentDialog
+import app.stopdash.ui.DISRUPTION_REUSE
+import app.stopdash.ui.DeparturesUiState
+import app.stopdash.ui.FAR_ARRIVALS_REUSE
 import app.stopdash.ui.FarRevealState
+import app.stopdash.ui.FartherCard
+import app.stopdash.ui.FartherCardsViewModel
+import app.stopdash.ui.FartherLoad
+import app.stopdash.ui.FavoritePlacesScreen
+import app.stopdash.ui.FavoritePlacesViewModel
+import app.stopdash.ui.FollowActiveTrip
+import app.stopdash.ui.FontSizeSetting
+import app.stopdash.ui.HereTripTiers
+import app.stopdash.ui.LINE_STATUS_REUSE
+import app.stopdash.ui.LicensesScreen
+import app.stopdash.ui.LocalAppMenu
+import app.stopdash.ui.LocalOnTheWay
+import app.stopdash.ui.LocalOnTheWayBanner
+import app.stopdash.ui.LocalRouteStops
+import app.stopdash.ui.LocalRouteTopology
 import app.stopdash.ui.LocationBanner
 import app.stopdash.ui.LocationGate
 import app.stopdash.ui.MainScreen
-import app.stopdash.ui.ARRIVALS_REUSE
-import app.stopdash.ui.DISRUPTION_REUSE
-import app.stopdash.ui.FAR_ARRIVALS_REUSE
-import app.stopdash.ui.LINE_STATUS_REUSE
 import app.stopdash.ui.MainViewModel
 import app.stopdash.ui.NearbyStopsViewModel
-import app.stopdash.domain.NearbySelection
-import app.stopdash.domain.SnapshotStore
-import app.stopdash.domain.FartherBuses
-import app.stopdash.domain.FartherStations
-import app.stopdash.ui.FartherLoad
-import app.stopdash.ui.DeparturesUiState
-import app.stopdash.ui.FartherCard
-import app.stopdash.ui.FartherCardsViewModel
-import app.stopdash.ui.withOpenedFarther
-import app.stopdash.domain.CollapsedPlaces
-import app.stopdash.domain.FixedLocation
-import app.stopdash.ui.hereTripTiers
-import app.stopdash.ui.HereTripTiers
+import app.stopdash.ui.OnTheWayActions
+import app.stopdash.ui.OnTheWayBannerState
+import app.stopdash.ui.OnTheWayScreen
+import app.stopdash.ui.PendingTracker
 import app.stopdash.ui.ProvideDistanceSystem
-import app.stopdash.ui.FavoritePlacesScreen
-import app.stopdash.ui.favoriteRouteName
-import app.stopdash.ui.FavoritePlacesViewModel
 import app.stopdash.ui.SettingsScreen
 import app.stopdash.ui.StationPlaceholderScreen
 import app.stopdash.ui.StationSearchScreen
@@ -170,34 +163,47 @@ import app.stopdash.ui.StationStopsViewModel
 import app.stopdash.ui.StopRef
 import app.stopdash.ui.TripScreen
 import app.stopdash.ui.TripViewModel
-import app.stopdash.domain.TripDestination
-import app.stopdash.domain.TripProgress
-import app.stopdash.domain.TripTiming
 import app.stopdash.ui.WriteFailures
+import app.stopdash.ui.fartherCardsKey
+import app.stopdash.ui.fartherReached
+import app.stopdash.ui.favoriteRouteName
+import app.stopdash.ui.hereOriginIds
+import app.stopdash.ui.hereTripTiers
+import app.stopdash.ui.reachedStopIds
+import app.stopdash.ui.rememberFarReveal
+import app.stopdash.ui.rememberListStateFor
+import app.stopdash.ui.rememberPendingTracker
+import app.stopdash.ui.rememberTripView
 import app.stopdash.ui.theme.StopDashTheme
+import app.stopdash.ui.withOpenedFarther
 import app.stopdash.widget.LiveWidgetRefreshResult
 import app.stopdash.widget.StopDashWidget
 import app.stopdash.widget.WidgetSnapshotStore
 import app.stopdash.widget.applyLiveWidgetRefresh
+import app.stopdash.widget.logWidgetSnapshotWarning
 import app.stopdash.widget.syncLiveWidgetRefreshSchedule
-import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
-import androidx.glance.appwidget.updateAll
 import com.mikelward.androidlog.DebugLog
 import com.mikelward.androidlog.android.DebugReport
 import com.mikelward.androidlog.android.ReportScreenshot
 import com.mikelward.androidlog.android.ShareOutcome
 import java.io.File
+import java.io.IOException
+import java.time.DayOfWeek
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZonedDateTime
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -496,6 +502,8 @@ class MainActivity : ComponentActivity() {
                 // places", so no row shows and the chips' hysteresis memory is left as it was rather
                 // than rewritten against an empty list (Codex). A discarded (corrupt) file is a real
                 // loss, so it reads as empty.
+                // Today, for the places whose chip shows only on some days; rolls over at midnight.
+                val today = rememberToday()
                 val savedPlaces: List<FavoritePlace>? by remember(favoritePlacesStore) {
                     favoritePlacesStore.places().map { set -> savedPlacesOf(set) }
                 }.collectAsStateWithLifecycle(initialValue = null)
@@ -739,6 +747,7 @@ class MainActivity : ComponentActivity() {
                                     onResolvePostcode = favoritePlacesModel::resolvePostcode,
                                     onPickCandidate = favoritePlacesModel::onPickCandidate,
                                     onLabelChange = favoritePlacesModel::onLabelChange,
+                                    onToggleDay = favoritePlacesModel::onToggleDay,
                                     onSave = favoritePlacesModel::commit,
                                     onCancelEditor = favoritePlacesModel::cancelEditor,
                                     onRetrySearch = favoritePlacesModel::retrySearch,
@@ -913,6 +922,7 @@ class MainActivity : ComponentActivity() {
                                             herePicking = true
                                         },
                                         favoritePlaces = savedPlaces,
+                                        today = today,
                                         onRouteToPlace = routeToPlace,
                                         riderFix = nearbyViewModel.riderFix,
                                         hiddenPlaceIds = hiddenPlaceIds.toSet(),
@@ -1182,6 +1192,10 @@ class MainActivity : ComponentActivity() {
         // Null while the store hasn't answered yet: no row, and the hysteresis memory is left as it
         // was (a restored memory must survive the placeholder).
         favoritePlaces: List<FavoritePlace>? = emptyList(),
+        // Today, for the places whose chip shows only on some days; null shows every place. Applied
+        // to the displayed row only: the hysteresis runs over every saved place, so a place off today
+        // keeps its "already there" memory for its next day (Codex).
+        today: DayOfWeek? = null,
         onRouteToPlace: (TripDestination.Place) -> Unit = {},
         // Where the rider is for the shown set, and whether it is accurate enough to hide a place on:
         // the chips' "already there" test reads this, never the banner's absence (Codex).
@@ -1331,9 +1345,9 @@ class MainActivity : ComponentActivity() {
                 }
             }
             SideEffect { if (hiddenPlaceIdsNow != null && hiddenPlaceIdsNow != hiddenPlaceIds) onHiddenPlaceIds(hiddenPlaceIdsNow) }
-            val shownPlaces = remember(favoritePlaces, hiddenPlaceIdsNow, riderAccurate) {
+            val shownPlaces = remember(favoritePlaces, hiddenPlaceIdsNow, riderAccurate, today) {
                 if (favoritePlaces == null || hiddenPlaceIdsNow == null) emptyList()
-                else FavoriteShortcuts.shown(favoritePlaces, hiddenPlaceIdsNow, precise = riderAccurate)
+                else FavoriteShortcuts.shown(favoritePlaces, hiddenPlaceIdsNow, precise = riderAccurate, today = today)
             }
             val hiddenModes by HiddenModesSetting.changes.collectAsStateWithLifecycle()
             // The nearest station of each rail line nothing nearby reaches, from the
@@ -3161,6 +3175,48 @@ private suspend fun loadYourStops(context: Context, recents: FileRecentStationsS
  * as an honest empty list (the favorites are gone, and a Settings notice covers that loss). Any error
  * is logged without a coordinate (AGENTS *Privacy* / *Error handling*).
  */
+/**
+ * The device's day of the week, updated as local midnight passes while the screen is up, so a place
+ * whose chip shows only on some days appears or leaves without waiting for a restart. The day is
+ * re-read on each wake of the loop rather than trusted from the delay, and the loop starts over when
+ * the time zone, the clock or the date changes, and on each resume — a midnight computed in the old
+ * zone would otherwise leave the wrong day's chips up for hours after travel (Codex).
+ */
+@Composable
+internal fun rememberToday(): DayOfWeek {
+    var today by remember { mutableStateOf(LocalDate.now().dayOfWeek) }
+    var restarts by remember { mutableIntStateOf(0) }
+    val context = LocalContext.current
+    DisposableEffect(context) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                restarts++
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+            addAction(Intent.ACTION_TIME_CHANGED)
+            addAction(Intent.ACTION_DATE_CHANGED)
+        }
+        // System broadcasts, delivered to a not-exported receiver as well.
+        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        onDispose { context.unregisterReceiver(receiver) }
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { restarts++ }
+    LaunchedEffect(restarts) {
+        while (true) {
+            val now = ZonedDateTime.now()
+            today = now.dayOfWeek
+            val midnight = now.toLocalDate().plusDays(1).atStartOfDay(now.zone)
+            delay(Duration.between(now, midnight).toMillis().coerceAtLeast(0L) + MIDNIGHT_SLACK_MILLIS)
+        }
+    }
+    return today
+}
+
+// Waking just after midnight rather than on it, so the re-read can't still see the day before.
+private const val MIDNIGHT_SLACK_MILLIS = 1_000L
+
 /**
  * The saved places the near-me list's chips can use from one store answer (SPEC D9): the list when
  * read, empty when a corrupt file was discarded (the places are really gone), and null when the store

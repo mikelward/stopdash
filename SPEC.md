@@ -957,7 +957,11 @@ approximate, coarse or not updated, or one only an approximate location grant al
 as a wrongly hidden chip costs the one-tap route while a wrongly shown one costs only space. The
 places are read from the first frame, from the device (no request), so the row is there when the
 list is; a place list that can't be read shows no row here — Settings and the To… picker are where
-that is said, with a Retry.
+that is said, with a Retry. Each place chooses the **days of the week** its chip shows on — Work on
+weekdays, say — in its editor, as one row of seven day toggles under "Show on main screen" (maintainer,
+2026-09-28). Every day is the default, so a place saved before the choice existed keeps its chip, and
+no days at all keeps the place for the To… picker and Settings without a chip. The day is the
+device's, and the row follows it past midnight and across a time-zone change while the list is up.
 
 The trip's top bar carries the app's **overflow** as the list's does — its red dot while an update
 is available, "Update available", "Send bug report" and About — so a problem seen on a trip can be
