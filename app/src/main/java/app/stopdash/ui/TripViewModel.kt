@@ -192,13 +192,13 @@ class TripViewModel(
             if (value == field) return
             // The routes timed and fetched for: those shown, within the cap ([bestOf]), since a
             // hidden mode can also move a route already shown into the soonest few.
-            val before = bestOf(_state.value.shownRoutes(field).orEmpty())
+            val before = bestOf(_state.value.shownRoutes(field).orEmpty(), openKeys())
             field = value
-            if (_state.value.routes != null && bestOf(_state.value.shownRoutes(value).orEmpty()).any { route -> before.none { it === route } }) refresh()
+            if (_state.value.routes != null && bestOf(_state.value.shownRoutes(value).orEmpty(), openKeys()).any { route -> before.none { it === route } }) refresh()
         }
 
     /**
-     * The route open on screen ([routeKey]), held here rather than by the screen, so it stays open
+     * The route open on screen ([OpenRoute.encode]), held here rather than by the screen, so it stays open
      * across anything that takes the screen out of composition while the trip is kept: the licenses
      * About opens, say, even if the process is recreated meanwhile.
      */
@@ -213,6 +213,10 @@ class TripViewModel(
         override fun component1() = value
         override fun component2(): (String?) -> Unit = { value = it }
     }
+
+    // The planned routes the open one can be ([OpenRoute.keys]): fetched for past the cap ([bestOf]),
+    // with their boarding stops' every pole, where a train through a change boards too.
+    private fun openKeys(): Set<String> = OpenRoute.parse(openRoute.value)?.keys.orEmpty()
 
     // The saved handle can outlive this trip (it's the activity's, by the model's key): a trip
     // planned afresh must not open this one's route.
@@ -255,7 +259,7 @@ class TripViewModel(
             // old, rather than fetch everything again or wait for the minute tick.
             // The routes a refresh fetches for ([refreshLive]): a route not shown, or past the cap,
             // is never fetched, so its stops would read as stale on every return.
-            val routes = _state.value.shownRoutes(hiddenModes)?.let(::bestOf) ?: return
+            val routes = _state.value.shownRoutes(hiddenModes)?.let { bestOf(it, openKeys()) } ?: return
             _state.update { it.copy(live = cached(routes, it.live)) }
             val now = clock()
             val live = _state.value.live
@@ -474,8 +478,9 @@ class TripViewModel(
 
     private suspend fun refreshLive() {
         // Routes riding a hidden mode aren't shown, so their stops and lines aren't fetched either.
-        // Only the routes the screen times (the soonest few of those shown) are fetched for.
-        val routes = _state.value.shownRoutes(hiddenModes)?.let(::bestOf) ?: return
+        // Only the routes the screen times (the soonest few of those shown, and the open one) are
+        // fetched for.
+        val routes = _state.value.shownRoutes(hiddenModes)?.let { bestOf(it, openKeys()) } ?: return
         val lines = routes.flatMap { route -> route.rides.map { it.lineId } }.distinct()
         // Arrivals another screen fetched since show at once; only a stop not fetched within
         // [ArrivalsCache.TTL] is asked for again. Refreshing from the start, so the trip reads as
@@ -623,13 +628,19 @@ class TripViewModel(
          * hidden mode's routes never crowd out the rest): the [MAX_ROUTES] that arrive soonest by the
          * Planner's timetable, each with all its timetable variants (a later one can still be caught
          * when an earlier one can't). Each kept route's boarding stops are fetched on every refresh,
-         * so the cap bounds the requests a complex's several answers add.
+         * so the cap bounds the requests a complex's several answers add. The route open on screen
+         * ([keep], by [routeKey]: for a train through a change, the planned route it's made from too,
+         * [OpenRoute.keys]) is kept past the cap while [routes] offer it, so live times that move it
+         * out of the soonest few never close it under the rider.
          */
-        internal fun bestOf(routes: List<TripRoute>): List<TripRoute> {
+        internal fun bestOf(routes: List<TripRoute>, keep: Collection<String>): List<TripRoute> {
             val keys = routes.sortedBy { it.legs.lastOrNull()?.arrival ?: Instant.MAX }
-                .map(::routeKey).distinct().take(MAX_ROUTES).toSet()
+                .map(::routeKey).distinct().take(MAX_ROUTES).toSet() + keep
             return routes.filter { routeKey(it) in keys }
         }
+
+        /** [bestOf], keeping the one route [keep] names. */
+        internal fun bestOf(routes: List<TripRoute>, keep: String? = null): List<TripRoute> = bestOf(routes, listOfNotNull(keep))
 
         /** How many distinct routes a trip times at most. */
         const val MAX_ROUTES = 6

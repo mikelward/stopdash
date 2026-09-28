@@ -295,7 +295,7 @@ private data class PersistedActiveTrip(
 }
 
 @Serializable
-private data class PersistedTripLeg(
+internal data class PersistedTripLeg(
     val mode: String,
     val lineId: String,
     val lineName: String,

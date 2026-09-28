@@ -364,6 +364,74 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun an_open_route_offers_the_walking_speed_too() {
+        // Its walks are timed at the speed as the list's are, so it can be changed from there.
+        var chosen: WalkingSpeed? = null
+        val state = mutableStateOf(planned)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf",
+                    state = state.value,
+                    now = now,
+                    access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source),
+                    onBack = {},
+                    onRetry = {},
+                    walkingSpeed = WalkingSpeed.AVERAGE,
+                    onWalkingSpeedChange = { chosen = it },
+                )
+            }
+        }
+        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("6 stops to Whitechapel").assertIsDisplayed()
+        composeRule.onNodeWithText("Walking speed").assertIsDisplayed()
+        captureSnapshot("trip-route-legs-walking-speed.png")
+        composeRule.onNodeWithTag("walkingSpeed").performClick()
+        composeRule.onNodeWithTag("walkingSpeed-SLOW").performClick()
+        assertEquals(WalkingSpeed.SLOW, chosen)
+        // The pick plans again: no routes while it runs, then the new plan, which still offers the
+        // route through Whitechapel, so it opens again.
+        state.value = planned.copy(routes = null, planning = true)
+        composeRule.waitForIdle()
+        state.value = planned
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("6 stops to Whitechapel").assertIsDisplayed()
+    }
+
+    @Test
+    fun an_open_route_a_new_plan_drops_stays_closed_when_a_later_plan_offers_it_again() {
+        val state = mutableStateOf(planned)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf",
+                    state = state.value,
+                    now = now,
+                    access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source),
+                    onBack = {},
+                    onRetry = {},
+                    onWalkingSpeedChange = {},
+                )
+            }
+        }
+        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("6 stops to Whitechapel").assertIsDisplayed()
+        // A finished plan without the route: back to the list.
+        state.value = planned.copy(routes = listOf(viaStratford, viaCanadaWater))
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("6 stops to Whitechapel").assertDoesNotExist()
+        // A later plan offering it again (the old pace's plan, say) leaves the rider on the list.
+        state.value = planned
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("6 stops to Whitechapel").assertDoesNotExist()
+        composeRule.onNodeWithText("28 min · ~08:30").assertIsDisplayed()
+    }
+
+    @Test
     fun a_walking_speed_that_did_not_save_is_said_once() {
         var shown = 0
         composeRule.setContent {
@@ -606,6 +674,309 @@ class TripScreenScreenshotTest {
     private fun grayedTimes(label: String): List<String> {
         val text = composeRule.onNodeWithText(label).fetchSemanticsNode().config[SemanticsProperties.Text].single()
         return text.spanStyles.map { text.text.substring(it.start, it.end) }
+    }
+
+    @Test
+    fun an_open_route_stays_open_when_six_faster_routes_crowd_it_out_of_the_list() {
+        val state = mutableStateOf(planned)
+        showWith(state)
+        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("6 stops to Whitechapel").assertIsDisplayed()
+        // A settled plan with six routes arriving sooner: the list would time only those, but the
+        // open route is still offered, so it stays timed and open.
+        val faster = (1..TripViewModel.MAX_ROUTES).map { i ->
+            TripRoute(listOf(leg("tube", "jubilee", "Jubilee", "940GFAST$i" to "Stop $i", canaryWharf, 3, 8L + i, 3)))
+        }
+        state.value = planned.copy(routes = faster + planned.routes.orEmpty())
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("6 stops to Whitechapel").assertIsDisplayed()
+    }
+
+    @Test
+    fun an_open_route_whose_mode_is_hidden_stays_closed_when_the_mode_is_shown_again() {
+        val hidden = mutableStateOf(emptySet<String>())
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {},
+                    hiddenModes = hidden.value,
+                )
+            }
+        }
+        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("6 stops to Whitechapel").assertIsDisplayed()
+        // Its Elizabeth line hidden: the route isn't shown, so the list is, and the route is closed.
+        hidden.value = setOf("elizabeth-line")
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("6 stops to Whitechapel").assertDoesNotExist()
+        // Shown again, it's back in the list, not reopened over it.
+        hidden.value = emptySet()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("28 min · ~08:30").assertIsDisplayed()
+        composeRule.onNodeWithText("6 stops to Whitechapel").assertDoesNotExist()
+    }
+
+    @Test
+    fun an_open_train_through_a_change_shows_at_once_while_a_restore_reloads_its_route_data() {
+        // Red Aston → Beck, change, blue on to Cole; blue to Dale also runs from Aston through Beck
+        // to Cole, and one leaves in 5 min: a route of its own, with no change ([withThroughRoutes]).
+        val names = listOf("Aston", "Beck", "Mead", "Cole", "Dale", "Red End").associateWith { it }
+        val lines = mapOf(
+            "red" to LineSequence(listOf(LineRoute("red", listOf("Aston", "Beck", "Red End"))), names),
+            "blue" to LineSequence(listOf(LineRoute("to Dale", listOf("Aston", "Beck", "Mead", "Cole", "Dale"))), names),
+        )
+        val changing = TripRoute(
+            listOf(
+                leg("tube", "red", "Red", "Aston" to "Aston", "Beck" to "Beck", 1, 3, 1, change = 4),
+                leg("tube", "blue", "Blue", "Beck" to "Beck", "Cole" to "Cole", 9, 15, 2),
+            ),
+        )
+        val trip = TripViewModel.State(
+            routes = listOf(changing),
+            plannedAt = now,
+            live = mapOf(
+                "Aston" to TripViewModel.StopLive(listOf(train("red", "Red", "tube", "Red End", 1, "Platform 1"), train("blue", "Blue", "tube", "Dale", 5, "Platform 2")), now),
+                "Beck" to TripViewModel.StopLive(listOf(train("blue", "Blue", "tube", "Dale", 9, "Platform 2")), now),
+            ),
+            statuses = mapOf(
+                "red" to LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service"),
+                "blue" to LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service"),
+            ),
+        )
+        val through = withThroughRoutes(trip, lines).routes.orEmpty().single { routeKey(it) != routeKey(changing) }
+        val key = openRouteOf(through, trip, lines).encode()
+        // Restored with the train through open, before its lines' route data has reloaded.
+        val loads = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val routeStops = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                    loads.await()
+                    return lines.getValue(lineId)
+                }
+            },
+        )
+        val openRoute = mutableStateOf<String?>(key)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Cole", state = trip, now = now, access = Duration.ZERO,
+                    routeStops = routeStops, onBack = {}, onRetry = {}, openRoute = openRoute,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        // Kept whole, so shown at once: its trains still to come, as nothing has made it yet.
+        assertEquals(key, openRoute.value)
+        composeRule.onNodeWithText("3 stops to Cole").assertIsDisplayed()
+        loads.complete(Unit)
+        composeRule.waitForIdle()
+        assertEquals(key, openRoute.value)
+        composeRule.onNodeWithText("3 stops to Cole").assertIsDisplayed()
+    }
+
+    @Test
+    fun an_open_train_through_a_change_stays_open_while_its_stop_pairs_other_pole_answers() {
+        // Red boards at a stop pair, Aston and Aston 2; blue to Dale runs through Beck to Cole from
+        // Aston 2 alone, so it's that pole's arrivals that predict the train through.
+        val names = listOf("Aston", "Aston2", "Beck", "Mead", "Cole", "Dale", "Red End").associateWith { it }
+        val lines = mapOf(
+            "red" to LineSequence(listOf(LineRoute("red", listOf("Aston", "Beck", "Red End"))), names),
+            "blue" to LineSequence(listOf(LineRoute("to Dale", listOf("Aston2", "Beck", "Mead", "Cole", "Dale"))), names),
+        )
+        val changing = TripRoute(
+            listOf(
+                leg("tube", "red", "Red", "Aston" to "Aston", "Beck" to "Beck", 1, 3, 1, change = 4).copy(fromArea = "AstonPair"),
+                leg("tube", "blue", "Blue", "Beck" to "Beck", "Cole" to "Cole", 9, 15, 2),
+            ),
+        )
+        val statuses = mapOf(
+            "red" to LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service"),
+            "blue" to LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service"),
+        )
+        val throughTrain = "Aston2" to TripViewModel.StopLive(listOf(train("blue", "Blue", "tube", "Dale", 5, "Platform 2")), now)
+        val refreshed = TripViewModel.State(
+            routes = listOf(changing),
+            plannedAt = now,
+            live = mapOf(
+                "Aston" to TripViewModel.StopLive(listOf(train("red", "Red", "tube", "Red End", 1, "Platform 1")), now),
+                "Beck" to TripViewModel.StopLive(listOf(train("blue", "Blue", "tube", "Dale", 9, "Platform 2")), now),
+                throughTrain,
+            ),
+            statuses = statuses,
+            areaPoles = mapOf("AstonPair" to listOf("Aston", "Aston2")),
+        )
+        val through = withThroughRoutes(refreshed, lines).routes.orEmpty().single { routeKey(it) != routeKey(changing) }
+        val key = openRouteOf(through, refreshed, lines).encode()
+        // Restored with the train through open: the Planner's own poles have answered (from the shared
+        // arrivals), the other pole's not yet.
+        val state = mutableStateOf(refreshed.copy(live = refreshed.live - throughTrain.first))
+        val openRoute = mutableStateOf<String?>(key)
+        val routeStops = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence = lines.getValue(lineId)
+            },
+        )
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Cole", state = state.value, now = now, access = Duration.ZERO,
+                    routeStops = routeStops, onBack = {}, onRetry = {}, openRoute = openRoute,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        // No train through predicted yet: shown all the same, and not closed.
+        assertEquals(key, openRoute.value)
+        composeRule.onNodeWithText("3 stops to Cole").assertIsDisplayed()
+        state.value = refreshed
+        composeRule.waitForIdle()
+        assertEquals(key, openRoute.value)
+        composeRule.onNodeWithText("3 stops to Cole").assertIsDisplayed()
+    }
+
+    // Red Aston → Beck, change, blue on to Cole; blue to Dale also runs from Aston through Beck to
+    // Cole: a route of its own when one is predicted at Aston ([withThroughRoutes]). [throughIn] is
+    // when that train leaves (none predicted when null), in arrivals fetched at [fetchedAt].
+    private val throughNames = listOf("Aston", "Beck", "Mead", "Cole", "Dale", "Red End").associateWith { it }
+    private val throughLines = mapOf(
+        "red" to LineSequence(listOf(LineRoute("red", listOf("Aston", "Beck", "Red End"))), throughNames),
+        "blue" to LineSequence(listOf(LineRoute("to Dale", listOf("Aston", "Beck", "Mead", "Cole", "Dale"))), throughNames),
+    )
+    private val throughChanging = TripRoute(
+        listOf(
+            leg("tube", "red", "Red", "Aston" to "Aston", "Beck" to "Beck", 1, 3, 1, change = 4),
+            leg("tube", "blue", "Blue", "Beck" to "Beck", "Cole" to "Cole", 9, 15, 2),
+        ),
+    )
+
+    private fun throughTrip(throughIn: Long?, fetchedAt: Instant = now) = TripViewModel.State(
+        routes = listOf(throughChanging),
+        plannedAt = now,
+        live = mapOf(
+            "Aston" to TripViewModel.StopLive(
+                listOfNotNull(
+                    train("red", "Red", "tube", "Red End", 1, "Platform 1"),
+                    throughIn?.let { train("blue", "Blue", "tube", "Dale", it, "Platform 2") },
+                ),
+                fetchedAt,
+            ),
+            "Beck" to TripViewModel.StopLive(listOf(train("blue", "Blue", "tube", "Dale", 9, "Platform 2")), fetchedAt),
+        ),
+        statuses = mapOf(
+            "red" to LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service"),
+            "blue" to LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service"),
+        ),
+    )
+
+    // The train through, open ([OpenRoute]), as tapped on the list while one was predicted.
+    private val throughKey by lazy {
+        val trip = throughTrip(throughIn = 5)
+        val through = withThroughRoutes(trip, throughLines).routes.orEmpty().single { routeKey(it) != routeKey(throughChanging) }
+        openRouteOf(through, trip, throughLines).encode()
+    }
+
+    private fun showThrough(state: androidx.compose.runtime.MutableState<TripViewModel.State>, openRoute: androidx.compose.runtime.MutableState<String?>) {
+        val routeStops = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence = throughLines.getValue(lineId)
+            },
+        )
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Cole", state = state.value, now = now, access = Duration.ZERO,
+                    routeStops = routeStops, onBack = {}, onRetry = {}, openRoute = openRoute,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+    }
+
+    @Test
+    fun an_open_train_through_a_change_stays_open_on_a_return_to_stale_arrivals() {
+        // A retained trip shown again, its arrivals aged past standing: the route shows, its train
+        // withheld until the return's refresh lands.
+        val state = mutableStateOf(throughTrip(throughIn = 5, fetchedAt = now.minus(Duration.ofMinutes(10))))
+        val openRoute = mutableStateOf<String?>(throughKey)
+        showThrough(state, openRoute)
+        composeRule.onNodeWithText("3 stops to Cole").assertIsDisplayed()
+        assertEquals(throughKey, openRoute.value)
+        state.value = state.value.copy(refreshing = true)
+        composeRule.waitForIdle()
+        assertEquals(throughKey, openRoute.value)
+        // The return's refresh lands, and the train is still coming.
+        state.value = throughTrip(throughIn = 5)
+        composeRule.waitForIdle()
+        assertEquals(throughKey, openRoute.value)
+        composeRule.onNodeWithText("3 stops to Cole").assertIsDisplayed()
+    }
+
+    @Test
+    fun an_open_train_through_a_change_stays_open_with_a_dash_once_its_train_is_no_longer_predicted() {
+        val state = mutableStateOf(throughTrip(throughIn = 5))
+        val openRoute = mutableStateOf<String?>(throughKey)
+        showThrough(state, openRoute)
+        composeRule.onNodeWithText("3 stops to Cole").assertIsDisplayed()
+        composeRule.onNodeWithText("Arrival unknown", substring = true).assertDoesNotExist()
+        // The plan still offers the change it runs through, so the route stays (maintainer,
+        // 2026-09-29): its line reads "–", as a line with no trains does on the list, and its arrival
+        // is withheld rather than taken from the Planner's times for the change.
+        state.value = throughTrip(throughIn = null)
+        composeRule.waitForIdle()
+        assertEquals(throughKey, openRoute.value)
+        composeRule.onNodeWithText("3 stops to Cole").assertIsDisplayed()
+        composeRule.onNodeWithText("Arrival unknown", substring = true).assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("–").fetchSemanticsNodes().isNotEmpty())
+        captureSnapshot("trip-through-no-train.png")
+        // Predicted again: timed from it once more.
+        state.value = throughTrip(throughIn = 5)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Arrival unknown", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun an_open_train_through_a_change_stays_open_when_a_new_plan_offers_it_as_a_route_of_its_own() {
+        val state = mutableStateOf(throughTrip(throughIn = 5))
+        val openRoute = mutableStateOf<String?>(throughKey)
+        showThrough(state, openRoute)
+        composeRule.onNodeWithText("3 stops to Cole").assertIsDisplayed()
+        // A re-plan drops the change but plans blue from Aston to Cole itself: the same lines and stops.
+        val direct = TripRoute(listOf(leg("tube", "blue", "Blue", "Aston" to "Aston", "Cole" to "Cole", 5, 13, 3)))
+        state.value = throughTrip(throughIn = 5).copy(routes = listOf(direct))
+        composeRule.waitForIdle()
+        assertEquals(throughKey, openRoute.value)
+        composeRule.onNodeWithText("3 stops to Cole").assertIsDisplayed()
+    }
+
+    @Test
+    fun an_open_train_through_a_change_closes_for_good_once_the_plan_drops_its_change() {
+        val state = mutableStateOf(throughTrip(throughIn = 5))
+        val openRoute = mutableStateOf<String?>(throughKey)
+        showThrough(state, openRoute)
+        composeRule.onNodeWithText("3 stops to Cole").assertIsDisplayed()
+        // A new plan without the change: closed, and not reopened when a later plan offers it again.
+        state.value = throughTrip(throughIn = 5).copy(routes = listOf(TripRoute(listOf(throughChanging.legs.first()))))
+        composeRule.waitForIdle()
+        assertEquals(null, openRoute.value)
+        state.value = throughTrip(throughIn = 5)
+        composeRule.waitForIdle()
+        assertEquals(null, openRoute.value)
+        composeRule.onNodeWithText("3 stops to Cole").assertDoesNotExist()
+    }
+
+    private fun showWith(state: androidx.compose.runtime.MutableState<TripViewModel.State>) {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf", state = state.value, now = now, access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {},
+                )
+            }
+        }
+        composeRule.waitForIdle()
     }
 
     @Test

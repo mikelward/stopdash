@@ -129,6 +129,10 @@ object TripTiming {
         // How many trains leg [index]'s lines have predicted at its boarding stop before [live]'s
         // checks, for the reason a withheld arrival gives ([Withheld]); timing never reads it.
         predicted: (Int) -> Int = { live(it)?.size ?: 0 },
+        // Whether leg [index] carries the Planner's own times. One it didn't plan (a train through a
+        // change, [RideLines.through]) carries the times of the rides it replaces as a placeholder,
+        // which belong to other lines, so only a live train times it.
+        timetabled: (Int) -> Boolean = { true },
     ): Estimate {
         val blocked = route.rides.any { it.lineId in notRunning }
         val unchecked = !blocked && route.rides.any { it.lineId in unknown }
@@ -141,8 +145,13 @@ object TripTiming {
             if (leg.isWalk) return LegTiming(ready, ready.plus(leg.run), null, false) to Basis.LIVE
             val trains = live(index)
             val train = trains?.filter { !it.expectedArrival.isBefore(ready) }?.minByOrNull { it.expectedArrival }
+            fun unknown(): Pair<LegTiming, Basis> {
+                if (withheld == null) withheld = withheldAt(index, leg, ready, trains, leg.lineId in notRunning, current(index), predicted(index))
+                return LegTiming(null, null, null, false) to Basis.UNKNOWN
+            }
             return when {
                 train != null -> LegTiming(train.expectedArrival, train.expectedArrival.plus(leg.run), train, true) to Basis.LIVE
+                !timetabled(index) -> unknown()
                 !leg.departure.isBefore(ready) -> LegTiming(leg.departure, leg.arrival, null, false) to Basis.ESTIMATED
                 // Its live trains vouched for and running, just not predicted as far ahead as the
                 // rider gets there: on a line every few minutes, the next one is about then. Not on a
@@ -155,10 +164,7 @@ object TripTiming {
                     waits = true
                     LegTiming(ready, ready.plus(leg.run), null, false) to Basis.ESTIMATED
                 }
-                else -> {
-                    if (withheld == null) withheld = withheldAt(index, leg, ready, trains, leg.lineId in notRunning, current(index), predicted(index))
-                    LegTiming(null, null, null, false) to Basis.UNKNOWN
-                }
+                else -> unknown()
             }
         }
         var at: Instant? = now.plus(access)

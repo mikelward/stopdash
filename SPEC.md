@@ -955,7 +955,8 @@ goes the whole way. It is found as the other lines are (the boarding stop's arri
 routes, no request added), its trains are checked on the way like any ride's, so a train for the
 other branch isn't offered, and it is timed and ranked like the Planner's routes. It is offered only
 while a train through is predicted: the Planner has no times for it, and the times of the two rides
-it replaces belong to other trains. A walk between the
+it replaces belong to other trains. Once opened it stays, as below, its arrival withheld while none
+is predicted. A walk between the
 rides is a change of station, so those stay as planned. **A route with more changes is listed only
 when it gets there sooner** (maintainer, 2026-09-28): one that another route with fewer changes
 beats or ties, while StopDash stands behind that route at least as far (its tier as the list ranks
@@ -1126,7 +1127,14 @@ from the last confirmed position and every route's arrival reads "est." at best,
 or when it expires while the screen is visible, showing the older plan stamped with its age meanwhile,
 so a route that has since become viable can appear. An opened route is matched across a re-plan by its lines and
 stops in order, never by its place in the list; if the new plan no longer has it, the trip goes back
-to the refreshed list rather than keep showing a route the Planner no longer offers. The live times refresh with the list's refresh cycle
+to the refreshed list rather than keep showing a route the Planner no longer offers. While the plan
+offers it an opened route stays open and timed, even once live times move it out of the few a trip
+times. A train through a change is kept whole once opened, and stays open while the plan offers
+the change it runs through, whether a train is predicted or not (maintainer, 2026-09-29): with none,
+its line reads "–", as a line with no trains does on the list, and the route's arrival is withheld
+rather than taken from the Planner's times for the change, which belong to other lines. Once the plan
+no longer offers it (a new plan without it) or its mode is hidden, it's closed for good rather than
+reopening unbidden when it comes back; a plan still landing keeps it. The live times refresh with the list's refresh cycle
 while the screen is visible, and follow the list's staleness rule (D4): a stale leg withholds its
 countdowns rather than show them as live, and stops feeding the route's arrival and ordering: it falls
 back as above ("est.", or "arrival unknown" when the Planner's departure is no longer reachable). If planning fails, the screen says why with a **Retry**
@@ -1140,8 +1148,9 @@ the rider is included, so it never offers a long walk beside the rides; configur
 walk is timed at the rider's **walking speed** — Slow, Medium or Fast (the Planner's `walkingSpeed`;
 Medium is its average and the default) — so a brisk walker isn't shown a ten-minute walk they do in
 six, nor told a train is out of reach that isn't (maintainer, 2026-09-28). It is one setting, chosen
-in Settings or from a dropdown atop a trip's routes, and a change there plans the trip again at once,
-since every walk and the connections after it were timed at the old pace. Plans are kept per pace.
+in Settings or from a dropdown atop a trip's routes or an opened route, and a change there plans the
+trip again at once, since every walk and the connections after it were timed at the old pace; an
+opened route stays open if the new plan still offers it. Plans are kept per pace.
 The request names the Planner's modes (its own default set, walking among them): left to its
 defaults, the Planner accepts `walkingSpeed` but times every walk in a route that rides at its
 average, so the setting changed nothing (2026-09-28). Named, the pace times each walk and so which
@@ -1162,7 +1171,7 @@ Angel and bus back, where the rider would get off the first time. A detour nothi
 may be the only way the plan found (maintainer, 2026-09-27), and only a route the rider can see beats
 one: a route riding a hidden mode never takes out one they can, and showing the mode again brings
 back what it beats. The answers merge, and of the routes not riding a hidden mode, the six arriving soonest by
-the Planner's timetable are timed; routes show as each answer lands. If some stations can't be planned to, the others'
+the Planner's timetable are timed, and an opened route besides; routes show as each answer lands. If some stations can't be planned to, the others'
 routes stand and the trip says "Couldn't plan to every station", with a retry; only a whole plan is
 reused. Not the complex's centre point: that ended every trip at a street address with a walk and
 didn't lift the lean. An ordinary pick is planned to as picked, the Planner walking the last

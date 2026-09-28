@@ -431,8 +431,13 @@ internal fun tripEstimates(
     hidden: Set<String> = emptySet(),
     originUnconfirmed: Boolean = false,
     lines: Map<TripLeg, RideLines> = rideLines(state.routes.orEmpty(), state, sequences, hidden),
+    // The open route's key: timed past the cap while the plan offers it ([TripViewModel.bestOf]).
+    keep: String? = null,
+    // Every leg the Planner planned, when some routes ride one it didn't (a train through a change):
+    // such a leg is timed only by a live train ([TripTiming.estimate]'s timetabled). Null: all are.
+    planned: Set<TripLeg>? = null,
 ): List<TripTiming.Estimate>? {
-    val routes = state.shownRoutes(hidden)?.let(TripViewModel::bestOf) ?: return null
+    val routes = state.shownRoutes(hidden)?.let { TripViewModel.bestOf(it, keep) } ?: return null
     val notRunning = TripTiming.notRunning(state.statuses.values)
     // A line with no status known (left out of TfL's answer, or a failed check) can't be vouched
     // for as running.
@@ -444,6 +449,7 @@ internal fun tripEstimates(
             route, now, access, { index -> rideTrains(state, route.legs[index], now, sequences, lines) }, notRunning, unknown,
             current = { index -> state.live[route.legs[index].fromId]?.failed != true },
             predicted = { index -> ridePredicted(state, route.legs[index], now, lines) },
+            timetabled = { index -> planned == null || route.legs[index] in planned },
         )
             .let { if (originUnconfirmed && it.basis == TripTiming.Basis.LIVE) it.copy(basis = TripTiming.Basis.ESTIMATED) else it }
     }
@@ -486,19 +492,34 @@ internal fun cardKey(route: TripRoute): String {
  * else [timedLineIds] and the other lines at those rides' boarding stops ([rideLineIds]). A re-plan keeps the last plan until it lands whole, so that plan's lines load
  * at once, even on a screen shown again with nothing settled yet.
  */
-internal fun sequenceLineIds(state: TripViewModel.State, hidden: Set<String>, settled: List<String>): List<String> {
+internal fun sequenceLineIds(state: TripViewModel.State, hidden: Set<String>, settled: List<String>, keep: Collection<String> = emptyList()): List<String> {
     if (state.planning && state.plannedAt == null) return settled
     val shown = state.shownRoutes(hidden).orEmpty()
     // And every other line at a timed ride's boarding stop, to tell whether it serves the ride's
     // stops too ([rideLines]): a route each, loaded once a day like the rest.
-    val timed = TripViewModel.bestOf(shown.filterNot { route -> route.rides.any { HiddenModes.isHidden(it.mode, it.lineId, hidden) } })
-    return (timedLineIds(shown, hidden) + rideLineIds(timed, state, hidden)).distinct()
+    val timed = TripViewModel.bestOf(shown.filterNot { route -> route.rides.any { HiddenModes.isHidden(it.mode, it.lineId, hidden) } }, keep)
+    return (timedLineIds(shown, hidden, keep) + rideLineIds(timed, state, hidden)).distinct()
 }
 
-/** The lines of the routes a trip times: not riding a [hidden] mode, and within the cap ([TripViewModel.bestOf]). */
-internal fun timedLineIds(routes: List<TripRoute>, hidden: Set<String>): List<String> =
-    TripViewModel.bestOf(routes.filterNot { route -> route.rides.any { HiddenModes.isHidden(it.mode, it.lineId, hidden) } })
+/**
+ * The lines of the routes a trip times: not riding a [hidden] mode, and within the cap, or the open
+ * route ([keep]) past it ([TripViewModel.bestOf]).
+ */
+internal fun timedLineIds(routes: List<TripRoute>, hidden: Set<String>, keep: Collection<String> = emptyList()): List<String> =
+    TripViewModel.bestOf(routes.filterNot { route -> route.rides.any { HiddenModes.isHidden(it.mode, it.lineId, hidden) } }, keep)
         .flatMap { route -> route.rides.map { it.lineId } }.distinct()
+
+/**
+ * Whether the [open] route, on a settled plan (not [TripViewModel.State.planning], its routes in),
+ * is gone for good ([OpenRoute.routeIn]): the plan no longer offers it (a new plan without it, or its
+ * mode hidden), whether as planned or by the route with the change its train through is made from, or
+ * a line it rides itself is hidden (a train through a change can run on a line that route doesn't). Only the plan and the rider's own choices
+ * decide: a train through a change that isn't predicted now leaves it open (maintainer, 2026-09-29).
+ */
+internal fun openRouteGone(state: TripViewModel.State, hidden: Set<String>, open: OpenRoute): Boolean {
+    val route = open.routeIn(state.shownRoutes(hidden).orEmpty()) ?: return true
+    return route.rides.any { HiddenModes.isHidden(it.mode, it.lineId, hidden) }
+}
 
 /** A route's identity across refreshes and re-ranking: its lines and stops in order. */
 internal fun routeKey(route: TripRoute): String =
@@ -647,19 +668,39 @@ private fun TripContent(
     onWalkingSpeedWriteFailureShown: () -> Unit = {},
     ends: TripEnds? = null,
 ) {
-    // Only the timed routes' lines: a hidden mode's routes, and those past the cap, load no route data.
-    // While a plan's answers are still landing, the last settled plan's lines stand, so a passing
-    // top six never starts loads a later answer would make pointless.
+    // The open route, kept twice: by the trip when it's given one ([openRoute]), which outlasts the
+    // screen leaving composition (an overlay) and, saved by the trip, the process too; and saved with
+    // the screen, for a trip that holds none. Read from the trip first; set in both.
+    val savedOpenKey = rememberSaveable { mutableStateOf<String?>(null) }
+    val heldOpenKey = remember(openRoute) {
+        openRoute?.also { if (it.value == null) it.value = savedOpenKey.value } ?: savedOpenKey
+    }
+    // Saved as text ([OpenRoute.encode]), read back whole.
+    val openRef = remember(heldOpenKey.value) { OpenRoute.parse(heldOpenKey.value) }
+    fun setOpen(open: OpenRoute?) {
+        val saved = open?.encode()
+        heldOpenKey.value = saved
+        savedOpenKey.value = saved
+    }
+    // Only the timed routes' lines: a hidden mode's routes, and those past the cap (but the open one,
+    // and its train through a change), load no route data. While a plan's answers are still landing,
+    // the last settled plan's lines stand, so a passing top six never starts loads a later answer
+    // would make pointless.
     val settledLines = remember { arrayOf(emptyList<String>()) }
-    val lineIds = remember(planned.routes, hiddenModes, planned.planning, planned.live, planned.areaPoles) {
-        sequenceLineIds(planned, hiddenModes, settledLines[0]).also { settledLines[0] = it }
+    val lineIds = remember(planned.routes, hiddenModes, planned.planning, planned.live, planned.areaPoles, openRef) {
+        (sequenceLineIds(planned, hiddenModes, settledLines[0], openRef?.keys.orEmpty()) + listOfNotNull(openRef?.ride?.lineId))
+            .distinct().also { settledLines[0] = it }
     }
     val sequences = rememberLineSequences(lineIds, now)
     // Each bus leg at the poles its bus uses, once its route says which (the Planner's may be the
     // other side of the road); everything below reads the trip this way, with the routes a train
     // running through a change offers without it ([withThroughRoutes]).
     val poled = remember(planned, sequences) { onPoles(planned, sequences) }
-    val state = remember(poled, sequences, hiddenModes) { withThroughRoutes(poled, sequences, hiddenModes) }
+    // The open route as the plan offers it now ([OpenRoute.routeIn]): its walks at the current pace,
+    // and a train through a change whether or not one is predicted. Null while no plan offers it.
+    val opened = remember(poled, hiddenModes, openRef) { openRef?.routeIn(poled.shownRoutes(hiddenModes).orEmpty()) }
+    val openKey = opened?.let(::routeKey)
+    val state = remember(poled, sequences, hiddenModes, opened) { withThroughRoutes(poled, sequences, hiddenModes, opened) }
     // Every leg the Planner planned: a leg it didn't (a train through a change) needs a live train.
     val plannedLegs = remember(poled) { poled.routes.orEmpty().flatMapTo(HashSet()) { it.legs } }
     val originUnconfirmed = relocating || locationBanner != null
@@ -675,9 +716,10 @@ private fun TripContent(
     }
     // Each ride's lines ([rideLines]): worked out once per refresh and route load, not on every tick.
     val rideLines = remember(state, sequences, hiddenModes) { rideLines(state.routes.orEmpty(), state, sequences, hiddenModes) }
-    val estimates = remember(state, now, access, sequences, hiddenModes, originUnconfirmed, rideLines, plannedLegs) {
-        tripEstimates(state, now, access, sequences, hiddenModes, originUnconfirmed, rideLines)
-            ?.let { TripTiming.withoutUnvouchedLegs(it, plannedLegs) }
+    val estimates = remember(state, now, access, sequences, hiddenModes, originUnconfirmed, rideLines, plannedLegs, openKey) {
+        tripEstimates(state, now, access, sequences, hiddenModes, originUnconfirmed, rideLines, keep = openKey, planned = plannedLegs)
+            // The open route stays, its arrival withheld while its train through a change isn't predicted.
+            ?.filter { routeKey(it.route) == openKey || TripTiming.withoutUnvouchedLegs(listOf(it), plannedLegs).isNotEmpty() }
     }
     // A withheld arrival leaves its reason in the debug log: a side effect, off composition.
     LaunchedEffect(estimates) {
@@ -688,20 +730,16 @@ private fun TripContent(
     // A route with more changes than another getting there no later is left off the list
     // ([TripTiming.withoutSlowerChanges]); an open one stays open.
     val cards = remember(estimates) { estimates?.let { tripCards(TripTiming.withoutSlowerChanges(it)) } }
-    // The open route, kept twice: by the trip when it's given one ([openRoute]), which outlasts the
-    // screen leaving composition (an overlay) and, saved by the trip, the process too; and saved with
-    // the screen, for a trip that holds none. Read from the trip first; set in both.
-    val savedOpenKey = rememberSaveable { mutableStateOf<String?>(null) }
-    val heldOpenKey = remember(openRoute) {
-        openRoute?.also { if (it.value == null) it.value = savedOpenKey.value } ?: savedOpenKey
-    }
-    val openKey = heldOpenKey.value
-    fun setOpenKey(key: String?) {
-        heldOpenKey.value = key
-        savedOpenKey.value = key
-    }
     val open = estimates?.firstOrNull { routeKey(it.route) == openKey }
-    BackHandler { if (open != null) setOpenKey(null) else onBack() }
+    // The open route stays open while the plan offers it ([openRouteGone]), past the cap too
+    // ([TripViewModel.bestOf]); once a settled plan doesn't — a new plan without it (another walking
+    // speed, a re-plan), or its mode hidden — it's closed for good, so it never reopens unbidden
+    // should it come back. A plan still landing ([TripViewModel.State.planning],
+    // or no routes yet) keeps it, since the route may be in the part still to come.
+    LaunchedEffect(openRef, poled.routes, poled.planning, hiddenModes) {
+        if (openRef != null && poled.routes != null && !poled.planning && openRouteGone(poled, hiddenModes, openRef)) setOpen(null)
+    }
+    BackHandler { if (open != null) setOpen(null) else onBack() }
     // A leg's row tapped on an open route: its line's page, as a row on the main screen opens it,
     // with the line's full service alert and its stops (SPEC *Trips with a change*). Found again among
     // the open route's rows on every refresh, so it stays live; gone with them, it closes.
@@ -877,7 +915,7 @@ private fun TripContent(
             } else {
                 TopAppBar(
                     navigationIcon = {
-                        IconButton(onClick = { if (open != null) setOpenKey(null) else onBack() }) {
+                        IconButton(onClick = { if (open != null) setOpen(null) else onBack() }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                         }
                     },
@@ -895,9 +933,10 @@ private fun TripContent(
             val misses = remember(state, shown, now, sequences) { shown?.let { tripMisses(state, it, now, sequences, rideLines) }.orEmpty() }
             val routeStops = LocalRouteStops.current
             LaunchedEffect(routeStops, misses) { routeStops?.reportMisses(misses) }
-            // The walking speed heads the routes, not an open route: it chooses among them (maintainer,
-            // 2026-09-28), and a pick plans again.
-            if (open == null && onWalkingSpeedChange != null) {
+            // The walking speed heads an open route too, as the maintainer asked (2026-09-28): its walks
+            // are timed at it as the list's are. A pick plans again; an open route stays
+            // open when the new plan still offers it ([routeKey] names lines and stops, not times).
+            if (onWalkingSpeedChange != null) {
                 WalkingSpeedPicker(walkingSpeed, onWalkingSpeedChange)
             }
             TripBanners(shown, rideLines, state, check, locationBanner, onRelocate, hiddenModes, onShowAllModes)
@@ -907,7 +946,7 @@ private fun TripContent(
                     open != null -> RouteLegs(open, rideLines, state, now, access, sequences, onRetry, alerts.dismissed, onHideMode, ::openDetail)
                     else -> RouteList(
                         cards, rideLines, state, now, access, sequences, onRetry, alerts.dismissed,
-                        onOpen = { setOpenKey(routeKey(it.route)) },
+                        onOpen = { setOpen(openRouteOf(it.route, poled, sequences, hiddenModes)) },
                         onHideMode = onHideMode,
                     )
                 }
