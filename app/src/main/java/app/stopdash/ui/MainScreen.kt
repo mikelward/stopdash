@@ -13,6 +13,7 @@ import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.withStyle
 import app.stopdash.domain.AlertLinks
 import app.stopdash.domain.AlertStops
 import app.stopdash.domain.RouteStops
@@ -3424,10 +3425,13 @@ internal fun StopGroupCard(
     starred: Set<StarredRow>,
     onToggleStar: (DepartureRow) -> Unit,
     starringAvailable: Boolean,
-    onOpenDetail: (DepartureRow, RouteFocus?) -> Unit,
+    // Null (a trip on the way's board) leaves the rows with nothing to open ([RouteRow]).
+    onOpenDetail: ((DepartureRow, RouteFocus?) -> Unit)?,
     onOpenSettings: () -> Unit = {},
     // Offers "Hide ‹mode›" in each row's long-press menu; null keeps long-press as starring.
     onHideMode: ((String) -> Unit)? = null,
+    // Grays a time due before the rider can board ([CountdownLabel]); null grays none.
+    grayBefore: Instant? = null,
 ) {
     // Cap the line pill at half the card's inner width, so a long name at a large font scale
     // ellipsizes rather than consuming the card and starving the countdown, which must stay one line
@@ -3531,7 +3535,7 @@ internal fun StopGroupCard(
                         focus = RouteFocus.of(group2),
                         onHideMode = onHideMode,
                         destination = { modifier -> DestinationLabelContent(label = label, branch = group2.branch, modifier = modifier) },
-                        times = { CountdownLabel(group2.times, stale, now) },
+                        times = { CountdownLabel(group2.times, stale, now, grayBefore = grayBefore) },
                     )
                 }
             }
@@ -3554,7 +3558,8 @@ internal fun LineRouteRow(
     isStarred: Boolean,
     starrable: Boolean,
     onToggleStar: (DepartureRow) -> Unit,
-    onOpenDetail: (DepartureRow, RouteFocus?) -> Unit,
+    // Null leaves the row with nothing to open ([RouteRow]).
+    onOpenDetail: ((DepartureRow, RouteFocus?) -> Unit)?,
     focus: RouteFocus?,
     onHideMode: ((String) -> Unit)?,
     destination: @Composable RowScope.(Modifier) -> Unit,
@@ -3612,7 +3617,9 @@ internal fun RouteRow(
     isStarred: Boolean,
     starrable: Boolean,
     onToggleStar: (DepartureRow) -> Unit,
-    onOpenDetail: (DepartureRow, RouteFocus?) -> Unit,
+    // Opens the line's page; null (a trip on the way's board) leaves a tap to nothing, and no
+    // action is announced.
+    onOpenDetail: ((DepartureRow, RouteFocus?) -> Unit)?,
     // The route this row shows (null for a status row), handed to the detail so it opens on it.
     focus: RouteFocus? = null,
     // Makes a long press open a menu — the pin/unpin, then "Hide ‹mode›" for this row's mode (SPEC
@@ -3635,10 +3642,11 @@ internal fun RouteRow(
     val currentOpenInstead by rememberUpdatedState(onOpenInstead)
     val currentLongPressInstead by rememberUpdatedState(onLongPressInstead)
     val opensInstead = onOpenInstead != null
+    val opens = opensInstead || onOpenDetail != null
     val longPressesInstead = onLongPressInstead != null
     val hideMode = row.mode.takeIf { onHideMode != null && it.isNotBlank() && !longPressesInstead }
     var menuOpen by remember { mutableStateOf(false) }
-    fun open() = currentOpenInstead?.invoke() ?: currentOpenDetail(currentRow, currentFocus)
+    fun open() = currentOpenInstead?.invoke() ?: currentOpenDetail?.invoke(currentRow, currentFocus)
     val onLongPress: ((Offset) -> Unit)? = when {
         longPressesInstead -> { _ -> currentLongPressInstead?.invoke() }
         hideMode != null -> { _ -> menuOpen = true }
@@ -3650,15 +3658,23 @@ internal fun RouteRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .pointerInput(starrable, hideMode, longPressesInstead) {
-                detectTapGestures(
-                    onTap = { open() },
-                    onLongPress = onLongPress,
-                )
-            }
+            .then(
+                // A row with no tap and no long press takes no gesture at all: a detector with
+                // nothing to do still consumes the touch.
+                if (opens || onLongPress != null) {
+                    Modifier.pointerInput(starrable, hideMode, longPressesInstead, opens) {
+                        detectTapGestures(
+                            onTap = if (opens) ({ _ -> open() }) else null,
+                            onLongPress = onLongPress,
+                        )
+                    }
+                } else {
+                    Modifier
+                },
+            )
             .semantics {
                 isTraversalGroup = true
-                onClick(label = if (opensInstead) null else detailActionLabel) { open(); true }
+                if (opens) onClick(label = if (opensInstead) null else detailActionLabel) { open(); true }
                 when {
                     longPressesInstead -> onLongClick(label = moreLabel) { currentLongPressInstead?.invoke(); true }
                     hideMode != null -> onLongClick(label = moreLabel) { menuOpen = true; true }
@@ -4516,9 +4532,26 @@ internal fun CountdownLabel(
     stale: Boolean,
     now: Instant,
     modifier: Modifier = Modifier,
+    // A time due before the rider can be there (a trip on the way, still walking) is grayed: listed,
+    // but not one they can catch. Null grays none.
+    grayBefore: Instant? = null,
 ) {
+    val label = Countdown.mergedLabel(departures, now)
+    val gray = MaterialTheme.colorScheme.outline
+    val early = grayBefore?.let { ready -> departures.map { it.expectedArrival.isBefore(ready) } }
     Text(
-        text = if (stale) WITHHELD else Countdown.mergedLabel(departures, now),
+        text = when {
+            stale -> AnnotatedString(WITHHELD)
+            early == null || early.none { it } -> AnnotatedString(label)
+            // The label's times in order, as [Countdown.mergedLabel] joins them.
+            else -> buildAnnotatedString {
+                label.removeSuffix(" min").split(" · ").forEachIndexed { i, part ->
+                    if (i > 0) append(" · ")
+                    if (early.getOrNull(i) == true) withStyle(SpanStyle(color = gray)) { append(part) } else append(part)
+                }
+                append(" min")
+            }
+        },
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.SemiBold,
         // One line, never wrapped — the countdown is the one thing that must stay legible
