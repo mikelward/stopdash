@@ -198,6 +198,10 @@
     <string name="trip_ends_to">To</string>
     <!-- What a tap on the To… search's From row does, read out by TalkBack. -->
     <string name="trip_change_from">Change start</string>
+    <!-- The trip page's To row, read out by TalkBack: where the trip goes. %1$s is the destination. -->
+    <string name="trip_to">To %1$s</string>
+    <!-- What a tap on the trip page's To row does, read out by TalkBack. -->
+    <string name="trip_change_to">Change destination</string>
     <!-- Over a To… list while lines' routes are still loading. -->
     <string name="trip_checking">Checking routes…</string>
     <!-- A To… list with nothing that goes there directly. %1$s is the destination. -->

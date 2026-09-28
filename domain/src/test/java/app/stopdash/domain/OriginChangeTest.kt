@@ -5,46 +5,69 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class OriginChangeTest {
-    // A hub's id and name, not anyone's place.
-    private val kingsCross = OriginChange.Station("940GZZLUKSX", "King's Cross St. Pancras")
+    // Hubs' ids and names, not anyone's place.
+    private val searching = ToChoice.NONE.startPicking()
+    private val toCanaryWharf = ToChoice(stopId = "940GZZLUCYF", name = "Canary Wharf")
+    private val fromSearch = OriginChange.Station("940GZZLUKSX", "King's Cross St. Pancras", searching)
+    private val fromRoutes = OriginChange.Station("940GZZLUKSX", "King's Cross St. Pancras", toCanaryWharf)
 
     @Test
-    fun `back returns to the To search the From row was tapped in`() {
-        assertEquals(OriginChange.Landing.NearMePicker, OriginChange.back(OriginChange.NearMe))
+    fun `back returns to the trip the From row was tapped in, as it was`() {
+        assertEquals(OriginChange.Landing.NearMe(searching), OriginChange.back(OriginChange.NearMe(searching)))
+        assertEquals(OriginChange.Landing.NearMe(toCanaryWharf), OriginChange.back(OriginChange.NearMe(toCanaryWharf)))
         assertEquals(
-            OriginChange.Landing.StationPicker("940GZZLUKSX", "King's Cross St. Pancras"),
-            OriginChange.back(kingsCross),
+            OriginChange.Landing.Station("940GZZLUKSX", "King's Cross St. Pancras", searching),
+            OriginChange.back(fromSearch),
+        )
+        // From a trip's routes, back to them, not to a search for somewhere to go.
+        assertEquals(
+            OriginChange.Landing.Station("940GZZLUKSX", "King's Cross St. Pancras", toCanaryWharf),
+            OriginChange.back(fromRoutes),
         )
     }
 
     @Test
-    fun `back from a From search the To search didn't open goes to the list`() {
+    fun `back from a From search no trip opened goes to the list`() {
         assertNull(OriginChange.back(null))
         assertNull(OriginChange.here(null))
     }
 
     @Test
-    fun `backing out of a station mid-change keeps the next station opening at its To search`() {
-        // The station was still loading, or failed: the change isn't done, so it stays picking.
-        assertEquals(ToChoice.NONE.startPicking(), OriginChange.toAfterStationClosed(OriginChange.NearMe))
-        assertEquals(ToChoice.NONE.startPicking(), OriginChange.toAfterStationClosed(kingsCross))
+    fun `a change keeps the trip's destination, or its search when there's none`() {
+        assertEquals(toCanaryWharf, OriginChange.kept(toCanaryWharf))
+        // The To… search reopened over the routes stays a search, the routes behind it.
+        assertEquals(toCanaryWharf.startPicking(), OriginChange.kept(toCanaryWharf.startPicking()))
+        // Nothing picked yet: the next start opens at its To… search, never its departures.
+        assertEquals(searching, OriginChange.kept(ToChoice.NONE))
+        assertEquals(searching, OriginChange.kept(searching))
+    }
+
+    @Test
+    fun `backing out of a station mid-change keeps the next station opening at the trip's To`() {
+        // The station was still loading, or failed: the change isn't done, so its To… goes on.
+        assertEquals(searching, OriginChange.toAfterStationClosed(OriginChange.NearMe(searching)))
+        assertEquals(searching, OriginChange.toAfterStationClosed(fromSearch))
+        assertEquals(toCanaryWharf, OriginChange.toAfterStationClosed(OriginChange.NearMe(toCanaryWharf)))
+        assertEquals(toCanaryWharf, OriginChange.toAfterStationClosed(fromRoutes))
         // An ordinary From… station leaves nothing behind.
         assertEquals(ToChoice.NONE, OriginChange.toAfterStationClosed(null))
     }
 
     @Test
-    fun `back to the station a change began at keeps the change until its To search appears`() {
+    fun `back to the station a change began at keeps the change until its trip appears`() {
         // Its stops load afresh and can fail: backing out of that must still find the change.
-        assertEquals(kingsCross, OriginChange.afterLeaving(kingsCross, OriginChange.back(kingsCross)))
+        assertEquals(fromRoutes, OriginChange.afterLeaving(fromRoutes, OriginChange.back(fromRoutes)))
         // Landing near me (or on the list) ends it.
-        assertNull(OriginChange.afterLeaving(kingsCross, OriginChange.here(kingsCross)))
-        assertNull(OriginChange.afterLeaving(OriginChange.NearMe, OriginChange.back(OriginChange.NearMe)))
+        assertNull(OriginChange.afterLeaving(fromRoutes, OriginChange.here(fromRoutes)))
+        val nearMe = OriginChange.NearMe(toCanaryWharf)
+        assertNull(OriginChange.afterLeaving(nearMe, OriginChange.back(nearMe)))
         assertNull(OriginChange.afterLeaving(null, OriginChange.back(null)))
     }
 
     @Test
-    fun `Here goes on at the near-me To search, whichever the change began at`() {
-        assertEquals(OriginChange.Landing.NearMePicker, OriginChange.here(OriginChange.NearMe))
-        assertEquals(OriginChange.Landing.NearMePicker, OriginChange.here(kingsCross))
+    fun `Here goes on as the near-me trip with its To, whichever the change began at`() {
+        assertEquals(OriginChange.Landing.NearMe(toCanaryWharf), OriginChange.here(OriginChange.NearMe(toCanaryWharf)))
+        assertEquals(OriginChange.Landing.NearMe(toCanaryWharf), OriginChange.here(fromRoutes))
+        assertEquals(OriginChange.Landing.NearMe(searching), OriginChange.here(fromSearch))
     }
 }

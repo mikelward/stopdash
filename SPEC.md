@@ -290,17 +290,25 @@ The app finds stops two ways:
   labeled rows, **From** over **To**, with the saved places' chips just below, lined up under the To
   field as its quick picks. From names the start:
   **"Here"** behind the crosshair when it's the rider's position, else the *From…* station's name; To
-  is the search field. A tap on From opens the *From…* station search, which heads its list with
-  **"Here"**. Picking a station there opens that station's *To…* search as soon as its stops are found
-  (its page's placeholder, with Retry, meanwhile: nothing can be planned until the new start is known),
-  "Here" (or the crosshair on a station's page, which means the same) returns to the near-me *To…*
-  search, and Back returns to the *To…* search the row was tapped in. The change is done only once a
-  station's *To…* search appears (the new one's, or on Back the original one's, reloaded): backing out
-  of a station still loading, one that failed, or one with nothing to start from (every mode there
-  hidden) returns to the *From…* search with the change still under way, so another station opens at
-  its *To…* search and Back or "Here" still lands where the row was tapped. So changing the start, or thinking better of it, never loses what was typed for
-  the destination: it carries to the new start's *To…* search. The start is chosen there, before the
-  destination; a planned trip has no From row of its own yet (`TODO.md`). Leaving a station to change
+  is the search field. **The routes keep the same bar** (maintainer, 2026-09-28, option B of the
+  mocks), so a planned trip always says where it starts and each end is one tap to change: From as
+  above, and To, naming the destination, reopens the *To…* search with the start kept — a pick plans
+  again from the same start, and Back returns to the routes. The app's overflow sits at the From row's
+  end; one route opened is titled "To ‹place›" as before, and Back from it returns to the bar.
+  A tap on From opens the *From…* station search, which heads its list with
+  **"Here"**. Picking a station there opens that station's trip **as it was**: its *To…* search when
+  the row was tapped in one (what was typed for the destination kept), or its routes to the same
+  destination when tapped over routes — the start changes, nothing else. Its page's placeholder, with
+  Retry, shows meanwhile: nothing can be planned until the new start is known. "Here" (or the
+  crosshair on a station's page, which means the same) goes on as the near-me trip, again as it was,
+  and Back returns to the trip the row was tapped in. The change is done only once the new start's
+  trip appears (the new station's, or on Back the original one's, reloaded): backing out of a station
+  still loading, one that failed, or one with nothing to start from (every mode there hidden) returns
+  to the *From…* search with the change still under way, so another station opens at the trip's *To…*
+  and Back or "Here" still lands where the row was tapped. A station with nothing to start from
+  shows its own page, which says why and offers "Show all": showing its modes opens its trip at the
+  same *To…*, as if it had had somewhere to start all along. So changing the start, or thinking
+  better of it, never loses the destination, picked or being typed. Leaving a station to change
   the start closes its page, which stops its refreshes. This replaces a From **chip** built and
   removed earlier the same day; the near-me list's place chips still have no "Here", since a chip for
   where the rider already is adds nothing. A saved place or geocoded address as the **start** is not
