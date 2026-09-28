@@ -109,4 +109,57 @@ class RideLinesTest {
         assertEquals("A" to "B", lines.legs[1].let { it.fromId to it.toId })
         assertEquals(listOf("red", "green"), lines.timed.map { it.lineId })
     }
+
+    // Two rides with a change at B: red A → B, then blue B → C.
+    private val redToB = leg("red", "A", "B").copy(departure = at, arrival = at.plusSeconds(120), changeAfter = java.time.Duration.ofMinutes(4))
+    private val blueToC = leg("blue", "B", "C", path = listOf("X", "C")).copy(
+        departure = at.plusSeconds(600),
+        arrival = at.plusSeconds(1200),
+        changeAfter = java.time.Duration.ofMinutes(1),
+    )
+    private val changing = TripRoute(listOf(redToB, blueToC))
+
+    private fun through(sequences: Map<String, LineSequence?>, arrivals: Map<String, List<Departure>> = mapOf("A" to listOf(train("red"), train("blue"))), hidden: Set<String> = emptySet()) =
+        RideLines.through(listOf(changing), arrivals, emptyMap(), sequences, hidden)
+
+    @Test
+    fun `a line running on through the change is a route with one ride fewer`() {
+        val routes = through(mapOf("blue" to sequence("A", "B", "X", "C", "End")))
+        val ride = routes.single().legs.single()
+        assertEquals("blue", ride.lineId)
+        assertEquals("A" to "C", ride.fromId to ride.toId)
+        assertEquals(listOf("B", "X", "C"), ride.path)
+        // The two rides' time on board, without the change between them.
+        assertEquals(at, ride.departure)
+        assertEquals(at.plusSeconds(120 + 600), ride.arrival)
+        assertEquals(java.time.Duration.ofMinutes(1), ride.changeAfter)
+    }
+
+    @Test
+    fun `the first ride's own line can run through too`() {
+        val routes = through(mapOf("red" to sequence("A", "B", "X", "C")))
+        assertEquals(listOf("red"), routes.single().legs.map { it.lineId })
+    }
+
+    @Test
+    fun `a line that stops short, runs the other way, is hidden, has no route, or needs a walk is no way through`() {
+        assertTrue(through(mapOf("blue" to sequence("A", "B", "End"))).isEmpty())
+        assertTrue(through(mapOf("blue" to sequence("C", "X", "B", "A"))).isEmpty())
+        assertTrue(through(emptyMap()).isEmpty())
+        val hidden = setOf(HiddenModes.lineKey("blue", "blue"))
+        assertTrue(through(mapOf("blue" to sequence("A", "B", "X", "C")), hidden = hidden).isEmpty())
+        // A walk between the rides changes station: the rides stay as they are.
+        val walking = TripRoute(listOf(redToB, leg("", "B", "B2", mode = TripLeg.WALKING), blueToC.copy(fromId = "B2")))
+        assertTrue(RideLines.through(listOf(walking), mapOf("A" to listOf(train("blue"))), emptyMap(), mapOf("blue" to sequence("A", "B", "X", "C"))).isEmpty())
+        // Another mode's line isn't a way through a tube change.
+        val bus = mapOf("A" to listOf(train("green", mode = "bus")))
+        assertTrue(through(mapOf("green" to sequence("A", "B", "X", "C")), arrivals = bus).isEmpty())
+    }
+
+    @Test
+    fun `a way through the Planner already offers isn't added again`() {
+        val direct = TripRoute(listOf(leg("blue", "A", "C", path = listOf("B", "X", "C"))))
+        val routes = RideLines.through(listOf(changing, direct), mapOf("A" to listOf(train("blue"))), emptyMap(), mapOf("blue" to sequence("A", "B", "X", "C")))
+        assertTrue(routes.isEmpty())
+    }
 }

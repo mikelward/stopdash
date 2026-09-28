@@ -978,6 +978,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               screen shows the live departures that matter where the rider is now: the boarding
               stop's while walking to it or waiting, the change stop's while changing, from the
               leg's own stop and source (as in the route-view item above).
+        - [ ] **A train through the change, on the way** (maintainer, 2026-09-28): the trip list
+              now offers a train that runs through a change as its own route, and drops a route
+              whose change buys nothing. A trip already on the way keeps its planned change: when a
+              train through it comes first on the next-step board, offer to take it instead.
         - [x] The main view's pinned card (the near-me list; a station page is its own look).
         - [x] "Get off soon" on its own channel (sound, vibration), the permission asked on Start.
               Only while the app is open until the foreground service below lands.

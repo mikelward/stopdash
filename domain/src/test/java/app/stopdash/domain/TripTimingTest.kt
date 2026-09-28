@@ -255,6 +255,60 @@ class TripTimingTest {
     }
 
     @Test
+    fun `of two routes arriving together, the one with fewer changes ranks first`() {
+        val direct = TripRoute(listOf(leg("blue", "A", "C", departs = 5, arrives = 30)))
+        val changing = TripTiming.Estimate(twoLegs, TripTiming.Basis.LIVE, at(30), emptyList(), false, now)
+        val straight = TripTiming.Estimate(direct, TripTiming.Basis.LIVE, at(30), emptyList(), false, now)
+        assertEquals(listOf(straight, changing), TripTiming.rank(listOf(changing, straight)))
+    }
+
+    @Test
+    fun `a route with more changes is kept only when it's faster`() {
+        val direct = TripRoute(listOf(leg("blue", "A", "C", departs = 5, arrives = 30)))
+        fun estimate(route: TripRoute, arrival: Long?, basis: TripTiming.Basis = TripTiming.Basis.LIVE, blocked: Boolean = false, unchecked: Boolean = false) =
+            TripTiming.Estimate(route, basis, arrival?.let(::at), emptyList(), blocked, now, unchecked = unchecked)
+        val straight = estimate(direct, 30)
+        // No later, or the same time: the change buys nothing.
+        assertEquals(listOf(straight), TripTiming.withoutSlowerChanges(listOf(estimate(twoLegs, 35), straight)))
+        assertEquals(listOf(straight), TripTiming.withoutSlowerChanges(listOf(straight, estimate(twoLegs, 30))))
+        // Sooner: worth the change.
+        val faster = estimate(twoLegs, 25)
+        assertEquals(listOf(faster, straight), TripTiming.withoutSlowerChanges(listOf(faster, straight)))
+        // Only a route stood behind as far beats one: an estimate, a blocked or an unchecked route
+        // never hides a live one, and a withheld arrival is never compared.
+        assertEquals(2, TripTiming.withoutSlowerChanges(listOf(estimate(twoLegs, 35), estimate(direct, 30, TripTiming.Basis.ESTIMATED))).size)
+        assertEquals(2, TripTiming.withoutSlowerChanges(listOf(estimate(twoLegs, 35), estimate(direct, 30, blocked = true))).size)
+        assertEquals(2, TripTiming.withoutSlowerChanges(listOf(estimate(twoLegs, 35), estimate(direct, 30, unchecked = true))).size)
+        assertEquals(2, TripTiming.withoutSlowerChanges(listOf(estimate(twoLegs, null, TripTiming.Basis.UNKNOWN), straight)).size)
+        assertEquals(2, TripTiming.withoutSlowerChanges(listOf(estimate(twoLegs, 35), estimate(direct, null, TripTiming.Basis.UNKNOWN))).size)
+        // The tiers as ranked: an unchecked route that can be ridden beats a slower one that can't,
+        // and a checked route beats an unchecked one even when it's only estimated.
+        val uncheckedDirect = estimate(direct, 30, unchecked = true)
+        assertEquals(listOf(uncheckedDirect), TripTiming.withoutSlowerChanges(listOf(estimate(twoLegs, 35, blocked = true), uncheckedDirect)))
+        val estimatedDirect = estimate(direct, 30, TripTiming.Basis.ESTIMATED)
+        assertEquals(listOf(estimatedDirect), TripTiming.withoutSlowerChanges(listOf(estimate(twoLegs, 35, unchecked = true), estimatedDirect)))
+    }
+
+    @Test
+    fun `a leg the Planner didn't plan counts only on a live train`() {
+        val through = leg("blue", "A", "C", departs = 5, arrives = 30)
+        val route = TripRoute(listOf(walk("Here", "A", 0, 2), through))
+        val planned = twoLegs.legs.toSet()
+        fun timed(train: Departure?) = TripTiming.Estimate(
+            route, TripTiming.Basis.ESTIMATED, at(30),
+            listOf(TripTiming.LegTiming(now, at(2), null, false), TripTiming.LegTiming(at(5), at(30), train, train != null)),
+            false, now,
+        )
+        val caught = timed(train("blue", 5))
+        assertEquals(listOf(caught), TripTiming.withoutUnvouchedLegs(listOf(caught), planned))
+        // On the Planner times it carries as a placeholder: dropped.
+        assertTrue(TripTiming.withoutUnvouchedLegs(listOf(timed(null)), planned).isEmpty())
+        // A planned leg falls back to the Planner's times as ever.
+        val plannedRoute = TripTiming.Estimate(twoLegs, TripTiming.Basis.ESTIMATED, at(30), emptyList(), false, now)
+        assertEquals(listOf(plannedRoute), TripTiming.withoutUnvouchedLegs(listOf(plannedRoute), planned))
+    }
+
+    @Test
     fun `the walk to the first stop is estimated conservatively`() {
         assertEquals(Duration.ZERO, TripTiming.accessWalk(0.0))
         // 400 m * 1.4 / 1.1 m/s = 509 s: rounded up to 9 min.

@@ -920,6 +920,20 @@ change stays as the Planner gave it. Such a line is found among the boarding sto
 plan's other rides), and needs its route loaded to vouch that it reaches the stop. Only a line that
 also calls at the same stops in between shares the ride's time on board and times the route; one that
 gets there another way still shows its trains, but a route is never timed as if it rode that way.
+**A train that runs through a change is a route of its own** (maintainer, 2026-09-28): where a
+ride is followed straight away by another of the same mode, and a line boarding at the first ride's
+stop runs on to where the second gets off, the trip also offers that one ride in place of the two —
+one stop on the Victoria line then the Northern line, when a Northern line train from the first stop
+goes the whole way. It is found as the other lines are (the boarding stop's arrivals and the lines'
+routes, no request added), its trains are checked on the way like any ride's, so a train for the
+other branch isn't offered, and it is timed and ranked like the Planner's routes. It is offered only
+while a train through is predicted: the Planner has no times for it, and the times of the two rides
+it replaces belong to other trains. A walk between the
+rides is a change of station, so those stay as planned. **A route with more changes is listed only
+when it gets there sooner** (maintainer, 2026-09-28): one that another route with fewer changes
+beats or ties, while StopDash stands behind that route at least as far (its tier as the list ranks
+them: usable, then unchecked, then not running; then live, estimated, withheld), is left off the list, and of two arriving together the one with fewer changes comes first.
+An arrival that is withheld is never compared, and a route already open stays open.
 Tapping the card opens its best route. **Every route looks alike** — no
 route is expanded — as a card whose top row is its **duration · arrival** ("22 min · 08:24"); the
 duration is from now to that arrival, so it takes in the same walks, waits and legs. Where waiting

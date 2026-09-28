@@ -639,8 +639,12 @@ private fun TripContent(
     }
     val sequences = rememberLineSequences(lineIds, now)
     // Each bus leg at the poles its bus uses, once its route says which (the Planner's may be the
-    // other side of the road); everything below reads the trip this way.
-    val state = remember(planned, sequences) { onPoles(planned, sequences) }
+    // other side of the road); everything below reads the trip this way, with the routes a train
+    // running through a change offers without it ([withThroughRoutes]).
+    val poled = remember(planned, sequences) { onPoles(planned, sequences) }
+    val state = remember(poled, sequences, hiddenModes) { withThroughRoutes(poled, sequences, hiddenModes) }
+    // Every leg the Planner planned: a leg it didn't (a train through a change) needs a live train.
+    val plannedLegs = remember(poled) { poled.routes.orEmpty().flatMapTo(HashSet()) { it.legs } }
     val originUnconfirmed = relocating || locationBanner != null
     var showAbout by rememberSaveable { mutableStateOf(false) }
     if (showAbout && menu != null) {
@@ -654,8 +658,9 @@ private fun TripContent(
     }
     // Each ride's lines ([rideLines]): worked out once per refresh and route load, not on every tick.
     val rideLines = remember(state, sequences, hiddenModes) { rideLines(state.routes.orEmpty(), state, sequences, hiddenModes) }
-    val estimates = remember(state, now, access, sequences, hiddenModes, originUnconfirmed, rideLines) {
+    val estimates = remember(state, now, access, sequences, hiddenModes, originUnconfirmed, rideLines, plannedLegs) {
         tripEstimates(state, now, access, sequences, hiddenModes, originUnconfirmed, rideLines)
+            ?.let { TripTiming.withoutUnvouchedLegs(it, plannedLegs) }
     }
     // A withheld arrival leaves its reason in the debug log: a side effect, off composition.
     LaunchedEffect(estimates) {
@@ -663,7 +668,9 @@ private fun TripContent(
     }
     // The list's cards; an open route is looked up among every way timed, so it stays open whichever
     // way its card shows.
-    val cards = remember(estimates) { estimates?.let(::tripCards) }
+    // A route with more changes than another getting there no later is left off the list
+    // ([TripTiming.withoutSlowerChanges]); an open one stays open.
+    val cards = remember(estimates) { estimates?.let { tripCards(TripTiming.withoutSlowerChanges(it)) } }
     // The open route, kept twice: by the trip when it's given one ([openRoute]), which outlasts the
     // screen leaving composition (an overlay) and, saved by the trip, the process too; and saved with
     // the screen, for a trip that holds none. Read from the trip first; set in both.
