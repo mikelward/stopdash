@@ -1191,7 +1191,15 @@ them there:
   whether the route starts with a ride or a walk of its own. A walk to a ride's boarding stop ends
   when the rider is **seen there** (maintainer, 2026-09-28): with location allowed, each refresh on
   such a walk takes one precise fix, and a rider within 150 m of the stop (the fix's uncertainty
-  included) is there, so the ride's train is picked from then; without a fix, the walk runs its
+  included) is there, so the ride's train is picked from then. "The stop" is every place the
+  station can be walked into: the point the Planner gives, the station's own published point and
+  each entrance TfL lists for it (maintainer, 2026-09-28), whichever are known (the Planner often
+  gives no point), since a big station spans far more than one point and the Planner can place it
+  200 m from the entrance a rider stands at. The entrances
+  cost one TfL request per station walked to (a Tube, Overground, DLR, Elizabeth line or rail
+  station; a bus or tram stop has none and costs nothing), asked with the first fix and kept for the
+  process; a fix gone stale while TfL answered isn't acted on, and a failed read is asked again on the
+  next refresh, the walk ending as before until then; without a fix, the walk runs its
   estimated time as before. The estimate errs long on purpose (it grays trains a rider might miss),
   so it mustn't hold a rider already at the station on "Walk to…". Where neither can tell — a
   station far bigger than the one point the Planner places it at, a fix that never comes — the

@@ -2614,6 +2614,7 @@ class MainActivity : ComponentActivity() {
                     // TfL alone: a followed leg is never National Rail, so a Darwin board would only spend the rail key's quota.
                     arrivals = journeyPlanner::arrivals,
                     vehicles = journeyPlanner,
+                    entrances = journeyPlanner::stationEntrances,
                     warn = ::logDepartureWarning,
                     onGetOffSoon = { trip, riding ->
                         GetOffSoonAlert.post(context.applicationContext, trip, riding, Instant.now(), ::logDepartureWarning)

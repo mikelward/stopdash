@@ -127,7 +127,7 @@ object OnTheWay {
      * left-behind check keeps [sureEnough]'s tighter bound.
      */
     fun sureEnoughFor(trip: ActiveTrip, now: Instant): (LocationFix) -> Boolean =
-        if (walkingTo(trip, now) != null) ::sureEnoughToArrive else ::sureEnough
+        if (seesWalkEnd(trip, now)) ::sureEnoughToArrive else ::sureEnough
 
     private fun sureEnoughToArrive(fix: LocationFix): Boolean {
         val accuracy = fix.accuracyMeters ?: return false
@@ -369,11 +369,12 @@ object OnTheWay {
 
     /**
      * Whether a location fix could tell anything about [trip] at [now]: the rider is walking to a
-     * boarding stop whose position is known ([walkingTo]), or their train has just left the boarding
-     * stop. Outside those no fix is asked for (battery): a walk is minutes, the other window five.
+     * boarding stop whose position is known or can be read ([seesWalkEnd]), or their train has just
+     * left the boarding stop. Outside those no fix is asked for (battery): a walk is minutes, the
+     * other window five.
      */
     fun wantsFix(trip: ActiveTrip, now: Instant): Boolean {
-        if (walkingTo(trip, now) != null) return true
+        if (seesWalkEnd(trip, now)) return true
         val leg = trip.leg ?: return false
         val boardedAt = trip.boardedAt ?: return false
         return leg.mode in LEFT_BEHIND_MODES && leg.fromAt != null && trip.boarded && now.isBefore(boardedAt.plus(MISSED_WINDOW))
@@ -391,11 +392,32 @@ object OnTheWay {
      * the walk to the destination, which ends the trip on its time), and once the walk's estimated
      * time is up at [now]: it ends on its time then, with no fix to wait for.
      */
-    fun walkingTo(trip: ActiveTrip, now: Instant): Coordinates? {
+    fun walkingTo(trip: ActiveTrip, now: Instant): Coordinates? = walkingToRide(trip, now)?.fromAt
+
+    /**
+     * Whether a fix can see [trip]'s rider at the end of their walk at [now]: its stop is placed by
+     * the Planner ([walkingTo]), or it's a station whose own position and entrances can be read
+     * ([stationWalkedTo]), which the Planner often leaves unplaced (Codex, PR #352).
+     */
+    fun seesWalkEnd(trip: ActiveTrip, now: Instant): Boolean = walkingTo(trip, now) != null || stationWalkedTo(trip, now) != null
+
+    /**
+     * The ride [trip]'s rider is walking to at [now] when it boards at a station, with entrances of
+     * its own to be seen at ([seen]); null for a bus or tram stop, which has none, so its walk costs
+     * no request for them (Codex, PR #352).
+     */
+    fun stationWalkedTo(trip: ActiveTrip, now: Instant): TripLeg? =
+        walkingToRide(trip, now)?.takeIf { it.mode in STATION_MODES }
+
+    // Modes whose boarding stops are stations: the Tube, Overground, DLR, Elizabeth line and rail.
+    private val STATION_MODES = setOf("tube", "overground", "dlr", "elizabeth-line", "national-rail")
+
+    /** The ride [trip]'s rider is walking to at [now], its boarding stop placed or not. */
+    fun walkingToRide(trip: ActiveTrip, now: Instant): TripLeg? {
         val leg = trip.leg ?: return null
         if (!leg.isWalk || !now.isBefore(trip.legStartedAt.plus(leg.run))) return null
         val next = trip.route.legs.getOrNull(trip.legIndex + 1) ?: return null
-        return if (next.isWalk) null else next.fromAt
+        return next.takeIf { !it.isWalk }
     }
 
     // Trains only: a train that has left is gone from its platform, while a bus or tram can sit near
@@ -407,9 +429,16 @@ object OnTheWay {
      * [MISSED_WITHIN_METERS], its fix's uncertainty included): not on it,
      * so the next train they can catch is picked (the maintainer's rule: switch when seen). Unchanged
      * with no fix, or none that says so; a fix underground never comes, so this never guesses.
+     * On a walk to a ride, the rider is at its stop when near its placed position or any of the
+     * station's [entrances] (the maintainer, 2026-09-28: the Planner can place a big station's stop
+     * 200 m from the entrance the rider stands at).
      */
-    fun seen(trip: ActiveTrip, rider: LocationFix?, now: Instant): ActiveTrip {
-        walkingTo(trip, now)?.let { stop -> return if (rider != null && near(rider, stop, AT_STOP_WITHIN_METERS)) walked(trip, now) else trip }
+    fun seen(trip: ActiveTrip, rider: LocationFix?, now: Instant, entrances: List<Coordinates> = emptyList()): ActiveTrip {
+        walkingToRide(trip, now)?.let { ride ->
+            // Its placed point, the station's own point and entrances: whichever are known.
+            val there = rider != null && (listOfNotNull(ride.fromAt) + entrances).any { near(rider, it, AT_STOP_WITHIN_METERS) }
+            return if (there) walked(trip, now) else trip
+        }
         val leg = trip.leg ?: return trip
         val at = leg.fromAt ?: return trip
         val boardedAt = trip.boardedAt ?: return trip

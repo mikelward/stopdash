@@ -118,4 +118,49 @@ class TflStopPointDtoTest {
     fun `a stop with no usable identity maps to null`() {
         assertNull(TflStopPointDto(id = "", naptanId = "", commonName = "Somewhere").toStopLocationOrNull())
     }
+
+    @Test
+    fun `a station's entrances are found under it in its interchange's tree`() {
+        // TfL answers a station with its whole interchange; only the station's own point and its
+        // entrances count, not a neighboring station's or a bus stop's.
+        val hub = TflStopPointDto(
+            id = "HUBEXA", stopType = "TransportInterchange", lat = 51.5, lon = -0.1,
+            children = listOf(
+                TflStopPointDto(id = "490000000001A", stopType = "NaptanPublicBusCoachTram", lat = 51.501, lon = -0.101),
+                TflStopPointDto(
+                    id = "940GZZLUEXA", stopType = "NaptanMetroStation", lat = 51.502, lon = -0.102,
+                    children = listOf(
+                        TflStopPointDto(id = "4900ZZLUEXA1", stopType = "NaptanMetroEntrance", lat = 51.503, lon = -0.103),
+                        TflStopPointDto(id = "4900ZZLUEXA2", stopType = "NaptanRailEntrance", lat = 51.504, lon = -0.104),
+                        TflStopPointDto(id = "9400ZZLUEXA1", stopType = "NaptanMetroPlatform", lat = 51.505, lon = -0.105),
+                        // A position TfL left unset, or half set, is no place to be.
+                        TflStopPointDto(id = "4900ZZLUEXA3", stopType = "NaptanMetroEntrance"),
+                        TflStopPointDto(id = "4900ZZLUEXA4", stopType = "NaptanMetroEntrance", lat = 51.508),
+                        TflStopPointDto(id = "4900ZZLUEXA5", stopType = "NaptanMetroEntrance", lon = -0.108),
+                        // On the prime meridian, as London's stations can be: a real place.
+                        TflStopPointDto(id = "4900ZZLUEXA6", stopType = "NaptanMetroEntrance", lat = 51.509, lon = 0.0),
+                    ),
+                ),
+                TflStopPointDto(
+                    id = "910GEXAMPL", stopType = "NaptanRailStation", lat = 51.506, lon = -0.106,
+                    children = listOf(TflStopPointDto(id = "4900EXAMPL1", stopType = "NaptanRailEntrance", lat = 51.507, lon = -0.107)),
+                ),
+            ),
+        )
+        assertEquals(
+            listOf(
+                app.stopdash.domain.Coordinates(51.502, -0.102),
+                app.stopdash.domain.Coordinates(51.503, -0.103),
+                app.stopdash.domain.Coordinates(51.504, -0.104),
+                app.stopdash.domain.Coordinates(51.509, 0.0),
+            ),
+            hub.entrancesOf("940GZZLUEXA"),
+        )
+        assertEquals(emptyList<app.stopdash.domain.Coordinates>(), hub.entrancesOf("940GZZLUNONE"))
+        // As TfL sends it: an axis left out reads as absent, not as 0.0.
+        val halfSet = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+            .decodeFromString(TflStopPointDto.serializer(), """{"id": "4900ZZLUEXA7", "stopType": "NaptanMetroEntrance", "lat": 51.5}""")
+        assertNull(halfSet.lon)
+        assertEquals(emptyList<app.stopdash.domain.Coordinates>(), halfSet.entrancesOf("4900ZZLUEXA7"))
+    }
 }

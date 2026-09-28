@@ -1,5 +1,6 @@
 package app.stopdash.data
 
+import app.stopdash.domain.Coordinates
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.cleanStopName
@@ -32,8 +33,10 @@ data class TflStopPointDto(
     // TfL's NaPTAN stop type ("NaptanMetroStation", "TransportInterchange", …). Read only to pick a
     // station tree's departure-bearing stops ([departureStops]).
     val stopType: String = "",
-    val lat: Double = 0.0,
-    val lon: Double = 0.0,
+    // Nullable so an omitted axis reads as absent, never as 0.0: London sits on the prime meridian,
+    // so a real longitude can be exactly 0.0 (as on a Planner point, [TflJourneyPointDto]).
+    val lat: Double? = null,
+    val lon: Double? = null,
     val modes: List<String> = emptyList(),
     val lines: List<TflStopLineDto> = emptyList(),
     val lineModeGroups: List<TflLineModeGroupDto> = emptyList(),
@@ -148,8 +151,8 @@ fun TflStopPointDto.toStopLocationOrNull(): StopLocation? {
     return StopLocation(
         id = stopId,
         name = stopName,
-        latitude = lat,
-        longitude = lon,
+        latitude = lat ?: 0.0,
+        longitude = lon ?: 0.0,
         lines = lines
             .filter { it.id.isNotBlank() }
             .map { LineRef(id = it.id, name = it.name, mode = modeByLineId[it.id] ?: primaryMode) },
@@ -169,3 +172,25 @@ fun TflStopPointDto.toStopLocationOrNull(): StopLocation? {
 /** The stop points at the bottom of this tree (a stop area's poles); this one when it has none. */
 fun TflStopPointDto.leaves(): List<TflStopPointDto> =
     if (children.isEmpty()) listOf(this) else children.flatMap { it.leaves() }
+
+/**
+ * Where the station [id] can be walked into: its own position and every entrance TfL lists under it
+ * (a NaPTAN `…Entrance`), found wherever it sits in this tree, since TfL answers a station with its
+ * whole interchange. A big station spans far more than its one published point: the rider at an
+ * entrance is there (SPEC *On the way*). Empty when [id] isn't in the tree; a position TfL left
+ * unset is skipped.
+ */
+fun TflStopPointDto.entrancesOf(id: String): List<Coordinates> {
+    val station = find(id) ?: return emptyList()
+    return (listOf(station) + station.descendants().filter { it.stopType.endsWith(ENTRANCE) })
+        // Both axes given, or none is taken: one alone would place it on the equator or meridian.
+        .mapNotNull { stop -> stop.lat?.let { lat -> stop.lon?.let { lon -> Coordinates(lat, lon) } } }
+        .distinct()
+}
+
+private const val ENTRANCE = "Entrance"
+
+private fun TflStopPointDto.find(id: String): TflStopPointDto? =
+    if (id == this.id || id == naptanId) this else children.firstNotNullOfOrNull { it.find(id) }
+
+private fun TflStopPointDto.descendants(): List<TflStopPointDto> = children.flatMap { listOf(it) + it.descendants() }
