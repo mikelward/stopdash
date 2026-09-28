@@ -1178,7 +1178,25 @@ them there:
   first, as the route does ("3 min to change"). A route that starts with a walk shows the walk
   first (maintainer, 2026-09-27), and its first ride's train is picked once it's done. The walk
   from where the rider is to where the route starts comes first of all, as the route shows it,
-  whether the route starts with a ride or a walk. Below it the route's legs are listed, a ride by
+  whether the route starts with a ride or a walk of its own. A walk to a ride's boarding stop ends
+  when the rider is **seen there** (maintainer, 2026-09-28): with location allowed, each refresh on
+  such a walk takes one precise fix, and a rider within 150 m of the stop (the fix's uncertainty
+  included) is there, so the ride's train is picked from then; without a fix, the walk runs its
+  estimated time as before. The estimate errs long on purpose (it grays trains a rider might miss),
+  so it mustn't hold a rider already at the station on "Walk to…". Below the next step, while the
+  rider walks to a ride, changes onto it or waits for it, **the trains at its boarding stop that take
+  them on** are listed (maintainer, 2026-09-28): every line of the ride's mode whose route calls at
+  where they get off — the same check as a From… To… page, so another branch's trains stay out —
+  a row per line and terminus with its next few times, not only the train followed, a time grayed
+  when it leaves before the rider can be there (as a trip's cards gray one); "Updating…"
+  once the board is too old to stand behind (D4); it shows "Loading" from the step's first frame
+  until the first board is in. It costs one arrivals request per refresh during those steps, plus,
+  for a line at that stop whose route isn't already held, the same route lookup a trip's cards make
+  (one or two TfL requests per line, kept a day and shared with them). All free, within the
+  keyless budget, and naming only stops and lines, never the rider; a route that can't be loaded
+  says "Couldn't check every line" rather than drop its trains. The walk's check costs one GPS fix
+  per refresh until the rider is seen there or the walk's estimated time is up. Below that the
+  route's legs are listed, a ride by
   its pill and a walk by a walker in the pills' column, so every leg's stops line up. A route with a **National Rail** train offers no
   Start but says it can't be followed yet: its times come from National Rail's boards, which name
   no train to follow. **One trip at a time:** while one is on the way, a route offers **Open current

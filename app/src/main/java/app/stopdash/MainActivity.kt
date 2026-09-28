@@ -89,6 +89,7 @@ import app.stopdash.data.SharedTflRequestPool
 import app.stopdash.data.StationIndexStore
 import app.stopdash.data.UserApiKeySetting
 import app.stopdash.data.logAppSettingsWarning
+import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.BugReport
@@ -142,6 +143,7 @@ import app.stopdash.ui.FartherLoad
 import app.stopdash.ui.FavoritePlacesScreen
 import app.stopdash.ui.FavoritePlacesViewModel
 import app.stopdash.ui.FollowActiveTrip
+import app.stopdash.ui.rememberNextTrains
 import app.stopdash.ui.FontSizeSetting
 import app.stopdash.ui.HereTripTiers
 import app.stopdash.ui.LINE_STATUS_REUSE
@@ -304,6 +306,11 @@ class MainActivity : ComponentActivity() {
 
     // The location gate: resolves the nearby stops (an on-demand, location-sending action)
     // before the departures view, which then refreshes those stops location-free.
+    // The trip on the way's own fixes ([onTheWayFix]), apart from near me's: none remembered.
+    private val onTheWayLocation by lazy {
+        AndroidLocationProvider(applicationContext, warn = ::logLocationWarning, remembers = false)
+    }
+
     private val nearbyViewModel: NearbyStopsViewModel by viewModels {
         viewModelFactory {
             initializer {
@@ -601,7 +608,8 @@ class MainActivity : ComponentActivity() {
                 var onTheWayOpen by rememberSaveable { mutableStateOf(false) }
                 val tracker = remember { activeTrip(applicationContext) }
                 val onTheWayScope = rememberCoroutineScope()
-                FollowActiveTrip(tracker, OnTheWayService.running)
+                // A fix only while the trip wants one (a walk to a stop): never logged or kept.
+                FollowActiveTrip(tracker, OnTheWayService.running) { trip -> onTheWayFix(onTheWayLocation, trip) }
                 // A trip End couldn't forget opens again to say so, in whichever composition is
                 // current when End returns (the one that asked may have been recreated since).
                 val endFailures by tracker.endFailures.collectAsStateWithLifecycle()
@@ -693,7 +701,15 @@ class MainActivity : ComponentActivity() {
                                     }
                                     onTheWayOpen = false
                                 }
+                                val nextBoard by tracker.nextBoard.collectAsStateWithLifecycle()
+                                // The next ride's trains, checked against the same route data as the trip's cards.
+                                CompositionLocalProvider(LocalRouteStops provides routeStops(applicationContext)) {
                                 OnTheWayScreen(
+                                    nextTrains = rememberNextTrains(
+                                        nextBoard, now,
+                                        readyAt = onTheWayTrip?.let { OnTheWay.readyAt(it, onTheWayProgress) },
+                                        ride = onTheWayTrip?.let(OnTheWay::upcomingRide),
+                                    ),
                                     trip = onTheWayTrip,
                                     progress = onTheWayProgress,
                                     failed = failed,
@@ -708,6 +724,7 @@ class MainActivity : ComponentActivity() {
                                     endFailed = endFailed,
                                     appOpenOnly = appOpenOnly,
                                 )
+                                }
                             } else if (licensesOpen) {
                                 LicensesScreen(onBack = { licensesOpen = false })
                             } else if (favoritePlacesOpen) {

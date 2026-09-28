@@ -8,6 +8,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import app.stopdash.domain.ActiveTrip
+import app.stopdash.domain.LocationFix
 import app.stopdash.domain.TripRoute
 import java.time.Duration
 import java.time.Instant
@@ -38,7 +40,13 @@ val ON_THE_WAY_REFRESH: Duration = Duration.ofSeconds(30)
  * trip.
  */
 @Composable
-internal fun FollowActiveTrip(tracker: ActiveTripTracker, serviceFollowing: StateFlow<Boolean>) {
+internal fun FollowActiveTrip(
+    tracker: ActiveTripTracker,
+    serviceFollowing: StateFlow<Boolean>,
+    // A fix when the trip wants one ([app.stopdash.domain.OnTheWay.wantsFix]): a walk to a stop ends
+    // once the rider is seen there, not only on its time.
+    rider: suspend (ActiveTrip?) -> LocationFix? = { null },
+) {
     val lifecycleOwner = LocalLifecycleOwner.current
     // Read again every [ON_THE_WAY_REFRESH] while in the foreground if it couldn't be read.
     LaunchedEffect(tracker, lifecycleOwner) {
@@ -52,7 +60,7 @@ internal fun FollowActiveTrip(tracker: ActiveTripTracker, serviceFollowing: Stat
         LaunchedEffect(tracker, lifecycleOwner) {
             lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 while (true) {
-                    tracker.refresh()
+                    tracker.refresh(rider(tracker.trip.value))
                     delay(ON_THE_WAY_REFRESH.toMillis())
                 }
             }
