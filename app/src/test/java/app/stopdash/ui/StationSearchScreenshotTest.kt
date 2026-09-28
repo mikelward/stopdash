@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
@@ -229,7 +230,90 @@ class StationSearchScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Oxford Circus").assertIsDisplayed()
         composeRule.onNodeWithTag("stationSearchHere").assertDoesNotExist()
-        composeRule.onNodeWithTag("fromChip").assertDoesNotExist()
+    }
+
+    @Test
+    fun station_search_to_from_here() {
+        // The To… search's bar is "From" over "To" (maintainer, 2026-09-28): From names the start ("Here"
+        // behind the crosshair) and a tap changes it; To is the search field; the places' chips follow.
+        // Synthetic coordinates and generic labels — no user data.
+        var changed = false
+        var typed: String? = null
+        composeRule.setContent {
+            StopDashTheme {
+                StationSearchScreen(
+                    state = StationSearchViewModel.State(
+                        favoritePlaces = listOf(
+                            FavoritePlace("home", FavoriteKind.HOME, "Home", Coordinates(51.5, -0.12)),
+                            FavoritePlace("work", FavoriteKind.WORK, "Work", Coordinates(51.51, -0.10)),
+                        ),
+                        recent = listOf(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))),
+                        yoursRead = true,
+                    ),
+                    onQueryChange = { typed = it },
+                    onOpenStation = {},
+                    onRetry = {},
+                    onBack = {},
+                    autoFocus = false,
+                    hint = "Station, stop or place",
+                    onOpenPlace = {},
+                    onChangeFrom = { changed = true },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("From Here").assertIsDisplayed()
+        composeRule.onNodeWithText("To").assertIsDisplayed()
+        composeRule.onNodeWithText("Station, stop or place").assertIsDisplayed()
+        // From above To, and both above the places' chips.
+        val fromTop = composeRule.onNodeWithTag("fromField").fetchSemanticsNode().boundsInRoot.top
+        val toTop = composeRule.onNodeWithTag("stationSearchField").fetchSemanticsNode().boundsInRoot.top
+        assertTrue(fromTop < toTop)
+        assertTrue(toTop < composeRule.onNodeWithTag("favoriteChip-home").fetchSemanticsNode().boundsInRoot.top)
+        // The two fields start at the same edge, whatever the labels' widths, and the place chips
+        // line up under the To field, as its quick picks.
+        val fieldLeft = composeRule.onNodeWithTag("stationSearchField").fetchSemanticsNode().boundsInRoot.left
+        assertEquals(fieldLeft, composeRule.onNodeWithTag("fromField").fetchSemanticsNode().boundsInRoot.left)
+        assertEquals(fieldLeft, composeRule.onNodeWithTag("favoriteChip-home").fetchSemanticsNode().boundsInRoot.left)
+        // "Here" is the start, never a To… destination.
+        composeRule.onNodeWithTag("stationSearchHere").assertDoesNotExist()
+        captureSnapshot("station-search-to-from-here.png")
+        composeRule.onNodeWithTag("fromField").performClick()
+        assertTrue(changed)
+        composeRule.onNodeWithTag("stationSearchField").performTextInput("bank")
+        assertEquals("bank", typed)
+    }
+
+    @Test
+    fun station_search_to_from_station() {
+        // From a From… station, the From row names it: abbreviated to fit, the full name read out.
+        composeRule.setContent {
+            StopDashTheme {
+                StationSearchScreen(
+                    state = StationSearchViewModel.State(yoursRead = true),
+                    onQueryChange = {},
+                    onOpenStation = {},
+                    onRetry = {},
+                    onBack = {},
+                    autoFocus = false,
+                    hint = "Station, stop or place",
+                    fromStation = "King's Cross & St Pancras International",
+                    onChangeFrom = {},
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("From King's Cross & St Pancras International").assertIsDisplayed()
+        composeRule.onNodeWithText("King's Cross & St Pancras Intl", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun station_search_plain_bar_without_a_from_row() {
+        // The From… search (and any search given no From row) keeps the one-field bar.
+        show(StationSearchViewModel.State(yoursRead = true))
+        composeRule.onNodeWithTag("stationSearchField").assertIsDisplayed()
+        composeRule.onNodeWithTag("tripEndsBar").assertDoesNotExist()
+        composeRule.onNodeWithTag("fromField").assertDoesNotExist()
     }
 
     @Test
