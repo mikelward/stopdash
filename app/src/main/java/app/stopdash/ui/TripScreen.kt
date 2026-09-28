@@ -1212,8 +1212,7 @@ private fun RideStops(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.testTag("walkToStart").clearAndSetSemantics { contentDescription = description },
             ) {
-                // The walker takes the pills' room, so the stop starts where a ride's does beside its pill (a
-                // disrupted ride's ⚠ puts its stop further in):
+                // The walker takes the pills' room, so the stop starts where a ride's does beside its pill:
                 // the card's pills, unseen, give the slot its width in the same pass.
                 Box(contentAlignment = Alignment.Center) {
                     rides.forEachIndexed { index, ride ->
@@ -1246,10 +1245,14 @@ private fun RideStops(
                     lines.map { LineRef(it.lineId, it.lineName, it.mode) },
                     lines.map { it.lineName }.reduce { a, b -> stringResource(R.string.trip_lines_either, a, b) },
                 )
-                // A disrupted line's ⚠ beside its own pill; beside a cut pill, for any of its lines.
-                linesWarning(lines, statuses)?.let { DisruptionWarningGlyph(it, Modifier.padding(start = 4.dp)) }
                 // Shortened as the main screen's destinations are, before any "…" (SPEC destination-label).
                 ShortenedName(ride.toName, MaterialTheme.typography.bodyLarge, Modifier.weight(1f).padding(start = 8.dp))
+                // A disrupted line's ⚠ just before the times, as on the main screen's rows (maintainer,
+                // 2026-09-28), so the stops line up down the card; for a cut pill, any of its lines.
+                val warning = linesWarning(lines, statuses)
+                warning?.let { DisruptionWarningGlyph(it, Modifier.padding(start = 12.dp)) }
+                // 8dp after a ⚠, as the main screen spaces it from the times; else the usual 12dp.
+                val timesGap = if (warning != null) 8.dp else 12.dp
                 if (index > 0) {
                     times.headways.getOrNull(index - 1)?.let { headway ->
                         val even = headway.min == headway.max
@@ -1268,7 +1271,7 @@ private fun RideStops(
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
-                            modifier = Modifier.padding(start = 12.dp).semantics { contentDescription = description },
+                            modifier = Modifier.padding(start = timesGap).semantics { contentDescription = description },
                         )
                     }
                 }
@@ -1285,7 +1288,7 @@ private fun RideStops(
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         modifier = Modifier
-                            .padding(start = 12.dp)
+                            .padding(start = timesGap)
                             .testTag("firstRideTimes")
                             .then(if (times.shown.isEmpty()) Modifier else Modifier.semantics { contentDescription = description }),
                     )

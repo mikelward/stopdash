@@ -905,14 +905,14 @@ wait at its longest, so a wait that misses the next leg's train counts that too.
 route can't be timed at all (the connection missed, nothing else known), it reads as open-ended
 ("41+ min · est. 11:26+"). It counts waiting only, not a slow run, and ranking still goes by the earliest arrival (maintainer,
 2026-09-27). Under the top row, the **walk to where it starts** has a row of its own — a walker in the
-pills' room, so the stop starts where a ride's does beside its pill (a disrupted ride's ⚠ sits
-between its pill and stop, so its stop starts further in), then the first stop, and its minutes in the
+pills' room, so the stop starts where a ride's does beside its pill, then the first stop, and its minutes in the
 times column, in parentheses ("(3 min)", a duration, set against the first train's) — since it's why a train too soon to reach is grayed, and it reads as the
 route's first leg (maintainer, 2026-09-27, replacing "From ‹stop›" in the top row). A first stop
 under a minute away has no walk row; the top row says **"From ‹stop›"** before the arrival instead,
 the stop's name cut before the time is. Then a
 row per ride names **where it gets off** — its line pill (the first ride's lines as the same cut
-pill), a ⚠ beside it when that line is disrupted, and the stop — so cards riding the same lines but changing at different stations read apart
+pill), the stop, and a ⚠ just before the times when that line is disrupted, where the main
+screen's rows put it (maintainer, 2026-09-28) — so cards riding the same lines but changing at different stations read apart
 (maintainer, 2026-09-27); walks between rides are left to the route's page. The first ride's row
 also carries its **live times**, every line on the card together in time order ("1 · 3 · 5 min"):
 each is a way to the same change, so only when matters, not which line, and the card stays four
