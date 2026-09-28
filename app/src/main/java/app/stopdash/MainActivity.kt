@@ -117,6 +117,7 @@ import app.stopdash.domain.StarredRowSet
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StopMap
 import app.stopdash.domain.TflClient
+import app.stopdash.domain.ToChoice
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripTiming
@@ -448,11 +449,9 @@ class MainActivity : ComponentActivity() {
                 var openStationId by rememberSaveable { mutableStateOf<String?>(null) }
                 var openStationName by rememberSaveable { mutableStateOf("") }
                 // "To…" from an open station (SPEC *Finding stops → From… To…*): whether its
-                // destination search is up, and the destination picked (id and name), which narrows
-                // the station's page to the departures that go there.
-                var tripPicking by rememberSaveable { mutableStateOf(false) }
-                var tripToId by rememberSaveable { mutableStateOf<String?>(null) }
-                var tripToName by rememberSaveable { mutableStateOf("") }
+                // destination search is up, and the destination picked — a stop, or a place routed
+                // to by its coordinate (SPEC D9), as for [hereFavorite].
+                var stationTo by rememberSaveable(stateSaver = TO_CHOICE_SAVER) { mutableStateOf(ToChoice.NONE) }
                 // "To…" from the near-me list (SPEC *Finding stops → From… To…*): whether it's open,
                 // whether its destination search is up, and the destination picked. Its starting
                 // stops aren't kept: they're worked out from the current nearby set.
@@ -769,32 +768,16 @@ class MainActivity : ComponentActivity() {
                                     onCloseStation = {
                                         openStationId = null
                                         openStationName = ""
-                                        tripPicking = false
-                                        tripToId = null
-                                        tripToName = ""
+                                        stationTo = ToChoice.NONE
                                     },
                                     onCloseSearch = {
                                         stationSearchOpen = false
                                         openStationId = null
                                         openStationName = ""
-                                        tripPicking = false
-                                        tripToId = null
-                                        tripToName = ""
+                                        stationTo = ToChoice.NONE
                                     },
-                                    tripPicking = tripPicking,
-                                    tripToId = tripToId,
-                                    tripToName = tripToName,
-                                    onPlanTo = { tripPicking = true },
-                                    onPickTo = { match ->
-                                        tripPicking = false
-                                        tripToId = match.id
-                                        tripToName = match.name
-                                    },
-                                    onClosePicker = { tripPicking = false },
-                                    onClearTo = {
-                                        tripToId = null
-                                        tripToName = ""
-                                    },
+                                    to = stationTo,
+                                    onTo = { stationTo = it },
                                 )
                             } else {
                                 SettingsScreen(
@@ -1741,13 +1724,9 @@ class MainActivity : ComponentActivity() {
         onOpenStation: (StationMatch) -> Unit,
         onCloseStation: () -> Unit,
         onCloseSearch: () -> Unit,
-        tripPicking: Boolean = false,
-        tripToId: String? = null,
-        tripToName: String = "",
-        onPlanTo: () -> Unit = {},
-        onPickTo: (StationMatch) -> Unit = {},
-        onClosePicker: () -> Unit = {},
-        onClearTo: () -> Unit = {},
+        // The station's To…: its search and destination, and each change to them.
+        to: ToChoice = ToChoice.NONE,
+        onTo: (ToChoice) -> Unit = {},
     ) {
         // Captured once, so lambdas the retained ViewModels keep close over the application, not
         // this Activity (which a rotation destroys).
@@ -1841,13 +1820,8 @@ class MainActivity : ComponentActivity() {
                 stationStopIds = ready.stops.mapTo(HashSet()) { it.id },
                 onClose = closeStation,
                 onBackToNearMe = closeSearch,
-                tripPicking = tripPicking,
-                tripToId = tripToId,
-                tripToName = tripToName,
-                onPlanTo = onPlanTo,
-                onPickTo = onPickTo,
-                onClosePicker = onClosePicker,
-                onClearTo = onClearTo,
+                to = to,
+                onTo = onTo,
             )
         }
     }
@@ -1868,13 +1842,8 @@ class MainActivity : ComponentActivity() {
         onClose: () -> Unit,
         // The crosshairs: "use my location" leaves the station for the near-me list.
         onBackToNearMe: () -> Unit,
-        tripPicking: Boolean,
-        tripToId: String?,
-        tripToName: String,
-        onPlanTo: () -> Unit,
-        onPickTo: (StationMatch) -> Unit,
-        onClosePicker: () -> Unit,
-        onClearTo: () -> Unit,
+        to: ToChoice,
+        onTo: (ToChoice) -> Unit,
     ) {
         val fromNearby: NearbyStopsViewModel = viewModel(
             key = "from-nearby",
@@ -1907,10 +1876,7 @@ class MainActivity : ComponentActivity() {
             isBusy = { fromNearby.relocating.value },
             onReturn = { returnPending = true },
         )
-        val closeTrip = {
-            onClosePicker()
-            onClearTo()
-        }
+        val closeTrip = { onTo(to.closePicker().clearDestination()) }
         val ready = state as? NearbyStopsViewModel.State.Ready
         // The page's held loading cards ([PendingTracker]), held here — above the To… flow, which
         // takes the list out of composition — so closing it keeps them; following the stop set.
@@ -1940,7 +1906,7 @@ class MainActivity : ComponentActivity() {
             )
             return
         }
-        if (tripPicking || tripToId != null) {
+        if (to.open) {
             HereTripArea(
                 origin = remember(ready, hidden) {
                     val byId = ready.nearbyStops.associateBy { it.id }
@@ -1950,12 +1916,15 @@ class MainActivity : ComponentActivity() {
                 distanceMeters = ready.distanceMeters,
                 clusters = ready.eager + ready.more,
                 hiddenModes = hidden,
-                picking = tripPicking,
-                toId = tripToId,
-                toName = tripToName,
-                onPlanTo = onPlanTo,
-                onPickTo = onPickTo,
-                onClosePicker = { if (tripToId == null) closeTrip() else onClosePicker() },
+                picking = to.picking,
+                toId = to.stopId,
+                toName = to.name,
+                favorite = to.place,
+                onPlanTo = { onTo(to.startPicking()) },
+                onPickTo = { onTo(to.pickStop(it)) },
+                // A place picked here routes to its coordinate, as the near-me To… does (SPEC D9).
+                onOpenPlace = { onTo(to.pickPlace(it)) },
+                onClosePicker = { if (to.hasDestination) onTo(to.closePicker()) else closeTrip() },
                 onClose = closeTrip,
                 foregroundReturnPending = returnPending,
                 onForegroundReturnConsumed = { returnPending = false },
@@ -1984,7 +1953,7 @@ class MainActivity : ComponentActivity() {
                 onOpenLicenses = {},
                 onOpenSettings = {},
                 onFindStation = {},
-                onPlanTo = onPlanTo,
+                onPlanTo = { onTo(to.startPicking()) },
                 updateAvailable = false,
                 onOpenAppListing = {},
                 onSendBugReport = {},
@@ -2579,6 +2548,25 @@ class MainActivity : ComponentActivity() {
         // Keeps the favorite a trip is open to across process death (like the To… destination): by its
         // coordinate and name. Saved instance state stays on the device — the coordinate leaves only to
         // TfL as the trip's end, never here (SPEC *Privacy*). Empty means no favorite trip is open.
+        // The open station's To… across process death: the search's state, a picked stop, or a picked
+        // place's coordinate and name (kept on the device, as [FAVORITE_TRIP_SAVER] says).
+        private val TO_CHOICE_SAVER = listSaver<ToChoice, Any?>(
+            save = { to ->
+                listOf(to.picking, to.stopId, to.name, to.place?.coordinate?.latitude, to.place?.coordinate?.longitude, to.place?.name)
+            },
+            restore = { saved ->
+                val lat = saved[3] as Double?
+                val lon = saved[4] as Double?
+                val placeName = saved[5] as String?
+                val place = if (lat != null && lon != null && placeName != null) {
+                    TripDestination.Place(Coordinates(lat, lon), placeName)
+                } else {
+                    null
+                }
+                ToChoice(saved[0] as Boolean, saved[1] as String?, saved[2] as String, place)
+            },
+        )
+
         private val FAVORITE_TRIP_SAVER = listSaver<TripDestination.Place?, Any>(
             save = { place -> place?.let { listOf(it.coordinate.latitude, it.coordinate.longitude, it.name) }.orEmpty() },
             restore = { saved ->

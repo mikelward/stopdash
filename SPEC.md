@@ -291,7 +291,8 @@ The app finds stops two ways:
   the right column where a stop shows its modes; tapping one plans to its **coordinate** (a final walk
   leg, D9), like a favorite. TfL's Journey Planner is the geocoder (the only one in the free Unified
   API), the same call the postcode resolver makes — so it adds a **second TfL request** per *To…*
-  search alongside the stop search (*Cost*; only the *To…* picker makes it, not From…/browse), and
+  search alongside the stop search (*Cost*; only a *To…* picker makes it — from the near-me list or a
+  *From…* station alike — not the From… search itself), and
   sends only the typed query, as the stop search already does (*Privacy*). TfL's geocoder orders its
   candidates **noisily** (a weak partial can outrank the obvious landmark), so a place-name query is
   **re-ranked by the app's own name matcher** (Prefix over Anchored over Substring over Fuzzy) and
@@ -881,7 +882,7 @@ nearest stop of any mode (the Planner walks on to a better one itself), or from 
 This is the ordinary search flow; **any saved favorite** is the exception, planning to its
 saved coordinate rather than a picked stop (D9) — the coordinate goes only to TfL, which walks the last leg.
 Every favorite is routed by tapping it — in the Settings *"Favorite places"* list, as a **chip atop
-the near-me list** (*Routing from the near-me list*, below), or at the **top of the To… picker**,
+the near-me list** (*Routing from the near-me list*, below), or at the **top of the To… picker** (from the near-me list or a *From…* station),
 which lists **all** the saved favorite places before any typing (maintainer, 2026-09-27, broadening
 an earlier Home/Work-only framing) so the rider routes to a saved place in one tap without leaving
 the trip. If that list can't be read it says so with a **Retry**, rather than
