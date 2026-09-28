@@ -32,6 +32,7 @@ import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
+import app.stopdash.domain.NoTimes
 import app.stopdash.ui.PillColors
 import app.stopdash.ui.pillColors
 
@@ -144,23 +145,31 @@ private fun DepartureRow(row: TileRow) {
 
 /**
  * A disrupted line's "⚠ Severe Delays": beside its pill when the line has no countdown, else under
- * its departures, indented past the pill so it reads as part of that service (as on the tile).
+ * its departures, indented past the pill so it reads as part of that service (as on the tile). A
+ * rail line's reason for no times follows it, "⚠ Part Suspended · No key", so the disruption always
+ * leads; the list scrolls, so it may wrap rather than cut the reason.
  */
 @Composable
 private fun DisruptionRow(line: TileLine.Disruption) {
+    val reason = when (line.noTimes) {
+        NoTimes.NO_KEY -> stringResource(R.string.watch_no_rail_key)
+        NoTimes.NO_DATA -> stringResource(R.string.watch_no_data)
+        NoTimes.NO_TRAINS, null -> null
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
     ) {
         if (line.alone) Pill(line.row) else Spacer(Modifier.width(36.dp))
         Text(
-            text = "⚠ ${line.description}",
+            text = if (reason == null) "⚠ ${line.description}" else "⚠ ${line.description} · $reason",
             style = MaterialTheme.typography.bodySmall,
             color = Warning,
-            maxLines = 1,
+            maxLines = if (reason == null) 1 else 3,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f).padding(start = 4.dp)
-                .semantics { contentDescription = "Disrupted: ${line.description}" },
+            modifier = Modifier.weight(1f).padding(start = 4.dp).semantics {
+                contentDescription = if (reason == null) "Disrupted: ${line.description}" else "Disrupted: ${line.description}. $reason"
+            },
         )
     }
 }

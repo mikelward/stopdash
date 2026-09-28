@@ -50,6 +50,7 @@ import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.DestinationGroup
 import app.stopdash.domain.JourneyCall
+import app.stopdash.domain.NoTimes
 import app.stopdash.domain.isStatusOnly
 import app.stopdash.domain.RelativeTime
 import app.stopdash.domain.RouteTopology
@@ -240,6 +241,9 @@ internal data class WidgetRowModel(
     // The stop header drawn above this row, set on the first row of each place group that shows one
     // (see [widgetModel]); null for every other row.
     val header: WidgetHeader? = null,
+    // A status-only row's reason for no times ("No key", "No data"), where its countdown would be;
+    // null otherwise, or once it isn't vouched for (see [widgetNoTimes]).
+    val noTimes: NoTimes? = null,
 )
 
 /**
@@ -375,8 +379,17 @@ internal fun widgetModel(
     // Only when there's a departure to fit: with none, the empty states ("No upcoming departures",
     // "may be out of date") are the honest message and fit any size.
     val tooSmall = budget < 1 && pinned.isNotEmpty()
+    // A stop's reason for no times is vouched for only while its last fetch is current.
+    val currentStops = shownStops.filter {
+        it.arrivalsFresh && !Staleness.isStale(Duration.between(it.fetchedAt, now).toKotlinDuration())
+    }.mapTo(HashSet()) { it.stopId }
     val rows = chosen.map {
-        WidgetRowModel(it.row, it.groups, it.header?.let { header -> WidgetHeader(header.text, header.spoken) })
+        WidgetRowModel(
+            it.row,
+            it.groups,
+            it.header?.let { header -> WidgetHeader(header.text, header.spoken) },
+            noTimes = if (it.groups.isEmpty()) widgetNoTimes(it.row, current = it.row.stopId in currentStops) else null,
+        )
     }
     return WidgetModel(
         hasData = true,
@@ -641,13 +654,33 @@ private fun WidgetRow(rowModel: WidgetRowModel, now: Instant, fontScale: Float, 
         // one line, so the disruption isn't left out for want of a departure (SPEC D3).
         if (rowModel.groups.isEmpty()) {
             row.status?.let { status ->
-                Row(
-                    modifier = GlanceModifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    WidgetPill(row, fontScale)
-                    Spacer(GlanceModifier.width(8.dp))
-                    WidgetDisruption(status.description, GlanceModifier.defaultWeight())
+                // Why a National Rail line has no times (SPEC *National Rail*): on one line it
+                // follows the status in the same text, "⚠ Part Suspended · No key", so the
+                // disruption always leads and a tight line cuts the reason, never the alert.
+                val detail = rowModel.noTimes?.let { widgetNoTimesText(it) }
+                if (stacked) {
+                    // Too narrow for the pill and the status on one line: the pill and the reason
+                    // (where a countdown would sit), then the status below at full width, as a
+                    // stacked departure puts its destination (the budget counts both lines).
+                    Row(
+                        modifier = GlanceModifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        WidgetPill(row, fontScale)
+                        Spacer(GlanceModifier.defaultWeight())
+                        detail?.let { WidgetCountdown(it, stale = false) }
+                    }
+                    Spacer(GlanceModifier.height(WIDGET_STACK_GAP))
+                    WidgetDisruption(status.description, GlanceModifier.fillMaxWidth())
+                } else {
+                    Row(
+                        modifier = GlanceModifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        WidgetPill(row, fontScale)
+                        Spacer(GlanceModifier.width(8.dp))
+                        WidgetDisruption(status.description, GlanceModifier.defaultWeight(), detail)
+                    }
                 }
             }
             return@Column
@@ -698,13 +731,36 @@ private fun WidgetRow(rowModel: WidgetRowModel, now: Instant, fontScale: Float, 
     }
 }
 
-/** A disrupted line's status, "⚠ Severe Delays", in the error color, as the in-app card marks it. */
+/**
+ * Why a status-only row has no times, when that's more than "no trains": the in-app card's "No
+ * key" or "No data" for a National Rail line ([NoTimes]); null otherwise. Null too unless its
+ * stop's last fetch is [current] (fresh, and the latest refresh of it succeeded): the reason came
+ * with those arrivals, and a live check can keep the row past them (the user may have added a key
+ * since), so it's no longer vouched for (SPEC D4).
+ */
+internal fun widgetNoTimes(row: DepartureRow, current: Boolean): NoTimes? =
+    NoTimes.of(row).takeIf { current && it != NoTimes.NO_TRAINS }
+
 @androidx.compose.runtime.Composable
-private fun WidgetDisruption(description: String, modifier: GlanceModifier) {
+private fun widgetNoTimesText(noTimes: NoTimes): String = LocalContext.current.getString(
+    when (noTimes) {
+        NoTimes.NO_KEY -> R.string.status_no_rail_key
+        NoTimes.NO_DATA, NoTimes.NO_TRAINS -> R.string.status_no_data
+    },
+)
+
+/**
+ * A disrupted line's status, "⚠ Severe Delays", in the error color, as the in-app card marks it;
+ * [detail] ("No key") follows it after a dot, so it's the part a tight line cuts.
+ */
+@androidx.compose.runtime.Composable
+private fun WidgetDisruption(description: String, modifier: GlanceModifier, detail: String? = null) {
     Text(
-        text = "⚠ $description",
+        text = if (detail == null) "⚠ $description" else "⚠ $description · $detail",
         maxLines = 1,
-        modifier = modifier.semantics { contentDescription = "Disrupted: $description" },
+        modifier = modifier.semantics {
+            contentDescription = if (detail == null) "Disrupted: $description" else "Disrupted: $description. $detail"
+        },
         style = TextStyle(color = GlanceTheme.colors.error, fontWeight = FontWeight.Medium, fontSize = 12.sp),
     )
 }

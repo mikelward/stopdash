@@ -2202,11 +2202,11 @@ and these carry the rest as their own PRs:
         reaches the watch too. Stop closures stay off, as on the widget. `docs/PRIVACY.md`'s watch paragraph names the line status; no Data Safety change
         (TfL's public status, no new category).
         - [ ] **Device check:** the ⚠ line on a real tile and complication face.
-        - [ ] **Say why a rail line has no times on the glance surfaces** (Codex on #318). A
-              status-only row for a disrupted National Rail line draws only the disruption on
-              the widget, tile and watch app, not the app's "No key"/"No data" reason
-              (`NoTimes.of`). Needs those two strings on the widget and in `:wear`, with their
-              existing translations, and room in the one status line.
+        - [x] **Say why a rail line has no times on the glance surfaces** (Codex on #318). A
+              status-only row for a disrupted National Rail line says the app's "No key"/"No data"
+              (`NoTimes.of`) where its times would be, beside the disruption, on the widget, tile
+              and watch app; the widget reuses the app's translated strings. See *Decisions
+              needing review*.
   - [x] Tile: the widget's rows, the data's age, and a staleness timeline.
         - Entries break at each countdown minute, each departure time, and each stop's own
           staleness boundary.
@@ -2292,6 +2292,19 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
       before implementation, per *Cost and reliability*.
 
 ## Decisions needing review
+
+- [ ] **Where a glance surface says why a rail line has no times (autopilot, 2026-09-28).** Taken:
+  a disrupted National Rail line with no times says "No key" or "No data" after its status, in
+  the same text ("⚠ Part Suspended · No key"), on the widget, tile and watch app, so the
+  disruption always leads and a tight line cuts the reason, never the alert. A narrow widget at a
+  large font (the stacked layout) puts the reason beside the pill and the full status below; the
+  watch app wraps. The reason is withheld once its stop's arrivals are stale or its latest refresh
+  failed. *Alternatives:* the reason in the countdown's place, styled as one (tried first: at a
+  large font it squeezed the alert to "⚠ Part S…", three review findings); or a line of its own
+  under the status, costing a line of the budget. **Reversible:** `WidgetDisruption`'s `detail`,
+  the tile's `disruption` text and `WatchHome.DisruptionRow`. **To confirm:** on a device, that the
+  reason reads at the default font (it's cut first at a large one), and the tile at a large font.
+  Tapping "No key" doesn't open Settings on any glance surface.
 
 - [ ] **The widget marks a disruption the user dismissed in the app (autopilot, 2026-09-27).**
   Taken: the widget shows every live line status, dismissed or not: it has no room for a dismiss

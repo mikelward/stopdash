@@ -1691,7 +1691,9 @@ the widget says its stops are partly out of date, so a first refresh where one s
 reads as complete (principle 1). **Disruptions reach the widget too** (D3): the snapshot keeps each
 shown line's last status check, stamped with when TfL gave it, so a delayed or suspended line's
 rows carry the same "⚠ Severe Delays" mark as in the app, and a disrupted line with no countdown
-shows as its status alone. A mark is withheld once its check is as old as a stale countdown (the
+shows as its status alone, saying "No key" or "No data" where its times would be when that's why
+it has none (a National Rail line, *Departures*), as the app does; the tile and the watch app
+draw it the same way. A mark is withheld once its check is as old as a stale countdown (the
 shared threshold, D4), never asserted on an old verdict: the widget redraws itself at the first
 check's expiry as it does at the arrivals' boundary. A live countdown whose line has no current
 check (never checked, the lookup failed, TfL left it out of its answer, or the check aged out)

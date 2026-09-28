@@ -41,6 +41,10 @@
     <string name="complication_unknown">\?</string>
     <!-- Short complication, a carried-forward stop: "~" marks the countdown (^1) uncertain. -->
     <string name="complication_uncertain_time">~^1</string>
+    <!-- A disrupted National Rail line with no times because no National Rail key is set on the phone. -->
+    <string name="watch_no_rail_key">No key</string>
+    <!-- A disrupted line with no times because its board couldn't be fetched. -->
+    <string name="watch_no_data">No data</string>
     <!-- A shown line's service status couldn't be checked, so its countdowns aren't vouched for. -->
     <string name="watch_disruptions_unknown">Couldn\'t check for disruptions</string>
     <!-- A disrupted line's name in the long complication: "Victoria (Severe Delays)". -->

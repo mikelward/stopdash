@@ -16,6 +16,8 @@ import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCheck
+import app.stopdash.domain.NoTimes
+import app.stopdash.domain.RailFeed
 import app.stopdash.domain.STATUS_DIRECTION_KEY
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.StopArrivals
@@ -140,6 +142,54 @@ class WidgetScreenshotTest {
                 // and its status, as the budget would choose them.
                 rows = listOf(WidgetRowModel(suspended, emptyList()), rowModel(delayed)),
             ),
+        )
+    }
+
+    @Test
+    fun `a disrupted rail line with no key says so where its times would be`() {
+        val rail = row("southern", "Southern", "", 0).copy(
+            stopId = "910GEXAMPLE",
+            directionKey = STATUS_DIRECTION_KEY,
+            mode = "national-rail",
+            upcoming = emptyList(),
+            railFeed = RailFeed.NO_KEY,
+            status = LineStatus("southern", 6, "Part Suspended"),
+        )
+        capture(
+            "widget-disrupted-rail.png",
+            WidgetModel(
+                hasData = true,
+                stale = false,
+                uncertain = false,
+                stamp = "Updated just now",
+                rows = listOf(WidgetRowModel(rail, emptyList(), noTimes = NoTimes.NO_KEY), rowModel(row("victoria", "Victoria", "Brixton", 120))),
+            ),
+            fontScale = 1.3f,
+        )
+    }
+
+    @Test
+    fun `a narrow widget keeps a rail line's status ahead of its reason`() {
+        val rail = row("southern", "Southern", "", 0).copy(
+            stopId = "910GEXAMPLE",
+            directionKey = STATUS_DIRECTION_KEY,
+            mode = "national-rail",
+            upcoming = emptyList(),
+            railFeed = RailFeed.NO_KEY,
+            status = LineStatus("southern", 6, "Part Suspended"),
+        )
+        capture(
+            "widget-disrupted-rail-stacked.png",
+            WidgetModel(
+                hasData = true,
+                stale = false,
+                uncertain = false,
+                stamp = "Updated just now",
+                rows = listOf(WidgetRowModel(rail, emptyList(), noTimes = NoTimes.NO_KEY), rowModel(row("victoria", "Victoria", "Brixton", 120))),
+                stacked = true,
+            ),
+            size = DpSize(180.dp, 180.dp),
+            fontScale = 1.3f,
         )
     }
 

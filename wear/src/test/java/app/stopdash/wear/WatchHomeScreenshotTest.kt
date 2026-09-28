@@ -1,5 +1,6 @@
 package app.stopdash.wear
 
+import app.stopdash.domain.NoTimes
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -72,6 +73,30 @@ class WatchHomeScreenshotTest {
         ),
         refresh = true,
     )
+
+    @Test
+    fun disruptedRailLargeFont() {
+        // The tight case: a long status beside the pill and the rail reason, at a large font.
+        RuntimeEnvironment.setFontScale(2f)
+        capture(
+            "disrupted_rail_large_font",
+            TileFrame.Rows(
+                listOf(
+                    TileLine.Disruption(
+                        TileRow("Southern", "southern", "national-rail", "SOU", "", "", false, false),
+                        "Part Suspended",
+                        alone = true,
+                        noTimes = NoTimes.NO_KEY,
+                    ),
+                    row("victoria", "Victoria", "tube", "VIC", "Brixton", "1 · 4 min"),
+                ),
+                ageMinutes = 0,
+                stale = false,
+                partial = false,
+            ),
+            refresh = true,
+        )
+    }
 
     @Test
     fun noStops() = capture("no_stops", TileFrame.NoStops)
