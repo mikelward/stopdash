@@ -259,6 +259,7 @@ private data class PersistedActiveTrip(
     val boardedAt: String? = null,
     val dueOffAt: String? = null,
     val warnedLeg: Int = -1,
+    val alertLeft: Boolean = false,
 ) {
     fun toTrip() = ActiveTrip(
         route = TripRoute(legs.map { it.toLeg() }),
@@ -272,6 +273,7 @@ private data class PersistedActiveTrip(
         boardedAt = boardedAt?.let(Instant::parse),
         dueOffAt = dueOffAt?.let(Instant::parse),
         warnedLeg = warnedLeg,
+        alertLeft = alertLeft,
     )
 
     companion object {
@@ -287,6 +289,7 @@ private data class PersistedActiveTrip(
             boardedAt = trip.boardedAt?.toString(),
             dueOffAt = trip.dueOffAt?.toString(),
             warnedLeg = trip.warnedLeg,
+            alertLeft = trip.alertLeft,
         )
     }
 }

@@ -589,6 +589,40 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `a rider who says they're at a leg starts it now, as if they'd just got there`() {
+        // Still walking by the clock, but at the stop: Next puts them waiting for the ride's train from now.
+        val next = OnTheWay.atLeg(walkingTrip, 1, at(1))
+        assertEquals(1, next.legIndex)
+        assertEquals(at(1), next.legStartedAt)
+        assertEquals(TripProgress.Waiting(ride.copy(fromAt = platform), null), OnTheWay.advance(next, null, at(1)).second)
+        // On board, with get off soon said: a later walk starts now, its time run from now, and the
+        // train is let go.
+        val riding = OnTheWay.warned(OnTheWay.follow(walkingTrip.copy(legIndex = 1), train("8", 5)).copy(boarded = true, boardedAt = at(5)))
+        val walking = OnTheWay.atLeg(riding, 2, at(9))
+        assertEquals("", walking.vehicleId)
+        assertFalse(walking.boarded)
+        assertEquals(-1, walking.warnedLeg)
+        assertEquals(TripProgress.Walking(walk, at(14)), OnTheWay.advance(walking, null, at(9)).second)
+        // Back to an earlier leg, to undo a tap made by mistake, and past the last one is arrived.
+        assertEquals(0, OnTheWay.atLeg(walking, 0, at(9)).legIndex)
+        assertEquals(TripProgress.Arrived, OnTheWay.advance(OnTheWay.atLeg(walking, 4, at(9)), null, at(9)).second)
+        assertEquals(4, OnTheWay.atLeg(walking, 9, at(9)).legIndex)
+    }
+
+    @Test
+    fun `the rider can go to any leg but the one they're on, and never straight to arriving`() {
+        assertTrue(OnTheWay.canGoTo(walkingTrip, 1, at(1)))
+        assertTrue(OnTheWay.canGoTo(walkingTrip.copy(legIndex = 2), 0, at(1)))
+        assertFalse(OnTheWay.canGoTo(walkingTrip, 0, at(1)))
+        assertFalse(OnTheWay.canGoTo(walkingTrip, -1, at(1)))
+        assertFalse(OnTheWay.canGoTo(walkingTrip, 4, at(1)))
+        // A closing walk of no length arrives the moment it starts: not one to move onto.
+        val closing = TripLeg(TripLeg.WALKING, "", "", "E", "E", "E", "E", at(30), at(30))
+        val endsAtOnce = ActiveTrip(TripRoute(listOf(ride, closing)), "E", startedAt = t0)
+        assertFalse(OnTheWay.canGoTo(endsAtOnce, 1, at(1)))
+    }
+
+    @Test
     fun `a rider still some way off, a vague fix, or none, walks on out the walk's time`() {
         assertEquals(walkingTrip, OnTheWay.seen(walkingTrip, downTheLine, at(1)))
         // 55 m out but only sure to 100 m: they could be anywhere up to 155 m away.

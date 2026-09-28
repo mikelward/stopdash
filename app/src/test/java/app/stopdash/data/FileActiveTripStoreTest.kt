@@ -43,6 +43,7 @@ class FileActiveTripStoreTest {
         boardedAt = Instant.parse("2026-09-26T08:02:00Z"),
         dueOffAt = Instant.parse("2026-09-26T08:14:00Z"),
         warnedLeg = 0,
+        alertLeft = true,
     )
 
     @Test

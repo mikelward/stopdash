@@ -2,14 +2,18 @@ package app.stopdash.ui
 
 import android.content.res.Resources
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -65,7 +69,7 @@ import kotlin.time.toKotlinDuration
  * only while [current]: back after a while away, they wait for the next answer. Arrived ([trip]
  * null), it says so, and Done closes it.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun OnTheWayScreen(
     trip: ActiveTrip?,
@@ -88,6 +92,9 @@ internal fun OnTheWayScreen(
     // Every train at the next boarding stop that takes the rider on ([rememberNextTrains]): shown
     // while they walk, change or wait for it; null while riding.
     nextTrains: NextTrains? = null,
+    // The rider says they're at the start of a leg, by its index ([ActiveTripTracker.goTo]): Next, or
+    // a leg tapped. Null leaves both out.
+    onGoTo: ((from: Int, to: Int) -> Unit)? = null,
 ) {
     BackHandler(onBack = onBack)
     val destination = trip?.destinationName
@@ -109,12 +116,41 @@ internal fun OnTheWayScreen(
             )
         },
         bottomBar = {
-            // Above the system navigation bar: the app draws edge to edge.
-            Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp), horizontalArrangement = Arrangement.End) {
-                if (trip == null) {
-                    Button(onClick = onBack, modifier = Modifier.height(48.dp)) { Text(stringResource(R.string.on_the_way_done)) }
-                } else {
-                    OutlinedButton(onClick = onEnd, modifier = Modifier.height(48.dp)) { Text(stringResource(R.string.on_the_way_end)) }
+            // Above the system navigation bar: the app draws edge to edge. The buttons grow with the
+            // text size (at least 48dp high) and wrap onto a second line when they don't fit.
+            val bar = Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp)
+            if (trip == null) {
+                Row(bar, horizontalArrangement = Arrangement.End) {
+                    Button(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.on_the_way_done)) }
+                }
+            } else {
+                FlowRow(bar, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // End trip on its own at the start, away from Back and Next, which step through the legs.
+                    OutlinedButton(onClick = onEnd, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.on_the_way_end)) }
+                    if (onGoTo != null) {
+                        // Takes the rest of its line, so Back and Next sit at its end, on the first line or,
+                        // when the text is too large for one, on their own.
+                        FlowRow(
+                            Modifier.weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            OutlinedButton(
+                                onClick = { onGoTo(trip.legIndex, trip.legIndex - 1) },
+                                enabled = OnTheWay.canGoTo(trip, trip.legIndex - 1, now),
+                                modifier = Modifier.heightIn(min = 48.dp).testTag("onTheWayGoBack"),
+                            ) { Text(stringResource(R.string.on_the_way_go_back)) }
+                            // Off where the move would arrive at once (the last leg, or before a closing walk
+                            // of no length): arriving forgets the trip, which Back couldn't undo, and End
+                            // trip is the way out there ([OnTheWay.canGoTo]). Off rather than gone, so the
+                            // buttons stay where they are (maintainer, 2026-09-28).
+                            Button(
+                                onClick = { onGoTo(trip.legIndex, trip.legIndex + 1) },
+                                enabled = OnTheWay.canGoTo(trip, trip.legIndex + 1, now),
+                                modifier = Modifier.heightIn(min = 48.dp).testTag("onTheWayGoNext"),
+                            ) { Text(stringResource(R.string.on_the_way_go_next)) }
+                        }
+                    }
                 }
             }
         },
@@ -181,7 +217,10 @@ internal fun OnTheWayScreen(
             if (trip != null) {
                 trip.route.legs.forEachIndexed { index, leg ->
                     item(key = "leg$index") {
-                        LegLine(leg, trip.route.rides, current = index == trip.legIndex, done = index < trip.legIndex)
+                        LegLine(
+                            leg, trip.route.rides, current = index == trip.legIndex, done = index < trip.legIndex,
+                            onTap = onGoTo?.takeIf { OnTheWay.canGoTo(trip, index, now) }?.let { go -> { go(trip.legIndex, index) } },
+                        )
                     }
                     if (index == nextAt && nextTrains != null) item(key = "nextTrains") { NextTrainsSection(nextTrains, now) }
                 }
@@ -382,9 +421,17 @@ private fun finding(leg: TripLeg) = Vehicle.of(leg).finding
  * card.
  */
 @Composable
-private fun LegLine(leg: TripLeg, rides: List<TripLeg>, current: Boolean, done: Boolean) {
+private fun LegLine(leg: TripLeg, rides: List<TripLeg>, current: Boolean, done: Boolean, onTap: (() -> Unit)? = null) {
     val color = if (done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    // A leg other than the one the rider is on puts them at its start when tapped, as if they'd got there.
+    val tap = if (onTap == null) Modifier else {
+        Modifier.clickable(onClickLabel = stringResource(R.string.on_the_way_go_here), onClick = onTap)
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).then(tap),
+    ) {
         if (leg.isWalk) {
             // The route's pills, unseen, give the slot its width in the same pass.
             Box(contentAlignment = Alignment.Center) {
