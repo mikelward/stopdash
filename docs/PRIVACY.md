@@ -17,7 +17,8 @@ only if you turn on *Help make StopDash better* (off by default; see *Crash repo
 below). Your **location, the stops and lines you look up, and your API keys** go only to TfL, or
 with a National Rail key also to National Rail (if you opt in, Firebase sees only the rough region
 Google infers from your IP address), and only ever what a request needs to answer your question
-about departures: the details of what you're looking up (your location for "near me now" —
+about departures: the details of what you're looking up (your location for "near me now" and for
+a trip you plan from it —
 **precise** if you grant precise and a precise fix is available, otherwise approximate (if you grant
 only approximate, or if no precise fix can be obtained) — or the stop or line you're after) and, if
 you've set an optional TfL API key (`app_key`), that key as your own credential, sent with your own
@@ -83,7 +84,7 @@ documentation, and the form re-checked, before the watch app is released.
 
 **Find a station** (the menu's *From…* and *To…*, and a station's *To…*) sends the name you type to TfL's
 stop search, once you pause typing, and then the chosen station's id to look up its stops and
-departures, and the station's own position (a public place, not yours) to find the stops around it (for *To…*, the stops and the routes of the lines leaving where you start from; a *To…* from the near-me list starts from stops already found near you, so opening it sends no location, but refreshing it or coming back to the app finds your location again, exactly as the near-me list does). The name isn't saved,
+departures, and the station's own position (a public place, not yours) to find the stops around it (for *To…*, the stops and the routes of the lines leaving where you start from; a *To…* from the near-me list starts from the location the near-me list was found from, which goes to TfL's Journey Planner as the trip's start — see **Trips with a change** — and refreshing it or coming back to the app finds your location again, exactly as the near-me list does). The name isn't saved,
 logged or sent anywhere else. The last eight stations you open from *From…*, and separately the last eight
 destinations you pick in *To…*, are remembered on the device to list under *Recent*, in app storage
 that Android never backs up or transfers; they are
@@ -109,15 +110,17 @@ deleting the place or clearing the app's data removes it. Tapping a saved place 
 from where you are (see **Trips with a change** below).
 
 **Trips with a change** (*To…* from the near-me list or a *From…* station) send both ends of the
-trip together to **TfL's Journey Planner**, as stop ids: the stop nearest you (or the *From…*
-station) and the stop you picked. When you pick a station complex such as King's Cross St.
-Pancras, the Planner is asked once for each of its stations and once for its bus stops, each
-request carrying the same start. Your own coordinates are not sent as the start; the nearest
-stop's id stands in for where you are, which says no more than the nearby-stops lookup already
-does. The one exception is a trip **to a saved favorite**, whose stored **coordinate** is sent as
-the destination — the Planner walks the last leg to it — while the favorite's name and id stay on
-your device. That coordinate is the same **Location** data the app already shares with TfL, so it
-adds no Play Data Safety category. The Planner is asked when a trip opens, about every 15 minutes while it stays on screen (every 5 while a route's arrival can't be told without a fresh plan), and
+trip together to **TfL's Journey Planner**. A trip from the near-me list starts from **your
+location**, the position the near-me list was found from, so the Planner can walk you to whichever
+stop or station serves the trip best. That is usually the position the nearby-stops lookup has just
+sent TfL; when the app reused a recent lookup of the same spot instead (below), opening the trip is
+what sends it; a trip from a *From…* station starts from
+that station's stop id. The destination goes as the stop you picked. When you pick a station complex
+such as King's Cross St. Pancras, the Planner is asked once for each of its stations and once for
+its bus stops, each request carrying the same start. A trip **to a saved favorite** sends its stored
+**coordinate** as the destination — the Planner walks the last leg to it — while the favorite's name
+and id stay on your device. Your location and a favorite's coordinate are the same **Location** data
+the app already shares with TfL, so they add no Play Data Safety category. The Planner is asked when a trip opens, again when you've moved on from where it was planned, about every 15 minutes while it stays on screen (every 5 while a route's arrival can't be told without a fresh plan), and
 when you tap *Try again*; while a trip is on screen, the departures at each stop where a route
 boards are fetched from TfL like any other stop's, along with its lines' status. The plan is held
 in memory only, never saved or logged beyond coarse diagnostics (a stop id, an HTTP status), and
@@ -146,8 +149,9 @@ from TfL, like any other stop.
 
 **Held in memory only:** the last precise (GPS) position, for up to 10 minutes, so a rough
 network position that comes in while you haven't moved doesn't replace it. It is never written to
-storage or logged, is sent only as the position of a nearby-stop lookup (and, when a lookup used
-it, in a bug report you choose to send, as described below). Past 10 minutes it is no longer used,
+storage or logged, is sent only as the position of a nearby-stop lookup or as the start of a trip
+you open from the near-me list (and, when a lookup used it, in a bug report you choose to send, as
+described below). Past 10 minutes it is no longer used,
 and it is deleted the next time the app takes a location or when the app's process ends, whichever
 comes first.
 

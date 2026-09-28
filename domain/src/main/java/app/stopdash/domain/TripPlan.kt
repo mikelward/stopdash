@@ -150,13 +150,28 @@ sealed interface TripDestination {
 }
 
 /**
- * Plans a trip from a stop to a [TripDestination], behind a domain interface so the trip's logic is
- * tested against recorded fixtures (SPEC *Testing*). Returns the Planner's routes in its own order;
- * throws a [TflException] on a transport or decode failure, as [TflClient] does.
+ * Where a trip is planned **from** (SPEC *Trips with a change*): a known TfL [Stop] by id (a *From…*
+ * station's own stop), or [Here], the rider's own position, which TfL routes from with a first walk
+ * leg to whichever stop serves the trip best — a station a walk away included, not just the stop
+ * nearest the rider (maintainer, 2026-09-28).
+ */
+sealed interface TripOrigin {
+    data class Stop(val id: String) : TripOrigin
+    data class Here(val coordinate: Coordinates) : TripOrigin
+}
+
+/**
+ * Plans a trip from a [TripOrigin] to a [TripDestination], behind a domain interface so the trip's
+ * logic is tested against recorded fixtures (SPEC *Testing*). Returns the Planner's routes in its own
+ * order; throws a [TflException] on a transport or decode failure, as [TflClient] does.
  */
 interface JourneyPlanner {
-    suspend fun journeys(fromId: String, to: TripDestination): List<TripRoute>
+    suspend fun journeys(from: TripOrigin, to: TripDestination): List<TripRoute>
 }
+
+/** [JourneyPlanner.journeys] from the stop [fromId]. */
+suspend fun JourneyPlanner.journeys(fromId: String, to: TripDestination): List<TripRoute> =
+    journeys(TripOrigin.Stop(fromId), to)
 
 /**
  * [routes] without those that ride through the destination and on ([TripRoute.passedAt]) where

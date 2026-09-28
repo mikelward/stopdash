@@ -99,9 +99,10 @@ class NearbyStopsViewModel(
          * [location] is the exact fix these stops and distances were resolved from, kept in
          * memory alongside them so the **consent-gated bug report** can file the coordinate and
          * the distances from one and the same fix (they would otherwise disagree if it re-fetched
-         * a fresh position at report time). Like [distanceMeters] it never reaches a log or the
-         * persisted snapshot; it leaves the device only inside a report the user has explicitly
-         * consented to share (SPEC *Privacy*).
+         * a fresh position at report time). A trip from here also plans from it, sending it to
+         * TfL's Journey Planner as the trip's start (SPEC *Trips with a change*). Like
+         * [distanceMeters] it never reaches a log or the persisted snapshot; otherwise it leaves the
+         * device only inside a report the user has explicitly consented to share (SPEC *Privacy*).
          */
         data class Ready(
             val eager: List<NearbySelection.NearbyCluster>,
