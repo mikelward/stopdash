@@ -39,7 +39,7 @@ import java.time.Instant
  *   (honest that the position is sent to TfL) and an **Allow location** button.
  * - [Locating][NearbyStopsViewModel.State.Locating] — a spinner, shown at once (SPEC 5), plus an
  *   **Update available** button at the bottom when [updateAvailable] (the overflow that carries it
- *   is past the gate).
+ *   is past the gate). No **About**: every state it ends in offers that.
  * - [NoLocation][NearbyStopsViewModel.State.NoLocation] / [Empty][NearbyStopsViewModel.State.Empty]
  *   / [Failed][NearbyStopsViewModel.State.Failed] — the reason and a **Try again**.
  *
@@ -168,10 +168,13 @@ fun LocationGate(
                     Text(stringResource(R.string.menu_find_station))
                 }
             }
-            // Always present, below the state's own action: the one way to reach the app version and
-            // open-source attribution while stuck on the gate.
-            TextButton(onClick = { showAbout = true }, modifier = Modifier.padding(top = 24.dp)) {
-                Text(stringResource(R.string.menu_about))
+            // Below the state's own action: the one way to reach the app version and open-source
+            // attribution while stuck on the gate. Not on the Locating spinner, which is passing (the
+            // fix and the lookup are both time-bounded) and ends in a state that offers it.
+            if (!locating) {
+                TextButton(onClick = { showAbout = true }, modifier = Modifier.padding(top = 24.dp)) {
+                    Text(stringResource(R.string.menu_about))
+                }
             }
         }
         // The gate has no overflow menu, so this button is the only update affordance here.

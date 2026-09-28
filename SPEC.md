@@ -1633,9 +1633,11 @@ change, while persistence (a typed DataStore, mirroring the starred-rows store) 
 refresh scheduler (WorkManager) are wired by the activity, so the screen stays
 JVM/Robolectric-renderable without touching Android services.
 
-About — and so the license attribution — is reachable in **every** state, including the
-location gate when permission is denied and departures never resolve: it is hosted above the
-gate, not inside the departures view, so a user who never grants location can still open it.
+About — and so the license attribution — is reachable in **every** state that can last,
+including the location gate when permission is denied and departures never resolve: it is
+hosted above the gate, not inside the departures view, so a user who never grants location can
+still open it. The gate's "Finding stops near you…" spinner leaves it off: finding a fix and its
+stops is time-bounded, and every state it ends in offers About.
 Settings shares that top-level hosting, but is reached only from the departures overflow menu
 for now (the gate's own menu offers About alone). Opening either takes the departures view
 (and its background refresh) out of the picture, so nothing polls TfL behind the static
