@@ -11,8 +11,9 @@ import java.time.Instant
  * seen, so a loop train's later lap isn't taken for it). [boarded] once that train has left the boarding stop
  * (the rider is taken to be on it), first seen at [boardedAt]; [dueOffAt] when that train was last seen due where the rider gets
  * off (null until it's predicted that far); [warnedLeg] is the leg whose "get off soon" has been said,
- * so it's said once. [alertLeft] while a move off a leg whose "get off soon" was said ([atLeg]) is
- * saved but that alert may not be taken back yet, so a restart takes it back. Kept on the device only: where a rider is going is theirs (SPEC *Privacy*).
+ * so it's said once. [alertLeft] while a "get off soon" is done with (its leg left, by the rider's
+ * say-so ([atLeg]) or a refresh, or its train lost) and saved so, but may not be taken back yet: a
+ * restart takes it back. Kept on the device only: where a rider is going is theirs (SPEC *Privacy*).
  */
 data class ActiveTrip(
     val route: TripRoute,
@@ -127,7 +128,7 @@ object OnTheWay {
      * left-behind check keeps [sureEnough]'s tighter bound.
      */
     fun sureEnoughFor(trip: ActiveTrip, now: Instant): (LocationFix) -> Boolean =
-        if (seesWalkEnd(trip, now)) ::sureEnoughToArrive else ::sureEnough
+        if (seesWalkEnd(trip, now) || stationRiddenTo(trip, now) != null) ::sureEnoughToArrive else ::sureEnough
 
     private fun sureEnoughToArrive(fix: LocationFix): Boolean {
         val accuracy = fix.accuracyMeters ?: return false
@@ -369,12 +370,17 @@ object OnTheWay {
 
     /**
      * Whether a location fix could tell anything about [trip] at [now]: the rider is walking to a
-     * boarding stop whose position is known or can be read ([seesWalkEnd]), or their train has just
-     * left the boarding stop. Outside those no fix is asked for (battery): a walk is minutes, the
-     * other window five.
+     * boarding stop whose position is known or can be read ([seesWalkEnd]), their train has just
+     * left the boarding stop, or it's nearly where they get off ([stationRiddenTo]). Outside those no
+     * fix is asked for (battery): a walk is minutes, the other windows a few.
      */
     fun wantsFix(trip: ActiveTrip, now: Instant): Boolean {
-        if (seesWalkEnd(trip, now)) return true
+        if (seesWalkEnd(trip, now) || stationRiddenTo(trip, now) != null) return true
+        return mayBeLeftBehind(trip, now)
+    }
+
+    // Whether [trip]'s train has just left the boarding stop, where a fix can see the rider left behind.
+    private fun mayBeLeftBehind(trip: ActiveTrip, now: Instant): Boolean {
         val leg = trip.leg ?: return false
         val boardedAt = trip.boardedAt ?: return false
         return leg.mode in LEFT_BEHIND_MODES && leg.fromAt != null && trip.boarded && now.isBefore(boardedAt.plus(MISSED_WINDOW))
@@ -412,6 +418,36 @@ object OnTheWay {
     // Modes whose boarding stops are stations: the Tube, Overground, DLR, Elizabeth line and rail.
     private val STATION_MODES = setOf("tube", "overground", "dlr", "elizabeth-line", "national-rail")
 
+    /**
+     * How long before the followed train is due where the rider gets off that a fix is asked for, to
+     * see them already there: about two stops (the maintainer, 2026-09-28). The train followed can be
+     * a later one than theirs, so they can be there well before it.
+     */
+    val AT_GET_OFF_BEFORE: Duration = Duration.ofMinutes(4)
+
+    /**
+     * How long after the followed train was due where the rider gets off that fixes are still asked
+     * for: a train running a little late. Past it no more are (battery): a stale time, with TfL gone
+     * quiet, mustn't keep GPS on for the rest of the trip (Codex, PR #359).
+     */
+    val AT_GET_OFF_AFTER: Duration = Duration.ofMinutes(5)
+
+    /**
+     * The ride [trip]'s rider is on at [now] when it gets off at a station and its train is due there
+     * within [AT_GET_OFF_BEFORE] (or up to [AT_GET_OFF_AFTER] late): a fix then can see them already
+     * at that station ([seen]),
+     * by its placed point ([TripLeg.toAt], which the Planner often leaves out) or the station's own
+     * position and entrances, read for it. Null otherwise: a bus or tram stops in the street, where
+     * being near the stop says nothing of being off, and a train not yet predicted that far can't say
+     * when.
+     */
+    fun stationRiddenTo(trip: ActiveTrip, now: Instant): TripLeg? {
+        val leg = trip.leg ?: return null
+        if (leg.isWalk || leg.mode !in STATION_MODES || !trip.boarded) return null
+        val due = trip.dueOffAt ?: return null
+        return leg.takeIf { !now.isBefore(due.minus(AT_GET_OFF_BEFORE)) && now.isBefore(due.plus(AT_GET_OFF_AFTER)) }
+    }
+
     /** The ride [trip]'s rider is walking to at [now], its boarding stop placed or not. */
     fun walkingToRide(trip: ActiveTrip, now: Instant): TripLeg? {
         val leg = trip.leg ?: return null
@@ -431,7 +467,8 @@ object OnTheWay {
      * with no fix, or none that says so; a fix underground never comes, so this never guesses.
      * On a walk to a ride, the rider is at its stop when near its placed position or any of the
      * station's [entrances] (the maintainer, 2026-09-28: the Planner can place a big station's stop
-     * 200 m from the entrance the rider stands at).
+     * 200 m from the entrance the rider stands at). On a train nearly where they get off
+     * ([stationRiddenTo]), they're off when seen at that station the same way.
      */
     fun seen(trip: ActiveTrip, rider: LocationFix?, now: Instant, entrances: List<Coordinates> = emptyList()): ActiveTrip {
         walkingToRide(trip, now)?.let { ride ->
@@ -439,10 +476,20 @@ object OnTheWay {
             val there = rider != null && (listOfNotNull(ride.fromAt) + entrances).any { near(rider, it, AT_STOP_WITHIN_METERS) }
             return if (there) walked(trip, now) else trip
         }
+        // On a train nearly at where they get off, and seen at that station, its placed point or any of
+        // its [entrances]: they're off, whatever the train followed says (it can be a later one than
+        // theirs, still a stop or two away: the maintainer, 2026-09-28).
+        stationRiddenTo(trip, now)?.let { ride ->
+            val there = rider != null && (listOfNotNull(ride.toAt) + entrances).any { near(rider, it, AT_STOP_WITHIN_METERS) }
+            // Off when seen, not when the train followed was due: a rider seen after its time starts
+            // the next leg now, not partly done (Codex, PR #359).
+            if (there) return nextLeg(trip.copy(dueOffAt = null), now).first
+        }
         val leg = trip.leg ?: return trip
         val at = leg.fromAt ?: return trip
         val boardedAt = trip.boardedAt ?: return trip
-        if (rider == null || !wantsFix(trip, now) || now.isBefore(boardedAt.plus(MISSED_AFTER))) return trip
+        // Only in its own window: a fix asked for nearly where they get off says nothing of the stop behind.
+        if (rider == null || !mayBeLeftBehind(trip, now) || now.isBefore(boardedAt.plus(MISSED_AFTER))) return trip
         // Wherever within its uncertainty the rider really is, they're still that close: a fix 140 m out
         // but only sure to 50 m could be a rider already moving off on the train.
         if (!near(rider, at, MISSED_WITHIN_METERS)) return trip

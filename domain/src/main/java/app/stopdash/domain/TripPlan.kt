@@ -37,6 +37,8 @@ data class TripLeg(
     val fromArea: String = "",
     val toArea: String = "",
     val fromAt: Coordinates? = null,
+    // Where the leg gets off: a public stop position, like [fromAt].
+    val toAt: Coordinates? = null,
 ) {
     val isWalk: Boolean get() = mode.equals(WALKING, ignoreCase = true)
 

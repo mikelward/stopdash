@@ -1225,7 +1225,15 @@ them there:
   process; a fix gone stale while TfL answered isn't acted on, and a failed read is asked again on the
   next refresh, the walk ending as before until then; without a fix, the walk runs its
   estimated time as before. The estimate errs long on purpose (it grays trains a rider might miss),
-  so it mustn't hold a rider already at the station on "Walk to…". Where neither can tell — a
+  so it mustn't hold a rider already at the station on "Walk to…". A train ride ends the same way
+  at the station the rider gets off at (maintainer, 2026-09-28): from about two stops out (the
+  train followed due there within 4 minutes) until the ride ends, or 5 minutes past that train's
+  time (so a time gone stale, with TfL quiet, doesn't keep GPS on), each refresh takes one precise
+  fix, and a rider within 150 m of that station's placed point, own point or any entrance is off,
+  on to the next leg, its "get off soon" taken back. The train followed can be a later one than the
+  rider's, still a stop away when they're already there, so the train alone can't end the ride
+  then. A bus or tram stops in the street, where being near the stop says nothing of being off, so
+  its ride ends on its train as before. Where neither can tell — a
   station far bigger than the one point the Planner places it at, a fix that never comes — the
   rider says so (maintainer, 2026-09-28): **Next** (with **Back** beside it, End trip set apart at
   the other end), or a tap on any leg in the list, puts them at the start of that leg now, as if

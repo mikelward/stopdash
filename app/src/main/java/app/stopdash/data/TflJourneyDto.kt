@@ -82,6 +82,9 @@ data class TflJourneyLegDto(
             fromArea = departurePoint.stopPair(),
             toArea = arrivalPoint.stopPair(),
             fromAt = departurePoint.at(),
+            // A ride's stop only: a walk's end can be the rider's own place (a favorite, a postcode),
+            // which is theirs and isn't kept with the trip (Codex, PR #359).
+            toAt = if (walk) null else arrivalPoint.at(),
         )
     }
 }
