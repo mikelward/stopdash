@@ -2,6 +2,7 @@ package app.stopdash.data
 
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.DistanceUnits
+import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.ModeGroups
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -295,6 +296,39 @@ object HiddenModesSetting {
     val writeFailed: StateFlow<Boolean> get() = holder.writeFailed
 
     /** The list has told the user a change didn't save. */
+    fun writeFailureShown() = holder.writeFailureShown()
+}
+
+/**
+ * The walking-speed choice (SPEC *Trips with a change*), held in memory for a trip to read before its
+ * first plan and persisted in order. Starts at [WalkingSpeed.AVERAGE], the stored default and the
+ * Planner's own, so a plan made before [warm] lands is timed as it always was.
+ */
+object WalkingSpeedSetting {
+    private val holder = StoredSettingHolder(
+        CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        initial = WalkingSpeed.AVERAGE,
+        read = AppSettings::walkingSpeed,
+        write = { settings, speed -> settings.setWalkingSpeed(speed) },
+        label = "walking speed",
+    )
+
+    /** [WalkingSpeed] as a flow, for a trip's plans, its dropdown and the Settings row. */
+    val changes: StateFlow<WalkingSpeed> get() = holder.changes
+
+    /** Begins reading the stored choice. Idempotent. */
+    fun warm(appSettings: AppSettings) = holder.warm(appSettings)
+
+    /** Whether the stored choice has been read, so Settings can hold its row until then. */
+    val isLoaded: StateFlow<Boolean> get() = holder.isLoaded
+
+    /** The user chose [speed]: applied at once, persisted in order. */
+    fun set(speed: WalkingSpeed) = holder.set(speed)
+
+    /** True while the latest choice failed to save (a later successful save clears it); Settings says so. */
+    val writeFailed: StateFlow<Boolean> get() = holder.writeFailed
+
+    /** Settings has told the user a choice didn't save. */
     fun writeFailureShown() = holder.writeFailureShown()
 }
 

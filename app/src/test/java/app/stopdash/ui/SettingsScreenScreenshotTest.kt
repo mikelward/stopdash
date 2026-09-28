@@ -21,6 +21,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import app.stopdash.domain.DistanceUnits
+import app.stopdash.domain.WalkingSpeed
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Assert.assertEquals
@@ -257,8 +258,8 @@ class SettingsScreenScreenshotTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithText("TfL API key").assertIsDisplayed()
-        composeRule.onNodeWithTag("apiKeyField").assertExists()
-        composeRule.onNodeWithTag("apiKeySave").assertIsNotEnabled()
+        composeRule.onNodeWithTag("apiKeyField").performScrollTo().assertExists()
+        composeRule.onNodeWithTag("apiKeySave").performScrollTo().assertIsNotEnabled()
     }
 
     /**
@@ -281,7 +282,7 @@ class SettingsScreenScreenshotTest {
         }
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithTag("apiKeyField").assertIsNotEnabled()
+        composeRule.onNodeWithTag("apiKeyField").performScrollTo().assertIsNotEnabled()
     }
 
     /** The National Rail key has its own row, saved separately from the TfL key. */
@@ -329,8 +330,8 @@ class SettingsScreenScreenshotTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag("apiKeyClear").assertDoesNotExist()
-        composeRule.onNodeWithTag("apiKeyField").performTextInput("EXAMPLE")
-        composeRule.onNodeWithTag("apiKeySave").performClick()
+        composeRule.onNodeWithTag("apiKeyField").performScrollTo().performTextInput("EXAMPLE")
+        composeRule.onNodeWithTag("apiKeySave").performScrollTo().performClick()
         composeRule.runOnIdle { assert(saved == "EXAMPLE") }
     }
 
@@ -353,9 +354,9 @@ class SettingsScreenScreenshotTest {
         composeRule.waitForIdle()
 
         // Masked by default → the Show affordance is present; toggling flips it to Hide.
-        composeRule.onNodeWithText("Show").assertIsDisplayed()
-        composeRule.onNodeWithTag("apiKeyReveal").performClick()
-        composeRule.onNodeWithText("Hide").assertIsDisplayed()
+        composeRule.onNodeWithText("Show").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("apiKeyReveal").performScrollTo().performClick()
+        composeRule.onNodeWithText("Hide").performScrollTo().assertIsDisplayed()
     }
 
     /**
@@ -380,13 +381,13 @@ class SettingsScreenScreenshotTest {
         }
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithTag("apiKeyField").performTextInput("ABC")
+        composeRule.onNodeWithTag("apiKeyField").performScrollTo().performTextInput("ABC")
         // A saved value lands from elsewhere while the user is still editing.
         composeRule.runOnIdle { stored.value = "XYZ" }
         composeRule.waitForIdle()
 
         // The edit is kept; saving reports it, not the value that arrived underneath.
-        composeRule.onNodeWithTag("apiKeySave").performClick()
+        composeRule.onNodeWithTag("apiKeySave").performScrollTo().performClick()
         composeRule.runOnIdle { assert(saved == "ABC") }
     }
 
@@ -413,13 +414,13 @@ class SettingsScreenScreenshotTest {
         composeRule.waitForIdle()
 
         // Edit away and back to "A" (the current saved value), then the save of "B" echoes in.
-        composeRule.onNodeWithTag("apiKeyField").performTextClearance()
-        composeRule.onNodeWithTag("apiKeyField").performTextInput("A")
+        composeRule.onNodeWithTag("apiKeyField").performScrollTo().performTextClearance()
+        composeRule.onNodeWithTag("apiKeyField").performScrollTo().performTextInput("A")
         composeRule.runOnIdle { stored.value = "B" }
         composeRule.waitForIdle()
 
         // The edit is kept (not replaced by "B"): saving reports "A".
-        composeRule.onNodeWithTag("apiKeySave").performClick()
+        composeRule.onNodeWithTag("apiKeySave").performScrollTo().performClick()
         composeRule.runOnIdle { assert(saved == "A") }
     }
 
@@ -438,12 +439,12 @@ class SettingsScreenScreenshotTest {
         }
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithTag("apiKeyReveal").performClick() // reveal → "Hide"
-        composeRule.onNodeWithText("Hide").assertIsDisplayed()
-        composeRule.onNodeWithTag("apiKeyClear").performClick() // clears and re-masks
-        composeRule.onNodeWithTag("apiKeyField").performTextInput("NEW")
+        composeRule.onNodeWithTag("apiKeyReveal").performScrollTo().performClick() // reveal → "Hide"
+        composeRule.onNodeWithText("Hide").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("apiKeyClear").performScrollTo().performClick() // clears and re-masks
+        composeRule.onNodeWithTag("apiKeyField").performScrollTo().performTextInput("NEW")
         // Masked again: the toggle offers Show, not Hide.
-        composeRule.onNodeWithText("Show").assertIsDisplayed()
+        composeRule.onNodeWithText("Show").performScrollTo().assertIsDisplayed()
     }
 
     /** Tapping a distance-units segment reports that choice; the stored one shows selected. */
@@ -464,6 +465,27 @@ class SettingsScreenScreenshotTest {
         composeRule.onNodeWithTag("distanceUnits-METERS").assertIsSelected()
         composeRule.onNodeWithTag("distanceUnits-FEET").performScrollTo().performClick()
         assertEquals(DistanceUnits.FEET, chosen)
+    }
+
+    /** Tapping a walking speed reports that choice; the stored one shows selected. */
+    @Test
+    fun walkingSpeed_reportsTheTappedChoice() {
+        var chosen: WalkingSpeed? = null
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(
+                    liveWidgetRefresh = false,
+                    onLiveWidgetRefreshChange = {},
+                    onBack = {},
+                    walkingSpeed = WalkingSpeed.SLOW,
+                    onWalkingSpeedChange = { chosen = it },
+                )
+            }
+        }
+        composeRule.onNodeWithTag("walkingSpeedSetting-SLOW").performScrollTo().assertIsSelected()
+        composeRule.onNodeWithText("Medium").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("walkingSpeedSetting-FAST").performScrollTo().performClick()
+        assertEquals(WalkingSpeed.FAST, chosen)
     }
 
     /** Until the stored choice is read the segments are disabled; a failed save says so. */
@@ -519,8 +541,8 @@ class SettingsScreenScreenshotTest {
         }
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithTag("apiKeyField").performTextInput("  EXAMPLE  ")
-        composeRule.onNodeWithTag("apiKeySave").performClick()
+        composeRule.onNodeWithTag("apiKeyField").performScrollTo().performTextInput("  EXAMPLE  ")
+        composeRule.onNodeWithTag("apiKeySave").performScrollTo().performClick()
         composeRule.runOnIdle { assert(saved == "EXAMPLE") }
     }
 
@@ -542,8 +564,8 @@ class SettingsScreenScreenshotTest {
         }
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithTag("apiKeyField").performTextInput(" ")
-        composeRule.onNodeWithTag("apiKeySave").assertIsNotEnabled()
+        composeRule.onNodeWithTag("apiKeyField").performScrollTo().performTextInput(" ")
+        composeRule.onNodeWithTag("apiKeySave").performScrollTo().assertIsNotEnabled()
     }
 
     /** With a key already stored, Clear reports an empty string (back to keyless). */
@@ -563,7 +585,7 @@ class SettingsScreenScreenshotTest {
         }
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithTag("apiKeyClear").performClick()
+        composeRule.onNodeWithTag("apiKeyClear").performScrollTo().performClick()
         composeRule.runOnIdle { assert(saved == "") }
     }
 

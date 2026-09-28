@@ -388,6 +388,12 @@
     <string name="settings_distance_units_yards">Yards</string>
     <string name="settings_distance_units_feet">Feet</string>
     <string name="settings_distance_units_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
+    <!-- How fast the rider walks, for a trip's walks: Settings' row and the dropdown atop a trip's routes. -->
+    <string name="walking_speed_title">Walking speed</string>
+    <string name="walking_speed_slow">Slow</string>
+    <string name="walking_speed_average">Medium</string>
+    <string name="walking_speed_fast">Fast</string>
+    <string name="settings_walking_speed_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
 
     <!-- Optional user TfL app_key (SPEC D7). StopDash works keyless; a user's own free key raises
          the request budget. The key is a credential, kept on-device and never logged. -->

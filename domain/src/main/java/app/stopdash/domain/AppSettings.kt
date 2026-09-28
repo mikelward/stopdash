@@ -105,6 +105,12 @@ interface AppSettings {
     /** Set [distanceUnits]. Suspending, off the main thread; best-effort. */
     suspend fun setDistanceUnits(units: DistanceUnits) {}
 
+    /** How fast the rider walks, for a trip's walks ([WalkingSpeed]); the Planner's average until chosen. */
+    fun walkingSpeed(): Flow<WalkingSpeed> = flowOf(WalkingSpeed.AVERAGE)
+
+    /** Stores the walking-speed choice. */
+    suspend fun setWalkingSpeed(speed: WalkingSpeed) {}
+
     companion object {
         /** A store that persists nothing and always reads the defaults — the default for tests
          *  and a build with no wired DataStore, so the app runs identically minus persistence. */

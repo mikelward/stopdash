@@ -29,6 +29,7 @@ import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
+import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.TripTiming
 import java.time.Duration
 import java.time.Instant
@@ -99,9 +100,12 @@ class TripViewModelTest {
         var delays: Map<String, Long> = emptyMap()
         // Where each call planned from, in order.
         val origins = mutableListOf<TripOrigin>()
-        override suspend fun journeys(from: TripOrigin, to: TripDestination): List<TripRoute> {
+        // The walking speed each call was timed at, in order.
+        val speeds = mutableListOf<WalkingSpeed>()
+        override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed): List<TripRoute> {
             calls++
             origins += from
+            speeds += speed
             // Keyed by the stop id (or a place's name), matching how these tests plan by destination.
             val key = when (to) {
                 is TripDestination.Stop -> to.id
@@ -398,6 +402,55 @@ class TripViewModelTest {
         trip.refreshFor(2)
         advanceUntilIdle()
         assertEquals(TripOrigin.Here(Coordinates(51.502, -0.12)), planner.origins.last())
+    }
+
+    @Test
+    fun `plans at the rider's walking speed, and again at once when it changes`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        val plans = TripPlans()
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+            clock = { now }, plans = plans, io = dispatcher, walkingSpeed = WalkingSpeed.FAST,
+        )
+        trip.refreshFor(1)
+        advanceUntilIdle()
+        assertEquals(listOf(WalkingSpeed.FAST), planner.speeds)
+        // The same speed again changes nothing.
+        trip.walkingSpeed = WalkingSpeed.FAST
+        advanceUntilIdle()
+        assertEquals(1, planner.calls)
+        trip.walkingSpeed = WalkingSpeed.SLOW
+        advanceUntilIdle()
+        assertEquals(listOf(WalkingSpeed.FAST, WalkingSpeed.SLOW), planner.speeds)
+        // Each pace's plan is kept apart: a trip reopened at another pace isn't shown the other's.
+        assertNotNull(plans.get("A", listOf(TripDestination.Stop("C")), speed = WalkingSpeed.FAST))
+        assertNull(plans.get("A", listOf(TripDestination.Stop("C")), speed = WalkingSpeed.AVERAGE))
+    }
+
+    @Test
+    fun `routes timed at the old walking speed aren't shown under a new one`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+            clock = { now }, plans = TripPlans(), io = dispatcher, walkingSpeed = WalkingSpeed.FAST,
+        )
+        trip.refreshFor(1)
+        advanceUntilIdle()
+        assertEquals(listOf(route), trip.state.value.routes)
+        // The plan at the new speed fails: the fast plan's routes don't stand in for it.
+        planner.failWith = TflException.Offline(null)
+        trip.walkingSpeed = WalkingSpeed.SLOW
+        assertNull(trip.state.value.routes)
+        advanceUntilIdle()
+        assertNull(trip.state.value.routes)
+        assertNotNull(trip.state.value.planError)
+        // Back to the speed a plan was kept for: it's shown at once, without planning again.
+        val calls = planner.calls
+        trip.walkingSpeed = WalkingSpeed.FAST
+        assertEquals(listOf(route), trip.state.value.routes)
+        assertNull(trip.state.value.planError)
+        advanceUntilIdle()
+        assertEquals(calls, planner.calls)
     }
 
     @Test

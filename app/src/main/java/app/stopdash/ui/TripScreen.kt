@@ -96,6 +96,7 @@ import app.stopdash.domain.TflException
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTiming
+import app.stopdash.domain.WalkingSpeed
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
@@ -560,6 +561,12 @@ internal fun TripScreen(
     // Why each timed route's arrival is withheld (null: it shows), by route key, for the debug log
     // ([TripViewModel.noteWithheld]).
     onWithheld: (Map<String, TripTiming.Withheld?>) -> Unit = {},
+    // The rider's walking speed atop the routes, and a pick of another; null shows no picker.
+    walkingSpeed: WalkingSpeed = WalkingSpeed.AVERAGE,
+    onWalkingSpeedChange: ((WalkingSpeed) -> Unit)? = null,
+    // A pick that didn't save, said once as a mode hidden from here is, then acknowledged.
+    walkingSpeedWriteFailed: Boolean = false,
+    onWalkingSpeedWriteFailureShown: () -> Unit = {},
 ) {
     CompositionLocalProvider(LocalRouteStops provides routeStops) {
         TripContent(
@@ -569,6 +576,10 @@ internal fun TripScreen(
             onStart,
             onOpenTrip,
             onWithheld,
+            walkingSpeed,
+            onWalkingSpeedChange,
+            walkingSpeedWriteFailed,
+            onWalkingSpeedWriteFailureShown,
         )
     }
 }
@@ -607,6 +618,10 @@ private fun TripContent(
     onStart: ((TripRoute) -> Unit)? = null,
     onOpenTrip: (() -> Unit)? = null,
     onWithheld: (Map<String, TripTiming.Withheld?>) -> Unit = {},
+    walkingSpeed: WalkingSpeed = WalkingSpeed.AVERAGE,
+    onWalkingSpeedChange: ((WalkingSpeed) -> Unit)? = null,
+    walkingSpeedWriteFailed: Boolean = false,
+    onWalkingSpeedWriteFailureShown: () -> Unit = {},
 ) {
     // Only the timed routes' lines: a hidden mode's routes, and those past the cap, load no route data.
     // While a plan's answers are still landing, the last settled plan's lines stand, so a passing
@@ -754,6 +769,14 @@ private fun TripContent(
             snackbarHostState.showSnackbar(hiddenModesWriteFailedMessage)
         }
     }
+    // A walking speed picked here that didn't save: the trip is planned at it, but it won't last.
+    val walkingSpeedWriteFailedMessage = stringResource(R.string.settings_walking_speed_write_failed)
+    LaunchedEffect(walkingSpeedWriteFailed) {
+        if (walkingSpeedWriteFailed) {
+            onWalkingSpeedWriteFailureShown()
+            snackbarHostState.showSnackbar(walkingSpeedWriteFailedMessage)
+        }
+    }
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         // An open route starts on the way from here: followed by its train to the destination. Above
@@ -823,6 +846,11 @@ private fun TripContent(
             val misses = remember(state, shown, now, sequences) { shown?.let { tripMisses(state, it, now, sequences, rideLines) }.orEmpty() }
             val routeStops = LocalRouteStops.current
             LaunchedEffect(routeStops, misses) { routeStops?.reportMisses(misses) }
+            // The walking speed heads the routes, not an open route: it chooses among them (maintainer,
+            // 2026-09-28), and a pick plans again.
+            if (open == null && onWalkingSpeedChange != null) {
+                WalkingSpeedPicker(walkingSpeed, onWalkingSpeedChange)
+            }
             TripBanners(shown, rideLines, state, check, locationBanner, onRelocate, hiddenModes, onShowAllModes)
             Box(Modifier.fillMaxSize()) {
                 when {

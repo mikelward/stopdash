@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.DEFAULT_FONT_SCALE
 import app.stopdash.domain.DistanceUnits
+import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.MAX_FONT_SCALE
 import app.stopdash.domain.MIN_FONT_SCALE
 import app.stopdash.domain.fontScalePercent
@@ -99,6 +100,12 @@ fun SettingsScreen(
     distanceUnitsLoaded: Boolean = true,
     distanceUnitsWriteFailed: Boolean = false,
     onDismissDistanceUnitsError: () -> Unit = {},
+    // How fast the rider walks, for a trip's walks, as [distanceUnits] is handled: held until read.
+    walkingSpeed: WalkingSpeed = WalkingSpeed.AVERAGE,
+    onWalkingSpeedChange: (WalkingSpeed) -> Unit = {},
+    walkingSpeedLoaded: Boolean = true,
+    walkingSpeedWriteFailed: Boolean = false,
+    onDismissWalkingSpeedError: () -> Unit = {},
     // Opens the favorite-places editor (SPEC D9), hosted as its own overlay by the caller.
     onOpenFavoritePlaces: () -> Unit = {},
 ) {
@@ -164,6 +171,17 @@ fun SettingsScreen(
                     SettingErrorRow(
                         text = stringResource(R.string.settings_distance_units_write_failed),
                         onDismiss = onDismissDistanceUnitsError,
+                    )
+                }
+                WalkingSpeedRow(
+                    selected = walkingSpeed,
+                    onSelect = onWalkingSpeedChange,
+                    enabled = walkingSpeedLoaded,
+                )
+                if (walkingSpeedWriteFailed) {
+                    SettingErrorRow(
+                        text = stringResource(R.string.settings_walking_speed_write_failed),
+                        onDismiss = onDismissWalkingSpeedError,
                     )
                 }
                 SettingSwitchRow(
@@ -498,6 +516,41 @@ private fun DistanceUnitsRow(selected: DistanceUnits, onSelect: (DistanceUnits) 
                 RadioButton(selected = isSelected, onClick = null, enabled = enabled)
                 Spacer(modifier = Modifier.width(16.dp))
                 Text(text = label, style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+    }
+}
+
+/**
+ * How fast the rider walks ([WalkingSpeed]), as [DistanceUnitsRow] lays out its choice: nothing
+ * selected until the stored choice is read.
+ */
+@Composable
+private fun WalkingSpeedRow(selected: WalkingSpeed, onSelect: (WalkingSpeed) -> Unit, enabled: Boolean) {
+    Column(modifier = Modifier.fillMaxWidth().selectableGroup()) {
+        Text(
+            text = stringResource(R.string.walking_speed_title),
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+        )
+        WalkingSpeed.entries.forEach { speed ->
+            val isSelected = enabled && speed == selected
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(
+                        selected = isSelected,
+                        enabled = enabled,
+                        role = Role.RadioButton,
+                        onClick = { onSelect(speed) },
+                    )
+                    .testTag("walkingSpeedSetting-${speed.name}")
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(selected = isSelected, onClick = null, enabled = enabled)
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(text = walkingSpeedLabel(speed), style = MaterialTheme.typography.bodyLarge)
             }
         }
     }
