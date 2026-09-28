@@ -62,4 +62,24 @@ class WidgetLineStatusesTest {
         reconcileWidgetDismissals(store, listOf(severe))
         assertEquals(true, app.stopdash.domain.DismissedAlert.ofLineStatus(severe) in stored)
     }
+
+    @Test
+    fun `a line still waiting on its alerts' directions keeps its direction dismissals`() = runTest {
+        val north = LineStatus("victoria", 6, "Severe Delays", "Signal failure northbound.")
+        val dismissal = app.stopdash.domain.DismissedAlert.ofLineStatus(north)
+        var stored = setOf(dismissal)
+        val store = object : app.stopdash.domain.DismissedAlertsStore {
+            override fun dismissed() = kotlinx.coroutines.flow.flowOf(stored)
+            override suspend fun dismiss(alert: app.stopdash.domain.DismissedAlert) {}
+            override suspend fun reconcile(live: Set<app.stopdash.domain.DismissedAlert>, checkedPlaces: Set<String>) {
+                stored = app.stopdash.domain.Dismissed.reconcile(stored, live, checkedPlaces)
+            }
+        }
+        // Not split yet, so the northbound alert isn't among the line's statuses: not a sign it ended.
+        reconcileWidgetDismissals(store, listOf(LineStatus("victoria", 6, "Severe Delays", "Both.", awaitingDirections = true)))
+        assertEquals(setOf(dismissal), stored)
+        // Once split, and the northbound alert gone, it's forgotten.
+        reconcileWidgetDismissals(store, listOf(LineStatus("victoria", 6, "Severe Delays", "Both.")))
+        assertEquals(emptySet<app.stopdash.domain.DismissedAlert>(), stored)
+    }
 }

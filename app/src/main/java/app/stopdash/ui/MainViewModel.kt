@@ -1911,7 +1911,9 @@ class MainViewModel(
         val checkedPlaces = queriedStops.asSequence()
             .map { placeOf(it) }
             .filterTo(mutableSetOf()) { it !in unknownPlaces } +
-            checkedLineIds.map { lineAlertKey(it) }
+            // A line still waiting on which way its alerts apply isn't split yet, so a dismissal of
+            // one direction's alert can't be matched against it: retained until the split lands.
+            checkedLineIds.filterNot { lineStatuses[it]?.awaitingDirections == true }.map { lineAlertKey(it) }
         // Reconcile the in-memory set first — safe regardless of whether the persist below succeeds.
         val pruned = Dismissed.reconcile(_dismissed.value, live, checkedPlaces)
         if (pruned != _dismissed.value) _dismissed.value = pruned
