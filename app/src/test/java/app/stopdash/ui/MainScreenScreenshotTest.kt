@@ -263,7 +263,6 @@ class MainScreenScreenshotTest {
 
     private fun favoriteChips(name: String, dark: Boolean) {
         var routed: TripDestination.Place? = null
-        var fromChanged = false
         capture(name, dark = dark) {
             MainScreen(
                 DeparturesUiState.Loaded(stops(now.minusSeconds(60)), now.minusSeconds(60), lineStatuses = statuses()),
@@ -271,15 +270,9 @@ class MainScreenScreenshotTest {
                 {},
                 favoritePlaces = places,
                 onRouteToPlace = { routed = it },
-                onChangeFrom = { fromChanged = true },
             )
         }
         composeRule.onNodeWithTag("favoriteChips").assertExists()
-        // "Here" leads the chips, and a tap changes where trips start (maintainer, 2026-09-28).
-        val hereLeft = composeRule.onNodeWithTag("fromChip").fetchSemanticsNode().boundsInRoot.left
-        assertTrue(hereLeft < composeRule.onNodeWithTag("favoriteChip-work").fetchSemanticsNode().boundsInRoot.left)
-        composeRule.onNodeWithContentDescription("From Here").performClick()
-        assertTrue(fromChanged)
         // A tap plans to the place's coordinate under the name the rider knows it by (SPEC D9).
         composeRule.onNodeWithContentDescription("Plan a trip to Work").performClick()
         assertEquals(TripDestination.Place(Coordinates(51.51, -0.09), "Work"), routed)
