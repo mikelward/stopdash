@@ -332,7 +332,7 @@ internal fun nextStepText(resources: Resources, progress: TripProgress?, now: In
     if (live && !current) return nextStepText(resources, progress, now).first to resources.getString(R.string.on_the_way_updating)
     return when (progress) {
         is TripProgress.Waiting -> resources.getString(R.string.on_the_way_board, progress.leg.lineName, progress.leg.fromName) to
-            (progress.due?.let { resources.getString(R.string.on_the_way_due, minutesUntil(now, it)) } ?: resources.getString(R.string.on_the_way_finding))
+            (progress.due?.let { resources.getString(R.string.on_the_way_due, minutesUntil(now, it)) } ?: resources.getString(finding(progress.leg)))
         is TripProgress.Riding -> resources.getString(R.string.on_the_way_get_off, progress.leg.toName) to
             when (val left = progress.stopsLeft) {
                 null -> resources.getString(R.string.on_the_way_next_is, progress.nextStop)
@@ -343,11 +343,38 @@ internal fun nextStepText(resources: Resources, progress: TripProgress?, now: In
             resources.getString(R.string.on_the_way_change_time, minutesUntil(now, progress.until))
         is TripProgress.Walking -> resources.getString(R.string.on_the_way_walk, progress.leg.toName) to
             resources.getString(R.string.on_the_way_walk_time, minutesUntil(now, progress.until))
-        is TripProgress.Lost -> resources.getString(R.string.on_the_way_lost) to resources.getString(R.string.on_the_way_finding)
+        is TripProgress.Lost -> resources.getString(Vehicle.of(progress.leg).lost) to resources.getString(finding(progress.leg))
         TripProgress.Arrived -> resources.getString(R.string.on_the_way_arrived) to ""
         null -> resources.getString(R.string.on_the_way) to resources.getString(R.string.on_the_way_finding)
     }
 }
+
+/**
+ * What the rider is looking for on a leg, by its mode's own name (maintainer, 2026-09-28): a bus, a
+ * coach, a tram, a boat, a cable car; a train on every rail mode, and on one this doesn't know.
+ */
+private enum class Vehicle(val finding: Int, val lost: Int) {
+    TRAIN(R.string.on_the_way_finding, R.string.on_the_way_lost),
+    BUS(R.string.on_the_way_finding_bus, R.string.on_the_way_lost_bus),
+    COACH(R.string.on_the_way_finding_coach, R.string.on_the_way_lost_coach),
+    TRAM(R.string.on_the_way_finding_tram, R.string.on_the_way_lost_tram),
+    BOAT(R.string.on_the_way_finding_boat, R.string.on_the_way_lost_boat),
+    CABLE_CAR(R.string.on_the_way_finding_cable_car, R.string.on_the_way_lost_cable_car),
+    ;
+
+    companion object {
+        fun of(leg: TripLeg): Vehicle = when (leg.mode.lowercase()) {
+            "bus", "replacement-bus" -> BUS
+            "coach" -> COACH
+            "tram" -> TRAM
+            "river-bus", "river-tour" -> BOAT
+            "cable-car" -> CABLE_CAR
+            else -> TRAIN
+        }
+    }
+}
+
+private fun finding(leg: TripLeg) = Vehicle.of(leg).finding
 
 /**
  * One leg of the route: its line and ends, the leg the rider is on in bold, done legs muted. A walk

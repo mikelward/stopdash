@@ -509,6 +509,11 @@
     <!-- End trip couldn't remove the trip from the device (storage failing). -->
     <string name="on_the_way_end_failed">Couldn\'t end the trip. Try again.</string>
     <string name="on_the_way_finding">Finding your train…</string>
+    <string name="on_the_way_finding_bus">Finding your bus…</string>
+    <string name="on_the_way_finding_coach">Finding your coach…</string>
+    <string name="on_the_way_finding_tram">Finding your tram…</string>
+    <string name="on_the_way_finding_boat">Finding your boat…</string>
+    <string name="on_the_way_finding_cable_car">Finding your cable car…</string>
     <string name="on_the_way_get_off">Get off at %1$s</string>
     <string name="on_the_way_next_stop">Next stop</string>
     <!-- Stops left not known (a bus beyond its predictions); %1$s the next stop. -->
@@ -529,6 +534,11 @@
     <string name="on_the_way_trains_unchecked">Couldn\'t check every line</string>
     <string name="on_the_way_trains_none">None going to %1$s</string>
     <string name="on_the_way_lost">Can\'t find your train</string>
+    <string name="on_the_way_lost_bus">Can\'t find your bus</string>
+    <string name="on_the_way_lost_coach">Can\'t find your coach</string>
+    <string name="on_the_way_lost_tram">Can\'t find your tram</string>
+    <string name="on_the_way_lost_boat">Can\'t find your boat</string>
+    <string name="on_the_way_lost_cable_car">Can\'t find your cable car</string>
     <string name="on_the_way_arrived">You\'ve arrived</string>
     <string name="on_the_way_failed">Couldn\'t update just now</string>
     <string name="on_the_way_alerts_off">Get-off alerts are off</string>

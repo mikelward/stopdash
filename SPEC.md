@@ -1176,6 +1176,10 @@ asks it for alternative routes and drops those using the avoided line.
 button; the trip is then **on the way** until the rider arrives or taps **End trip**, and follows
 them there:
 
+- **"Train" means whatever the leg rides.** The step names what the rider is looking for by its
+  mode (maintainer, 2026-09-28): "Finding your bus…" / "Can't find your bus", and the same for a
+  coach, a tram, a boat (river bus) and a cable car; every rail mode — Tube, DLR, Overground,
+  Elizabeth line, National Rail — is a train.
 - **Which train.** Start assumes the **next train the rider can catch** on the first leg — the
   soonest the route lists that TfL names (its `vehicleId`) and that is due after the rider can
   reach the stop — and switches when another is seen to be the one they're on: picked by the
