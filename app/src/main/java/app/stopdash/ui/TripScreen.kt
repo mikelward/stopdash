@@ -1079,31 +1079,36 @@ private fun RouteSummary(
             // All walking (two stops close together): no line to show, and no live row below.
             Text(stringResource(R.string.trip_walk_only), style = MaterialTheme.typography.titleMedium)
         }
-        rides.forEachIndexed { index, leg ->
-            // A disrupted line's ⚠ sits beside its own pill (and wraps with it), so it's clear which
-            // leg it qualifies; beside a cut pill, for any of its lines.
+        rides.forEachIndexed { index, _ ->
             val lines = cardRideLines(card, index, rideLines)
-            val warning = linesWarning(lines, statuses)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                SharedLinePill(
-                    lines.map { LineRef(it.lineId, it.lineName, it.mode) },
-                    lines.map { it.lineName }.reduce { a, b -> stringResource(R.string.trip_lines_either, a, b) },
-                )
-                if (warning != null) DisruptionWarningGlyph(warning)
-            }
+            SharedLinePill(
+                lines.map { LineRef(it.lineId, it.lineName, it.mode) },
+                lines.map { it.lineName }.reduce { a, b -> stringResource(R.string.trip_lines_either, a, b) },
+            )
         }
-        Text(
-            text = arrivalText(estimate),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.End,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        // One ⚠ just before the arrival, where every screen puts it before the times (maintainer,
+        // 2026-09-28), reading out each disrupted line by name when there's more than one.
+        val warning = linesWarning(rides.indices.flatMap { cardRideLines(card, it, rideLines) }.distinctBy { it.lineId }, statuses)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.End,
             // A FlowRow keeps a weighted item on the pills' line when its min intrinsic width fits,
             // which for text is its longest word: "Arrival unknown" stayed beside the pills and was
-            // cut to "Arrival". The whole line's width moves it below them instead.
+            // cut to "Arrival". The whole line's width moves it below them instead, ⚠ and all.
             modifier = Modifier.weight(1f).width(IntrinsicSize.Max).padding(start = 12.dp),
-        )
+        ) {
+            // 8dp before the time, as the main screen spaces its ⚠.
+            if (warning != null) DisruptionWarningGlyph(warning, Modifier.padding(end = 8.dp))
+            Text(
+                text = arrivalText(estimate),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.End,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+        }
     }
 }
 

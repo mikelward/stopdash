@@ -928,7 +928,9 @@ destination. The card is one choice, so tapping anywhere on it opens its best ro
 press anywhere on it offers **"Hide all ‹group› services"** for
 every group any of its legs rides, so a slow tube leg can be hidden from the card as readily as the
 bus that starts it. The open route's leg rows still open their line's page and offer "Hide ‹mode›"
-for their own line, as on the list. While a
+for their own line, as on the list. Its header, the route's pills then its arrival, carries one ⚠ just
+before the arrival when any of its lines is disrupted, as every screen puts it before the times
+(maintainer, 2026-09-28); the leg rows below say which. While a
 line's route is still being checked, the times take the line's live trains at that stop (those heading for
 the Planner's terminus, whether or not a name adds a place such as "(London)") as the main screen
 does, timing nothing until the check vouches for them: only a bus to the terminus on no named branch
