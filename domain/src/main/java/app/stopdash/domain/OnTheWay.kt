@@ -119,6 +119,25 @@ object OnTheWay {
         fix.takeIf { !fix.isFallback && !fix.isCoarse && sureEnough(fix) }
 
     /**
+     * Whether [fix] is sure and recent enough for what [trip] wants a fix for at [now]: on a walk to
+     * a stop ([walkingTo]), any fix sure to within [AT_STOP_WITHIN_METERS] can settle "they're
+     * there" (the test itself counts its uncertainty), so one sure to 100 m isn't thrown away; the
+     * left-behind check keeps [sureEnough]'s tighter bound.
+     */
+    fun sureEnoughFor(trip: ActiveTrip, now: Instant): (LocationFix) -> Boolean =
+        if (walkingTo(trip, now) != null) ::sureEnoughToArrive else ::sureEnough
+
+    private fun sureEnoughToArrive(fix: LocationFix): Boolean {
+        val accuracy = fix.accuracyMeters ?: return false
+        val age = fix.ageMillis ?: return false
+        return accuracy <= AT_STOP_WITHIN_METERS && age <= FIX_FRESH_WITHIN_MILLIS
+    }
+
+    /** [fix] when it's a real, precise fix sure enough for what [trip] wants one for ([sureEnoughFor]). */
+    fun usableFix(fix: LocationFix, trip: ActiveTrip, now: Instant): LocationFix? =
+        fix.takeIf { !fix.isFallback && !fix.isCoarse && sureEnoughFor(trip, now)(fix) }
+
+    /**
      * The train to follow for a leg: the soonest of its [trains] (the leg's line, heading its way,
      * as the trip lists them) that TfL names and the rider can reach by [readyAt]. The maintainer's
      * rule (2026-09-26): assume the next catchable train, and switch once another is seen to be the
@@ -164,6 +183,87 @@ object OnTheWay {
      * on its ends alone; a leg with no plan of its stops is too.
      */
     fun checkable(leg: TripLeg): Boolean = leg.path.isNotEmpty() && leg.path.none { it.startsWith(STOP_AREA_PREFIX) }
+
+    /**
+     * The ride the rider is on their way to board: the leg they're on while it's a ride not yet
+     * boarded (waiting, or changing onto it), or the ride after the walk they're on. Null while
+     * riding, on the walk to the destination, and once arrived.
+     */
+    fun upcomingRide(trip: ActiveTrip): TripLeg? {
+        val leg = trip.leg ?: return null
+        if (!leg.isWalk) return leg.takeIf { !trip.boarded }
+        return trip.route.legs.getOrNull(trip.legIndex + 1)?.takeIf { !it.isWalk }
+    }
+
+    // Where [ride] gets off, as a train's route may name it: its own stop and, for a bus stop pair
+    // ([TripLeg.toArea]), every pole of that pair the lines' routes know of, as a trip's ride lines
+    // count them ([RideLines]): another bus reaching the pair by the other pole takes the rider there too.
+    private fun ends(ride: TripLeg, sequences: Map<String, LineSequence?>): List<DirectTrips.End> {
+        val poles = if (ride.toArea.isEmpty()) emptySet() else {
+            sequences.values.filterNotNull().flatMapTo(LinkedHashSet()) { seq -> seq.stopAreas.filterValues { it == ride.toArea }.keys }
+        }
+        return (listOf(ride.toId) + (poles - ride.toId)).map { DirectTrips.End(it, ride.toName) }
+    }
+
+    /**
+     * When the rider can board [upcomingRide], as [progress] stands: the walk's end (with the change
+     * time the Planner allows after it), the change's end, or, waiting, when the ride's leg began. A
+     * train leaving before then is one they can't catch, grayed as a trip's cards gray it. Null
+     * while riding or arrived.
+     */
+    fun readyAt(trip: ActiveTrip, progress: TripProgress?): Instant? = when (progress) {
+        is TripProgress.Walking -> progress.until.plus(progress.leg.changeAfter)
+        is TripProgress.Changing -> progress.until
+        is TripProgress.Waiting -> trip.legStartedAt
+        else -> null
+    }
+
+    /**
+     * The lines whose routes [boardTrains] needs for [ride]'s board: those of its mode at the stop,
+     * never a blank id (a departure TfL names no line for is unresolved without one, and asking for
+     * a blank line's route only spends requests on an answer that can't come).
+     */
+    fun boardLineIds(ride: TripLeg, departures: List<Departure>): List<String> =
+        departures.filter { it.mode.equals(ride.mode, ignoreCase = true) }
+            .map { it.lineId }.filter { it.isNotBlank() }.distinct().sorted()
+
+    /**
+     * What [boardTrains] found: the trains, soonest first; whether a line's route is still loading
+     * ([pending]); and whether a train couldn't be checked ([unresolved]: its route failed or doesn't
+     * place it), so an empty or short list isn't taken for the whole answer.
+     */
+    data class BoardTrains(
+        val trains: List<Departure>,
+        val pending: Boolean,
+        val unresolved: Boolean = false,
+        // Each train that couldn't be placed, for the debug log (as every trip filter reports them).
+        val misses: Set<RouteMiss> = emptySet(),
+    )
+
+    /**
+     * Every train at [ride]'s boarding stop that takes the rider to where they get off (maintainer,
+     * 2026-09-28): of its [departures] (fetched at [fetchedAt]), those of the ride's mode on any line
+     * whose route ([sequences], by line) calls at the ride's alighting stop, not just the Planner's
+     * line — each is a way to the same stop. A train for another branch is left out, as on a From…
+     * To… page ([DirectTrips.filter]); a line whose route is still loading isn't guessed at.
+     */
+    fun boardTrains(
+        ride: TripLeg,
+        departures: List<Departure>,
+        fetchedAt: Instant,
+        sequences: Map<String, LineSequence?>,
+        now: Instant,
+    ): BoardTrains {
+        val sameMode = Countdown.upcoming(departures.filter { it.mode.equals(ride.mode, ignoreCase = true) }, now)
+        if (sameMode.isEmpty()) return BoardTrains(emptyList(), pending = false, unresolved = false)
+        val result = DirectTrips.filter(
+            listOf(StopArrivals(ride.fromId, ride.fromName, sameMode, fetchedAt)),
+            ends(ride, sequences),
+            sequences,
+        )
+        val kept = result.stops.firstOrNull()?.departures.orEmpty().sortedBy { it.expectedArrival }
+        return BoardTrains(kept, result.pending, result.unresolved, result.misses)
+    }
 
     /** [trip] following [train] on its current leg, not yet on board. */
     fun follow(trip: ActiveTrip, train: Departure): ActiveTrip =
@@ -266,13 +366,34 @@ object OnTheWay {
     private const val BUS = " Bus"
 
     /**
-     * Whether a location fix could tell anything about [trip] at [now]: its train has just left the
-     * boarding stop, whose position is known. Outside that window no fix is asked for (battery).
+     * Whether a location fix could tell anything about [trip] at [now]: the rider is walking to a
+     * boarding stop whose position is known ([walkingTo]), or their train has just left the boarding
+     * stop. Outside those no fix is asked for (battery): a walk is minutes, the other window five.
      */
     fun wantsFix(trip: ActiveTrip, now: Instant): Boolean {
+        if (walkingTo(trip, now) != null) return true
         val leg = trip.leg ?: return false
         val boardedAt = trip.boardedAt ?: return false
         return leg.mode in LEFT_BEHIND_MODES && leg.fromAt != null && trip.boarded && now.isBefore(boardedAt.plus(MISSED_WINDOW))
+    }
+
+    /**
+     * A rider this close to the stop they're walking to (a fix's uncertainty included) is there:
+     * a station's published position can sit well inside it, away from the entrance they stand at.
+     */
+    const val AT_STOP_WITHIN_METERS = 150.0
+
+    /**
+     * Where [trip]'s rider is walking to at [now], when that's a ride's boarding stop with a known
+     * position: the walk from where they started, or one between rides. Null otherwise (a ride, or
+     * the walk to the destination, which ends the trip on its time), and once the walk's estimated
+     * time is up at [now]: it ends on its time then, with no fix to wait for.
+     */
+    fun walkingTo(trip: ActiveTrip, now: Instant): Coordinates? {
+        val leg = trip.leg ?: return null
+        if (!leg.isWalk || !now.isBefore(trip.legStartedAt.plus(leg.run))) return null
+        val next = trip.route.legs.getOrNull(trip.legIndex + 1) ?: return null
+        return if (next.isWalk) null else next.fromAt
     }
 
     // Trains only: a train that has left is gone from its platform, while a bus or tram can sit near
@@ -286,16 +407,35 @@ object OnTheWay {
      * with no fix, or none that says so; a fix underground never comes, so this never guesses.
      */
     fun seen(trip: ActiveTrip, rider: LocationFix?, now: Instant): ActiveTrip {
+        walkingTo(trip, now)?.let { stop -> return if (rider != null && near(rider, stop, AT_STOP_WITHIN_METERS)) walked(trip, now) else trip }
         val leg = trip.leg ?: return trip
         val at = leg.fromAt ?: return trip
         val boardedAt = trip.boardedAt ?: return trip
         if (rider == null || !wantsFix(trip, now) || now.isBefore(boardedAt.plus(MISSED_AFTER))) return trip
-        val away = NearestStops.distanceMeters(rider.coordinates.latitude, rider.coordinates.longitude, at.latitude, at.longitude)
         // Wherever within its uncertainty the rider really is, they're still that close: a fix 140 m out
         // but only sure to 50 m could be a rider already moving off on the train.
-        val accuracy = rider.accuracyMeters ?: return trip
-        if (away + accuracy > MISSED_WITHIN_METERS) return trip
+        if (!near(rider, at, MISSED_WITHIN_METERS)) return trip
         return trip.copy(vehicleId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, legStartedAt = now, warnedLeg = -1)
+    }
+
+    // Whether [rider] is within [meters] of [at] wherever within its uncertainty they really are.
+    private fun near(rider: LocationFix, at: Coordinates, meters: Double): Boolean {
+        val accuracy = rider.accuracyMeters ?: return false
+        val away = NearestStops.distanceMeters(rider.coordinates.latitude, rider.coordinates.longitude, at.latitude, at.longitude)
+        return away + accuracy <= meters
+    }
+
+    /**
+     * [trip] with its walk done at [now], seen there by location rather than waited out on the
+     * walk's time (maintainer, 2026-09-28): on to the ride, its train picked from now.
+     */
+    fun walked(trip: ActiveTrip, now: Instant): ActiveTrip {
+        val leg = trip.leg ?: return trip
+        if (!leg.isWalk) return trip
+        return trip.copy(
+            legIndex = trip.legIndex + 1, legStartedAt = now.plus(leg.changeAfter),
+            vehicleId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null,
+        )
     }
 
     // When the rider boarded, as first seen: when the train was last due to leave the boarding stop

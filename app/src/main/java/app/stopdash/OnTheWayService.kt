@@ -111,14 +111,7 @@ class OnTheWayService : Service() {
         return START_NOT_STICKY
     }
 
-    // A precise fix, only in the minute or so after the train leaves the boarding stop
-    // ([OnTheWay.wantsFix]); never logged or kept, only compared with the stop's public position.
-    private suspend fun riderIfWanted(trip: ActiveTrip?): LocationFix? {
-        if (trip == null || !OnTheWay.wantsFix(trip, Instant.now())) return null
-        // GPS/fused, waited for: a quick coarse fix could never settle it, so it isn't asked for.
-        val fix = location.preciseFix(sureEnough = OnTheWay::sureEnough) ?: return null
-        return OnTheWay.usableFix(fix)
-    }
+    private suspend fun riderIfWanted(trip: ActiveTrip?): LocationFix? = onTheWayFix(location, trip)
 
     private fun locationAllowed(): Boolean =
         ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -355,4 +348,19 @@ internal object OnTheWayNotification {
             StopdashDebugLog.warning("on the way: %s", "ongoing notification refused: ${e::class.simpleName}")
         }
     }
+}
+
+/**
+ * A precise fix for a trip on the way, only while one could tell anything ([OnTheWay.wantsFix]): on a
+ * walk to a boarding stop, and in the minutes after the train leaves it. Never logged or kept, only
+ * compared with the stop's public position. The service's loop and the app's own both take it.
+ */
+internal suspend fun onTheWayFix(location: AndroidLocationProvider, trip: ActiveTrip?): LocationFix? {
+    val now = Instant.now()
+    if (trip == null || !OnTheWay.wantsFix(trip, now)) return null
+    // GPS/fused, waited for: a quick coarse fix could never settle it, so it isn't asked for. How
+    // sure it must be depends on what it's for ([OnTheWay.sureEnoughFor]).
+    val sure = OnTheWay.sureEnoughFor(trip, now)
+    val fix = location.preciseFix(sureEnough = sure) ?: return null
+    return OnTheWay.usableFix(fix, trip, now)
 }

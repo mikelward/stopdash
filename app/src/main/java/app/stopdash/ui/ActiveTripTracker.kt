@@ -81,6 +81,19 @@ class ActiveTripTracker(
     private val _endFailures = MutableStateFlow(0)
     val endFailures: StateFlow<Int> = _endFailures.asStateFlow()
 
+    /**
+     * The departures at the boarding stop of the ride the rider is on their way to
+     * ([OnTheWay.upcomingRide]), fetched with each refresh while they walk, change or wait, so the
+     * trip's screen shows every train that takes them on ([OnTheWay.boardTrains]). Null while riding,
+     * and until the first fetch. [failed] when the last fetch couldn't reach TfL, so the screen says so
+     * (principle 2): the last board is kept, its [fetchedAt] aging it into stale (D4), and with none
+     * read yet [fetchedAt] is null and there are no departures.
+     */
+    data class NextBoard(val ride: TripLeg, val departures: List<Departure>, val fetchedAt: Instant?, val failed: Boolean = false)
+
+    private val _nextBoard = MutableStateFlow<NextBoard?>(null)
+    val nextBoard: StateFlow<NextBoard?> = _nextBoard.asStateFlow()
+
     private val lock = Mutex()
     private var restored = false
     // Whether the trip shown isn't yet known to be on the device ([keep]).
@@ -171,6 +184,7 @@ class ActiveTripTracker(
         _endFailures.value = 0
         _trip.value = null
         _progress.value = null
+        _nextBoard.value = null
         _failed.value = false
         _updatedAt.value = null
         _notKept.value = false
@@ -193,7 +207,10 @@ class ActiveTripTracker(
             val fresh = rider?.let { fix -> aged(fix, Duration.ofMillis(elapsed() - asked)) }
             // A leg just done (a walk, or a ride straight into another) picks the next ride's train at
             // once: one due before the next refresh is still the rider's to catch.
-            if (step(fresh)) step(null)
+            // Each boarding stop's board is asked for at most once a refresh, answer or failure,
+            // however long TfL takes: the steps share this refresh's attempts.
+            val boards = HashMap<TripLeg, Result<NextBoard>>()
+            if (step(fresh, boards)) step(null, boards)
         }
     }
 
@@ -207,7 +224,7 @@ class ActiveTripTracker(
 
     // One step of [refresh]: at most one leg change. True when it left a ride with no train yet,
     // reached by that change or its train dropped, so another step picks one.
-    private suspend fun step(rider: LocationFix?): Boolean {
+    private suspend fun step(rider: LocationFix?, boards: MutableMap<TripLeg, Result<NextBoard>>): Boolean {
         if (_trip.value == null) return false
         if (_progress.value == TripProgress.Arrived) {
             // Arrived, but not yet forgotten on the device: only that's tried again, not the ride,
@@ -229,6 +246,9 @@ class ActiveTripTracker(
         if (before.warnedLeg == before.legIndex && trip.warnedLeg != before.warnedLeg) onGetOffSoonDone()
         var failed = false
         val leg = trip.leg
+        // The board where the rider boards next, fetched once a refresh: shown on the trip's screen,
+        // and the one a train is picked from.
+        val board = fetchBoard(trip, now, boards)
         var calls: List<VehicleCall>? = null
         // While a change runs, no train is picked or asked about: one picked now could be revised to
         // leave before the change is done, and be taken for the rider's.
@@ -239,7 +259,7 @@ class ActiveTripTracker(
             try {
                 if (trip.vehicleId.isBlank()) {
                     searched = true
-                    val picked = pick(trip, now)
+                    val picked = pick(trip, now, board)
                     if (picked != null) {
                         trip = OnTheWay.follow(trip, picked.first)
                         calls = picked.second
@@ -271,9 +291,11 @@ class ActiveTripTracker(
             // longer stood behind on any surface (its time, stops left and get off soon wait).
             _failed.value = true
             _updatedAt.value = null
-            // The step as it was, unless a fix just showed the rider left behind: then it's the new
-            // trip's (finding a train), never the ride the rider isn't on.
-            keep(trip, _progress.value?.takeIf { trip.vehicleId == before.vehicleId } ?: standing(trip, now))
+            // The step as it was, unless a fix just moved the trip on: left behind (finding a train,
+            // never the ride the rider isn't on), or seen at the stop they walked to (waiting there,
+            // never still walking).
+            val same = trip.vehicleId == before.vehicleId && trip.legIndex == before.legIndex
+            keep(trip, _progress.value?.takeIf { same } ?: standing(trip, now))
             return false
         }
         var (next, progress) = OnTheWay.advance(trip, calls, now)
@@ -294,6 +316,13 @@ class ActiveTripTracker(
             progress.getOffAt != saidAt
         if (progress is TripProgress.Riding && (OnTheWay.shouldWarn(next, progress) || moved) && onGetOffSoon(next, progress)) {
             next = OnTheWay.warned(next)
+        }
+        // The ride ahead changed in this step: a board for one now boarded (or passed) is no longer
+        // theirs to board from, and the next ride's (off a train and walking on) is read now, not a
+        // refresh later. A failed read is said on the section alone: the step itself stood.
+        val ahead = OnTheWay.upcomingRide(next)
+        if (_nextBoard.value?.ride != ahead) {
+            if (ahead == null) _nextBoard.value = null else fetchBoard(next, now, boards)
         }
         _failed.value = false
         _updatedAt.value = now
@@ -321,10 +350,12 @@ class ActiveTripTracker(
 
     // The soonest train the rider can catch on the trip's leg that runs where they're going, with
     // its calls; null when none of the first few does (or none is due).
-    private suspend fun pick(trip: ActiveTrip, now: Instant): Pair<Departure, List<VehicleCall>>? {
+    private suspend fun pick(trip: ActiveTrip, now: Instant, board: Result<NextBoard>?): Pair<Departure, List<VehicleCall>>? {
         val leg = trip.leg ?: return null
         val readyAt = maxOf(trip.legStartedAt, now)
-        val candidates = OnTheWay.candidates(arrivals(leg.fromId), leg, readyAt).take(PICK_TRIES)
+        // This refresh's read of the board ([fetchBoard]); its failure thrown for [step] to report.
+        val departures = board?.getOrThrow()?.takeIf { it.ride == leg }?.departures ?: arrivals(leg.fromId)
+        val candidates = OnTheWay.candidates(departures, leg, readyAt).take(PICK_TRIES)
         for (train in candidates) {
             val calls = try {
                 vehicles.vehicleCalls(train.vehicleId, leg.lineId)
@@ -341,6 +372,33 @@ class ActiveTripTracker(
         }
         return null
     }
+
+    // The upcoming ride's board ([nextBoard]), fetched at [now], or null with none upcoming. Asked
+    // for once a refresh: a second step reuses [boards]' attempt, answer or failure, so a slow or
+    // failing TfL never brings a second request. A fetch that fails keeps the last board, marked
+    // failed ([NextBoard.failed]), and hands back the failure for the ride's pick to report.
+    private suspend fun fetchBoard(trip: ActiveTrip, now: Instant, boards: MutableMap<TripLeg, Result<NextBoard>>): Result<NextBoard>? {
+        val ride = OnTheWay.upcomingRide(trip)
+        if (ride == null) {
+            _nextBoard.value = null
+            return null
+        }
+        return boards.getOrPut(ride) { readBoard(ride, now) }
+    }
+
+    private suspend fun readBoard(ride: TripLeg, now: Instant): Result<NextBoard> =
+        try {
+            Result.success(NextBoard(ride, arrivals(ride.fromId), now).also { _nextBoard.value = it })
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: TflException) {
+            warn("on the way: next board lookup failed for line ${ride.lineId}: ${e::class.simpleName}")
+            // Said on the screen, not left to vanish or pass as current: the last board of this ride
+            // kept, marked failed; another ride's board is no board of this one's.
+            val last = _nextBoard.value?.takeIf { it.ride == ride }
+            _nextBoard.value = last?.copy(failed = true) ?: NextBoard(ride, emptyList(), fetchedAt = null, failed = true)
+            Result.failure(e)
+        }
 
     // Where [trip] stood when last kept, before any answer: on board with its stop, waiting for its
     // train when it was due, or walking. Not Lost, which only an answer can say.

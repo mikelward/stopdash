@@ -5,11 +5,13 @@ import android.graphics.Canvas
 import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import app.stopdash.domain.ActiveTrip
+import app.stopdash.domain.Departure
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripRoute
@@ -55,10 +57,11 @@ class OnTheWayScreenScreenshotTest {
         onBack: () -> Unit = {},
         alertsOff: Boolean = false,
         appOpenOnly: Boolean = false,
+        nextTrains: NextTrains? = null,
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
-                OnTheWayScreen(trip, progress, failed, now, onEnd, onBack, current = current, notKept = notKept, endFailed = endFailed, alertsOff = alertsOff, appOpenOnly = appOpenOnly)
+                OnTheWayScreen(trip, progress, failed, now, onEnd, onBack, current = current, notKept = notKept, endFailed = endFailed, alertsOff = alertsOff, appOpenOnly = appOpenOnly, nextTrains = nextTrains)
             }
         }
     }
@@ -162,6 +165,77 @@ class OnTheWayScreenScreenshotTest {
         composeRule.onNodeWithContentDescription("Walk").assertIsDisplayed()
         composeRule.onNodeWithText("Walk").assertDoesNotExist()
         captureSnapshot("on-the-way-waiting.png")
+    }
+
+    private fun jubileeTrain(destination: String, minutes: Long) =
+        Departure("jubilee", "Jubilee", "outbound", destination, null, at(minutes), "tube")
+
+    @Test
+    fun on_the_way_walking_shows_the_next_rides_trains() {
+        val walking = trip.copy(legIndex = 1)
+        val trains = listOf(jubileeTrain("Stanmore", 21), jubileeTrain("Stanmore", 24), jubileeTrain("Wembley Park", 27))
+        // The walk ends at 24: the 21-minute train leaves first, so it's grayed.
+        show(walking, TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, trains, readyAt = at(24)))
+        composeRule.onNodeWithText("From Stratford").assertIsDisplayed()
+        composeRule.onNodeWithText("21 · 24 min").assertIsDisplayed()
+        composeRule.onNodeWithText("Wembley Park").assertIsDisplayed()
+        captureSnapshot("on_the_way_walking_next_trains")
+    }
+
+    @Test
+    fun on_the_way_next_trains_too_old_say_updating() {
+        val walking = trip.copy(legIndex = 1)
+        show(walking, TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, listOf(jubileeTrain("Stanmore", 21)), stale = true))
+        composeRule.onNodeWithText("Updating…").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("21 min").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun on_the_way_no_next_trains_says_so() {
+        show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, emptyList()))
+        composeRule.onNodeWithText("None going to Canary Wharf").assertIsDisplayed()
+    }
+
+    @Test
+    fun on_the_way_next_trains_say_when_an_update_failed() {
+        // The last good board still shown, the failure said beside it.
+        show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, listOf(jubileeTrain("Stanmore", 21)), failed = true))
+        composeRule.onNodeWithText("21 min").assertIsDisplayed()
+        composeRule.onNodeWithText("Couldn't update just now").assertIsDisplayed()
+    }
+
+    @Test
+    fun on_the_way_next_trains_never_read_say_so_not_none() {
+        show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, emptyList(), failed = true))
+        composeRule.onNodeWithText("Couldn't update just now").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("None going to Canary Wharf").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun on_the_way_next_trains_show_loading_before_the_first_board() {
+        // Just started: the ride ahead is known, its board not yet in.
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                val next = rememberNextTrains(board = null, now = now, readyAt = at(24), ride = jubilee)
+                OnTheWayScreen(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), false, now, {}, {}, nextTrains = next)
+            }
+        }
+        composeRule.onNodeWithText("From Stratford").assertIsDisplayed()
+        composeRule.onNodeWithText("Loading").assertIsDisplayed()
+    }
+
+    @Test
+    fun on_the_way_next_trains_say_when_a_line_is_still_being_checked() {
+        show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, listOf(jubileeTrain("Stanmore", 21)), pending = true))
+        composeRule.onNodeWithText("21 min").assertIsDisplayed()
+        composeRule.onNodeWithText("Checking more lines…").assertIsDisplayed()
+    }
+
+    @Test
+    fun on_the_way_next_trains_that_couldnt_be_checked_arent_called_none() {
+        show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, emptyList(), unresolved = true))
+        composeRule.onNodeWithText("Couldn't check every line").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("None going to Canary Wharf").fetchSemanticsNodes().isEmpty())
     }
 
     @Test

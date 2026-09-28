@@ -573,4 +573,145 @@ class OnTheWayTest {
         assertNull(OnTheWay.usableFix(fresh.copy(ageMillis = 30_000L)))
         assertNull(OnTheWay.usableFix(fresh.copy(ageMillis = null)))
     }
+
+    // A trip that starts with a walk to the placed boarding stop.
+    private val toStop = TripLeg(TripLeg.WALKING, "", "", "", "", "A", "A", t0, at(2))
+    private val walkingTrip = ActiveTrip(TripRoute(listOf(toStop, ride.copy(fromAt = platform), walk, second)), "E", startedAt = t0)
+
+    @Test
+    fun `a rider seen at the stop they're walking to is there, and its train is picked from now`() {
+        assertEquals(platform, OnTheWay.walkingTo(walkingTrip, t0))
+        assertTrue(OnTheWay.wantsFix(walkingTrip, t0))
+        val there = OnTheWay.seen(walkingTrip, stillThere, at(1))
+        assertEquals(1, there.legIndex)
+        assertEquals(at(1), there.legStartedAt)
+        assertEquals(TripProgress.Waiting(ride.copy(fromAt = platform), null), OnTheWay.advance(there, null, at(1)).second)
+    }
+
+    @Test
+    fun `a rider still some way off, a vague fix, or none, walks on out the walk's time`() {
+        assertEquals(walkingTrip, OnTheWay.seen(walkingTrip, downTheLine, at(1)))
+        // 55 m out but only sure to 100 m: they could be anywhere up to 155 m away.
+        assertEquals(walkingTrip, OnTheWay.seen(walkingTrip, fix(Coordinates(51.5005, -0.12), accuracyMeters = 100f), at(1)))
+        assertEquals(walkingTrip, OnTheWay.seen(walkingTrip, null, at(1)))
+        assertEquals(TripProgress.Walking(toStop, at(2)), OnTheWay.advance(walkingTrip, null, at(1)).second)
+    }
+
+    @Test
+    fun `no fix is asked for on a walk to the destination, or to a stop with no position`() {
+        val lastWalk = TripLeg(TripLeg.WALKING, "", "", "E", "E", "F", "F", at(30), at(35))
+        val finishing = ActiveTrip(TripRoute(listOf(second, lastWalk)), "F", startedAt = t0, legIndex = 1)
+        assertNull(OnTheWay.walkingTo(finishing, at(31)))
+        assertFalse(OnTheWay.wantsFix(finishing, at(31)))
+        // The walk between rides goes to D, whose position isn't known.
+        assertNull(OnTheWay.walkingTo(trip.copy(legIndex = 1), at(16)))
+    }
+
+    @Test
+    fun `a fix sure only to 100 m still settles arriving on foot, but not a rider left behind`() {
+        // At the stop, sure to 100 m: wherever they are, they're within 150 m of it.
+        val vague = LocationFix(platform, isFallback = false, accuracyMeters = 100f, ageMillis = 1_000L)
+        assertEquals(vague, OnTheWay.usableFix(vague, walkingTrip, at(1)))
+        assertEquals(1, OnTheWay.seen(walkingTrip, OnTheWay.usableFix(vague, walkingTrip, at(1)), at(1)).legIndex)
+        // Just after boarding, the same fix can't tell a rider on the train from one on the platform.
+        val onBoard = OnTheWay.follow(placed, train("8", 5)).copy(boarded = true, boardedAt = at(6))
+        assertNull(OnTheWay.usableFix(vague, onBoard, at(7)))
+        // Nor is one sure only to 200 m taken for arriving.
+        assertNull(OnTheWay.usableFix(vague.copy(accuracyMeters = 200f), walkingTrip, at(1)))
+    }
+
+    @Test
+    fun `once the walk's time is up no fix is asked for, and it ends on its time`() {
+        // The walk to A runs 0–2 min.
+        assertTrue(OnTheWay.wantsFix(walkingTrip, at(1)))
+        assertNull(OnTheWay.walkingTo(walkingTrip, at(2)))
+        assertFalse(OnTheWay.wantsFix(walkingTrip, at(2)))
+        // A fix at the stop by then changes nothing: the walk's own end moves the trip on.
+        assertEquals(walkingTrip, OnTheWay.seen(walkingTrip, stillThere, at(2)))
+    }
+
+    @Test
+    fun `the board's routes are asked for its mode's named lines only`() {
+        val board = listOf(
+            Departure("red", "Red", "outbound", "C", null, at(3), "tube"),
+            Departure("", "", "outbound", "C", null, at(4), "tube"),
+            Departure("green", "Green", "outbound", "C", null, at(5), "tube"),
+            Departure("red", "Red", "outbound", "C", null, at(6), "tube"),
+            Departure("99", "99", "outbound", "C", null, at(2), "bus"),
+        )
+        assertEquals(listOf("green", "red"), OnTheWay.boardLineIds(ride, board))
+    }
+
+    @Test
+    fun `a bus reaching the alighting stop pair by its other pole is on the board too`() {
+        // The ride gets off at pole P1 of stop pair G; bus 2 calls at the pair's other pole, P2.
+        val bus = TripLeg("bus", "1", "1", "Q", "Q", "P1", "Stop", at(5), at(15), toArea = "490GEXAMPLE")
+        val one = LineSequence(listOf(LineRoute("Q-P1", listOf("Q", "P1"))), mapOf("Q" to "Q", "P1" to "Stop"), stopAreas = mapOf("P1" to "490GEXAMPLE"))
+        val two = LineSequence(listOf(LineRoute("Q-P2", listOf("Q", "P2"))), mapOf("Q" to "Q", "P2" to "Stop"), stopAreas = mapOf("P2" to "490GEXAMPLE"))
+        val other = LineSequence(listOf(LineRoute("Q-X", listOf("Q", "X"))), mapOf("Q" to "Q", "X" to "Elsewhere"))
+        val board = listOf(
+            Departure("1", "1", "outbound", "P1", null, at(3), "bus"),
+            Departure("2", "2", "outbound", "P2", null, at(4), "bus"),
+            Departure("3", "3", "outbound", "X", null, at(5), "bus"),
+        )
+        val found = OnTheWay.boardTrains(bus, board, t0, mapOf("1" to one, "2" to two, "3" to other), t0)
+        assertEquals(listOf("1", "2"), found.trains.map { it.lineId })
+    }
+
+    @Test
+    fun `the rider is ready to board when the walk or change ends, or from when the wait began`() {
+        val walking = trip.copy(legIndex = 1)
+        assertEquals(at(20), OnTheWay.readyAt(walking, TripProgress.Walking(walk, at(20))))
+        assertEquals(at(3), OnTheWay.readyAt(trip, TripProgress.Changing(ride, at(3))))
+        assertEquals(t0, OnTheWay.readyAt(trip, TripProgress.Waiting(ride, null)))
+        assertNull(OnTheWay.readyAt(trip, TripProgress.Riding(ride, "B", 2, null, false)))
+        assertNull(OnTheWay.readyAt(trip, TripProgress.Arrived))
+    }
+
+    @Test
+    fun `the upcoming ride is the one after the walk, the one waited for, and none once on board`() {
+        assertEquals(ride.copy(fromAt = platform), OnTheWay.upcomingRide(walkingTrip))
+        assertEquals(ride, OnTheWay.upcomingRide(trip))
+        assertNull(OnTheWay.upcomingRide(trip.copy(boarded = true)))
+        // The walk to D goes on to the second ride; none after the last leg.
+        assertEquals(second, OnTheWay.upcomingRide(trip.copy(legIndex = 1)))
+        assertNull(OnTheWay.upcomingRide(trip.copy(legIndex = 3)))
+    }
+
+    @Test
+    fun `the next ride's board keeps every line that reaches the stop, and no other branch`() {
+        // Two lines from A: red to C, and green, which also reaches C; red's "Z" branch doesn't.
+        val red = LineSequence(
+            listOf(LineRoute("A-C", listOf("A", "B", "C")), LineRoute("A-Z", listOf("A", "Y", "Z"))),
+            mapOf("A" to "A", "B" to "B", "C" to "C", "Y" to "Y", "Z" to "Z"),
+        )
+        val green = LineSequence(listOf(LineRoute("A-C", listOf("A", "C"))), mapOf("A" to "A", "C" to "C"))
+        val board = listOf(
+            Departure("red", "Red", "outbound", "C", null, at(3), "tube"),
+            Departure("red", "Red", "outbound", "Z", null, at(4), "tube"),
+            Departure("green", "Green", "outbound", "C", null, at(6), "tube"),
+            // Another mode at the same stop: not a way the ride is taken.
+            Departure("99", "99", "outbound", "C", null, at(2), "bus"),
+        )
+        val found = OnTheWay.boardTrains(ride, board, t0, mapOf("red" to red, "green" to green), t0)
+        assertEquals(listOf("red" to at(3), "green" to at(6)), found.trains.map { it.lineId to it.expectedArrival })
+        assertFalse(found.pending)
+        // A line whose route is still loading isn't guessed at, and says so.
+        val loading = OnTheWay.boardTrains(ride, board, t0, mapOf("red" to red), t0)
+        assertEquals(listOf("red"), loading.trains.map { it.lineId })
+        assertTrue(loading.pending)
+        // A line whose route failed can't vouch for its trains: said, not taken for none.
+        val failed = OnTheWay.boardTrains(ride, board, t0, mapOf("red" to red, "green" to null), t0)
+        assertEquals(listOf("red"), failed.trains.map { it.lineId })
+        assertTrue(failed.unresolved)
+        // A failed route is logged by its own fetch, so it names no miss here.
+        assertTrue(failed.misses.isEmpty())
+        assertFalse(found.unresolved)
+        assertTrue(found.misses.isEmpty())
+        // A loaded route that can't place a train's destination names it, for the debug log.
+        val lost = OnTheWay.boardTrains(ride, listOf(Departure("red", "Red", "outbound", "Nowhere", null, at(3), "tube")), t0, mapOf("red" to red), t0)
+        assertTrue(lost.unresolved)
+        assertEquals(setOf("red"), lost.misses.map { it.lineId }.toSet())
+    }
 }
+

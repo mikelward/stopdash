@@ -973,7 +973,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               only the leg's own stop (TfL's stops split by
               mode: `940G…` metro, `910G…` rail), never its interchange (`HUB…`), and from that
               leg's own source: TfL for a tube leg, National Rail only for a National Rail one.
-        - [ ] **Live departures for the rider's next step** (maintainer, 2026-09-27): the trip's
+        - [x] **Live departures for the rider's next step** (maintainer, 2026-09-27): the trip's
               screen shows the live departures that matter where the rider is now: the boarding
               stop's while walking to it or waiting, the change stop's while changing, from the
               leg's own stop and source (as in the route-view item above).

@@ -27,6 +27,7 @@ class ActiveTripTrackerTest {
     private fun at(minutes: Long) = t0.plus(Duration.ofMinutes(minutes))
     // How often a stop's board was asked for (each is a TfL request).
     private var boardReads = 0
+    private var boardTakes: Duration = Duration.ZERO
     private var now = t0
     // A monotonic clock (ms), apart from [now]: the wall clock can be set back, this can't.
     private var ticks = 0L
@@ -73,6 +74,8 @@ class ActiveTripTrackerTest {
         },
         arrivals = { stop ->
             boardReads++
+            // TfL (or the request pool) taking its time: the clock moves on during the read.
+            now = now.plus(boardTakes)
             if (stop in unknownStops) throw TflException.NotFound(null) else departures[stop].orEmpty()
         },
         vehicles = object : VehicleSource {
@@ -811,4 +814,176 @@ class ActiveTripTrackerTest {
         assertNull(tracker.trip.value)
         assertNull(kept)
     }
+
+    // The first stop placed, and a rider seen on its forecourt: synthetic positions.
+    private val stopAt = app.stopdash.domain.Coordinates(51.5, -0.12)
+    private val atTheStop = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.5003, -0.12), isFallback = false, accuracyMeters = 5f, ageMillis = 1_000L)
+
+    @Test
+    fun `a rider seen at the first stop is done walking there, and the train is picked at once`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        // A 3-minute walk estimated at Start, but the rider is already there.
+        tracker.start(TripRoute(listOf(ride.copy(fromAt = stopAt))), "C", readyAt = at(3))
+        assertTrue(tracker.progress.value is TripProgress.Walking)
+        now = at(1)
+        tracker.refresh(rider = atTheStop)
+        assertEquals("3", tracker.trip.value?.vehicleId)
+        assertEquals(TripProgress.Waiting(ride.copy(fromAt = stopAt), at(6)), tracker.progress.value)
+    }
+
+    @Test
+    fun `without a fix the walk still runs its time`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        tracker.start(TripRoute(listOf(ride.copy(fromAt = stopAt))), "C", readyAt = at(3))
+        now = at(1)
+        tracker.refresh()
+        assertTrue(tracker.progress.value is TripProgress.Walking)
+        assertEquals(0, tracker.trip.value?.legIndex)
+    }
+
+    @Test
+    fun `the next ride's board shows while walking and waiting, from one read a refresh, and goes once on board`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        tracker.start(route, "C", readyAt = at(3))
+        now = at(1)
+        tracker.refresh()
+        // Walking to A: its board is in, for the ride about to be taken.
+        assertEquals(ride, tracker.nextBoard.value?.ride)
+        assertEquals(listOf(train("3", 6)), tracker.nextBoard.value?.departures)
+        // The walk done and the train picked in one refresh: the board is read once, not twice.
+        now = at(3)
+        boardReads = 0
+        tracker.refresh()
+        assertEquals("3", tracker.trip.value?.vehicleId)
+        assertEquals(1, boardReads)
+        assertEquals(at(3), tracker.nextBoard.value?.fetchedAt)
+        // On board: nothing left to board, so no board.
+        now = at(7)
+        trains["3"] = listOf(call("B", 9), call("C", 14))
+        tracker.refresh()
+        assertNull(tracker.nextBoard.value)
+    }
+
+    @Test
+    fun `a board that can't be read keeps the last, which ages on the screen`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        tracker.start(route, "C", readyAt = at(3))
+        now = at(1)
+        tracker.refresh()
+        unknownStops += "A"
+        now = at(2)
+        tracker.refresh()
+        assertEquals(at(1), tracker.nextBoard.value?.fetchedAt)
+        // Kept, but said to have failed: not passed off as current.
+        assertEquals(true, tracker.nextBoard.value?.failed)
+        assertTrue(logged.none { it.contains("A ") || it.endsWith(" A") })
+        // Read again: current, and no longer failed.
+        unknownStops -= "A"
+        now = at(3)
+        tracker.refresh()
+        assertEquals(false, tracker.nextBoard.value?.failed)
+        assertEquals(at(3), tracker.nextBoard.value?.fetchedAt)
+    }
+
+    @Test
+    fun `a board that couldn't be read at all says so, rather than showing nothing`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        unknownStops += "A"
+        tracker.start(route, "C", readyAt = at(3))
+        now = at(1)
+        tracker.refresh()
+        val board = tracker.nextBoard.value
+        assertEquals(ride, board?.ride)
+        assertEquals(true, board?.failed)
+        assertNull(board?.fetchedAt)
+        assertTrue(board?.departures.orEmpty().isEmpty())
+    }
+
+    @Test
+    fun `a board that can't be read while waiting is asked for once a refresh, not again to pick a train`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        tracker.start(route, "C", readyAt = now)
+        unknownStops += "A"
+        boardReads = 0
+        tracker.refresh()
+        assertEquals(1, boardReads)
+        // Said on the screen and in the trip's state, not passed off as current.
+        assertTrue(tracker.failed.value)
+        assertEquals(true, tracker.nextBoard.value?.failed)
+        assertEquals("", tracker.trip.value?.vehicleId)
+    }
+
+    @Test
+    fun `a slow board read still serves the train pick in the same refresh`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        tracker.start(route, "C", readyAt = at(3))
+        now = at(3)
+        boardReads = 0
+        // The walk ends and the ride picks its train in one refresh; the read takes 20 s.
+        boardTakes = Duration.ofSeconds(20)
+        tracker.refresh()
+        assertEquals("3", tracker.trip.value?.vehicleId)
+        assertEquals(1, boardReads)
+    }
+
+    @Test
+    fun `a failed board read as the walk ends isn't asked for again to pick the train`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        tracker.start(route, "C", readyAt = at(3))
+        now = at(3)
+        unknownStops += "A"
+        boardReads = 0
+        // The walk runs out its time and the ride's train is wanted in the same refresh.
+        tracker.refresh()
+        assertEquals(1, tracker.trip.value?.legIndex)
+        assertEquals(1, boardReads)
+        assertTrue(tracker.failed.value)
+        assertEquals(true, tracker.nextBoard.value?.failed)
+    }
+
+    @Test
+    fun `off a train and walking on, the next ride's board is read in the same refresh`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "D", "D", at(15), at(20))
+        val second = TripLeg("tube", "blue", "Blue", "D", "D", "E", "E", at(22), at(30), path = listOf("E"))
+        departures["A"] = listOf(train("3", 6))
+        departures["D"] = listOf(Departure("blue", "Blue", "outbound", "E", null, at(24), "tube", vehicleId = "7"))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        tracker.start(TripRoute(listOf(ride, walkOn, second)), "E", readyAt = now)
+        tracker.refresh()
+        now = at(7)
+        trains["3"] = listOf(call("B", 9), call("C", 14))
+        tracker.refresh()
+        assertNull(tracker.nextBoard.value)
+        // Seen due at C, and now past it: off the train, walking to D.
+        now = at(15)
+        trains["3"] = emptyList()
+        tracker.refresh()
+        assertTrue(tracker.progress.value is TripProgress.Walking)
+        assertEquals(second, tracker.nextBoard.value?.ride)
+        assertEquals(departures["D"], tracker.nextBoard.value?.departures)
+    }
+
+    @Test
+    fun `seen at the stop as its board can't be read, the trip says waiting, not still walking`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(TripRoute(listOf(ride.copy(fromAt = stopAt))), "C", readyAt = at(3))
+        unknownStops += "A"
+        now = at(1)
+        tracker.refresh(rider = atTheStop)
+        assertEquals(1, tracker.trip.value?.legIndex)
+        assertEquals(TripProgress.Waiting(ride.copy(fromAt = stopAt), null), tracker.progress.value)
+        assertTrue(tracker.failed.value)
+    }
 }
+
