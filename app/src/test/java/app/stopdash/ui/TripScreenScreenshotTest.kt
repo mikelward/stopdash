@@ -33,7 +33,9 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onChild
 import androidx.compose.ui.test.filter
@@ -392,8 +394,18 @@ class TripScreenScreenshotTest {
     @Test
     fun a_route_cards_first_ride_times_are_part_of_the_card() {
         show(planned.copy(statuses = planned.statuses + ("windrush" to LineStatus("windrush", 6, "Severe Delays"))))
-        // The disrupted Windrush warns beside each card's pill: two cards start on the Windrush.
+        // The disrupted Windrush warns on each card's row: two cards start on the Windrush.
         assertEquals(2, composeRule.onAllNodesWithContentDescription("Severe Delays").fetchSemanticsNodes().size)
+        val glyphs = composeRule.onAllNodesWithContentDescription("Severe Delays", useUnmergedTree = true).fetchSemanticsNodes()
+        // Just before the row's times, as the main screen puts it (maintainer, 2026-09-28): each ⚠
+        // ends left of the times on its own row, past the row's middle, after the stop's name.
+        val times = composeRule.onAllNodesWithTag("firstRideTimes", useUnmergedTree = true).fetchSemanticsNodes().map { it.boundsInRoot }
+        val width = composeRule.onRoot().fetchSemanticsNode().boundsInRoot.width
+        glyphs.map { it.boundsInRoot }.forEach { glyph ->
+                val row = times.single { it.top < glyph.bottom && glyph.top < it.bottom }
+            assertTrue(glyph.right <= row.left)
+            assertTrue(glyph.left > width / 2)
+        }
         captureSnapshot("trip-routes-disrupted.png")
         // The first ride's times are part of the card (maintainer, 2026-09-27): none opens its line's
         // page, and tapped, they open the card's route.
