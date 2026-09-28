@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import androidx.lifecycle.SavedStateHandle
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
@@ -15,8 +16,8 @@ import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.TflException
-import androidx.lifecycle.SavedStateHandle
 import java.io.IOException
+import java.time.DayOfWeek
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
@@ -384,6 +385,52 @@ class FavoritePlacesViewModelTest {
             FavoritePlace("h", FavoriteKind.HOME, "Flat", Coordinates(51.5, -0.12), "Old place"),
             store.saved.single(),
         )
+    }
+
+    @Test
+    fun `a new place shows every day, and a turned-off day is saved`() = runTest {
+        val store = FakeStore()
+        val model = vm(store, FakeFinder(search = { listOf(oxford) }))
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.WORK, "Work")
+        assertEquals(FavoritePlace.EVERY_DAY, model.state.value.editor?.showOnDays)
+        model.onQueryChange("oxf")
+        advanceUntilIdle()
+        model.onPick(oxford)
+        model.onToggleDay(DayOfWeek.SATURDAY)
+        model.onToggleDay(DayOfWeek.SUNDAY)
+        model.commit()
+        advanceUntilIdle()
+        assertEquals(FavoritePlace.EVERY_DAY - DayOfWeek.SATURDAY - DayOfWeek.SUNDAY, store.saved.single().showOnDays)
+    }
+
+    @Test
+    fun `editing keeps a place's days, and a toggle turns one back on`() = runTest {
+        val work = FavoritePlace(
+            "w", FavoriteKind.WORK, "Work", Coordinates(51.5, -0.12),
+            showOnDays = setOf(DayOfWeek.MONDAY),
+        )
+        val store = FakeStore(listOf(work))
+        val model = vm(store, FakeFinder())
+        advanceUntilIdle()
+        model.startEdit(work)
+        assertEquals(setOf(DayOfWeek.MONDAY), model.state.value.editor?.showOnDays)
+        model.onToggleDay(DayOfWeek.TUESDAY)
+        model.commit()
+        advanceUntilIdle()
+        assertEquals(setOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY), store.saved.single().showOnDays)
+    }
+
+    @Test
+    fun `a restored draft keeps its days`() = runTest {
+        val saved = SavedStateHandle()
+        val work = FavoritePlace("w", FavoriteKind.WORK, "Work", Coordinates(51.5, -0.12))
+        val first = FavoritePlacesViewModel(FakeStore(listOf(work)), FakeFinder(), io = dispatcher, savedState = saved)
+        advanceUntilIdle()
+        first.startEdit(work)
+        first.onToggleDay(DayOfWeek.SUNDAY)
+        val restored = FavoritePlacesViewModel(FakeStore(listOf(work)), FakeFinder(), io = dispatcher, savedState = saved)
+        assertEquals(FavoritePlace.EVERY_DAY - DayOfWeek.SUNDAY, restored.state.value.editor?.showOnDays)
     }
 
     @Test

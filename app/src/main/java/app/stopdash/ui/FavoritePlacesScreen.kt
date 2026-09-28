@@ -1,8 +1,11 @@
 package app.stopdash.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,6 +17,8 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -24,10 +29,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,6 +49,9 @@ import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.UkPostcode
+import java.time.DayOfWeek
+import java.time.format.TextStyle
+import java.time.temporal.WeekFields
 
 /**
  * The favorite-places editor (SPEC D9), reached from Settings and hosted as an activity-level overlay
@@ -63,6 +76,7 @@ fun FavoritePlacesScreen(
     onResolvePostcode: () -> Unit = {},
     onPickCandidate: (PlaceCandidate) -> Unit = {},
     onLabelChange: (String) -> Unit,
+    onToggleDay: (DayOfWeek) -> Unit = {},
     onSave: () -> Unit,
     onCancelEditor: () -> Unit,
     onRetrySearch: () -> Unit = {},
@@ -135,6 +149,7 @@ fun FavoritePlacesScreen(
                         onResolvePostcode = onResolvePostcode,
                         onPickCandidate = onPickCandidate,
                         onLabelChange = onLabelChange,
+                        onToggleDay = onToggleDay,
                         onSave = onSave,
                         onRetrySearch = onRetrySearch,
                     )
@@ -298,6 +313,7 @@ private fun PlaceEditor(
     onResolvePostcode: () -> Unit,
     onPickCandidate: (PlaceCandidate) -> Unit,
     onLabelChange: (String) -> Unit,
+    onToggleDay: (DayOfWeek) -> Unit,
     onSave: () -> Unit,
     onRetrySearch: () -> Unit,
 ) {
@@ -400,6 +416,8 @@ private fun PlaceEditor(
             modifier = Modifier.fillMaxWidth().testTag("placeLabelField"),
         )
         Spacer(modifier = Modifier.height(8.dp))
+        ShowOnDaysRow(selected = editor.showOnDays, enabled = !editor.saving, onToggle = onToggleDay)
+        Spacer(modifier = Modifier.height(8.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End,
@@ -415,6 +433,52 @@ private fun PlaceEditor(
         }
     }
 }
+
+/**
+ * The days the place's chip shows on the near-me list: seven equal toggles on one row, starting on the
+ * locale's first day of the week, each a letter as the Clock app's alarm days are — so the row fits a
+ * narrow phone without wrapping — with the full day name for a screen reader.
+ */
+@Composable
+private fun ShowOnDaysRow(selected: Set<DayOfWeek>, enabled: Boolean, onToggle: (DayOfWeek) -> Unit) {
+    val locale = LocalConfiguration.current.locales[0]
+    val days = remember(locale) { daysOfWeekFrom(WeekFields.of(locale).firstDayOfWeek) }
+    Text(
+        text = stringResource(R.string.favorite_place_show_on_main),
+        style = MaterialTheme.typography.bodyLarge,
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth().testTag("placeShowOnDays"),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        days.forEach { day ->
+            val on = day in selected
+            val colors = MaterialTheme.colorScheme
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+                    .clip(CircleShape)
+                    .background(if (on) colors.secondaryContainer else Color.Transparent)
+                    .border(1.dp, if (on) colors.secondaryContainer else colors.outline, CircleShape)
+                    .toggleable(value = on, enabled = enabled, role = Role.Checkbox, onValueChange = { onToggle(day) })
+                    .semantics { contentDescription = day.getDisplayName(TextStyle.FULL, locale) }
+                    .testTag("placeDay-${day.name}"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = day.getDisplayName(TextStyle.NARROW, locale),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (on) colors.onSecondaryContainer else colors.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/** The seven days in order, starting from [first]. */
+internal fun daysOfWeekFrom(first: DayOfWeek): List<DayOfWeek> = (0L until 7L).map { first.plus(it) }
 
 /** A write-failure notice with a Dismiss action, shown above the list when a save/delete threw. */
 @Composable

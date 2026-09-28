@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import java.time.DayOfWeek
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -95,5 +96,29 @@ class FavoriteShortcutsTest {
         val b = place("b", 50.0)
         val c = place("c", 3_000.0)
         assertEquals(listOf(a, c), FavoriteShortcuts.shown(listOf(a, b, c), keys(b)))
+    }
+
+    @Test
+    fun `a place off today keeps its memory, so it stays hidden in the band on its next day`() {
+        // Work shows on Tuesdays only. Monday, the rider is 150 m from it: remembered as "at it", and
+        // not on the row either way.
+        val work = place("work", 150.0).copy(showOnDays = setOf(DayOfWeek.TUESDAY))
+        val monday = FavoriteShortcuts.hiddenIds(listOf(work), here, precise = true)
+        assertEquals(keys(work), monday)
+        assertTrue(FavoriteShortcuts.shown(listOf(work), monday, today = DayOfWeek.MONDAY).isEmpty())
+        // Tuesday, 220 m away — inside the band — it stays hidden rather than reappearing.
+        val south70 = Coordinates(here.latitude - 70.0 / 111_195.0, here.longitude)
+        val tuesday = FavoriteShortcuts.hiddenIds(listOf(work), south70, precise = true, hiddenBefore = monday)
+        assertEquals(keys(work), tuesday)
+        assertTrue(FavoriteShortcuts.shown(listOf(work), tuesday, today = DayOfWeek.TUESDAY).isEmpty())
+    }
+
+    @Test
+    fun `shown on a day leaves out the places off that day, and no day leaves them all`() {
+        val home = place("home", 1_000.0)
+        val work = place("work", 2_000.0).copy(showOnDays = setOf(DayOfWeek.MONDAY))
+        assertEquals(listOf(home), FavoriteShortcuts.shown(listOf(home, work), emptySet(), today = DayOfWeek.SUNDAY))
+        assertEquals(listOf(home, work), FavoriteShortcuts.shown(listOf(home, work), emptySet(), today = DayOfWeek.MONDAY))
+        assertEquals(listOf(home, work), FavoriteShortcuts.shown(listOf(home, work), emptySet()))
     }
 }

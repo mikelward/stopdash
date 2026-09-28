@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import java.time.DayOfWeek
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -74,5 +75,24 @@ class FavoritePlacesTest {
         assertEquals(listOf("h", "c2"), FavoritePlaces.remove(list, "c1").map { it.id })
         // Removing an absent id is a no-op.
         assertEquals(list, FavoritePlaces.remove(list, "missing"))
+    }
+
+    @Test
+    fun `the main screen offers only the places set to show today, in list order`() {
+        val home = FavoritePlace("h", FavoriteKind.HOME, "Home", Coordinates(51.5, -0.12))
+        val work = FavoritePlace(
+            "w", FavoriteKind.WORK, "Work", Coordinates(51.51, -0.1),
+            showOnDays = setOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY),
+        )
+        val never = FavoritePlace("n", FavoriteKind.CUSTOM, "Gym", Coordinates(51.52, -0.11), showOnDays = emptySet())
+        val places = listOf(home, work, never)
+        assertEquals(listOf(home, work), FavoritePlaces.onMainScreen(places, DayOfWeek.MONDAY))
+        assertEquals(listOf(home), FavoritePlaces.onMainScreen(places, DayOfWeek.SATURDAY))
+    }
+
+    @Test
+    fun `a place shows every day by default`() {
+        val home = FavoritePlace("h", FavoriteKind.HOME, "Home", Coordinates(51.5, -0.12))
+        DayOfWeek.values().forEach { assertEquals(true, home.showsOn(it)) }
     }
 }

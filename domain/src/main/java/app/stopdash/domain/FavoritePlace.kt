@@ -1,5 +1,7 @@
 package app.stopdash.domain
 
+import java.time.DayOfWeek
+
 /**
  * The kind of a saved favorite place (SPEC D9). HOME, WORK and SCHOOL are single named slots;
  * CUSTOM is a user-named place, and there may be any number of them.
@@ -18,6 +20,10 @@ enum class FavoriteKind { HOME, WORK, SCHOOL, CUSTOM }
  * [id] is stable across edits so a favorite can be edited or removed by identity — a CUSTOM place
  * especially, since several may coexist. HOME, WORK and SCHOOL are singletons: [FavoritePlaces]
  * keeps at most one of each.
+ *
+ * [showOnDays] are the days the place is offered as a one-tap route chip on the near-me list (SPEC
+ * *Routing from the near-me list*) — Work on weekdays, say. Every day by default, so a place saved
+ * before the choice existed keeps its chip; empty means never.
  */
 data class FavoritePlace(
     val id: String,
@@ -25,7 +31,15 @@ data class FavoritePlace(
     val label: String,
     val coordinate: Coordinates,
     val placeName: String? = null,
-)
+    val showOnDays: Set<DayOfWeek> = EVERY_DAY,
+) {
+    /** Whether the place's chip shows on the near-me list on [day]. */
+    fun showsOn(day: DayOfWeek): Boolean = day in showOnDays
+
+    companion object {
+        val EVERY_DAY: Set<DayOfWeek> = DayOfWeek.values().toSet()
+    }
+}
 
 /**
  * Pure operations over the ordered favorites list — JVM-testable, no Android. The list order is the
@@ -55,6 +69,10 @@ object FavoritePlaces {
             places + place
         }
     }
+
+    /** The places whose chip shows on the near-me list on [day], in list order. */
+    fun onMainScreen(places: List<FavoritePlace>, day: DayOfWeek): List<FavoritePlace> =
+        places.filter { it.showsOn(day) }
 
     /** Remove the favorite with [id], if present. */
     fun remove(places: List<FavoritePlace>, id: String): List<FavoritePlace> =

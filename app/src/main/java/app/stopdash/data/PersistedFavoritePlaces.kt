@@ -3,6 +3,7 @@ package app.stopdash.data
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
+import java.time.DayOfWeek
 import kotlinx.serialization.Serializable
 
 /**
@@ -31,7 +32,10 @@ internal data class PersistedFavoritePlaces(
         /** The current on-disk format. Bump when a field's meaning changes incompatibly, or when a
          *  new [FavoriteKind] is added (so an older build reads the file as Unavailable, not as a
          *  set with an unknown kind). */
-        const val CURRENT_VERSION = 1
+        const val CURRENT_VERSION = 2
+
+        /** The oldest format this build still reads (v1: no per-place days, which read as every day). */
+        const val OLDEST_READABLE_VERSION = 1
     }
 }
 
@@ -43,6 +47,12 @@ internal data class PersistedFavoritePlace(
     val lat: Double,
     val lon: Double,
     val placeName: String? = null,
+    // The days the chip shows, as ISO day numbers (Monday = 1). Null means every day, which is how a v1
+    // file (from before the field existed) reads. Added in v2 rather than within v1: a v1 build would
+    // read a newer file, ignore this field, and write it back without it on its next edit — resetting
+    // every schedule after a rollback (Codex). At v2 that build reads the file as Unavailable and
+    // leaves it alone.
+    val showOnDays: List<Int>? = null,
 )
 
 internal fun List<FavoritePlace>.toPersisted(): PersistedFavoritePlaces =
@@ -55,6 +65,10 @@ internal fun List<FavoritePlace>.toPersisted(): PersistedFavoritePlaces =
                 lat = it.coordinate.latitude,
                 lon = it.coordinate.longitude,
                 placeName = it.placeName,
+                showOnDays = it.showOnDays
+                    .takeUnless { days -> days == FavoritePlace.EVERY_DAY }
+                    ?.map(DayOfWeek::getValue)
+                    ?.sorted(),
             )
         },
     )
@@ -64,13 +78,14 @@ internal fun List<FavoritePlace>.toPersisted(): PersistedFavoritePlaces =
  * then reads it as [app.stopdash.domain.FavoritePlacesSet.Unavailable] and preserves the file rather
  * than overwriting it (see [DataStoreFavoritePlacesStore]).
  *
- * With v1 the only schema, a decode failure is genuine corruption (handled by the serializer); a
- * future incompatible bump MUST first add a version check here. An unknown [kind] string within a
+ * v1 and v2 share one shape (v2 adds the optional per-place days, absent in v1), so a decode failure
+ * is genuine corruption (handled by the serializer); a future incompatible bump MUST first add a
+ * version check here. An unknown [kind] string within a
  * known version falls back to [FavoriteKind.CUSTOM] so the user's place is kept and usable rather
  * than dropped (a new kind ships behind a version bump, which is caught above).
  */
 internal fun PersistedFavoritePlaces.toDomain(): List<FavoritePlace>? {
-    if (version != PersistedFavoritePlaces.CURRENT_VERSION) return null
+    if (version !in PersistedFavoritePlaces.OLDEST_READABLE_VERSION..PersistedFavoritePlaces.CURRENT_VERSION) return null
     return places.map {
         FavoritePlace(
             id = it.id,
@@ -78,6 +93,11 @@ internal fun PersistedFavoritePlaces.toDomain(): List<FavoritePlace>? {
             label = it.label,
             coordinate = Coordinates(it.lat, it.lon),
             placeName = it.placeName,
+            // A number outside 1..7 is dropped rather than failing the whole list.
+            showOnDays = it.showOnDays
+                ?.mapNotNull { day -> day.takeIf { it in 1..7 }?.let(DayOfWeek::of) }
+                ?.toSet()
+                ?: FavoritePlace.EVERY_DAY,
         )
     }
 }

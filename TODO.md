@@ -874,6 +874,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             and To… paths do; a place within 200 m of an accurate fix is left out (back past 250 m),
             and an approximate fix (or an approximate-only grant) hides nothing. Needs a device check that the chip row reads well
             above the journey cards and that the radius feels right at a real front door.
+        - [x] **Days of the week per place** (maintainer, 2026-09-28): each place picks the days its
+              chip shows on (every day by default), in its editor. Needs a device check that the day
+              row reads well and that a chip comes and goes at midnight with the app open.
         - [ ] **Favorite chips on the "no stops nearby" screen** (Codex on #315): with nothing in
               range the list gives way to the location gate, which has no chips. A chip there needs
               the trip from here to plan from the rider's coordinate rather than from nearby stops

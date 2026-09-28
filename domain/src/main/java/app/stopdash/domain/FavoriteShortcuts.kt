@@ -1,5 +1,7 @@
 package app.stopdash.domain
 
+import java.time.DayOfWeek
+
 /**
  * Which saved favorite places the near-me list offers as one-tap routes (SPEC D9 → *Routing from
  * the near-me list*): every favorite, less the ones the rider is already at — "Home" while standing
@@ -72,8 +74,18 @@ object FavoriteShortcuts {
 
     /**
      * The chips to show: [places] in their saved order, less those in [hidden] — but every one of
-     * them on an imprecise fix, where hiding would be a guess ([hiddenIds] keeps the memory meanwhile).
+     * them on an imprecise fix, where hiding would be a guess ([hiddenIds] keeps the memory meanwhile)
+     * — and, given [today], less those not set to show that day. The day is applied here, after the
+     * memory, rather than to the places [hiddenIds] sees: a place off today keeps its "already there"
+     * state, so it doesn't come back inside the 200–250 m band on its next day (Codex).
      */
-    fun shown(places: List<FavoritePlace>, hidden: Set<String>, precise: Boolean = true): List<FavoritePlace> =
-        if (!precise) places else places.filterNot { memoryKey(it) in hidden }
+    fun shown(
+        places: List<FavoritePlace>,
+        hidden: Set<String>,
+        precise: Boolean = true,
+        today: DayOfWeek? = null,
+    ): List<FavoritePlace> {
+        val near = if (!precise) places else places.filterNot { memoryKey(it) in hidden }
+        return if (today == null) near else FavoritePlaces.onMainScreen(near, today)
+    }
 }

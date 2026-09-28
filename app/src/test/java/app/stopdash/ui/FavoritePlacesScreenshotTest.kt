@@ -5,8 +5,13 @@ import android.graphics.Canvas
 import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
@@ -15,6 +20,8 @@ import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.StationMatch
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
+import java.time.DayOfWeek
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -41,7 +48,7 @@ class FavoritePlacesScreenshotTest {
     private val oxford = StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"), 51.5, -0.12)
     private val positionless = StationMatch("490000000A", "Somewhere Road", listOf("bus"))
 
-    private fun show(state: FavoritePlacesViewModel.State) {
+    private fun show(state: FavoritePlacesViewModel.State, onToggleDay: (DayOfWeek) -> Unit = {}) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 FavoritePlacesScreen(
@@ -54,6 +61,7 @@ class FavoritePlacesScreenshotTest {
                     onQueryChange = {},
                     onPick = {},
                     onLabelChange = {},
+                    onToggleDay = onToggleDay,
                     onSave = {},
                     onCancelEditor = {},
                 )
@@ -167,6 +175,32 @@ class FavoritePlacesScreenshotTest {
         composeRule.onNodeWithText("Postcode X1 9XX").assertIsDisplayed()
         composeRule.onNodeWithText("X1 9XY").assertIsDisplayed()
         captureSnapshot("favorite-places-editor-postcode.png")
+    }
+
+    @Test
+    fun favorite_places_editor_weekdays() {
+        // A Work place set to weekdays: the weekend chips are off, and tapping one reports that day.
+        val toggled = mutableListOf<DayOfWeek>()
+        show(
+            FavoritePlacesViewModel.State(
+                places = FavoritePlacesSet.Loaded(emptyList()),
+                loaded = true,
+                editor = FavoritePlacesViewModel.Editor(
+                    kind = FavoriteKind.WORK,
+                    existingId = "w",
+                    label = "Work",
+                    coordinate = Coordinates(51.5, -0.12),
+                    placeName = "Oxford Circus",
+                    showOnDays = FavoritePlace.EVERY_DAY - DayOfWeek.SATURDAY - DayOfWeek.SUNDAY,
+                ),
+            ),
+            onToggleDay = { toggled += it },
+        )
+        composeRule.onNodeWithText("Show on main screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("placeDay-MONDAY").assertIsOn()
+        composeRule.onNodeWithTag("placeDay-SATURDAY").assertIsOff().performClick()
+        assertEquals(listOf(DayOfWeek.SATURDAY), toggled)
+        captureSnapshot("favorite-places-editor-weekdays.png")
     }
 
     private fun captureSnapshot(name: String, widthPx: Int = 1080, heightPx: Int = 1920) {

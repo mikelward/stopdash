@@ -17,6 +17,7 @@ import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.TflException
 import app.stopdash.domain.UkPostcode
+import java.time.DayOfWeek
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -131,6 +132,8 @@ class FavoritePlacesViewModel(
         val postcodeNoResults: Boolean = false,
         // The lookup failed (TfL unreachable): the row says so and stays tappable to retry.
         val postcodeFailed: Boolean = false,
+        // The days this place is offered as a route chip on the near-me list; every day for a new place.
+        val showOnDays: Set<DayOfWeek> = FavoritePlace.EVERY_DAY,
     ) {
         val editing: Boolean get() = existingId != null
         val canSave: Boolean get() = coordinate != null && label.isNotBlank() && !saving
@@ -198,6 +201,7 @@ class FavoritePlacesViewModel(
                 labelFromPick = place.placeName != null && place.label == place.placeName,
                 coordinate = place.coordinate,
                 placeName = place.placeName,
+                showOnDays = place.showOnDays,
             ),
         )
     }
@@ -216,6 +220,12 @@ class FavoritePlacesViewModel(
     }
 
     /** Re-run the current query's search after a failure, without the user retyping (Codex). */
+    /** Turn [day] on or off for the place's chip on the near-me list. */
+    fun onToggleDay(day: DayOfWeek) {
+        if (savingNow()) return // a save is in flight; ignore edits so completion can't discard them
+        updateEditor { it.copy(showOnDays = if (day in it.showOnDays) it.showOnDays - day else it.showOnDays + day) }
+    }
+
     fun retrySearch() {
         if (savingNow()) return
         _state.value.editor?.query?.let { startSearch(it) }
@@ -441,6 +451,7 @@ class FavoritePlacesViewModel(
             label = label,
             coordinate = coordinate,
             placeName = editor.placeName,
+            showOnDays = editor.showOnDays,
         )
         search?.cancel()
         updateEditor { it.copy(saving = true) }
@@ -582,6 +593,7 @@ class FavoritePlacesViewModel(
         savedState[KEY_LAT] = editor?.coordinate?.latitude
         savedState[KEY_LON] = editor?.coordinate?.longitude
         savedState[KEY_PLACE] = editor?.placeName
+        savedState[KEY_SHOW_ON_DAYS] = editor?.showOnDays?.map(DayOfWeek::getValue)?.toIntArray()
     }
 
     private fun restoreEditor(): Editor? {
@@ -597,6 +609,10 @@ class FavoritePlacesViewModel(
             labelFromPick = savedState.get<Boolean>(KEY_LABEL_FROM_PICK) ?: false,
             coordinate = if (lat != null && lon != null) Coordinates(lat, lon) else null,
             placeName = savedState.get<String>(KEY_PLACE),
+            showOnDays = savedState.get<IntArray>(KEY_SHOW_ON_DAYS)
+                ?.filter { it in 1..7 }?.map(DayOfWeek::of)
+                ?.toSet()
+                ?: FavoritePlace.EVERY_DAY,
         )
     }
 
@@ -611,6 +627,7 @@ class FavoritePlacesViewModel(
         private const val KEY_LAT = "editor.lat"
         private const val KEY_LON = "editor.lon"
         private const val KEY_PLACE = "editor.placeName"
+        private const val KEY_SHOW_ON_DAYS = "editor.showOnDays"
     }
 }
 
