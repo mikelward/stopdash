@@ -94,6 +94,14 @@ fun StationSearchScreen(
     onOpenPlace: ((TripDestination.Place) -> Unit)? = null,
     // Re-reads the saved places, for the Retry shown when their read failed. Null hides the retry.
     onRetryPlaces: (() -> Unit)? = null,
+    // Set where the search picks where a trip starts (From…): "Here", behind the crosshair, heads the
+    // list before anything is typed, and taps back to the rider's position (maintainer, 2026-09-28).
+    // Null leaves it out, as the To… destination search does.
+    onPickHere: (() -> Unit)? = null,
+    // A To… destination search's From chip, naming where the trip starts (null: "Here"); a tap
+    // changes it (maintainer, 2026-09-28). Null [onChangeFrom] shows no chip.
+    fromStation: String? = null,
+    onChangeFrom: (() -> Unit)? = null,
 ) {
     BackHandler(onBack = onBack)
     val focus = remember { FocusRequester() }
@@ -137,6 +145,9 @@ fun StationSearchScreen(
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            if (onChangeFrom != null) {
+                FromChip(fromStation, onChangeFrom, Modifier.padding(horizontal = 16.dp))
+            }
             // Keeps the previous matches in view while the next search runs, so typing doesn't blank
             // the list on every letter; the bar says a newer answer is on its way.
             if (state.searching) {
@@ -148,9 +159,10 @@ fun StationSearchScreen(
                 StationSearchViewModel.Result.Idle -> when {
                     // Before anything is typed, the user's own stops, to pick without typing. Nothing
                     // until they're read, so the prompt doesn't flash up and then give way.
-                    state.query.isBlank() && !state.yoursRead -> Unit
+                    // "Here" needs nothing read, so a From… search lists it at once and the rest follow.
+                    state.query.isBlank() && !state.yoursRead && onPickHere == null -> Unit
                     state.query.isBlank() && (
-                        state.favorites.isNotEmpty() || state.recent.isNotEmpty() ||
+                        onPickHere != null || state.favorites.isNotEmpty() || state.recent.isNotEmpty() ||
                             (onOpenPlace != null && (state.favoritePlaces.isNotEmpty() || state.favoritePlacesFailed))
                         ) ->
                         YourStopsList(
@@ -161,6 +173,7 @@ fun StationSearchScreen(
                             onOpenStation = onOpenStation,
                             onOpenPlace = onOpenPlace,
                             onRetryPlaces = onRetryPlaces,
+                            onPickHere = onPickHere,
                         )
                     else -> Message(stringResource(R.string.station_search_prompt))
                 }
@@ -249,6 +262,7 @@ private fun YourStopsList(
     onOpenStation: (StationMatch) -> Unit,
     onOpenPlace: ((TripDestination.Place) -> Unit)?,
     onRetryPlaces: (() -> Unit)?,
+    onPickHere: (() -> Unit)? = null,
 ) {
     val listState = rememberLazyListState()
     LazyColumn(
@@ -258,6 +272,12 @@ private fun YourStopsList(
             .scrollEdgeCue(listState, scrollCueColors(MaterialTheme.colorScheme.background)),
         state = listState,
     ) {
+        if (onPickHere != null) {
+            item(key = "here") {
+                HereRow(onPickHere)
+                HorizontalDivider()
+            }
+        }
         if (onOpenPlace != null && (favoritePlaces.isNotEmpty() || favoritePlacesFailed)) {
             item(key = "heading-places") { SectionHeading(stringResource(R.string.station_search_places)) }
             if (favoritePlaces.isNotEmpty()) {
@@ -286,6 +306,24 @@ private fun YourStopsList(
     }
 }
 
+
+/** "Here" behind the crosshair, the rider's own position, at a place row's density. */
+@Composable
+private fun HereRow(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .heightIn(min = 48.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .testTag("stationSearchHere"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(CrosshairIcon, contentDescription = null, modifier = Modifier.size(24.dp))
+        Spacer(modifier = Modifier.width(16.dp))
+        Text(stringResource(R.string.from_here), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+    }
+}
 
 /** A section heading over one group of the pre-query list ("Places", "Recent", "Starred"). */
 @Composable

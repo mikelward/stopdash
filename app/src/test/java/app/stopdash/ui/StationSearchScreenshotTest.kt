@@ -138,6 +138,91 @@ class StationSearchScreenshotTest {
     }
 
     @Test
+    fun station_search_from_offers_here() {
+        // The From… search heads its list with "Here", the rider's own position, above the recent stops
+        // (maintainer, 2026-09-28). Public station names only.
+        var here = false
+        composeRule.setContent {
+            StopDashTheme {
+                StationSearchScreen(
+                    state = StationSearchViewModel.State(
+                        recent = listOf(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))),
+                        yoursRead = true,
+                    ),
+                    onQueryChange = {},
+                    onOpenStation = {},
+                    onRetry = {},
+                    onBack = {},
+                    autoFocus = false,
+                    onPickHere = { here = true },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        val hereTop = composeRule.onNodeWithTag("stationSearchHere").fetchSemanticsNode().boundsInRoot.top
+        assertTrue(hereTop < composeRule.onNodeWithText("Recent").fetchSemanticsNode().boundsInRoot.top)
+        captureSnapshot("station-search-from-here.png")
+        composeRule.onNodeWithTag("stationSearchHere").performClick()
+        assertTrue(here)
+    }
+
+    @Test
+    fun station_search_from_offers_here_before_the_saved_stops_are_read() {
+        // "Here" needs no read, so it shows on the first frame while the recent and starred stops load.
+        composeRule.setContent {
+            StopDashTheme {
+                StationSearchScreen(
+                    state = StationSearchViewModel.State(yoursRead = false),
+                    onQueryChange = {},
+                    onOpenStation = {},
+                    onRetry = {},
+                    onBack = {},
+                    autoFocus = false,
+                    onPickHere = {},
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("stationSearchHere").assertIsDisplayed()
+    }
+
+    @Test
+    fun station_search_from_here_hidden_once_typing_and_on_to() {
+        // Typing lists only the matches, and the To… search offers no "Here" at all.
+        show(StationSearchViewModel.State(query = "kings", result = StationSearchViewModel.Result.Matches(matches)))
+        composeRule.onNodeWithTag("stationSearchHere").assertDoesNotExist()
+    }
+
+    @Test
+    fun station_search_to_from_chip() {
+        // The To… search's From chip names where the trip starts ("Here" by default) and changes it.
+        var changed = false
+        composeRule.setContent {
+            StopDashTheme {
+                StationSearchScreen(
+                    state = StationSearchViewModel.State(
+                        recent = listOf(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))),
+                        yoursRead = true,
+                    ),
+                    onQueryChange = {},
+                    onOpenStation = {},
+                    onRetry = {},
+                    onBack = {},
+                    autoFocus = false,
+                    hint = "To station or stop",
+                    onChangeFrom = { changed = true },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("From Here").assertIsDisplayed()
+        composeRule.onNodeWithTag("stationSearchHere").assertDoesNotExist()
+        captureSnapshot("station-search-to-from-chip.png")
+        composeRule.onNodeWithTag("fromChip").performClick()
+        assertTrue(changed)
+    }
+
+    @Test
     fun station_search_to_places_error() {
         // The saved places couldn't be read: the To… picker says so with a Retry rather than hiding the
         // section as "no places", and station search stays usable below.
