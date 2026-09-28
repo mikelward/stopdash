@@ -300,6 +300,28 @@ class MainActivity : ComponentActivity() {
 
     // The location gate: resolves the nearby stops (an on-demand, location-sending action)
     // before the departures view, which then refreshes those stops location-free.
+    // A Recent row's *Save* (a station search's long-press menu): the favorite-places editor opens over
+    // the search, pre-filled with this stop, and closes back to it. Consumed as soon as it opens, and
+    // kept in the saved instance state until then, so a rotation or process death between the tap and
+    // the editor opening can't drop it (Codex). The stop stays on the device, like the editor's draft.
+    private val saveAsFavorite = mutableStateOf<StationMatch?>(null)
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        saveAsFavorite.value?.let { match ->
+            outState.putBundle(
+                PENDING_SAVE_KEY,
+                Bundle().apply {
+                    putString("id", match.id)
+                    putString("name", match.name)
+                    putStringArrayList("modes", ArrayList(match.modes))
+                    match.latitude?.let { putDouble("lat", it) }
+                    match.longitude?.let { putDouble("lon", it) }
+                },
+            )
+        }
+    }
+
     private val nearbyViewModel: NearbyStopsViewModel by viewModels {
         viewModelFactory {
             initializer {
@@ -353,6 +375,17 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        savedInstanceState?.getBundle(PENDING_SAVE_KEY)?.let { saved ->
+            val id = saved.getString("id")
+            val name = saved.getString("name")
+            if (id != null && name != null) {
+                saveAsFavorite.value = StationMatch(
+                    id, name, saved.getStringArrayList("modes").orEmpty(),
+                    saved.takeIf { it.containsKey("lat") }?.getDouble("lat"),
+                    saved.takeIf { it.containsKey("lon") }?.getDouble("lon"),
+                )
+            }
+        }
         enableEdgeToEdge()
         // Read once: a recreation (rotation) keeps the overlay's own saved state instead.
         if (savedInstanceState == null) takeOpenOnTheWay(intent)
@@ -441,6 +474,11 @@ class MainActivity : ComponentActivity() {
                 // The favorite-places editor (SPEC D9), opened from Settings and layered above it, so
                 // its Back returns to Settings.
                 var favoritePlacesOpen by rememberSaveable { mutableStateOf(false) }
+                // Whether it was opened by a Recent row's *Save*, so it closes back to the search
+                // once that one place is saved or canceled, rather than showing the whole list.
+                var favoriteFromSearch by rememberSaveable { mutableStateOf(false) }
+                val pendingSave by saveAsFavorite
+                LaunchedEffect(pendingSave) { if (pendingSave != null) favoritePlacesOpen = true }
                 val openLicenses = { licensesOpen = true }
                 // "Find a station" (SPEC *Finding stops*): the search, and the station opened from it
                 // (its TfL id and name). Hosted as overlays like Settings, so the near-me departures
@@ -725,6 +763,21 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                 )
+                                // A Recent row's *Save*: start a new place pre-filled with that stop
+                                // (its name becomes the label, as a picked stop's does).
+                                LaunchedEffect(pendingSave) {
+                                    val match = pendingSave ?: return@LaunchedEffect
+                                    saveAsFavorite.value = null
+                                    favoritePlacesModel.startAddFrom(match)
+                                    favoriteFromSearch = true
+                                }
+                                // ...and once that editor is saved or canceled, back to the search.
+                                LaunchedEffect(favoriteFromSearch) {
+                                    if (!favoriteFromSearch) return@LaunchedEffect
+                                    favoritePlacesModel.state.first { it.editor == null }
+                                    favoriteFromSearch = false
+                                    favoritePlacesOpen = false
+                                }
                                 val favoritePlacesState by favoritePlacesModel.state
                                     .collectAsStateWithLifecycle()
                                 FavoritePlacesScreen(
@@ -1745,6 +1798,7 @@ class MainActivity : ComponentActivity() {
                         // The user's own stops, from the device: listed before typing, matched as they type.
                         loadYours = { loadYourStops(appContext, recents) },
                         recordOpen = { recents.add(it) },
+                        forgetRecent = { recents.remove(it.id) },
                         warn = ::logDepartureWarning,
                     )
                 }
@@ -1776,6 +1830,9 @@ class MainActivity : ComponentActivity() {
                 },
                 onRetry = search::retry,
                 onBack = closeSearch,
+                onForgetRecent = search::onForgetRecent,
+                onSaveFavorite = { saveAsFavorite.value = it },
+                onForgetFailureShown = search::onForgetFailureShown,
             )
             return
         }
@@ -2058,6 +2115,7 @@ class MainActivity : ComponentActivity() {
                             { emptyList() }
                         },
                         recordOpen = { recents.add(it) },
+                        forgetRecent = { recents.remove(it.id) },
                         warn = ::logDepartureWarning,
                     )
                 }
@@ -2109,6 +2167,9 @@ class MainActivity : ComponentActivity() {
                 // Re-reads the saved places for the Retry when their read failed (offered only where the
                 // picker shows them).
                 onRetryPlaces = onOpenPlace?.let { { search.refreshYours() } },
+                onForgetRecent = search::onForgetRecent,
+                onSaveFavorite = { saveAsFavorite.value = it },
+                onForgetFailureShown = search::onForgetFailureShown,
             )
             return
         }
@@ -2544,6 +2605,9 @@ class MainActivity : ComponentActivity() {
 
         // The Planner takes stop and station ids but not an interchange's.
         private const val HUB_PREFIX = "HUB"
+
+        // A Recent row's *Save* not yet opened in the editor ([saveAsFavorite]).
+        private const val PENDING_SAVE_KEY = "pending-favorite-save"
 
         // Keeps the favorite a trip is open to across process death (like the To… destination): by its
         // coordinate and name. Saved instance state stays on the device — the coordinate leaves only to

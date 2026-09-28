@@ -198,6 +198,18 @@ class FavoritePlacesViewModel(
         )
     }
 
+    /**
+     * Begin adding a custom place for [match] (a station search's Recent row, *Save*): the stop is
+     * the query and the one result, so while its position is looked up — and if that fails — it
+     * shows as its own row with the spinner, the retry or "no location", as any picked result does,
+     * rather than leaving a blank editor (Codex). Its name becomes the label once placed.
+     */
+    fun startAddFrom(match: StationMatch) {
+        startAdd(FavoriteKind.CUSTOM, "")
+        updateEditor { it.copy(query = match.name, results = listOf(match)) }
+        onPick(match)
+    }
+
     /** Begin editing [place]; its saved location stands until the user picks a new one. */
     fun startEdit(place: FavoritePlace) {
         search?.cancel()

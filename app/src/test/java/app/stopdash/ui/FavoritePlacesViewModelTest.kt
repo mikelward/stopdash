@@ -139,6 +139,22 @@ class FavoritePlacesViewModelTest {
     }
 
     @Test
+    fun `a stop saved from Recent shows as its own row while and after it is looked up`() = runTest {
+        val model = vm(FakeStore(), FakeFinder(stops = { throw TflException.Offline(null) }))
+        advanceUntilIdle()
+        model.startAddFrom(positionless)
+        val resolving = model.state.value.editor!!
+        assertEquals(listOf(positionless), resolving.results)
+        assertEquals(positionless.id, resolving.resolvingId)
+        advanceUntilIdle()
+        val failed = model.state.value.editor!!
+        // Still listed, now marked retryable, rather than a blank editor.
+        assertEquals(listOf(positionless), failed.results)
+        assertTrue(positionless.id in failed.resolveFailedIds)
+        assertEquals(positionless.name, failed.query)
+    }
+
+    @Test
     fun `a transient resolve failure is retryable, not marked no-location`() = runTest {
         var attempt = 0
         val members = listOf(StopLocation("490000000A1", "Somewhere Road", 51.5, -0.12))

@@ -9,7 +9,9 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
@@ -46,7 +48,12 @@ class StationSearchScreenshotTest {
         StationMatch("490G00000001", "King's Cross Station", listOf("bus")),
     )
 
-    private fun show(state: StationSearchViewModel.State, onOpen: (StationMatch) -> Unit = {}) {
+    private fun show(
+        state: StationSearchViewModel.State,
+        onOpen: (StationMatch) -> Unit = {},
+        onForgetRecent: ((StationMatch) -> Unit)? = null,
+        onSaveFavorite: ((StationMatch) -> Unit)? = null,
+    ) {
         composeRule.setContent {
             StopDashTheme {
                 StationSearchScreen(
@@ -56,6 +63,8 @@ class StationSearchScreenshotTest {
                     onRetry = {},
                     onBack = {},
                     autoFocus = false,
+                    onForgetRecent = onForgetRecent,
+                    onSaveFavorite = onSaveFavorite,
                 )
             }
         }
@@ -254,6 +263,42 @@ class StationSearchScreenshotTest {
         captureSnapshot("station-search-yours.png")
         composeRule.onNodeWithText("Oxford Circus").performClick()
         assertEquals("940GZZLUOXC", opened?.id)
+    }
+
+    @Test
+    fun a_recent_rows_long_press_offers_clear_and_save() {
+        var cleared: StationMatch? = null
+        var saved: StationMatch? = null
+        show(
+            StationSearchViewModel.State(
+                favorites = listOf(StationMatch("490G00000001", "King's Cross Station", listOf("bus"))),
+                recent = listOf(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))),
+                yoursRead = true,
+            ),
+            onForgetRecent = { cleared = it },
+            onSaveFavorite = { saved = it },
+        )
+        composeRule.onNodeWithText("Oxford Circus").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Clear").performClick()
+        assertEquals("940GZZLUOXC", cleared?.id)
+        composeRule.onNodeWithText("Oxford Circus").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Save").performClick()
+        assertEquals("940GZZLUOXC", saved?.id)
+        // A starred row isn't a recent pick: its long press opens no menu.
+        composeRule.onNodeWithText("King's Cross Station").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Clear").assertDoesNotExist()
+    }
+
+    @Test
+    fun a_clear_that_failed_is_reported() {
+        show(
+            StationSearchViewModel.State(
+                recent = listOf(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))),
+                yoursRead = true,
+                forgetFailed = true,
+            ),
+        )
+        composeRule.onNodeWithText("Couldn't clear that").assertIsDisplayed()
     }
 
     @Test

@@ -74,6 +74,9 @@ class StationSearchViewModel(
     private val searchPlaces: suspend (String) -> List<PlaceCandidate> = { emptyList() },
     // Remembers a station opened from the search, for the recent list; blocking, run on [io].
     private val recordOpen: suspend (StationMatch) -> Unit = {},
+    // Takes a station off the recent list (a Recent row's long-press *Clear*); blocking, run on [io].
+    // False when the write failed, so the row is still stored.
+    private val forgetRecent: suspend (StationMatch) -> Boolean = { true },
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val debounceMillis: Long = DEBOUNCE_MILLIS,
     private val warn: (String) -> Unit = {},
@@ -94,6 +97,9 @@ class StationSearchViewModel(
         // are none (SPEC principle 2). A discarded corrupt file reads as genuinely empty, not failed.
         val favoritePlacesFailed: Boolean = false,
         val yoursRead: Boolean = false,
+        // A Recent row's *Clear* couldn't be written: the row is back (it's still stored), and the
+        // screen says so once ([onForgetFailureShown]) rather than let it reappear unexplained.
+        val forgetFailed: Boolean = false,
     )
 
     sealed interface Result {
@@ -191,6 +197,26 @@ class StationSearchViewModel(
             refreshYours()
             rerank()
         }
+    }
+
+    /**
+     * Take [match] off the recent list: gone from the screen at once, then written, finishing even if
+     * the search closes, and the user's stops read again (a starred stop moves back under *Starred*).
+     */
+    fun onForgetRecent(match: StationMatch) {
+        // A read already in flight predates the clear: drop it, so it can't put the row back.
+        yoursGeneration++
+        _state.update { it.copy(recent = it.recent.filter { r -> r.id != match.id }) }
+        viewModelScope.launch {
+            val forgotten = withContext(NonCancellable + io) { forgetRecent(match) }
+            if (!forgotten) _state.update { it.copy(forgetFailed = true) }
+            refreshYours()
+        }
+    }
+
+    /** The failed *Clear* has been reported. */
+    fun onForgetFailureShown() {
+        _state.update { it.copy(forgetFailed = false) }
     }
 
     // The matches on screen ranked again with the user's stops as now read — from the bundled index

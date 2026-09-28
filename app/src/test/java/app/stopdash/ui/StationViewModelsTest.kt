@@ -483,6 +483,44 @@ class StationViewModelsTest {
     }
 
     @Test
+    fun `clearing a recent stop removes it at once and from the store`() = runTest {
+        val bank = StationMatch("940GZZLUBNK", "Bank", listOf("tube"))
+        val stored = mutableListOf(oxford, bank)
+        val vm = StationSearchViewModel(
+            FakeFinder(),
+            loadYours = { YourStops(recent = stored.toList()) },
+            forgetRecent = { forgotten -> stored.removeAll { it.id == forgotten.id } },
+            io = dispatcher,
+        )
+        advanceUntilIdle()
+        assertEquals(listOf(oxford, bank), vm.state.value.recent)
+        vm.onForgetRecent(oxford)
+        // Off the screen before the write lands...
+        assertEquals(listOf(bank), vm.state.value.recent)
+        advanceUntilIdle()
+        // ...and still off once the list is read back from the store.
+        assertEquals(listOf(bank), stored)
+        assertEquals(listOf(bank), vm.state.value.recent)
+    }
+
+    @Test
+    fun `a clear that couldn't be written brings the row back and says so`() = runTest {
+        val vm = StationSearchViewModel(
+            FakeFinder(),
+            loadYours = { YourStops(recent = listOf(oxford)) },
+            forgetRecent = { false },
+            io = dispatcher,
+        )
+        advanceUntilIdle()
+        vm.onForgetRecent(oxford)
+        advanceUntilIdle()
+        assertEquals(listOf(oxford), vm.state.value.recent)
+        assertTrue(vm.state.value.forgetFailed)
+        vm.onForgetFailureShown()
+        assertFalse(vm.state.value.forgetFailed)
+    }
+
+    @Test
     fun `a match opened from a search leads it on the way back`() = runTest {
         val place = IndexedStation("940GZZLUAAA", "Example Place", listOf("tube"))
         val park = IndexedStation("940GZZLUBBB", "Example Park", listOf("tube"))

@@ -248,7 +248,9 @@ The app finds stops two ways:
   last eight places picked from that search, the most recent on top), then **Starred** (the ends
   of starred journeys, then the places holding a starred row, each recorded when starred), less
   any picked lately. *From…* and *To…* keep **separate recent lists** — where the rider looks from
-  and where they go — so each search lists its own history. As the user types, those and every place the app has lately shown near them (the
+  and where they go — so each search lists its own history. A **long press on a Recent row** offers
+  **Clear** (off the list at once) and **Save**, which opens the favorite-place editor pre-filled with
+  that stop and returns to the search when it's saved or canceled (maintainer, 2026-09-28). As the user types, those and every place the app has lately shown near them (the
   widget's last departures and the nearby-lookup cache) match on the device alongside the
   bundled stations, so a starred bus stop appears at once; a bus stop (a journey's end
   included) lists as its stop area, whose page holds its poles. A recently picked or starred place leads its matching tier, the most recently picked first. All

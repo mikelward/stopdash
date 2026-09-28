@@ -1,7 +1,9 @@
 package app.stopdash.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -24,6 +26,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -31,6 +34,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -94,8 +99,21 @@ fun StationSearchScreen(
     onOpenPlace: ((TripDestination.Place) -> Unit)? = null,
     // Re-reads the saved places, for the Retry shown when their read failed. Null hides the retry.
     onRetryPlaces: (() -> Unit)? = null,
+    // A Recent row's long-press menu (maintainer, 2026-09-28): *Clear* takes it off the list, *Save*
+    // makes it a favorite place. Either null leaves that item out; both null, no long press.
+    onForgetRecent: ((StationMatch) -> Unit)? = null,
+    onSaveFavorite: ((StationMatch) -> Unit)? = null,
+    onForgetFailureShown: () -> Unit = {},
 ) {
     BackHandler(onBack = onBack)
+    val snackbarHostState = remember { SnackbarHostState() }
+    val forgetFailedMessage = stringResource(R.string.station_search_recent_clear_failed)
+    LaunchedEffect(state.forgetFailed) {
+        if (state.forgetFailed) {
+            onForgetFailureShown()
+            snackbarHostState.showSnackbar(forgetFailedMessage)
+        }
+    }
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     if (autoFocus) LaunchedEffect(Unit) { focus.requestFocus() }
@@ -135,6 +153,7 @@ fun StationSearchScreen(
                 },
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             // Keeps the previous matches in view while the next search runs, so typing doesn't blank
@@ -161,6 +180,8 @@ fun StationSearchScreen(
                             onOpenStation = onOpenStation,
                             onOpenPlace = onOpenPlace,
                             onRetryPlaces = onRetryPlaces,
+                            onForgetRecent = onForgetRecent,
+                            onSaveFavorite = onSaveFavorite,
                         )
                     else -> Message(stringResource(R.string.station_search_prompt))
                 }
@@ -249,6 +270,8 @@ private fun YourStopsList(
     onOpenStation: (StationMatch) -> Unit,
     onOpenPlace: ((TripDestination.Place) -> Unit)?,
     onRetryPlaces: (() -> Unit)?,
+    onForgetRecent: ((StationMatch) -> Unit)? = null,
+    onSaveFavorite: ((StationMatch) -> Unit)? = null,
 ) {
     val listState = rememberLazyListState()
     LazyColumn(
@@ -278,14 +301,61 @@ private fun YourStopsList(
         listOf(R.string.station_search_recent to recent, R.string.station_search_starred to favorites).forEach { (heading, stops) ->
             if (stops.isEmpty()) return@forEach
             item(key = "heading-$heading") { SectionHeading(stringResource(heading)) }
+            val isRecent = heading == R.string.station_search_recent
             items(stops, key = { "$heading-${it.id}" }) { match ->
-                MatchRow(match, onClick = { onOpenStation(match) })
+                if (isRecent && (onForgetRecent != null || onSaveFavorite != null)) {
+                    RecentRow(match, onOpenStation, onForgetRecent, onSaveFavorite)
+                } else {
+                    MatchRow(match, onClick = { onOpenStation(match) })
+                }
                 HorizontalDivider()
             }
         }
     }
 }
 
+
+/**
+ * A Recent row: a tap opens it as any match does; a long press opens a menu to *Clear* it from the
+ * list or *Save* it as a favorite place. TalkBack offers the long press as a labeled action.
+ */
+@Composable
+private fun RecentRow(
+    match: StationMatch,
+    onOpen: (StationMatch) -> Unit,
+    onForget: ((StationMatch) -> Unit)?,
+    onSave: ((StationMatch) -> Unit)?,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Box {
+        MatchRow(
+            match,
+            onClick = { onOpen(match) },
+            onLongClick = { menuOpen = true },
+            onLongClickLabel = stringResource(R.string.more_actions),
+        )
+        StopDashMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            onForget?.let { forget ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.station_search_recent_clear)) },
+                    onClick = {
+                        menuOpen = false
+                        forget(match)
+                    },
+                )
+            }
+            onSave?.let { save ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.station_search_recent_save)) },
+                    onClick = {
+                        menuOpen = false
+                        save(match)
+                    },
+                )
+            }
+        }
+    }
+}
 
 /** A section heading over one group of the pre-query list ("Places", "Recent", "Starred"). */
 @Composable
@@ -384,7 +454,13 @@ private fun PlaceRow(name: String, icon: String?, onClick: () -> Unit) {
 }
 
 @Composable
-private fun MatchRow(match: StationMatch, onClick: () -> Unit) {
+@OptIn(ExperimentalFoundationApi::class)
+private fun MatchRow(
+    match: StationMatch,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
+) {
     // One line per result (name, then its modes on the right) so more fit on screen. The name takes
     // priority — it fills the row (pushing the modes to the right edge) and gets every pixel the modes
     // don't need, so a long name like "King's Cross & St Pancras International" shows as much as fits
@@ -398,7 +474,7 @@ private fun MatchRow(match: StationMatch, onClick: () -> Unit) {
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = onLongClickLabel)
             // 8dp padding keeps the denser look; the min height holds the row at Android's 48dp tap
             // target, which a one-mode row's ~40dp would otherwise miss (more so at large text scales).
             .heightIn(min = 48.dp)

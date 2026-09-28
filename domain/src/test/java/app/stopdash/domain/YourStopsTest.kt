@@ -54,6 +54,13 @@ class YourStopsTest {
     }
 
     @Test
+    fun `a cleared stop leaves the list, the rest keep their order`() {
+        val stops = (1..3).map { StationMatch("49000000000$it", "Stop $it") }
+        assertEquals(listOf(stops[0], stops[2]), RecentStations.remove(stops, stops[1].id))
+        assertEquals(stops, RecentStations.remove(stops, "490000000099"))
+    }
+
+    @Test
     fun `a journey end lists as its stop area when it has one`() {
         val areaJourney = journey.copy(from = journey.from.copy(areaId = "490G00000001"))
         val yours = YourStops.of(listOf(areaJourney), emptyList(), emptyList(), emptyList())
