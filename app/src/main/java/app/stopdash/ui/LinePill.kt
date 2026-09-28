@@ -148,13 +148,22 @@ fun SharedLinePill(lines: List<LineRef>, description: String, modifier: Modifier
     }
     val density = LocalDensity.current
     val haloBlurPx = with(density) { 2.dp.toPx() }
-    // Tighter than a lone pill: each segment as wide as the widest code among them, not the fixed
-    // pill width, so "43/134" reads as one label rather than two pills side by side.
+    // Tighter than a lone pill: each segment as wide as its own code, not the fixed pill width, so
+    // "43/134" reads as one label and a two-digit route takes less room than a three-digit one
+    // (maintainer, 2026-09-28). Never narrower than a two-character code, though, so a one-character
+    // route beside a longer one ("4/N20") still gets room of its own (maintainer, 2026-09-28).
     val measurer = rememberTextMeasurer()
     val baseStyle = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
-    val naturalWidth = with(density) {
-        segments.maxOf { measurer.measure(lineCode(it.line.name, it.line.mode), baseStyle, maxLines = 1).size.width }.toDp()
+    val naturalWidths = with(density) {
+        val minWidth = measurer.measure(MIN_SEGMENT_CODE, baseStyle, maxLines = 1).size.width
+        segments.map {
+            maxOf(minWidth, measurer.measure(lineCode(it.line.name, it.line.mode), baseStyle, maxLines = 1).size.width).toDp()
+        }
     }
+    // A lone pill's side padding at the pill's two ends; half that either side of a cut, whose lean
+    // already sets the codes apart.
+    fun startPad(i: Int) = if (i == 0) SEGMENT_PADDING else CUT_PADDING
+    fun endPad(i: Int) = if (i == segments.lastIndex) SEGMENT_PADDING else CUT_PADDING
     val shape = RoundedCornerShape(8.dp)
     // Never wider than the room it's given (many lines, a narrow screen, large text): each segment
     // shrinks alike, its label ellipsizing, so the segments stay equal and under their labels.
@@ -162,12 +171,19 @@ fun SharedLinePill(lines: List<LineRef>, description: String, modifier: Modifier
     // read that way anyway, so a code never sits over another line's color.
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
     BoxWithConstraints(modifier) {
-        val labelWidth = if (constraints.hasBoundedWidth) {
-            // In whole pixels, rounded down, so the segments never add up to a pixel more than the room.
-            val share = constraints.maxWidth / segments.size - with(density) { (SEGMENT_PADDING * 2).roundToPx() }
-            naturalWidth.coerceAtMost(with(density) { share.coerceAtLeast(0).toDp() })
+        val padsPx = with(density) { segments.indices.sumOf { startPad(it).roundToPx() + endPad(it).roundToPx() } }
+        val naturalPx = with(density) { naturalWidths.sumOf { it.roundToPx() } } + padsPx
+        val labelWidths = if (constraints.hasBoundedWidth && naturalPx > constraints.maxWidth) {
+            // Short of room: the longer codes shrink alike, and room a shorter code doesn't need goes to them.
+            val fitted = fitSegmentWidths(with(density) { naturalWidths.map { it.roundToPx() } }, constraints.maxWidth - padsPx)
+            with(density) { fitted.map { it.toDp() } }
         } else {
-            naturalWidth
+            naturalWidths
+        }
+        // Where each cut falls: the right edge of each segment but the last, in pixels.
+        val cuts = with(density) {
+            segments.indices.runningFold(0) { x, i -> x + startPad(i).roundToPx() + labelWidths[i].roundToPx() + endPad(i).roundToPx() }
+                .drop(1).dropLast(1)
         }
         Row(
             modifier = Modifier
@@ -177,10 +193,9 @@ fun SharedLinePill(lines: List<LineRef>, description: String, modifier: Modifier
                     val stroke = 1.5.dp.toPx()
                     // The cut's lean: its top edge this far right of its bottom.
                     val lean = 8.dp.toPx()
-                    val width = size.width / segments.size
                     fun part(i: Int) = Path().apply {
-                        val left = i * width
-                        val right = left + width
+                        val left = if (i == 0) 0f else cuts[i - 1].toFloat()
+                        val right = if (i == segments.lastIndex) size.width else cuts[i].toFloat()
                         moveTo(if (i == 0) 0f else left + lean / 2, 0f)
                         lineTo(if (i == segments.lastIndex) size.width else right + lean / 2, 0f)
                         lineTo(if (i == segments.lastIndex) size.width else right - lean / 2, size.height)
@@ -201,7 +216,7 @@ fun SharedLinePill(lines: List<LineRef>, description: String, modifier: Modifier
                     }
                     // Each cut a gap of the surface, so two fills of one color still read as two lines.
                     for (i in 1 until segments.size) {
-                        val x = i * width
+                        val x = cuts[i - 1].toFloat()
                         drawLine(
                             surface,
                             Offset(x + lean / 2, 0f),
@@ -214,7 +229,7 @@ fun SharedLinePill(lines: List<LineRef>, description: String, modifier: Modifier
                 // Only the combined label ("43 or 134"), not each segment's code as well.
                 .clearAndSetSemantics { contentDescription = description },
         ) {
-            segments.forEach { segment ->
+            segments.forEachIndexed { i, segment ->
                 val style = segment.halo?.let { baseStyle.copy(shadow = Shadow(it, Offset.Zero, haloBlurPx)) } ?: baseStyle
                 Text(
                     text = lineCode(segment.line.name, segment.line.mode),
@@ -223,7 +238,7 @@ fun SharedLinePill(lines: List<LineRef>, description: String, modifier: Modifier
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = SEGMENT_PADDING, vertical = 4.dp).width(labelWidth),
+                    modifier = Modifier.padding(start = startPad(i), end = endPad(i), top = 4.dp, bottom = 4.dp).width(labelWidths[i]),
                 )
             }
         }
@@ -231,8 +246,38 @@ fun SharedLinePill(lines: List<LineRef>, description: String, modifier: Modifier
     }
 }
 
-// Each [SharedLinePill] segment's side padding, as a lone pill's.
+// A [SharedLinePill]'s padding at its two ends, as a lone pill's.
 private val SEGMENT_PADDING = 8.dp
+
+// A [SharedLinePill] segment's padding either side of a cut.
+private val CUT_PADDING = 4.dp
+
+/**
+ * Fits segments whose natural widths ([natural], in pixels) add up to more than [room]: every
+ * segment gets an equal share, capped at its own width, and whatever a narrower one leaves unused
+ * is shared again among the rest, so a longer code is cut only when there is truly no room for it.
+ * Whole pixels rounded down, so the result never adds up to more than [room].
+ */
+internal fun fitSegmentWidths(natural: List<Int>, room: Int): List<Int> {
+    val widths = IntArray(natural.size)
+    var left = room.coerceAtLeast(0)
+    // Narrowest first: each takes its own width while that is within an equal share of what is
+    // left; once one isn't, it and every wider one take that same share, so they stay alike.
+    val order = natural.indices.sortedBy { natural[it] }
+    for ((n, i) in order.withIndex()) {
+        val share = left / (natural.size - n)
+        if (natural[i] > share) {
+            order.drop(n).forEach { widths[it] = share }
+            break
+        }
+        widths[i] = natural[i]
+        left -= widths[i]
+    }
+    return widths.toList()
+}
+
+/** The narrowest a cut pill's segment gets, as a code: two wide digits. */
+private const val MIN_SEGMENT_CODE = "88"
 
 // One line's part of a [SharedLinePill]: its fill, label and border colors, and a label halo on a solid fill.
 private data class Segment(val line: LineRef, val fill: Color, val label: Color, val border: Color, val halo: Color?)

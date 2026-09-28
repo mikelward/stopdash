@@ -1559,6 +1559,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       ragged-width blobs (equal-width-line-chips). Follow-up: eyeball the column and the
       widest codes on a device — the width is verified by unit test but not yet seen on
       real hardware.
+- [x] **Narrower cut pills** — the exception to the fixed width: a pill cut for several lines
+      ("43/134") sizes each part to its own code, never narrower than a two-character one, so it
+      no longer comes out half again as wide as the pills beside it (maintainer, 2026-09-28).
+      Follow-up: see it on a device.
 - [x] **Codes for National Rail services.** First-three-letters collided (Southern and
       Southeastern both → "SOU"), so a rail operator now shows its initials — the capitals in a
       multi-word name (East Midlands Railway → EMR, Greater Anglia → GA), the initialism a rider

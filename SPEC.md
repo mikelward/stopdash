@@ -732,7 +732,9 @@ too long for the pill. **Every
 pill shares one fixed width**, sized to the widest code shown (a four-character bus route),
 so the codes form a tidy left column the eye runs straight down a card list, rather than a
 ragged edge that steps in and out as each code's length changes; a shorter code centers in
-the shared box, and the width holds the widest code complete rather than truncating it. The
+the shared box, and the width holds the widest code complete rather than truncating it. A pill cut
+for several lines is the exception: its parts size to their own codes (*Trips with a change*),
+since one fixed width per part would make it half again as wide as the pills beside it. The
 full line name is the pill's accessible label, so a screen reader announces "Victoria",
 not "VIC". Tube
 lines take their color by line (Northern black, Central red, …); bus, DLR, the Elizabeth
@@ -884,7 +886,9 @@ same lines in turn but changing at a different stop are **cards of their own**, 
 stops their ride rows name (below) (maintainer, 2026-09-27). Routes whose first ride goes between the
 same two stops by the same mode and then ride the same lines — the 43 or the 134 to Highgate
 station, then the Northern line — **share a card**: its header shows that leg's lines as **one pill
-cut diagonally** ("43/134", read as "43 or 134"), then the later lines and the best of their
+cut diagonally** ("43/134", read as "43 or 134"; each part as wide as its own code, never narrower
+than a two-character one, so the cut pill stays compact yet a one-character route keeps room of its
+own — maintainer, 2026-09-28), then the later lines and the best of their
 arrivals, and its first ride's row times every one of those lines together (below). **Every ride**
 also takes in the lines the Planner didn't name that serve **its own two stops** (maintainer,
 2026-09-27): another line of the same mode whose route runs from the ride's boarding stop to its
