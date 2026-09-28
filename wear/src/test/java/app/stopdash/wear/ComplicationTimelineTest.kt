@@ -246,6 +246,37 @@ class ComplicationTimelineTest {
     }
 
     @Test
+    fun `a row is marked with its own direction's status, not the other way's`() {
+        // The row's services run inbound; the alert TfL scopes to outbound says nothing about them.
+        val outbound = LineStatus("victoria", 6, "Severe Delays", "Signal failure southbound.")
+        val inbound = LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service")
+        val split = LineStatus("victoria", 6, "Severe Delays", "Signal failure southbound.", byDirection = mapOf("inbound" to inbound, "outbound" to outbound))
+        val env = envelope(stop("940GA", listOf(departure(240)))).copy(lineStatuses = listOf(LineStatusCheck(split, fetched).toPersisted()))
+        assertNull((ComplicationTimeline.entries(env, fetched).at(fetched) as ComplicationContent.Departure).disruption)
+        // Going the affected way, it's marked.
+        val affected = split.copy(byDirection = mapOf("inbound" to outbound, "outbound" to inbound))
+        val marked = env.copy(lineStatuses = listOf(LineStatusCheck(affected, fetched).toPersisted()))
+        assertEquals("Severe Delays", (ComplicationTimeline.entries(marked, fetched).at(fetched) as ComplicationContent.Departure).disruption)
+    }
+
+    @Test
+    fun `a picked row with nothing left to run keeps its own direction's status`() {
+        val outbound = LineStatus("victoria", 6, "Severe Delays", "Signal failure southbound.")
+        val inbound = LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service")
+        val split = LineStatus("victoria", 6, "Severe Delays", "Signal failure southbound.", byDirection = mapOf("inbound" to inbound, "outbound" to outbound))
+        // The picked inbound row's last train leaves at +60; the alert only affects outbound.
+        val env = envelope(stop("940GA", listOf(departure(60)))).copy(lineStatuses = listOf(LineStatusCheck(split, fetched).toPersisted()))
+        val picked = StarredRow("940GA", "victoria", "inbound")
+        // Built after that train has gone, so only the pick says which way the row runs.
+        val later = fetched.plusSeconds(90)
+        val entries = ComplicationTimeline.entries(env, later, picked)
+        assertNull((entries.at(later) as ComplicationContent.Empty).disruption)
+        // Picked the affected way, it's marked.
+        val affected = ComplicationTimeline.entries(env, later, StarredRow("940GA", "victoria", "outbound"))
+        assertEquals("Severe Delays", (affected.at(later) as ComplicationContent.Empty).disruption)
+    }
+
+    @Test
     fun `a check that outlives the stop's times keeps the stale entry marked until it expires`() {
         val check = LineStatusCheck(LineStatus("victoria", 6, "Severe Delays"), fetched.plusSeconds(60))
         val env = envelope(stop("940GA", listOf(departure(900)))).let { it.copy(lineStatuses = listOf(check.toPersisted())) }

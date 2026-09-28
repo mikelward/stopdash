@@ -1782,10 +1782,17 @@ Builds on Phase 1's minimal line-status marking.
             scopes to one direction (its affected routes' `inbound`/`outbound`, only in the
             `?detail=true` response) no longer flags rows heading the other way. Looked up once per
             new alert in the background and cached by its text; unknown counts for both.
-        - [ ] **The widget and watch by direction too**: they keep the line-wide status, since the
-              snapshot persists one status per line. Needs the per-direction statuses persisted
-              (and the watch envelope, a privacy-doc check), and the dismissal marking kept per
-              direction.
+        - [x] **The widget and watch by direction too**: the snapshot and the watch envelope keep
+              each direction's status, dismissals are marked per direction, the complication marks
+              its row's direction, and the widget's refresh fills the shared direction cache.
+              `docs/PRIVACY.md` names it; no Data Safety change (TfL's public status).
+        - [ ] **The app's own directionless rows after a one-way dismissal** (Codex on #343): the
+              line-wide status is the line's worst alert, so dismissing that alert on a row going
+              its way also hides a row with no direction (most rail, a status-only row), even when
+              the other way has its own alert. The widget and watch now show what's left there
+              (`LineStatusCheck.shown`); the app's `DepartureRows.withoutDismissed` still drops
+              the row. Same fix on the app side: recompute the line-wide status from the
+              undismissed directions before filtering.
         - [ ] **Upcoming planned work as info** (maintainer, 2026-09-28): read the start date out
               of the reason text ("from 13 Oct 07:00"; `validityPeriods.fromDate` is when TfL posted
               it, not when it starts) and show a not-yet-started alert with an info icon instead of

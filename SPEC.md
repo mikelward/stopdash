@@ -1317,7 +1317,12 @@ response, ~40× the regular one, so the refresh stays plain and each new alert's
 up once in the background and remembered by its text (reworded text is a new alert). Until that
 answer arrives, or if it fails, or where TfL scopes an alert to no direction or a row has none (most
 rail predictions), the alert shows in both directions, as before — the split only ever hides an
-alert TfL itself says is for the other way. The widget and watch keep the line-wide status for now.
+alert TfL itself says is for the other way. The widget and watch do the same: the widget's
+snapshot keeps each direction's status beside the line-wide one, the watch receives them with
+dismissals applied per direction (dismissing one direction's alert leaves the other direction's
+marked), and the widget's own refresh fills the same remembered answers. Until a lookup lands, a
+line's dismissals aren't pruned by that refresh, since an unsplit status can't show a one-way
+alert has ended.
 
 A stop notice, by contrast, is shown **only while its TfL window (`fromDate`–`toDate`) covers
 now**, checked against the render clock: TfL lists a scheduled stop closure hours ahead ("Bus Stop

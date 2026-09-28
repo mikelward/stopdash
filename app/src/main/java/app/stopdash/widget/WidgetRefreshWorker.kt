@@ -21,6 +21,7 @@ import app.stopdash.data.DataStoreAppSettings
 import app.stopdash.data.DataStoreDismissedAlertsStore
 import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.data.KtorTflClient
+import app.stopdash.data.LineAlertDirections
 import app.stopdash.data.SharedTflRateLimiter
 import app.stopdash.data.SharedTflRequestPool
 import app.stopdash.data.logAppSettingsWarning
@@ -40,6 +41,9 @@ import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.plus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.withLock
@@ -350,85 +354,101 @@ internal suspend fun refreshStoredSnapshot(
         val userKey = keys.tfl
         val railKey = keys.rail
         val http = KtorTflClient.defaultHttpClient()
+        // The one-off lookups of which way a new line alert applies run here, so they finish before
+        // [http] is closed; the shared cache they fill serves the app and the next widget refresh.
+        // A supervisor, so a lookup that fails can't cancel the refresh; it's logged, and the
+        // alert shows both ways until a later lookup lands.
         try {
-            // Its fetches land in the shared arrivals too, so an app screen open meanwhile shows them.
-            val client = CachingTflClient(RailAwareTflClient(
-                tfl = KtorTflClient(
-                    http,
-                    appKey = { userKey },
-                    rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
-                    requestPool = SharedTflRequestPool.pool,
-                ),
-                rail = KtorDarwinClient(http, apiKey = { railKey }, warn = ::logWidgetSnapshotWarning),
-                codes = { RailStationCodesStore.load(context) },
-                warn = ::logWidgetSnapshotWarning,
-            ))
-            ran = true
-            val arrivalsRefreshed = WidgetRefresh.refreshedArrivals(
-                prior,
-                Instant.now(),
-                // Skip a stop the app fetched moments ago: same data, same shared rate budget.
-                reuse = ARRIVALS_REUSE,
-                // Or one another screen fetched since.
-                shared = ArrivalsCache.SHARED,
-                source = client.arrivalsSource(),
-                railFeed = client::railFeed,
-            ) { stopId ->
-                attempted.incrementAndGet()
-                try {
-                    client.arrivals(stopId).also { succeeded.incrementAndGet() }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    // Sanitized: a stop id is a canned identifier, not user data, but the message
-                    // stays a bare fact (SPEC *Privacy* / *Error handling*).
-                    logWidgetSnapshotWarning("widget refresh arrivals failed for stop $stopId: ${e::class.simpleName}")
-                    failures += if (e is TflException.RateLimited) {
-                        WatchRefreshOutcome.Failure.RATE_LIMITED
-                    } else {
-                        WatchRefreshOutcome.Failure.UNREACHABLE
-                    }
-                    null
+            supervisorScope {
+                val directionLookups = this + CoroutineExceptionHandler { _, e ->
+                    logWidgetSnapshotWarning("widget alert direction lookup failed: ${e::class.simpleName}")
                 }
-            }
-            // With fresh arrivals, their lines' statuses too, in one request (lines checked moments
-            // ago reused), so a disrupted service stays marked while its countdowns are live (SPEC
-            // D3). A failed lookup keeps the prior checks, which then age out like a countdown (D4);
-            // it doesn't fail the refresh, whose arrivals are still good.
-            var answered: List<LineStatus>? = null
-            val refreshed = arrivalsRefreshed?.let { snapshot ->
-                WidgetRefresh.refreshedLineStatuses(
-                    snapshot,
+                // Its fetches land in the shared arrivals too, so an app screen open meanwhile shows them.
+                val client = CachingTflClient(RailAwareTflClient(
+                    tfl = KtorTflClient(
+                        http,
+                        appKey = { userKey },
+                        rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
+                        requestPool = SharedTflRequestPool.pool,
+                        // Where a failed alert-direction lookup is reported; it's caught inside the
+                        // client, so the lookup scope's handler never sees it.
+                        warn = ::logWidgetSnapshotWarning,
+                        // A row carries only the alerts for the way it's going, as in the app (SPEC
+                        // *Disruptions*).
+                        alertDirections = LineAlertDirections.shared,
+                        alertDirectionScope = directionLookups,
+                    ),
+                    rail = KtorDarwinClient(http, apiKey = { railKey }, warn = ::logWidgetSnapshotWarning),
+                    codes = { RailStationCodesStore.load(context) },
+                    warn = ::logWidgetSnapshotWarning,
+                ))
+                ran = true
+                val arrivalsRefreshed = WidgetRefresh.refreshedArrivals(
+                    prior,
                     Instant.now(),
-                    reuse = LINE_STATUS_REUSE,
-                    answeredAt = Instant::now,
-                ) { lineIds ->
-                    widgetLineStatuses(client, lineIds).also { answered = it }
+                    // Skip a stop the app fetched moments ago: same data, same shared rate budget.
+                    reuse = ARRIVALS_REUSE,
+                    // Or one another screen fetched since.
+                    shared = ArrivalsCache.SHARED,
+                    source = client.arrivalsSource(),
+                    railFeed = client::railFeed,
+                ) { stopId ->
+                    attempted.incrementAndGet()
+                    try {
+                        client.arrivals(stopId).also { succeeded.incrementAndGet() }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // Sanitized: a stop id is a canned identifier, not user data, but the message
+                        // stays a bare fact (SPEC *Privacy* / *Error handling*).
+                        logWidgetSnapshotWarning("widget refresh arrivals failed for stop $stopId: ${e::class.simpleName}")
+                        failures += if (e is TflException.RateLimited) {
+                            WatchRefreshOutcome.Failure.RATE_LIMITED
+                        } else {
+                            WatchRefreshOutcome.Failure.UNREACHABLE
+                        }
+                        null
+                    }
                 }
-            }
-            savedNothing = refreshed == null
-            if (refreshed != null) {
-                // Conditional save: persist and poke the widget only if the stored stop set still
-                // matches the one this cycle loaded and fetched for. In the seconds spent fetching,
-                // the app may have persisted a different set (the user relocated in-app); an
-                // unconditional save would let this slow cycle win last and stamp the old location's
-                // departures fresh over the new set. On a discard the newer in-app snapshot is
-                // already stored and has poked the widget itself (Codex P1 on #56).
-                saving = true
-                val applied = WidgetSnapshotStore(context).saveIfStopsMatch(refreshed, prior.stops.map { it.stopId })
-                saving = false
-                saved = applied
-                if (!applied) logWidgetSnapshotWarning("widget refresh result discarded: stop set changed during fetch")
-                // A dismissed disruption TfL now reports as resolved or changed is forgotten, as the
-                // app's own refresh forgets it, so the same alert recurring while the app stays
-                // closed is shown again rather than hidden. Only once this refresh's statuses are
-                // stored; a discarded one leaves it to the app's own refresh.
-                if (applied) {
-                    answered?.let { reconcileWidgetDismissals(DataStoreDismissedAlertsStore.from(context.applicationContext, warn = ::logWidgetSnapshotWarning), it) }
+                // With fresh arrivals, their lines' statuses too, in one request (lines checked moments
+                // ago reused), so a disrupted service stays marked while its countdowns are live (SPEC
+                // D3). A failed lookup keeps the prior checks, which then age out like a countdown (D4);
+                // it doesn't fail the refresh, whose arrivals are still good.
+                var answered: List<LineStatus>? = null
+                val refreshed = arrivalsRefreshed?.let { snapshot ->
+                    WidgetRefresh.refreshedLineStatuses(
+                        snapshot,
+                        Instant.now(),
+                        reuse = LINE_STATUS_REUSE,
+                        answeredAt = Instant::now,
+                    ) { lineIds ->
+                        widgetLineStatuses(client, lineIds).also { answered = it }
+                    }
                 }
-            } else {
-                // Nothing fetched fresh: re-render so the unchanged snapshot ages honestly.
-                StopDashWidget().updateAll(context)
+                savedNothing = refreshed == null
+                if (refreshed != null) {
+                    // Conditional save: persist and poke the widget only if the stored stop set still
+                    // matches the one this cycle loaded and fetched for. In the seconds spent fetching,
+                    // the app may have persisted a different set (the user relocated in-app); an
+                    // unconditional save would let this slow cycle win last and stamp the old location's
+                    // departures fresh over the new set. On a discard the newer in-app snapshot is
+                    // already stored and has poked the widget itself (Codex P1 on #56).
+                    saving = true
+                    val applied = WidgetSnapshotStore(context).saveIfStopsMatch(refreshed, prior.stops.map { it.stopId })
+                    saving = false
+                    saved = applied
+                    if (!applied) logWidgetSnapshotWarning("widget refresh result discarded: stop set changed during fetch")
+                    // A dismissed disruption TfL now reports as resolved or changed is forgotten, as the
+                    // app's own refresh forgets it, so the same alert recurring while the app stays
+                    // closed is shown again rather than hidden. Only once this refresh's statuses are
+                    // stored; a discarded one leaves it to the app's own refresh.
+                    if (applied) {
+                        answered?.let { reconcileWidgetDismissals(DataStoreDismissedAlertsStore.from(context.applicationContext, warn = ::logWidgetSnapshotWarning), it) }
+                    }
+                } else {
+                    // Nothing fetched fresh: re-render so the unchanged snapshot ages honestly.
+                    StopDashWidget().updateAll(context)
+                }
             }
         } finally {
             http.close()

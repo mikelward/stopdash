@@ -290,4 +290,33 @@ class PersistedSnapshotTest {
         val snapshot = sample().copy(lineStatuses = mapOf("victoria" to LineStatusCheck.noVerdict("victoria", now)))
         assertEquals(snapshot, snapshot.toPersisted().toDomain())
     }
+
+    @Test
+    fun `per-direction statuses survive the round trip, without a dismissal`() {
+        val north = LineStatus("victoria", 6, "Severe Delays", "Signal failure northbound.")
+        val south = LineStatus("victoria", 9, "Minor Delays", "Train fault southbound.")
+        val split = LineStatus(
+            "victoria", 6, "Severe Delays", "Both.",
+            byDirection = mapOf("inbound" to north, "outbound" to south), awaitingDirections = true,
+        )
+        val check = LineStatusCheck(split, now, dismissedDirections = setOf("inbound"))
+        val back = DeparturesSnapshot(emptyList(), now, lineStatuses = mapOf("victoria" to check))
+            .toPersisted().toDomain()!!.lineStatuses.getValue("victoria")
+        assertEquals(setOf("inbound", "outbound"), back.status.byDirection.keys)
+        assertEquals(9, back.status.forDirection("outbound").severity)
+        assertEquals("Minor Delays", back.status.forDirection("outbound").description)
+        // The full reasons aren't stored, but their dismissal identities are, so a reworded alert
+        // still differs.
+        assertEquals(check.directionFingerprints, back.directionFingerprints)
+        assertEquals(true, back.status.awaitingDirections)
+        // Dismissals are judged where the snapshot is read, never stored.
+        assertEquals(emptySet<String>(), back.dismissedDirections)
+    }
+
+    @Test
+    fun `a line status stored before directions were kept reads back line-wide`() {
+        val back = PersistedLineStatus("victoria", 6, "Severe Delays", now.toEpochMilli()).toDomain()
+        assertEquals(emptyMap<String, LineStatus>(), back.status.byDirection)
+        assertEquals(6, back.status.forDirection("inbound").severity)
+    }
 }

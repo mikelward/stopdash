@@ -124,7 +124,9 @@ object WidgetRefresh {
         val toAsk = lines.filterTo(HashSet()) { id ->
             val prior = kept[id] ?: return@filterTo true
             val age = Duration.between(prior.checkedAt, now)
-            age.isNegative || age >= reuse
+            // One checked while a lookup of which way its alerts apply was running is asked again:
+            // reused, it would show them both ways for the whole reuse window.
+            age.isNegative || age >= reuse || prior.status.awaitingDirections
         }
         if (toAsk.isEmpty()) return snapshot.copy(lineStatuses = kept)
         val fetched = fetchStatuses(toAsk) ?: return snapshot.copy(lineStatuses = kept)

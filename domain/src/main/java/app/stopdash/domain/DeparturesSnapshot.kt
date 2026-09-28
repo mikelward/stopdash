@@ -55,8 +55,9 @@ data class DeparturesSnapshot(
      */
     fun liveLineStatuses(now: Instant): Map<String, LineStatus> =
         lineStatuses.values
-            .filter { it.known && it.status.disrupted && !it.dismissed && it.isLive(now) }
-            .associate { it.status.lineId to it.status }
+            .filter { it.isLive(now) }
+            .mapNotNull { it.shown() }
+            .associateBy { it.lineId }
 
     /**
      * Whether [lineId]'s status is known at [now]: it has a live check, good or disrupted. A line
@@ -76,7 +77,9 @@ data class DeparturesSnapshot(
     fun withDismissals(dismissals: Dismissals): DeparturesSnapshot {
         val marked = lineStatuses.mapValues { (_, check) ->
             val isDismissed = dismissals.hide(check)
-            if (isDismissed == check.dismissed) check else check.copy(dismissed = isDismissed)
+            val directions = dismissals.hiddenDirections(check)
+            if (isDismissed == check.dismissed && directions == check.dismissedDirections) check
+            else check.copy(dismissed = isDismissed, dismissedDirections = directions)
         }
         return if (marked == lineStatuses) this else copy(lineStatuses = marked)
     }
@@ -107,7 +110,7 @@ data class DeparturesSnapshot(
             .filter { (_, check) -> check.known && !check.checkedAt.isAfter(now) }
             .mapNotNull { (lineId, check) ->
                 val expiry = check.checkedAt.plus(threshold)
-                val matters = (check.status.disrupted && !check.dismissed) || lineFreshUntil(lineId)?.let { expiry.isBefore(it) } == true
+                val matters = check.shown() != null || lineFreshUntil(lineId)?.let { expiry.isBefore(it) } == true
                 expiry.takeIf { matters }
             }
         return (listOf(arrivalsExpire) + checkExpiries)
@@ -138,10 +141,42 @@ data class LineStatusCheck(
     // a stored check drops TfL's full reason: a reworded alert differs here even when its severity
     // and label don't, so a dismissal never hides it.
     val fingerprint: String = lineAlertFingerprint(status),
+    // The directions ([LineStatus.byDirection]) whose own status the user dismissed, set where
+    // [dismissed] is and for the same reason: a row going that way shows no mark, while a row
+    // going the other way, or with no direction, still shows its own status.
+    val dismissedDirections: Set<String> = emptySet(),
+    // Each direction's status's full dismissal identity, as [fingerprint] is the line-wide one's.
+    val directionFingerprints: Map<String, String> = status.byDirection.mapValues { (_, it) -> lineAlertFingerprint(it) },
 ) {
     /** Whether [alerts] holds a dismissal of exactly this alert, full reason included. */
     fun dismissedBy(alerts: Set<DismissedAlert>): Boolean =
         known && dismissedLine(alerts, status.lineId, fingerprint)
+
+    /** The directions whose own status [alerts] holds a dismissal of, as [dismissedBy] judges the line-wide one. */
+    fun directionsDismissedBy(alerts: Set<DismissedAlert>): Set<String> =
+        if (!known) emptySet()
+        else directionFingerprints.filterTo(mutableMapOf()) { (_, it) -> dismissedLine(alerts, status.lineId, it) }.keys
+
+    /**
+     * [status] as a surface marks it, with each part the user dismissed ([dismissed],
+     * [dismissedDirections]) read as a good service, so a row going that way shows no mark while
+     * the rest still do; null when no verdict was given or nothing disrupted is left to mark.
+     */
+    fun shown(): LineStatus? {
+        if (!known) return null
+        fun good(s: LineStatus) = s.copy(severity = LineStatus.GOOD_SERVICE)
+        val directions = status.byDirection.mapValues { (direction, it) -> if (direction in dismissedDirections) good(it) else it }
+        val remaining = directions.values.filter { it.disrupted }
+        val whole = when {
+            !dismissed -> status
+            // The line-wide status is the line's worst alert, so dismissing that alert for the way it
+            // applies dismisses it here too. A row with no direction still shows what's left: the
+            // other way's alert. In practice one is left; of several, the most severe by TfL's scale.
+            remaining.isNotEmpty() -> remaining.minBy { it.severity }
+            else -> good(status)
+        }
+        return whole.copy(byDirection = directions).takeIf { it.allStatuses.any(LineStatus::disrupted) }
+    }
 
     /** True while the check is younger than the shared staleness threshold, and not from the future. */
     fun isLive(now: Instant): Boolean {

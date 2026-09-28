@@ -445,4 +445,24 @@ class WatchEnvelopeTest {
         assertTrue(envelope.liveLineStatuses(now).isEmpty())
         assertFalse(envelope.statusKnown("victoria", now))
     }
+
+    @Test
+    fun `each direction's status reaches the watch, dismissals applied, without its fingerprint`() {
+        val north = LineStatus("victoria", 6, "Severe Delays", "Signal failure northbound.")
+        val south = LineStatus("victoria", 9, "Minor Delays", "Train fault southbound.")
+        val split = LineStatus("victoria", 6, "Severe Delays", "Both.", byDirection = mapOf("inbound" to north, "outbound" to south))
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(stop("940GEXAMPLE1", listOf(departure(3)))),
+            fetchedAt = now,
+            lineStatuses = mapOf("victoria" to LineStatusCheck(split, now, dismissedDirections = setOf("inbound"))),
+        )
+        val envelope = decoded(WatchEnvelopes.build(snapshot, emptySet(), now = now))
+        val directions = envelope.lineStatuses.single().directions
+        assertEquals(listOf("inbound", "outbound"), directions.map { it.direction })
+        assertTrue(directions.all { it.fingerprint == null })
+        assertEquals(listOf(true, false), directions.map { it.dismissed })
+        val live = envelope.liveLineStatuses(now).getValue("victoria")
+        assertEquals(false, live.forDirection("inbound").disrupted)
+        assertEquals(9, live.forDirection("outbound").severity)
+    }
 }

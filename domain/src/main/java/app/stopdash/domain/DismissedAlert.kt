@@ -88,6 +88,12 @@ data class Dismissals(
         check.dismissedBy(active) ||
             ended.any { (alert, endedAt) -> !check.checkedAt.isAfter(endedAt) && check.dismissedBy(setOf(alert)) }
 
+    /** The directions of [check] this hides, each as [hide] judges the line-wide status. */
+    fun hiddenDirections(check: LineStatusCheck): Set<String> =
+        check.directionsDismissedBy(active) +
+            ended.filter { (_, endedAt) -> !check.checkedAt.isAfter(endedAt) }.keys
+                .flatMapTo(mutableSetOf()) { check.directionsDismissedBy(setOf(it)) }
+
     companion object {
         val NONE = Dismissals(emptySet())
     }

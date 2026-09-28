@@ -267,4 +267,47 @@ class LineStatusCheckTest {
         // The same alert in a check made after its end was seen is a recurrence: shown.
         assertEquals(false, at(endedAt.plusSeconds(30)).withDismissals(dismissals).lineStatuses.getValue("victoria").dismissed)
     }
+
+    private val north = LineStatus("victoria", 6, "Severe Delays", "Signal failure northbound.")
+    private val south = LineStatus("victoria", 9, "Minor Delays", "Train fault southbound.")
+    private val split = LineStatus("victoria", 6, "Severe Delays", "Both.", byDirection = mapOf("inbound" to north, "outbound" to south))
+
+    @Test
+    fun `a dismissal of one direction's alert leaves the other direction, and the line-wide one, marked`() {
+        val snap = snapshot(mapOf("victoria" to LineStatusCheck(split, t0)))
+        val shown = snap.withDismissals(setOf(DismissedAlert.ofLineStatus(north)))
+        val check = shown.lineStatuses.getValue("victoria")
+        assertEquals(setOf("inbound"), check.dismissedDirections)
+        assertEquals(false, check.dismissed)
+        val live = shown.liveLineStatuses(t0).getValue("victoria")
+        // A row going the dismissed way shows no mark; one going the other way shows its own
+        // alert; one with no direction shows the line-wide status, which wasn't dismissed.
+        assertEquals(false, live.forDirection("inbound").disrupted)
+        assertEquals(south, live.forDirection("outbound"))
+        assertTrue(live.disrupted)
+        // Everything dismissed: nothing marked, and the line still counts as checked.
+        val all = snap.withDismissals(setOf(north, south, split).mapTo(HashSet()) { DismissedAlert.ofLineStatus(it) })
+        assertTrue(all.liveLineStatuses(t0).isEmpty())
+        assertTrue(all.statusKnown("victoria", t0))
+    }
+
+    @Test
+    fun `an ended direction dismissal hides only a check made before its end was seen`() {
+        val ended = Dismissals(emptySet(), mapOf(DismissedAlert.ofLineStatus(north) to t0))
+        val old = snapshot(mapOf("victoria" to LineStatusCheck(split, t0)))
+        assertEquals(setOf("inbound"), old.withDismissals(ended).lineStatuses.getValue("victoria").dismissedDirections)
+        val newer = snapshot(mapOf("victoria" to LineStatusCheck(split, t0.plusSeconds(1))))
+        assertEquals(emptySet<String>(), newer.withDismissals(ended).lineStatuses.getValue("victoria").dismissedDirections)
+    }
+
+    @Test
+    fun `a check made while its alerts' directions were being looked up is asked again, not reused`() = runTest {
+        val waiting = snapshot(mapOf("victoria" to LineStatusCheck(severe.copy(awaitingDirections = true), t0)))
+        var asked: Set<String>? = null
+        WidgetRefresh.refreshedLineStatuses(waiting, t0.plusSeconds(10), reuse = Duration.ofSeconds(90)) {
+            asked = it
+            listOf(split)
+        }
+        assertEquals(setOf("victoria"), asked)
+    }
 }
