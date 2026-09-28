@@ -194,9 +194,8 @@ class StationSearchScreenshotTest {
     }
 
     @Test
-    fun station_search_to_from_chip() {
-        // The To… search's From chip names where the trip starts ("Here" by default) and changes it.
-        var changed = false
+    fun station_search_to_offers_no_here() {
+        // The To… search lists the rider's picks with no "Here" row: a trip to where they are goes nowhere.
         composeRule.setContent {
             StopDashTheme {
                 StationSearchScreen(
@@ -210,16 +209,13 @@ class StationSearchScreenshotTest {
                     onBack = {},
                     autoFocus = false,
                     hint = "To station or stop",
-                    onChangeFrom = { changed = true },
                 )
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("From Here").assertIsDisplayed()
+        composeRule.onNodeWithText("Oxford Circus").assertIsDisplayed()
         composeRule.onNodeWithTag("stationSearchHere").assertDoesNotExist()
-        captureSnapshot("station-search-to-from-chip.png")
-        composeRule.onNodeWithTag("fromChip").performClick()
-        assertTrue(changed)
+        composeRule.onNodeWithTag("fromChip").assertDoesNotExist()
     }
 
     @Test

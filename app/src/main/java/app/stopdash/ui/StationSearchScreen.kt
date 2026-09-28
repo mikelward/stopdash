@@ -98,10 +98,6 @@ fun StationSearchScreen(
     // list before anything is typed, and taps back to the rider's position (maintainer, 2026-09-28).
     // Null leaves it out, as the To… destination search does.
     onPickHere: (() -> Unit)? = null,
-    // A To… destination search's From chip, naming where the trip starts (null: "Here"); a tap
-    // changes it (maintainer, 2026-09-28). Null [onChangeFrom] shows no chip.
-    fromStation: String? = null,
-    onChangeFrom: (() -> Unit)? = null,
 ) {
     BackHandler(onBack = onBack)
     val focus = remember { FocusRequester() }
@@ -145,9 +141,6 @@ fun StationSearchScreen(
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (onChangeFrom != null) {
-                FromChip(fromStation, onChangeFrom, Modifier.padding(horizontal = 16.dp))
-            }
             // Keeps the previous matches in view while the next search runs, so typing doesn't blank
             // the list on every letter; the bar says a newer answer is on its way.
             if (state.searching) {
