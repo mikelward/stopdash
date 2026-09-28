@@ -1807,6 +1807,9 @@ Builds on Phase 1's minimal line-status marking.
               it, not when it starts) and show a not-yet-started alert with an info icon instead of
               as a disruption. `category` is `PlannedWork`/`RealTime`/`Information`; `isNow` is
               true for `RealTime` and mostly false for `PlannedWork`, current or not.
+        - [x] **Only planned work is read for a later start** (maintainer, 2026-09-28): a
+              `RealTime` or `Information` alert, or one with no category, is current whatever its
+              text dates. None of the 31 live alerts read as upcoming were anything but `PlannedWork`.
       - [x] **Current-vs-future comes from the dates in the text, not `isNow`** (landed with
             *Upcoming planned work as info* above). `validityPeriods[].isNow` reads `false` even
             for planned closures in effect (observed 2026-09-20), so it marks "unplanned", not

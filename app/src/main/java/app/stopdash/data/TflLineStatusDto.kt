@@ -55,7 +55,21 @@ fun TflLineStatusEntryDto.unreadablePostedDates(): List<String> =
 @Serializable
 data class TflLineDisruptionDto(
     val affectedRoutes: List<TflAffectedRouteDto> = emptyList(),
+    // TfL's kind of alert: `PlannedWork`, `RealTime` or `Information`. Unlike the routes, the plain
+    // request carries it too.
+    val category: String = "",
 )
+
+/**
+ * Whether TfL files this entry as planned work, the only kind whose text is read for a later start
+ * ([AlertStart]). A real-time or information alert is happening now whatever dates its text
+ * mentions ("suspended until further notice; replacement buses from 13 October"), and one TfL
+ * gave no category for is treated the same, the safe side (maintainer, 2026-09-28).
+ */
+fun TflLineStatusEntryDto.isPlannedWork(): Boolean =
+    disruption?.category.equals(PLANNED_WORK, ignoreCase = true)
+
+private const val PLANNED_WORK = "PlannedWork"
 
 // One route an alert affects; only its TfL direction (`inbound`/`outbound`) is read. The route's
 // stop list rides along in the detail response but isn't declared, so it is skipped.
@@ -97,8 +111,8 @@ fun TflLineStatusEntryDto.affectedDirections(): Set<String> =
  * or null when not looked up; from it the status is also reduced per direction
  * ([LineStatus.byDirection]), so a row only carries alerts for the way it is going.
  *
- * Given [now], an alert whose text says it starts on a later day ([AlertStart]) is kept out of the
- * disruption and listed in [LineStatus.planned] instead; one that can't be dated, or whose posting
+ * Given [now], a planned-work alert ([isPlannedWork]) whose text says it starts on a later day
+ * ([AlertStart]) is kept out of the disruption and listed in [LineStatus.planned] instead; one that can't be dated, or whose posting
  * date can't be read ([onBadDate] is told), counts as under way. Without [now] every alert counts as under way, as before.
  */
 fun TflLineDto.toLineStatus(
@@ -116,7 +130,7 @@ fun TflLineDto.toLineStatus(
                 entry = entry,
                 resolved = resolveDisruption(entry.statusSeverityDescription, entry.statusSeverity, entry.reason),
                 // Set only for work that hasn't started ([AlertStart]); null is under way, or unknown.
-                startsOn = now?.takeIf { entry.readablePostedDate(onBadDate) }
+                startsOn = now?.takeIf { entry.isPlannedWork() && entry.readablePostedDate(onBadDate) }
                     ?.let { AlertStart.startDate(entry.reason, it, entry.postedAt()) }?.takeIf { it.isAfter(today) },
             )
         }
