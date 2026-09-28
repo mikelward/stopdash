@@ -21,6 +21,17 @@ class StationMatcherTest {
     }
 
     @Test
+    fun `each part of a name matches as a prefix`() {
+        // A stop named with its cross street, a place named after its area (maintainer, 2026-09-28).
+        assertEquals(Prefix, tier("ba", "Foo Street / Bar Road"))
+        assertEquals(Prefix, tier("bar road", "Foo Street / Bar Road"))
+        assertEquals(Prefix, tier("zeta", "Alpha District, Zeta Gallery"))
+        assertEquals(Prefix, tier("ze", "Alpha District, Zeta Gallery"))
+        // The whole name still matches from its start, across the separator.
+        assertEquals(Prefix, tier("foo street bar", "Foo Street / Bar Road"))
+    }
+
+    @Test
     fun `word initials anchor`() {
         assertEquals(Anchored, tier("kc", "King's Cross St. Pancras"))
         assertEquals(Anchored, tier("ksp", "King's Cross St. Pancras"))

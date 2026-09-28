@@ -55,11 +55,21 @@ object StationMatcher {
             .replace(SPACES, " ")
             .trim()
 
-    /** The name and the abbreviated forms it generates ("King's Cross" → also "Kings X"). */
+    /**
+     * The name and the abbreviated forms it generates ("King's Cross" → also "Kings X"), plus each
+     * of its parts when it has several: a stop named with its cross street ("Foo Street / Bar Road")
+     * or a place named after its area ("City of Westminster, Tate Britain") matches a query that
+     * starts any part as a prefix, so "ba" finds "Bar Road" and "tate" finds "Tate Britain" as
+     * readily as a query that starts the whole name (maintainer, 2026-09-28).
+     */
     internal fun namesOf(name: String): List<String> {
-        val normalized = normalize(name)
-        val abbreviated = normalized.replace(CROSS_WORD, "X")
-        return if (abbreviated == normalized) listOf(normalized) else listOf(normalized, abbreviated)
+        val parts = name.split(SUB_LABEL).map { it.trim() }.filter { it.isNotEmpty() }
+        val wholes = if (parts.size > 1) listOf(name) + parts else listOf(name)
+        return wholes.flatMap { whole ->
+            val normalized = normalize(whole)
+            val abbreviated = normalized.replace(CROSS_WORD, "X")
+            if (abbreviated == normalized) listOf(normalized) else listOf(normalized, abbreviated)
+        }.filter { it.isNotEmpty() }.distinct()
     }
 
     /**
@@ -146,6 +156,9 @@ object StationMatcher {
     // "Elephant Castle" and "Shepherd's Bush" reads "Shepherds Bush".
     private val PUNCTUATION = Regex("[^\\p{L}\\p{N} ]")
     private val SPACES = Regex(" +")
+    // Between a name's parts: a stop's cross street ("Aldwych / Somerset House") or a place's
+    // area ("City of Westminster, Tate Britain").
+    private val SUB_LABEL = Regex("""\s*/\s*|,\s*""")
     private val CROSS_WORD = Regex("\\bCross\\b", RegexOption.IGNORE_CASE)
 
     // TfL id prefixes ahead of a station's code: interchanges (HUB…); a NaPTAN area code (910G
