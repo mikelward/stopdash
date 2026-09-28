@@ -1186,17 +1186,33 @@ fun MainScreen(
             if (onTheWay != null) OnTheWayBanner(onTheWay, now, Modifier.padding(start = 16.dp, top = 8.dp, end = 16.dp))
             val content = Modifier.fillMaxWidth().weight(1f)
             when (state) {
-                DeparturesUiState.Loading -> Centered(content) {
-                    CircularProgressIndicator()
-                    Text(
-                        text = stringResource(R.string.departures_loading),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 16.dp),
-                    )
-                    // A more direct update prompt than the top-bar overflow dot, which is easy to miss
-                    // while waiting on a cold load.
-                    if (updateAvailable) UpdateAvailableButton(onClick = onOpenAppListing)
+                // A more direct update prompt than the top-bar overflow dot, which is easy to miss
+                // while waiting on a cold load: at the bottom, in a slot kept (with one as tall at the
+                // top) whether or not it shows, so the spinner stays centered in one place either way.
+                // Scrolls when a short screen and a large font can't fit the slots and the spinner,
+                // rather than clipping the button; it spaces out to the full height otherwise.
+                DeparturesUiState.Loading -> {
+                    val scrollState = rememberScrollState()
+                    Column(
+                        modifier = content
+                            .scrollEdgeCue(scrollState, scrollCueColors(MaterialTheme.colorScheme.background))
+                            .verticalScroll(scrollState)
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        UpdateAvailableButton(onClick = {}, modifier = Modifier.padding(bottom = 16.dp), shown = false)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator()
+                            Text(
+                                text = stringResource(R.string.departures_loading),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 16.dp),
+                            )
+                        }
+                        UpdateAvailableButton(onClick = onOpenAppListing, modifier = Modifier.padding(top = 16.dp), shown = updateAvailable)
+                    }
                 }
 
                 is DeparturesUiState.Loaded -> if (journeyViewOpen && journeyViewCard == null) {

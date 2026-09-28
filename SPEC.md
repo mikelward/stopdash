@@ -1689,12 +1689,13 @@ keep their positions whether or not an update is pending — that opens the Play
 does the download and install. It is a lightweight nudge, not a banner: a dot costs no row
 or top-bar width, and there is no in-app update flow to shoehorn a download/restart UI into.
 The loading screens also surface the same nudge as an outlined **Update available** button
-below the spinner. On the **location gate** ("finding stops") this is the only update
+at the bottom of the screen — its room kept whether or not an update is pending, so the
+spinner and everything else stay where they are either way. On the **location gate** ("finding stops") this is the only update
 affordance — the gate has no overflow menu. On the departures **cold-load** spinner the
 overflow (with its dot) is already there, so the button is a more **direct** prompt than a dot
 the user may not notice while waiting, not the only path to it. Either way a user sitting on a
 slow fix or a cold load can act on the update without hunting a menu, and it stays a secondary
-offer (outlined, below the spinner), not the screen's main action.
+offer (outlined, at the bottom), not the screen's main action.
 Availability is Play's own answer, checked in the background on each foreground (never on a
 render path). The check is release-only: a debug build's `.debug` applicationId isn't a Play
 app, so it would only ever fail. An inconclusive check (Play absent or erroring) hides the
