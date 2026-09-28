@@ -153,8 +153,11 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
 - **Branches under your own `<agent>/` prefix are yours** — create, push,
   `--force-with-lease`, rename, delete the ones this session created or was assigned,
   freely, no permission needed. Any other branch, or `main`, is a conversation.
-- **Sync before you start**: `git fetch origin main` and rebase the working branch onto
-  it before the first commit. Resolve conflicts rather than abandoning the rebase.
+- **Sync before you start**: fetch main if the sandbox can (`git fetch origin
+  +refs/heads/main:refs/remotes/origin/main`; `git fetch origin main` alone leaves
+  `origin/main` stale in a single-branch clone) and rebase the working branch onto it
+  before the first commit. Resolve conflicts rather than abandoning the rebase. Where
+  the sandbox can't fetch, say the tree may be behind rather than pretending you synced.
 - **One commit per logical change.** Rewrite unmerged commits freely — amend,
   `--fixup` + autosquash, squash, reorder, split — so each commit that lands is coherent,
   with review responses folded into the commit they belong to. `--force-with-lease` after
