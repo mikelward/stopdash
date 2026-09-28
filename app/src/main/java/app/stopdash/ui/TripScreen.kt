@@ -77,6 +77,7 @@ import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.DirectTrips
 import app.stopdash.domain.DismissedAlert
+import app.stopdash.domain.remainingAfter
 import app.stopdash.domain.Headway
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineRef
@@ -1618,12 +1619,20 @@ internal fun rememberLegRouteStops(leg: TripLeg, retry: Int): RouteStopsUi {
  * list shows them. Display only — a dismissed line still ranks and counts as checked.
  */
 internal fun shownStatuses(statuses: Map<String, LineStatus>, dismissed: Set<DismissedAlert>): Map<String, LineStatus> =
-    if (dismissed.isEmpty()) statuses else statuses.filterValues { !it.disrupted || DismissedAlert.ofLineStatus(it) !in dismissed }
+    if (dismissed.isEmpty()) statuses
+    else statuses.mapNotNull { (line, status) -> status.remainingAfter(dismissed)?.let { line to it } }.toMap()
 
-/** [row] with its line alert marked dismissed ([DepartureRow.statusDismissed]) if it's in [dismissed]. */
+/**
+ * [row] with its line alert marked dismissed ([DepartureRow.statusDismissed]) if it's in [dismissed],
+ * or showing the other direction's alert when only one way's was ([remainingAfter]).
+ */
 internal fun withDismissedMarked(row: DepartureRow, dismissed: Set<DismissedAlert>): DepartureRow {
     val status = row.status ?: return row
-    return if (DismissedAlert.ofLineStatus(status) in dismissed) row.copy(status = null, statusDismissed = true) else row
+    return when (val shown = status.remainingAfter(dismissed)) {
+        status -> row
+        null -> row.copy(status = null, statusDismissed = true)
+        else -> row.copy(status = shown)
+    }
 }
 
 /**

@@ -1478,6 +1478,27 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `a one-way dismissal leaves a trip's cards and status row the other way's alert`() {
+        // The line-wide status is the worse way's alert; dismissing it one way keeps the other's.
+        val inbound = LineStatus("blue", 6, "Severe Delays")
+        val outbound = LineStatus("blue", 9, "Minor Delays")
+        val line = inbound.copy(byDirection = mapOf("inbound" to inbound, "outbound" to outbound))
+        val dismissed = setOf(DismissedAlert.ofLineStatus(inbound))
+
+        assertEquals("Minor Delays", shownStatuses(mapOf("blue" to line), dismissed)["blue"]?.description)
+        // A status-only row: no direction, no trains.
+        val statusRow = row(direction = "", destination = "", train = train("blue", "C", 6))
+            .copy(upcoming = emptyList(), status = line)
+        val marked = withDismissedMarked(statusRow, dismissed)
+        assertEquals("Minor Delays", marked.status?.description)
+        assertFalse(marked.statusDismissed)
+
+        val both = dismissed + DismissedAlert.ofLineStatus(outbound)
+        assertNull(shownStatuses(mapOf("blue" to line), both)["blue"])
+        assertTrue(withDismissedMarked(statusRow, both).statusDismissed)
+    }
+
+    @Test
     fun `a line row opens the row holding the train it leads with`() {
         val northbound = train("blue", "C", 6)
         val southbound = train("blue", "D", 3).copy(direction = "outbound")
