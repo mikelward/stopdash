@@ -570,6 +570,9 @@ internal fun TripScreen(
     // A pick that didn't save, said once as a mode hidden from here is, then acknowledged.
     walkingSpeedWriteFailed: Boolean = false,
     onWalkingSpeedWriteFailureShown: () -> Unit = {},
+    // The From/To bar in place of [title] over the routes (maintainer, 2026-09-28): where the trip
+    // starts and where it goes, each a tap to change. Null (a test) shows the title.
+    ends: TripEnds? = null,
 ) {
     // Planned work whose day has come shows as under way, however long ago it was fetched (Codex,
     // PR #337): a kept status outlives the day it was sorted on.
@@ -587,9 +590,22 @@ internal fun TripScreen(
             onWalkingSpeedChange,
             walkingSpeedWriteFailed,
             onWalkingSpeedWriteFailureShown,
+            ends,
         )
     }
 }
+
+/**
+ * A trip page's two ends, for its From/To bar: the start ([fromStation], or "Here" when null) and the
+ * destination ([toName]). A tap on From opens the From… search, and one on To the To… search; the
+ * other end is kept either way.
+ */
+internal class TripEnds(
+    val fromStation: String?,
+    val toName: String,
+    val onChangeFrom: () -> Unit,
+    val onChangeTo: () -> Unit,
+)
 
 /** The shared alert dismissals a trip's line page works with (see [TripScreen]). */
 private class TripAlerts(
@@ -629,6 +645,7 @@ private fun TripContent(
     onWalkingSpeedChange: ((WalkingSpeed) -> Unit)? = null,
     walkingSpeedWriteFailed: Boolean = false,
     onWalkingSpeedWriteFailureShown: () -> Unit = {},
+    ends: TripEnds? = null,
 ) {
     // Only the timed routes' lines: a hidden mode's routes, and those past the cap, load no route data.
     // While a plan's answers are still landing, the last settled plan's lines stand, so a passing
@@ -826,34 +843,48 @@ private fun TripContent(
             }
         },
         topBar = {
-            TopAppBar(
-                navigationIcon = {
-                    IconButton(onClick = { if (open != null) setOpenKey(null) else onBack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
+            val overflow: @Composable () -> Unit = {
+                if (menu != null) {
+                    AppOverflowMenu(menu.updateAvailable, menu.onOpenAppListing) { close ->
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.menu_send_bug_report)) },
+                            onClick = {
+                                close()
+                                menu.onSendBugReport()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.menu_about)) },
+                            onClick = {
+                                close()
+                                showAbout = true
+                            },
+                        )
                     }
-                },
-                title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                actions = {
-                    if (menu != null) {
-                        AppOverflowMenu(menu.updateAvailable, menu.onOpenAppListing) { close ->
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.menu_send_bug_report)) },
-                                onClick = {
-                                    close()
-                                    menu.onSendBugReport()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.menu_about)) },
-                                onClick = {
-                                    close()
-                                    showAbout = true
-                                },
-                            )
+                }
+            }
+            // Over the routes, where the trip starts and where it goes, each a tap to change
+            // (maintainer, 2026-09-28); over one route opened, its title, as Back returns to the routes.
+            if (ends != null && open == null) {
+                TripEndsBar(
+                    fromStation = ends.fromStation,
+                    onChangeFrom = ends.onChangeFrom,
+                    onBack = onBack,
+                    labelWidth = rememberTripEndsLabelWidth(),
+                    actions = if (menu != null) overflow else null,
+                    readToLabel = false,
+                ) { modifier -> ToField(ends.toName, ends.onChangeTo, modifier) }
+            } else {
+                TopAppBar(
+                    navigationIcon = {
+                        IconButton(onClick = { if (open != null) setOpenKey(null) else onBack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                         }
-                    }
-                },
-            )
+                    },
+                    title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    actions = { overflow() },
+                )
+            }
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {

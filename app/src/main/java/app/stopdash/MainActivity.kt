@@ -35,7 +35,6 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -121,6 +120,7 @@ import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StopMap
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.OriginChange
+import app.stopdash.domain.SavedTrip
 import app.stopdash.domain.ToChoice
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripOrigin
@@ -169,6 +169,7 @@ import app.stopdash.ui.StationSearchScreen
 import app.stopdash.ui.StationSearchViewModel
 import app.stopdash.ui.StationStopsViewModel
 import app.stopdash.ui.StopRef
+import app.stopdash.ui.TripEnds
 import app.stopdash.ui.TripScreen
 import app.stopdash.ui.TripViewModel
 import app.stopdash.ui.WriteFailures
@@ -487,6 +488,8 @@ class MainActivity : ComponentActivity() {
                 // could save the old place's departures to the widget mid-fix). Back on the list, it
                 // is rebuilt from the current set.
                 val listStores: NearbyDeparturesStores = viewModel()
+                // The near-me trip's To… as a station's is held, for a change of start to carry.
+                val hereTo = { ToChoice(picking = herePicking, stopId = hereToId, name = hereToName, place = hereFavorite) }
                 val closeHereTrip = {
                     hereTripOpen = false
                     herePicking = false
@@ -821,7 +824,7 @@ class MainActivity : ComponentActivity() {
                                     // The new start's To… search is up, so the change of start is done;
                                     // a near-me trip it began from gives way to this station's.
                                     onStartReached = {
-                                        if (originChange == OriginChange.NearMe) {
+                                        if (originChange is OriginChange.NearMe) {
                                             nearMeTripStores.clearAll()
                                             nearMeToStores.clearAll()
                                             closeHereTrip()
@@ -846,7 +849,7 @@ class MainActivity : ComponentActivity() {
                                     },
                                     to = stationTo,
                                     onTo = { stationTo = it },
-                                    startChanging = originChange != null,
+                                    changeTo = originChange?.to,
                                     // Leaving the From… search — Back, or "Here" — lands where a To…
                                     // search's From row opened it ([OriginChange]), else on the list.
                                     onLeaveSearch = { here ->
@@ -862,33 +865,38 @@ class MainActivity : ComponentActivity() {
                                                 openStationName = ""
                                                 stationTo = ToChoice.NONE
                                             }
-                                            OriginChange.Landing.NearMePicker -> {
-                                                // From a station, the near-me To… search opens; from near
-                                                // me, it was left open underneath, just as it was.
+                                            is OriginChange.Landing.NearMe -> {
+                                                // From a station, the near-me trip opens with its To…; from
+                                                // near me, it was left open underneath, just as it was.
                                                 if (change is OriginChange.Station) {
                                                     listStores.clearAll()
                                                     hereTripOpen = true
-                                                    herePicking = true
+                                                    herePicking = landing.to.picking
+                                                    hereToId = landing.to.stopId
+                                                    hereToName = landing.to.name
+                                                    hereFavorite = landing.to.place
                                                 }
                                                 stationSearchOpen = false
                                                 openStationId = null
                                                 openStationName = ""
                                                 stationTo = ToChoice.NONE
                                             }
-                                            is OriginChange.Landing.StationPicker -> {
+                                            is OriginChange.Landing.Station -> {
                                                 openStationId = landing.id
                                                 openStationName = landing.name
-                                                stationTo = ToChoice.NONE.startPicking()
+                                                stationTo = landing.to
                                             }
                                         }
                                     },
-                                    // A station's To… search's From row: back to the search to start
-                                    // elsewhere, the next station's To… search opening at once.
+                                    // A station trip's From row, over its To… search or its routes: back
+                                    // to the search to start elsewhere, the next station opening at the
+                                    // trip's To… — its search, or its routes to the same destination.
                                     onChangeFrom = {
-                                        originChange = openStationId?.let { OriginChange.Station(it, openStationName) }
+                                        val kept = OriginChange.kept(stationTo)
+                                        originChange = openStationId?.let { OriginChange.Station(it, openStationName, kept) }
                                         openStationId = null
                                         openStationName = ""
-                                        stationTo = ToChoice.NONE.startPicking()
+                                        stationTo = kept
                                     },
                                 )
                             } else {
@@ -974,12 +982,14 @@ class MainActivity : ComponentActivity() {
                                         toId = hereToId,
                                         toName = hereToName,
                                         favorite = hereFavorite,
-                                        // The To… search's From row: start from a station instead. This
-                                        // trip's search stays open underneath, so Back finds it as it
-                                        // was; a station picked replaces it with that station's.
+                                        // The trip's From row, over its To… search or its routes: start
+                                        // from a station instead. This trip stays open underneath, so Back
+                                        // finds it as it was; a station picked replaces it with that
+                                        // station's, to the same destination.
                                         onChangeFrom = {
-                                            originChange = OriginChange.NearMe
-                                            stationTo = ToChoice.NONE.startPicking()
+                                            val kept = OriginChange.kept(hereTo())
+                                            originChange = OriginChange.NearMe(kept)
+                                            stationTo = kept
                                             stationSearchOpen = true
                                         },
                                         onPlanTo = { herePicking = true },
@@ -987,6 +997,7 @@ class MainActivity : ComponentActivity() {
                                             herePicking = false
                                             hereToId = match.id
                                             hereToName = match.name
+                                            hereFavorite = null
                                         },
                                         // A favorite place picked in the To… list routes to its
                                         // coordinate (as Settings' route-to does): the coordinate is the
@@ -1000,7 +1011,7 @@ class MainActivity : ComponentActivity() {
                                         },
                                         // Back from the search returns to the trip, or to the list when
                                         // no destination was picked yet.
-                                        onClosePicker = { if (hereToId == null) closeHereTrip() else herePicking = false },
+                                        onClosePicker = { if (hereToId == null && hereFavorite == null) closeHereTrip() else herePicking = false },
                                         onClose = closeHereTrip,
                                         // A return to the foreground re-locates first, as the list does,
                                         // then refreshes the trip if the rider is still near its stops.
@@ -1862,9 +1873,9 @@ class MainActivity : ComponentActivity() {
         onChangeFrom: (() -> Unit)? = null,
         // The station's To… search (or trip) is up: a change of start that opened it is done.
         onStartReached: () -> Unit = {},
-        // A change of start is under way: a station's To… that closes itself (nothing to start from)
-        // keeps what was typed for the destination, for the To… search the change goes back to.
-        startChanging: Boolean = false,
+        // A change of start under way: the trip's To… it carries ([OriginChange.to]), for a station
+        // with nothing to start from to open its trip at once there is. Null when none is.
+        changeTo: ToChoice? = null,
     ) {
         // Captured once, so lambdas the retained ViewModels keep close over the application, not
         // this Activity (which a rotation destroys).
@@ -1968,7 +1979,7 @@ class MainActivity : ComponentActivity() {
                 onTo = onTo,
                 onEditPlaces = onEditPlaces,
                 onStartReached = onStartReached,
-                startChanging = startChanging,
+                changeTo = changeTo,
                 // Leaving the station for the search drops its models, as closing it does, and starts
                 // the search with nothing typed, so "Here" heads it.
                 onChangeFrom = onChangeFrom?.let { change ->
@@ -2003,7 +2014,7 @@ class MainActivity : ComponentActivity() {
         onEditPlaces: (() -> Unit)? = null,
         onChangeFrom: (() -> Unit)? = null,
         onStartReached: () -> Unit = {},
-        startChanging: Boolean = false,
+        changeTo: ToChoice? = null,
     ) {
         val fromNearby: NearbyStopsViewModel = viewModel(
             key = "from-nearby",
@@ -2066,13 +2077,20 @@ class MainActivity : ComponentActivity() {
             )
             return
         }
+        val origin = remember(ready, hidden) {
+            val byId = ready.nearbyStops.associateBy { it.id }
+            hereOriginIds(ready.eagerStops, ready.nearbyStops, ready.distanceMeters, hidden)
+                .mapNotNull { byId[it] }
+        }
+        // Mid-change of start, a station with nothing to start from (every mode there hidden) shows
+        // its own page, which says so and offers "Show all"; once there is somewhere to start, the
+        // trip opens at the To… the change carries rather than leaving the rider to pick it again.
+        if (!to.open && changeTo != null && origin.isNotEmpty()) {
+            LaunchedEffect(Unit) { onTo(changeTo) }
+        }
         if (to.open) {
             HereTripArea(
-                origin = remember(ready, hidden) {
-                    val byId = ready.nearbyStops.associateBy { it.id }
-                    hereOriginIds(ready.eagerStops, ready.nearbyStops, ready.distanceMeters, hidden)
-                        .mapNotNull { byId[it] }
-                },
+                origin = origin,
                 distanceMeters = ready.distanceMeters,
                 clusters = ready.eager + ready.more,
                 hiddenModes = hidden,
@@ -2105,7 +2123,7 @@ class MainActivity : ComponentActivity() {
                 onEditPlaces = onEditPlaces,
                 onChangeFrom = onChangeFrom,
                 onShown = onStartReached,
-                keepSearchOnEmptyOrigin = startChanging,
+                keepSearchOnEmptyOrigin = changeTo != null,
             )
         } else {
             DeparturesForStops(
@@ -2264,7 +2282,8 @@ class MainActivity : ComponentActivity() {
             return
         }
         LaunchedEffect(Unit) { onShown() }
-        if (favorite == null && (picking || toId == null)) {
+        // The destination search: before anything is picked, and when the trip's To row reopens it.
+        if (picking || (favorite == null && toId == null)) {
             val state by search.state.collectAsStateWithLifecycle()
             LaunchedEffect(Unit) { search.refreshYours() }
             StationSearchScreen(
@@ -2279,7 +2298,7 @@ class MainActivity : ComponentActivity() {
                 onRetry = search::retry,
                 onBack = {
                     search.clear()
-                    if (toId == null) close() else onClosePicker()
+                    if (toId == null && favorite == null) close() else onClosePicker()
                 },
                 hint = stringResource(R.string.station_search_to_hint),
                 // Tapping a favorite place routes the trip to its coordinate: drop any prior To…
@@ -2452,6 +2471,9 @@ class MainActivity : ComponentActivity() {
             onWalkingSpeedChange = WalkingSpeedSetting::set,
             walkingSpeedWriteFailed = WalkingSpeedSetting.writeFailed.collectAsStateWithLifecycle().value,
             onWalkingSpeedWriteFailureShown = WalkingSpeedSetting::writeFailureShown,
+            // Where it starts and where it goes, each a tap to change (maintainer, 2026-09-28): From
+            // opens the From… search, To the destination search, the other end kept.
+            ends = onChangeFrom?.let { changeFrom -> TripEnds(fromName, toName, changeFrom, onPlanTo) },
         )
     }
 
@@ -2757,22 +2779,7 @@ class MainActivity : ComponentActivity() {
         // TfL as the trip's end, never here (SPEC *Privacy*). Empty means no favorite trip is open.
         // The open station's To… across process death: the search's state, a picked stop, or a picked
         // place's coordinate and name (kept on the device, as [FAVORITE_TRIP_SAVER] says).
-        private val TO_CHOICE_SAVER = listSaver<ToChoice, Any?>(
-            save = { to ->
-                listOf(to.picking, to.stopId, to.name, to.place?.coordinate?.latitude, to.place?.coordinate?.longitude, to.place?.name)
-            },
-            restore = { saved ->
-                val lat = saved[3] as Double?
-                val lon = saved[4] as Double?
-                val placeName = saved[5] as String?
-                val place = if (lat != null && lon != null && placeName != null) {
-                    TripDestination.Place(Coordinates(lat, lon), placeName)
-                } else {
-                    null
-                }
-                ToChoice(saved[0] as Boolean, saved[1] as String?, saved[2] as String, place)
-            },
-        )
+        private val TO_CHOICE_SAVER = listSaver<ToChoice, Any?>(save = { SavedTrip.toChoiceFields(it) }, restore = { SavedTrip.toChoiceOf(it) })
 
         private val FAVORITE_TRIP_SAVER = listSaver<TripDestination.Place?, Any>(
             save = { place -> place?.let { listOf(it.coordinate.latitude, it.coordinate.longitude, it.name) }.orEmpty() },
@@ -2782,16 +2789,11 @@ class MainActivity : ComponentActivity() {
             },
         )
 
-        // Where a change of start began ([OriginChange]): a station's id and name, "" for near me.
-        private val ORIGIN_CHANGE_SAVER = Saver<OriginChange?, List<String>>(
-            save = { change ->
-                when (change) {
-                    null -> null
-                    OriginChange.NearMe -> listOf("")
-                    is OriginChange.Station -> listOf(change.id, change.name)
-                }
-            },
-            restore = { saved -> if (saved.size == 2) OriginChange.Station(saved[0], saved[1]) else OriginChange.NearMe },
+        // Where a change of start began ([OriginChange]), with the trip's To…; empty when none is under
+        // way. [SavedTrip] also restores the shape the build before this one saved.
+        private val ORIGIN_CHANGE_SAVER = listSaver<OriginChange?, Any?>(
+            save = { SavedTrip.originChangeFields(it) },
+            restore = { SavedTrip.originChangeOf(it) },
         )
 
         // The station view has no location fix to wait on, so its auto-refresh is never held off by one.

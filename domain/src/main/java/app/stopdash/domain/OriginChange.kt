@@ -1,60 +1,70 @@
 package app.stopdash.domain
 
 /**
- * Where the rider was when they tapped the *To…* search's **From** row to change where the trip starts
- * (SPEC *Finding stops → Where a trip starts*, maintainer 2026-09-28): the near-me list's *To…*
- * search, or a searched station's. Kept while the *From…* search is up, so leaving it goes back
- * there rather than abandoning the trip being planned.
+ * Where the rider was when they tapped a **From** row to change where the trip starts (SPEC *Finding
+ * stops → Where a trip starts*, maintainer 2026-09-28): the near-me trip's, or a searched station's —
+ * its *To…* search, or its routes. Kept while the *From…* search is up, so leaving it goes back there
+ * rather than abandoning the trip being planned, and [to] — the trip's *To…* as it was, its search up
+ * or a destination picked — goes with the rider to wherever the trip starts next.
  */
 sealed interface OriginChange {
-    /** From the near-me *To…* search: the trip started from the rider's position. */
-    data object NearMe : OriginChange
+    val to: ToChoice
 
-    /** From the *To…* search of the station [id] ([name]): the trip started there. */
-    data class Station(val id: String, val name: String) : OriginChange
+    /** From the near-me trip: it started from the rider's position. */
+    data class NearMe(override val to: ToChoice) : OriginChange
 
-    /** Where the rider lands next, as a *To…* search open over it. */
+    /** From the trip from the station [id] ([name]): it started there. */
+    data class Station(val id: String, val name: String, override val to: ToChoice) : OriginChange
+
+    /** Where the rider lands next: a trip with [to] as its *To…*, its search or its routes. */
     sealed interface Landing {
-        /** The near-me *To…* search. */
-        data object NearMePicker : Landing
+        val to: ToChoice
 
-        /** The *To…* search of the station [id] ([name]). */
-        data class StationPicker(val id: String, val name: String) : Landing
+        /** The near-me trip. */
+        data class NearMe(override val to: ToChoice) : Landing
+
+        /** The trip from the station [id] ([name]). */
+        data class Station(val id: String, val name: String, override val to: ToChoice) : Landing
     }
 
     companion object {
         /**
+         * The *To…* a change of start keeps: [to] as it was, except that one with no destination picked
+         * yet is still its search, whichever way the trip had it open.
+         */
+        fun kept(to: ToChoice): ToChoice = if (to.hasDestination) to else to.startPicking()
+
+        /**
          * Back from the *From…* search: where [change] began, or null (the list) when the search
-         * wasn't opened from a *To…* search's From row.
+         * wasn't opened from a trip's From row.
          */
         fun back(change: OriginChange?): Landing? = when (change) {
             null -> null
-            NearMe -> Landing.NearMePicker
-            is Station -> Landing.StationPicker(change.id, change.name)
+            is NearMe -> Landing.NearMe(change.to)
+            is Station -> Landing.Station(change.id, change.name, change.to)
         }
 
         /**
-         * "Here" picked in the *From…* search: the trip starts from the rider's position, so a *To…*
-         * search that opened it goes on at the near-me one, whichever it began at; else the list (null).
+         * "Here" picked in the *From…* search: the trip starts from the rider's position, so a trip
+         * that opened it goes on as the near-me one, whichever it began at, with its *To…*; else the
+         * list (null).
          */
-        fun here(change: OriginChange?): Landing? = if (change == null) null else Landing.NearMePicker
+        fun here(change: OriginChange?): Landing? = change?.let { Landing.NearMe(it.to) }
 
         /**
          * What's left of [change] once the rider leaves the *From…* search for [landing]. Back to the
-         * station it began at still has that station's stops to load before its *To…* search can
-         * appear (and that can fail), so the change stays under way until it does; any other landing
-         * ends it.
+         * station it began at still has that station's stops to load before its trip can appear (and
+         * that can fail), so the change stays under way until it does; any other landing ends it.
          */
         fun afterLeaving(change: OriginChange?, landing: Landing?): OriginChange? =
-            if (landing is Landing.StationPicker) change else null
+            if (landing is Landing.Station) change else null
 
         /**
          * The *To…* a station's page leaves behind when the rider backs out of it to the *From…* search.
-         * A change of start stays under way until the new station's *To…* search appears, so backing out
-         * of one still loading its stops, or that failed, keeps it picking: the next station picked opens
-         * at its *To…* search too. With no change under way, nothing is kept.
+         * A change of start stays under way until the new station's trip appears, so backing out of one
+         * still loading its stops, or that failed, keeps the trip's *To…*: the next station picked opens
+         * at it too. With no change under way, nothing is kept.
          */
-        fun toAfterStationClosed(change: OriginChange?): ToChoice =
-            if (change == null) ToChoice.NONE else ToChoice.NONE.startPicking()
+        fun toAfterStationClosed(change: OriginChange?): ToChoice = change?.to ?: ToChoice.NONE
     }
 }

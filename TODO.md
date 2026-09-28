@@ -855,14 +855,15 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             Replaces a From chip built and removed the same day; the near-me list's chips still
             have no "Here". Needs a device check of the bar's look and the round trips through the
             search.
-      - [ ] **Decide: changing the start of a planned trip** (maintainer, 2026-09-28, undecided;
-            raised by Codex on #356). The From row lives in the *To…* search, which a planned trip
-            can't reopen, so today its start is changed by going back and planning again. The
-            leading option: tapping the trip's title reopens the From/To search with the
-            destination kept. A related, larger alternative: pick the new start in place in the
-            From field (Maps-style) rather than through the *From…* search and a station's page,
-            which would also retire the change-of-start bookkeeping (`OriginChange`) that drew four
-            review findings on #356.
+      - [x] **The routes keep the From/To bar** (maintainer, 2026-09-28, option B of three mocked;
+            raised by Codex on #356): a planned trip shows where it starts and where it goes, a tap
+            on From changing the start through the *From…* search with the destination kept, and one
+            on To reopening the *To…* search with the start kept. Needs a device check of the round
+            trips (from here and from a station, to a stop and to a place).
+      - [ ] **Change the start in place** (maintainer, 2026-09-28; option C of the mocks, not
+            chosen for now): type the new start into the From field itself (Maps-style) rather than
+            through the *From…* search and a station's page, which would also retire the
+            change-of-start bookkeeping (`OriginChange`) that drew four review findings on #356.
       - [ ] **Decide: saved places in the *From…* chip row** (maintainer, 2026-09-28, undecided).
             The *From…* and *To…* searches share one chip row at the top (Here first on *From…*,
             then the places on *To…*); *From…* shows no places yet. The leading option: tapping one

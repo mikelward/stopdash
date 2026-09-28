@@ -241,6 +241,7 @@ class TripScreenScreenshotTest {
         routeStops: RouteStopsRepository = RouteStopsRepository(source),
         menu: AppMenuActions? = null,
         access: Duration = Duration.ofMinutes(2),
+        ends: TripEnds? = null,
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -254,6 +255,7 @@ class TripScreenScreenshotTest {
                     onBack = {},
                     onRetry = {},
                     menu = menu,
+                    ends = ends,
                 )
             }
         }
@@ -298,6 +300,67 @@ class TripScreenScreenshotTest {
         composeRule.onNodeWithTag("walkingSpeed").performClick()
         composeRule.onNodeWithTag("walkingSpeed-FAST").performClick()
         assertEquals(WalkingSpeed.FAST, chosen)
+    }
+
+    @Test
+    fun trip_from_to_bar() {
+        // The routes keep the To… search's From/To bar (maintainer, 2026-09-28): each end a tap to change.
+        var changedFrom = 0
+        var changedTo = 0
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf",
+                    state = planned,
+                    now = now,
+                    access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source),
+                    onBack = {},
+                    onRetry = {},
+                    menu = AppMenuActions(updateAvailable = false, onOpenAppListing = {}, onSendBugReport = {}, onOpenLicenses = {}),
+                    walkingSpeed = WalkingSpeed.AVERAGE,
+                    onWalkingSpeedChange = {},
+                    ends = TripEnds(fromStation = null, toName = "Canary Wharf", onChangeFrom = { changedFrom++ }, onChangeTo = { changedTo++ }),
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("fromField").assertContentDescriptionEquals("From Here")
+        composeRule.onNodeWithTag("toField").assertContentDescriptionEquals("To Canary Wharf")
+        // The bar says where the trip goes, so the title doesn't say it again.
+        composeRule.onAllNodesWithText("To Canary Wharf").assertCountEquals(0)
+        // The app's overflow stays, at the From row's end.
+        composeRule.onNodeWithContentDescription(composeRule.activity.getString(R.string.menu_more)).assertIsDisplayed()
+        captureSnapshot("trip-from-to.png")
+        composeRule.onNodeWithTag("fromField").performClick()
+        assertEquals(1, changedFrom)
+        composeRule.onNodeWithTag("toField").performClick()
+        assertEquals(1, changedTo)
+    }
+
+    @Test
+    fun trip_from_to_bar_from_a_station() {
+        // From the station the routes start at, so no walk to it.
+        show(
+            planned,
+            access = Duration.ZERO,
+            ends = TripEnds(fromStation = "Highbury & Islington", toName = "Canary Wharf", onChangeFrom = {}, onChangeTo = {}),
+        )
+        composeRule.onNodeWithTag("fromField").assertContentDescriptionEquals("From Highbury & Islington")
+        captureSnapshot("trip-from-to-station.png")
+    }
+
+    @Test
+    fun an_open_route_is_titled_and_back_returns_to_the_from_to_bar() {
+        show(planned, ends = TripEnds(fromStation = null, toName = "Canary Wharf", onChangeFrom = {}, onChangeTo = {}))
+        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.waitForIdle()
+        // One route open: its legs under the trip's title, not ends to change.
+        composeRule.onNodeWithText("To Canary Wharf").assertIsDisplayed()
+        composeRule.onAllNodesWithTag("tripEndsBar").assertCountEquals(0)
+        composeRule.onNodeWithContentDescription(composeRule.activity.getString(R.string.action_back)).performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("tripEndsBar").assertIsDisplayed()
     }
 
     @Test
