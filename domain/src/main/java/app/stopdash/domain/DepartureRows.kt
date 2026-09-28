@@ -80,7 +80,9 @@ object DepartureRows {
                     // Marks the row only when the line is actually disrupted — a
                     // good-service (or unlooked-up) line leaves it null, so a non-null
                     // status always means "flag this" (SPEC *Disruptions* / D3).
-                    status = lineStatuses[key.lineId]?.takeIf(LineStatus::disrupted),
+                    // The row's own direction's alerts only: a diversion the other way round
+                    // doesn't touch these buses (TfL's affected-route direction, [LineStatus.forDirection]).
+                    status = lineStatuses[key.lineId]?.forDirection(soonest.direction)?.takeIf(LineStatus::disrupted),
                 )
             }
             .sortedWith(rowOrder)
@@ -534,7 +536,10 @@ object DepartureRows {
      * dismissals against (see [Dismissed.reconcile], scoped to the lines actually checked).
      */
     fun liveLineStatusAlerts(lineStatuses: Map<String, LineStatus>): Set<DismissedAlert> =
-        lineStatuses.values.filter { it.disrupted }.mapTo(mutableSetOf()) { DismissedAlert.ofLineStatus(it) }
+        // Each direction's alert counts too: a row shows its own direction's, so that is what a
+        // rider dismisses, and pruning it here would bring it straight back.
+        lineStatuses.values.flatMap { it.allStatuses }.filter { it.disrupted }
+            .mapTo(mutableSetOf()) { DismissedAlert.ofLineStatus(it) }
 
     /**
      * The cross-stop dedupe identity for [nearbyDeduped]: line + direction-of-travel.

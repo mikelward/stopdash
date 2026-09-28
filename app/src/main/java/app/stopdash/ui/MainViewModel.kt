@@ -1079,7 +1079,8 @@ class MainViewModel(
             }
             // Lines checked within [lineStatusReuse] keep that verdict; only the rest are asked for.
             val cachedStatuses = lineIds.mapNotNull { id ->
-                lineStatusCache[id]?.takeIf { (at, _) -> isWithin(at, now, lineStatusReuse) }?.second
+                // Not one still waiting on its alerts' directions: asked again, it splits by direction.
+                lineStatusCache[id]?.takeIf { (at, status) -> isWithin(at, now, lineStatusReuse) && !status.awaitingDirections }?.second
             }
             // A line TfL left out within the same window isn't asked about again either: it still
             // reads as unchecked, but asking every cycle would spend the rate budget and the radio

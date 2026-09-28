@@ -1260,6 +1260,15 @@ closures currently in effect, so telling current from future needs the dates in 
 and showing a not-yet-current diversion is the safe side (an extra chip beats a hidden
 disruption).
 
+**A line alert is shown only on rows travelling the way it affects** (maintainer, 2026-09-28): a
+northbound diversion says nothing about the buses heading south, and flagging them sends the rider
+reading about a stretch they won't touch. TfL names an alert's direction only in its detailed status
+response, ~40× the regular one, so the refresh stays plain and each new alert's direction is looked
+up once in the background and remembered by its text (reworded text is a new alert). Until that
+answer arrives, or if it fails, or where TfL scopes an alert to no direction or a row has none (most
+rail predictions), the alert shows in both directions, as before — the split only ever hides an
+alert TfL itself says is for the other way. The widget and watch keep the line-wide status for now.
+
 A stop notice, by contrast, is shown **only while its TfL window (`fromDate`–`toDate`) covers
 now**, checked against the render clock: TfL lists a scheduled stop closure hours ahead ("Bus Stop
 Closed" at breakfast for a 10:00–15:00 closure), and a card claiming the stop is closed beside its

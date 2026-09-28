@@ -45,6 +45,10 @@ import io.ktor.serialization.kotlinx.json.json
 import java.io.IOException
 import java.net.UnknownHostException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import okhttp3.Dispatcher
 
@@ -80,6 +84,14 @@ class KtorTflClient(
     // Sink for recoverable response oddities (an unparseable disruption date), coarse facts only —
     // a stop id, never a coordinate or key (SPEC *Privacy*). No-op by default (tests, widget).
     private val warn: (String) -> Unit = {},
+    // Where each line alert's direction of travel is remembered, and the scope its one-off lookup
+    // runs in, off the refresh ([LineAlertDirections]). Both null by default (tests, the widget,
+    // whose HTTP client closes when its work ends): alerts then count for both directions.
+    private val alertDirections: LineAlertDirections? = null,
+    private val alertDirectionScope: CoroutineScope? = null,
+    // The lookup decodes a ~150 KB response a line, so it runs off the main thread; a test swaps in
+    // its own dispatcher to await it.
+    private val alertDirectionDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, JourneyPlanner, PostcodeResolver, PlaceSearch, VehicleSource {
     override suspend fun journeys(fromId: String, to: TripDestination): List<TripRoute> =
         tflRequest { key ->
@@ -288,10 +300,49 @@ class KtorTflClient(
         // and an empty `/Line//Status` path would 404.
         if (lineIds.isEmpty()) return emptyList()
         val ids = lineIds.joinToString(",")
-        return tflRequest { key ->
+        val lines = tflRequest { key ->
             httpClient.get("$baseUrl/Line/$ids/Status") {
                 applyAppKey(key)
-            }.body<List<TflLineDto>>().mapNotNull { it.toLineStatus() }
+            }.body<List<TflLineDto>>()
+        }
+        lookUpAlertDirections(lines)
+        val directions = alertDirections?.takeIf { alertDirectionScope != null }
+        return lines.mapNotNull { line ->
+            line.toLineStatus { reason -> directions?.directionsOf(line.id, reason) }
+                // Marked while a lookup for it runs, so the caller asks again next refresh instead
+                // of reusing this unsplit answer for its whole reuse window (Codex, PR #334).
+                ?.let { if (directions?.anyUnknown(line) == true) it.copy(awaitingDirections = true) else it }
+        }
+    }
+
+    /**
+     * Starts the one-off direction lookup ([LineAlertDirections]) for the alerts in [lines] not seen
+     * before, without waiting for it: this refresh shows them for both directions, the next one by
+     * direction. The detailed response is ~150 KB a line, so it is asked for only here, per new alert.
+     */
+    private fun lookUpAlertDirections(lines: List<TflLineDto>) {
+        val cache = alertDirections ?: return
+        val scope = alertDirectionScope ?: return
+        val claimed = cache.claimUnknown(lines)
+        if (claimed.isEmpty()) return
+        scope.launch(alertDirectionDispatcher) {
+            try {
+                val detailed = tflRequest { key ->
+                    httpClient.get("$baseUrl/Line/${claimed.joinToString(",") { it.id }}/Status") {
+                        parameter("detail", "true")
+                        applyAppKey(key)
+                        allowSlowAnswer()
+                    }.body<List<TflLineDto>>()
+                }
+                cache.record(claimed, detailed)
+            } catch (e: CancellationException) {
+                cache.release(claimed)
+                throw e
+            } catch (e: TflException) {
+                // The alerts keep showing for both directions, as before; the next refresh asks again.
+                cache.release(claimed)
+                warn("alert directions: ${claimed.size} lines, ${e::class.simpleName}")
+            }
         }
     }
 
