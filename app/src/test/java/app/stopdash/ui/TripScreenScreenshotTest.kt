@@ -545,6 +545,20 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun an_open_routes_header_warns_just_before_its_arrival() {
+        show(planned)
+        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.waitForIdle()
+        // One ⚠ for the disrupted Jubilee, just before the arrival (maintainer, 2026-09-28), not
+        // beside its pill: on the arrival's line, ending left of it.
+        val arrival = composeRule.onAllNodesWithText("27 min · ~08:29", useUnmergedTree = true).fetchSemanticsNodes().single().boundsInRoot
+        val glyph = composeRule.onAllNodesWithContentDescription("Minor Delays", useUnmergedTree = true).fetchSemanticsNodes()
+            .map { it.boundsInRoot }.single { it.top < arrival.bottom && arrival.top < it.bottom }
+        assertTrue(glyph.right <= arrival.left)
+        assertTrue(arrival.left - glyph.right < 40f)
+    }
+
+    @Test
     fun trip_leg_opens_its_line() {
         show(planned)
         composeRule.onNodeWithText("27 min · ~08:29").performClick()
