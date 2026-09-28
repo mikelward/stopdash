@@ -159,8 +159,12 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   `--fixup` + autosquash, squash, reorder, split — so each commit that lands is coherent,
   with review responses folded into the commit they belong to. `--force-with-lease` after
   a rebase, never a bare `--force`. `main` is never force-pushed.
-- **After a merge, take a fresh `<agent>/<short-topic>`** rather than resetting the
-  merged name onto the new base.
+- **Merge cue (`merged` / `I merged` / `landed` / merge webhook) runs hygiene *before*
+  engaging with the rest of the message:** fetch main if the sandbox can (`git fetch
+  origin +refs/heads/main:refs/remotes/origin/main`), cut a fresh
+  `<agent>/<short-topic>` branch off `origin/main` rather than resetting the merged name
+  onto it, and announce the switch. Where it can't fetch, say the follow-up needs a synced
+  checkout rather than branching off a stale `origin/main`.
 - **The agent authors; whoever merges takes over the committer line.** A rebase/squash
   merge rewrites the committer — expected either way; never re-author or amend merged
   commits to "fix" authorship or signing, and don't narrate it. It is not a finding.
