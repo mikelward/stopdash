@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.glance.appwidget.updateAll
 import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.domain.DeparturesSnapshot
+import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.Terminating
@@ -66,6 +67,12 @@ class WidgetSnapshotStore(context: Context) : SnapshotStore {
         if (nearer.isEmpty()) return
         // The widget hides by the stored places, so re-render once they're updated.
         delegate.updateNearer(nearer)
+        pokeWidget()
+    }
+
+    override suspend fun dismissLineStatus(alert: DismissedAlert) {
+        // The widget (and, through the stored snapshot, the watch) drops the mark at once.
+        delegate.dismissLineStatus(alert)
         pokeWidget()
     }
 

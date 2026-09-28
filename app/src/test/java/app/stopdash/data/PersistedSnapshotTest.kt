@@ -264,6 +264,16 @@ class PersistedSnapshotTest {
     }
 
     @Test
+    fun `a dismissed check survives the round trip, and an older one reads as not dismissed`() {
+        val check = LineStatusCheck(LineStatus("victoria", 6, "Severe Delays"), now, dismissed = true)
+        val snapshot = sample().copy(lineStatuses = mapOf("victoria" to check))
+        assertEquals(snapshot, snapshot.toPersisted().toDomain())
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        val older = """{"lineId":"victoria","severity":6,"description":"Severe Delays","checkedAtMillis":0}"""
+        assertEquals(false, json.decodeFromString(PersistedLineStatus.serializer(), older).dismissed)
+    }
+
+    @Test
     fun `a snapshot written before line statuses were persisted reads back with none`() {
         val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
         val older = """{"version":2,"stops":[],"fetchedAtMillis":0}"""

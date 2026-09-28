@@ -6,6 +6,8 @@ import app.stopdash.domain.JourneyCall
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCheck
+import app.stopdash.domain.lineAlertFingerprint
+import app.stopdash.domain.lineAlertKey
 import app.stopdash.domain.RailFeed
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.Terminating
@@ -48,6 +50,10 @@ data class PersistedSnapshot(
     // so an older snapshot reads back with none (no line marked, as before); an older build reading
     // this one ignores it, as it always has.
     val lineStatuses: List<PersistedLineStatus> = emptyList(),
+    // Line alerts dismissed in the last few minutes ([withRecentDismissals]): every write marks a
+    // check of one of them dismissed, so a writer that fetched the alert before the dismissal
+    // reached it can't store it unmarked. Defaulted; an older build ignores it.
+    val recentDismissals: List<PersistedRecentDismissal> = emptyList(),
 ) {
     companion object {
         /**
@@ -112,13 +118,22 @@ data class PersistedLineStatus(
     // False for a check TfL gave no status for ([LineStatusCheck.known]). Defaulted: a check written
     // before this field was a verdict.
     val known: Boolean = true,
+    // True when the user dismissed this status in the app ([LineStatusCheck.dismissed]). Defaulted:
+    // a check written before this field wasn't dismissed.
+    val dismissed: Boolean = false,
+    // The alert's full dismissal identity ([LineStatusCheck.fingerprint]). Null in a check written
+    // before this field: its identity is then taken from what's stored, which can't match an alert
+    // dismissed with a full reason, so it isn't marked until rewritten (the safe way).
+    val fingerprint: String? = null,
 )
 
 fun LineStatusCheck.toPersisted(): PersistedLineStatus =
-    PersistedLineStatus(status.lineId, status.severity, status.description, checkedAt.toEpochMilli(), known)
+    PersistedLineStatus(status.lineId, status.severity, status.description, checkedAt.toEpochMilli(), known, dismissed, fingerprint)
 
 fun PersistedLineStatus.toDomain(): LineStatusCheck =
-    LineStatusCheck(LineStatus(lineId, severity, description), Instant.ofEpochMilli(checkedAtMillis), known)
+    LineStatus(lineId, severity, description).let { status ->
+        LineStatusCheck(status, Instant.ofEpochMilli(checkedAtMillis), known, dismissed, fingerprint ?: lineAlertFingerprint(status))
+    }
 
 /** The persisted form of [DeparturesSnapshot.lineStatuses], in a stable (line id) order. */
 fun Map<String, LineStatusCheck>.toPersistedStatuses(): List<PersistedLineStatus> =
@@ -291,3 +306,49 @@ internal fun PersistedDeparture.toDomain(): Departure =
         destinationId = destinationId,
         vehicleId = vehicleId,
     )
+
+/** A line alert dismissed at [atMillis], by its [alertKey] and [fingerprint] ([alertFingerprint]). */
+@Serializable
+data class PersistedRecentDismissal(
+    val alertKey: String,
+    val fingerprint: String,
+    val atMillis: Long,
+)
+
+/**
+ * How long a dismissal is replayed onto every write ([withRecentDismissals]): longer than any
+ * writer holds a status between fetching it and saving it (a refresh cycle is bounded well under
+ * this), after which every writer's own read of the dismissed set already includes it.
+ */
+val RECENT_DISMISSAL_WINDOW: java.time.Duration = java.time.Duration.ofMinutes(15)
+
+/**
+ * [snapshot] with [recent] (less the ones older than [RECENT_DISMISSAL_WINDOW] at [now], or dated
+ * after it) kept, and every check of one of those alerts marked dismissed. Whichever order the
+ * dismissal and a writer's save land in, the stored check ends up dismissed, even when the alert
+ * wasn't stored yet when the user dismissed it. A dismissal whose line has since been checked
+ * holding a different alert is dropped, as the dismissed set's own reconcile would.
+ */
+fun withRecentDismissals(
+    snapshot: PersistedSnapshot,
+    recent: List<PersistedRecentDismissal>,
+    now: Instant,
+): PersistedSnapshot {
+    val nowMillis = now.toEpochMilli()
+    val checks = snapshot.lineStatuses.map { it to it.toDomain() }
+    val kept = recent.filter { dismissal ->
+        dismissal.atMillis <= nowMillis && nowMillis - dismissal.atMillis < RECENT_DISMISSAL_WINDOW.toMillis() &&
+            // A line checked since, holding another alert, shows this one ended: stop replaying it,
+            // so the same alert recurring later is shown. A check from before the dismissal is a
+            // racing writer's, and proves nothing.
+            checks.none { (stored, check) ->
+                check.known && lineAlertKey(stored.lineId) == dismissal.alertKey &&
+                    stored.checkedAtMillis > dismissal.atMillis && check.fingerprint != dismissal.fingerprint
+            }
+    }
+    val marked = checks.map { (stored, check) ->
+        val dismissed = check.known && kept.any { it.alertKey == lineAlertKey(stored.lineId) && it.fingerprint == check.fingerprint }
+        if (dismissed && !stored.dismissed) stored.copy(dismissed = true) else stored
+    }
+    return snapshot.copy(lineStatuses = marked, recentDismissals = kept)
+}

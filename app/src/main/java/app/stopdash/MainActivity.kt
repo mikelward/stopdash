@@ -1289,6 +1289,7 @@ class MainActivity : ComponentActivity() {
                             // Dismissed alerts are persisted per place across every nearby set, so
                             // the store is the shared process-wide one too.
                             dismissedStore = DataStoreDismissedAlertsStore.from(appContext, warn = ::logDepartureWarning),
+                            widgetDismissals = WidgetSnapshotStore(appContext),
                             warn = ::logDepartureWarning,
                             // Re-render the widget when a star changes (its pinned order — SPEC
                             // D8) or after a refresh that didn't save, so its age/staleness stays
@@ -2212,6 +2213,7 @@ class MainActivity : ComponentActivity() {
                         poles = { area -> routeStops(appContext).loadPoles(area).map { it.id } },
                         savedState = createSavedStateHandle(),
                         dismissedStore = DataStoreDismissedAlertsStore.from(appContext, warn = ::logDepartureWarning),
+                        widgetDismissals = WidgetSnapshotStore(appContext),
                         writeFailures = writeFailures,
                         destinationIds = destinationIds,
                     )
@@ -2326,6 +2328,7 @@ class MainActivity : ComponentActivity() {
                         // set here shows on the near-me list too, and the other way round.
                         starredStore = DataStoreStarredRowsStore.from(appContext, warn = ::logStarWarning),
                         dismissedStore = DataStoreDismissedAlertsStore.from(appContext, warn = ::logDepartureWarning),
+                        widgetDismissals = WidgetSnapshotStore(appContext),
                         warn = ::logDepartureWarning,
                         arrivalsReuse = ARRIVALS_REUSE,
                         sharedArrivals = ArrivalsCache.SHARED,
@@ -3299,6 +3302,7 @@ private fun fartherCardModel(
     farArrivalsReuse = FAR_ARRIVALS_REUSE,
     starredStore = DataStoreStarredRowsStore.from(appContext, warn = ::logStarWarning),
     dismissedStore = DataStoreDismissedAlertsStore.from(appContext, warn = ::logDepartureWarning),
+    widgetDismissals = WidgetSnapshotStore(appContext),
     warn = ::logDepartureWarning,
     arrivalsReuse = ARRIVALS_REUSE,
     sharedArrivals = ArrivalsCache.SHARED,

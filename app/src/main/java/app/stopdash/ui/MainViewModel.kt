@@ -142,6 +142,10 @@ class MainViewModel(
     // Persists which stop-closure alerts the user has dismissed (hidden until their text changes).
     // No-op by default, so tests and an unwired build run identically minus dismissing.
     private val dismissedStore: DismissedAlertsStore = DismissedAlertsStore.NONE,
+    // The widget's stored snapshot, which a saved line-status dismissal marks at once so the widget
+    // and the watch follow ([dismissAlert]); every screen's model gets it, whether or not it saves
+    // the snapshot itself. No-op by default.
+    private val widgetDismissals: SnapshotStore = SnapshotStore.NONE,
     // No-op by default: the shared on-device logger is deferred until `docs/PRIVACY.md`
     // describes what it carries (both are their own Phase 1 items), so nothing is logged
     // in production until then. The seam stays for tests and that later wiring.
@@ -286,7 +290,11 @@ class MainViewModel(
     /** The [lineStatusCache] entries for the lines [stops] show, as the widget snapshot's checks. */
     private fun widgetLineChecks(stops: List<StopArrivals>): Map<String, LineStatusCheck> =
         LineStatusCheck.linesOf(stops).mapNotNull { id ->
-            val verdict = lineStatusCache[id]?.let { (at, status) -> LineStatusCheck(status, at) }
+            // A status the user dismissed here is marked dismissed, so the widget and the watch
+            // drop its mark too while the line still counts as checked (SPEC *Disruptions*).
+            val verdict = lineStatusCache[id]?.let { (at, status) ->
+                LineStatusCheck(status, at, dismissed = DismissedAlert.ofLineStatus(status) in _dismissed.value)
+            }
             val omitted = lineStatusOmitted[id]?.let { LineStatusCheck.noVerdict(id, it) }
             // At most one is held: each answer clears the other kind, so the latest wins whatever
             // the clock did in between.
@@ -1480,7 +1488,9 @@ class MainViewModel(
                     // would defeat the relocation guard (Codex, PR #104).
                     // Keeping the stored journey pins, and any stop the widget's live refresh stored
                     // newer (a pinned origin this fetch didn't cover, say).
-                    withContext(io) { snapshotStore.saveKeepingJourneys(toSave) }
+                    withContext(io) {
+                        snapshotStore.saveKeepingJourneys(withStoredDismissals(toSave, dismissedStore, _dismissed.value, warn))
+                    }
                     // save() pokes the widget itself (WidgetSnapshotStore), so it re-renders with
                     // the fresh snapshot; no separate redraw needed on this path.
                 } catch (e: CancellationException) {
@@ -1636,7 +1646,11 @@ class MainViewModel(
             val widgetSnapshot = forWidget(DeparturesSnapshot(newState.stops, newState.fetchedAt), nearIds, journeyIds)
             if (widgetJudged(widgetSnapshot.stops, nearIds).any { it.arrivalsFresh }) {
                 try {
-                    withContext(io) { snapshotStore.saveKeepingJourneys(widgetSnapshot) }
+                    withContext(io) {
+                        snapshotStore.saveKeepingJourneys(
+                            withStoredDismissals(widgetSnapshot, dismissedStore, _dismissed.value, warn),
+                        )
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -1871,7 +1885,7 @@ class MainViewModel(
      * the widget shows no alerts, so it needs no redraw.
      */
     fun dismissAlert(row: DepartureRow) {
-        viewModelScope.launch { dismissAlert(dismissedStore, row, io, _dismissWriteFailed, warn) }
+        viewModelScope.launch { dismissAlert(dismissedStore, row, io, _dismissWriteFailed, warn, widgetDismissals) }
     }
 
     /**

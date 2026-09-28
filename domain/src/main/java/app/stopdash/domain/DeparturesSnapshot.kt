@@ -50,12 +50,12 @@ data class DeparturesSnapshot(
 ) {
     /**
      * The disruptions to mark at [now]: the disrupted lines whose check is still within the shared
-     * staleness threshold ([Staleness]). An older one is withheld, as an old countdown is (D4),
+     * staleness threshold ([Staleness]), less the ones the user dismissed ([LineStatusCheck.dismissed]). An older one is withheld, as an old countdown is (D4),
      * rather than claim a line is still disrupted (or, by its absence, clear) on a check that old.
      */
     fun liveLineStatuses(now: Instant): Map<String, LineStatus> =
         lineStatuses.values
-            .filter { it.known && it.status.disrupted && it.isLive(now) }
+            .filter { it.known && it.status.disrupted && !it.dismissed && it.isLive(now) }
             .associate { it.status.lineId to it.status }
 
     /**
@@ -89,7 +89,7 @@ data class DeparturesSnapshot(
             .filter { (_, check) -> check.known && !check.checkedAt.isAfter(now) }
             .mapNotNull { (lineId, check) ->
                 val expiry = check.checkedAt.plus(threshold)
-                val matters = check.status.disrupted || lineFreshUntil(lineId)?.let { expiry.isBefore(it) } == true
+                val matters = (check.status.disrupted && !check.dismissed) || lineFreshUntil(lineId)?.let { expiry.isBefore(it) } == true
                 expiry.takeIf { matters }
             }
         return (listOf(arrivalsExpire) + checkExpiries)
@@ -110,7 +110,20 @@ data class LineStatusCheck(
     // replaces an older disruption (an absent entry couldn't: it reads as "nothing new"), and the
     // line reads as unchecked. Its [status] is a placeholder that is never disrupted.
     val known: Boolean = true,
+    // True when the user dismissed this status in the app (SPEC *Disruptions*): the line still
+    // counts as checked, so its countdowns read as vouched for, but its mark isn't shown. Set by
+    // whoever writes the check from the app's dismissed set, which a glance surface can't read; a
+    // changed status (a new severity or wording) is a new alert and comes back unset.
+    val dismissed: Boolean = false,
+    // [status]'s full dismissal identity ([lineAlertFingerprint]), kept apart from [status] because
+    // a stored check drops TfL's full reason: a reworded alert differs here even when its severity
+    // and label don't, so a dismissal never hides it.
+    val fingerprint: String = lineAlertFingerprint(status),
 ) {
+    /** Whether [alerts] holds a dismissal of exactly this alert, full reason included. */
+    fun dismissedBy(alerts: Set<DismissedAlert>): Boolean =
+        known && dismissedLine(alerts, status.lineId, fingerprint)
+
     /** True while the check is younger than the shared staleness threshold, and not from the future. */
     fun isLive(now: Instant): Boolean {
         val age = Duration.between(checkedAt, now)
@@ -127,6 +140,10 @@ data class LineStatusCheck(
          * verdict can overwrite the other's newer one; kept only for [lineIds] when given (the lines
          * the snapshot's stops still show), so a departed stop's lines don't linger. Given [now], a
          * check dated in the future (the clock moved back since) loses to one that isn't.
+         *
+         * The winner keeps its own [dismissed] flag, never the loser's: a flag inherited here would
+         * outlive the dismissal it came from. A writer racing a dismissal is covered by the store
+         * replaying recent dismissals on every save instead.
          */
         fun newest(
             a: Map<String, LineStatusCheck>,

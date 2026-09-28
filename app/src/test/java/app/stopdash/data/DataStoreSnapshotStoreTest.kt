@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.JourneyCall
+import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.WidgetJourney
@@ -31,10 +32,15 @@ class DataStoreSnapshotStoreTest {
 
     private class FakeDataStore(initial: PersistedSnapshot?) : DataStore<PersistedSnapshot?> {
         val state = MutableStateFlow(initial)
+        // Run once as the next write takes the lock, before its transform: a writer that got there first.
+        var beforeNextWrite: (suspend () -> Unit)? = null
         override val data: Flow<PersistedSnapshot?> = state
         override suspend fun updateData(
             transform: suspend (t: PersistedSnapshot?) -> PersistedSnapshot?,
-        ): PersistedSnapshot? = transform(state.value).also { state.value = it }
+        ): PersistedSnapshot? {
+            beforeNextWrite?.let { beforeNextWrite = null; it() }
+            return transform(state.value).also { state.value = it }
+        }
     }
 
     /** A report pinning [pin] as a check at its origin confirms it. */
@@ -54,6 +60,118 @@ class DataStoreSnapshotStoreTest {
         ),
         fetchedAt = now,
     )
+
+    @Test
+    fun `dismissing a line status marks the stored check only while it holds exactly that alert`() = runTest {
+        val severe = LineStatus("victoria", 6, "Severe Delays", "Signal failure.")
+        val store = DataStoreSnapshotStore(FakeDataStore(null))
+        store.save(snapshot().copy(lineStatuses = mapOf("victoria" to LineStatusCheck(severe, now))))
+        // A different status is a different alert: left marked.
+        store.dismissLineStatus(DismissedAlert.ofLineStatus(severe.copy(severity = 3, description = "Part Suspended")))
+        assertEquals(false, store.load()!!.lineStatuses.getValue("victoria").dismissed)
+        // So is the same label with a reworded reason, though the stored check drops the reason.
+        store.dismissLineStatus(DismissedAlert.ofLineStatus(severe.copy(fullText = "Earlier signal failure.")))
+        assertEquals(false, store.load()!!.lineStatuses.getValue("victoria").dismissed)
+        store.dismissLineStatus(DismissedAlert.ofLineStatus(severe))
+        val dismissed = store.load()!!.lineStatuses.getValue("victoria")
+        assertTrue(dismissed.dismissed)
+        assertEquals(now, dismissed.checkedAt)
+    }
+
+    @Test
+    fun `a newer save of the same alert, from a writer that missed the dismissal, keeps it dismissed`() = runTest {
+        val severe = LineStatus("victoria", 6, "Severe Delays", "Signal failure.")
+        val store = DataStoreSnapshotStore(FakeDataStore(null))
+        store.save(snapshot().copy(lineStatuses = mapOf("victoria" to LineStatusCheck(severe, now))))
+        store.dismissLineStatus(DismissedAlert.ofLineStatus(severe))
+        // The app's next save was built before the dismissal reached it: a newer, unmarked check.
+        store.saveKeepingJourneys(
+            snapshot().copy(lineStatuses = mapOf("victoria" to LineStatusCheck(severe, now.plusSeconds(30)))),
+        )
+        val kept = store.load()!!.lineStatuses.getValue("victoria")
+        assertEquals(now.plusSeconds(30), kept.checkedAt)
+        assertTrue(kept.dismissed)
+    }
+
+    @Test
+    fun `a check fetched before the dismissal, saved after it, comes out dismissed`() = runTest {
+        // The widget's worker read the dismissed set, then fetched a status the store didn't hold
+        // yet; the user dismisses it from the app before the worker saves.
+        val severe = LineStatus("victoria", 6, "Severe Delays", "Signal failure.")
+        var clock = now
+        val store = DataStoreSnapshotStore(FakeDataStore(null), clock = { clock })
+        store.save(snapshot())
+        store.dismissLineStatus(DismissedAlert.ofLineStatus(severe))
+        val fetched = snapshot().copy(lineStatuses = mapOf("victoria" to LineStatusCheck(severe, now)))
+        clock = now.plusSeconds(20)
+        assertTrue(store.saveIfStopsMatch(fetched, listOf("940GZZLUOXC")))
+        assertTrue(store.load()!!.lineStatuses.getValue("victoria").dismissed)
+        // A replacing save keeps it too.
+        store.save(fetched)
+        assertTrue(store.load()!!.lineStatuses.getValue("victoria").dismissed)
+        // A reworded alert on that line is a new one: shown.
+        val reworded = LineStatus("victoria", 6, "Severe Delays", "Earlier signal failure.")
+        store.save(snapshot().copy(lineStatuses = mapOf("victoria" to LineStatusCheck(reworded, now))))
+        assertFalse(store.load()!!.lineStatuses.getValue("victoria").dismissed)
+    }
+
+    @Test
+    fun `a dismissal stops being replayed once its window has passed`() = runTest {
+        val severe = LineStatus("victoria", 6, "Severe Delays", "Signal failure.")
+        var clock = now
+        val store = DataStoreSnapshotStore(FakeDataStore(null), clock = { clock })
+        store.save(snapshot())
+        store.dismissLineStatus(DismissedAlert.ofLineStatus(severe))
+        clock = now.plus(RECENT_DISMISSAL_WINDOW)
+        val later = snapshot().copy(lineStatuses = mapOf("victoria" to LineStatusCheck(severe, clock)))
+        store.saveKeepingJourneys(later)
+        // By now every writer reads the dismissal from the dismissed set itself.
+        assertFalse(store.load()!!.lineStatuses.getValue("victoria").dismissed)
+    }
+
+    @Test
+    fun `a dismissal stops being replayed once its line is checked holding another alert`() = runTest {
+        val severe = LineStatus("victoria", 6, "Severe Delays", "Signal failure.")
+        val good = LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service")
+        var clock = now
+        val store = DataStoreSnapshotStore(FakeDataStore(null), clock = { clock })
+        store.save(snapshot())
+        store.dismissLineStatus(DismissedAlert.ofLineStatus(severe))
+        // A racing writer's check from before the dismissal proves nothing: still replayed.
+        store.save(snapshot().copy(lineStatuses = mapOf("victoria" to LineStatusCheck(good, now.minusSeconds(10)))))
+        store.save(snapshot().copy(lineStatuses = mapOf("victoria" to LineStatusCheck(severe, now))))
+        assertTrue(store.load()!!.lineStatuses.getValue("victoria").dismissed)
+        // Checked since, the disruption has cleared.
+        clock = now.plusSeconds(60)
+        store.save(snapshot().copy(lineStatuses = mapOf("victoria" to LineStatusCheck(good, clock))))
+        // So the same alert recurring is shown.
+        clock = now.plusSeconds(120)
+        store.save(snapshot().copy(lineStatuses = mapOf("victoria" to LineStatusCheck(severe, clock))))
+        assertFalse(store.load()!!.lineStatuses.getValue("victoria").dismissed)
+    }
+
+    @Test
+    fun `a dismissal made before anything is stored reaches the first save`() = runTest {
+        val severe = LineStatus("victoria", 6, "Severe Delays", "Signal failure.")
+        val store = DataStoreSnapshotStore(FakeDataStore(null), clock = { now })
+        store.dismissLineStatus(DismissedAlert.ofLineStatus(severe))
+        // Nothing is stored for it, so the widget still reads as having no snapshot.
+        assertNull(store.load())
+        // The first save, built before the dismissal, lands after it.
+        store.saveKeepingJourneys(snapshot().copy(lineStatuses = mapOf("victoria" to LineStatusCheck(severe, now))))
+        assertTrue(store.load()!!.lineStatuses.getValue("victoria").dismissed)
+    }
+
+    @Test
+    fun `a first save already waiting when the dismissal lands still comes out dismissed`() = runTest {
+        // The save was called first, but the dismissal's write reached the store ahead of it.
+        val severe = LineStatus("victoria", 6, "Severe Delays", "Signal failure.")
+        val backing = FakeDataStore(null)
+        val store = DataStoreSnapshotStore(backing, clock = { now })
+        backing.beforeNextWrite = { store.dismissLineStatus(DismissedAlert.ofLineStatus(severe)) }
+        store.saveKeepingJourneys(snapshot().copy(lineStatuses = mapOf("victoria" to LineStatusCheck(severe, now))))
+        assertTrue(store.load()!!.lineStatuses.getValue("victoria").dismissed)
+    }
 
     @Test
     fun `load returns null when nothing is stored`() = runTest {

@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
@@ -81,6 +82,9 @@ class TripViewModel(
     // The service alerts the user dismissed, shared with every screen (SPEC *Disruptions*): a leg's
     // line page offers the same dismiss the list's does. None kept by default (a test).
     private val dismissedStore: DismissedAlertsStore = DismissedAlertsStore.NONE,
+    // The widget's stored snapshot, which a saved line-status dismissal marks at once so the widget
+    // and the watch follow ([dismissAlert]). No-op by default.
+    private val widgetDismissals: SnapshotStore = SnapshotStore.NONE,
     // The activity's failed-write flags, so a dismiss that didn't take is said on whichever screen
     // shows next, as the list's are.
     writeFailures: WriteFailures = WriteFailures(),
@@ -225,7 +229,7 @@ class TripViewModel(
 
     /** Dismisses [row]'s line alert, as the list's line page does. */
     fun dismissAlert(row: DepartureRow) {
-        viewModelScope.launch { dismissAlert(dismissedStore, row, io, _dismissWriteFailed, warn) }
+        viewModelScope.launch { dismissAlert(dismissedStore, row, io, _dismissWriteFailed, warn, widgetDismissals) }
     }
 
     fun dismissWriteFailureShown() {
