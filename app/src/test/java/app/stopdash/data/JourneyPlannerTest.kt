@@ -221,6 +221,32 @@ class JourneyPlannerTest {
     }
 
     @Test
+    fun `a leg keeps where the Planner places the stop it gets off at, and none when it gives none`() {
+        // Synthetic positions: the Planner places both ends of this ride.
+        fun ride(end: TflJourneyPointDto) = TflJourneyLegDto(
+            departureTime = "2026-09-26T08:05:00", arrivalTime = "2026-09-26T08:15:00",
+            departurePoint = TflJourneyPointDto(naptanId = "940GZZLUAAA", commonName = "A", lat = 51.5, lon = -0.12),
+            arrivalPoint = end,
+            routeOptions = listOf(TflJourneyRouteOptionDto(TflJourneyIdentifierDto("red", "Red"))),
+            mode = TflJourneyIdentifierDto("tube"),
+        ).toLegOrNull(Instant.parse("2026-09-26T07:00:00Z"))
+        val placed = ride(TflJourneyPointDto(naptanId = "940GZZLUCCC", commonName = "C", lat = 51.53, lon = -0.12))
+        assertEquals(Coordinates(51.53, -0.12), placed?.toAt)
+        val unplaced = ride(TflJourneyPointDto(naptanId = "940GZZLUCCC", commonName = "C"))
+        assertEquals("940GZZLUCCC", unplaced?.toId)
+        assertNull(unplaced?.toAt)
+        // A walk's end can be the rider's own place: not kept, placed or not.
+        val home = TflJourneyLegDto(
+            departureTime = "2026-09-26T08:15:00", arrivalTime = "2026-09-26T08:20:00",
+            departurePoint = TflJourneyPointDto(naptanId = "940GZZLUCCC", commonName = "C"),
+            arrivalPoint = TflJourneyPointDto(commonName = "Home", lat = 51.54, lon = -0.12),
+            mode = TflJourneyIdentifierDto("walking"),
+        ).toLegOrNull(Instant.parse("2026-09-26T07:00:00Z"))
+        assertEquals("walking", home?.mode)
+        assertNull(home?.toAt)
+    }
+
+    @Test
     fun `a train's heading drops the branch the Planner names after it`() = runTest {
         val fixture = checkNotNull(javaClass.getResource("/fixtures/journey_results_kennington_to_archway.json")).readText()
         // The Planner names it "High Barnet Station via Charing Cross"; the train's front reads "High Barnet".

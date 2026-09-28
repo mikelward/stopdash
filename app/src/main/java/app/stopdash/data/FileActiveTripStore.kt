@@ -314,18 +314,22 @@ private data class PersistedTripLeg(
     // Where the leg boards: a public stop position, not the rider's.
     val fromLat: Double? = null,
     val fromLon: Double? = null,
+    // And where it gets off, likewise public.
+    val toLat: Double? = null,
+    val toLon: Double? = null,
 ) {
     fun toLeg() = TripLeg(
         mode, lineId, lineName, fromId, fromName, toId, toName, Instant.parse(departure), Instant.parse(arrival),
         path, pathNames, Duration.ofSeconds(changeAfterSeconds), headings, fromArea, toArea,
         fromAt = if (fromLat != null && fromLon != null) Coordinates(fromLat, fromLon) else null,
+        toAt = if (toLat != null && toLon != null) Coordinates(toLat, toLon) else null,
     )
 
     companion object {
         fun of(leg: TripLeg) = PersistedTripLeg(
             leg.mode, leg.lineId, leg.lineName, leg.fromId, leg.fromName, leg.toId, leg.toName,
             leg.departure.toString(), leg.arrival.toString(), leg.path, leg.pathNames, leg.changeAfter.seconds, leg.headings,
-            leg.fromArea, leg.toArea, leg.fromAt?.latitude, leg.fromAt?.longitude,
+            leg.fromArea, leg.toArea, leg.fromAt?.latitude, leg.fromAt?.longitude, leg.toAt?.latitude, leg.toAt?.longitude,
         )
     }
 }

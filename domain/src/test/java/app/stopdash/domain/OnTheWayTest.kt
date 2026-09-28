@@ -501,7 +501,9 @@ class OnTheWayTest {
         val following = OnTheWay.follow(placed, train("8", 5))
         val (onBoard, _) = OnTheWay.advance(following, listOf(call("C", 14)), at(12))
         assertEquals(at(5), onBoard.boardedAt)
-        assertFalse(OnTheWay.wantsFix(onBoard, at(12)))
+        // A fix is asked for now only to see them nearly at C; one at the boarding stop says nothing.
+        assertEquals(onBoard, OnTheWay.seen(onBoard, stillThere, at(12)))
+        assertFalse(OnTheWay.wantsFix(onBoard.copy(dueOffAt = at(20)), at(12)))
     }
 
     @Test
@@ -586,6 +588,54 @@ class OnTheWayTest {
         assertEquals(1, there.legIndex)
         assertEquals(at(1), there.legStartedAt)
         assertEquals(TripProgress.Waiting(ride.copy(fromAt = platform), null), OnTheWay.advance(there, null, at(1)).second)
+    }
+
+    // Riding to C, placed at a synthetic point, on a train due there at 14 min.
+    private val getOff = Coordinates(51.53, -0.12)
+    private val nearlyThere = OnTheWay.follow(trip.copy(route = TripRoute(listOf(ride.copy(toAt = getOff), walk, second))), train("8", 5))
+        .copy(boarded = true, boardedAt = at(5), dueOffAt = at(14))
+
+    @Test
+    fun `a train nearly where the rider gets off asks for a fix, a bus or one far off doesn't`() {
+        // Due at 14: from 10 on, about two stops out, and a few minutes past its time.
+        assertNull(OnTheWay.stationRiddenTo(nearlyThere, at(9)))
+        assertEquals(nearlyThere.leg, OnTheWay.stationRiddenTo(nearlyThere, at(10)))
+        assertEquals(nearlyThere.leg, OnTheWay.stationRiddenTo(nearlyThere, at(18)))
+        // A time left stale (TfL gone quiet) doesn't keep asking for fixes.
+        assertNull(OnTheWay.stationRiddenTo(nearlyThere, at(19)))
+        assertFalse(OnTheWay.wantsFix(nearlyThere, at(60)))
+        assertTrue(OnTheWay.wantsFix(nearlyThere, at(10)))
+        // Not yet on the train, not predicted that far, or a bus in the street: none.
+        assertNull(OnTheWay.stationRiddenTo(nearlyThere.copy(boarded = false), at(12)))
+        assertNull(OnTheWay.stationRiddenTo(nearlyThere.copy(dueOffAt = null), at(12)))
+        val bus = nearlyThere.copy(route = TripRoute(listOf(ride.copy(mode = "bus", toAt = getOff), walk, second)))
+        assertNull(OnTheWay.stationRiddenTo(bus, at(12)))
+        // A fix sure to 100 m can settle it, as on a walk to a stop.
+        assertTrue(OnTheWay.sureEnoughFor(nearlyThere, at(12))(fix(getOff, accuracyMeters = 100f)))
+    }
+
+    @Test
+    fun `a rider seen at the station they get off at is off, whatever the train followed says`() {
+        // The train followed still a stop or two out, but the rider is at C's entrance: on to the walk.
+        val atEntrance = fix(Coordinates(51.5327, -0.12), accuracyMeters = 20f)
+        assertEquals(nearlyThere, OnTheWay.seen(nearlyThere, atEntrance, at(11)))
+        val off = OnTheWay.seen(nearlyThere, atEntrance, at(11), entrances = listOf(Coordinates(51.5329, -0.12)))
+        assertEquals(1, off.legIndex)
+        assertEquals(at(11), off.legStartedAt)
+        assertEquals("", off.vehicleId)
+        // At its placed point, likewise; a fix still down the line says nothing.
+        assertEquals(1, OnTheWay.seen(nearlyThere, fix(getOff), at(11)).legIndex)
+        assertEquals(nearlyThere, OnTheWay.seen(nearlyThere, fix(Coordinates(51.52, -0.12)), at(11)))
+        // Nor before the train is nearly there.
+        assertEquals(nearlyThere, OnTheWay.seen(nearlyThere, fix(getOff), at(9)))
+        // Seen after the train followed was due: the walk on starts then, not at its due time.
+        val late = OnTheWay.seen(nearlyThere, fix(getOff), at(17))
+        assertEquals(1, late.legIndex)
+        assertEquals(at(17), late.legStartedAt)
+        // The Planner left the stop unplaced: the station's own position, read with its entrances, does.
+        val unplaced = nearlyThere.copy(route = TripRoute(listOf(ride, walk, second)))
+        assertEquals(unplaced, OnTheWay.seen(unplaced, fix(getOff), at(11)))
+        assertEquals(1, OnTheWay.seen(unplaced, fix(getOff), at(11), entrances = listOf(getOff)).legIndex)
     }
 
     @Test

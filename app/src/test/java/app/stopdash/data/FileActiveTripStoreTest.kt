@@ -30,6 +30,7 @@ class FileActiveTripStoreTest {
                     pathNames = listOf("Bermondsey", "Waterloo"),
                     changeAfter = Duration.ofMinutes(3), headings = listOf("Stanmore"),
                     fromAt = app.stopdash.domain.Coordinates(51.5, -0.12),
+                    toAt = app.stopdash.domain.Coordinates(51.53, -0.12),
                 ),
                 TripLeg(TripLeg.WALKING, "", "", "940GZZLUWLO", "Waterloo", "910GWLOO", "Waterloo", t0.plusSeconds(600), t0.plusSeconds(900)),
             ),

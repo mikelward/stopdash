@@ -314,9 +314,14 @@ class ActiveTripTracker(
         // ages the fix by the read, after TfL has answered, so neither a walk's end nor a fix's
         // freshness is judged at a moment already past (Codex, PR #352).
         val reading = elapsed()
-        val walkTo = if (rider != null) _trip.value?.let { OnTheWay.stationWalkedTo(it, clock()) } else null
-        val entrances = walkTo?.let { entrancesOf(it.fromId) }.orEmpty()
-        val seenRider = if (walkTo == null) rider else rider?.let { aged(it, Duration.ofMillis(elapsed() - reading)) }
+        // The station walked to, or the one a train nearly there gets off at ([OnTheWay.seen]).
+        val station = if (rider != null) {
+            _trip.value?.let { OnTheWay.stationWalkedTo(it, clock())?.fromId ?: OnTheWay.stationRiddenTo(it, clock())?.toId }
+        } else {
+            null
+        }
+        val entrances = station?.let { entrancesOf(it) }.orEmpty()
+        val seenRider = if (station == null) rider else rider?.let { aged(it, Duration.ofMillis(elapsed() - reading)) }
         val now = clock()
         // The train followed coming in, before a fix may have dropped it ([OnTheWay.seen]).
         val followed = _trip.value?.vehicleId.orEmpty()
@@ -324,7 +329,12 @@ class ActiveTripTracker(
         var trip = OnTheWay.seen(before, seenRider, now, entrances)
         // Left behind by a train get off soon was already said for: the stop it named was that
         // train's, so it's taken back, and said again for the next train in its time.
-        if (before.warnedLeg == before.legIndex && trip.warnedLeg != before.warnedLeg) onGetOffSoonDone()
+        // Seen off at their stop, too: the alert has done its job.
+        // Taken back once this step is saved ([keep]), not before: a restart before then brings back
+        // the leg it was said for, which would count it as said and never say it again (Codex, PR #359).
+        if (before.warnedLeg == before.legIndex && (trip.warnedLeg != before.warnedLeg || trip.legIndex != before.legIndex)) {
+            trip = trip.copy(alertLeft = true)
+        }
         var failed = false
         val leg = trip.leg
         // The board where the rider boards next, fetched once a refresh: shown on the trip's screen,
@@ -383,20 +393,22 @@ class ActiveTripTracker(
         // A train that turned out not to be the rider's: drop it, so the next refresh picks another.
         // Once on board it stays followed: TfL has only gone quiet on it.
         if (progress is TripProgress.Lost && calls != null && !next.boarded) next = next.copy(vehicleId = "", dueOffAt = null)
-        if (trip.warnedLeg == trip.legIndex && (next.legIndex != trip.legIndex || progress == TripProgress.Arrived)) onGetOffSoonDone()
+        if (trip.warnedLeg == trip.legIndex && (next.legIndex != trip.legIndex || progress == TripProgress.Arrived)) {
+            next = next.copy(alertLeft = true)
+        }
         // The train lost on the leg it was said for: the stop it named may not be the rider's now, so
         // it's taken back, and said again once the train is found on the leg. A failed lookup (above)
         // leaves it: nothing new is known, and the stop is still the one planned.
         if (progress is TripProgress.Lost && next.warnedLeg == next.legIndex) {
-            onGetOffSoonDone()
-            next = next.copy(warnedLeg = -1)
+            next = next.copy(warnedLeg = -1, alertLeft = true)
         }
         // Said again, silently, when the stop's time moves, so the alert's deadline follows it.
         val saidAt = (_progress.value as? TripProgress.Riding)?.takeIf { next.warnedLeg == next.legIndex }?.getOffAt
         val moved = progress is TripProgress.Riding && progress.getOffSoon && next.warnedLeg == next.legIndex &&
             progress.getOffAt != saidAt
         if (progress is TripProgress.Riding && (OnTheWay.shouldWarn(next, progress) || moved) && onGetOffSoon(next, progress)) {
-            next = OnTheWay.warned(next)
+            // There is one alert: this one replaces any still to be taken back.
+            next = OnTheWay.warned(next).copy(alertLeft = false)
         }
         // The ride ahead changed in this step: a board for one now boarded (or passed) is no longer
         // theirs to board from, and the next ride's (off a train and walking on) is read now, not a
@@ -421,6 +433,8 @@ class ActiveTripTracker(
             _endFailed.value = false
             _endFailures.value = 0
             _trip.value = null
+            // Forgotten: no trip left for an alert to belong to.
+            if (next.alertLeft) onGetOffSoonDone()
         } else {
             keep(next, progress)
         }
@@ -503,6 +517,14 @@ class ActiveTripTracker(
             val saved = withContext(io) { save(trip) }
             unsaved = !saved
             _notKept.value = !saved
+        }
+        // A "get off soon" done with ([ActiveTrip.alertLeft]) is taken back once the trip that says
+        // so is on the device, so a restart can't bring back a trip whose alert is gone; the mark
+        // is cleared in the next save.
+        if (trip.alertLeft && !unsaved) {
+            onGetOffSoonDone()
+            _trip.value = trip.copy(alertLeft = false)
+            unsaved = true
         }
     }
 

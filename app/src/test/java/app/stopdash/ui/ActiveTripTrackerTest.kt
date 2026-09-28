@@ -827,6 +827,61 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `a rider seen at the station they get off at is off, though the train followed is a stop away`() = runTest {
+        // Synthetic positions: C's own point (unplaced by the Planner) and an entrance, the rider by it.
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "D", "D", at(15), at(20))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        entrancesAt["C"] = listOf(app.stopdash.domain.Coordinates(51.53, -0.12), app.stopdash.domain.Coordinates(51.5327, -0.12))
+        tracker.start(TripRoute(listOf(ride, walkOn)), "D", readyAt = now)
+        tracker.refresh()
+        now = at(12)
+        trains["3"] = listOf(call("C", 14))
+        tracker.refresh()
+        tracker.refresh()
+        assertEquals("said C", alerts.last())
+        // The train followed still due at C at 14, a later one than theirs: the rider is at C already.
+        val rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.5329, -0.12), isFallback = false, accuracyMeters = 20f)
+        tracker.refresh(rider)
+        assertEquals(1, tracker.trip.value?.legIndex)
+        assertEquals(TripProgress.Walking(walkOn, at(17)), tracker.progress.value)
+        // Its "get off soon" has done its job, and C's entrances were read for it, once.
+        assertEquals("done", alerts.last())
+        assertEquals(1, entranceReads)
+    }
+
+    @Test
+    fun `a get off soon a refresh is done with is taken back only once the trip is saved`() = runTest {
+        // Synthetic positions: C's own point, the rider by it.
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "D", "D", at(15), at(20))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        entrancesAt["C"] = listOf(app.stopdash.domain.Coordinates(51.53, -0.12))
+        tracker.start(TripRoute(listOf(ride, walkOn)), "D", readyAt = now)
+        tracker.refresh()
+        now = at(12)
+        trains["3"] = listOf(call("C", 14))
+        tracker.refresh()
+        tracker.refresh()
+        assertEquals("said C", alerts.last())
+        // Seen at C, but the trip can't be saved: the alert stays, since a restart would bring back
+        // the ride it was said for, counted as said.
+        saves = false
+        val rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.5301, -0.12), isFallback = false, accuracyMeters = 20f)
+        tracker.refresh(rider)
+        assertEquals(1, tracker.trip.value?.legIndex)
+        assertEquals("said C", alerts.last())
+        // Saved on the next refresh: taken back then, and the mark cleared after.
+        saves = true
+        tracker.refresh()
+        assertEquals("done", alerts.last())
+        tracker.refresh()
+        assertEquals(false, kept?.alertLeft)
+    }
+
+    @Test
     fun `a fix gone stale while the entrances were read isn't acted on`() = runTest {
         val stop = app.stopdash.domain.Coordinates(51.5, -0.12)
         val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10))
