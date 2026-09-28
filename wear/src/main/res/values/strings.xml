@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name" translatable="false">StopDash</string>
+    <string name="app_name" translatable="false">GoDash</string>
     <!-- Nothing has come from the phone yet. -->
-    <string name="watch_open_phone">Open StopDash on your phone</string>
+    <string name="watch_open_phone">Open GoDash on your phone</string>
     <!-- The phone has sent a snapshot with no stops in it. -->
     <string name="watch_add_stops">Add stops on your phone</string>
     <!-- Some of the widget's stops failed to refresh or load. -->
