@@ -886,16 +886,18 @@ routes from that stop, so a bus to the Tube was offered and the walk to the Tube
 This is the ordinary search flow; **any saved favorite** is the exception, planning to its
 saved coordinate rather than a picked stop (D9) — the coordinate goes only to TfL, which walks the last leg.
 Every favorite is routed by tapping it — in the Settings *"Favorite places"* list, as a **chip atop
-the near-me list** (*Routing from the near-me list*, below), or at the **top of the To… picker** (from the near-me list or a *From…* station),
-which lists **all** the saved favorite places before any typing (maintainer, 2026-09-27, broadening
+the near-me list** (*Routing from the near-me list*, below), or as the same **row of chips at the top of the To… picker** (from the near-me list or a *From…* station),
+which offers **all** the saved favorite places before any typing (maintainer, 2026-09-27, broadening
 an earlier Home/Work-only framing) so the rider routes to a saved place in one tap without leaving
 the trip. If that list can't be read it says so with a **Retry**, rather than
 hiding the section as "no places" (principle 2); station search stays usable meanwhile. The search page keeps its look (each
 result's name over its modes), with no "From" chip (maintainer, 2026-09-28): the start is the
 rider's position unless they picked a station with *From…*. **"Here"** appears only in the *From…*
-search, heading its list before anything is typed (behind the crosshair, listed before the rider's
-saved stops are read), and taps back to the rider's position; never on the *To…* search or the
-near-me list's place chips, since a trip to where the rider already is goes nowhere. The trip opens on a **list of routes, best first**: ordered first by how far StopDash
+search, as the first chip of the same chip row the *To…* search's places sit in (behind the
+crosshair, shown before the rider's saved stops are read), and taps back to the rider's position;
+never on the *To…* search or the near-me list's place chips, since a trip to where the rider already
+is goes nowhere. The *From…* row holds no saved places yet: what a place as a start should do is
+undecided (`TODO.md`). The trip opens on a **list of routes, best first**: ordered first by how far StopDash
 stands behind each route (tiers, below — usable before not, fully live before "est."), and within a
 tier by the earliest end-to-end arrival, worked out leg by leg from live trains (below). The first
 route is therefore the fastest one StopDash can vouch for, not an earlier estimate. Routes riding the

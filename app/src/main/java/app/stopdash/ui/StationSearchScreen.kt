@@ -59,6 +59,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
+import app.stopdash.domain.ChipLabel
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.ModeGroups
@@ -98,6 +99,9 @@ fun StationSearchScreen(
     // list before anything is typed, and taps back to the rider's position (maintainer, 2026-09-28).
     // Null leaves it out, as the To… destination search does.
     onPickHere: (() -> Unit)? = null,
+    // A long press on a place chip opens the saved places to edit them, as on the near-me list's
+    // chips (SPEC *Routing from the near-me list*). Null offers none.
+    onEditPlaces: (() -> Unit)? = null,
 ) {
     BackHandler(onBack = onBack)
     val focus = remember { FocusRequester() }
@@ -167,6 +171,7 @@ fun StationSearchScreen(
                             onOpenPlace = onOpenPlace,
                             onRetryPlaces = onRetryPlaces,
                             onPickHere = onPickHere,
+                            onEditPlaces = onEditPlaces,
                         )
                     else -> Message(stringResource(R.string.station_search_prompt))
                 }
@@ -256,6 +261,7 @@ private fun YourStopsList(
     onOpenPlace: ((TripDestination.Place) -> Unit)?,
     onRetryPlaces: (() -> Unit)?,
     onPickHere: (() -> Unit)? = null,
+    onEditPlaces: (() -> Unit)? = null,
 ) {
     val listState = rememberLazyListState()
     LazyColumn(
@@ -265,27 +271,27 @@ private fun YourStopsList(
             .scrollEdgeCue(listState, scrollCueColors(MaterialTheme.colorScheme.background)),
         state = listState,
     ) {
-        if (onPickHere != null) {
-            item(key = "here") {
-                HereRow(onPickHere)
-                HorizontalDivider()
+        // One row of chips at the top: "Here" first on From…, then the saved places on To… (maintainer,
+        // 2026-09-28). Places lead so a rider routing home taps once without typing.
+        val places = if (onOpenPlace != null) favoritePlaces else emptyList()
+        if (onPickHere != null || places.isNotEmpty()) {
+            item(key = "chips") {
+                FavoriteChips(
+                    places = places,
+                    onRouteTo = { onOpenPlace?.invoke(it) },
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    onEditPlaces = onEditPlaces,
+                    onHere = onPickHere,
+                    labelOverride = ChipLabel.BOTH,
+                )
             }
         }
-        if (onOpenPlace != null && (favoritePlaces.isNotEmpty() || favoritePlacesFailed)) {
-            item(key = "heading-places") { SectionHeading(stringResource(R.string.station_search_places)) }
-            if (favoritePlaces.isNotEmpty()) {
-                items(favoritePlaces, key = { "place-${it.id}" }) { place ->
-                    val name = favoriteRouteName(place)
-                    PlaceRow(name, place.icon, onClick = { onOpenPlace(TripDestination.Place(place.coordinate, name)) })
-                    HorizontalDivider()
-                }
-            } else {
-                // Read failed (not genuinely empty): say so honestly with a Retry, rather than hide the
-                // section as "no places" (SPEC principle 2). Station search below stays usable.
-                item(key = "places-error") {
-                    PlacesError(onRetryPlaces)
-                    HorizontalDivider()
-                }
+        if (onOpenPlace != null && favoritePlaces.isEmpty() && favoritePlacesFailed) {
+            // Read failed (not genuinely empty): say so honestly with a Retry, rather than hide the
+            // places as "none" (SPEC principle 2). Station search below stays usable.
+            item(key = "places-error") {
+                PlacesError(onRetryPlaces)
+                HorizontalDivider()
             }
         }
         listOf(R.string.station_search_recent to recent, R.string.station_search_starred to favorites).forEach { (heading, stops) ->
@@ -299,24 +305,6 @@ private fun YourStopsList(
     }
 }
 
-
-/** "Here" behind the crosshair, the rider's own position, at a place row's density. */
-@Composable
-private fun HereRow(onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .heightIn(min = 48.dp)
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .testTag("stationSearchHere"),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(CrosshairIcon, contentDescription = null, modifier = Modifier.size(24.dp))
-        Spacer(modifier = Modifier.width(16.dp))
-        Text(stringResource(R.string.from_here), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-    }
-}
 
 /** A section heading over one group of the pre-query list ("Places", "Recent", "Starred"). */
 @Composable
@@ -384,32 +372,6 @@ private fun PlaceHitRow(place: PlaceHit, onClick: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             textAlign = TextAlign.End,
-        )
-    }
-}
-
-/** A favorite place in the pre-query list: its name alone (no modes — it's a coordinate, not a stop),
- *  on one line at the 48dp tap target, matching [MatchRow]'s density. */
-@Composable
-private fun PlaceRow(name: String, icon: String?, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .heightIn(min = 48.dp)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (hasPlaceIcon(icon)) {
-            PlaceIcon(icon, Modifier.size(24.dp))
-            Spacer(modifier = Modifier.width(16.dp))
-        }
-        Text(
-            name,
-            style = MaterialTheme.typography.bodyLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
         )
     }
 }

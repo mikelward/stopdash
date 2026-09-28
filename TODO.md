@@ -851,6 +851,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [x] ~~**"From" chip on the destination search**~~ — built and then removed (maintainer,
             2026-09-28): no "Here" chip on the near-me list or the *To…* search. "Here" stays only
             as the first row of the *From…* search.
+      - [ ] **Decide: saved places in the *From…* chip row** (maintainer, 2026-09-28, undecided).
+            The *From…* and *To…* searches share one chip row at the top (Here first on *From…*,
+            then the places on *To…*); *From…* shows no places yet. The leading option: tapping one
+            starts planning a trip from that place (its coordinate, as `TripOrigin.Here` plans from
+            the rider's), since planning from a coordinate now works. The alternative: open the
+            departures around it, as a *From…* station does.
       - [ ] **Borrow from the other search's recent list** (maintainer, 2026-09-26): *From…* and
             *To…* keep separate recents, ordered by last use; maybe a single button to swap in the
             other list, or a way to pick from it (the station you came from as the way home).

@@ -271,9 +271,7 @@
     <!-- Headings over the user's own stops, listed before anything is typed. -->
     <string name="station_search_starred">Starred</string>
     <string name="station_search_recent">Recent</string>
-    <!-- Heading over the user's saved favorite places, offered at the top of a To… picker. -->
-    <string name="station_search_places">Places</string>
-    <!-- Under the Places heading when the saved places couldn't be read, with a Retry. -->
+    <!-- Atop the To… search when the saved places couldn't be read, with a Retry. -->
     <string name="station_search_places_error">Couldn\'t load your places</string>
     <!-- Right-column tag on a geocoded To… result, telling a place/postcode apart from a stop. -->
     <string name="station_search_kind_place">Place</string>
