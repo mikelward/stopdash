@@ -960,6 +960,7 @@ class TripScreenScreenshotTest {
                         SharedLinePill(bus("4", "N20"), "4 or N20")
                         SharedLinePill(listOf(LineRef("victoria", "Victoria", "tube"), LineRef("piccadilly", "Piccadilly", "tube")), "either")
                         SharedLinePill(bus("43", "134", "263"), "any")
+                        SharedLinePill(bus("47", "188", "199", "225"), "any")
                     }
                 }
             }
@@ -998,23 +999,41 @@ class TripScreenScreenshotTest {
 
     @Test
     fun a_cut_pill_fits_the_room_it_has() {
-        val lines = listOf("47", "188", "199", "225", "381", "N1").map { LineRef(it, it, "bus") }
+        val lines = listOf("188", "199").map { LineRef(it, it, "bus") }
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
-                Box(Modifier.width(120.dp)) {
-                    SharedLinePill(lines, "any", Modifier.testTag("cut"))
+                Box(Modifier.width(48.dp)) {
+                    SharedLinePill(lines, "188 or 199", Modifier.testTag("cut"))
                 }
             }
         }
-        // Six lines in 120dp: every segment shrinks alike, so each label stays over its own color
-        // rather than the last few being squeezed out.
+        // Two codes in 48dp: both shrink alike, so each label stays over its own color rather than
+        // the second being squeezed out.
         val bounds = composeRule.onNodeWithTag("cut").getUnclippedBoundsInRoot()
-        assertTrue(bounds.right - bounds.left <= 120.dp)
+        assertTrue(bounds.right - bounds.left <= 48.dp)
         val widths = lines.map { line ->
             composeRule.onNodeWithText(line.name, useUnmergedTree = true).getUnclippedBoundsInRoot().let { it.right - it.left }
         }
         assertTrue(widths.all { it > 0.dp })
         assertTrue(widths.maxOf { it.value } - widths.minOf { it.value } < 1f)
+    }
+
+    @Test
+    fun a_cut_pill_for_three_or_more_lines_names_the_first_then_more() {
+        val lines = listOf("47", "188", "199", "225").map { LineRef(it, it, "bus") }
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Box(Modifier.semantics(mergeDescendants = true) {}.testTag("row")) {
+                    SharedLinePill(lines, "47, 188, 199 or 225")
+                }
+            }
+        }
+        // "47/…": the first line, then "…" for the rest, so the pill stays two parts wide
+        // (maintainer, 2026-09-28); a screen reader still hears every line.
+        assertEquals(listOf("47", "…"), cutPillCodes(lines))
+        assertEquals(listOf("43", "134"), cutPillCodes(listOf(LineRef("43", "43", "bus"), LineRef("134", "134", "bus"))))
+        val config = composeRule.onNodeWithTag("row").fetchSemanticsNode().config
+        assertEquals(listOf("47, 188, 199 or 225"), config.getOrElse(SemanticsProperties.ContentDescription) { emptyList() })
     }
 
     @Test

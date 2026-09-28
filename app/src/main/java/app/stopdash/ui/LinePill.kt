@@ -126,7 +126,9 @@ private val LINE_PILL_LABEL_WIDTH = 48.dp
 /**
  * Lines that serve one leg alike (the 43 or the 134 to the same stop) as **one pill cut
  * diagonally**, a segment per line in [lines]' order, each in its own [LinePill] colors and label
- * width, so "43/134" reads as either line. [description] is the accessible label ("43 or 134").
+ * width, so "43/134" reads as either line. Three or more lines show the first, then "…" in the
+ * second's colors ("43/…"), so the pill stays the size of two however many share the leg
+ * (maintainer, 2026-09-28). [description] is the accessible label ("43, 134 or 263"), naming every line.
  */
 @Composable
 fun SharedLinePill(lines: List<LineRef>, description: String, modifier: Modifier = Modifier) {
@@ -139,11 +141,13 @@ fun SharedLinePill(lines: List<LineRef>, description: String, modifier: Modifier
     val neutralFill = MaterialTheme.colorScheme.surfaceVariant
     val neutralLabel = MaterialTheme.colorScheme.onSurfaceVariant
     val neutralBorder = MaterialTheme.colorScheme.outlineVariant
-    val segments = lines.map { line ->
+    val codes = cutPillCodes(lines)
+    val segments = lines.take(codes.size).mapIndexed { i, line ->
+        val code = codes[i]
         when (val colors = pillColors(line.name, line.id, line.mode, surface)) {
-            is PillColors.Solid -> Segment(line, colors.fill, colors.label, colors.border, colors.halo)
-            is PillColors.Hollow -> Segment(line, Color.Transparent, colors.label, colors.border, null)
-            PillColors.Neutral -> Segment(line, neutralFill, neutralLabel, neutralBorder, null)
+            is PillColors.Solid -> Segment(line, code, colors.fill, colors.label, colors.border, colors.halo)
+            is PillColors.Hollow -> Segment(line, code, Color.Transparent, colors.label, colors.border, null)
+            PillColors.Neutral -> Segment(line, code, neutralFill, neutralLabel, neutralBorder, null)
         }
     }
     val density = LocalDensity.current
@@ -157,7 +161,7 @@ fun SharedLinePill(lines: List<LineRef>, description: String, modifier: Modifier
     val naturalWidths = with(density) {
         val minWidth = measurer.measure(MIN_SEGMENT_CODE, baseStyle, maxLines = 1).size.width
         segments.map {
-            maxOf(minWidth, measurer.measure(lineCode(it.line.name, it.line.mode), baseStyle, maxLines = 1).size.width).toDp()
+            maxOf(minWidth, measurer.measure(it.code, baseStyle, maxLines = 1).size.width).toDp()
         }
     }
     // A lone pill's side padding at the pill's two ends; half that either side of a cut, whose lean
@@ -232,7 +236,7 @@ fun SharedLinePill(lines: List<LineRef>, description: String, modifier: Modifier
             segments.forEachIndexed { i, segment ->
                 val style = segment.halo?.let { baseStyle.copy(shadow = Shadow(it, Offset.Zero, haloBlurPx)) } ?: baseStyle
                 Text(
-                    text = lineCode(segment.line.name, segment.line.mode),
+                    text = segment.code,
                     style = style,
                     color = segment.label,
                     maxLines = 1,
@@ -279,5 +283,22 @@ internal fun fitSegmentWidths(natural: List<Int>, room: Int): List<Int> {
 /** The narrowest a cut pill's segment gets, as a code: two wide digits. */
 private const val MIN_SEGMENT_CODE = "88"
 
-// One line's part of a [SharedLinePill]: its fill, label and border colors, and a label halo on a solid fill.
-private data class Segment(val line: LineRef, val fill: Color, val label: Color, val border: Color, val halo: Color?)
+// One line's part of a [SharedLinePill]: the code it shows, its fill, label and border colors, and a
+// label halo on a solid fill.
+private data class Segment(val line: LineRef, val code: String, val fill: Color, val label: Color, val border: Color, val halo: Color?)
+
+/**
+ * The codes a [SharedLinePill] shows for [lines], one per part: every line's code for two, and for
+ * three or more the first line's then "…", the second part standing for the rest in the second
+ * line's colors.
+ */
+internal fun cutPillCodes(lines: List<LineRef>): List<String> =
+    if (lines.size > MAX_NAMED_LINES) {
+        listOf(lineCode(lines[0].name, lines[0].mode), MORE_LINES)
+    } else {
+        lines.map { lineCode(it.name, it.mode) }
+    }
+
+/** The most lines a [SharedLinePill] names; past that, the second part reads [MORE_LINES]. */
+private const val MAX_NAMED_LINES = 2
+private const val MORE_LINES = "…"
