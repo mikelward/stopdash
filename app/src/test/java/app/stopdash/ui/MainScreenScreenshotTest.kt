@@ -27,8 +27,10 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasTestTag
@@ -41,7 +43,9 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
@@ -4009,6 +4013,44 @@ class MainScreenScreenshotTest {
         }
         composeRule.onNodeWithText("Loading departures…").assertExists()
         composeRule.onNodeWithText("Update available").assertExists()
+    }
+
+    @Test
+    fun `the loading screen's update button is at the bottom and moves nothing else`() {
+        var update by mutableStateOf(false)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(DeparturesUiState.Loading, now, {}, updateAvailable = update)
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        val loading = composeRule.onNodeWithText("Loading departures…").getBoundsInRoot()
+        update = true
+        composeRule.waitForIdle()
+        // The spinner and its text stay put: the button's slot is kept either way.
+        assertEquals(loading, composeRule.onNodeWithText("Loading departures…").getBoundsInRoot())
+        // The button is at the bottom, inside the screen's 16dp margin, well clear of the text.
+        val button = composeRule.onNodeWithText("Update available").getBoundsInRoot()
+        // Its face sits up to 4dp inside its 48dp touch target, which meets the margin.
+        val gap = composeRule.onRoot().getBoundsInRoot().bottom - 16.dp - button.bottom
+        assertTrue("$gap", gap >= 0.dp && gap <= 4.dp)
+        assertTrue(button.top > loading.bottom + 24.dp)
+    }
+
+    @Test
+    @Config(qualifiers = "w731dp-h240dp-420dpi")
+    fun `on a short screen the loading screen scrolls to its update button rather than clip it`() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(DeparturesUiState.Loading, now, {}, updateAvailable = true)
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Update available").performScrollTo().assertIsDisplayed()
     }
 
     @Test

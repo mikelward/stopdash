@@ -1,12 +1,12 @@
 package app.stopdash.ui
 
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import app.stopdash.R
 
 /**
@@ -15,12 +15,21 @@ import app.stopdash.R
  * a newer version (SPEC *Update indicator*). The location gate has no overflow menu, so this is its
  * only update affordance; on the departures spinner the overflow (with its dot) is already present,
  * so this is a more direct prompt than a dot the user may not notice while waiting. Opens the Play
- * listing via [onClick]. Outlined, not filled, so it stays a secondary offer beside the spinner —
- * the "action" of a loading screen is still to wait for the content.
+ * listing via [onClick]. Outlined, not filled, so it stays a secondary offer — the "action" of a
+ * loading screen is still to wait for the content.
+ *
+ * It sits at the bottom of the screen, and its room is kept whether or not an update is pending:
+ * with [shown] false it's laid out the same but invisible, disabled and silent, so the screen's own
+ * content stays where it is either way. A loading screen puts one not shown at the top too, so
+ * that content stays centered between the two.
  */
 @Composable
-fun UpdateAvailableButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    OutlinedButton(onClick = onClick, modifier = modifier.padding(top = 24.dp)) {
+fun UpdateAvailableButton(onClick: () -> Unit, modifier: Modifier = Modifier, shown: Boolean = true) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = shown,
+        modifier = if (shown) modifier else modifier.alpha(0f).clearAndSetSemantics {},
+    ) {
         Text(stringResource(R.string.update_available))
     }
 }

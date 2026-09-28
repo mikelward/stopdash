@@ -7,13 +7,21 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
 import app.stopdash.domain.Coordinates
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -107,6 +115,39 @@ class LocationGateScreenshotTest {
         }
         composeRule.onNodeWithText("Finding stops near you…").assertExists()
         composeRule.onNodeWithText("Update available").assertExists()
+    }
+
+    @Test
+    fun `the locating spinner's update button is at the bottom and moves nothing else`() {
+        var update by mutableStateOf(false)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    LocationGate(
+                        NearbyStopsViewModel.State.Locating,
+                        onAllow = {},
+                        onRetry = {},
+                        onOpenSettings = {},
+                        updateAvailable = update,
+                        onFindStation = {},
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        val finding = composeRule.onNodeWithText("Finding stops near you…").getBoundsInRoot()
+        val find = composeRule.onNodeWithText("Find a station").getBoundsInRoot()
+        update = true
+        composeRule.waitForIdle()
+        // Everything else stays put: the button's slot is kept either way.
+        assertEquals(finding, composeRule.onNodeWithText("Finding stops near you…").getBoundsInRoot())
+        assertEquals(find, composeRule.onNodeWithText("Find a station").getBoundsInRoot())
+        // The button is at the bottom, inside the gate's 24dp margin, below About.
+        val button = composeRule.onNodeWithText("Update available").getBoundsInRoot()
+        // Its face sits up to 4dp inside its 48dp touch target, which meets the margin.
+        val gap = composeRule.onRoot().getBoundsInRoot().bottom - 24.dp - button.bottom
+        assertTrue("$gap", gap >= 0.dp && gap <= 4.dp)
+        assertTrue(button.top > composeRule.onNodeWithText("About").getBoundsInRoot().bottom)
     }
 
     @Test
