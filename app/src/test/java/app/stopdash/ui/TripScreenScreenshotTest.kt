@@ -4,26 +4,28 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.test.getUnclippedBoundsInRoot
-import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performSemanticsAction
-import androidx.compose.ui.unit.dp
-import app.stopdash.domain.HiddenModes
-import app.stopdash.domain.LineRef
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.filter
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
@@ -36,16 +38,21 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onChild
-import androidx.compose.ui.test.filter
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.Departure
-import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DepartureRow
+import app.stopdash.domain.DismissedAlert
+import app.stopdash.domain.HiddenModes
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
@@ -58,8 +65,6 @@ import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import java.time.Duration
 import java.time.Instant
-import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.test.SemanticsMatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -939,6 +944,56 @@ class TripScreenScreenshotTest {
         val first = composeRule.onNodeWithText("VIC", useUnmergedTree = true).getUnclippedBoundsInRoot()
         val second = composeRule.onNodeWithText("CEN", useUnmergedTree = true).getUnclippedBoundsInRoot()
         assertTrue(first.left < second.left)
+    }
+
+    @Test
+    fun cut_pills_beside_lone_pills() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface {
+                    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        fun bus(vararg ids: String) = ids.map { LineRef(it, it, "bus") }
+                        LinePill("390", "390", "bus")
+                        LinePill("Northern", "northern", "tube")
+                        SharedLinePill(bus("43", "134"), "43 or 134")
+                        SharedLinePill(bus("47", "188"), "47 or 188")
+                        SharedLinePill(bus("4", "N20"), "4 or N20")
+                        SharedLinePill(listOf(LineRef("victoria", "Victoria", "tube"), LineRef("piccadilly", "Piccadilly", "tube")), "either")
+                        SharedLinePill(bus("43", "134", "263"), "any")
+                    }
+                }
+            }
+        }
+        captureSnapshot("cut-pills.png", heightPx = 800)
+    }
+
+    @Test
+    fun a_cut_pills_segments_take_their_own_codes_width() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                SharedLinePill(listOf(LineRef("43", "43", "bus"), LineRef("134", "134", "bus")), "43 or 134")
+            }
+        }
+        // A two-digit route takes less room than a three-digit one (maintainer, 2026-09-28).
+        fun width(code: String) = composeRule.onNodeWithText(code, useUnmergedTree = true).getUnclippedBoundsInRoot().let { it.right - it.left }
+        assertTrue(width("43") < width("134"))
+    }
+
+    @Test
+    fun a_cut_pills_one_character_code_still_gets_a_two_character_width() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Column {
+                    SharedLinePill(listOf(LineRef("4", "4", "bus"), LineRef("N20", "N20", "bus")), "4 or N20")
+                    SharedLinePill(listOf(LineRef("43", "43", "bus"), LineRef("N20", "N20", "bus")), "43 or N20")
+                }
+            }
+        }
+        // "4/N20" read too tight: a segment is never narrower than a two-character code
+        // (maintainer, 2026-09-28).
+        fun width(code: String) = composeRule.onNodeWithText(code, useUnmergedTree = true).getUnclippedBoundsInRoot().let { it.right - it.left }
+        assertTrue(width("4") > 0.dp)
+        assertTrue(kotlin.math.abs(width("4").value - width("43").value) < 1f)
     }
 
     @Test
