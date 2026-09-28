@@ -31,6 +31,7 @@ import androidx.wear.tiles.RequestBuilders
 import androidx.wear.tiles.TileBuilders
 import androidx.wear.tiles.TileService
 import app.stopdash.data.RouteTopologyStore
+import app.stopdash.domain.NoTimes
 import app.stopdash.ui.PillColors
 import app.stopdash.ui.pillColors
 import com.google.common.util.concurrent.ListenableFuture
@@ -198,7 +199,7 @@ internal object TileLayout {
                         when (line) {
                             is TileLine.Header -> text(line.text, 12f, gray, bold = true, spoken = line.spoken)
                             is TileLine.Departure -> row(line.row)
-                            is TileLine.Disruption -> disruption(line)
+                            is TileLine.Disruption -> disruption(context, line)
                             TileLine.OnlyHidden -> text(context.getString(R.string.tile_only_hidden), 14f, white, maxLines = 2)
                             is TileLine.EmptyStop -> {
                                 val empty = if (line.uncertain) R.string.tile_may_be_out_of_date else R.string.tile_no_departures
@@ -288,8 +289,15 @@ internal object TileLayout {
      * countdown, else under its departures, indented to the destination column (the 36dp pill and
      * the 4dp gap) so it reads as part of that service.
      */
-    private fun disruption(line: TileLine.Disruption): LayoutElement {
-        val status = text("⚠ ${line.description}", 12f, warning, spoken = "Disrupted: ${line.description}")
+    private fun disruption(context: Context, line: TileLine.Disruption): LayoutElement {
+        // A rail line's reason for no times follows the status in the same text, so the
+        // disruption always leads and a tight line cuts the reason, never the alert.
+        val reason = noTimesText(context, line.noTimes)
+        val status = if (reason == null) {
+            text("⚠ ${line.description}", 12f, warning, spoken = "Disrupted: ${line.description}")
+        } else {
+            text("⚠ ${line.description} · $reason", 12f, warning, spoken = "Disrupted: ${line.description}. $reason")
+        }
         return Row.Builder()
             .setWidth(expand())
             .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
@@ -304,6 +312,12 @@ internal object TileLayout {
                     .build(),
             )
             .build()
+    }
+
+    private fun noTimesText(context: Context, noTimes: NoTimes?): String? = when (noTimes) {
+        NoTimes.NO_KEY -> context.getString(R.string.watch_no_rail_key)
+        NoTimes.NO_DATA -> context.getString(R.string.watch_no_data)
+        NoTimes.NO_TRAINS, null -> null
     }
 
     private fun pill(row: TileRow): LayoutElement {

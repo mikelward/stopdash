@@ -7,6 +7,8 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCheck
+import app.stopdash.domain.NoTimes
+import app.stopdash.domain.RailFeed
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
 import java.time.Instant
@@ -360,6 +362,50 @@ class TileTimelineTest {
         val first = lines.first() as TileLine.Disruption
         assertTrue(first.alone)
         assertEquals("waterloo-city", first.row.lineId)
+        // A TfL line with no trains has nothing more to say where its times would be.
+        assertNull(first.noTimes)
+    }
+
+    @Test
+    fun `a disrupted rail line with no times says why, as the app does`() {
+        fun railFrame(feed: RailFeed): TileLine.Disruption {
+            val rail = stop("910GEXAMPLE", emptyList()).copy(
+                lines = listOf(LineRef("southern", "Southern", "national-rail")),
+                railFeed = feed,
+            )
+            val env = withStatus(envelope(rail), LineStatus("southern", 6, "Severe Delays"))
+            return (TileTimeline.frame(env, fetched) as TileFrame.Rows).lines.single() as TileLine.Disruption
+        }
+        assertEquals(NoTimes.NO_KEY, railFrame(RailFeed.NO_KEY).noTimes)
+        assertEquals(NoTimes.NO_DATA, railFrame(RailFeed.UNAVAILABLE).noTimes)
+        // The board came back with no trains: nothing more to say.
+        assertNull(railFrame(RailFeed.LIVE).noTimes)
+    }
+
+    @Test
+    fun `a rail reason goes with its arrivals, while a live status keeps the row`() {
+        // Arrivals 5 min old at `fetched` (past the boundary), the status checked just now.
+        val rail = stop("910GEXAMPLE", emptyList(), at = fetched.minusSeconds(300)).copy(
+            lines = listOf(LineRef("southern", "Southern", "national-rail")),
+            railFeed = RailFeed.NO_KEY,
+        )
+        val env = withStatus(envelope(rail), LineStatus("southern", 6, "Severe Delays"))
+        val line = (TileTimeline.frame(env, fetched) as TileFrame.Rows).lines.single() as TileLine.Disruption
+        assertTrue(line.alone)
+        assertNull(line.noTimes)
+    }
+
+    @Test
+    fun `a rail reason from before a failed refresh isn't shown`() {
+        val rail = stop("910GEXAMPLE", emptyList()).copy(
+            lines = listOf(LineRef("southern", "Southern", "national-rail")),
+            railFeed = RailFeed.NO_KEY,
+            arrivalsFresh = false,
+        )
+        val env = withStatus(envelope(rail), LineStatus("southern", 6, "Severe Delays"))
+        val line = (TileTimeline.frame(env, fetched) as TileFrame.Rows).lines.single() as TileLine.Disruption
+        assertTrue(line.alone)
+        assertNull(line.noTimes)
     }
 
     @Test

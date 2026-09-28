@@ -6,6 +6,7 @@ import app.stopdash.domain.Countdown
 import app.stopdash.domain.DepartureLabels
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.HiddenModes
+import app.stopdash.domain.NoTimes
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.StarredRow
@@ -42,9 +43,17 @@ sealed interface TileLine {
     /**
      * A disrupted line's status ("Severe Delays"), under its departures, or on its own beside the
      * pill ([alone]) when the line has no countdown to show (a suspension), as the widget draws it.
-     * [row] carries the pill; its label and countdown are empty.
+     * [row] carries the pill; its label and countdown are empty. [noTimes] is why a line [alone]
+     * has no times when that's more than "no trains" (a National Rail line with no key, or no
+     * board): drawn where the times would be, as the in-app card does; null otherwise, and null
+     * once its stop's arrivals are stale or its latest refresh failed.
      */
-    data class Disruption(val row: TileRow, val description: String, val alone: Boolean) : TileLine
+    data class Disruption(
+        val row: TileRow,
+        val description: String,
+        val alone: Boolean,
+        val noTimes: NoTimes? = null,
+    ) : TileLine
 
     /** A stop with no rows, listed when no stop has any: its name and the empty form it's owed. */
     data class EmptyStop(val stopName: String, val uncertain: Boolean) : TileLine
@@ -163,6 +172,7 @@ object TileTimeline {
         val stops = envelope.stops.map { it.toDomain() }
         val starred = envelope.starred.mapTo(HashSet()) { it.toDomain() }
         val staleStop = stops.associate { it.stopId to (withhold || isStale(it, now)) }
+        val arrivalsFresh = stops.associate { it.stopId to it.arrivalsFresh }
         val freshest = stops.maxOf { it.fetchedAt }
         val allStale = stops.all { staleStop.getValue(it.stopId) }
         val partial = envelope.missingStopIds.isNotEmpty() || stops.any { !it.arrivalsFresh } ||
@@ -215,7 +225,14 @@ object TileTimeline {
                 // Its line was counted in the budget ([BudgetedRows.select]), and is never the one dropped.
                 row.status?.let { status ->
                     val pill = TileRow(row.lineName, row.lineId, row.mode, code, "", "", star, stale)
-                    add(TileLine.Disruption(pill, status.description, alone = chosen.groups.isEmpty()))
+                    val alone = chosen.groups.isEmpty()
+                    // The reason came with the stop's last fetch: once that's stale, or the latest
+                    // refresh of the stop failed, it isn't vouched for, though a live check keeps
+                    // the row (SPEC D4).
+                    val noTimes = NoTimes.of(row).takeIf {
+                        alone && !stale && arrivalsFresh[row.stopId] == true && it != NoTimes.NO_TRAINS
+                    }
+                    add(TileLine.Disruption(pill, status.description, alone, noTimes))
                 }
             }
         }.ifEmpty {
