@@ -1,17 +1,6 @@
 package app.stopdash.ui
 
-import app.stopdash.domain.DistanceSystem
 import android.graphics.Bitmap
-import androidx.compose.ui.test.assertIsNotDisplayed
-import androidx.compose.ui.test.swipeUp
-import androidx.compose.ui.test.junit4.StateRestorationTester
-import androidx.compose.ui.test.performScrollToIndex
-import androidx.compose.ui.test.hasScrollToIndexAction
-import androidx.compose.ui.test.hasTestTag
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.ui.text.LinkAnnotation
-import androidx.compose.ui.semantics.SemanticsProperties
 import android.graphics.Canvas
 import android.view.View
 import androidx.activity.ComponentActivity
@@ -20,21 +9,26 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
@@ -43,33 +37,41 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import app.stopdash.domain.ChipLabel
 import app.stopdash.domain.CollapsedPlaces
 import app.stopdash.domain.Coordinates
-import app.stopdash.domain.FavoriteKind
-import app.stopdash.domain.FavoritePlace
-import app.stopdash.domain.TripDestination
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
-import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.DismissedAlert
+import app.stopdash.domain.DistanceSystem
+import app.stopdash.domain.FavoriteKind
+import app.stopdash.domain.FavoritePlace
+import app.stopdash.domain.FavoritePlaceIcon
+import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.LineRef
-import app.stopdash.domain.RailFeed
-import app.stopdash.domain.StopAreaSource
-import app.stopdash.domain.StopLocation
-import app.stopdash.domain.LineStatus
-import app.stopdash.domain.RoutePattern
-import app.stopdash.domain.RouteTopology
-import app.stopdash.domain.StarredRow
-import app.stopdash.domain.StopArrivals
-import app.stopdash.domain.TflException
-import app.stopdash.domain.StarredJourney
-import app.stopdash.domain.RouteStopsRepository
-import app.stopdash.domain.RouteSequenceSource
-import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineRoute
+import app.stopdash.domain.LineSequence
+import app.stopdash.domain.LineStatus
+import app.stopdash.domain.RailFeed
+import app.stopdash.domain.RoutePattern
+import app.stopdash.domain.RouteSequenceSource
+import app.stopdash.domain.RouteStopsRepository
+import app.stopdash.domain.RouteTopology
+import app.stopdash.domain.StarredJourney
+import app.stopdash.domain.StarredRow
+import app.stopdash.domain.StopAreaSource
+import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopDisruption
+import app.stopdash.domain.StopLocation
+import app.stopdash.domain.TflException
+import app.stopdash.domain.TripDestination
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import java.time.Duration
@@ -82,9 +84,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
-import org.robolectric.shadows.ShadowToast
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowToast
 
 /**
  * `MainScreen` in each state it can be in, light and dark. The states are the point:
@@ -237,8 +239,12 @@ class MainScreenScreenshotTest {
 
     // Stock stand-in places on synthetic coordinates, never a real person's (SPEC *Privacy*).
     private val places = listOf(
-        FavoritePlace("home", FavoriteKind.HOME, "Home", Coordinates(51.5, -0.12)),
-        FavoritePlace("work", FavoriteKind.WORK, "Work", Coordinates(51.51, -0.09)),
+        // Home shows its icon alone (the default), Work its icon and name, and Gym, with no icon, its name.
+        FavoritePlace("home", FavoriteKind.HOME, "Home", Coordinates(51.5, -0.12), icon = FavoritePlaceIcon.HOME),
+        FavoritePlace(
+            "work", FavoriteKind.WORK, "Work", Coordinates(51.51, -0.09),
+            icon = FavoritePlaceIcon.WORK, chipShows = ChipLabel.BOTH,
+        ),
         FavoritePlace("gym", FavoriteKind.CUSTOM, "Gym", Coordinates(51.52, -0.1)),
     )
 
@@ -263,6 +269,25 @@ class MainScreenScreenshotTest {
         // A tap plans to the place's coordinate under the name the rider knows it by (SPEC D9).
         composeRule.onNodeWithContentDescription("Plan a trip to Work").performClick()
         assertEquals(TripDestination.Place(Coordinates(51.51, -0.09), "Work"), routed)
+    }
+
+    @Test
+    fun `a chip shows its icon, its name, or both, as the place chose`() {
+        composeRule.setContent {
+            MainScreen(
+                DeparturesUiState.Loaded(stops(now.minusSeconds(60)), now.minusSeconds(60), lineStatuses = statuses()),
+                now,
+                {},
+                favoritePlaces = places,
+            )
+        }
+        // Home is icon-only: no name on the chip, but TalkBack still hears it.
+        composeRule.onNodeWithTag("favoriteChip-home").assertExists()
+        composeRule.onNodeWithText("Home", useUnmergedTree = true).assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Plan a trip to Home").assertExists()
+        // Work shows both, and Gym (no icon) its name.
+        composeRule.onNodeWithText("Work", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("Gym", useUnmergedTree = true).assertExists()
     }
 
     @Test

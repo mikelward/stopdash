@@ -1,9 +1,11 @@
 package app.stopdash.ui
 
 import androidx.lifecycle.SavedStateHandle
+import app.stopdash.domain.ChipLabel
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
+import app.stopdash.domain.FavoritePlaceIcon
 import app.stopdash.domain.FavoritePlaces
 import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoritePlacesStore
@@ -419,6 +421,60 @@ class FavoritePlacesViewModelTest {
         model.commit()
         advanceUntilIdle()
         assertEquals(setOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY), store.saved.single().showOnDays)
+    }
+
+    @Test
+    fun `a new place starts with its kind's icon, and the chosen icon and chip label save`() = runTest {
+        val store = FakeStore()
+        val model = vm(store, FakeFinder(search = { listOf(oxford) }))
+        advanceUntilIdle()
+        model.startAdd(FavoriteKind.CUSTOM, "")
+        assertNull(model.state.value.editor?.icon)
+        model.startAdd(FavoriteKind.WORK, "Work")
+        assertEquals(FavoritePlaceIcon.WORK, model.state.value.editor?.icon)
+        model.onIconChange(FavoritePlaceIcon.OFFICE)
+        model.onChipShowsChange(ChipLabel.BOTH)
+        model.onQueryChange("oxf")
+        advanceUntilIdle()
+        model.onPick(oxford)
+        model.commit()
+        advanceUntilIdle()
+        val saved = store.saved.single()
+        assertEquals(FavoritePlaceIcon.OFFICE, saved.icon)
+        assertEquals(ChipLabel.BOTH, saved.chipShows)
+    }
+
+    @Test
+    fun `choosing the chosen icon clears it, and editing keeps a place's icon and chip label`() = runTest {
+        val home = FavoritePlace(
+            "h", FavoriteKind.HOME, "Home", Coordinates(51.5, -0.12),
+            icon = FavoritePlaceIcon.HOME, chipShows = ChipLabel.NAME,
+        )
+        val store = FakeStore(listOf(home))
+        val model = vm(store, FakeFinder())
+        advanceUntilIdle()
+        model.startEdit(home)
+        assertEquals(FavoritePlaceIcon.HOME, model.state.value.editor?.icon)
+        assertEquals(ChipLabel.NAME, model.state.value.editor?.chipShows)
+        model.onIconChange(FavoritePlaceIcon.HOME)
+        assertNull(model.state.value.editor?.icon)
+        model.commit()
+        advanceUntilIdle()
+        assertNull(store.saved.single().icon)
+    }
+
+    @Test
+    fun `a restored draft keeps its icon and chip label`() = runTest {
+        val saved = SavedStateHandle()
+        val work = FavoritePlace("w", FavoriteKind.WORK, "Work", Coordinates(51.5, -0.12))
+        val first = FavoritePlacesViewModel(FakeStore(listOf(work)), FakeFinder(), io = dispatcher, savedState = saved)
+        advanceUntilIdle()
+        first.startEdit(work)
+        first.onIconChange(FavoritePlaceIcon.OFFICE)
+        first.onChipShowsChange(ChipLabel.BOTH)
+        val restored = FavoritePlacesViewModel(FakeStore(listOf(work)), FakeFinder(), io = dispatcher, savedState = saved)
+        assertEquals(FavoritePlaceIcon.OFFICE, restored.state.value.editor?.icon)
+        assertEquals(ChipLabel.BOTH, restored.state.value.editor?.chipShows)
     }
 
     @Test

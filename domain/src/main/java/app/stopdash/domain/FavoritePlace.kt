@@ -24,6 +24,10 @@ enum class FavoriteKind { HOME, WORK, SCHOOL, CUSTOM }
  * [showOnDays] are the days the place is offered as a one-tap route chip on the near-me list (SPEC
  * *Routing from the near-me list*) — Work on weekdays, say. Every day by default, so a place saved
  * before the choice existed keeps its chip; empty means never.
+ *
+ * [icon] is one of [FavoritePlaceIcon.CHOICES], or null for none. [chipLabel] says what the place's chip
+ * on the near-me list shows; unset, that is the icon alone when there is one and the name otherwise.
+ * Lists with room (Settings, the To… picker) show both, and a trip's title and TalkBack use the name.
  */
 data class FavoritePlace(
     val id: String,
@@ -32,7 +36,16 @@ data class FavoritePlace(
     val coordinate: Coordinates,
     val placeName: String? = null,
     val showOnDays: Set<DayOfWeek> = EVERY_DAY,
+    val icon: String? = null,
+    val chipShows: ChipLabel? = null,
 ) {
+    /** What the chip shows: [chipShows], or its default; never the icon alone for a place without one. */
+    val chipLabel: ChipLabel
+        get() = when {
+            icon == null -> ChipLabel.NAME
+            else -> chipShows ?: ChipLabel.ICON
+        }
+
     /** Whether the place's chip shows on the near-me list on [day]. */
     fun showsOn(day: DayOfWeek): Boolean = day in showOnDays
 

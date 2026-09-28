@@ -3,6 +3,7 @@ package app.stopdash.domain
 import java.time.DayOfWeek
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Pure favorites operations, on synthetic coordinates only (no real place — SPEC *Privacy*). */
@@ -94,5 +95,28 @@ class FavoritePlacesTest {
     fun `a place shows every day by default`() {
         val home = FavoritePlace("h", FavoriteKind.HOME, "Home", Coordinates(51.5, -0.12))
         DayOfWeek.values().forEach { assertEquals(true, home.showsOn(it)) }
+    }
+
+    @Test
+    fun `Home, Work and School start with their icon and a custom place with none`() {
+        assertEquals(FavoritePlaceIcon.HOME, FavoritePlaceIcon.defaultFor(FavoriteKind.HOME))
+        assertEquals(FavoritePlaceIcon.WORK, FavoritePlaceIcon.defaultFor(FavoriteKind.WORK))
+        assertEquals(FavoritePlaceIcon.SCHOOL, FavoritePlaceIcon.defaultFor(FavoriteKind.SCHOOL))
+        assertNull(FavoritePlaceIcon.defaultFor(FavoriteKind.CUSTOM))
+        // Every default is one of the choices, and the choices are distinct.
+        FavoriteKind.values().mapNotNull(FavoritePlaceIcon::defaultFor).forEach { assertTrue(it in FavoritePlaceIcon.CHOICES) }
+        assertEquals(FavoritePlaceIcon.CHOICES.size, FavoritePlaceIcon.CHOICES.toSet().size)
+    }
+
+    @Test
+    fun `a chip shows the icon alone by default, the name without an icon, and the choice otherwise`() {
+        val plain = FavoritePlace("g", FavoriteKind.CUSTOM, "Gym", Coordinates(51.5, -0.12))
+        assertEquals(ChipLabel.NAME, plain.chipLabel)
+        // Asking for the icon alone without one still shows the name.
+        assertEquals(ChipLabel.NAME, plain.copy(chipShows = ChipLabel.ICON).chipLabel)
+        val home = plain.copy(icon = FavoritePlaceIcon.HOME)
+        assertEquals(ChipLabel.ICON, home.chipLabel)
+        assertEquals(ChipLabel.BOTH, home.copy(chipShows = ChipLabel.BOTH).chipLabel)
+        assertEquals(ChipLabel.NAME, home.copy(chipShows = ChipLabel.NAME).chipLabel)
     }
 }
