@@ -748,6 +748,8 @@ class MainActivity : ComponentActivity() {
                                     onPickCandidate = favoritePlacesModel::onPickCandidate,
                                     onLabelChange = favoritePlacesModel::onLabelChange,
                                     onToggleDay = favoritePlacesModel::onToggleDay,
+                                    onIconChange = favoritePlacesModel::onIconChange,
+                                    onChipShowsChange = favoritePlacesModel::onChipShowsChange,
                                     onSave = favoritePlacesModel::commit,
                                     onCancelEditor = favoritePlacesModel::cancelEditor,
                                     onRetrySearch = favoritePlacesModel::retrySearch,

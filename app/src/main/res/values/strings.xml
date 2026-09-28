@@ -329,6 +329,27 @@
     <!-- Editor actions. -->
     <string name="favorite_place_save">Save</string>
     <string name="favorite_place_show_on_main">Show on main screen</string>
+    <string name="favorite_place_icon_title">Icon</string>
+    <string name="favorite_place_chip_shows_title">Chip shows</string>
+    <string name="favorite_place_chip_shows_icon">Icon</string>
+    <string name="favorite_place_chip_shows_name">Name</string>
+    <string name="favorite_place_chip_shows_both">Both</string>
+    <string name="place_icon_home">House</string>
+    <string name="place_icon_office">Office building</string>
+    <string name="place_icon_work">Briefcase</string>
+    <string name="place_icon_backpack">Backpack</string>
+    <string name="place_icon_school">Graduation cap</string>
+    <string name="place_icon_park">Park</string>
+    <string name="place_icon_stadium">Stadium</string>
+    <string name="place_icon_hospital">Hospital</string>
+    <string name="place_icon_airport">Airport</string>
+    <string name="place_icon_gym">Gym</string>
+    <string name="place_icon_shop">Store</string>
+    <string name="place_icon_cafe">Café</string>
+    <string name="place_icon_restaurant">Restaurant</string>
+    <string name="place_icon_theater">Theater</string>
+    <string name="place_icon_beach">Beach</string>
+    <string name="place_icon_heart">Heart</string>
     <string name="favorite_place_cancel">Cancel</string>
     <string name="favorite_place_edit">Edit</string>
     <!-- Content description for a place row\'s edit action; %1$s is the label. -->

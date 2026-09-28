@@ -3,9 +3,12 @@ package app.stopdash.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -17,6 +20,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
+import app.stopdash.domain.ChipLabel
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.TripDestination
 
@@ -44,13 +48,32 @@ internal fun FavoriteChips(
     ) {
         items(places, key = { it.id }) { place ->
             val name = favoriteRouteName(place)
+            // An icon this build can't draw falls back to the name.
+            val shows = if (hasPlaceIcon(place.icon)) place.chipLabel else ChipLabel.NAME
             // TalkBack hears the action, not just the name, as on the Settings row.
             val description = stringResource(R.string.favorite_place_route_description, name)
             AssistChip(
                 onClick = { onRouteTo(TripDestination.Place(place.coordinate, name)) },
-                // Just the name, no icon: the name already says which place it is, and a narrower chip
-                // lets more of the row fit before it scrolls (maintainer, 2026-09-28).
-                label = { Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                // The place's own icon, its name, or both, as the rider chose (maintainer, 2026-09-28);
+                // never a generic icon, which said nothing the name didn't. An icon-only chip carries
+                // the icon as its label, so it sits centered; TalkBack still hears the name.
+                leadingIcon = if (shows == ChipLabel.BOTH) {
+                    { PlaceIcon(place.icon, Modifier.size(AssistChipDefaults.IconSize)) }
+                } else {
+                    null
+                },
+                label = {
+                    if (shows == ChipLabel.ICON) {
+                        PlaceIcon(place.icon, Modifier.size(AssistChipDefaults.IconSize))
+                    } else {
+                        Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                },
+                // The icon takes the label's color whether it leads the name or stands alone, rather
+                // than the accent a chip's leading icon gets by default.
+                colors = AssistChipDefaults.assistChipColors(
+                    leadingIconContentColor = MaterialTheme.colorScheme.onSurface,
+                ),
                 modifier = Modifier
                     .testTag("favoriteChip-${place.id}")
                     .semantics { contentDescription = description },

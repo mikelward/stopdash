@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoriteKind
+import app.stopdash.domain.ChipLabel
+import app.stopdash.domain.FavoritePlaceIcon
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoritePlacesStore
@@ -134,6 +136,9 @@ class FavoritePlacesViewModel(
         val postcodeFailed: Boolean = false,
         // The days this place is offered as a route chip on the near-me list; every day for a new place.
         val showOnDays: Set<DayOfWeek> = FavoritePlace.EVERY_DAY,
+        // The place's icon, or null for none, and what its chip shows (null: the default).
+        val icon: String? = null,
+        val chipShows: ChipLabel? = null,
     ) {
         val editing: Boolean get() = existingId != null
         val canSave: Boolean get() = coordinate != null && label.isNotBlank() && !saving
@@ -182,7 +187,15 @@ class FavoritePlacesViewModel(
         // Every new place gets its id now (persisted with the draft), so a save retried after a failure
         // or restored after process death reuses it and keeps a stable id — a reserved kind upserts by
         // kind, but a changing id would still break identity for anything that references it (Codex).
-        setEditor(Editor(kind = kind, existingId = null, draftId = newId(), label = defaultLabel))
+        setEditor(
+            Editor(
+                kind = kind,
+                existingId = null,
+                draftId = newId(),
+                label = defaultLabel,
+                icon = FavoritePlaceIcon.defaultFor(kind),
+            ),
+        )
     }
 
     /** Begin editing [place]; its saved location stands until the user picks a new one. */
@@ -202,6 +215,8 @@ class FavoritePlacesViewModel(
                 coordinate = place.coordinate,
                 placeName = place.placeName,
                 showOnDays = place.showOnDays,
+                icon = place.icon,
+                chipShows = place.chipShows,
             ),
         )
     }
@@ -220,6 +235,18 @@ class FavoritePlacesViewModel(
     }
 
     /** Re-run the current query's search after a failure, without the user retyping (Codex). */
+    /** Choose [icon] for the place; choosing the one already chosen clears it. */
+    fun onIconChange(icon: String) {
+        if (savingNow()) return // a save is in flight; ignore edits so completion can't discard them
+        updateEditor { it.copy(icon = if (it.icon == icon) null else icon) }
+    }
+
+    /** Choose what the place's chip on the near-me list shows. */
+    fun onChipShowsChange(shows: ChipLabel) {
+        if (savingNow()) return // a save is in flight; ignore edits so completion can't discard them
+        updateEditor { it.copy(chipShows = shows) }
+    }
+
     /** Turn [day] on or off for the place's chip on the near-me list. */
     fun onToggleDay(day: DayOfWeek) {
         if (savingNow()) return // a save is in flight; ignore edits so completion can't discard them
@@ -452,6 +479,8 @@ class FavoritePlacesViewModel(
             coordinate = coordinate,
             placeName = editor.placeName,
             showOnDays = editor.showOnDays,
+            icon = editor.icon,
+            chipShows = editor.chipShows,
         )
         search?.cancel()
         updateEditor { it.copy(saving = true) }
@@ -593,6 +622,8 @@ class FavoritePlacesViewModel(
         savedState[KEY_LAT] = editor?.coordinate?.latitude
         savedState[KEY_LON] = editor?.coordinate?.longitude
         savedState[KEY_PLACE] = editor?.placeName
+        savedState[KEY_ICON] = editor?.icon
+        savedState[KEY_CHIP_SHOWS] = editor?.chipShows?.name
         savedState[KEY_SHOW_ON_DAYS] = editor?.showOnDays?.map(DayOfWeek::getValue)?.toIntArray()
     }
 
@@ -613,6 +644,9 @@ class FavoritePlacesViewModel(
                 ?.filter { it in 1..7 }?.map(DayOfWeek::of)
                 ?.toSet()
                 ?: FavoritePlace.EVERY_DAY,
+            icon = savedState.get<String>(KEY_ICON),
+            chipShows = savedState.get<String>(KEY_CHIP_SHOWS)
+                ?.let { name -> ChipLabel.values().firstOrNull { it.name == name } },
         )
     }
 
@@ -628,6 +662,8 @@ class FavoritePlacesViewModel(
         private const val KEY_LON = "editor.lon"
         private const val KEY_PLACE = "editor.placeName"
         private const val KEY_SHOW_ON_DAYS = "editor.showOnDays"
+        private const val KEY_ICON = "editor.icon"
+        private const val KEY_CHIP_SHOWS = "editor.chipShows"
     }
 }
 

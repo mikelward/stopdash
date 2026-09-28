@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,13 +22,18 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -43,8 +49,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
+import app.stopdash.domain.ChipLabel
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
+import app.stopdash.domain.FavoritePlaceIcon
 import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.StationMatch
@@ -77,6 +85,8 @@ fun FavoritePlacesScreen(
     onPickCandidate: (PlaceCandidate) -> Unit = {},
     onLabelChange: (String) -> Unit,
     onToggleDay: (DayOfWeek) -> Unit = {},
+    onIconChange: (String) -> Unit = {},
+    onChipShowsChange: (ChipLabel) -> Unit = {},
     onSave: () -> Unit,
     onCancelEditor: () -> Unit,
     onRetrySearch: () -> Unit = {},
@@ -150,6 +160,8 @@ fun FavoritePlacesScreen(
                         onPickCandidate = onPickCandidate,
                         onLabelChange = onLabelChange,
                         onToggleDay = onToggleDay,
+                        onIconChange = onIconChange,
+                        onChipShowsChange = onChipShowsChange,
                         onSave = onSave,
                         onRetrySearch = onRetrySearch,
                     )
@@ -274,7 +286,13 @@ private fun PlaceRow(place: FavoritePlace, onRoute: () -> Unit, onEdit: () -> Un
                 .weight(1f)
                 .semantics(mergeDescendants = true) { contentDescription = routeDescription },
         ) {
-            Text(text = place.label, style = MaterialTheme.typography.bodyLarge)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (hasPlaceIcon(place.icon)) {
+                    PlaceIcon(place.icon, Modifier.size(24.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Text(text = place.label, style = MaterialTheme.typography.bodyLarge)
+            }
             place.placeName?.takeIf { it.isNotBlank() && it != place.label }?.let { name ->
                 Text(
                     text = name,
@@ -314,6 +332,8 @@ private fun PlaceEditor(
     onPickCandidate: (PlaceCandidate) -> Unit,
     onLabelChange: (String) -> Unit,
     onToggleDay: (DayOfWeek) -> Unit,
+    onIconChange: (String) -> Unit,
+    onChipShowsChange: (ChipLabel) -> Unit,
     onSave: () -> Unit,
     onRetrySearch: () -> Unit,
 ) {
@@ -416,7 +436,18 @@ private fun PlaceEditor(
             modifier = Modifier.fillMaxWidth().testTag("placeLabelField"),
         )
         Spacer(modifier = Modifier.height(8.dp))
+        IconRow(selected = editor.icon, enabled = !editor.saving, onSelect = onIconChange)
+        Spacer(modifier = Modifier.height(16.dp))
         ShowOnDaysRow(selected = editor.showOnDays, enabled = !editor.saving, onToggle = onToggleDay)
+        // What the chip shows is only a choice once there is an icon to show.
+        if (hasPlaceIcon(editor.icon)) {
+            Spacer(modifier = Modifier.height(16.dp))
+            ChipShowsRow(
+                selected = editor.chipShows ?: ChipLabel.ICON,
+                enabled = !editor.saving,
+                onSelect = onChipShowsChange,
+            )
+        }
         Spacer(modifier = Modifier.height(8.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -473,6 +504,71 @@ private fun ShowOnDaysRow(selected: Set<DayOfWeek>, enabled: Boolean, onToggle: 
                     color = if (on) colors.onSecondaryContainer else colors.onSurfaceVariant,
                 )
             }
+        }
+    }
+}
+
+/**
+ * The place's icon: the fixed set, one per 48dp cell, wrapping as the width allows. Tapping the chosen
+ * one clears it. Each cell is named for a screen reader.
+ */
+@Composable
+private fun IconRow(selected: String?, enabled: Boolean, onSelect: (String) -> Unit) {
+    Text(
+        text = stringResource(R.string.favorite_place_icon_title),
+        style = MaterialTheme.typography.bodyLarge,
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    FlowRow(
+        modifier = Modifier.fillMaxWidth().testTag("placeIcons"),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        FavoritePlaceIcon.CHOICES.forEach { id ->
+            val on = id == selected
+            val colors = MaterialTheme.colorScheme
+            val name = stringResource(placeIconArt.getValue(id).name)
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(if (on) colors.secondaryContainer else Color.Transparent)
+                    .border(1.dp, if (on) colors.secondaryContainer else colors.outlineVariant, CircleShape)
+                    .toggleable(value = on, enabled = enabled, role = Role.Checkbox, onValueChange = { onSelect(id) })
+                    .semantics { contentDescription = name }
+                    .testTag("placeIcon-$id"),
+                contentAlignment = Alignment.Center,
+            ) {
+                CompositionLocalProvider(
+                    LocalContentColor provides if (on) colors.onSecondaryContainer else colors.onSurfaceVariant,
+                ) { PlaceIcon(id, Modifier.size(24.dp)) }
+            }
+        }
+    }
+}
+
+/** What the place's chip on the near-me list shows: its icon, its name, or both. */
+@Composable
+private fun ChipShowsRow(selected: ChipLabel, enabled: Boolean, onSelect: (ChipLabel) -> Unit) {
+    Text(
+        text = stringResource(R.string.favorite_place_chip_shows_title),
+        style = MaterialTheme.typography.bodyLarge,
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    val labels = listOf(
+        ChipLabel.ICON to R.string.favorite_place_chip_shows_icon,
+        ChipLabel.NAME to R.string.favorite_place_chip_shows_name,
+        ChipLabel.BOTH to R.string.favorite_place_chip_shows_both,
+    )
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth().testTag("placeChipShows")) {
+        labels.forEachIndexed { index, (label, text) ->
+            SegmentedButton(
+                selected = label == selected,
+                onClick = { onSelect(label) },
+                enabled = enabled,
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = labels.size),
+                modifier = Modifier.testTag("placeChipShows-${label.name}"),
+            ) { Text(stringResource(text)) }
         }
     }
 }

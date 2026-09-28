@@ -944,7 +944,7 @@ doesn't use, so the ride gets off at the route's own stop of that name. A route 
 together) shows "Walk" where the pills go and its minutes, with no live row and no arrivals request.
 
 **Routing from the near-me list** (maintainer, 2026-09-27): the saved places lead the near-me list
-as **one row of chips**, one per place in the saved order, each just its name; a tap plans the trip
+as **one row of chips**, one per place in the saved order, each showing the place's icon, its name, or both, as the place chose (below); a tap plans the trip
 as above. The row is the list's first item, so it **scrolls away with the list** rather than taking
 a pinned row's space, and scrolls sideways when the chips don't fit; when the stops near have no
 departures it still heads the empty state, just when a route elsewhere is wanted (with no stops in
@@ -961,7 +961,15 @@ that is said, with a Retry. Each place chooses the **days of the week** its chip
 weekdays, say — in its editor, as one row of seven day toggles under "Show on main screen" (maintainer,
 2026-09-28). Every day is the default, so a place saved before the choice existed keeps its chip, and
 no days at all keeps the place for the To… picker and Settings without a chip. The day is the
-device's, and the row follows it past midnight and across a time-zone change while the list is up.
+device's, and the row follows it past midnight and across a time-zone change while the list is up. Every place — Home and Work included — has a name the rider can edit, and can wear **one icon**
+from a short fixed set (house, office building, briefcase, backpack, graduation cap, park, stadium,
+hospital, airport, gym, store, café, restaurant, theater, beach, heart). The icons are monochrome
+Material Symbols tinted like the text around them, not emoji: the system's color emoji were too busy
+to read at chip size (maintainer, 2026-09-28). A place with an icon chooses what its chip shows —
+**the icon alone** (the default), **the name**, or **both** — while the saved-places list and the To…
+picker, which have room, show both. A new Home, Work or School starts with the house, the briefcase
+or the graduation cap, and a custom place with none; tapping the chosen icon clears it. A trip's
+title and TalkBack use the name alone, so an icon-only chip is still announced by name.
 
 The trip's top bar carries the app's **overflow** as the list's does — its red dot while an update
 is available, "Update available", "Send bug report" and About — so a problem seen on a trip can be

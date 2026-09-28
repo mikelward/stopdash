@@ -6,15 +6,16 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -249,7 +250,7 @@ private fun YourStopsList(
             if (favoritePlaces.isNotEmpty()) {
                 items(favoritePlaces, key = { "place-${it.id}" }) { place ->
                     val name = favoriteRouteName(place)
-                    PlaceRow(name, onClick = { onOpenPlace(TripDestination.Place(place.coordinate, name)) })
+                    PlaceRow(name, place.icon, onClick = { onOpenPlace(TripDestination.Place(place.coordinate, name)) })
                     HorizontalDivider()
                 }
             } else {
@@ -346,7 +347,7 @@ private fun PlaceHitRow(place: PlaceHit, onClick: () -> Unit) {
 /** A favorite place in the pre-query list: its name alone (no modes — it's a coordinate, not a stop),
  *  on one line at the 48dp tap target, matching [MatchRow]'s density. */
 @Composable
-private fun PlaceRow(name: String, onClick: () -> Unit) {
+private fun PlaceRow(name: String, icon: String?, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -355,6 +356,10 @@ private fun PlaceRow(name: String, onClick: () -> Unit) {
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (hasPlaceIcon(icon)) {
+            PlaceIcon(icon, Modifier.size(24.dp))
+            Spacer(modifier = Modifier.width(16.dp))
+        }
         Text(
             name,
             style = MaterialTheme.typography.bodyLarge,
