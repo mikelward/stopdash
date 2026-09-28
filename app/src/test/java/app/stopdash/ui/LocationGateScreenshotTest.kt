@@ -100,6 +100,8 @@ class LocationGateScreenshotTest {
             LocationGate(NearbyStopsViewModel.State.Locating, onAllow = {}, onRetry = {}, onOpenSettings = {})
         }
         composeRule.onNodeWithText("Finding stops near you…").assertExists()
+        // Passing, and every state it ends in offers About, so it doesn't.
+        composeRule.onNodeWithText("About").assertDoesNotExist()
     }
 
     @Test
@@ -142,12 +144,12 @@ class LocationGateScreenshotTest {
         // Everything else stays put: the button's slot is kept either way.
         assertEquals(finding, composeRule.onNodeWithText("Finding stops near you…").getBoundsInRoot())
         assertEquals(find, composeRule.onNodeWithText("Find a station").getBoundsInRoot())
-        // The button is at the bottom, inside the gate's 24dp margin, below About.
+        // The button is at the bottom, inside the gate's 24dp margin, below Find a station.
         val button = composeRule.onNodeWithText("Update available").getBoundsInRoot()
         // Its face sits up to 4dp inside its 48dp touch target, which meets the margin.
         val gap = composeRule.onRoot().getBoundsInRoot().bottom - 24.dp - button.bottom
         assertTrue("$gap", gap >= 0.dp && gap <= 4.dp)
-        assertTrue(button.top > composeRule.onNodeWithText("About").getBoundsInRoot().bottom)
+        assertTrue(button.top > find.bottom)
     }
 
     @Test
