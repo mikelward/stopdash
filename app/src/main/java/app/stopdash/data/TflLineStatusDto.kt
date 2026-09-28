@@ -1,6 +1,7 @@
 package app.stopdash.data
 
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.ResolvedDisruption
 import app.stopdash.domain.mostSevereDisruption
 import app.stopdash.domain.resolveDisruption
 import kotlinx.serialization.Serializable
@@ -26,7 +27,28 @@ data class TflLineStatusEntryDto(
     // description is often just "Special Service"), so it is scanned to name the actual
     // disruption ("Diversion") — see [resolveDisruption].
     val reason: String = "",
+    // Only filled in by a `?detail=true` request ([LineAlertDirections]): the plain one leaves
+    // `affectedRoutes` empty, and the detail is ~40× the size, so it is fetched once per new alert.
+    val disruption: TflLineDisruptionDto? = null,
 )
+
+@Serializable
+data class TflLineDisruptionDto(
+    val affectedRoutes: List<TflAffectedRouteDto> = emptyList(),
+)
+
+// One route an alert affects; only its TfL direction (`inbound`/`outbound`) is read. The route's
+// stop list rides along in the detail response but isn't declared, so it is skipped.
+@Serializable
+data class TflAffectedRouteDto(
+    val direction: String = "",
+)
+
+/** The directions of travel TfL scopes this entry's alert to (`inbound`, `outbound`), if any. */
+fun TflLineStatusEntryDto.affectedDirections(): Set<String> =
+    disruption?.affectedRoutes.orEmpty()
+        .map { it.direction.trim().lowercase() }
+        .filterTo(HashSet()) { it in LineAlertDirections.DIRECTIONS }
 
 /**
  * Reduces a line's statuses to the one the surfaces show: its worst disruption if any, else
@@ -50,29 +72,46 @@ data class TflLineStatusEntryDto(
  * service: manufacturing a clean status from absent data would show ordinary countdowns for
  * a line TfL never verified (SPEC principle 1). Returning null lets the caller treat that
  * line as unchecked — the "status unknown" path — rather than verified-clean.
+ *
+ * [directionsOf] gives the directions an alert's reason was found to affect ([LineAlertDirections]),
+ * or null when not looked up; from it the status is also reduced per direction
+ * ([LineStatus.byDirection]), so a row only carries alerts for the way it is going.
  */
-fun TflLineDto.toLineStatus(): LineStatus? {
+fun TflLineDto.toLineStatus(directionsOf: (reason: String) -> Set<String>? = { null }): LineStatus? {
     if (lineStatuses.isEmpty()) return null
-    val worst = mostSevereDisruption(
-        lineStatuses
-            .filter { it.statusSeverity != LineStatus.GOOD_SERVICE }
-            .map { resolveDisruption(it.statusSeverityDescription, it.statusSeverity, it.reason) },
-    )
+    val disrupted = lineStatuses
+        .filter { it.statusSeverity != LineStatus.GOOD_SERVICE }
+        .map { it to resolveDisruption(it.statusSeverityDescription, it.statusSeverity, it.reason) }
+    val worst = mostSevereDisruption(disrupted.map { it.second })
     return if (worst != null) {
-        LineStatus(
-            lineId = id,
-            severity = worst.severity,
-            description = worst.label,
-            // The chosen disruption's prose, for the route detail view; null when TfL named
-            // the status but gave no reason (nothing to expand beyond the chip label).
-            fullText = worst.fullText.ifBlank { null },
-        )
+        val whole = worst.toLineStatus(id)
+        // Each direction's worst, from the alerts that apply to it: its own, plus any whose
+        // direction isn't known (counted for both, so an unlooked-up alert is never hidden). Kept
+        // only when it differs from the line-wide status somewhere, so an unsplit line stays lean.
+        val byDirection = LineAlertDirections.DIRECTIONS.associateWith { direction ->
+            mostSevereDisruption(
+                disrupted.filter { (entry, _) -> directionsOf(entry.reason)?.contains(direction) ?: true }.map { it.second },
+            )?.toLineStatus(id) ?: LineStatus(id, LineStatus.GOOD_SERVICE, GOOD_SERVICE_LABEL)
+        }
+        whole.copy(byDirection = byDirection.takeIf { split -> split.values.any { it != whole } }.orEmpty())
     } else {
         // Non-empty, all good service: name the good status.
         LineStatus(
             lineId = id,
             severity = LineStatus.GOOD_SERVICE,
-            description = lineStatuses.first().statusSeverityDescription.ifBlank { "Good Service" },
+            description = lineStatuses.first().statusSeverityDescription.ifBlank { GOOD_SERVICE_LABEL },
         )
     }
 }
+
+private fun ResolvedDisruption.toLineStatus(lineId: String): LineStatus =
+    LineStatus(
+        lineId = lineId,
+        severity = severity,
+        description = label,
+        // The chosen disruption's prose, for the route detail view; null when TfL named
+        // the status but gave no reason (nothing to expand beyond the chip label).
+        fullText = fullText.ifBlank { null },
+    )
+
+private const val GOOD_SERVICE_LABEL = "Good Service"

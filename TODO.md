@@ -1764,6 +1764,19 @@ Builds on Phase 1's minimal line-status marking.
         the marked stations to judge relevance to the rider's own journey. A status-only line page (a
         suspension, no predictions) names the alert's stations beside the chip too — see *Decisions
         needing review*.
+      - [x] **Only on rows going the affected way** (maintainer, 2026-09-28): an alert TfL
+            scopes to one direction (its affected routes' `inbound`/`outbound`, only in the
+            `?detail=true` response) no longer flags rows heading the other way. Looked up once per
+            new alert in the background and cached by its text; unknown counts for both.
+        - [ ] **The widget and watch by direction too**: they keep the line-wide status, since the
+              snapshot persists one status per line. Needs the per-direction statuses persisted
+              (and the watch envelope, a privacy-doc check), and the dismissal marking kept per
+              direction.
+        - [ ] **Upcoming planned work as info** (maintainer, 2026-09-28): read the start date out
+              of the reason text ("from 13 Oct 07:00"; `validityPeriods.fromDate` is when TfL posted
+              it, not when it starts) and show a not-yet-started alert with an info icon instead of
+              as a disruption. `category` is `PlannedWork`/`RealTime`/`Information`; `isNow` is
+              true for `RealTime` and mostly false for `PlannedWork`, current or not.
       - **Current-vs-future must come from the dates in the text, not `isNow`.** TfL's
         `validityPeriods[].isNow` reads `false` even for planned closures in effect right now
         (observed 2026-09-20, a Sunday: every live Overground/tube part-closure was `isNow:

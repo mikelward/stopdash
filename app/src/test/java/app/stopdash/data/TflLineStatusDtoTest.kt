@@ -18,6 +18,62 @@ class TflLineStatusDtoTest {
         )
 
     @Test
+    fun `a direction-scoped alert is split out by direction`() {
+        val north = "Northbound buses diverted via Street A."
+        val south = "Road closed: southbound buses will be diverted."
+        val result = checkNotNull(
+            line(status(0, "Special Service", north), status(0, "Special Service", south))
+                .toLineStatus { reason -> if (reason == north) setOf("inbound") else setOf("outbound") },
+        )
+        assertEquals(north, result.forDirection("inbound").fullText)
+        assertEquals(south, result.forDirection("outbound").fullText)
+        // A row with no direction keeps the line-wide status.
+        assertTrue(result.forDirection("").disrupted)
+    }
+
+    @Test
+    fun `a direction with no alert of its own reads as good service`() {
+        val north = "Northbound buses diverted via Street A."
+        val result = checkNotNull(
+            line(status(0, "Special Service", north)).toLineStatus { setOf("inbound") },
+        )
+        assertTrue(result.forDirection("inbound").disrupted)
+        assertFalse(result.forDirection("outbound").disrupted)
+    }
+
+    @Test
+    fun `an alert whose direction isn't known counts for both`() {
+        val result = checkNotNull(
+            line(status(0, "Special Service", "Buses diverted.")).toLineStatus { null },
+        )
+        // Nothing to split: the line-wide status holds everywhere, and none is stored.
+        assertTrue(result.byDirection.isEmpty())
+        assertTrue(result.forDirection("outbound").disrupted)
+        assertTrue(result.forDirection("inbound").disrupted)
+    }
+
+    @Test
+    fun `an unknown alert still flags a direction whose known alerts are elsewhere`() {
+        val north = "Northbound buses diverted via Street A."
+        val unknown = "Buses will be diverted and miss stops."
+        val result = checkNotNull(
+            line(status(0, "Special Service", north), status(0, "Special Service", unknown))
+                .toLineStatus { reason -> if (reason == north) setOf("inbound") else null },
+        )
+        assertEquals(unknown, result.forDirection("outbound").fullText)
+    }
+
+    @Test
+    fun `affected directions are read from the detailed response's routes`() {
+        val entry = TflLineStatusEntryDto(
+            disruption = TflLineDisruptionDto(
+                listOf(TflAffectedRouteDto("Outbound"), TflAffectedRouteDto("outbound"), TflAffectedRouteDto("")),
+            ),
+        )
+        assertEquals(setOf("outbound"), entry.affectedDirections())
+    }
+
+    @Test
     fun `no status entries is unknown, not good service`() {
         assertNull(line().toLineStatus())
     }

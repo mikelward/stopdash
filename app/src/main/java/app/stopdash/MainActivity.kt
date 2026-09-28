@@ -77,6 +77,7 @@ import app.stopdash.data.FileStarredPlacesStore
 import app.stopdash.data.HiddenModesSetting
 import app.stopdash.data.KtorDarwinClient
 import app.stopdash.data.KtorTflClient
+import app.stopdash.data.LineAlertDirections
 import app.stopdash.data.RailApiKeySetting
 import app.stopdash.data.RailStationCodesStore
 import app.stopdash.data.RecentSearches
@@ -2518,6 +2519,10 @@ class MainActivity : ComponentActivity() {
                 rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
                 requestPool = SharedTflRequestPool.pool,
                 warn = ::logDepartureWarning,
+                // A new line alert's direction is looked up once, off the refresh, so a row only
+                // carries alerts for the way it is going (SPEC *Disruptions*).
+                alertDirections = LineAlertDirections.shared,
+                alertDirectionScope = (context.applicationContext as? StopdashApp)?.applicationScope,
             ),
             rail = KtorDarwinClient(httpClient, apiKey = { RailApiKeySetting.current }, warn = ::logDepartureWarning),
             codes = { RailStationCodesStore.load(context.applicationContext) },

@@ -18,15 +18,37 @@ package app.stopdash.domain
  * detail (SPEC *Disruptions*): the compact card shows only [description], the detail shows
  * this. Null when there is no prose to show — a good service, or a disruption TfL worded but
  * gave no reason for — so the detail then has nothing to expand beyond the label.
+ *
+ * [byDirection] is the same reduction made once per direction of travel (TfL's `inbound` /
+ * `outbound`), for a line whose alerts TfL scopes to one direction: a diversion on the way into
+ * town says nothing about the buses heading out, so a row going the other way shouldn't carry it
+ * ([forDirection]). An alert whose direction isn't known counts for both. Empty when the split
+ * changes nothing — no directional alerts, or none looked up yet — so the line-wide status holds.
+ *
+ * [awaitingDirections] is true while a lookup of some alert's direction is under way: the status
+ * is complete for now but will split once it lands, so a caller that reuses a recent status
+ * asks again rather than keeping this one for its whole reuse window.
  */
 data class LineStatus(
     val lineId: String,
     val severity: Int,
     val description: String,
     val fullText: String? = null,
+    val byDirection: Map<String, LineStatus> = emptyMap(),
+    val awaitingDirections: Boolean = false,
 ) {
     /** True when TfL reports anything other than a good service on this line. */
     val disrupted: Boolean get() = severity != GOOD_SERVICE
+
+    /**
+     * The status a row travelling in [direction] should show: that direction's own when TfL scoped
+     * the line's alerts by direction ([byDirection]), else the line-wide one. A row with no TfL
+     * direction (most rail predictions) keeps the line-wide status, so nothing is hidden from it.
+     */
+    fun forDirection(direction: String): LineStatus = byDirection[direction] ?: this
+
+    /** This status and each per-direction one: every alert a row could show for the line. */
+    val allStatuses: List<LineStatus> get() = listOf(this) + byDirection.values
 
     companion object {
         /** TfL's `statusSeverity` for a normal, undisrupted line. */

@@ -19,6 +19,11 @@ import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.time.Instant
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -391,6 +396,59 @@ class KtorTflClientTest {
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
         return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", appKey = { appKey }, warn = warn)
+    }
+
+    @Test
+    fun `a new alert's direction is looked up once in the background, then splits the status`() = runTest {
+        val north = "STATION A: routes are on diversion northbound via Street A."
+        val south = "Road closed: buses towards Town B will miss stops."
+        fun statusJson(detail: Boolean) = """
+            [{"id": "bus1", "name": "1", "lineStatuses": [
+              {"statusSeverity": 0, "statusSeverityDescription": "Special Service", "reason": "$north",
+               "disruption": {"affectedRoutes": [${if (detail) """{"direction": "inbound", "routeSectionNaptanEntrySequence": []}""" else ""}]}},
+              {"statusSeverity": 0, "statusSeverityDescription": "Special Service", "reason": "$south",
+               "disruption": {"affectedRoutes": [${if (detail) """{"direction": "outbound"}""" else ""}]}}
+            ]}]
+        """.trimIndent()
+        val requests = mutableListOf<String?>()
+        // The lookup's parent, joined to wait for it: the mock engine answers off the test scheduler.
+        val lookups = Job()
+        val engine = MockEngine { request ->
+            val detail = request.url.parameters["detail"]
+            requests += detail
+            respond(
+                content = ByteReadChannel(statusJson(detail == "true")),
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val client = KtorTflClient(
+            httpClient = http,
+            baseUrl = "https://tfl.example",
+            alertDirections = LineAlertDirections(),
+            alertDirectionScope = CoroutineScope(lookups),
+            alertDirectionDispatcher = StandardTestDispatcher(testScheduler),
+        )
+
+        // The first refresh answers at once, line-wide, and starts the lookup behind it.
+        val first = client.lineStatuses(listOf("bus1")).single()
+        assertTrue(first.byDirection.isEmpty())
+        // Marked as waiting, so a caller doesn't reuse it past the answer.
+        assertTrue(first.awaitingDirections)
+        advanceUntilIdle()
+        lookups.children.toList().joinAll()
+        assertEquals(listOf(null, "true"), requests)
+
+        // The next splits by direction, without asking for the detail again.
+        val second = client.lineStatuses(listOf("bus1")).single()
+        assertEquals(north, second.forDirection("inbound").fullText)
+        assertEquals(south, second.forDirection("outbound").fullText)
+        assertFalse(second.awaitingDirections)
+        assertTrue(lookups.children.none())
+        assertEquals(listOf(null, "true", null), requests)
     }
 
     @Test

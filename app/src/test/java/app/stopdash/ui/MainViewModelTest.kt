@@ -4818,6 +4818,33 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `a line status still waiting on its alerts' directions isn't reused`() = runTest(dispatcher) {
+        var current = now
+        val client = ReuseCountingClient().apply {
+            statuses = listOf(status("victoria", 6, "Severe Delays").copy(awaitingDirections = true))
+        }
+        val vm = MainViewModel(
+            client, seeds, clock = { current }, io = dispatcher,
+            arrivalsReuse = ARRIVALS_REUSE, disruptionReuse = DISRUPTION_REUSE, lineStatusReuse = LINE_STATUS_REUSE,
+        )
+        advanceUntilIdle()
+        assertEquals(1, client.statusCalls.size)
+
+        // The next refresh asks again, inside the reuse window, to pick up the split status.
+        client.statuses = listOf(status("victoria", 6, "Severe Delays"))
+        current = now.plusSeconds(60)
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(2, client.statusCalls.size)
+
+        // Now complete, it is reused as usual.
+        current = now.plusSeconds(120)
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(2, client.statusCalls.size)
+    }
+
+    @Test
     fun `a line TfL left out isn't asked about again within the reuse window, and stays unknown`() = runTest(dispatcher) {
         var current = now
         // TfL answers with no status for any line.

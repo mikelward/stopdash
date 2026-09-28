@@ -595,6 +595,43 @@ class DepartureRowsTest {
     }
 
     @Test
+    fun `a row carries only the alerts for its own direction`() {
+        // TfL scopes the line's diversion to buses heading in: the outbound row stays clean, the
+        // inbound one is flagged, and a row TfL gave no direction for keeps the line-wide alert.
+        val diversion = LineStatus("bus1", 5, "Diversion", "Northbound buses diverted")
+        val status = diversion.copy(
+            byDirection = mapOf(
+                "inbound" to diversion,
+                "outbound" to LineStatus("bus1", LineStatus.GOOD_SERVICE, "Good Service"),
+            ),
+        )
+        val rows = DepartureRows.forStop(
+            "STOP_A", "Stop A",
+            listOf(
+                departure("bus1", "1", "outbound", "Town B", 120, mode = "bus"),
+                departure("bus1", "1", "inbound", "Town A", 180, mode = "bus"),
+                departure("bus1", "1", "", "Anywhere", 240, mode = "bus"),
+            ),
+            now, mapOf("bus1" to status),
+        ).associateBy { it.direction }
+
+        assertNull(rows.getValue("outbound").status)
+        assertEquals("Diversion", rows.getValue("inbound").status?.description)
+        assertEquals("Diversion", rows.getValue("").status?.description)
+    }
+
+    @Test
+    fun `a direction's own alert counts among the live ones, so its dismissal isn't pruned`() {
+        val whole = LineStatus("bus1", 5, "Diversion", "Both ways")
+        val outbound = LineStatus("bus1", 5, "Diversion", "Southbound only")
+        val alerts = DepartureRows.liveLineStatusAlerts(
+            mapOf("bus1" to whole.copy(byDirection = mapOf("outbound" to outbound, "inbound" to whole))),
+        )
+        assertTrue(DismissedAlert.ofLineStatus(outbound) in alerts)
+        assertTrue(DismissedAlert.ofLineStatus(whole) in alerts)
+    }
+
+    @Test
     fun `a service ending at a nearer place is hidden, and an expired onward one doesn't bring its line back as No departures`() {
         // An onward Victoria train that has just left, and a later one terminating at the rider's
         // nearest station: nothing live helps, but the line has departures, so no status row.
