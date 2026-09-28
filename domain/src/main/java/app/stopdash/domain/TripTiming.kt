@@ -231,12 +231,47 @@ object TripTiming {
     /**
      * [estimates] best first: routes checked and open, then those that couldn't be checked, then
      * those that can't be ridden; within each, fully live before estimated before withheld, then the
-     * earliest arrival.
+     * earliest arrival, then the fewest changes.
      */
     fun rank(estimates: List<Estimate>): List<Estimate> =
         estimates.sortedWith(
-            compareBy<Estimate>({ it.blocked }, { it.unchecked }, { it.basis }, { it.arrival ?: Instant.MAX }),
+            compareBy<Estimate>({ it.blocked }, { it.unchecked }, { it.basis }, { it.arrival ?: Instant.MAX }, { it.route.rides.size }),
         )
+
+    /**
+     * [estimates] without a route another beats on both counts (maintainer, 2026-09-28): one with
+     * fewer changes that gets there no later, and that StopDash stands behind at least as far, as
+     * [rank] tiers them (usable, then unchecked, then blocked; then live, estimated, withheld). A route with more changes is worth offering
+     * only when it's faster. A withheld arrival can't be compared, so it neither beats nor is beaten.
+     * In [estimates]' order.
+     */
+    fun withoutSlowerChanges(estimates: List<Estimate>): List<Estimate> =
+        estimates.filter { route ->
+            val arrival = route.arrival ?: return@filter true
+            estimates.none { other ->
+                other !== route &&
+                    other.route.rides.size < route.route.rides.size &&
+                    other.arrival?.let { !it.isAfter(arrival) } == true &&
+                    STANDING.compare(other, route) <= 0
+            }
+        }
+
+    /**
+     * [estimates] without a route that rides a leg the Planner didn't plan ([planned], every leg of
+     * its routes) on anything but a live train StopDash vouches for: a train through a change
+     * ([RideLines.through]) is offered only when one is predicted, never on the Planner times it
+     * carries as a placeholder, which belong to other lines.
+     */
+    fun withoutUnvouchedLegs(estimates: List<Estimate>, planned: Set<TripLeg>): List<Estimate> =
+        estimates.filter { estimate ->
+            estimate.route.legs.withIndex().all { (index, leg) ->
+                leg.isWalk || leg in planned || estimate.legs.getOrNull(index)?.train != null
+            }
+        }
+
+    // How far StopDash stands behind a route, as [rank] orders it: checked and open, then unchecked,
+    // then blocked; within each, live before estimated before withheld.
+    private val STANDING = compareBy<Estimate>({ it.blocked }, { it.unchecked }, { it.basis })
 
     /**
      * The walk to a trip's first stop [meters] away as the crow flies, estimated conservatively: the
