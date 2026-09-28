@@ -647,6 +647,37 @@ class TripViewModelTest {
         assertTrue("T" in client.asked)
     }
 
+    // Six bus routes fill the routes timed; the tube, seventh, is open on screen: its stop is fetched
+    // though it's past the cap, so an open route is never left without live times.
+    @Test
+    fun `the open route's stops are fetched past the cap`() = runTest(dispatcher) {
+        val buses = (1..6).map { TripRoute(listOf(leg("b$it", "S$it", "C", 5, 10L + it).copy(mode = "bus"))) }
+        val tube = TripRoute(listOf(leg("red", "T", "C", 5, 30)))
+        val client = FakeClient(mutableMapOf())
+        val trip = TripViewModel(
+            FakePlanner(buses + tube), client, "A", listOf(TripDestination.Stop("C")), clock = { now }, plans = TripPlans(), io = dispatcher,
+        )
+        // Saved whole ([OpenRoute.encode]), as a train through a change is: fetched for by its plan.
+        trip.openRoute.value = OpenRoute(routeKey(tube), at = 0, ride = tube.legs.single()).encode()
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue("T" in client.asked)
+    }
+
+    @Test
+    fun `the open route is timed past the cap while the plan offers it`() {
+        val routes = (0..TripViewModel.MAX_ROUTES).map { i -> TripRoute(listOf(leg("line$i", "A", "C", 5, 10L + i))) }
+        val last = routes.last()
+        assertFalse(last in TripViewModel.bestOf(routes))
+        val kept = TripViewModel.bestOf(routes, keep = routeKey(last))
+        assertTrue(last in kept)
+        assertEquals(TripViewModel.MAX_ROUTES + 1, kept.size)
+        // Its lines load route data too.
+        assertTrue("line${TripViewModel.MAX_ROUTES}" in timedLineIds(routes, emptySet(), keep = setOf(routeKey(last))))
+        // A key the plan doesn't offer adds nothing.
+        assertEquals(TripViewModel.bestOf(routes), TripViewModel.bestOf(routes, keep = "gone"))
+    }
+
     // The route getting off at C arrives after the detour gets to E: the detour is the quicker way
     // there, so both stand.
     @Test

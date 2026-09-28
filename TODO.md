@@ -944,7 +944,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [ ] **From chip on the To… picker and ahead of the favorite chips** (maintainer, 2026-09-28),
             labeled "Here" by default: next PR.
       - [x] **Walking speed** (maintainer, 2026-09-28): Slow / Medium / Fast, in Settings and atop a
-            trip's routes, sent as the Planner's `walkingSpeed`. The device check found every walk
+            trip's routes or an opened route, sent as the Planner's `walkingSpeed`. The device check found every walk
             unchanged: the Planner ignores the speed unless the request names its modes, which it now
             does (walking among them).
       - [ ] **Configurable walking limit**: the Planner's `maxWalkingMinutes`, fixed at 15 for now.

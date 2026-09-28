@@ -16,6 +16,12 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
     /** [timed] lines that may time the route ([checked]). */
     fun timedRunning(statuses: Map<String, LineStatus>): List<TripLeg> = timed.filter { checked(it, legs.first(), statuses) }
 
+    /**
+     * A route [through] makes: [route], one ride fewer than [from], whose two rides from leg [at] it
+     * rides as one (its leg [at]).
+     */
+    data class Through(val route: TripRoute, val from: TripRoute, val at: Int)
+
     companion object {
         fun only(leg: TripLeg) = RideLines(listOf(leg), listOf(leg))
 
@@ -90,11 +96,20 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
             areaPoles: Map<String, List<String>>,
             sequences: Map<String, LineSequence?>,
             hidden: Set<String> = emptySet(),
-        ): List<TripRoute> {
+        ): List<TripRoute> = throughWays(routes, arrivals, areaPoles, sequences, hidden).map { it.route }
+
+        /** [through]'s routes, each with the route of [routes] it's made from ([Through]). */
+        fun throughWays(
+            routes: List<TripRoute>,
+            arrivals: Map<String, List<Departure>>,
+            areaPoles: Map<String, List<String>>,
+            sequences: Map<String, LineSequence?>,
+            hidden: Set<String> = emptySet(),
+        ): List<Through> {
             val rides = routes.flatMap { it.rides }.distinct()
             fun key(route: TripRoute) = route.legs.map { listOf(it.mode, it.lineId, it.fromArea.ifEmpty { it.fromId }, it.toArea.ifEmpty { it.toId }) }
             val known = routes.mapTo(HashSet(), ::key)
-            val found = LinkedHashMap<List<List<String>>, TripRoute>()
+            val found = LinkedHashMap<List<List<String>>, Through>()
             for (route in routes) {
                 for (index in 0 until route.legs.size - 1) {
                     val first = route.legs[index]
@@ -114,7 +129,7 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
                         )
                         val joined = TripRoute(route.legs.take(index) + ride + route.legs.drop(index + 2))
                         val joinedKey = key(joined)
-                        if (joinedKey !in known) found.putIfAbsent(joinedKey, joined)
+                        if (joinedKey !in known) found.putIfAbsent(joinedKey, Through(joined, route, index))
                     }
                 }
             }

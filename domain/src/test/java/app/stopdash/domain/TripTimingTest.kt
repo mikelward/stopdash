@@ -330,6 +330,26 @@ class TripTimingTest {
     }
 
     @Test
+    fun `a leg the Planner didn't plan is timed only by a live train`() {
+        // The ride's Planner times are a placeholder: they'd time the route as estimated from them.
+        val through = leg("blue", "A", "C", departs = 5, arrives = 30)
+        val route = TripRoute(listOf(walk("Here", "A", 0, 2), through))
+        val withTrain = TripTiming.estimate(route, now, Duration.ZERO, { if (it == 1) listOf(train("blue", 6)) else null }, timetabled = { it != 1 })
+        assertEquals(TripTiming.Basis.LIVE, withTrain.basis)
+        assertEquals(at(31), withTrain.arrival)
+        // None predicted: the arrival is withheld, saying why, rather than timed from the placeholder.
+        val none = TripTiming.estimate(route, now, Duration.ZERO, { if (it == 1) emptyList() else null }, timetabled = { it != 1 })
+        assertEquals(TripTiming.Basis.UNKNOWN, none.basis)
+        assertEquals(null, none.arrival)
+        assertEquals(null, none.legs[1].board)
+        assertEquals(TripTiming.Reason.NO_TRAINS, none.withheld?.reason)
+        // A planned leg with no train falls back to the Planner's times as ever.
+        val planned = TripTiming.estimate(route, now, Duration.ZERO, { if (it == 1) emptyList() else null })
+        assertEquals(TripTiming.Basis.ESTIMATED, planned.basis)
+        assertEquals(at(30), planned.arrival)
+    }
+
+    @Test
     fun `the walk to the first stop is estimated at the Planner's pace`() {
         assertEquals(Duration.ZERO, TripTiming.accessWalk(0.0))
         // 400 m * 1.4 / 1.25 m/s = 448 s: rounded up to 8 min.
