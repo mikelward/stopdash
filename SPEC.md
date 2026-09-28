@@ -287,7 +287,7 @@ The app finds stops two ways:
   its **coordinate** (D9); its name and stable id are **never sent to TfL** (they ride Android backup /
   device transfer with the rest of the user's config, per *Privacy*).
 - **To… a place or postcode** (maintainer, 2026-09-27) — the *To…* search offers **geocoded places**
-  (a landmark, an address, a postcode) beneath the stop matches, each tagged *Place* or *Postcode* in
+  (a landmark, an address, a postcode) among the stop matches, each tagged *Place* or *Postcode* in
   the right column where a stop shows its modes; tapping one plans to its **coordinate** (a final walk
   leg, D9), like a favorite. TfL's Journey Planner is the geocoder (the only one in the free Unified
   API), the same call the postcode resolver makes — so it adds a **second TfL request** per *To…*
@@ -296,8 +296,12 @@ The app finds stops two ways:
   candidates **noisily** (a weak partial can outrank the obvious landmark), so a place-name query is
   **re-ranked by the app's own name matcher** (Prefix over Anchored over Substring over Fuzzy) and
   non-matching candidates dropped; a postcode query keeps TfL's order (its resolved location's name
-  needn't contain the digits). Best-effort: a geocode failure yields no places and the stops still
-  stand. A better geocoder is a later option (`TODO.md`).
+  needn't contain the digits). Stops and places are **one list ranked by match**, so a place the query
+  starts ("Tate Britain" for "tate") sits above a stop that only contains it ("… Estate"); a stop wins a
+  tie, and a postcode's places follow the stops (maintainer, 2026-09-28). A name in parts — a stop with
+  its cross street ("Foo Street / Bar Road"), a place after its area ("City of Westminster, Tate
+  Britain") — matches a query starting **any part** as a prefix. Best-effort: a geocode failure yields
+  no places and the stops still stand. A better geocoder is a later option (`TODO.md`).
 - **Farther stations** (maintainer, 2026-09-25) — where the near-me list reaches only one tube
   station, the rest of the network can be two miles off. Below the loaded places and the *More*
   controls, a **collapsed card** stands for the nearest station of each **rail line** the loaded
