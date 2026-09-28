@@ -4,6 +4,7 @@ import app.stopdash.domain.ChipLabel
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
+import app.stopdash.domain.FavoritePlaceIcon
 import java.time.DayOfWeek
 import kotlinx.serialization.Serializable
 
@@ -92,12 +93,16 @@ internal fun List<FavoritePlace>.toPersisted(): PersistedFavoritePlaces =
  * known version falls back to [FavoriteKind.CUSTOM] so the user's place is kept and usable rather
  * than dropped (a new kind ships behind a version bump, which is caught above).
  */
+// The format that added the per-place icon.
+private const val ICONS_VERSION = 3
+
 internal fun PersistedFavoritePlaces.toDomain(): List<FavoritePlace>? {
     if (version !in PersistedFavoritePlaces.OLDEST_READABLE_VERSION..PersistedFavoritePlaces.CURRENT_VERSION) return null
     return places.map {
+        val kind = runCatching { FavoriteKind.valueOf(it.kind) }.getOrDefault(FavoriteKind.CUSTOM)
         FavoritePlace(
             id = it.id,
-            kind = runCatching { FavoriteKind.valueOf(it.kind) }.getOrDefault(FavoriteKind.CUSTOM),
+            kind = kind,
             label = it.label,
             coordinate = Coordinates(it.lat, it.lon),
             placeName = it.placeName,
@@ -107,8 +112,14 @@ internal fun PersistedFavoritePlaces.toDomain(): List<FavoritePlace>? {
                 ?.toSet()
                 ?: FavoritePlace.EVERY_DAY,
             // Kept as stored even when it isn't one of this build's choices, so a newer build's pick
-            // survives; blank reads as none.
-            icon = it.icon?.takeIf(String::isNotBlank),
+            // survives; blank reads as none. A place saved before icons existed (v1 and v2) takes its
+            // kind's default — the house for Home, and so on — as a newly added one does; from v3 on,
+            // no icon is a choice the rider made, and stands.
+            icon = if (version < ICONS_VERSION) {
+                FavoritePlaceIcon.defaultFor(kind)
+            } else {
+                it.icon?.takeIf(String::isNotBlank)
+            },
             // An unknown value reads as unset: the default, rather than failing the list.
             chipShows = it.chipShows?.let { name -> ChipLabel.values().firstOrNull { label -> label.name == name } },
         )

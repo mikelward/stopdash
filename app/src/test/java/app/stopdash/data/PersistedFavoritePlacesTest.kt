@@ -32,9 +32,24 @@ class PersistedFavoritePlacesTest {
     }
 
     @Test
-    fun `a v2 file reads with no icon, a blank one reads as none, and an unknown one is kept`() {
-        val v2 = PersistedFavoritePlaces(version = 2, places = listOf(PersistedFavoritePlace("h", "HOME", "Home", 51.5, -0.12)))
-        assertNull(v2.toDomain()?.single()?.icon)
+    fun `a place saved before icons takes its kind's default, and a blank or unknown one is handled`() {
+        // v2 (and v1) predate icons: Home, Work and School get the icon a new one starts with.
+        val v2 = PersistedFavoritePlaces(
+            version = 2,
+            places = listOf(
+                PersistedFavoritePlace("h", "HOME", "Home", 51.5, -0.12),
+                PersistedFavoritePlace("w", "WORK", "Work", 51.51, -0.1),
+                PersistedFavoritePlace("s", "SCHOOL", "School", 51.52, -0.11),
+                PersistedFavoritePlace("g", "CUSTOM", "Gym", 51.53, -0.12),
+            ),
+        )
+        assertEquals(
+            listOf(FavoritePlaceIcon.HOME, FavoritePlaceIcon.WORK, FavoritePlaceIcon.SCHOOL, null),
+            v2.toDomain()?.map { it.icon },
+        )
+        // From v3 on, no icon is the rider's choice and stands, even for Home.
+        val cleared = PersistedFavoritePlaces(places = listOf(PersistedFavoritePlace("h", "HOME", "Home", 51.5, -0.12)))
+        assertNull(cleared.toDomain()?.single()?.icon)
         val blank = PersistedFavoritePlaces(places = listOf(PersistedFavoritePlace("h", "HOME", "Home", 51.5, -0.12, icon = " ")))
         assertNull(blank.toDomain()?.single()?.icon)
         // A newer build's choice survives a round trip through this one.

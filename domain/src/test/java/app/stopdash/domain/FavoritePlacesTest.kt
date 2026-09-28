@@ -109,13 +109,14 @@ class FavoritePlacesTest {
     }
 
     @Test
-    fun `a chip shows the icon alone by default, the name without an icon, and the choice otherwise`() {
+    fun `a chip shows the icon and name by default, the name without an icon, and the choice otherwise`() {
         val plain = FavoritePlace("g", FavoriteKind.CUSTOM, "Gym", Coordinates(51.5, -0.12))
         assertEquals(ChipLabel.NAME, plain.chipLabel)
         // Asking for the icon alone without one still shows the name.
         assertEquals(ChipLabel.NAME, plain.copy(chipShows = ChipLabel.ICON).chipLabel)
         val home = plain.copy(icon = FavoritePlaceIcon.HOME)
-        assertEquals(ChipLabel.ICON, home.chipLabel)
+        assertEquals(ChipLabel.BOTH, home.chipLabel)
+        assertEquals(ChipLabel.ICON, home.copy(chipShows = ChipLabel.ICON).chipLabel)
         assertEquals(ChipLabel.BOTH, home.copy(chipShows = ChipLabel.BOTH).chipLabel)
         assertEquals(ChipLabel.NAME, home.copy(chipShows = ChipLabel.NAME).chipLabel)
     }

@@ -968,9 +968,10 @@ from a short fixed set (house, office building, briefcase, backpack, graduation 
 hospital, airport, gym, store, café, restaurant, theater, beach, heart). The icons are monochrome
 Material Symbols tinted like the text around them, not emoji: the system's color emoji were too busy
 to read at chip size (maintainer, 2026-09-28). A place with an icon chooses what its chip shows —
-**the icon alone** (the default), **the name**, or **both** — while the saved-places list and the To…
-picker, which have room, show both. A new Home, Work or School starts with the house, the briefcase
-or the graduation cap, and a custom place with none; tapping the chosen icon clears it. A trip's
+**both** (the default), **the icon alone**, or **the name** — while the saved-places list and the To…
+picker, which have room, show both (maintainer, 2026-09-28). Home, Work and School start with the
+house, the briefcase and the graduation cap — including ones saved before icons existed — and a
+custom place with none; tapping the chosen icon clears it, and a cleared icon stays cleared. A trip's
 title and TalkBack use the name alone, so an icon-only chip is still announced by name. A **long press** on a chip opens the saved places' own screen, to edit them (maintainer, 2026-09-28).
 
 The trip's top bar carries the app's **overflow** as the list's does — its red dot while an update

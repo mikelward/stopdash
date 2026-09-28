@@ -26,7 +26,8 @@ enum class FavoriteKind { HOME, WORK, SCHOOL, CUSTOM }
  * before the choice existed keeps its chip; empty means never.
  *
  * [icon] is one of [FavoritePlaceIcon.CHOICES], or null for none. [chipLabel] says what the place's chip
- * on the near-me list shows; unset, that is the icon alone when there is one and the name otherwise.
+ * on the near-me list shows; unset, that is the icon and the name when there is an icon, and the name
+ * otherwise (maintainer, 2026-09-28: both by default, the icon alone a choice).
  * Lists with room (Settings, the To… picker) show both, and a trip's title and TalkBack use the name.
  */
 data class FavoritePlace(
@@ -43,7 +44,7 @@ data class FavoritePlace(
     val chipLabel: ChipLabel
         get() = when {
             icon == null -> ChipLabel.NAME
-            else -> chipShows ?: ChipLabel.ICON
+            else -> chipShows ?: ChipLabel.BOTH
         }
 
     /** Whether the place's chip shows on the near-me list on [day]. */

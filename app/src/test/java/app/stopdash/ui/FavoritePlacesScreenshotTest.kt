@@ -215,7 +215,7 @@ class FavoritePlacesScreenshotTest {
 
     @Test
     fun favorite_places_editor_icon() {
-        // Home wearing its house: that cell is on, the chip choice shows (Icon by default), and tapping
+        // Home wearing its house: that cell is on, the chip choice shows (Both by default), and tapping
         // another icon or chip label reports it.
         val chosen = mutableListOf<Any>()
         show(
@@ -236,9 +236,9 @@ class FavoritePlacesScreenshotTest {
         )
         composeRule.onNodeWithTag("placeIcon-home").assertIsOn()
         composeRule.onNodeWithTag("placeIcon-office").assertIsOff().performClick()
-        composeRule.onNodeWithTag("placeChipShows-ICON").assertIsSelected()
-        composeRule.onNodeWithTag("placeChipShows-BOTH").performClick()
-        assertEquals(listOf<Any>(FavoritePlaceIcon.OFFICE, ChipLabel.BOTH), chosen)
+        composeRule.onNodeWithTag("placeChipShows-BOTH").assertIsSelected()
+        composeRule.onNodeWithTag("placeChipShows-ICON").performClick()
+        assertEquals(listOf<Any>(FavoritePlaceIcon.OFFICE, ChipLabel.ICON), chosen)
         captureSnapshot("favorite-places-editor-icon.png")
     }
 
