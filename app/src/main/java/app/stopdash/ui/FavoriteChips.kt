@@ -3,15 +3,9 @@ package app.stopdash.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -23,7 +17,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
-import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.TripDestination
 
@@ -55,14 +48,9 @@ internal fun FavoriteChips(
             val description = stringResource(R.string.favorite_place_route_description, name)
             AssistChip(
                 onClick = { onRouteTo(TripDestination.Place(place.coordinate, name)) },
+                // Just the name, no icon: the name already says which place it is, and a narrower chip
+                // lets more of the row fit before it scrolls (maintainer, 2026-09-28).
                 label = { Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                leadingIcon = {
-                    Icon(
-                        imageVector = if (place.kind == FavoriteKind.HOME) Icons.Outlined.Home else Icons.Outlined.Place,
-                        contentDescription = null,
-                        modifier = Modifier.size(AssistChipDefaults.IconSize),
-                    )
-                },
                 modifier = Modifier
                     .testTag("favoriteChip-${place.id}")
                     .semantics { contentDescription = description },
