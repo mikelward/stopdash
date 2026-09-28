@@ -274,14 +274,26 @@ object TripTiming {
     private val STANDING = compareBy<Estimate>({ it.blocked }, { it.unchecked }, { it.basis })
 
     /**
-     * The walk to a trip's first stop [meters] away as the crow flies, estimated conservatively: the
-     * straight line stretched for detours, at an unhurried pace, rounded up to a whole minute. It
-     * errs toward graying a train that could be caught rather than offering one that can't.
+     * The walk to a trip's first stop [meters] away as the crow flies, at the rider's [speed]: the
+     * straight line stretched for detours, at the Planner's pace for that speed ([metersPerSecond]),
+     * rounded up to a whole minute, so it reads what the Planner would say for the same walk.
      */
-    fun accessWalk(meters: Double): Duration {
+    fun accessWalk(meters: Double, speed: WalkingSpeed = WalkingSpeed.AVERAGE): Duration {
         if (meters <= 0.0) return Duration.ZERO
-        val seconds = meters * DETOUR / WALK_METERS_PER_SECOND
+        val seconds = meters * DETOUR / metersPerSecond(speed)
         return Duration.ofMinutes(ceil(seconds / 60.0).toLong())
+    }
+
+    /**
+     * The pace the phone's own walk estimate ([accessWalk]) takes for [speed]: the Planner's own, so
+     * the same walk reads the same either way. Measured 2026-09-28 over its walk-only routes from
+     * points in central London to nearby stations: in a straight line it covered about 0.64, 0.90
+     * and 1.14 m/s at Slow, Average and Fast, which is these over [DETOUR].
+     */
+    internal fun metersPerSecond(speed: WalkingSpeed): Double = when (speed) {
+        WalkingSpeed.SLOW -> SLOW_METERS_PER_SECOND
+        WalkingSpeed.AVERAGE -> WALK_METERS_PER_SECOND
+        WalkingSpeed.FAST -> FAST_METERS_PER_SECOND
     }
 
     /**
@@ -338,6 +350,8 @@ object TripTiming {
     // A straight line understates a street walk; 1.4 is a common urban detour factor.
     private const val DETOUR = 1.4
 
-    // About 4 km/h: an unhurried pace, so a rider isn't sent running for a train.
-    private const val WALK_METERS_PER_SECOND = 1.1
+    // Along the stretched line, about 3.2, 4.5 and 5.8 km/h ([metersPerSecond]).
+    private const val SLOW_METERS_PER_SECOND = 0.9
+    private const val WALK_METERS_PER_SECOND = 1.25
+    private const val FAST_METERS_PER_SECOND = 1.6
 }

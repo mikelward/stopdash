@@ -309,10 +309,25 @@ class TripTimingTest {
     }
 
     @Test
-    fun `the walk to the first stop is estimated conservatively`() {
+    fun `the walk to the first stop is estimated at the Planner's pace`() {
         assertEquals(Duration.ZERO, TripTiming.accessWalk(0.0))
-        // 400 m * 1.4 / 1.1 m/s = 509 s: rounded up to 9 min.
-        assertEquals(Duration.ofMinutes(9), TripTiming.accessWalk(400.0))
+        // 400 m * 1.4 / 1.25 m/s = 448 s: rounded up to 8 min.
+        assertEquals(Duration.ofMinutes(8), TripTiming.accessWalk(400.0))
+        // A walk the Planner timed at 18 min on foot (1130 m in a straight line, measured 2026-09-28)
+        // reads 22, nearer it than the old fixed pace's 24: a straight line can't tell how direct the
+        // streets are, so the pace matches the Planner's over many walks rather than each one.
+        assertEquals(Duration.ofMinutes(22), TripTiming.accessWalk(1130.0))
+    }
+
+    @Test
+    fun `the walk to the first stop is timed at the rider's walking speed`() {
+        // Medium is the default.
+        assertEquals(TripTiming.accessWalk(400.0), TripTiming.accessWalk(400.0, WalkingSpeed.AVERAGE))
+        // 400 m * 1.4 / 0.9 m/s = 622 s: 11 min; / 1.6 m/s = 350 s: 6 min.
+        assertEquals(Duration.ofMinutes(11), TripTiming.accessWalk(400.0, WalkingSpeed.SLOW))
+        assertEquals(Duration.ofMinutes(6), TripTiming.accessWalk(400.0, WalkingSpeed.FAST))
+        // No walk is no walk at any pace.
+        assertEquals(Duration.ZERO, TripTiming.accessWalk(0.0, WalkingSpeed.SLOW))
     }
 
     @Test
