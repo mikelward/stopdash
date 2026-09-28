@@ -864,9 +864,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             above *Recent*/*Starred*; tapping one routes the trip to its coordinate (D9), as the
             Settings route-to path does. UI-only (renders from the search state), and the picker still
             works by typing when there are none. Two follow-ups:
-        - [ ] **Extend to the From-station To… picker**: it shares `HereTripArea` but passes no
-              `onOpenPlace`, so it shows no places yet. Needs its own favorite state (like
-              `hereFavorite`) threaded through `StationSearchArea`/`FromStationArea`.
+        - [x] **Extend to the From-station To… picker**: a *From…* station's To… lists the saved
+              places and routes to one's coordinate, as the near-me To… does.
         - [ ] **Hide a favorite that duplicates a nearby stop** (maintainer, 2026-09-27): when a saved
               place sits at a stop already listed, one of them is redundant in the picker.
       - [x] **Favorite places as chips atop the near-me list** (maintainer, 2026-09-27): one row of
@@ -907,8 +906,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               whether a better TfL match landing below the fold is missed.
         - [ ] **Remember a picked place in *Recent***: a chosen geocoded place isn't recorded (no stop
               id); *To…*'s *Recent* keeps only stops. Consider a device-local recent-places list.
-        - [ ] **Extend geocoded places to the From-station To… picker** (paired with the favorites
-              follow-up above — both need `onOpenPlace`/`searchPlaces` threaded through `FromStationArea`).
+        - [x] **Extend geocoded places to the From-station To… picker**: its search offers places too.
       - [ ] **Delete the unreachable direct-trips page path**: `LookDepartures`' `destination` and
             `hereTiers` are always null now. Delete their branches and everything only they reach
             (find it by a repo-wide search: `rememberTripView`, `tripMessages`, `tripLoaded`,
