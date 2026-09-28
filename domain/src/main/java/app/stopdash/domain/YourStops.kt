@@ -91,4 +91,7 @@ object RecentStations {
     /** [current] with [opened] moved (or added) to the front, capped at [max]. */
     fun add(current: List<StationMatch>, opened: StationMatch, max: Int = MAX): List<StationMatch> =
         (listOf(opened) + current.filter { it.id != opened.id }).take(max)
+
+    /** [current] without the station [id] — a Recent row the user cleared. */
+    fun remove(current: List<StationMatch>, id: String): List<StationMatch> = current.filter { it.id != id }
 }

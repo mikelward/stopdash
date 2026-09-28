@@ -825,8 +825,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         ends, places holding a starred row, less those picked lately); as the user types, those and
         the places lately shown near them (widget snapshot, nearby-lookup cache) match on the
         device, the user's own leading their tier by last use.
-    - [ ] **Clear or remove a recent entry**: the list only ages out past eight; a long-press to
-          remove one (or a "Clear" on the heading) if it proves wanted.
+    - [x] **Clear or save a recent entry** (maintainer, 2026-09-28): a Recent row's long press offers
+          *Clear* (off the list) and *Save* (the favorite-place editor, pre-filled with the stop).
   - [x] **Set the near-me origin to a station** (maintainer, 2026-09-24): *From…* now opens the
         near-me list as if standing at the searched station (its position as a fixed location), so
         its page and its *To…* share the near-me code.

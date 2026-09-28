@@ -27,6 +27,22 @@ class FileRecentStationsStoreTest {
     }
 
     @Test
+    fun `a cleared stop stays gone across a reload`() {
+        val file = File(tmp.root, "recent-stations.json")
+        FileRecentStationsStore(file).add(oxford)
+        FileRecentStationsStore(file).add(stop)
+        FileRecentStationsStore(file).remove(oxford.id)
+        assertEquals(listOf(stop), FileRecentStationsStore(file).load())
+    }
+
+    @Test
+    fun `a clear that can't be written says so`() {
+        // Its directory is a plain file, so nothing can be written under it.
+        val file = File(tmp.newFile("not-a-directory"), "recent-stations.json")
+        assertEquals(false, FileRecentStationsStore(file).remove(oxford.id))
+    }
+
+    @Test
     fun `an unparseable file loads as empty and is deleted`() {
         val file = File(tmp.root, "recent-stations.json").apply { writeText("not json") }
         val warnings = mutableListOf<String>()

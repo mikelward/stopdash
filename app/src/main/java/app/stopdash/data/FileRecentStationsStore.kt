@@ -37,15 +37,26 @@ internal class FileRecentStationsStore(
 
     /** Put [opened] at the front of the list ([RecentStations.add]) and save it. */
     @Synchronized
-    fun add(opened: StationMatch) = save(RecentStations.add(load(), opened))
+    fun add(opened: StationMatch) {
+        save(RecentStations.add(load(), opened))
+    }
 
-    private fun save(stations: List<StationMatch>) {
-        try {
+    /**
+     * Take the station [id] off the list ([RecentStations.remove]) and save it. False when the write
+     * failed, so the list still holds it and the caller can say so rather than let it reappear.
+     */
+    @Synchronized
+    fun remove(id: String): Boolean = save(RecentStations.remove(load(), id))
+
+    /** Write [stations] in one step; false (and a bare reason logged) when they couldn't be. */
+    private fun save(stations: List<StationMatch>): Boolean {
+        return try {
             tmp.writeText(json.encodeToString(PersistedRecentStations(stations.map { PersistedRecentStation(it.id, it.name, it.modes) })))
             // Replace in one step, so a reader never sees a half-written file.
-            if (!tmp.renameTo(file)) warn("recent stations not saved: rename failed")
+            tmp.renameTo(file).also { if (!it) warn("recent stations not saved: rename failed") }
         } catch (e: IOException) {
             warn("recent stations not saved: ${e::class.simpleName}")
+            false
         } finally {
             if (tmp.exists()) tmp.delete()
         }
