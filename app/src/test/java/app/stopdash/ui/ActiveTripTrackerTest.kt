@@ -62,6 +62,14 @@ class ActiveTripTrackerTest {
     private val alerts = mutableListOf<String>()
     // Holds a train's calls back until completed, as a slow TfL answer does.
     private var gate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
+    // Each station's entrances, by stop id, and how often they were asked for (a TfL request each).
+    private val entrancesAt = mutableMapOf<String, List<app.stopdash.domain.Coordinates>>()
+    private var entranceReads = 0
+    private var entrancesFail = false
+    // How long an entrances read takes, on the monotonic clock.
+    private var entrancesTake = 0L
+    // What the wall clock does while the entrances are read.
+    private var entranceClock: () -> Unit = {}
 
     private fun tracker(dispatcher: kotlinx.coroutines.CoroutineDispatcher, load: () -> ActiveTrip? = { null }) = ActiveTripTracker(
         load = load,
@@ -88,6 +96,13 @@ class ActiveTripTrackerTest {
                 asked += vehicleId
                 return trains[vehicleId].orEmpty()
             }
+        },
+        entrances = { stop ->
+            entranceReads++
+            ticks += entrancesTake
+            entranceClock()
+            if (entrancesFail) throw TflException.Offline(null)
+            entrancesAt[stop].orEmpty()
         },
         clock = { now },
         elapsed = { ticks },
@@ -769,6 +784,111 @@ class ActiveTripTrackerTest {
         advanceUntilIdle()
         assertEquals(0, tracker.starting.value)
         assertEquals(route, checkNotNull(tracker.trip.value).route)
+    }
+
+    @Test
+    fun `a rider at a station's entrance ends the walk, however far the Planner placed its stop`() = runTest {
+        // Synthetic positions: the Planner's point for A, an entrance 300 m north, and the rider by it.
+        val stop = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        entrancesAt["A"] = listOf(stop, app.stopdash.domain.Coordinates(51.5027, -0.12))
+        val rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.5029, -0.12), isFallback = false, accuracyMeters = 20f)
+        tracker.start(TripRoute(listOf(toA, ride.copy(fromAt = stop))), "C", readyAt = now)
+        now = at(2)
+        // TfL can't be reached for the entrances: the walk goes on, the failure is logged, and it's asked again.
+        entrancesFail = true
+        tracker.refresh(rider)
+        assertEquals(0, tracker.trip.value?.legIndex)
+        assertTrue(logged.any { it == "on the way: station entrances lookup failed: Offline" })
+        entrancesFail = false
+        tracker.refresh(rider)
+        assertEquals(1, tracker.trip.value?.legIndex)
+        assertEquals("3", tracker.trip.value?.vehicleId)
+        assertEquals(2, entranceReads)
+    }
+
+    @Test
+    fun `a walk to a station the Planner left unplaced ends at its entrance too`() = runTest {
+        // Synthetic positions: A's own point and an entrance, read from TfL; the rider by the entrance.
+        val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        entrancesAt["A"] = listOf(app.stopdash.domain.Coordinates(51.5, -0.12), app.stopdash.domain.Coordinates(51.5027, -0.12))
+        val rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.5029, -0.12), isFallback = false, accuracyMeters = 20f)
+        tracker.start(TripRoute(listOf(toA, ride)), "C", readyAt = now)
+        now = at(2)
+        tracker.refresh(rider)
+        assertEquals(1, tracker.trip.value?.legIndex)
+        assertEquals(1, entranceReads)
+    }
+
+    @Test
+    fun `a fix gone stale while the entrances were read isn't acted on`() = runTest {
+        val stop = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        entrancesAt["A"] = listOf(stop, app.stopdash.domain.Coordinates(51.5027, -0.12))
+        // Taken 5 s ago; the entrances take 8 s to come back, so it's 13 s old when weighed.
+        val rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.5029, -0.12), isFallback = false, accuracyMeters = 20f, ageMillis = 5_000L)
+        entrancesTake = 8_000L
+        tracker.start(TripRoute(listOf(toA, ride.copy(fromAt = stop))), "C", readyAt = now)
+        now = at(2)
+        tracker.refresh(rider)
+        assertEquals(0, tracker.trip.value?.legIndex)
+        // Read now: the next fresh fix there ends the walk at once.
+        tracker.refresh(rider)
+        assertEquals(1, tracker.trip.value?.legIndex)
+    }
+
+    @Test
+    fun `a walk whose time runs out while the entrances are read ends on its time`() = runTest {
+        val stop = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(2))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        entrancesAt["A"] = listOf(stop)
+        // Still well away; the read takes the clock past the walk's two minutes.
+        val away = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.51, -0.12), isFallback = false, accuracyMeters = 20f)
+        tracker.start(TripRoute(listOf(toA, ride.copy(fromAt = stop))), "C", readyAt = now)
+        now = at(1)
+        entranceClock = { now = at(3) }
+        tracker.refresh(away)
+        assertEquals(1, tracker.trip.value?.legIndex)
+    }
+
+    @Test
+    fun `a bus stop walked to costs no entrance request`() = runTest {
+        val pole = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val bus = TripLeg("bus", "73", "73", "A", "A", "C", "C", at(5), at(15), fromAt = pole)
+        val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(TripRoute(listOf(toA, bus)), "C", readyAt = now)
+        tracker.refresh(app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.51, -0.12), isFallback = false, accuracyMeters = 20f))
+        assertEquals(0, entranceReads)
+    }
+
+    @Test
+    fun `a station's entrances are asked for once, and not without a fix`() = runTest {
+        val stop = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        entrancesAt["A"] = listOf(stop)
+        // Well away from A: still walking.
+        val away = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.51, -0.12), isFallback = false, accuracyMeters = 20f)
+        tracker.start(TripRoute(listOf(toA, ride.copy(fromAt = stop))), "C", readyAt = now)
+        tracker.refresh()
+        assertEquals(0, entranceReads)
+        tracker.refresh(away)
+        tracker.refresh(away)
+        assertEquals(1, entranceReads)
+        assertEquals(0, tracker.trip.value?.legIndex)
     }
 
     @Test

@@ -1,5 +1,6 @@
 package app.stopdash.data
 
+import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.HubInfo
@@ -301,6 +302,17 @@ class KtorTflClient(
             // The hub's own cleaned name titles the alert; the member-station spellings across the
             // tree are the alias set the disruption strip matches against (SPEC *Disruptions*).
             HubInfo(name = cleanStopName(dto.commonName), aliases = dto.hubStationNames())
+        }
+
+    /**
+     * Where the station [id] can be walked into ([entrancesOf]): for a trip's walk to it, which ends
+     * when the rider is seen at any of them. One request, naming only the station.
+     */
+    suspend fun stationEntrances(id: String): List<Coordinates> =
+        tflRequest { key ->
+            httpClient.get("$baseUrl/StopPoint/$id") {
+                applyAppKey(key)
+            }.body<TflStopPointDto>().entrancesOf(id)
         }
 
     override suspend fun routeSequence(lineId: String, direction: String): LineSequence =

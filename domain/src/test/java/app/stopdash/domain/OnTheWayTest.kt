@@ -623,6 +623,41 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `a rider at one of the station's entrances is there, however far its placed point`() {
+        // 300 m north of where the Planner placed the stop, but 20 m from an entrance.
+        val atEntrance = fix(Coordinates(51.5027, -0.12), accuracyMeters = 20f)
+        assertEquals(walkingTrip, OnTheWay.seen(walkingTrip, atEntrance, at(1)))
+        val there = OnTheWay.seen(walkingTrip, atEntrance, at(1), entrances = listOf(Coordinates(51.5029, -0.12)))
+        assertEquals(1, there.legIndex)
+        // An entrance well away from the rider says nothing.
+        assertEquals(walkingTrip, OnTheWay.seen(walkingTrip, atEntrance, at(1), entrances = listOf(Coordinates(51.506, -0.12))))
+    }
+
+    @Test
+    fun `a walk to a station is one to read entrances for, a walk to a bus stop isn't`() {
+        assertEquals(1, walkingTrip.route.legs.indexOf(OnTheWay.stationWalkedTo(walkingTrip, t0)))
+        val bus = TripLeg("bus", "73", "73", "A", "A", "C", "C", at(5), at(15), fromAt = platform)
+        assertNull(OnTheWay.stationWalkedTo(ActiveTrip(TripRoute(listOf(toStop, bus)), "C", startedAt = t0), t0))
+        // Nor once the walk's time is up.
+        assertNull(OnTheWay.stationWalkedTo(walkingTrip, at(3)))
+    }
+
+    @Test
+    fun `a walk to a station the Planner left unplaced is seen at by its own point and entrances`() {
+        val unplaced = ActiveTrip(TripRoute(listOf(toStop, ride, walk, second)), "E", startedAt = t0)
+        // Worth a fix, and the station read: its own point and entrances can place it.
+        assertTrue(OnTheWay.wantsFix(unplaced, at(1)))
+        assertEquals(ride, OnTheWay.stationWalkedTo(unplaced, at(1)))
+        val atEntrance = fix(Coordinates(51.5027, -0.12), accuracyMeters = 20f)
+        assertEquals(1, OnTheWay.seen(unplaced, atEntrance, at(1), entrances = listOf(Coordinates(51.5029, -0.12))).legIndex)
+        // Nothing read, nothing to see it by.
+        assertEquals(unplaced, OnTheWay.seen(unplaced, atEntrance, at(1)))
+        // A bus stop left unplaced has no entrances to read: no fix asked for.
+        val bus = TripLeg("bus", "73", "73", "A", "A", "C", "C", at(5), at(15))
+        assertFalse(OnTheWay.wantsFix(ActiveTrip(TripRoute(listOf(toStop, bus)), "C", startedAt = t0), at(1)))
+    }
+
+    @Test
     fun `a rider still some way off, a vague fix, or none, walks on out the walk's time`() {
         assertEquals(walkingTrip, OnTheWay.seen(walkingTrip, downTheLine, at(1)))
         // 55 m out but only sure to 100 m: they could be anywhere up to 155 m away.

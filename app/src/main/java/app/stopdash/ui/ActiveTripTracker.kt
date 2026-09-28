@@ -1,6 +1,7 @@
 package app.stopdash.ui
 
 import app.stopdash.domain.ActiveTrip
+import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LocationFix
 import app.stopdash.domain.OnTheWay
@@ -41,6 +42,9 @@ class ActiveTripTracker(
     // A stop's departures, for picking a leg's train.
     private val arrivals: suspend (String) -> List<Departure>,
     private val vehicles: VehicleSource,
+    // Where a station can be walked into, by its stop id ([OnTheWay.seen]): its entrances as well as
+    // its one published point. Asked once per station while the rider walks to it.
+    private val entrances: suspend (String) -> List<Coordinates> = { emptyList() },
     private val clock: () -> Instant = Instant::now,
     // A monotonic clock in ms, for timing a wait the wall clock could be set back during.
     private val elapsed: () -> Long = { System.nanoTime() / 1_000_000 },
@@ -95,6 +99,29 @@ class ActiveTripTracker(
     val nextBoard: StateFlow<NextBoard?> = _nextBoard.asStateFlow()
 
     private val lock = Mutex()
+
+    // Each station's entrances once read ([entrances]); a failed read isn't kept, so the next
+    // refresh asks again. Held for the process only: a station's entrances don't move.
+    private val stationEntrances = HashMap<String, List<Coordinates>>()
+
+    // [stopId]'s entrances ([entrances]), read once; none while they can't be, so the walk ends on
+    // its placed position or its time as before, and the failure is logged.
+    private suspend fun entrancesOf(stopId: String): List<Coordinates> {
+        if (stopId.isBlank()) return emptyList()
+        stationEntrances[stopId]?.let { return it }
+        return try {
+            entrances(stopId).also { stationEntrances[stopId] = it }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: TflException.NotFound) {
+            // TfL doesn't know the station: asking again won't change that.
+            warn("on the way: station entrances lookup failed: NotFound")
+            emptyList<Coordinates>().also { stationEntrances[stopId] = it }
+        } catch (e: TflException) {
+            warn("on the way: station entrances lookup failed: ${e::class.simpleName}")
+            emptyList()
+        }
+    }
     private var restored = false
     // Whether the trip shown isn't yet known to be on the device ([keep]).
     private var unsaved = false
@@ -283,11 +310,18 @@ class ActiveTripTracker(
             }
             return false
         }
+        // A station's entrances, read (once) before anything else: the step then takes its time, and
+        // ages the fix by the read, after TfL has answered, so neither a walk's end nor a fix's
+        // freshness is judged at a moment already past (Codex, PR #352).
+        val reading = elapsed()
+        val walkTo = if (rider != null) _trip.value?.let { OnTheWay.stationWalkedTo(it, clock()) } else null
+        val entrances = walkTo?.let { entrancesOf(it.fromId) }.orEmpty()
+        val seenRider = if (walkTo == null) rider else rider?.let { aged(it, Duration.ofMillis(elapsed() - reading)) }
         val now = clock()
         // The train followed coming in, before a fix may have dropped it ([OnTheWay.seen]).
         val followed = _trip.value?.vehicleId.orEmpty()
         val before = _trip.value ?: return false
-        var trip = OnTheWay.seen(before, rider, now)
+        var trip = OnTheWay.seen(before, seenRider, now, entrances)
         // Left behind by a train get off soon was already said for: the stop it named was that
         // train's, so it's taken back, and said again for the next train in its time.
         if (before.warnedLeg == before.legIndex && trip.warnedLeg != before.warnedLeg) onGetOffSoonDone()
