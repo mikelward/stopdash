@@ -1297,10 +1297,23 @@ be a guess on a line with nothing running. A name counts as a place only where i
 errs toward marking, since it only adds a marker and never hides or reorders anything. Filling in
 the stations between two named ends ("between Oxford Circus and Euston"), and the compact chip, are
 follow-ups (`TODO.md` Phase 3).
-TfL's `isNow` flag is not used to hide a "future" alert: it reads `false` even for planned
-closures currently in effect, so telling current from future needs the dates in the text,
-and showing a not-yet-current diversion is the safe side (an extra chip beats a hidden
-disruption).
+**Work that hasn't started yet is noted, not flagged** (maintainer, 2026-09-28): a closure next
+month says nothing about today's buses, and a ⚠ for it trains the rider to ignore the ⚠. Neither of
+TfL's fields can tell: `isNow` reads `false` even for planned closures in effect (it marks
+"unplanned", not "current"), and `validityPeriods.fromDate` is when the alert was *posted*. So the
+start is read from the alert's own text — its **first** date, and only when the text affirmatively
+makes it a start: a start word before it ("from 13 Oct", "on 10 October") or the first of a range
+("12-17 October"). Any other first date — "until 23 November", "expected to finish by 13 October",
+wording not foreseen — is work already under way. A year TfL leaves out is the one nearest the day it posted the alert — work is
+announced around when it starts, often just after it has. When the start is a later day, the row carries a muted ⓘ instead of the ⚠ and keeps its
+countdowns as they are, and the route's page lists the alert under its chip with the day it starts
+("From 13 Oct"), each with its own × to dismiss it like any other alert. Anything the text doesn't date plainly — no date, an end first, a shape not
+recognized — counts as under way, and work starting later today already counts: the guess errs
+toward the ⚠, since a disruption flagged a day early beats one hidden while it runs. The start is
+judged against the day the rows are drawn, not the day the status was fetched: a status kept past a
+failed check turns its ⓘ into the ⚠ once the work's day comes. Dismissing the ⓘ puts away the
+notice, not the disruption: on the day the work starts its ⚠ shows as it would for any new alert,
+and dismissing that is a second, separate choice.
 
 **A line alert is shown only on rows travelling the way it affects** (maintainer, 2026-09-28): a
 northbound diversion says nothing about the buses heading south, and flagging them sends the rider

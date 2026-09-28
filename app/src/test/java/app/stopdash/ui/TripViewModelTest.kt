@@ -19,6 +19,7 @@ import app.stopdash.domain.StopGroup
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.RideLines
 import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.RouteStops
@@ -33,6 +34,7 @@ import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.TripTiming
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -1057,6 +1059,17 @@ class TripViewModelTest {
         assertNull(legStatusRow(good, leg, now).status)
         val delayed = TripViewModel.State(statuses = mapOf("blue" to LineStatus("blue", 9, "Minor Delays")))
         assertEquals("Minor Delays", legStatusRow(delayed, leg, now).status?.description)
+        // A line's work still to come reaches the quiet leg's page too.
+        val planned = app.stopdash.domain.PlannedAlert("Part Closure", "No service on Saturday 3 October.", java.time.LocalDate.of(2026, 10, 3))
+        val withPlanned = delayed.copy(statuses = delayed.statuses.mapValues { (_, status) -> status.copy(planned = listOf(planned)) })
+        assertEquals(listOf(planned), legStatusRow(withPlanned, leg, now).plannedAlerts)
+        // The collapsed card notes it too.
+        assertEquals(planned, linesPlanned(listOf(leg), withPlanned.statuses))
+        assertNull(linesPlanned(listOf(leg), delayed.statuses))
+        // Dismissed, it leaves the quiet leg's page (the disruption stays).
+        val marked = withDismissedMarked(legStatusRow(withPlanned, leg, now), setOf(app.stopdash.domain.DismissedAlert.ofPlanned("blue", planned)))
+        assertTrue(marked.plannedAlerts.isEmpty())
+        assertEquals("Minor Delays", marked.status?.description)
     }
 
     @Test
@@ -1496,6 +1509,23 @@ class TripViewModelTest {
         val both = dismissed + DismissedAlert.ofLineStatus(outbound)
         assertNull(shownStatuses(mapOf("blue" to line), both)["blue"])
         assertTrue(withDismissedMarked(statusRow, both).statusDismissed)
+    }
+
+    @Test
+    fun `a card's planned work is dismissed on its own`() {
+        val work = PlannedAlert("Diversion", "Buses divert from 13 October.", LocalDate.of(2026, 10, 13))
+        val severe = LineStatus("blue", 6, "Severe Delays", planned = listOf(work))
+        // Dismissing the disruption leaves the work to come.
+        val afterStatus = shownStatuses(mapOf("blue" to severe), setOf(DismissedAlert.ofLineStatus(severe)))["blue"]
+        assertEquals(false, afterStatus?.disrupted)
+        assertEquals(listOf(work), afterStatus?.planned)
+        // Dismissing the work leaves the disruption, without the ⓘ.
+        val afterWork = shownStatuses(mapOf("blue" to severe), setOf(DismissedAlert.ofPlanned("blue", work)))["blue"]
+        assertEquals(true, afterWork?.disrupted)
+        assertEquals(emptyList<PlannedAlert>(), afterWork?.planned)
+        // Both gone: so is the line.
+        val onlyWork = LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(work))
+        assertEquals(emptyMap<String, LineStatus>(), shownStatuses(mapOf("blue" to onlyWork), setOf(DismissedAlert.ofPlanned("blue", work))))
     }
 
     @Test

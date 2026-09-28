@@ -1,5 +1,7 @@
 package app.stopdash.domain
 
+import java.time.LocalDate
+
 /**
  * A line's current TfL status, reduced to what the surfaces need: whether the line is
  * disrupted and a short description to show (SPEC *Disruptions* / D3). TfL reports one or
@@ -28,6 +30,10 @@ package app.stopdash.domain
  * [awaitingDirections] is true while a lookup of some alert's direction is under way: the status
  * is complete for now but will split once it lands, so a caller that reuses a recent status
  * asks again rather than keeping this one for its whole reuse window.
+ *
+ * [planned] is the line's work that hasn't started yet ([AlertStart]): kept apart from the
+ * disruption, so a closure next month doesn't flag today's buses, but still there for a row to note
+ * and its page to spell out. A line with only planned work is a good service with [planned] set.
  */
 data class LineStatus(
     val lineId: String,
@@ -36,6 +42,10 @@ data class LineStatus(
     val fullText: String? = null,
     val byDirection: Map<String, LineStatus> = emptyMap(),
     val awaitingDirections: Boolean = false,
+    val planned: List<PlannedAlert> = emptyList(),
+    // The shown disruption resolved only to the generic fallback label ([ResolvedDisruption.isFallback]):
+    // kept so a status re-ranked later ([asOf]) orders it as a fresh parse would (Codex, PR #337).
+    val isFallback: Boolean = false,
 ) {
     /** True when TfL reports anything other than a good service on this line. */
     val disrupted: Boolean get() = severity != GOOD_SERVICE
@@ -47,11 +57,67 @@ data class LineStatus(
      */
     fun forDirection(direction: String): LineStatus = byDirection[direction] ?: this
 
+    /** True when there is anything to show for the line: a disruption now, or work to come. */
+    val hasAlerts: Boolean get() = disrupted || planned.isNotEmpty()
+
     /** This status and each per-direction one: every alert a row could show for the line. */
     val allStatuses: List<LineStatus> get() = listOf(this) + byDirection.values
+
+    /**
+     * This status as of [today] in London: planned work whose day has come counts as under way,
+     * the worst of it and any disruption already shown making the chip, and leaves [planned]. A
+     * status is classified when it is fetched, but a kept one (a later check failed, or is reused)
+     * outlives that day, and work already started must not stay muted as to come (Codex, PR #337).
+     */
+    fun asOf(today: LocalDate): LineStatus {
+        val due = planned.filter { !it.startsOn.isAfter(today) }
+        val split = byDirection.mapValues { (_, status) -> status.asOf(today) }
+        if (due.isEmpty()) return if (split == byDirection) this else copy(byDirection = split)
+        val now = due.map { ResolvedDisruption(it.label, it.severity, isFallback = it.isFallback, fullText = it.fullText) } +
+            listOfNotNull(if (disrupted) ResolvedDisruption(description, severity, isFallback = isFallback, fullText = fullText.orEmpty()) else null)
+        val worst = mostSevereDisruption(now) ?: return this
+        return copy(
+            severity = worst.severity,
+            description = worst.label,
+            isFallback = worst.isFallback,
+            fullText = worst.fullText.ifBlank { null },
+            byDirection = split,
+            planned = planned - due.toSet(),
+        )
+    }
 
     companion object {
         /** TfL's `statusSeverity` for a normal, undisrupted line. */
         const val GOOD_SERVICE = 10
+
+        /** [statuses] each as of [now]'s day in London ([asOf]). */
+        fun asOf(statuses: Map<String, LineStatus>, now: java.time.Instant): Map<String, LineStatus> {
+            val today = now.atZone(AlertStart.ZONE).toLocalDate()
+            if (statuses.values.none { it.hasDue(today) }) return statuses
+            return statuses.mapValues { (_, status) -> status.asOf(today) }
+        }
+    }
+
+    private fun hasDue(today: LocalDate): Boolean =
+        planned.any { !it.startsOn.isAfter(today) } || byDirection.values.any { it.hasDue(today) }
+}
+
+/**
+ * A line alert for work that hasn't started ([AlertStart]): its chip [label] ("Diversion"), TfL's
+ * [fullText], the day it [startsOn] in London, and its [severity] on TfL's scale and [isFallback], for
+ * ranking it when that day comes ([LineStatus.asOf]).
+ */
+data class PlannedAlert(
+    val label: String,
+    val fullText: String,
+    val startsOn: LocalDate,
+    val severity: Int = PART_CLOSURE,
+    // Resolved only to the generic fallback label ([ResolvedDisruption.isFallback]): ranks last
+    // when it starts, as it would in a fresh parse (Codex, PR #337).
+    val isFallback: Boolean = false,
+) {
+    companion object {
+        /** TfL's severity for a part closure: planned work's usual grade. */
+        const val PART_CLOSURE = 5
     }
 }

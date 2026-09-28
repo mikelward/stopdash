@@ -82,7 +82,9 @@ import app.stopdash.domain.Headway
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSequence
+import app.stopdash.domain.AlertStart
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.RideLines
 import app.stopdash.domain.RouteFocus
@@ -569,6 +571,10 @@ internal fun TripScreen(
     walkingSpeedWriteFailed: Boolean = false,
     onWalkingSpeedWriteFailureShown: () -> Unit = {},
 ) {
+    // Planned work whose day has come shows as under way, however long ago it was fetched (Codex,
+    // PR #337): a kept status outlives the day it was sorted on.
+    val today = now.atZone(AlertStart.ZONE).toLocalDate()
+    val state = remember(state, today) { state.copy(statuses = LineStatus.asOf(state.statuses, now)) }
     CompositionLocalProvider(LocalRouteStops provides routeStops) {
         TripContent(
             title, state, now, access, onBack, onRetry, locationBanner, relocating, onRelocate,
@@ -743,6 +749,10 @@ private fun TripContent(
             focus = detailDestination?.let { RouteFocus(it, detailBranch) },
             // A leg with no train to follow still shows its line's stops, from the leg's own route.
             onDismissAlert = alerts.onDismiss?.takeIf { detailRow.status != null }?.let { dismiss -> { dismiss(detailRow) } },
+            // A planned alert dismissed on its own, as on the list's page: a row standing for just it.
+            onDismissPlanned = alerts.onDismiss?.let { dismiss ->
+                { planned -> dismiss(detailRow.copy(status = null, stopDisruption = null, plannedAlerts = listOf(planned))) }
+            },
             loadRouteStops = if (detailRow.upcoming.isEmpty()) {
                 detailLeg?.let { leg -> { retry: Int -> rememberLegRouteStops(leg, retry) } }
             } else {
@@ -1127,7 +1137,13 @@ private fun RouteSummary(
             modifier = Modifier.weight(1f).width(IntrinsicSize.Max).padding(start = 12.dp),
         ) {
             // 8dp before the time, as the main screen spaces its ⚠.
-            if (warning != null) DisruptionWarningGlyph(warning, Modifier.padding(end = 8.dp))
+            if (warning != null) {
+                DisruptionWarningGlyph(warning, Modifier.padding(end = 8.dp))
+            } else {
+                // Work still to come on one of its lines: the muted ⓘ, as on the main screen's rows.
+                linesPlanned(rides.indices.flatMap { cardRideLines(card, it, rideLines) }, statuses)
+                    ?.let { PlannedAlertGlyph(it, Modifier.padding(end = 8.dp)) }
+            }
             Text(
                 text = arrivalText(estimate),
                 style = MaterialTheme.typography.titleMedium,
@@ -1284,9 +1300,12 @@ private fun RideStops(
                 // A disrupted line's ⚠ just before the times, as on the main screen's rows (maintainer,
                 // 2026-09-28), so the stops line up down the card; for a cut pill, any of its lines.
                 val warning = linesWarning(lines, statuses)
+                // Work still to come, when nothing is disrupted now: the muted ⓘ in the ⚠'s place.
+                val planned = if (warning == null) linesPlanned(lines, statuses) else null
                 warning?.let { DisruptionWarningGlyph(it, Modifier.padding(start = 12.dp)) }
-                // 8dp after a ⚠, as the main screen spaces it from the times; else the usual 12dp.
-                val timesGap = if (warning != null) 8.dp else 12.dp
+                planned?.let { PlannedAlertGlyph(it, Modifier.padding(start = 12.dp)) }
+                // 8dp after a ⚠ or ⓘ, as the main screen spaces it from the times; else the usual 12dp.
+                val timesGap = if (warning != null || planned != null) 8.dp else 12.dp
                 if (index > 0) {
                     times.headways.getOrNull(index - 1)?.let { headway ->
                         val even = headway.min == headway.max
@@ -1331,6 +1350,10 @@ private fun RideStops(
         }
     }
 }
+
+/** The soonest work still to come on any of [lines] ([LineStatus.planned]), for a card's ⓘ; null when none. */
+internal fun linesPlanned(lines: List<TripLeg>, statuses: Map<String, LineStatus>): PlannedAlert? =
+    lines.flatMap { statuses[it.lineId]?.planned.orEmpty() }.minByOrNull { it.startsOn }
 
 /** The ⚠'s wording for [lines]' disruptions in [statuses]; beside a cut pill, each by its line. Null when none is disrupted. */
 @Composable
@@ -1618,20 +1641,33 @@ internal fun rememberLegRouteStops(leg: TripLeg, retry: Int): RouteStopsUi {
  * The line statuses a trip's cards warn of: [statuses] less the alerts the rider dismissed, as the
  * list shows them. Display only — a dismissed line still ranks and counts as checked.
  */
-internal fun shownStatuses(statuses: Map<String, LineStatus>, dismissed: Set<DismissedAlert>): Map<String, LineStatus> =
-    if (dismissed.isEmpty()) statuses
-    else statuses.mapNotNull { (line, status) -> status.remainingAfter(dismissed)?.let { line to it } }.toMap()
+internal fun shownStatuses(statuses: Map<String, LineStatus>, dismissed: Set<DismissedAlert>): Map<String, LineStatus> {
+    if (dismissed.isEmpty()) return statuses
+    // Each alert goes on its own (Codex, PR #337): a dismissed disruption leaves the line's planned
+    // work showing, and a dismissed planned alert leaves the rest.
+    return statuses.mapNotNull { (line, status) ->
+        val planned = status.planned.filter { DismissedAlert.ofPlanned(status.lineId, it) !in dismissed }
+        val shown = status.remainingAfter(dismissed)?.copy(planned = planned)
+            ?: LineStatus(status.lineId, LineStatus.GOOD_SERVICE, GOOD_SERVICE_LABEL, planned = planned)
+        // A line left with nothing once its alerts are dismissed goes; one that had nothing stays.
+        (line to shown).takeIf { shown.hasAlerts || !status.hasAlerts }
+    }.toMap()
+}
+
+private const val GOOD_SERVICE_LABEL = "Good Service"
 
 /**
  * [row] with its line alert marked dismissed ([DepartureRow.statusDismissed]) if it's in [dismissed],
  * or showing the other direction's alert when only one way's was ([remainingAfter]).
  */
 internal fun withDismissedMarked(row: DepartureRow, dismissed: Set<DismissedAlert>): DepartureRow {
-    val status = row.status ?: return row
+    // Its dismissed planned alerts go too, as on the list's rows (Codex, PR #337).
+    val planned = with(DepartureRows) { row.withoutDismissedPlanned(dismissed) }
+    val status = planned.status ?: return planned
     return when (val shown = status.remainingAfter(dismissed)) {
-        status -> row
-        null -> row.copy(status = null, statusDismissed = true)
-        else -> row.copy(status = shown)
+        status -> planned
+        null -> planned.copy(status = null, statusDismissed = true)
+        else -> planned.copy(status = shown)
     }
 }
 
@@ -1679,6 +1715,8 @@ internal fun legStatusRow(state: TripViewModel.State, leg: TripLeg, now: Instant
     fetchedAt = state.live[leg.fromId]?.fetchedAt ?: now,
     // Only a disruption, as a row's status always is: a good service is no alert.
     status = state.statuses[leg.lineId]?.takeIf { it.disrupted },
+    // Its page lists the line's work still to come, as a list row's does (Codex, PR #337).
+    plannedAlerts = state.statuses[leg.lineId]?.planned.orEmpty(),
 )
 
 /**
@@ -1741,6 +1779,8 @@ private fun NoTrainsRow(
             LinePill(line.lineName, line.lineId, line.mode)
             Box(Modifier.weight(1f).padding(start = 8.dp)) {
                 statusRow.status?.let { DisruptionChip(it.description) }
+                    // Work still to come, noted as on the list's rows (Codex, PR #337).
+                    ?: statusRow.plannedAlerts.firstOrNull()?.let { PlannedAlertGlyph(it) }
             }
             Text(
                 if (legLoading(state, line, sequences)) stringResource(R.string.trip_times_loading) else "–",

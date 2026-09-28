@@ -83,6 +83,7 @@ object DepartureRows {
                     // The row's own direction's alerts only: a diversion the other way round
                     // doesn't touch these buses (TfL's affected-route direction, [LineStatus.forDirection]).
                     status = lineStatuses[key.lineId]?.forDirection(soonest.direction)?.takeIf(LineStatus::disrupted),
+                    plannedAlerts = lineStatuses[key.lineId]?.forDirection(soonest.direction)?.planned.orEmpty(),
                 )
             }
             .sortedWith(rowOrder)
@@ -107,8 +108,10 @@ object DepartureRows {
         // stays marked until its check expires rather than until the arrivals do. The in-app list
         // doesn't: its status row asserts "No departures", which needs current arrivals.
         statusRowsWhenStale: Boolean = false,
-    ): List<DepartureRow> =
-        stops.flatMap { stop ->
+    ): List<DepartureRow> {
+        // Planned work whose day has come shows as under way, however long ago it was fetched.
+        val lineStatuses = LineStatus.asOf(lineStatuses, now)
+        return stops.flatMap { stop ->
             // A service ending no farther from the rider than this stop goes nowhere for them
             // ([Terminating]). Hidden here, as the rows are built, rather than dropped from the
             // stop's data, so a new location (a new [StopArrivals.nearer]) applies at once and the
@@ -142,6 +145,7 @@ object DepartureRows {
                 }
             stopStatusRow(stop, now) + timed + status
         }.sortedWith(rowOrder)
+    }
 
     /**
      * Split [row]'s upcoming departures into per-destination lines for rendering, soonest group
@@ -527,24 +531,42 @@ object DepartureRows {
             when {
                 row.stopDisruption != null -> row.takeUnless { DismissedAlert.ofStopClosure(it) in dismissed }
                 status != null -> when (val shown = status.remainingAfter(dismissed)) {
-                    status -> row
-                    null -> row.takeIf { it.upcoming.isNotEmpty() }?.copy(status = null, statusDismissed = true)
-                    else -> row.copy(status = shown)
+                    status -> row.withoutDismissedPlanned(dismissed)
+                    // A no-prediction row goes with its alert, unless planned work it carries is still
+                    // undismissed: that stays reachable (Codex, PR #337).
+                    null -> row.copy(status = null, statusDismissed = true).withoutDismissedPlanned(dismissed)
+                        .takeIf { it.upcoming.isNotEmpty() || it.plannedAlerts.isNotEmpty() }
+                    else -> row.copy(status = shown).withoutDismissedPlanned(dismissed)
                 }
-                else -> row
+                else -> row.withoutDismissedPlanned(dismissed)
             }
         }
+    }
+
+    // [this] less the planned alerts the user dismissed: each is its own alert, dismissed on its own.
+    fun DepartureRow.withoutDismissedPlanned(dismissed: Set<DismissedAlert>): DepartureRow {
+        if (plannedAlerts.isEmpty()) return this
+        val kept = plannedAlerts.filterNot { DismissedAlert.ofPlanned(lineId, it) in dismissed }
+        return if (kept.size == plannedAlerts.size) this else copy(plannedAlerts = kept)
     }
 
     /**
      * The line-status alerts live among [lineStatuses] — the identities a refresh reconciles line
      * dismissals against (see [Dismissed.reconcile], scoped to the lines actually checked).
+     *
+     * Given [now], each status as rows draw it then ([LineStatus.asOf]) counts too: planned work
+     * whose day has come is shown, and so dismissed, as a disruption, and a reused status still
+     * holds it as planned — pruning that dismissal would bring the ⚠ straight back (Codex, PR #337).
      */
-    fun liveLineStatusAlerts(lineStatuses: Map<String, LineStatus>): Set<DismissedAlert> =
+    fun liveLineStatusAlerts(lineStatuses: Map<String, LineStatus>, now: Instant? = null): Set<DismissedAlert> =
         // Each direction's alert counts too: a row shows its own direction's, so that is what a
         // rider dismisses, and pruning it here would bring it straight back.
-        lineStatuses.values.flatMap { it.allStatuses }.filter { it.disrupted }
-            .mapTo(mutableSetOf()) { DismissedAlert.ofLineStatus(it) }
+        (lineStatuses.values + now?.let { LineStatus.asOf(lineStatuses, it).values }.orEmpty())
+            .flatMap { it.allStatuses }.flatMapTo(mutableSetOf()) { status ->
+            // A planned alert is one too, so its dismissal isn't pruned while it's still coming.
+            listOfNotNull(DismissedAlert.ofLineStatus(status).takeIf { status.disrupted }) +
+                status.planned.map { DismissedAlert.ofPlanned(status.lineId, it) }
+        }
 
     /**
      * The cross-stop dedupe identity for [nearbyDeduped]: line + direction-of-travel.
@@ -729,6 +751,8 @@ object DepartureRows {
                     upcoming = emptyList(),
                     fetchedAt = stop.fetchedAt,
                     status = status,
+                    // Its page lists work still to come beside the disruption now, as a timed row's does.
+                    plannedAlerts = status.planned,
                     railFeed = stop.railFeed.takeIf { line.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) },
                 )
             }
