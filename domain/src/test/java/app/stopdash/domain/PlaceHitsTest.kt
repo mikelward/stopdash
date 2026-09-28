@@ -9,6 +9,15 @@ class PlaceHitsTest {
         PlaceCandidate(name, Coordinates(lat, lon))
 
     @Test
+    fun `a place named after its area ranks as a prefix match on its own part`() {
+        // "Area, Place": typing the place's own name is a prefix match, so it outranks a word-initials match ("Zoo Entrance")
+        // rather than sinking to the fuzzy tier (maintainer, 2026-09-28).
+        val candidates = listOf(candidate("Zoo Entrance"), candidate("Alpha District, Zeta Gallery"))
+        val hits = PlaceHits.rank("ze", candidates, PlaceKind.PLACE)
+        assertEquals(listOf("Alpha District, Zeta Gallery", "Zoo Entrance"), hits.map { it.name })
+    }
+
+    @Test
     fun `re-ranks a place-name query by our matcher, floating the prefix match above a weak partial`() {
         // TfL's geocoder returns these in a noisy order (a weak partial can lead); our matcher puts the
         // Prefix match ("Zeta …") ahead of the Anchored one ("Alpha Zeta").
