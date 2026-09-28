@@ -901,12 +901,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         - [x] **Rank stops and places together, matching each part of a name** (maintainer,
               2026-09-28): one list by match tier, so "tate" puts "…, Tate Britain" above "… Estate"
               stops; a name's parts (" / ", ", ") each match as a prefix.
-        - [ ] **Keep the results list still while answers arrive** (maintainer, 2026-09-28): each
-              query publishes up to three times (the bundled stations at once, then TfL's stops merged
-              and re-ranked, then the geocoded places), so rows move under a finger about to tap.
-              Merging places into the ranking makes their arrival reorder more than it did. Options:
-              hold the list until every source answers or a short bound passes, append late arrivals
-              below what's shown instead of re-ranking above it, or both. Decide on a device.
+        - [x] **Keep the results list still while answers arrive** (maintainer, 2026-09-28): the
+              index's best four show at once with a spinner beneath, and TfL's stops and places are
+              appended below them as each arrives, never re-ranked above. Follow-up: see on a device
+              whether a better TfL match landing below the fold is missed.
         - [ ] **Remember a picked place in *Recent***: a chosen geocoded place isn't recorded (no stop
               id); *To…*'s *Recent* keeps only stops. Consider a device-local recent-places list.
         - [ ] **Extend geocoded places to the From-station To… picker** (paired with the favorites

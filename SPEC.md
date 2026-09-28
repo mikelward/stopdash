@@ -298,7 +298,12 @@ The app finds stops two ways:
   non-matching candidates dropped; a postcode query keeps TfL's order (its resolved location's name
   needn't contain the digits). Stops and places are **one list ranked by match**, so a place the query
   starts ("Tate Britain" for "tate") sits above a stop that only contains it ("… Estate"); a stop wins a
-  tie, and a postcode's places follow the stops (maintainer, 2026-09-28). A name in parts — a stop with
+  tie, and a postcode's places follow the stops (maintainer, 2026-09-28). The list **never reorders
+  under a finger**: the bundled index's best four show at once with a spinner beneath them, and TfL's
+  stops, then its places, are **appended below** what's already listed as each arrives, ranked among
+  themselves, even when they match better (maintainer, 2026-09-28: append, don't reorder). A listed row
+  takes TfL's fuller copy of itself in place, and one TfL's answer shows to be a duplicate of another
+  (the same station twice) leaves. Only coming back from a station re-ranks the whole list. A name in parts — a stop with
   its cross street ("Foo Street / Bar Road"), a place after its area ("City of Westminster, Tate
   Britain") — matches a query starting **any part** as a prefix. Best-effort: a geocode failure yields
   no places and the stops still stand. A better geocoder is a later option (`TODO.md`).

@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import app.stopdash.domain.Coordinates
@@ -266,6 +267,21 @@ class StationSearchScreenshotTest {
         composeRule.onNodeWithText("You're offline").assertIsDisplayed()
         composeRule.onNodeWithText("Retry").assertIsDisplayed()
         captureSnapshot("station-search-failed.png")
+    }
+
+    @Test
+    fun station_search_more_on_its_way() {
+        // The index's best few are up while TfL's answer is still on its way: a spinner under them says
+        // where more will land (maintainer, 2026-09-28: append, don't reorder).
+        show(StationSearchViewModel.State(query = "kings", result = StationSearchViewModel.Result.Matches(matches), searching = true))
+        composeRule.onNodeWithTag(SEARCH_LOADING_MORE_TAG).assertExists()
+        captureSnapshot("station-search-more-on-its-way.png")
+    }
+
+    @Test
+    fun station_search_done_shows_no_spinner() {
+        show(StationSearchViewModel.State(query = "kings", result = StationSearchViewModel.Result.Matches(matches)))
+        composeRule.onNodeWithTag(SEARCH_LOADING_MORE_TAG).assertDoesNotExist()
     }
 
     @Test

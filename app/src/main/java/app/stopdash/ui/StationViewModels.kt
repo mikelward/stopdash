@@ -11,6 +11,8 @@ import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.PlaceHits
 import app.stopdash.domain.PlaceKind
+import app.stopdash.domain.SearchEntry
+import app.stopdash.domain.SearchResults
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StationMatch
@@ -107,6 +109,9 @@ class StationSearchViewModel(
             // picker with a Place/Postcode tag. Empty for a plain station search, which geocodes none.
             val places: List<PlaceHit> = emptyList(),
             val remoteFailure: DeparturesUiState.Error.Kind? = null,
+            // The rows in the order shown. A search only ever appends to it, so a row never moves under
+            // a finger about to tap it (maintainer, 2026-09-28); stops then places by default.
+            val entries: List<SearchEntry> = matches.map(SearchEntry::Stop) + places.map(SearchEntry::Place),
         ) : Result
         /** TfL answered, with no match. */
         data object NoMatches : Result
@@ -121,6 +126,10 @@ class StationSearchViewModel(
     // TfL's answer behind the matches on screen, for the query it answered: an open re-ranks it
     // rather than asking again. Dropped as each search starts, so a failed one never borrows it.
     private var remoteFor: Pair<String, List<StationMatch>>? = null
+
+    // The query the rows on screen ([Result.Matches.entries]) answer, so a search of the same query
+    // again (a Retry) adds to them rather than starting the list over.
+    private var entriesFor: String? = null
 
     // Loaded once, on first use, so opening the search never waits on the asset read.
     private val index = viewModelScope.async(io, start = CoroutineStart.LAZY) { loadIndex() }
@@ -152,6 +161,7 @@ class StationSearchViewModel(
         search?.cancel()
         savedState.remove<String>(KEY_QUERY)
         remoteFor = null
+        entriesFor = null
         _state.update {
             State(
                 favorites = it.favorites,
@@ -198,10 +208,17 @@ class StationSearchViewModel(
             val shown = _state.value.result as? Result.Matches ?: return@launch
             // Re-ranks the stops with the newly-read stops; the geocoded places are unchanged, so keep
             // the ones already shown rather than dropping them or re-geocoding.
+            // Nothing is being tapped on the way back, so the whole list is ranked afresh here.
             val result = if (remote != null) {
-                Result.Matches(stations.rank(trimmed, local, remote), places = shown.places)
+                val ranked = stations.rank(trimmed, local, remote)
+                Result.Matches(ranked, places = shown.places, entries = SearchResults.merge(trimmed, ranked, shown.places))
             } else {
-                Result.Matches(local, places = shown.places, remoteFailure = shown.remoteFailure)
+                Result.Matches(
+                    local,
+                    places = shown.places,
+                    remoteFailure = shown.remoteFailure,
+                    entries = SearchResults.merge(trimmed, local, shown.places),
+                )
             }
             if (result.matches.isNotEmpty() || result.places.isNotEmpty()) _state.update { it.copy(result = result) }
         }
@@ -262,7 +279,17 @@ class StationSearchViewModel(
             val own = read.await()
             val stations = withContext(io) { bundled.withYours(own) }
             val local = withContext(io) { stations.search(trimmed) }
-            if (local.isNotEmpty()) _state.update { it.copy(result = Result.Matches(local), searching = true) }
+            // The rows on screen for this query, which later answers only ever add to: a row never
+            // moves once shown (maintainer, 2026-09-28). The index's best few go up at once; the rest
+            // join TfL's answer, ranked together, below them.
+            // A search of the query already on screen (a Retry) starts from its rows, so nothing moves.
+            var shown: List<SearchEntry> =
+                (_state.value.result as? Result.Matches)?.takeIf { entriesFor == trimmed }?.entries.orEmpty()
+            if (local.isNotEmpty()) {
+                shown = SearchResults.appended(shown, trimmed, local.take(LOCAL_PREVIEW), emptyList())
+                entriesFor = trimmed
+                _state.update { it.copy(result = Result.Matches(local, entries = shown), searching = true) }
+            }
             if (debounce) delay(debounceMillis)
             // Geocode places in parallel with the stop search — a separate, heavier TfL call (SPEC *Cost*)
             // that only a To… picker makes. Best-effort: its failure yields no places, never fails the
@@ -284,7 +311,12 @@ class StationSearchViewModel(
             val stops: Result.Matches? = try {
                 val remote = withContext(io) { finder.searchStations(trimmed) }
                 remoteFor = trimmed to remote
-                Result.Matches(stations.rank(trimmed, local, remote))
+                // Uncapped, to tell a row folded into its twin from one only past the cap; capped for
+                // what's newly added.
+                val everyStop = stations.rank(trimmed, local, remote, limit = Int.MAX_VALUE)
+                val ranked = everyStop.take(StationIndex.DEFAULT_LIMIT)
+                shown = SearchResults.appended(shown, trimmed, ranked, emptyList(), everyStop = everyStop)
+                Result.Matches(ranked, entries = shown)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TflException) {
@@ -293,18 +325,38 @@ class StationSearchViewModel(
                 // No local stops to stand on → let the places below decide error vs place-only; otherwise
                 // show the local stops now, with the failure noted so the "bus stops not searched" line
                 // still tells the rider the stop results are incomplete (SPEC principle 2).
-                if (local.isEmpty()) null else Result.Matches(local, remoteFailure = failureKind)
+                if (local.isEmpty()) {
+                    null
+                } else {
+                    shown = SearchResults.appended(shown, trimmed, local, emptyList())
+                    Result.Matches(local, remoteFailure = failureKind, entries = shown)
+                }
             }
-            if (stops != null && stops.matches.isNotEmpty()) _state.update { it.copy(result = stops) }
+            if (stops != null && stops.matches.isNotEmpty()) {
+                entriesFor = trimmed
+                _state.update { it.copy(result = stops) }
+            }
             // Fold in the geocoded places (or none) — the stops are already on screen.
             val places = placesDeferred.await()
+            // The places join below whatever is already listed, ranked among themselves.
+            shown = SearchResults.appended(shown, trimmed, emptyList(), places)
+            // The rows on screen are the answer: the stops and places the result carries are read off
+            // them, so a row a Retry kept (a place an earlier geocode found) is neither dropped from
+            // the state nor hidden behind a failure the new answer alone would have shown.
+            val shownPlaces = shown.filterIsInstance<SearchEntry.Place>().map { it.hit }
+            val shownStops = shown.filterIsInstance<SearchEntry.Stop>().map { it.match }
             val result: Result = when {
-                stops != null && (stops.matches.isNotEmpty() || places.isNotEmpty()) -> stops.copy(places = places)
+                shown.isNotEmpty() -> Result.Matches(
+                    stops?.matches ?: shownStops,
+                    places = shownPlaces,
+                    remoteFailure = stops?.remoteFailure ?: failureKind,
+                    entries = shown,
+                )
                 stops != null -> Result.NoMatches
-                places.isNotEmpty() -> Result.Matches(emptyList(), places = places, remoteFailure = failureKind)
                 failureKind != null -> Result.Failed(failureKind)
                 else -> Result.NoMatches
             }
+            entriesFor = trimmed
             _state.update { it.copy(result = result, searching = false) }
             // The user's stops were read again meanwhile (a match opened mid-search): rank with that.
             if (yours !== read) rerank()
@@ -313,6 +365,10 @@ class StationSearchViewModel(
 
     companion object {
         const val MIN_QUERY_LENGTH = 2
+
+        // How many of the index's matches show before TfL answers: enough to tap the obvious station
+        // at once, few enough that most of the list arrives below them rather than around them.
+        const val LOCAL_PREVIEW = 4
         const val DEBOUNCE_MILLIS = 300L
         private const val KEY_QUERY = "query"
     }
