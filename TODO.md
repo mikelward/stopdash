@@ -1628,6 +1628,25 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       a chosen speed/margin; make the speed and whether it's on a setting. Explore from
       real use — a too-aggressive filter that hides a train the user could have jogged for
       is worse than showing it (SPEC principle 1).
+- [ ] **Configurable walking speed** (maintainer, 2026-09-28). A trip times the walk to its first
+      stop at one fixed, deliberately slow pace (straight line × 1.4, about 4 km/h, rounded up to a
+      minute), so for a faster walker it grays trains they could catch and reads the arrival later
+      than it will be. Let the rider set their pace (or learn it), shared with the reachability
+      filter above. Until that's settled, don't plan the first leg from when the rider reaches the
+      stop: at a slow assumed pace that would drop the best options for a fast walker (maintainer,
+      2026-09-28: think more before doing that for the first plan).
+- [ ] **Explore how a trip recalculates mid-route** (maintainer, 2026-09-28). A re-plan (the
+      15-minute reuse, or 5 minutes while an arrival is withheld) asks the Planner from the trip's
+      first stop at "now", however long ago the trip was opened or wherever the rider has got to.
+      Explore re-planning from where the rider is and when they'll be ready there, so a trip
+      reopened after a wait, or recalculated partway, doesn't assume a connection they've already
+      missed. Ties in with *On the way*'s re-plan for a boarded train that leaves the leg. "Where
+      the rider is" may be their current location, sent to the Planner as the trip's origin
+      (maintainer, 2026-09-28). That's new for *On the way*, which today compares the fix on the
+      device only, so the change updates SPEC, `docs/PRIVACY.md` and the Play Data Safety answers
+      to say so. Cost: the Planner is free (£0), and a location origin replaces the stop in the
+      same request rather than adding one; a location fix taken for it is a battery change, stated
+      against SPEC's budget when it's built.
 - [ ] **Tap a card to open a detail view** (requested 2026-09-19, on-device). The compact
       card drops platform, full direction, and any longer disruption text to stay glanceable
       (SPEC *Departures*); a tap opens the fuller picture — platform and direction (already in
