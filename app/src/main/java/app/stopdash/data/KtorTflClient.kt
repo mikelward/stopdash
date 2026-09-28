@@ -124,6 +124,10 @@ class KtorTflClient(
                     parameter("maxWalkingMinutes", MAX_WALKING_MINUTES)
                     // Every walk timed at the rider's own pace (their setting; the Planner's average by default).
                     parameter("walkingSpeed", speed.plannerValue)
+                    // The Planner applies that pace to a route's walks only when the request names its
+                    // modes, walking among them; left to its default modes, every walk comes back at the
+                    // average whatever the speed ([PLANNER_MODES]).
+                    parameter("mode", PLANNER_MODES)
                     applyAppKey(key)
                     // The Planner can take several seconds to answer a trip it hasn't cached.
                     allowSlowAnswer()
@@ -530,6 +534,18 @@ class KtorTflClient(
 
         /** The longest walk a planned trip may ask of the rider, in minutes (fixed for now). */
         const val MAX_WALKING_MINUTES: Int = 15
+
+        /**
+         * The modes a trip is planned over: the Planner's own default set, named so that it times each
+         * walk at the rider's `walkingSpeed`. Without `mode=` it ignores the speed for every walk in a
+         * route that rides — the first, the changes and the last alike (measured 2026-09-28: a 649 m
+         * first walk read 11 min at Slow, Average and Fast; named, 15, 11 and 8, and a slower pace
+         * made it offer other connections). Named, it offered the same routes as its default on every
+         * trip compared, boats and the cable car included; tour boats (`river-tour`) and
+         * `international-rail` stay out, as the default leaves them.
+         */
+        const val PLANNER_MODES: String =
+            "bus,cable-car,coach,dlr,elizabeth-line,national-rail,overground,replacement-bus,river-bus,tram,tube,walking"
 
         /**
          * The fixed, always-resolvable destination the postcode resolver plans to — King's Cross St

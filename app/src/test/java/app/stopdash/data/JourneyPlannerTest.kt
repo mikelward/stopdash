@@ -69,6 +69,20 @@ class JourneyPlannerTest {
     }
 
     @Test
+    fun `names the modes, walking among them, so the Planner applies the walking speed`() = runTest {
+        var captured: HttpRequestData? = null
+        client(fixture, capture = { captured = it })
+            .journeys(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"), WalkingSpeed.SLOW)
+        val modes = checkNotNull(checkNotNull(captured).url.parameters["mode"]).split(",")
+        // Left to its default modes, the Planner times every walk at its average whatever the speed.
+        assertTrue("walking" in modes)
+        // The Planner's own default set, so naming them adds and drops no route: every mode a trip rides...
+        assertTrue(modes.containsAll(listOf("tube", "bus", "dlr", "overground", "elizabeth-line", "national-rail", "tram", "river-bus", "cable-car", "coach", "replacement-bus")))
+        // ...and none it leaves out by default.
+        assertTrue(modes.none { it in setOf("river-tour", "international-rail", "cycle", "cycle-hire", "taxi") })
+    }
+
+    @Test
     fun `asks the Planner to a place by its coordinate`() = runTest {
         var captured: HttpRequestData? = null
         // A favorite (or resolved postcode) at a coordinate — synthetic, no real place (SPEC *Privacy*).
