@@ -130,11 +130,16 @@ class TripViewModelTest {
             return arrivals[stopId].orEmpty()
         }
         var omitLines = emptySet<String>()
+        // A request asking about any of these fails; these lines are answered as disrupted.
+        var failLines = emptySet<String>()
+        var disruptedLines = emptySet<String>()
         var statusChecks = 0
         override suspend fun lineStatuses(lineIds: Collection<String>): List<LineStatus> {
             statusChecks++
-            if (failStatus) throw TflException.Offline(null)
-            return lineIds.filterNot { it in omitLines }.map { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") }
+            if (failStatus || lineIds.any { it in failLines }) throw TflException.Offline(null)
+            return lineIds.filterNot { it in omitLines }.map {
+                if (it in disruptedLines) LineStatus(it, 6, "Severe Delays") else LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service")
+            }
         }
         override suspend fun stopDisruptions(stopId: String): List<StopDisruption> = emptyList()
     }
@@ -940,6 +945,30 @@ class TripViewModelTest {
         advanceUntilIdle()
         assertTrue(trip.state.value.statusFailed)
         assertEquals(setOf("red", "blue"), trip.state.value.statuses.keys)
+    }
+
+    @Test
+    fun `a status check split across requests keeps what one answered when another fails`() = runTest(dispatcher) {
+        // Line ids long enough that TfL needs a request for each (LineStatusBatch).
+        val first = "red-" + "x".repeat(150)
+        val second = "blue-" + "y".repeat(150)
+        val long = TripRoute(listOf(leg(first, "A", "B", 5, 15), leg(second, "B", "C", 20, 30)))
+        val client = FakeClient(mutableMapOf())
+        val trip = model(FakePlanner(listOf(long)), client)
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(LineStatus.GOOD_SERVICE, trip.state.value.statuses.getValue(second).severity)
+
+        // Now the first line is disrupted, and the request asking about the second fails.
+        client.disruptedLines = setOf(first)
+        client.failLines = setOf(second)
+        trip.refresh()
+        advanceUntilIdle()
+        val state = trip.state.value
+        assertEquals(6, state.statuses.getValue(first).severity)
+        // The failed request's line keeps its last status, and the trip says it couldn't check.
+        assertEquals(LineStatus.GOOD_SERVICE, state.statuses.getValue(second).severity)
+        assertTrue(state.statusFailed)
     }
 
     @Test

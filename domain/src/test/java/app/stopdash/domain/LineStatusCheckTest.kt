@@ -310,4 +310,35 @@ class LineStatusCheckTest {
         }
         assertEquals(setOf("victoria"), asked)
     }
+
+    @Test
+    fun `a widget refresh too long for one request keeps each request's outcome`() = runTest {
+        // Enough lines that TfL needs two requests (LineStatusBatch), each with an older check.
+        val ids = (1..27).map { "line%05d-".format(it) }
+        val earlier = t0.minusSeconds(30)
+        val prior = DeparturesSnapshot(
+            stops = listOf(StopArrivals("A", "Stop A", ids.map { departure(it) }, t0)),
+            fetchedAt = t0,
+            lineStatuses = ids.associateWith { LineStatusCheck(good.copy(lineId = it), earlier) },
+        )
+        val answered = mutableSetOf<String>()
+        val failed = mutableSetOf<String>()
+        var calls = 0
+        val refreshed = WidgetRefresh.refreshedLineStatuses(prior, t0) { chunk ->
+            // The first request answers, disrupted; the second fails.
+            if (calls++ == 0) {
+                answered += chunk
+                chunk.map { LineStatus(it, 6, "Severe Delays") }
+            } else {
+                failed += chunk
+                null
+            }
+        }
+
+        assertEquals(2, calls)
+        assertEquals(ids.toSet(), answered + failed)
+        answered.forEach { assertEquals(LineStatusCheck(LineStatus(it, 6, "Severe Delays"), t0), refreshed.lineStatuses[it]) }
+        // A failed request's lines keep their older checks, to age out as before.
+        failed.forEach { assertEquals(earlier, refreshed.lineStatuses.getValue(it).checkedAt) }
+    }
 }

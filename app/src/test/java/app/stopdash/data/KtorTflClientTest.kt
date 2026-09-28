@@ -452,6 +452,67 @@ class KtorTflClientTest {
     }
 
     @Test
+    fun `a direction lookup split across requests keeps what one answered when another fails`() = runTest {
+        val north = "STATION A: routes are on diversion northbound via Street A."
+        val south = "Road closed: buses towards Town B will miss stops."
+        // Line ids long enough that TfL needs a request for each (LineStatusBatch).
+        val first = "bus-" + "x".repeat(150)
+        val second = "bus-" + "y".repeat(150)
+        fun line(id: String, detail: Boolean) = """
+            {"id": "$id", "name": "$id", "lineStatuses": [
+              {"statusSeverity": 0, "statusSeverityDescription": "Special Service", "reason": "$north",
+               "disruption": {"affectedRoutes": [${if (detail) """{"direction": "inbound"}""" else ""}]}},
+              {"statusSeverity": 0, "statusSeverityDescription": "Special Service", "reason": "$south",
+               "disruption": {"affectedRoutes": [${if (detail) """{"direction": "outbound"}""" else ""}]}}
+            ]}
+        """.trimIndent()
+        // Each detail request's lines, in order; the first detail request about [second] fails.
+        val detailAsks = mutableListOf<List<String>>()
+        var secondFailed = false
+        val lookups = Job()
+        val engine = MockEngine { request ->
+            val ids = request.url.segments[1].split(",")
+            val detail = request.url.parameters["detail"] == "true"
+            if (detail) detailAsks += ids
+            if (detail && second in ids && !secondFailed) {
+                secondFailed = true
+                respond(ByteReadChannel("{}"), HttpStatusCode.InternalServerError, headersOf(HttpHeaders.ContentType, "application/json"))
+            } else {
+                respond(
+                    ByteReadChannel(ids.joinToString(",", "[", "]") { line(it, detail) }),
+                    headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                )
+            }
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val client = KtorTflClient(
+            httpClient = http,
+            baseUrl = "https://tfl.example",
+            alertDirections = LineAlertDirections(),
+            alertDirectionScope = CoroutineScope(lookups),
+            alertDirectionDispatcher = StandardTestDispatcher(testScheduler),
+        )
+
+        client.lineStatuses(listOf(first, second))
+        advanceUntilIdle()
+        lookups.children.toList().joinAll()
+        assertEquals(listOf(listOf(first), listOf(second)), detailAsks)
+
+        // The first line's directions were recorded; the failed one is asked about again, alone.
+        val statuses = client.lineStatuses(listOf(first, second)).associateBy { it.lineId }
+        assertEquals(north, statuses.getValue(first).forDirection("inbound").fullText)
+        assertFalse(statuses.getValue(first).awaitingDirections)
+        assertTrue(statuses.getValue(second).awaitingDirections)
+        advanceUntilIdle()
+        lookups.children.toList().joinAll()
+        assertEquals(listOf(second), detailAsks.last())
+        assertEquals(3, detailAsks.size)
+    }
+
+    @Test
     fun `parses and maps predictions, tolerating unknown fields`() = runTest {
         val departures = client(arrivalsJson).arrivals("940GZZLUVIC")
 
@@ -556,6 +617,64 @@ class KtorTflClientTest {
             listOf("Line", "victoria,northern", "Status"),
             checkNotNull(captured).url.segments,
         )
+    }
+
+    /** A client whose mock answers each `/Line/{ids}/Status` request by its ids via [answer]. */
+    private fun lineClient(answer: (List<String>) -> Pair<HttpStatusCode, String>): KtorTflClient {
+        val engine = MockEngine { request ->
+            val (status, body) = answer(request.url.segments[1].split(","))
+            respond(ByteReadChannel(body), status, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", appKey = { null })
+    }
+
+    private fun goodService(ids: List<String>) = ids.joinToString(",", "[", "]") { id ->
+        """{"id": "$id", "name": "$id", "lineStatuses": [{"statusSeverity": 10, "statusSeverityDescription": "Good Service"}]}"""
+    }
+
+    // A busy hub's lines: joined in one segment they're 286 characters, which TfL refused with a
+    // bare HTTP 400 ("Invalid URL"), so every line there read "couldn't check for disruptions".
+    private val hubLines = listOf(
+        "214", "46", "63", "205", "30", "73", "390", "91", "circle", "hammersmith-city", "metropolitan",
+        "northern", "piccadilly", "victoria", "london-north-eastern-railway", "great-northern",
+        "hull-trains", "grand-central", "thameslink", "southeastern", "eurostar", "east-midlands-railway",
+        "avanti-west-coast", "west-midlands-trains", "n63", "n205", "n73", "n91", "lumo", "lioness",
+    )
+
+    @Test
+    fun `a hub's many lines are split across requests TfL accepts`() = runTest {
+        val segments = mutableListOf<List<String>>()
+        val statuses = lineClient { ids ->
+            segments += ids
+            // Stands in for TfL's server: a longer segment is refused before the API sees it.
+            if (ids.joinToString(",").length > 260) HttpStatusCode.BadRequest to "" else HttpStatusCode.OK to goodService(ids)
+        }.lineStatuses(hubLines)
+
+        assertEquals(2, segments.size)
+        assertEquals(hubLines, segments.flatten())
+        assertEquals(hubLines.toSet(), statuses.map { it.lineId }.toSet())
+    }
+
+    @Test
+    fun `a split request with one unknown part keeps the lines TfL knows`() = runTest {
+        // TfL 404s a request whose every id it doesn't know; the other part still answers.
+        val statuses = lineClient { ids ->
+            if ("lioness" in ids) HttpStatusCode.OK to goodService(ids) else HttpStatusCode.NotFound to "{}"
+        }.lineStatuses(hubLines)
+
+        assertTrue(statuses.any { it.lineId == "lioness" })
+        assertFalse(statuses.any { it.lineId == "214" })
+    }
+
+    @Test
+    fun `a split request TfL knows none of is still NotFound`() {
+        assertThrows(TflException.NotFound::class.java) {
+            runTest { lineClient { HttpStatusCode.NotFound to "{}" }.lineStatuses(hubLines) }
+        }
     }
 
     @Test

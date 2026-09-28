@@ -13,6 +13,7 @@ import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.JourneyPlanner
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusBatch
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.TflException
 import app.stopdash.domain.NearestStops
@@ -500,9 +501,10 @@ class TripViewModel(
                 _state.update { state ->
                     state.copy(
                         live = if (!current) state.live else state.live + live.associate { (id, stop) -> id to (stop ?: state.live[id]?.copy(failed = true) ?: StopLive(emptyList(), Instant.EPOCH, failed = true)) },
-                        statuses = fetched ?: state.statuses,
-                        statusFailed = fetched == null,
-                        statusUnknown = lines.filterTo(HashSet()) { it !in (fetched ?: state.statuses) },
+                        // A failed request's lines keep their older statuses; the answered ones replace.
+                        statuses = fetched?.let { it.statuses + state.statuses.filterKeys { id -> id in it.failed } } ?: state.statuses,
+                        statusFailed = fetched == null || fetched.failed.isNotEmpty(),
+                        statusUnknown = lines.filterTo(HashSet()) { it !in (fetched?.statuses ?: state.statuses) },
                     )
                 }
             }
@@ -512,7 +514,7 @@ class TripViewModel(
             // the trip says it couldn't check them ([RideLines.unchecked]) rather than still checking.
             val late = rideLineIds(routes, _state.value, hiddenModes).filterNot { it in lines || it in others }
             if (late.isNotEmpty() && source == sourceGeneration) {
-                fetchStatuses(late)?.let { found -> _state.update { it.copy(statuses = it.statuses + found) } }
+                fetchStatuses(late)?.let { found -> _state.update { it.copy(statuses = it.statuses + found.statuses) } }
             }
         } finally {
             _state.update { it.copy(refreshing = false) }
@@ -587,16 +589,18 @@ class TripViewModel(
             null
         }
 
-    // Null on a failure: the last statuses stay rather than pass the lines off as running normally.
-    private suspend fun fetchStatuses(lineIds: List<String>): Map<String, LineStatus>? =
-        try {
-            withContext(io) { client.lineStatuses(lineIds) }.associateBy { it.lineId }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: TflException) {
-            warn("trip line status failed: ${e::class.simpleName}")
-            null
-        }
+    // What a status check found: the statuses TfL returned, and the lines in a request that failed.
+    private class StatusCheck(val statuses: Map<String, LineStatus>, val failed: Set<String>)
+
+    // One request per group TfL accepts (LineStatusBatch), each with its own outcome. Null when none
+    // was answered: the last statuses stay rather than pass the lines off as running normally.
+    private suspend fun fetchStatuses(lineIds: List<String>): StatusCheck? {
+        val results = LineStatusBatch.request(lineIds) { chunk -> withContext(io) { client.lineStatuses(chunk) } }
+        results.failure?.let { warn("trip line status failed for ${results.failed.size} line(s): ${it::class.simpleName}") }
+        if (results.unknown.isNotEmpty()) warn("trip line status: TfL doesn't know ${results.unknown.size} line(s)")
+        if (!results.anyAnswered) return null
+        return StatusCheck(results.answers.flatMap { it.value }.associateBy { it.lineId }, results.failed.toSet())
+    }
 
     companion object {
         private const val KEY_OPEN_ROUTE = "openRoute"

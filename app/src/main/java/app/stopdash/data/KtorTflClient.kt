@@ -6,6 +6,7 @@ import app.stopdash.domain.HubInfo
 import app.stopdash.domain.JourneyPlanner
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusBatch
 import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.PlaceSearch
 import app.stopdash.domain.PostcodeResolution
@@ -325,12 +326,22 @@ class KtorTflClient(
         // No lines → no request: a refresh with no predicted lines has nothing to check,
         // and an empty `/Line//Status` path would 404.
         if (lineIds.isEmpty()) return emptyList()
-        val ids = lineIds.joinToString(",")
-        val lines = tflRequest { key ->
-            httpClient.get("$baseUrl/Line/$ids/Status") {
-                applyAppKey(key)
-            }.body<List<TflLineDto>>()
+        // Split so no request's `{ids}` segment is longer than TfL accepts: a busy hub's lines in
+        // one segment were refused outright with a 400, failing every line's check (LineStatusBatch).
+        // Answered whole or not at all here; a caller that keeps each group's outcome apart calls
+        // LineStatusBatch.request itself, so each call here is one group.
+        val results = LineStatusBatch.request(lineIds) { chunk ->
+            tflRequest { key ->
+                httpClient.get("$baseUrl/Line/${chunk.joinToString(",")}/Status") {
+                    applyAppKey(key)
+                }.body<List<TflLineDto>>()
+            }
         }
+        results.failure?.let { throw it }
+        // TfL knows none of the lines at all. A group it knows none of beside one it answered is
+        // simply absent, as an unknown line is from a single mixed answer.
+        if (results.answers.isEmpty()) throw TflException.NotFound(null)
+        val lines = results.answers.flatMap { it.value }
         lookUpAlertDirections(lines)
         val directions = alertDirections?.takeIf { alertDirectionScope != null }
         return lines.mapNotNull { line ->
@@ -355,21 +366,28 @@ class KtorTflClient(
         if (claimed.isEmpty()) return
         scope.launch(alertDirectionDispatcher) {
             try {
-                val detailed = tflRequest { key ->
-                    httpClient.get("$baseUrl/Line/${claimed.joinToString(",") { it.id }}/Status") {
-                        parameter("detail", "true")
-                        applyAppKey(key)
-                        allowSlowAnswer()
-                    }.body<List<TflLineDto>>()
+                // One request per group TfL accepts, each recorded on its own (LineStatusBatch), so a
+                // later group failing doesn't discard the directions an earlier one returned.
+                val byId = claimed.associateBy { it.id }
+                val results = LineStatusBatch.request(claimed.map { it.id }) { chunk ->
+                    tflRequest { key ->
+                        httpClient.get("$baseUrl/Line/${chunk.joinToString(",")}/Status") {
+                            parameter("detail", "true")
+                            applyAppKey(key)
+                            allowSlowAnswer()
+                        }.body<List<TflLineDto>>()
+                    }
                 }
-                cache.record(claimed, detailed)
+                results.answers.forEach { answer -> cache.record(answer.lineIds.mapNotNull(byId::get), answer.value) }
+                // The rest keep showing for both directions, as before; the next refresh asks again.
+                val unanswered = results.failed + results.unknown
+                if (unanswered.isNotEmpty()) {
+                    cache.release(unanswered.mapNotNull(byId::get))
+                    warn("alert directions: ${unanswered.size} lines, ${results.failure?.let { it::class.simpleName } ?: "NotFound"}")
+                }
             } catch (e: CancellationException) {
                 cache.release(claimed)
                 throw e
-            } catch (e: TflException) {
-                // The alerts keep showing for both directions, as before; the next refresh asks again.
-                cache.release(claimed)
-                warn("alert directions: ${claimed.size} lines, ${e::class.simpleName}")
             }
         }
     }
