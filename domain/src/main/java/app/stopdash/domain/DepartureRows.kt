@@ -514,7 +514,9 @@ object DepartureRows {
      * and window — is in [dismissed]. A timed row whose **line status** matches a
      * [DismissedAlert.ofLineStatus] identity keeps its departures but drops the status (so no ⚠) and
      * is marked [DepartureRow.statusDismissed], so the detail never reads it as a clean line; a
-     * no-prediction status row exists only to carry that alert, so it is removed outright. Because each signature is the alert's *current* content, a reworded, re-dated or
+     * no-prediction status row exists only to carry that alert, so it is removed outright. A row
+     * carrying the line-wide status (no direction) whose other direction still has an undismissed
+     * alert shows that alert instead, as the widget and watch do. Because each signature is the alert's *current* content, a reworded, re-dated or
      * escalated alert no longer matches its old dismissal and shows again, so a dismiss clears what
      * you've read without ever hiding a changed one. Empty [dismissed] returns [rows] unchanged.
      */
@@ -524,8 +526,11 @@ object DepartureRows {
             val status = row.status
             when {
                 row.stopDisruption != null -> row.takeUnless { DismissedAlert.ofStopClosure(it) in dismissed }
-                status != null && DismissedAlert.ofLineStatus(status) in dismissed ->
-                    row.takeIf { it.upcoming.isNotEmpty() }?.copy(status = null, statusDismissed = true)
+                status != null -> when (val shown = status.remainingAfter(dismissed)) {
+                    status -> row
+                    null -> row.takeIf { it.upcoming.isNotEmpty() }?.copy(status = null, statusDismissed = true)
+                    else -> row.copy(status = shown)
+                }
                 else -> row
             }
         }

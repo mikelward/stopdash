@@ -225,3 +225,20 @@ private fun fingerprint(signature: String): String =
         .digest(signature.toByteArray(Charsets.UTF_8))
         .take(8)
         .joinToString("") { "%02x".format(it) }
+
+/**
+ * This status as a rider who dismissed [dismissed] sees it, or null when every alert on it is
+ * dismissed. Unchanged unless its own alert is dismissed. A line-wide status is the worse
+ * direction's alert, so dismissing that one way would otherwise hide the other way's from a row with
+ * no direction: the undismissed direction's alert stands in, with the dismissed direction read as a
+ * good service, as `LineStatusCheck.shown` does on the widget and watch.
+ */
+fun LineStatus.remainingAfter(dismissed: Set<DismissedAlert>): LineStatus? {
+    if (!disrupted || DismissedAlert.ofLineStatus(this) !in dismissed) return this
+    val remaining = byDirection.values.filter { it.disrupted && DismissedAlert.ofLineStatus(it) !in dismissed }
+    if (remaining.isEmpty()) return null
+    val directions = byDirection.mapValues { (_, it) ->
+        if (DismissedAlert.ofLineStatus(it) in dismissed) it.copy(severity = LineStatus.GOOD_SERVICE) else it
+    }
+    return remaining.minBy { it.severity }.copy(byDirection = directions)
+}

@@ -2,6 +2,7 @@ package app.stopdash.domain
 
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -1663,6 +1664,29 @@ class DepartureRowsTest {
         assertEquals(1, rows.size)
 
         assertTrue(DepartureRows.withoutDismissed(rows, setOf(DismissedAlert.ofLineStatus(suspended))).isEmpty())
+    }
+
+    @Test
+    fun `a one-way dismissal leaves a directionless row the other way's alert`() {
+        // A status-only row (no predictions) has no direction, so it carries the line-wide status:
+        // the worse way's alert. Dismissing that on a row going its way leaves the other way's.
+        val stop = StopArrivals(
+            "940GZZLUVIC", "Victoria", departures = emptyList(), fetchedAt = now,
+            lines = listOf(LineRef("victoria", "Victoria", "tube")),
+        )
+        val inbound = LineStatus("victoria", 6, "Severe Delays", "Victoria line: severe delays inbound.")
+        val outbound = LineStatus("victoria", 9, "Minor Delays", "Victoria line: minor delays outbound.")
+        val line = inbound.copy(byDirection = mapOf("inbound" to inbound, "outbound" to outbound))
+        val rows = DepartureRows.across(listOf(stop), now, mapOf("victoria" to line))
+
+        val shown = DepartureRows.withoutDismissed(rows, setOf(DismissedAlert.ofLineStatus(inbound))).single().status!!
+        assertEquals(outbound.description, shown.description)
+        assertFalse(shown.forDirection("inbound").disrupted)
+        assertEquals(outbound, shown.forDirection("outbound"))
+
+        // Both ways dismissed: the row exists only for the alert, so it goes.
+        val both = setOf(DismissedAlert.ofLineStatus(inbound), DismissedAlert.ofLineStatus(outbound))
+        assertTrue(DepartureRows.withoutDismissed(rows, both).isEmpty())
     }
 
     @Test
