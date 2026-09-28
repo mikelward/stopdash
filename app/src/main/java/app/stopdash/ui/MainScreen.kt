@@ -4539,13 +4539,24 @@ internal fun CountdownLabel(
     val label = Countdown.mergedLabel(departures, now)
     val gray = MaterialTheme.colorScheme.outline
     val early = grayBefore?.let { ready -> departures.map { it.expectedArrival.isBefore(ready) } }
+    // The label's times in order, as [Countdown.mergedLabel] joins them.
+    val times = label.removeSuffix(" min").split(" · ")
+    // Gray alone doesn't reach a screen reader: each time too soon to catch says so, as a trip's
+    // list card says it of its trains.
+    val spoken = if (stale || early == null || early.none { it }) {
+        null
+    } else {
+        times.mapIndexed { i, part ->
+            stringResource(if (early.getOrNull(i) == true) R.string.countdown_time_unusable_description else R.string.countdown_time_description, part)
+        }.joinToString(", ")
+    }
     Text(
         text = when {
             stale -> AnnotatedString(WITHHELD)
             early == null || early.none { it } -> AnnotatedString(label)
             // The label's times in order, as [Countdown.mergedLabel] joins them.
             else -> buildAnnotatedString {
-                label.removeSuffix(" min").split(" · ").forEachIndexed { i, part ->
+                times.forEachIndexed { i, part ->
                     if (i > 0) append(" · ")
                     if (early.getOrNull(i) == true) withStyle(SpanStyle(color = gray)) { append(part) } else append(part)
                 }
@@ -4567,7 +4578,7 @@ internal fun CountdownLabel(
         color =
             if (stale) MaterialTheme.colorScheme.onSurfaceVariant
             else MaterialTheme.colorScheme.onSurface,
-        modifier = modifier,
+        modifier = if (spoken != null) modifier.semantics { contentDescription = spoken } else modifier,
     )
 }
 

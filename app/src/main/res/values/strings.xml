@@ -269,6 +269,10 @@
     <string name="trip_train_unusable_description">%1$s to %2$s, can\'t catch</string>
     <!-- The same for a train on a named branch whose route to the rider's stop is still being checked. -->
     <string name="trip_train_checking_description">%1$s to %2$s, checking route</string>
+    <!-- One time in a countdown read aloud when some of its times leave before the rider can get
+         there: minutes to the train, then whether it can be caught. Joined with ", ". -->
+    <string name="countdown_time_description">%1$s min</string>
+    <string name="countdown_time_unusable_description">%1$s min, can\'t catch</string>
     <string name="trip_change">%1$d min to change</string>
     <!-- The rider's walk to the trip's first stop, estimated on the phone. -->
     <string name="trip_walk_first">Walk to %1$s (~%2$d min)</string>
