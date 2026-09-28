@@ -6,6 +6,7 @@ import app.stopdash.domain.DepartureLabels
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.HiddenModes
+import app.stopdash.domain.LineStatus
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.StarredRow
@@ -166,11 +167,18 @@ object ComplicationTimeline {
     ): List<ComplicationEntry> {
         val stop = envelope.stops.first { it.stopId == chosen.stopId }.toDomain()
         val boundary = stop.fetchedAt.plus(Staleness.THRESHOLD.toJavaDuration())
-        val current = DepartureRows.across(listOf(stop), now, splitPlatforms = false).firstOrNull { StarredRow.of(it) == chosen }
+        val statuses = envelope.liveLineStatuses(now)
+        val current = DepartureRows.across(listOf(stop), now, statuses, splitPlatforms = false).firstOrNull { StarredRow.of(it) == chosen }
+        // The status for the way this row's services go, as the tile and the phone mark it (SPEC
+        // *Disruptions*): none when only the other direction is disrupted. A row with nothing left
+        // to run (or a stale stop) goes by the pick's own direction, the line-wide status when
+        // that isn't a TfL direction.
+        val status = if (current != null) current.status
+        else statuses[chosen.lineId]?.forDirection(chosen.directionKey)?.takeIf { it.disrupted }
         val (lineName, mode) = current?.let { it.lineName to it.mode } ?: lineOf(stop, chosen)
         val code = lineCode(lineName, mode)
         val stale = ComplicationContent.Stale(code, lineName)
-        if (now >= boundary) return marked(listOf(ComplicationEntry(now, null, stale)), envelope, chosen.lineId, now)
+        if (now >= boundary) return marked(listOf(ComplicationEntry(now, null, stale)), envelope, chosen.lineId, status)
 
         val uncertain = !stop.arrivalsFresh
         val entries = mutableListOf<ComplicationEntry>()
@@ -188,16 +196,16 @@ object ComplicationTimeline {
         }
         if (start < boundary) entries += ComplicationEntry(start, boundary, ComplicationContent.Empty(code, lineName, uncertain))
         entries += ComplicationEntry(boundary, null, stale)
-        return marked(entries, envelope, chosen.lineId, now)
+        return marked(entries, envelope, chosen.lineId, status)
     }
 
     /**
      * [entries] with the line's disruption on them while its check is live (SPEC D3/D4): an entry
      * spanning the check's expiry is split there, and from then on the mark is withheld, as on the
-     * tile. Unchanged when the line isn't disrupted at [now].
+     * tile. Unchanged when the row has no live disruption ([status] null).
      */
-    private fun marked(entries: List<ComplicationEntry>, envelope: WatchEnvelope, lineId: String, now: Instant): List<ComplicationEntry> {
-        val status = envelope.liveLineStatuses(now)[lineId] ?: return entries
+    private fun marked(entries: List<ComplicationEntry>, envelope: WatchEnvelope, lineId: String, status: LineStatus?): List<ComplicationEntry> {
+        status ?: return entries
         val expiry = envelope.lineStatuses.first { it.lineId == lineId }.toDomain().checkedAt
             .plus(Staleness.THRESHOLD.toJavaDuration())
         fun mark(content: ComplicationContent, on: Boolean): ComplicationContent {

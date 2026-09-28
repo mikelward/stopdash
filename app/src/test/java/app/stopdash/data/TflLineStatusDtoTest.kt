@@ -257,4 +257,25 @@ class TflLineStatusDtoTest {
         // Nothing to expand beyond the chip label — the detail shows the label alone.
         assertNull(checkNotNull(line(status(4, "Part Suspended")).toLineStatus()).fullText)
     }
+
+    @Test
+    fun `dismissing the worse way's alert leaves the other way's on the line-wide status`() {
+        // As TfL shapes it: the line-wide status is the worst alert, the northbound one.
+        val split = line(
+            status(6, "Severe Delays", "Signal failure northbound."),
+            status(9, "Minor Delays", "Train fault southbound."),
+        ).toLineStatus { reason -> if ("northbound" in reason) setOf("inbound") else setOf("outbound") }!!
+        val north = split.forDirection("inbound")
+        assertEquals(north, split.copy(byDirection = emptyMap()))
+        val snapshot = app.stopdash.domain.DeparturesSnapshot(
+            emptyList(), java.time.Instant.EPOCH,
+            lineStatuses = mapOf("line" to app.stopdash.domain.LineStatusCheck(split, java.time.Instant.EPOCH)),
+        ).withDismissals(setOf(app.stopdash.domain.DismissedAlert.ofLineStatus(north)))
+        val live = snapshot.liveLineStatuses(java.time.Instant.EPOCH).getValue("line")
+        // A row with no direction, and the southbound one, show the southbound alert; northbound, none.
+        assertEquals("Minor Delays", live.description)
+        assertEquals(9, live.severity)
+        assertEquals(9, live.forDirection("outbound").severity)
+        assertEquals(false, live.forDirection("inbound").disrupted)
+    }
 }

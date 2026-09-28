@@ -121,15 +121,51 @@ data class PersistedLineStatus(
     // before this field: its identity is then taken from what's stored, which can't match an alert
     // dismissed with a full reason, so it isn't marked until rewritten (the safe way).
     val fingerprint: String? = null,
+    // The line's status for each direction TfL scoped its alerts to ([LineStatus.byDirection]), so a
+    // row shows only the alerts for the way it's going, as in the app. Empty when the alerts weren't
+    // split, and in a check written before this field: every row then shows the line-wide status,
+    // which hides nothing. Defaulted, and ignored by an older build.
+    val directions: List<PersistedDirectionStatus> = emptyList(),
+    // True while a lookup of which way an alert applies was still running when this was checked
+    // ([LineStatus.awaitingDirections]), so the widget's refresh asks again rather than reuse it.
+    val awaitingDirections: Boolean = false,
+)
+
+/** One direction's status within a [PersistedLineStatus]: the chip label, as for the line's. */
+@Serializable
+data class PersistedDirectionStatus(
+    // TfL's `inbound` or `outbound`.
+    val direction: String,
+    val severity: Int,
+    val description: String,
+    // As [PersistedLineStatus.fingerprint], for this direction's status. Null in the watch envelope.
+    val fingerprint: String? = null,
+    // As [PersistedLineStatus.dismissed], for this direction's status. Only in the watch envelope.
+    val dismissed: Boolean = false,
 )
 
 fun LineStatusCheck.toPersisted(): PersistedLineStatus =
-    PersistedLineStatus(status.lineId, status.severity, status.description, checkedAt.toEpochMilli(), known, dismissed, fingerprint)
+    PersistedLineStatus(
+        status.lineId, status.severity, status.description, checkedAt.toEpochMilli(), known, dismissed, fingerprint,
+        directions = status.byDirection.entries.sortedBy { it.key }.map { (direction, it) ->
+            PersistedDirectionStatus(direction, it.severity, it.description, directionFingerprints[direction], direction in dismissedDirections)
+        },
+        awaitingDirections = status.awaitingDirections,
+    )
 
-fun PersistedLineStatus.toDomain(): LineStatusCheck =
-    LineStatus(lineId, severity, description).let { status ->
-        LineStatusCheck(status, Instant.ofEpochMilli(checkedAtMillis), known, dismissed, fingerprint ?: lineAlertFingerprint(status))
-    }
+fun PersistedLineStatus.toDomain(): LineStatusCheck {
+    val byDirection = directions.associate { it.direction to LineStatus(lineId, it.severity, it.description) }
+    val status = LineStatus(lineId, severity, description, byDirection = byDirection, awaitingDirections = awaitingDirections)
+    return LineStatusCheck(
+        status, Instant.ofEpochMilli(checkedAtMillis), known, dismissed, fingerprint ?: lineAlertFingerprint(status),
+        dismissedDirections = directions.filter { it.dismissed }.mapTo(HashSet()) { it.direction },
+        directionFingerprints = directions.associate { it.direction to (it.fingerprint ?: lineAlertFingerprint(byDirection.getValue(it.direction))) },
+    )
+}
+
+/** This line status with no dismissal marked, on the line or any direction. */
+private fun PersistedLineStatus.undismissed(): PersistedLineStatus =
+    copy(dismissed = false, directions = directions.map { it.copy(dismissed = false) })
 
 /** The persisted form of [DeparturesSnapshot.lineStatuses], in a stable (line id) order. */
 fun Map<String, LineStatusCheck>.toPersistedStatuses(): List<PersistedLineStatus> =
@@ -216,7 +252,7 @@ fun DeparturesSnapshot.toPersisted(): PersistedSnapshot =
         missingStopIds = missingStopIds.sorted(),
         // Dismissals are judged where the snapshot is read ([DeparturesSnapshot.withDismissals]),
         // never stored, so a stored flag can't outlive the dismissal it came from.
-        lineStatuses = lineStatuses.toPersistedStatuses().map { it.copy(dismissed = false) },
+        lineStatuses = lineStatuses.toPersistedStatuses().map { it.undismissed() },
     )
 
 /**
@@ -237,7 +273,7 @@ fun PersistedSnapshot.toDomain(): DeparturesSnapshot? {
         journeyOnlyStopIds = journeyOnlyStopIds.toSet(),
         missingStopIds = missingStopIds.toSet(),
         // A flag an earlier build stored is ignored, as [toPersisted] no longer writes one.
-        lineStatuses = lineStatuses.associate { it.lineId to it.toDomain().copy(dismissed = false) },
+        lineStatuses = lineStatuses.associate { it.lineId to it.undismissed().toDomain() },
     )
 }
 
