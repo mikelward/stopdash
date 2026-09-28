@@ -65,7 +65,6 @@ import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.PlaceKind
 import app.stopdash.domain.SearchEntry
-import app.stopdash.domain.SearchResults
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.abbreviateStationName
@@ -180,23 +179,14 @@ fun StationSearchScreen(
                         modifier = Modifier.fillMaxSize().scrollEdgeCue(listState, scrollCueColors(MaterialTheme.colorScheme.background)),
                         state = listState,
                     ) {
-                        // Stops and geocoded places in one list, ranked by how well each name matches, so a
-                        // place the query starts sits above a stop that only contains it (maintainer,
-                        // 2026-09-28). A place is tagged Place/Postcode and routed to as a coordinate (SPEC
-                        // D9); only a To… picker sets onOpenPlace, so only it lists places.
-                        val entries = SearchResults.merge(
-                            state.query.trim(),
-                            result.matches,
-                            if (onOpenPlace != null) result.places else emptyList(),
-                        )
+                        // Stops and geocoded places in the order the search listed them: ranked by how well
+                        // each name matches, and only ever added to as answers arrive, so a row doesn't move
+                        // under a finger (maintainer, 2026-09-28). A place is tagged Place/Postcode and routed
+                        // to as a coordinate (SPEC D9); only a To… picker sets onOpenPlace, so only it lists places.
+                        val entries = if (onOpenPlace != null) result.entries else result.entries.filterIsInstance<SearchEntry.Stop>()
                         items(
                             entries,
-                            key = { entry ->
-                                when (entry) {
-                                    is SearchEntry.Stop -> entry.match.id
-                                    is SearchEntry.Place -> entry.hit.let { "place-${it.name}@${it.coordinate.latitude},${it.coordinate.longitude}" }
-                                }
-                            },
+                            key = { it.key },
                         ) { entry ->
                             when (entry) {
                                 is SearchEntry.Stop -> MatchRow(entry.match, onClick = { onOpenStation(entry.match) })
@@ -206,6 +196,15 @@ fun StationSearchScreen(
                                 )
                             }
                             HorizontalDivider()
+                        }
+                        // More is on its way and will land here, below what's listed: say so where it
+                        // will appear, not only in the bar above.
+                        if (state.searching) {
+                            item(key = "loading-more") {
+                                Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                    CircularProgressIndicator(modifier = Modifier.size(24.dp).testTag(SEARCH_LOADING_MORE_TAG))
+                                }
+                            }
                         }
                         // The bundled stations matched but TfL's search (bus stops) failed: say so under
                         // the matches rather than show them as the whole answer.
@@ -569,3 +568,6 @@ fun StationPlaceholderScreen(
         }
     }
 }
+
+/** The spinner under the listed matches while more answers are on their way. */
+internal const val SEARCH_LOADING_MORE_TAG = "searchLoadingMore"
