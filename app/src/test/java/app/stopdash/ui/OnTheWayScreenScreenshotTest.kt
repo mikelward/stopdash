@@ -28,6 +28,7 @@ import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import java.time.Duration
 import java.time.Instant
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -337,6 +338,37 @@ class OnTheWayScreenScreenshotTest {
         composeRule.onNodeWithText("Finding your train…").assertIsDisplayed()
         composeRule.onNodeWithText("End trip").performClick()
         composeRule.runOnIdle { assertTrue(ended) }
+    }
+
+    @Test
+    fun each_mode_is_looked_for_by_its_own_name() {
+        val resources = composeRule.activity.resources
+        fun leg(mode: String) = TripLeg(mode, "x", "X", "A", "A", "B", "B", at(4), at(20))
+        val expected = mapOf(
+            "bus" to "bus", "replacement-bus" to "bus", "coach" to "coach", "tram" to "tram",
+            "river-bus" to "boat", "river-tour" to "boat", "cable-car" to "cable car",
+            "tube" to "train", "dlr" to "train", "overground" to "train", "elizabeth-line" to "train", "national-rail" to "train",
+        )
+        expected.forEach { (mode, name) ->
+            assertEquals("Finding your $name…", nextStepText(resources, TripProgress.Waiting(leg(mode), null), now).second)
+            assertEquals("Can't find your $name", nextStepText(resources, TripProgress.Lost(leg(mode)), now).first)
+        }
+    }
+
+    @Test
+    fun on_the_way_looks_for_a_bus_as_a_bus() {
+        val bus = TripLeg("bus", "134", "134", "490000000001A", "Example Road", "490000000002B", "Example Street", at(4), at(20))
+        show(ActiveTrip(TripRoute(listOf(bus)), "Example Street", startedAt = now), TripProgress.Waiting(bus, null))
+        composeRule.onNodeWithText("Finding your bus…").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("Finding your train…").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun on_the_way_lost_bus_is_a_bus() {
+        val bus = TripLeg("bus", "134", "134", "490000000001A", "Example Road", "490000000002B", "Example Street", at(4), at(20))
+        show(ActiveTrip(TripRoute(listOf(bus)), "Example Street", startedAt = now), TripProgress.Lost(bus))
+        composeRule.onNodeWithText("Can't find your bus").assertIsDisplayed()
+        composeRule.onNodeWithText("Finding your bus…").assertIsDisplayed()
     }
 
     @Test
