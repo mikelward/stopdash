@@ -17,12 +17,16 @@ class TflLineStatusDtoTest {
             reason = reason,
         )
 
+    // An alert TfL files as planned work, the only kind read for a later start.
+    private fun plannedWork(reason: String) =
+        status(0, "Special Service", reason).copy(disruption = TflLineDisruptionDto(category = "PlannedWork"))
+
     private val monday = java.time.Instant.parse("2026-09-28T06:00:00Z")
 
     @Test
     fun `work that hasn't started is planned, not a disruption`() {
         val later = "Road will be closed from 13 Oct 07:00 until 31 Oct 18:00. Buses will be diverted."
-        val result = checkNotNull(line(status(0, "Special Service", later)).toLineStatus(monday))
+        val result = checkNotNull(line(plannedWork(later)).toLineStatus(monday))
         assertFalse(result.disrupted)
         assertEquals("Good Service", result.description)
         val planned = result.planned.single()
@@ -36,11 +40,38 @@ class TflLineStatusDtoTest {
         val now = "Buses diverted until 23:00 on Thursday 1 October due to works."
         val later = "Road will be closed from 13 Oct 07:00 until 31 Oct 18:00. Buses will be diverted."
         val result = checkNotNull(
-            line(status(0, "Special Service", later), status(0, "Special Service", now)).toLineStatus(monday),
+            line(plannedWork(later), status(0, "Special Service", now)).toLineStatus(monday),
         )
         assertTrue(result.disrupted)
         assertEquals(now, result.fullText)
         assertEquals(later, result.planned.single().fullText)
+    }
+
+    @Test
+    fun `only planned work is read for a later start`() {
+        val later = "Service suspended until further notice. Replacement buses will run from 13 October."
+        // A real-time alert is happening now, whatever its text dates (Codex, PR #337).
+        val realTime = status(0, "Special Service", later).copy(disruption = TflLineDisruptionDto(category = "RealTime"))
+        assertTrue(checkNotNull(line(realTime).toLineStatus(monday)).disrupted)
+        // So is one TfL gave no category for: the safe side.
+        val uncategorized = status(0, "Special Service", "Road will be closed from 13 Oct until 31 Oct.")
+        val result = checkNotNull(line(uncategorized).toLineStatus(monday))
+        assertTrue(result.disrupted)
+        assertTrue(result.planned.isEmpty())
+        // Read case-insensitively, so a change in TfL's casing doesn't turn planned work into a disruption.
+        val lower = status(0, "Special Service", "Road will be closed from 13 Oct until 31 Oct.")
+            .copy(disruption = TflLineDisruptionDto(category = "plannedwork"))
+        assertFalse(checkNotNull(line(lower).toLineStatus(monday)).disrupted)
+    }
+
+    @Test
+    fun `the category is read from the plain response`() {
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        val entry = json.decodeFromString<TflLineStatusEntryDto>(
+            """{"statusSeverity": 0, "reason": "x", "disruption": {"category": "PlannedWork", "categoryDescription": "PlannedWork", "affectedRoutes": []}}""",
+        )
+        assertTrue(entry.isPlannedWork())
+        assertFalse(TflLineStatusEntryDto(reason = "x").isPlannedWork())
     }
 
     @Test
@@ -55,7 +86,7 @@ class TflLineStatusDtoTest {
     @Test
     fun `a missing year is placed after the day TfL posted the alert`() {
         // Posted in March for work from 23 March: under way in September, not next March's.
-        val entry = status(0, "Special Service", "From 09:00 on Monday 23 March until 17:00 on Monday 26 October, buses divert.")
+        val entry = plannedWork("From 09:00 on Monday 23 March until 17:00 on Monday 26 October, buses divert.")
             .copy(validityPeriods = listOf(TflValidityPeriodDto("2026-03-10T09:00:00Z")))
         val result = checkNotNull(line(entry).toLineStatus(monday))
         assertTrue(result.disrupted)
@@ -63,7 +94,7 @@ class TflLineStatusDtoTest {
 
     @Test
     fun `an unreadable posting date keeps the alert under way, and is reported`() {
-        val entry = status(0, "Special Service", "Road will be closed from 1 December. Buses will be diverted.")
+        val entry = plannedWork("Road will be closed from 1 December. Buses will be diverted.")
             .copy(validityPeriods = listOf(TflValidityPeriodDto("not a date")))
         val bad = mutableListOf<String>()
         val result = checkNotNull(line(entry).toLineStatus(monday, onBadDate = { bad += it }))
@@ -75,7 +106,7 @@ class TflLineStatusDtoTest {
     @Test
     fun `planned work is split by direction like a disruption`() {
         val later = "Road will be closed from 13 Oct until 31 Oct. Southbound buses will be diverted."
-        val result = checkNotNull(line(status(0, "Special Service", later)).toLineStatus(monday) { setOf("outbound") })
+        val result = checkNotNull(line(plannedWork(later)).toLineStatus(monday) { setOf("outbound") })
         assertEquals(1, result.forDirection("outbound").planned.size)
         assertTrue(result.forDirection("inbound").planned.isEmpty())
     }
