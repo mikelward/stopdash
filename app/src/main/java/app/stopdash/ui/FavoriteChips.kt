@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
@@ -53,6 +54,9 @@ internal fun FavoriteChips(
     // Centers the chips when they fit (the empty state, whose text is centered); start-aligned in the list.
     centered: Boolean = false,
     onEditPlaces: (() -> Unit)? = null,
+    // Leads the row with a From chip reading "Here" (maintainer, 2026-09-28): a tap changes where
+    // trips start, in the station search. Null leaves it out.
+    onChangeFrom: (() -> Unit)? = null,
 ) {
     val editLabel = stringResource(R.string.favorite_places_edit_action)
     LazyRow(
@@ -60,6 +64,7 @@ internal fun FavoriteChips(
         contentPadding = contentPadding,
         horizontalArrangement = if (centered) Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally) else Arrangement.spacedBy(8.dp),
     ) {
+        if (onChangeFrom != null) item(key = "from") { FromChip(null, onChangeFrom) }
         items(places, key = { it.id }) { place ->
             val name = favoriteRouteName(place)
             // An icon this build can't draw falls back to the name.
@@ -137,6 +142,29 @@ private fun PlaceChip(
             }
         }
     }
+}
+
+/**
+ * Where a trip starts, as a chip (maintainer, 2026-09-28): "Here" behind the crosshair when it's the
+ * rider's position ([station] null), else the *From…* station's name. A tap opens the station search
+ * to change it, offering "Here" first. TalkBack hears "From ‹start›".
+ */
+@Composable
+internal fun FromChip(station: String?, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val label = station ?: stringResource(R.string.from_here)
+    val description = stringResource(R.string.trip_from, label)
+    PlaceChip(
+        onClick = onClick,
+        onLongClick = null,
+        onLongClickLabel = "",
+        leadingIcon = if (station == null) {
+            { Icon(CrosshairIcon, contentDescription = null, modifier = Modifier.size(CHIP_ICON_SIZE)) }
+        } else {
+            null
+        },
+        label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        modifier = modifier.testTag("fromChip").semantics { contentDescription = description },
+    )
 }
 
 // Material's chip icon size.

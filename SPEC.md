@@ -286,6 +286,19 @@ The app finds stops two ways:
   (*Privacy*), and *To…*'s own *Recent* remembers it on the device; a **saved favorite** instead sends
   its **coordinate** (D9); its name and stable id are **never sent to TfL** (they ride Android backup /
   device transfer with the rest of the user's config, per *Privacy*).
+- **Where a trip starts: the From chip** (maintainer, 2026-09-28) — the *To…* search shows a **From
+  chip** at its top naming the start: **"Here"** behind the crosshair when it's the rider's position,
+  else the *From…* station's name. The saved-place chips on the near-me list lead with the same "Here"
+  chip. A tap opens the *From…* station search, one shared search for picking any end of a trip:
+  before anything is typed it lists the rider's own picks (and, where they can be an end, saved
+  places), and once they type, only the matches. As *From…* it heads that list with **"Here"**, which
+  goes back to the rider's position; the *To…* search has no "Here", since a trip to where the rider
+  already is goes nowhere. Picking a station from a *To…* chip opens that station's *To…* search as
+  soon as the station's stops are found (its page's placeholder, with Retry, meanwhile: the search
+  can plan nothing until the new start is known), "Here" returns to the near-me *To…* search, and Back returns to the *To…* search the chip
+  was tapped in, so changing the start, or thinking better of it, never loses the trip being
+  planned, nor what was typed for its destination: there is one *To…* search, whichever the start.
+  "Here" is listed before the rider's saved stops have been read, since it needs nothing read. Leaving a station to change the start closes its page, which stops its refreshes. A saved place or geocoded address as the **start** is not offered yet (`TODO.md`).
 - **To… a place or postcode** (maintainer, 2026-09-27) — the *To…* search offers **geocoded places**
   (a landmark, an address, a postcode) among the stop matches, each tagged *Place* or *Postcode* in
   the right column where a stop shows its modes; tapping one plans to its **coordinate** (a final walk
@@ -892,7 +905,7 @@ an earlier Home/Work-only framing) so the rider routes to a saved place in one t
 the trip. If that list can't be read it says so with a **Retry**, rather than
 hiding the section as "no places" (principle 2); station search stays usable meanwhile. The search page keeps its look (each
 result's name over its modes); it gains only a "From" chip naming the start ("Here", or the *From…*
-station). The trip opens on a **list of routes, best first**: ordered first by how far StopDash
+station), which changes it (*From… To…* above). The trip opens on a **list of routes, best first**: ordered first by how far StopDash
 stands behind each route (tiers, below — usable before not, fully live before "est."), and within a
 tier by the earliest end-to-end arrival, worked out leg by leg from live trains (below). The first
 route is therefore the fastest one StopDash can vouch for, not an earlier estimate. Routes riding the

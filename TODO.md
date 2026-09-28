@@ -848,7 +848,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [ ] **Closure checks where the rider gets off** (each leg's alighting stop and the
             destination), from the list's few-minute cache; not yet fetched.
       - [ ] **Gray unreachable trains in the leg-by-leg cards** (the list's first-leg row does).
-      - [ ] **"From" chip on the destination search** naming the start ("Here" or the station).
+      - [x] **"From" chip on the destination search** naming the start ("Here" or the station), and
+            leading the near-me list's place chips; a tap opens the *From…* search, which offers
+            "Here" first (maintainer, 2026-09-28). Needs a device check of the chip's look and the
+            round trip through the search.
+      - [ ] **A saved place or address as a trip's start** (maintainer, 2026-09-28: the shared search
+            takes places): the *From…* search lists no places yet. Planning from a coordinate works
+            (`TripOrigin.Here`), but a station page's departures come from its stops, so a place start
+            needs a near-me list resolved around the coordinate.
       - [ ] **Borrow from the other search's recent list** (maintainer, 2026-09-26): *From…* and
             *To…* keep separate recents, ordered by last use; maybe a single button to swap in the
             other list, or a way to pick from it (the station you came from as the way home).

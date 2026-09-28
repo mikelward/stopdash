@@ -234,6 +234,8 @@
     <string name="trip_times_loading">Loading</string>
     <!-- A trip card's top row when its first stop is right there: the stop, before duration · arrival. -->
     <string name="trip_from">From %1$s</string>
+    <!-- Where a trip starts when it's the rider's position: the From chip and the station search's first row. -->
+    <string name="from_here">Here</string>
     <!-- A trip card's walk to its first stop, after the stop's name: its minutes, in parentheses
          so they read as how long it takes rather than a time. -->
     <string name="trip_walk_minutes">(%1$d min)</string>
