@@ -18,6 +18,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -887,6 +888,97 @@ class NearbyStopsViewModelTest {
         assertEquals(true, model.relocating.value)
         advanceUntilIdle()
         assertEquals(false, model.relocating.value)
+    }
+
+    @Test
+    fun `a relocation from before the app left doesn't hold off the return's own`() = runTest {
+        // A pull-to-refresh whose fix is still coming when the app leaves (Codex on #220).
+        val before = CompletableDeferred<Coordinates>()
+        val moved = Coordinates(0.0002, 0.0)
+        var calls = 0
+        val location = object : LocationProvider {
+            override suspend fun current(forceFresh: Boolean): LocationFix {
+                calls++
+                val at = when (calls) {
+                    1 -> origin
+                    2 -> before.await()
+                    else -> moved
+                }
+                return LocationFix(at, isFallback = false)
+            }
+        }
+        val model = vm(location, FakeFinder { listOf(stop("b1", 50.0, "bus")) })
+        model.locate()
+        advanceUntilIdle()
+        model.relocate()
+        advanceUntilIdle()
+        assertTrue(model.relocatingSinceLeft())
+        model.leftForeground()
+        // Still under way on return, but from where the rider was: the return doesn't wait on it.
+        assertTrue(model.relocating.value)
+        assertFalse(model.relocatingSinceLeft())
+        // The return re-locates: that one is waited on, and its fix wins over the older one.
+        model.relocate()
+        assertTrue(model.relocatingSinceLeft())
+        advanceUntilIdle()
+        before.complete(origin)
+        advanceUntilIdle()
+        assertEquals(moved, (model.state.value as NearbyStopsViewModel.State.Ready).location)
+        assertFalse(model.relocating.value)
+        // Leaving with nothing under way marks nothing: the next relocation is waited on.
+        model.leftForeground()
+        model.relocate()
+        assertTrue(model.relocatingSinceLeft())
+        advanceUntilIdle()
+    }
+
+    @Test
+    fun `a relocation left running that ends without a set is located afresh on return`() = runTest {
+        // A pull whose fix is still coming when the app leaves, and then gets none, as a request
+        // made while the app is away may not (Codex on #390).
+        val before = CompletableDeferred<Coordinates?>()
+        val forced = mutableListOf<Boolean>()
+        var calls = 0
+        val location = object : LocationProvider {
+            override suspend fun current(forceFresh: Boolean): LocationFix? {
+                calls++
+                forced += forceFresh
+                val at = if (calls == 2) before.await() else origin
+                return at?.let { LocationFix(it, isFallback = false) }
+            }
+        }
+        val model = vm(location, FakeFinder { listOf(stop("b1", 50.0, "bus")) })
+        model.locate()
+        advanceUntilIdle()
+        model.relocate()
+        advanceUntilIdle()
+        model.leftForeground()
+        before.complete(null)
+        advanceUntilIdle()
+        assertEquals(NearbyStopsViewModel.State.NoLocation, model.state.value)
+        // The return locates afresh, with the gate and a fresh fix.
+        assertTrue(model.locateAfterLeftBehind())
+        assertEquals(NearbyStopsViewModel.State.Locating, model.state.value)
+        advanceUntilIdle()
+        assertTrue(model.state.value is NearbyStopsViewModel.State.Ready)
+        assertEquals(true, forced.last())
+        // Owed once.
+        assertFalse(model.locateAfterLeftBehind())
+    }
+
+    @Test
+    fun `a gate reached with the app in the foreground is left to its own retry on return`() = runTest {
+        val location = MutableLocation(origin)
+        val model = vm(location, FakeFinder { listOf(stop("b1", 50.0, "bus")) })
+        model.locate()
+        advanceUntilIdle()
+        location.fix = null
+        model.relocate()
+        advanceUntilIdle()
+        assertEquals(NearbyStopsViewModel.State.NoLocation, model.state.value)
+        model.leftForeground()
+        assertFalse(model.locateAfterLeftBehind())
+        assertEquals(NearbyStopsViewModel.State.NoLocation, model.state.value)
     }
 
     @Test

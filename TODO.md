@@ -2846,12 +2846,16 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
       approximate ("~400 m") or as a range from both fixes ("100–400 m"). Deferred: the list would
       mix two places and every distance needs a second origin; revisit if the remember-precise
       rule above still leaves stops missing.
-- [ ] **A relocation in flight when the app is backgrounded outlives the return** (Codex on #220,
-      2026-09-25) — the foreground return skips its re-locate while one is running
+- [x] **A relocation in flight when the app is backgrounded outlives the return** (Codex on #220,
+      2026-09-25) — the foreground return skipped its re-locate while one was running
       (`refreshOnForeground`'s busy check), so a lookup started from a fix taken before the app
-      left (a pull-to-refresh, or an applied precise-fix refinement) completes and is shown after
-      the rider may have moved. Cancel or supersede the nearby re-pick on stop, so the return's
-      fresh fix always wins. Applies to every relocate, not only the refinement.
+      left (a pull-to-refresh, or an applied precise-fix refinement) completed and was shown after
+      the rider may have moved. Done: the app leaving marks a relocation still under way
+      (`NearbyStopsViewModel.leftForeground`), and the return waits only on one started since
+      (`relocatingSinceLeft`), so it re-locates over the older one and its fresh fix wins. Every
+      relocate, the refinement's included. One that ended while the app was away without a set
+      (no fix, a failed lookup, none nearby) is looked for afresh on return
+      (`locateAfterLeftBehind`), since a gate has no set for the return to re-locate.
 - **Same-set re-locate discards updated stop metadata (Codex P2 on #70) — RESOLVED by the
   #87 reveal redesign (2026-09-21).** The old gap: `relocate()`'s same-set path kept the old
   `MainViewModel`, whose `seedStops` were fixed at init, so a refresh returning the *same* IDs
