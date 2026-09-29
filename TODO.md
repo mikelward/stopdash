@@ -1798,6 +1798,12 @@ Builds on Phase 1's minimal line-status marking.
             scopes to one direction (its affected routes' `inbound`/`outbound`, only in the
             `?detail=true` response) no longer flags rows heading the other way. Looked up once per
             new alert in the background and cached by its text; unknown counts for both.
+        - [ ] **Back off a direction lookup that keeps failing** (Codex on #366): a failed
+              detailed lookup is released and asked again on the next refresh, so while TfL keeps
+              failing it (a response the app can't decode, say) the list pays up to ~150 KB a line
+              every refresh rather than once per alert. Wait longer after each failure (doubling,
+              capped), or remember the failure for a while; meanwhile the alert shows for both
+              directions, as it does now.
         - [x] **The widget and watch by direction too**: the snapshot and the watch envelope keep
               each direction's status, dismissals are marked per direction, the complication marks
               its row's direction, and the widget's refresh fills the shared direction cache.
