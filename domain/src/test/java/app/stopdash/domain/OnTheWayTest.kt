@@ -599,10 +599,11 @@ class OnTheWayTest {
     }
 
     @Test
-    fun `waiting for a ride's train, a fix is wanted and one sure to 150 m will do`() {
+    fun `waiting for a ride's train, a fix is wanted and one sure to 100 m will do`() {
         val waiting = OnTheWay.follow(trip, train("9", 8))
         assertTrue(OnTheWay.wantsFix(waiting, at(6)))
         assertTrue(OnTheWay.sureEnoughFor(waiting, at(6))(fix(atB, 100f)))
+        assertFalse(OnTheWay.sureEnoughFor(waiting, at(6))(fix(atB, 120f)))
         // Only for the first ten minutes of the wait: a long one for a delayed train keeps GPS off.
         assertFalse(OnTheWay.wantsFix(waiting, at(10)))
         // A clock set back to before the wait began: its ten minutes can't be counted, so none
@@ -773,7 +774,7 @@ class OnTheWayTest {
         // The train followed still a stop or two out, but the rider is at C's entrance: on to the walk.
         val atEntrance = fix(Coordinates(51.5327, -0.12), accuracyMeters = 20f)
         assertEquals(nearlyThere, OnTheWay.seen(nearlyThere, atEntrance, at(11)))
-        val off = OnTheWay.seen(nearlyThere, atEntrance, at(11), entrances = listOf(Coordinates(51.5329, -0.12)))
+        val off = OnTheWay.seen(nearlyThere, atEntrance, at(11), StationPlaces(entrances = listOf(Coordinates(51.5329, -0.12))))
         assertEquals(1, off.legIndex)
         assertEquals(at(11), off.legStartedAt)
         assertEquals("", off.vehicleId)
@@ -789,7 +790,7 @@ class OnTheWayTest {
         // The Planner left the stop unplaced: the station's own position, read with its entrances, does.
         val unplaced = nearlyThere.copy(route = TripRoute(listOf(ride, walk, second)))
         assertEquals(unplaced, OnTheWay.seen(unplaced, fix(getOff), at(11)))
-        assertEquals(1, OnTheWay.seen(unplaced, fix(getOff), at(11), entrances = listOf(getOff)).legIndex)
+        assertEquals(1, OnTheWay.seen(unplaced, fix(getOff), at(11), StationPlaces(point = getOff)).legIndex)
     }
 
     @Test
@@ -1000,11 +1001,50 @@ class OnTheWayTest {
         // 300 m north of where the Planner placed the stop, but 20 m from an entrance.
         val atEntrance = fix(Coordinates(51.5027, -0.12), accuracyMeters = 20f)
         assertEquals(walkingTrip, OnTheWay.seen(walkingTrip, atEntrance, at(1)))
-        val there = OnTheWay.seen(walkingTrip, atEntrance, at(1), entrances = listOf(Coordinates(51.5029, -0.12)))
+        val there = OnTheWay.seen(walkingTrip, atEntrance, at(1), StationPlaces(entrances = listOf(Coordinates(51.5029, -0.12))))
         assertEquals(1, there.legIndex)
         // An entrance well away from the rider says nothing.
-        assertEquals(walkingTrip, OnTheWay.seen(walkingTrip, atEntrance, at(1), entrances = listOf(Coordinates(51.506, -0.12))))
+        assertEquals(walkingTrip, OnTheWay.seen(walkingTrip, atEntrance, at(1), StationPlaces(entrances = listOf(Coordinates(51.506, -0.12)))))
     }
+
+    @Test
+    fun `an entrance is reached at its door, not from the street around it`() {
+        // Synthetic positions: an entrance 300 m north of where the Planner placed the stop.
+        val entrance = Coordinates(51.5027, -0.12)
+        val station = StationPlaces(entrances = listOf(entrance))
+        // 55 m past it, sure to 16 m: still on the way, where 150 m round every entrance of a big
+        // interchange said they'd arrived from the streets around it (maintainer, 2026-09-29).
+        val acrossTheStreet = fix(north(entrance, 55.0), accuracyMeters = 16f)
+        assertEquals(walkingTrip, OnTheWay.seen(walkingTrip, acrossTheStreet, at(1), station))
+        assertNull(OnTheWay.seenAtStop(walkingTrip, acrossTheStreet, at(1), station))
+        // At the door, as sure: there.
+        val atDoor = fix(north(entrance, 20.0), accuracyMeters = 16f)
+        assertEquals(1, OnTheWay.seen(walkingTrip, atDoor, at(1), station).legIndex)
+        assertEquals(SeenAt.ENTRANCE, OnTheWay.seenAtStop(walkingTrip, atDoor, at(1), station))
+        // By the door but only sure to 60 m: they could be anywhere round it.
+        assertEquals(walkingTrip, OnTheWay.seen(walkingTrip, fix(entrance, accuracyMeters = 60f), at(1), station))
+        // A station's own point, which can sit well inside it, is still reached from as far.
+        val point = StationPlaces(point = entrance)
+        assertEquals(1, OnTheWay.seen(walkingTrip, acrossTheStreet, at(1), point).legIndex)
+        assertEquals(SeenAt.POINT, OnTheWay.seenAtStop(walkingTrip, acrossTheStreet, at(1), point))
+        // But not from 95 m, sure to 16 m: 150 m round a point said they'd arrived from outside too
+        // (maintainer, 2026-09-29).
+        assertEquals(walkingTrip, OnTheWay.seen(walkingTrip, fix(north(entrance, 95.0), accuracyMeters = 16f), at(1), point))
+        // As is the Planner's.
+        assertEquals(SeenAt.POINT, OnTheWay.seenAtStop(walkingTrip, fix(north(platform, 55.0), accuracyMeters = 16f), at(1)))
+    }
+
+    @Test
+    fun `a rider riding past the station they get off at isn't off until at its door`() {
+        // Synthetic positions: an entrance of C, the station they get off at, placed 300 m on.
+        val entrance = Coordinates(51.5327, -0.12)
+        val station = StationPlaces(entrances = listOf(entrance))
+        assertEquals(nearlyThere, OnTheWay.seen(nearlyThere, fix(north(entrance, 55.0), accuracyMeters = 16f), at(11), station))
+        assertEquals(1, OnTheWay.seen(nearlyThere, fix(north(entrance, 20.0), accuracyMeters = 16f), at(11), station).legIndex)
+    }
+
+    // [at] moved [meters] due north.
+    private fun north(at: Coordinates, meters: Double) = Coordinates(at.latitude + meters / 111_195.0, at.longitude)
 
     @Test
     fun `a walk to a station is one to read entrances for, a walk to a bus stop isn't`() {
@@ -1022,7 +1062,7 @@ class OnTheWayTest {
         assertTrue(OnTheWay.wantsFix(unplaced, at(1)))
         assertEquals(ride, OnTheWay.stationWalkedTo(unplaced, at(1)))
         val atEntrance = fix(Coordinates(51.5027, -0.12), accuracyMeters = 20f)
-        assertEquals(1, OnTheWay.seen(unplaced, atEntrance, at(1), entrances = listOf(Coordinates(51.5029, -0.12))).legIndex)
+        assertEquals(1, OnTheWay.seen(unplaced, atEntrance, at(1), StationPlaces(entrances = listOf(Coordinates(51.5029, -0.12)))).legIndex)
         // Nothing read, nothing to see it by.
         assertEquals(unplaced, OnTheWay.seen(unplaced, atEntrance, at(1)))
         // A bus stop left unplaced has no entrances to read: no fix asked for.
@@ -1050,16 +1090,36 @@ class OnTheWayTest {
     }
 
     @Test
-    fun `a fix sure only to 100 m still settles arriving on foot, but not a rider left behind`() {
-        // At the stop, sure to 100 m: wherever they are, they're within 150 m of it.
-        val vague = LocationFix(platform, isFallback = false, accuracyMeters = 100f, ageMillis = 1_000L)
+    fun `a fix sure only to 80 m still settles arriving on foot, but not a rider left behind`() {
+        // At the stop, sure to 80 m: wherever they are, they're within 100 m of it.
+        val vague = LocationFix(platform, isFallback = false, accuracyMeters = 80f, ageMillis = 1_000L)
         assertEquals(vague, OnTheWay.usableFix(vague, walkingTrip, at(1)))
         assertEquals(1, OnTheWay.seen(walkingTrip, OnTheWay.usableFix(vague, walkingTrip, at(1)), at(1)).legIndex)
         // Just after boarding, the same fix can't tell a rider on the train from one on the platform.
         val onBoard = OnTheWay.follow(placed, train("8", 5)).copy(boarded = true, boardedAt = at(6))
         assertNull(OnTheWay.usableFix(vague, onBoard, at(7)))
-        // Nor is one sure only to 200 m taken for arriving.
-        assertNull(OnTheWay.usableFix(vague.copy(accuracyMeters = 200f), walkingTrip, at(1)))
+        // Nor is one sure only to 120 m taken for arriving: it can't place them within 100 m.
+        assertNull(OnTheWay.usableFix(vague.copy(accuracyMeters = 120f), walkingTrip, at(1)))
+    }
+
+    @Test
+    fun `on the way into a station, a fix sure enough for its entrances is the one waited for`() {
+        // Sure to 100 m: taken if nothing better comes, but not what the wait stops for, since it
+        // can't tell an entrance (Codex, PR #389). Sure to 30 m, it can.
+        val vague = fix(platform, accuracyMeters = 100f)
+        val sharp = fix(platform, accuracyMeters = 30f)
+        assertTrue(OnTheWay.sureEnoughFor(walkingTrip, at(1))(vague))
+        assertFalse(OnTheWay.preferredFor(walkingTrip, at(1))(vague))
+        assertTrue(OnTheWay.preferredFor(walkingTrip, at(1))(sharp))
+        // Nearly at the station they get off at, the same.
+        assertFalse(OnTheWay.preferredFor(nearlyThere, at(12))(vague))
+        assertTrue(OnTheWay.preferredFor(nearlyThere, at(12))(sharp))
+        // A walk to a bus stop has no entrances to tell: the vague fix ends the wait, as before.
+        val bus = TripLeg("bus", "73", "73", "A", "A", "C", "C", at(5), at(15), fromAt = platform)
+        val toBus = ActiveTrip(TripRoute(listOf(toStop, bus)), "C", startedAt = t0)
+        assertTrue(OnTheWay.preferredFor(toBus, at(1))(vague))
+        // Never looser than what's usable: a stale sharp fix isn't waited for either.
+        assertFalse(OnTheWay.preferredFor(walkingTrip, at(1))(sharp.copy(ageMillis = 30_000L)))
     }
 
     @Test

@@ -82,6 +82,22 @@ sealed interface TripProgress {
 }
 
 /**
+ * Where a station can be walked into, as TfL publishes it (SPEC *On the way*): its own [point], and
+ * each of its [entrances]. Kept apart because they're weighed apart ([OnTheWay.atStation]): the point
+ * can sit well inside a big station, where an entrance is the door itself.
+ */
+data class StationPlaces(val point: Coordinates? = null, val entrances: List<Coordinates> = emptyList())
+
+/** What a fix saw the rider at, where a trip moved on by it ([OnTheWay.seenAtStop]): for the log. */
+enum class SeenAt(val label: String) {
+    /** The stop's placed point: the Planner's, or the station's own. */
+    POINT("its placed point"),
+
+    /** One of the station's entrances. */
+    ENTRANCE("an entrance"),
+}
+
+/**
  * Follows a started trip from its train's calls (SPEC *On the way*). Pure: the caller fetches the
  * followed train's calls ([VehicleSource]) and the boarding stop's departures, and keeps the
  * [ActiveTrip] this returns.
@@ -133,7 +149,7 @@ object OnTheWay {
     /**
      * Whether [fix] is sure and recent enough for what [trip] wants a fix for at [now]: on a walk to
      * a stop ([walkingTo]), any fix sure to within [AT_STOP_WITHIN_METERS] can settle "they're
-     * there" (the test itself counts its uncertainty), so one sure to 100 m isn't thrown away; the
+     * there" (the test itself counts its uncertainty), so one sure to 80 m isn't thrown away; the
      * left-behind check keeps [sureEnough]'s tighter bound.
      */
     fun sureEnoughFor(trip: ActiveTrip, now: Instant): (LocationFix) -> Boolean =
@@ -143,6 +159,19 @@ object OnTheWay {
         val accuracy = fix.accuracyMeters ?: return false
         val age = fix.ageMillis ?: return false
         return accuracy <= AT_STOP_WITHIN_METERS && age <= FIX_FRESH_WITHIN_MILLIS
+    }
+
+    /**
+     * The fix worth waiting for at [now], before settling for a vaguer one [sureEnoughFor] still
+     * takes ([raceFix]'s accept): on a walk to a station, or nearly at the one the rider gets off at,
+     * one sure enough to tell an entrance ([AT_ENTRANCE_WITHIN_METERS]). A quick fused fix too vague
+     * for that mustn't end the wait for a GPS one that can see them at the door (Codex, PR #389); if
+     * none comes, the vague one still settles a placed point.
+     */
+    fun preferredFor(trip: ActiveTrip, now: Instant): (LocationFix) -> Boolean {
+        val usable = sureEnoughFor(trip, now)
+        if (stationWalkedTo(trip, now) == null && stationRiddenTo(trip, now) == null) return usable
+        return { fix -> usable(fix) && fix.accuracyMeters.let { it != null && it <= AT_ENTRANCE_WITHIN_METERS } }
     }
 
     /** [fix] when it's a real, precise fix sure enough for what [trip] wants one for ([sureEnoughFor]). */
@@ -656,8 +685,18 @@ object OnTheWay {
     /**
      * A rider this close to the stop they're walking to (a fix's uncertainty included) is there:
      * a station's published position can sit well inside it, away from the entrance they stand at.
+     * 150 m told a rider still outside a station they'd arrived (maintainer, 2026-09-29): its
+     * entrances ([AT_ENTRANCE_WITHIN_METERS]) now reach the edges of a big one.
      */
-    const val AT_STOP_WITHIN_METERS = 150.0
+    const val AT_STOP_WITHIN_METERS = 100.0
+
+    /**
+     * …or this close to one of its entrances ([StationPlaces.entrances]), which is the door itself,
+     * not a point inside: 150 m around every entrance of a big interchange reached well out into
+     * the streets around it, telling a rider still on their way there that they'd arrived
+     * (maintainer, 2026-09-29).
+     */
+    const val AT_ENTRANCE_WITHIN_METERS = 50.0
 
     /**
      * Where [trip]'s rider is walking to at [now], when that's a ride's boarding stop with a known
@@ -732,22 +771,21 @@ object OnTheWay {
      * [MISSED_WITHIN_METERS], its fix's uncertainty included): not on it,
      * so the next train they can catch is picked (the maintainer's rule: switch when seen). Unchanged
      * with no fix, or none that says so; a fix underground never comes, so this never guesses.
-     * On a walk to a ride, the rider is at its stop when near its placed position or any of the
-     * station's [entrances] (the maintainer, 2026-09-28: the Planner can place a big station's stop
-     * 200 m from the entrance the rider stands at). On a train nearly where they get off
-     * ([stationRiddenTo]), they're off when seen at that station the same way.
+     * On a walk to a ride, the rider is at its stop when near its placed position or the [station]'s
+     * own, or at any of its entrances (the maintainer, 2026-09-28: the Planner can place a big
+     * station's stop 200 m from the entrance the rider stands at) — [atStation]. On a train nearly
+     * where they get off ([stationRiddenTo]), they're off when seen at that station the same way.
      */
-    fun seen(trip: ActiveTrip, rider: LocationFix?, now: Instant, entrances: List<Coordinates> = emptyList()): ActiveTrip {
+    fun seen(trip: ActiveTrip, rider: LocationFix?, now: Instant, station: StationPlaces = StationPlaces()): ActiveTrip {
         walkingToRide(trip, now)?.let { ride ->
-            // Its placed point, the station's own point and entrances: whichever are known.
-            val there = rider != null && (listOfNotNull(ride.fromAt) + entrances).any { near(rider, it, AT_STOP_WITHIN_METERS) }
+            val there = rider != null && atStation(rider, ride.fromAt, station) != null
             return if (there) walked(trip, now) else trip
         }
         // On a train nearly at where they get off, and seen at that station, its placed point or any of
-        // its [entrances]: they're off, whatever the train followed says (it can be a later one than
+        // its entrances: they're off, whatever the train followed says (it can be a later one than
         // theirs, still a stop or two away: the maintainer, 2026-09-28).
         stationRiddenTo(trip, now)?.let { ride ->
-            val there = rider != null && (listOfNotNull(ride.toAt) + entrances).any { near(rider, it, AT_STOP_WITHIN_METERS) }
+            val there = rider != null && atStation(rider, ride.toAt, station) != null
             // Off when seen, not when the train followed was due: a rider seen after its time starts
             // the next leg now, not partly done (Codex, PR #359).
             if (there) return nextLeg(trip.copy(dueOffAt = null), now).first
@@ -764,6 +802,28 @@ object OnTheWay {
             vehicleId = "", vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null,
             legStartedAt = now, warnedLeg = -1, waitFrom = trip.waitFrom ?: trip.legStartedAt,
         )
+    }
+
+    /**
+     * Where [rider] is seen at a station placed at [placed] (the Planner's point, when it gives one)
+     * and [station] (read for it): within [AT_STOP_WITHIN_METERS] of either point, or
+     * [AT_ENTRANCE_WITHIN_METERS] of an entrance, the fix's uncertainty included. Null when neither.
+     */
+    fun atStation(rider: LocationFix, placed: Coordinates?, station: StationPlaces): SeenAt? = when {
+        listOfNotNull(placed, station.point).any { near(rider, it, AT_STOP_WITHIN_METERS) } -> SeenAt.POINT
+        station.entrances.any { near(rider, it, AT_ENTRANCE_WITHIN_METERS) } -> SeenAt.ENTRANCE
+        else -> null
+    }
+
+    /**
+     * What [seen] would see [rider] at, to move [trip] on at [now]: the stop a walk ends at, or the
+     * station a ride gets off at ([atStation]). Null when it wouldn't, so the log can say what moved
+     * a trip on without saying where.
+     */
+    fun seenAtStop(trip: ActiveTrip, rider: LocationFix?, now: Instant, station: StationPlaces = StationPlaces()): SeenAt? {
+        rider ?: return null
+        walkingToRide(trip, now)?.let { return atStation(rider, it.fromAt, station) }
+        return stationRiddenTo(trip, now)?.let { atStation(rider, it.toAt, station) }
     }
 
     // Whether [rider] is within [meters] of [at] wherever within its uncertainty they really are.

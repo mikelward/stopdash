@@ -1,6 +1,5 @@
 package app.stopdash.data
 
-import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.HubInfo
@@ -15,6 +14,7 @@ import app.stopdash.domain.PostcodeResolver
 import app.stopdash.domain.RouteSequenceSource
 import app.stopdash.domain.StationFinder
 import app.stopdash.domain.StationMatch
+import app.stopdash.domain.StationPlaces
 import app.stopdash.domain.StopAreaSource
 import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.StopFinder
@@ -309,14 +309,14 @@ class KtorTflClient(
         }
 
     /**
-     * Where the station [id] can be walked into ([entrancesOf]): for a trip's walk to it, which ends
+     * Where the station [id] can be walked into ([placesOf]): for a trip's walk to it, which ends
      * when the rider is seen at any of them. One request, naming only the station.
      */
-    suspend fun stationEntrances(id: String): List<Coordinates> =
+    suspend fun stationPlaces(id: String): StationPlaces =
         tflRequest { key ->
             httpClient.get("$baseUrl/StopPoint/$id") {
                 applyAppKey(key)
-            }.body<TflStopPointDto>().entrancesOf(id)
+            }.body<TflStopPointDto>().placesOf(id)
         }
 
     override suspend fun routeSequence(lineId: String, direction: String): LineSequence =

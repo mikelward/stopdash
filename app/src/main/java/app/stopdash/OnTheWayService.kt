@@ -360,8 +360,8 @@ internal suspend fun onTheWayFix(location: AndroidLocationProvider, trip: Active
     val now = Instant.now()
     if (trip == null || !OnTheWay.wantsFix(trip, now)) return null
     // GPS/fused, waited for: a quick coarse fix could never settle it, so it isn't asked for. How
-    // sure it must be depends on what it's for ([OnTheWay.sureEnoughFor]).
-    val sure = OnTheWay.sureEnoughFor(trip, now)
-    val fix = location.preciseFix(sureEnough = sure) ?: return null
+    // sure it must be depends on what it's for ([OnTheWay.sureEnoughFor]); one surer still is waited
+    // for where it could tell more ([OnTheWay.preferredFor]), the vaguer one kept if none comes.
+    val fix = location.preciseFix(sureEnough = OnTheWay.preferredFor(trip, now)) ?: return null
     return OnTheWay.usableFix(fix, trip, now)
 }

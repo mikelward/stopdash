@@ -2719,7 +2719,7 @@ class MainActivity : ComponentActivity() {
                     // TfL alone: a followed leg is never National Rail, so a Darwin board would only spend the rail key's quota.
                     arrivals = journeyPlanner::arrivals,
                     vehicles = journeyPlanner,
-                    entrances = journeyPlanner::stationEntrances,
+                    stationPlaces = journeyPlanner::stationPlaces,
                     // The same routes, held a day, the trip's cards place its rides with.
                     lineSequence = { lineId -> routeStops(context.applicationContext).let { it.cached(lineId, "") ?: it.load(lineId, "") } },
                     warn = ::logDepartureWarning,

@@ -147,20 +147,23 @@ class TflStopPointDtoTest {
                 ),
             ),
         )
+        // The station's own point apart from its entrances: they're weighed apart (OnTheWay.atStation).
         assertEquals(
-            listOf(
-                app.stopdash.domain.Coordinates(51.502, -0.102),
-                app.stopdash.domain.Coordinates(51.503, -0.103),
-                app.stopdash.domain.Coordinates(51.504, -0.104),
-                app.stopdash.domain.Coordinates(51.509, 0.0),
+            app.stopdash.domain.StationPlaces(
+                point = app.stopdash.domain.Coordinates(51.502, -0.102),
+                entrances = listOf(
+                    app.stopdash.domain.Coordinates(51.503, -0.103),
+                    app.stopdash.domain.Coordinates(51.504, -0.104),
+                    app.stopdash.domain.Coordinates(51.509, 0.0),
+                ),
             ),
-            hub.entrancesOf("940GZZLUEXA"),
+            hub.placesOf("940GZZLUEXA"),
         )
-        assertEquals(emptyList<app.stopdash.domain.Coordinates>(), hub.entrancesOf("940GZZLUNONE"))
+        assertEquals(app.stopdash.domain.StationPlaces(), hub.placesOf("940GZZLUNONE"))
         // As TfL sends it: an axis left out reads as absent, not as 0.0.
         val halfSet = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
             .decodeFromString(TflStopPointDto.serializer(), """{"id": "4900ZZLUEXA7", "stopType": "NaptanMetroEntrance", "lat": 51.5}""")
         assertNull(halfSet.lon)
-        assertEquals(emptyList<app.stopdash.domain.Coordinates>(), halfSet.entrancesOf("4900ZZLUEXA7"))
+        assertEquals(app.stopdash.domain.StationPlaces(), halfSet.placesOf("4900ZZLUEXA7"))
     }
 }
