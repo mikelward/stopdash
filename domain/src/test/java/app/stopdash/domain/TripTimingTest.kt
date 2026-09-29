@@ -260,6 +260,26 @@ class TripTimingTest {
     }
 
     @Test
+    fun `a ride another line takes is ranked by that line, not its Planner line`() {
+        // Blue (leg 1) is closed or unchecked, but another running line takes that ride.
+        val covered = TripTiming.estimate(twoLegs, now, Duration.ZERO, { null }, notRunning = setOf("blue"), otherLine = { it == 1 })
+        assertFalse(covered.blocked)
+        val checked = TripTiming.estimate(twoLegs, now, Duration.ZERO, { null }, unknown = setOf("blue"), otherLine = { it == 1 })
+        assertFalse(checked.unchecked)
+        // Another line on red's ride (leg 0) doesn't stand in for blue's.
+        assertTrue(TripTiming.estimate(twoLegs, now, Duration.ZERO, { null }, notRunning = setOf("blue"), otherLine = { it == 0 }).blocked)
+        assertTrue(TripTiming.estimate(twoLegs, now, Duration.ZERO, { null }, unknown = setOf("blue"), otherLine = { it == 0 }).unchecked)
+        // Withheld with nothing to time blue's ride, the reason is its other lines' want of trains,
+        // not blue not running: the ride no longer waits on blue.
+        val red = mapOf(0 to listOf(train("red", 6)))
+        fun withheld(otherLine: (Int) -> Boolean) = TripTiming.estimate(
+            twoLegs, now, Duration.ZERO, { red[it] }, notRunning = setOf("blue"), timetabled = { it == 0 }, otherLine = otherLine,
+        ).withheld?.reason
+        assertEquals(TripTiming.Reason.NO_LIVE, withheld { it == 1 })
+        assertEquals(TripTiming.Reason.NOT_RUNNING, withheld { false })
+    }
+
+    @Test
     fun `a closed stop blocks the route and an unchecked one marks it unchecked, whatever its lines`() {
         val live = mapOf(0 to listOf(train("red", 6)), 1 to listOf(train("blue", 22)))
         val closed = TripTiming.estimate(twoLegs, now, Duration.ZERO, { live[it] }, stops = TripClosures.Standing.CLOSED)

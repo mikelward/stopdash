@@ -116,7 +116,8 @@ object TripTiming {
      * when there are none StopDash can vouch for (the arrivals failed, went stale, or the route
      * couldn't be checked). [notRunning] is the lines not running now; [unknown] the lines whose
      * status couldn't be checked, with none known; [stops] how the route stands by its stops' closure
-     * checks ([TripClosures.standing]), which ranks it as its lines' would.
+     * checks ([TripClosures.standing]), which ranks it as its lines' would. A ride another line can
+     * take ([otherLine]) isn't ranked by its Planner line's status.
      */
     fun estimate(
         route: TripRoute,
@@ -133,12 +134,23 @@ object TripTiming {
         predicted: (Int) -> Int = { live(it)?.size ?: 0 },
         // Whether leg [index] carries the Planner's own times. One it didn't plan (a train through a
         // change, [RideLines.through]) carries the times of the rides it replaces as a placeholder,
-        // which belong to other lines, so only a live train times it.
+        // which belong to other lines, so only a live train times it. So does one whose Planner line
+        // another line stands in for while it isn't itself checked as running ([otherLine]): its
+        // times are a service that can't be relied on.
         timetabled: (Int) -> Boolean = { true },
         stops: TripClosures.Standing = TripClosures.Standing.OPEN,
+        // Whether another line, checked as running, can take leg [index]'s ride between the same
+        // stops ([RideLines.timedRunning]): then the ride can be taken, or was checked, whatever its
+        // Planner line's status, so a route isn't sunk below the others by a closed or unchecked
+        // Planner line that another running line stands in for (Codex on #309).
+        otherLine: (Int) -> Boolean = { false },
     ): Estimate {
-        val blocked = route.rides.any { it.lineId in notRunning } || stops == TripClosures.Standing.CLOSED
-        val unchecked = !blocked && (route.rides.any { it.lineId in unknown } || stops == TripClosures.Standing.UNCHECKED)
+        // Each ride by its index among the legs, as [otherLine] takes it; a walk has no line.
+        val rides = route.legs.withIndex().filterNot { it.value.isWalk }
+        fun decides(index: Int, lineId: String, lines: Set<String>) = lineId in lines && !otherLine(index)
+        val blocked = rides.any { (index, leg) -> decides(index, leg.lineId, notRunning) } || stops == TripClosures.Standing.CLOSED
+        val unchecked = !blocked &&
+            (rides.any { (index, leg) -> decides(index, leg.lineId, unknown) } || stops == TripClosures.Standing.UNCHECKED)
         var basis = Basis.LIVE
         var waits = false
         var withheld: Withheld? = null
@@ -149,7 +161,9 @@ object TripTiming {
             val trains = live(index)
             val train = trains?.filter { !it.expectedArrival.isBefore(ready) }?.minByOrNull { it.expectedArrival }
             fun unknown(): Pair<LegTiming, Basis> {
-                if (withheld == null) withheld = withheldAt(index, leg, ready, trains, leg.lineId in notRunning, current(index), predicted(index))
+                // A Planner line another line stands in for ([otherLine]) isn't why: the ride no longer
+                // waits on it, so the reason is the one its other lines' trains give.
+                if (withheld == null) withheld = withheldAt(index, leg, ready, trains, leg.lineId in notRunning && !otherLine(index), current(index), predicted(index))
                 return LegTiming(null, null, null, false) to Basis.UNKNOWN
             }
             return when {

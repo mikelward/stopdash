@@ -89,7 +89,7 @@ class RideLinesTest {
     @Test
     fun `a ride's running lines and its unchecked ones follow the same rule`() {
         val lines = linesOf(mapOf("green" to sequence("A", "B", "End")))
-        val good = mapOf("green" to LineStatus("green", LineStatus.GOOD_SERVICE, "Good Service"))
+        val good = listOf("red", "green").associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") }
         val closed = mapOf("green" to LineStatus("green", 20, "Service Closed"))
         val open = { _: TripLeg -> true }
         assertEquals(listOf("red"), lines.running(emptyMap(), open).map { it.lineId })
@@ -103,6 +103,37 @@ class RideLinesTest {
         // Unknown is unchecked; known, even closed, isn't: that one says why it doesn't count.
         assertEquals(setOf("green"), RideLines.unchecked(listOf(lines), emptyMap()))
         assertEquals(emptySet<String>(), RideLines.unchecked(listOf(lines), closed))
+    }
+
+    @Test
+    fun `the Planner's line answers to its status once another line keeps the ride usable`() {
+        val lines = linesOf(mapOf("green" to sequence("A", "B", "End")))
+        val good = { id: String -> LineStatus(id, LineStatus.GOOD_SERVICE, "Good Service") }
+        val closed = { id: String -> LineStatus(id, 20, "Service Closed") }
+        val open = { _: TripLeg -> true }
+        val red = lines.legs.first()
+        // Nothing else takes the ride: red is judged where the route is ranked, so it counts here
+        // whatever its status.
+        for (statuses in listOf(emptyMap(), mapOf("red" to closed("red")), mapOf("red" to closed("red"), "green" to closed("green")))) {
+            assertFalse(lines.othersTime(statuses, open))
+            assertTrue(lines.vouched(red, statuses, open))
+            assertEquals(listOf("red"), lines.timedRunning(statuses, open).map { it.lineId })
+        }
+        // Green runs, so the route no longer answers to red's status: red, closed or never checked,
+        // neither times the ride nor is offered (Codex on #382).
+        for (statuses in listOf(mapOf("green" to good("green")), mapOf("red" to closed("red"), "green" to good("green")))) {
+            assertTrue(lines.othersTime(statuses, open))
+            assertFalse(lines.vouched(red, statuses, open))
+            assertEquals(listOf("green"), lines.timedRunning(statuses, open).map { it.lineId })
+            assertEquals(listOf("green"), lines.running(statuses, open).map { it.lineId })
+        }
+        // Red checked as running still counts beside green.
+        val both = mapOf("red" to good("red"), "green" to good("green"))
+        assertEquals(listOf("red", "green"), lines.timedRunning(both, open).map { it.lineId })
+        // A line that only reaches the stop another way doesn't take the ride, so red still ranks it.
+        val around = linesOf(mapOf("green" to sequence("A", "Z", "B")))
+        assertFalse(around.othersTime(mapOf("green" to good("green")), open))
+        assertEquals(listOf("red", "green"), around.running(mapOf("green" to good("green")), open).map { it.lineId })
     }
 
     @Test
