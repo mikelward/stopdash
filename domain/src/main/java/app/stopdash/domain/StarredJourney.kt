@@ -214,6 +214,23 @@ object Journeys {
         return journeys.any { it.key in heldNow && it.key !in farAfter }
     }
 
+    /**
+     * Whether a same-set relocate to ([latitude], [longitude]) turns round any of the [shown] journeys
+     * (those whose stops the screen reported, facing the way ([shownLatitude], [shownLongitude]) turned
+     * them): its other end is now the nearer, so its origin, and the stops to fetch, change. The new
+     * origin isn't known until the screen builds the turned card, so the refresh waits for that report.
+     */
+    fun turnsShownJourney(
+        journeys: List<StarredJourney>,
+        shownLatitude: Double?,
+        shownLongitude: Double?,
+        latitude: Double?,
+        longitude: Double?,
+        shown: Set<String>,
+    ): Boolean = journeys.any { j ->
+        j.key in shown && oriented(j, shownLatitude, shownLongitude).from != oriented(j, latitude, longitude).from
+    }
+
     private fun distanceTo(end: JourneyEnd, latitude: Double, longitude: Double): Double? {
         val lat = end.latitude ?: return null
         val lon = end.longitude ?: return null
