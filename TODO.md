@@ -1220,8 +1220,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         can still exceed the keyless TfL budget and make the near-me refresh slow or rate-limited.
         Apply a stop/request budget within the eager clusters (which poles of a big junction to
         fetch, and how to present the rest) — a product decision on junction presentation, so its
-        own change; it pairs naturally with the "More" reveal, which also reshapes how a junction
-        expands. Until then SPEC/`NearbySelection` say plainly the cap bounds clusters, not
+        own change. Until then SPEC/`NearbySelection` say plainly the cap bounds clusters, not
         requests. **Impact (est.):** caps worst-case requests per refresh to a fixed ceiling — bounds
         the tail at a dense multi-junction corner (two big junctions could otherwise be dozens of
         poles); average case unchanged.
@@ -1333,7 +1332,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         **Arrivals stay one request per pole:** `/StopPoint/{ids}/Arrivals` 404s on a list, and a
         stop area's (`490G…`) own arrivals come back empty — so a P-pole junction costs P + 1, not
         2P. A per-cluster arrivals budget remains the lever for the arrivals half.
-  - [ ] **A revealed stop whose first fetch fails isn't in the widget's polling set** (Codex P2, PR
+  - [x] **A revealed stop whose first fetch fails isn't in the widget's polling set** — *moot: the
+        reveal was deleted (see "Delete the now-unreachable 'More' reveal path"), so there are no
+        revealed stops.* (Codex P2, PR
         #87 — deferred there). When a newly revealed stop's first arrivals request fails with no prior
         while an eager stop succeeds, the authoritative save persists only the merged (eager) stops, so
         the revealed stop is absent from the saved snapshot — and `WidgetRefreshWorker` derives its
@@ -2645,8 +2646,10 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 - **To… reads "No direct trips to ‹place› soon" and "Checking routes…" (autopilot, 2026-09-24).**
   Provisional copy (with "To station or stop" in the search field); strings only, not translated.
   *Superseded 2026-09-26: To… plans a trip (SPEC "Trips with a change").*
-- **The "More" reveal widget mirrors the app's *current* view, not eager-only (autopilot,
-  2026-09-21).** The reveal follow-up had to decide whether a revealed expansion reaches the
+- **The "More" reveal widget mirrors the app's *current* view, not eager-only — MOOT.** The reveal
+  was deleted, so no revealed stop reaches the snapshot any more. (An opened farther card still adds
+  stops to the list; those stay off the widget by design, SPEC *Near me now*.) (autopilot,
+  2026-09-21.) The reveal follow-up had to decide whether a revealed expansion reaches the
   persisted snapshot — which the widget renders and its background worker keeps polling — or
   stays in-app only. Taken as **Option A (reaches the widget)**, the maintainer's stated lean on
   the PR #85 threads ("the widget should be the same as the main screen"), with the pruning
@@ -2851,7 +2854,8 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   render-time compare against an independently-persisted watched set) stays worthwhile even
   then, not fully mooted (Codex P1). **Maintainer's call.**
   - **The "More" reveal is an instance of this same gap, deferred with it (Codex P1 on #87,
-    `discussion_r4064937114`, 2026-09-21).** On a relocation to a *different* cluster set,
+    `discussion_r4064937114`, 2026-09-21).** *The reveal was deleted since, so only the eager
+    baseline below remains; the rest of this note is history.* On a relocation to a *different* cluster set,
     `relocate()` takes the new-set path (not `onSameSet`), so `reconcile` — the only caller of
     `pruneDepartedFromWidget` — never runs for the departed set; `NearbyDeparturesStores.ownerFor`
     clears the old ViewModel, and if the new set's fetch fails (non-authoritative) the old
