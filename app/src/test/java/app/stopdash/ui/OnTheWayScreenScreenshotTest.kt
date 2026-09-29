@@ -16,9 +16,11 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.height
 import androidx.compose.ui.input.pointer.pointerInput
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Departure
@@ -139,6 +141,54 @@ class OnTheWayScreenScreenshotTest {
         }
         composeRule.onNodeWithText("To Canary Wharf").performClick()
         assertTrue(opened)
+    }
+
+    @Test
+    fun the_location_gate_pins_the_trip_card_at_the_top() {
+        // While near me is being found: at the top, where the near-me list pins it (maintainer,
+        // 2026-09-29), not centered with the spinner.
+        val state = OnTheWayBannerState(trip, TripProgress.Waiting(mildmay, at(4)), now) {}
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalOnTheWayBanner provides state) {
+                    LocationGate(NearbyStopsViewModel.State.Locating, onAllow = {}, onRetry = {}, onOpenSettings = {}, now = now)
+                }
+            }
+        }
+        captureSnapshot("on-the-way-gate-locating.png")
+        val card = composeRule.onNodeWithText("To Canary Wharf").getUnclippedBoundsInRoot()
+        val finding = composeRule.onNodeWithText("Finding stops near you…").getUnclippedBoundsInRoot()
+        assertTrue(card.top < androidx.compose.ui.unit.Dp(64f))
+        // The gate's own content stays centered in the room below it.
+        assertTrue(finding.top > androidx.compose.ui.unit.Dp(300f))
+    }
+
+    @Test
+    fun the_location_gate_card_scrolls_with_the_gate_on_a_short_window() {
+        // Landscape-short with large text: pinned, the card could leave the gate no room, and its
+        // action out of reach. It scrolls with the gate instead, and the action is still there.
+        val state = OnTheWayBannerState(trip, TripProgress.Waiting(mildmay, at(4)), now) {}
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                val base = androidx.compose.ui.platform.LocalDensity.current
+                androidx.compose.runtime.CompositionLocalProvider(
+                    LocalOnTheWayBanner provides state,
+                    androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(base.density, fontScale = 2f),
+                ) {
+                    LocationGate(
+                        NearbyStopsViewModel.State.PermissionRequired,
+                        onAllow = {},
+                        onRetry = {},
+                        onOpenSettings = {},
+                        modifier = androidx.compose.ui.Modifier.height(androidx.compose.ui.unit.Dp(360f)),
+                        now = now,
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("Allow location").performScrollTo().assertIsDisplayed()
+        // Scrolled to the action, the card has gone up with the rest of the gate: it isn't pinned.
+        assertTrue(composeRule.onNodeWithText("To Canary Wharf").getUnclippedBoundsInRoot().top < androidx.compose.ui.unit.Dp(0f))
     }
 
     @Test
