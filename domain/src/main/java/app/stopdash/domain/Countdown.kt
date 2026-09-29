@@ -26,15 +26,20 @@ object Countdown {
     }
 
     /**
+     * Whole minutes from [now] until [at], rounded down and never below zero: "0" inside the last
+     * minute. Every countdown the rider sees takes this one rule, so a train shown on a board and
+     * the same train named elsewhere (a trip's "Due in") never read a minute apart.
+     */
+    fun minutes(at: Instant, now: Instant): Long =
+        Duration.between(now, at).toMinutes().coerceAtLeast(0)
+
+    /**
      * The minutes label: "0 min" inside the last minute, "N min" otherwise. Assumes
      * [departure] has not yet gone — call [upcoming] first, which drops departed
      * services — but is defensive: a non-positive remaining still reads "0 min"
      * rather than a negative number.
      */
-    fun label(departure: Departure, now: Instant): String {
-        val minutes = remaining(departure, now).toMinutes()
-        return if (minutes < 1) "0 min" else "$minutes min"
-    }
+    fun label(departure: Departure, now: Instant): String = "${minutes(departure.expectedArrival, now)} min"
 
     /**
      * Several [departures]' countdowns as one line — "0 · 3 · 6 min" — for a card that
@@ -50,10 +55,8 @@ object Countdown {
      */
     fun mergedLabel(departures: List<Departure>, now: Instant): String {
         if (departures.isEmpty()) return ""
-        val minutes = departures.map { remaining(it, now).toMinutes() }
-        val parts = minutes.map { if (it < 1) "0" else it.toString() }
-        // Every entry is a number now, so the "min" unit always belongs at the end.
-        return parts.joinToString(" · ") + " min"
+        // Every entry is a number, so the "min" unit always belongs at the end.
+        return departures.joinToString(" · ") { minutes(it.expectedArrival, now).toString() } + " min"
     }
 
     /** [departures] that have not yet gone, soonest-first (ties broken by line for stability). */
