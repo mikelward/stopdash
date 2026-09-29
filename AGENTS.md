@@ -214,11 +214,14 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   irreversible actions outside the loop, and privacy uncertainty (is this a coordinate? a
   watched stop?), still wait for a real answer.
 - **"Merge in order"** (or "drive in order") is drive that yields to older PRs close to
-  landing: merge by hand, never auto-merge (disarm any armed). Before merging, wait for
-  an open, non-draft, lower-numbered PR on the same base that has ever passed Codex and
-  has had activity in the last 30 minutes — at most 30 minutes in total, then merge
-  anyway and name it. Keep driving this PR while waiting; if syncing moves its head,
-  merge on a fresh verdict. Say which PR you waited on or passed over.
+  landing: merge by hand, never auto-merge (disarm any armed). Just before merging, wait
+  for an open, non-draft, lower-numbered PR on the same base that has ever passed Codex
+  (a "didn't find any major issues" comment or a green `codex` status, on any head) and
+  has had activity (a push, review, comment, reaction or state change) in the last 30
+  minutes, for at most 30 minutes in total across rechecks, then merge anyway and name it.
+  Keep driving this PR while waiting; rebase only where the ruleset requires it or it is
+  `dirty`, and merge on the current head's verdict, rechecking first. Say which PR you
+  waited on or passed over.
 - **A red baseline is the next task** — get `./gradlew test`/`lint` green before pulling
   new work from `TODO.md`.
 
