@@ -262,6 +262,9 @@ private data class PersistedActiveTrip(
     val alertLeft: Boolean = false,
     val vehicleOffId: String = "",
     val waitFrom: String? = null,
+    // Absent from a trip kept before it was stored: taken as not yet seen on board, so its ride's
+    // step and board show until location or the rider says otherwise, as for any trip now.
+    val onBoardSeen: Boolean = false,
 ) {
     fun toTrip() = ActiveTrip(
         route = TripRoute(legs.map { it.toLeg() }),
@@ -278,6 +281,7 @@ private data class PersistedActiveTrip(
         alertLeft = alertLeft,
         vehicleOffId = vehicleOffId,
         waitFrom = waitFrom?.let(Instant::parse),
+        onBoardSeen = onBoardSeen,
     )
 
     companion object {
@@ -296,6 +300,7 @@ private data class PersistedActiveTrip(
             alertLeft = trip.alertLeft,
             vehicleOffId = trip.vehicleOffId,
             waitFrom = trip.waitFrom?.toString(),
+            onBoardSeen = trip.onBoardSeen,
         )
     }
 }

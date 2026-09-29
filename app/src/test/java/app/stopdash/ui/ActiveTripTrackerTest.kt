@@ -595,7 +595,7 @@ class ActiveTripTrackerTest {
         assertEquals(1, warned.size)
         // Off at C before TfL saw the train there: the stop the alert named is behind them.
         val done = alertsDone
-        tracker.goTo(Step(0, onBoard = true), Step(1))
+        tracker.goTo(Step(0), Step(1))
         assertEquals(done + 1, alertsDone)
         assertEquals(TripProgress.Walking(walkOn, at(17)), tracker.progress.value)
     }
@@ -615,13 +615,13 @@ class ActiveTripTrackerTest {
         assertEquals("said C", alerts.last())
         // The trip, and the alert, stay as a restart would bring them back.
         saves = false
-        tracker.goTo(Step(0, onBoard = true), Step(1))
+        tracker.goTo(Step(0), Step(1))
         assertEquals(0, tracker.trip.value?.legIndex)
         assertTrue(tracker.notKept.value)
         assertEquals("said C", alerts.last())
         // Tried again once saves work, it's made.
         saves = true
-        tracker.goTo(Step(0, onBoard = true), Step(1))
+        tracker.goTo(Step(0), Step(1))
         assertEquals(1, tracker.trip.value?.legIndex)
         assertFalse(tracker.notKept.value)
         assertEquals("done", alerts.last())
@@ -1529,9 +1529,15 @@ class ActiveTripTrackerTest {
         assertEquals("3", tracker.trip.value?.vehicleId)
         assertEquals(1, boardReads)
         assertEquals(at(3), tracker.nextBoard.value?.fetchedAt)
-        // On board: nothing left to board, so no board.
+        // Its train gone, the rider only taken to be on it: the board stays, as they may still be on
+        // the platform (maintainer, 2026-09-29).
         now = at(7)
         trains["3"] = listOf(call("B", 9), call("C", 14))
+        tracker.refresh()
+        assertEquals(ride, tracker.nextBoard.value?.ride)
+        // Said on board: nothing left to board, so no board.
+        val at = app.stopdash.domain.OnTheWay.stepOf(checkNotNull(tracker.trip.value))
+        tracker.goTo(at, at.copy(onBoard = true))
         tracker.refresh()
         assertNull(tracker.nextBoard.value)
     }
@@ -1631,7 +1637,8 @@ class ActiveTripTrackerTest {
         now = at(7)
         trains["3"] = listOf(call("B", 9), call("C", 14))
         tracker.refresh()
-        assertNull(tracker.nextBoard.value)
+        // Its train gone, but not seen on it: the board stays up (maintainer, 2026-09-29).
+        assertEquals(ride, tracker.nextBoard.value?.ride)
         // Seen due at C, and now past it: off the train, walking to D.
         now = at(15)
         trains["3"] = emptyList()

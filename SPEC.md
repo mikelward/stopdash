@@ -1322,7 +1322,7 @@ them there:
   changes onto it or waits for it, **the trains at its boarding stop that take them on** are listed
   under that ride's own row in the route's legs, drawn as the departures board draws a stop — its
   platform header over the board's own outlined card — so they read as a board, not as another step
-  (maintainer, 2026-09-28): every line of the ride's mode whose route calls at
+  (maintainer, 2026-09-28), and after its train has left until they're seen on board (above): every line of the ride's mode whose route calls at
   where they get off — judged by each train's own line route, so another branch's trains stay out —
   a row per line and terminus with its next few times, not only the train followed, a time grayed
   when it leaves before the rider can be there (as a trip's cards gray one); "Updating…"
@@ -1342,7 +1342,15 @@ them there:
   (`/Vehicle/{id}/Arrivals`, in one request) about every 30 s while it is shown. Still due at the
   boarding stop, the rider is **waiting** for it; once it has left, they are taken to be **on
   it**, the next stop and the stops left to getting off counted from its calls — so it works
-  underground with no GPS. TfL predicts only about half an hour ahead, so a stop further on is
+  underground with no GPS. **Taken to be is not seen to be** (maintainer, 2026-09-29): a rider still on
+  the platform underground looks the same, so until they're **seen on board** — by location (at a
+  later stop of the ride, or well on along it, as *sees a rider already on their way* below; the
+  checks carry on after the train leaves, within the same ten minutes of the wait) or by their word
+  (Next, or a tap on "Get off at …") — the step stays the ride's: **"Take the train to …"** (by its
+  mode, as "Finding your bus…" is), its board of departures still under it. Seen on board, the step
+  becomes "Get off at …" with the stops left and the board goes. "Get off soon" is still said on the
+  train followed, and a stop or two out the step says so, seen or not: a rider underground the whole
+  way would otherwise never be told. TfL predicts only about half an hour ahead, so a stop further on is
   **not yet predicted, not passed**: while the train keeps to the leg's planned stops, the stops
   left are counted from the plan and no time is claimed. Its calls moved on past where they get
   off, once it was seen due there by now, they have **got off**: the trip walks on for the walk's

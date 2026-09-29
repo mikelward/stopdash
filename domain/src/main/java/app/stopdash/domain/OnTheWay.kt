@@ -18,8 +18,11 @@ import java.time.Instant
  * rider was left behind by has since restarted the leg ([legStartedAt]), so fixes while waiting stay
  * bounded however many trains are missed ([OnTheWay.watchesWait]). [leftRide] is the ride the rider
  * was on board when Next moved them past it, so Back straight to it restores it as it was, its train
- * or none named ([OnTheWay.atStep]); in memory only, so not past a restart. Kept on the device only: where a rider
- * is going is theirs (SPEC *Privacy*).
+ * or none named ([OnTheWay.atStep]); in memory only, so not past a restart. [onBoardSeen] once the rider is
+ * known to be on board, by their word ([OnTheWay.atStep]) or seen along the ride ([OnTheWay.boardedOn]), not
+ * only taken to be because the train followed left ([boarded]): until then the ride's step and its board of
+ * departures stay up, since a rider still on the platform looks the same underground (maintainer, 2026-09-29).
+ * Kept on the device only: where a rider is going is theirs (SPEC *Privacy*).
  */
 data class ActiveTrip(
     val route: TripRoute,
@@ -37,6 +40,7 @@ data class ActiveTrip(
     val vehicleOffId: String = "",
     val waitFrom: Instant? = null,
     val leftRide: ActiveTrip? = null,
+    val onBoardSeen: Boolean = false,
 ) {
     /** The leg the rider is on, or null once they've arrived. */
     val leg: TripLeg? get() = route.legs.getOrNull(legIndex)
@@ -52,7 +56,8 @@ sealed interface TripProgress {
      * itself), expected there at [getOffAt] — null while that stop is beyond TfL's predictions, when
      * only the stops are counted from the plan. [stopsLeft] is null too when the plan's stops can't
      * be matched to the live ones (a bus leg's, [OnTheWay.checkable]). [getOffSoon] from one stop, or
-     * two minutes, out.
+     * two minutes, out. [seen] once the rider is known to be on board ([ActiveTrip.onBoardSeen]):
+     * until then they're only taken to be, and the step still says to take the ride.
      */
     data class Riding(
         val leg: TripLeg,
@@ -60,6 +65,7 @@ sealed interface TripProgress {
         val stopsLeft: Int?,
         val getOffAt: Instant?,
         val getOffSoon: Boolean,
+        val seen: Boolean = true,
     ) : TripProgress
 
     /**
@@ -152,8 +158,14 @@ object OnTheWay {
      * there" (the test itself counts its uncertainty), so one sure to 80 m isn't thrown away; the
      * left-behind check keeps [sureEnough]'s tighter bound.
      */
-    fun sureEnoughFor(trip: ActiveTrip, now: Instant): (LocationFix) -> Boolean =
-        if (seesWalkEnd(trip, now) || stationRiddenTo(trip, now) != null || watchesWait(trip, now)) ::sureEnoughToArrive else ::sureEnough
+    fun sureEnoughFor(trip: ActiveTrip, now: Instant): (LocationFix) -> Boolean = when {
+        seesWalkEnd(trip, now) || stationRiddenTo(trip, now) != null -> ::sureEnoughToArrive
+        // Just after the train left, a rider only taken to be on it is also still awaited ([watchesWait]),
+        // but a vague fix then can't tell the train from the platform it just left: the tighter bound holds.
+        mayBeLeftBehind(trip, now) -> ::sureEnough
+        watchesWait(trip, now) -> ::sureEnoughToArrive
+        else -> ::sureEnough
+    }
 
     private fun sureEnoughToArrive(fix: LocationFix): Boolean {
         val accuracy = fix.accuracyMeters ?: return false
@@ -234,13 +246,14 @@ object OnTheWay {
     fun checkable(leg: TripLeg): Boolean = leg.path.isNotEmpty() && leg.path.none { it.startsWith(STOP_AREA_PREFIX) }
 
     /**
-     * The ride the rider is on their way to board: the leg they're on while it's a ride not yet
-     * boarded (waiting, or changing onto it), or the ride after the walk they're on. Null while
-     * riding, on the walk to the destination, and once arrived.
+     * The ride the rider is on their way to board: the leg they're on while it's a ride they aren't
+     * yet seen on (waiting, changing onto it, or its train left with them only taken to be on it), or
+     * the ride after the walk they're on. Null once seen riding, on the walk to the destination, and
+     * once arrived.
      */
     fun upcomingRide(trip: ActiveTrip): TripLeg? {
         val leg = trip.leg ?: return null
-        if (!leg.isWalk) return leg.takeIf { !trip.boarded }
+        if (!leg.isWalk) return leg.takeIf { !trip.onBoardSeen }
         return trip.route.legs.getOrNull(trip.legIndex + 1)?.takeIf { !it.isWalk }
     }
 
@@ -264,6 +277,8 @@ object OnTheWay {
         is TripProgress.Walking -> progress.until.plus(progress.leg.changeAfter)
         is TripProgress.Changing -> progress.until
         is TripProgress.Waiting -> trip.legStartedAt
+        // Only taken to be on board: still at the stop, as far as anyone knows.
+        is TripProgress.Riding -> trip.legStartedAt.takeIf { !trip.onBoardSeen }
         else -> null
     }
 
@@ -405,7 +420,7 @@ object OnTheWay {
             val next = calls.firstOrNull()
             if (next != null && !checkable(leg) && !seenPast(trip, now)) {
                 // A bus with its stop beyond the predictions: on it, but its stops left can't be counted.
-                return trip.copy(boarded = true, boardedAt = boardedSince(trip, now)) to TripProgress.Riding(leg, next.stopName, null, null, false)
+                return trip.copy(boarded = true, boardedAt = boardedSince(trip, now)) to TripProgress.Riding(leg, next.stopName, null, null, false, trip.onBoardSeen)
             }
             val along = next?.let { onPath(leg, it) } ?: -1
             if (along >= 0) {
@@ -415,7 +430,7 @@ object OnTheWay {
                 val stopsLeft = (leg.path.indexOf(leg.toId).takeIf { it >= 0 } ?: leg.path.lastIndex) - along + 1
                 val soon = stopsLeft <= GET_OFF_SOON_STOPS
                 return trip.copy(boarded = true, boardedAt = boardedSince(trip, now)) to
-                TripProgress.Riding(leg, next!!.stopName, stopsLeft, null, soon)
+                TripProgress.Riding(leg, next!!.stopName, stopsLeft, null, soon, trip.onBoardSeen)
             }
             // The train's calls have left the leg (or TfL has none left). The rider got off only if
             // they were on it and it was seen due at their stop by now — a train that passes it runs
@@ -429,7 +444,7 @@ object OnTheWay {
         val stopsLeft = off + 1
         val soon = stopsLeft <= GET_OFF_SOON_STOPS || !now.plus(GET_OFF_SOON_TIME).isBefore(getOffAt)
         val riding = trip.copy(boarded = true, boardedAt = boardedSince(trip, now), dueOffAt = getOffAt)
-        return riding to TripProgress.Riding(leg, calls.first().stopName, stopsLeft, getOffAt, soon)
+        return riding to TripProgress.Riding(leg, calls.first().stopName, stopsLeft, getOffAt, soon, trip.onBoardSeen)
     }
 
     // Whether [call] is where [trip]'s rider gets off [leg]: the stop the Planner named, or the other
@@ -523,12 +538,13 @@ object OnTheWay {
     }
 
     /**
-     * The ride [trip]'s rider is still to board at [now]: its leg, not yet boarded, its change (if
-     * any) done. A fix then can see them already on their way along it ([seenAlong]); null otherwise.
+     * The ride [trip]'s rider is still to board at [now]: its leg, not yet seen on board (its train
+     * may have left, the rider only taken to be on it: maintainer, 2026-09-29), its change (if any)
+     * done. A fix then can see them already on their way along it ([seenAlong]); null otherwise.
      */
     fun waitingToBoard(trip: ActiveTrip, now: Instant): TripLeg? {
         val leg = trip.leg ?: return null
-        return leg.takeIf { !leg.isWalk && !trip.boarded && changeUntil(trip, now) == null }
+        return leg.takeIf { !leg.isWalk && !trip.onBoardSeen && changeUntil(trip, now) == null }
     }
 
     /**
@@ -651,7 +667,7 @@ object OnTheWay {
         val offId = calls.getOrNull(off)?.takeIf { !calls(it, leg.toId, leg.toName) }?.stopId.orEmpty()
         val on = trip.copy(
             vehicleId = train.vehicleId, vehicleOffId = offId,
-            boardsAt = train.expectedArrival, boarded = true, boardedAt = left, dueOffAt = null,
+            boardsAt = train.expectedArrival, boarded = true, boardedAt = left, dueOffAt = null, onBoardSeen = true,
         )
         return advance(on, calls, now).takeIf { it.second is TripProgress.Riding }
     }
@@ -800,7 +816,7 @@ object OnTheWay {
         if (!near(rider, at, MISSED_WITHIN_METERS)) return trip
         return trip.copy(
             vehicleId = "", vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null,
-            legStartedAt = now, warnedLeg = -1, waitFrom = trip.waitFrom ?: trip.legStartedAt,
+            legStartedAt = now, warnedLeg = -1, waitFrom = trip.waitFrom ?: trip.legStartedAt, onBoardSeen = false,
         )
     }
 
@@ -843,6 +859,7 @@ object OnTheWay {
         return trip.copy(
             legIndex = trip.legIndex + 1, legStartedAt = now.plus(leg.changeAfter),
             vehicleId = "", vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, waitFrom = null,
+            onBoardSeen = false,
         )
     }
 
@@ -857,6 +874,7 @@ object OnTheWay {
     fun atLeg(trip: ActiveTrip, index: Int, now: Instant): ActiveTrip = trip.copy(
         legIndex = index.coerceIn(0, trip.route.legs.size), legStartedAt = now,
         vehicleId = "", vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, warnedLeg = -1, waitFrom = null,
+        onBoardSeen = false,
     )
 
     /**
@@ -870,8 +888,12 @@ object OnTheWay {
     fun steps(route: TripRoute): List<Step> =
         route.legs.flatMapIndexed { index, leg -> if (leg.isWalk) listOf(Step(index)) else listOf(Step(index), Step(index, onBoard = true)) }
 
-    /** The step [trip] is at: its leg, and on a ride, whether they're on board it. */
-    fun stepOf(trip: ActiveTrip): Step = Step(trip.legIndex, trip.boarded && trip.leg?.isWalk == false)
+    /**
+     * The step [trip] is at: its leg, and on a ride, whether they're on board it — seen so, not only
+     * taken to be because their train left (maintainer, 2026-09-29: still on the platform looks the
+     * same underground, so the ride's step stays until location or their word says otherwise).
+     */
+    fun stepOf(trip: ActiveTrip): Step = Step(trip.legIndex, trip.onBoardSeen && trip.leg?.isWalk == false)
 
     /**
      * How many of [trip]'s steps are behind the rider, in order ([steps]): those before theirs, or
@@ -923,7 +945,7 @@ object OnTheWay {
             atLeg(trip, step.leg, now)
         } else {
             val at = if (step.leg == trip.legIndex) trip else atLeg(trip, step.leg, now)
-            at.copy(boarded = true, boardedAt = now.minus(MISSED_WINDOW), legStartedAt = now)
+            at.copy(boarded = true, boardedAt = now.minus(MISSED_WINDOW), legStartedAt = now, onBoardSeen = true)
         }
         // On board a ride and moved on by Next: kept, so Back can undo just that. Kept with no train
         // named too, so Back is on board as they said, not on one at the platform by then (Codex, PR #384).
@@ -967,7 +989,7 @@ object OnTheWay {
         val leg = trip.leg
         val doneAt = if (leg?.isWalk == true) trip.legStartedAt.plus(leg.run) else trip.dueOffAt
         val from = (doneAt?.takeIf { it.isBefore(now) } ?: now).plus(leg?.changeAfter ?: Duration.ZERO)
-        val next = trip.copy(legIndex = trip.legIndex + 1, legStartedAt = from, vehicleId = "", vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, waitFrom = null)
+        val next = trip.copy(legIndex = trip.legIndex + 1, legStartedAt = from, vehicleId = "", vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, waitFrom = null, onBoardSeen = false)
         val onward = next.leg ?: return next to TripProgress.Arrived
         if (onward.isWalk) {
             val until = from.plus(onward.run)
