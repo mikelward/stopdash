@@ -96,6 +96,25 @@ data class LineStatus(
             if (statuses.values.none { it.hasDue(today) }) return statuses
             return statuses.mapValues { (_, status) -> status.asOf(today) }
         }
+
+        /**
+         * [statuses] as a trip's rides travel them (Codex, PR #337): [rides] gives, for each line, the
+         * trains seen along each of its rides, and a line takes its status for the one direction
+         * they all go ([forDirection]), as a list row of those trains shows it, so a card riding the
+         * unaffected way doesn't warn of the other way's alert. A line with a ride whose trains
+         * aren't seen yet, or are seen going both ways, keeps its line-wide status, which hides
+         * nothing.
+         */
+        fun alongRides(statuses: Map<String, LineStatus>, rides: Map<String, List<List<Departure>>>): Map<String, LineStatus> {
+            if (statuses.values.none { it.byDirection.isNotEmpty() }) return statuses
+            return statuses.mapValues { (line, status) ->
+                // Each ride's one direction, or null where it can't be told; then the line's, if one.
+                val direction = rides[line].orEmpty()
+                    .map { trains -> trains.map { it.direction }.filter { it.isNotBlank() }.toSet().singleOrNull() }
+                    .distinct().singleOrNull()
+                direction?.let(status::forDirection) ?: status
+            }
+        }
     }
 
     private fun hasDue(today: LocalDate): Boolean =

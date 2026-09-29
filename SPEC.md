@@ -1491,7 +1491,9 @@ failing it over and over costs a detailed response every so often, not one every
 on the line is still looked up at once, its wait starting over. Until that
 answer arrives, or if it fails, or where TfL scopes an alert to no direction or a row has none (most
 rail predictions), the alert shows in both directions, as before — the split only ever hides an
-alert TfL itself says is for the other way. The widget and watch do the same: the widget's
+alert TfL itself says is for the other way. A trip's cards follow it too, by the direction each ride's
+trains are seen going: a line not seen along its ride yet, or seen going both ways, keeps its
+line-wide alert. The widget and watch do the same: the widget's
 snapshot keeps each direction's status beside the line-wide one, the watch receives them with
 dismissals applied per direction (dismissing one direction's alert leaves the other direction's
 marked), and the widget's own refresh fills the same remembered answers. Until a lookup lands, a

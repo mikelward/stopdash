@@ -1971,10 +1971,12 @@ Builds on Phase 1's minimal line-status marking.
               its way also hid a row with no direction (most rail, a status-only row), even when
               the other way had its own alert. `DepartureRows.withoutDismissed` now shows the
               other way's alert there, as the widget and watch do (`LineStatusCheck.shown`).
-        - [ ] **Trip cards by direction too**: a collapsed trip card's ⚠ and ⓘ read the line-wide
-              status, not the leg's direction, so a card riding the unaffected way still shows a
-              one-direction alert (Codex, PR #337). A leg carries no TfL direction until its trains
-              are seen; derive the card's marks from its direction-resolved rows instead.
+        - [x] **Trip cards by direction too**: a collapsed trip card's ⚠ and ⓘ read the line-wide
+              status, not the leg's direction, so a card riding the unaffected way still showed a
+              one-direction alert (Codex, PR #337). Done: each line's status is taken for the
+              direction its trains along the ride are seen going (`LineStatus.alongRides`), before
+              dismissals, as a list row's is; a line not seen yet, or seen both ways, keeps the
+              line-wide status. The open route's summary does the same.
         - [ ] **Planned work's ⓘ on the widget and watch**: they persist a line check without its
               planned work, so a line whose only alert is still to come shows as a clean
               line there (it showed the ⚠ before), with no ⓘ in its place (Codex, PR #337). Needs
