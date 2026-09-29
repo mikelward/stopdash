@@ -2379,11 +2379,12 @@ and these carry the rest as their own PRs:
       the shareable debug-log export (its own item below), Settings (Phase 2), the
       licenses/About screen (above and Phase 0), and the Play internal track (above) — this
       bullet is only the check for anything else the peers have that fits here.
-- [ ] Fail a **release** build when the git-derived versionCode/SHA fell back (a
+- [x] Fail a **release** build when the git-derived versionCode/SHA fell back (a
       source-archive or no-git build): Play rejects a non-incrementing versionCode, so a
-      silent fallback of `1` is wrong for a shipped artifact. The derivation logs a
-      warning now; the hard release-side guard lands here with the deploy job that makes
-      release integrity meaningful (Codex, PR #4).
+      silent fallback of `1` is wrong for a shipped artifact (Codex, PR #4). Landed with the
+      deploy job in place: `:app:checkReleaseVersion`, on the release variant's first task,
+      fails when git can't read the history or the clone is shallow (a short count is as wrong
+      as `1`); a debug build still takes the fallback with a warning. CI asserts both failures.
 - [ ] Licenses / About screen finalized.
 - [ ] **Shareable bug-report export of the on-device log, with travel data redacted.**
       A user-shareable export of the diagnostic log so a bug report can carry it. The

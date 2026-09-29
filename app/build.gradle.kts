@@ -37,7 +37,7 @@ if (file("google-services.json").exists()) {
     }
 }
 
-fun gitOutput(vararg args: String, fallback: String): String =
+fun gitOutput(vararg args: String): String? =
     try {
         // No isIgnoreExitValue: a nonzero exit — a source archive with no .git,
         // where rev-list/rev-parse exit 128 — must throw so the catch runs and
@@ -46,23 +46,44 @@ fun gitOutput(vararg args: String, fallback: String): String =
         val output = providers.exec {
             commandLine("git", *args)
         }.standardOutput.asText.get().trim()
-        output.ifEmpty { fallback }
+        output.ifEmpty { null }
     } catch (e: Exception) {
         // Don't fail configuration on a source-archive/no-git build, but don't
         // be silent either: a fallback versionCode/SHA is fine for a debug build
-        // and wrong for a release one. Failing release builds outright belongs
-        // with the deploy job (TODO Phase 5) — for now, leave a trace.
-        logger.warn("git ${args.joinToString(" ")} failed (${e.message}); using fallback \"$fallback\"")
-        fallback
+        // and wrong for a release one, which checkReleaseVersion (below) fails.
+        logger.warn("git ${args.joinToString(" ")} failed (${e.message}); using a fallback version")
+        null
     }
 
 // Monotonic versionCode as long as main only moves forward; Play rejects an
 // AAB whose versionCode is <= the highest already uploaded. CI checks out with
 // fetch-depth: 0 so the count isn't truncated by a shallow clone.
-val gitCommitCount: Int =
-    gitOutput("rev-list", "--count", "HEAD", fallback = "1").toIntOrNull() ?: 1
-val gitShortSha: String = gitOutput("rev-parse", "--short", "HEAD", fallback = "unknown")
+val gitCommitCount: Int? = gitOutput("rev-list", "--count", "HEAD")?.toIntOrNull()
+val gitShortSha: String? = gitOutput("rev-parse", "--short", "HEAD")
+// A shallow clone counts only the commits it holds: a versionCode below main's real one.
+val gitShallow: Boolean = gitOutput("rev-parse", "--is-shallow-repository") == "true"
 val baseVersionName = "0.1"
+
+// A shipped build's versionCode has to be main's real commit count: Play rejects one that
+// isn't above the last upload, and the deploy job tags its GitHub prerelease with it. So a
+// release build fails, at its first task, when git couldn't give the count (a source
+// archive) or gave a truncated one (a shallow clone), rather than ship versionCode 1 or a
+// low count under a real-looking tag. A debug build takes the fallback, with the warning
+// above. CI checks both failures, and its release jobs show a full clone passing.
+val releaseVersionProblem: String? = when {
+    gitCommitCount == null || gitShortSha == null ->
+        "git couldn't read the history (a source archive, or git missing)"
+    gitShallow -> "the clone is shallow, so its commit count is short (run git fetch --unshallow)"
+    else -> null
+}
+val releaseVersionCheck = tasks.register("checkReleaseVersion") {
+    description = "Fails a release build whose versionCode didn't come from the full git history."
+    val problem = releaseVersionProblem
+    doLast {
+        check(problem == null) { "A release build needs its versionCode from the full git history: $problem." }
+    }
+}
+tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(releaseVersionCheck) }
 
 // The four release-keystore variables, normalized once: blank is absent, so a
 // whitespace-only secret can't slip past the all-or-none guard and attach an
@@ -102,8 +123,8 @@ android {
         // standard widget is eligible, not a separate code path (SPEC).
         minSdk = 34
         targetSdk = 36
-        versionCode = gitCommitCount
-        versionName = "$baseVersionName.$gitCommitCount+$gitShortSha"
+        versionCode = gitCommitCount ?: 1
+        versionName = "$baseVersionName.${gitCommitCount ?: 1}+${gitShortSha ?: "unknown"}"
     }
 
     signingConfigs {
