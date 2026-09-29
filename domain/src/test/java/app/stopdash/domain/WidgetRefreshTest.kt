@@ -175,6 +175,29 @@ class WidgetRefreshTest {
     }
 
     @Test
+    fun `a line check is stamped and reused by the steady clock`() = runTest {
+        // The wall clock was set back an hour since the process started.
+        SteadyClock.source = object : SteadyClock.Source {
+            override val frame: SteadyClock.Frame? = null
+            override fun offset(): java.time.Duration = java.time.Duration.ofHours(1)
+        }
+        try {
+            val prior = snapshot(stop("A", listOf(departure("Brixton"))))
+            val good = LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service")
+            val saved = (WidgetRefresh.refresh(prior, { t1 }, fetchStatuses = { listOf(good) }) { listOf(departure("Fresh")) } as WidgetRefresh.Outcome.Save).snapshot
+            // Stamped in the steady frame, as a fetch is: an hour on from the wall clock.
+            assertEquals(t1.plus(java.time.Duration.ofHours(1)), saved.lineStatuses.getValue("victoria").checkedAt)
+            // Ten seconds on it's ten seconds old, so it's reused, not asked about again.
+            var asked = false
+            val outcome = WidgetRefresh.refresh(saved, { t1.plusSeconds(10) }, statusReuse = java.time.Duration.ofSeconds(90), fetchStatuses = { asked = true; emptyList() }) { null }
+            assertEquals(WidgetRefresh.Outcome.Unchanged, outcome)
+            assertFalse(asked)
+        } finally {
+            SteadyClock.source = null
+        }
+    }
+
+    @Test
     fun `an empty snapshot has nothing to refresh`() = runTest {
         val refreshed = WidgetRefresh.refreshedArrivals(DeparturesSnapshot(emptyList(), t0), t1) {
             listOf(departure("x"))

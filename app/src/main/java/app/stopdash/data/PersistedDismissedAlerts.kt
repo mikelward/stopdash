@@ -1,6 +1,8 @@
 package app.stopdash.data
 
 import app.stopdash.domain.DismissedAlert
+import app.stopdash.domain.Staleness
+import app.stopdash.domain.SteadyClock
 import java.time.Instant
 import kotlinx.serialization.Serializable
 
@@ -20,6 +22,13 @@ import kotlinx.serialization.Serializable
 internal data class PersistedDismissedAlerts(
     val version: Int = CURRENT_VERSION,
     val alerts: List<PersistedDismissedAlert> = emptyList(),
+    // True when the end times ([PersistedDismissedAlert.endedAtMillis]) are the steady clock's
+    // ([SteadyClock]), in [endsFrame], as the line checks they're weighed against are. Defaulted: an
+    // older build's are the wall clock's, and an older build reads these as the wall clock's too,
+    // which is how it compares its own checks; either way an end time counts for only one staleness
+    // window, so no version bump, which would drop every dismissal.
+    val steadyEnds: Boolean = false,
+    val endsFrame: PersistedFrame? = null,
 ) {
     companion object {
         /** The current on-disk format. Bump when a field's meaning changes incompatibly. */
@@ -38,15 +47,35 @@ internal data class PersistedDismissedAlert(
     val endedAtMillis: Long? = null,
 )
 
+/** This set, with each of [ended]'s end times (steady stamps in this process's frame) kept, marked as in it. */
 internal fun Set<DismissedAlert>.toPersisted(ended: Map<DismissedAlert, Instant> = emptyMap()): PersistedDismissedAlerts =
     PersistedDismissedAlerts(
         alerts = map { PersistedDismissedAlert(it.alertKey, it.contentSignature, ended[it]?.toEpochMilli()) },
+        steadyEnds = true,
+        endsFrame = SteadyClock.source?.frame?.toPersisted(),
     )
 
-/** The entries marked ended ([PersistedDismissedAlert.endedAtMillis]); none for an unknown version. */
-internal fun PersistedDismissedAlerts.ended(): Map<DismissedAlert, Instant> {
+/**
+ * The entries marked ended ([PersistedDismissedAlert.endedAtMillis]), each end time moved into the
+ * frame [to] as the stored snapshot's stamps are ([inFrame]), so it's weighed against a line check
+ * in the same one however the clock has been set since; none for an unknown version. One from an
+ * earlier boot can't be moved, but it was seen before [to]'s boot started, so it's taken as then,
+ * plus the margin the snapshot keeps that boot's checks within ([fromEarlierBoot]): it hides every
+ * check the snapshot kept from before the reboot. Taken from [to]'s own start each
+ * read, it moves with the clock as those checks do once the snapshot has adopted this boot, and
+ * neither file has to have been written since for the two to agree (Codex, PR #386). An older
+ * build's, the wall clock's, is taken in as the wall clock reads it now.
+ */
+internal fun PersistedDismissedAlerts.ended(to: SteadyClock.Frame? = SteadyClock.source?.frame): Map<DismissedAlert, Instant> {
     if (version != PersistedDismissedAlerts.CURRENT_VERSION) return emptyMap()
-    return alerts.mapNotNull { a -> a.endedAtMillis?.let { DismissedAlert(a.alertKey, a.contentSignature) to Instant.ofEpochMilli(it) } }.toMap()
+    val from = endsFrame?.toDomain()
+    fun here(millis: Long): Instant = when {
+        !steadyEnds -> SteadyClock.stamp(Instant.ofEpochMilli(millis))
+        from != null && to != null && from.boot != to.boot ->
+            Instant.ofEpochMilli(to.originMillis + Staleness.CLOCK_SKEW.inWholeMilliseconds)
+        else -> Instant.ofEpochMilli(millis).plus(SteadyClock.shiftBetween(from, to))
+    }
+    return alerts.mapNotNull { a -> a.endedAtMillis?.let { DismissedAlert(a.alertKey, a.contentSignature) to here(it) } }.toMap()
 }
 
 /**

@@ -174,7 +174,8 @@ object WidgetRefresh {
         val kept = snapshot.lineStatuses.filterKeys { it in lines }
         val toAsk = lines.filterTo(HashSet()) { id ->
             val prior = kept[id] ?: return@filterTo true
-            val age = Duration.between(prior.checkedAt, now)
+            // By the steady clock, as every check is stamped ([LineStatusCheck]).
+            val age = SteadyClock.age(prior.checkedAt, now)
             // One checked while a lookup of which way its alerts apply was running is asked again:
             // reused, it would show them both ways for the whole reuse window.
             age.isNegative || age >= reuse || prior.status.awaitingDirections
@@ -182,7 +183,9 @@ object WidgetRefresh {
         if (toAsk.isEmpty()) return snapshot.copy(lineStatuses = kept)
         val results = LineStatusBatch.request(toAsk) { chunk -> fetchStatuses(chunk.toSet()) }
         if (!results.anyAnswered) return snapshot.copy(lineStatuses = kept)
-        val at = answeredAt()
+        val answered = answeredAt()
+        // Stamped by the steady clock, as a fetch is ([SteadyClock]).
+        val at = SteadyClock.stamp(answered)
         val returned = results.answers.flatMap { it.value }
             .filter { it.lineId in toAsk }.associate { it.lineId to LineStatusCheck(it, at) }
         // A line asked about that TfL left out gets a no-verdict check, so it replaces the old one
@@ -190,6 +193,6 @@ object WidgetRefresh {
         // entry reads as "nothing new") until it ages out. Only lines in a request TfL answered: a
         // failed one's lines keep their prior checks.
         val fresh = results.answeredIds.filter { it in toAsk }.associateWith { returned[it] ?: LineStatusCheck.noVerdict(it, at) }
-        return snapshot.copy(lineStatuses = LineStatusCheck.newest(kept, fresh, lines, at))
+        return snapshot.copy(lineStatuses = LineStatusCheck.newest(kept, fresh, lines, answered))
     }
 }

@@ -11,6 +11,7 @@ import app.stopdash.domain.Dismissals
 import app.stopdash.domain.Dismissed
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DismissedAlertsStore
+import app.stopdash.domain.Staleness
 import java.io.InputStream
 import java.io.OutputStream
 import java.time.Instant
@@ -43,11 +44,14 @@ class DataStoreDismissedAlertsStore internal constructor(
     override fun dismissals(): Flow<Dismissals> =
         dataStore.data.map { stored ->
             val ended = stored?.ended().orEmpty()
-            // An end time after now means the clock went back since it was recorded: applied, it
-            // would hide checks made after the end, a recurrence among them, so it's left out
-            // until the next reconcile drops it. What it covered is future-dated, and not shown.
+            // An end time more than a moment after now by the steady clock it's stamped by means
+            // the clock went back since it was recorded where no frame could say so (an older
+            // build's, or no boot to tell): applied, it would hide checks made after the end, a
+            // recurrence among them, so it's left out until the next reconcile drops it. What it
+            // covered is future-dated, and not shown. The moment is the snapshot's own margin, which
+            // an end taken across a reboot sits at the edge of ([ended]).
             val now = clock()
-            Dismissals((stored?.toDomain() ?: emptySet()) - ended.keys, ended.filterValues { !it.isAfter(now) })
+            Dismissals((stored?.toDomain() ?: emptySet()) - ended.keys, ended.filterValues { !Staleness.isFromFuture(Staleness.age(it, now)) })
         }
 
     override suspend fun dismiss(alert: DismissedAlert) {

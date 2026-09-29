@@ -2,11 +2,15 @@ package app.stopdash.data
 
 import androidx.datastore.core.DataStore
 import app.stopdash.domain.DismissedAlert
+import app.stopdash.domain.SteadyClock
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -106,14 +110,99 @@ class DataStoreDismissedAlertsStoreTest {
         store.reconcile(live = emptySet(), checkedPlaces = victoria)
         assertEquals(app.stopdash.domain.Dismissals(emptySet(), mapOf(dismissal to start)), store.dismissals().first())
         assertEquals(emptySet<DismissedAlert>(), store.dismissed().first())
-        // The clock goes back: an end time now in the future isn't applied, as it would hide a
-        // recurrence fetched since. Nor is it an ordinary dismissal.
+        // An end time ahead of the clock (here, with no steady source, the wall clock set back; on a
+        // device, across a reboot) isn't applied, as it would hide a recurrence fetched since. Nor
+        // is it an ordinary dismissal.
         now = start.minusSeconds(3_600)
         assertEquals(app.stopdash.domain.Dismissals.NONE, store.dismissals().first())
         // Once every check it could hide is stale, it goes.
         now = start.plusSeconds(3_600)
         store.reconcile(live = setOf(dismissal), checkedPlaces = victoria)
         assertEquals(app.stopdash.domain.Dismissals.NONE, store.dismissals().first())
+    }
+
+    // A device whose wall clock has been set back by [setBack] since the process started, in [frame].
+    private class Steady(var setBack: java.time.Duration = java.time.Duration.ZERO, override val frame: SteadyClock.Frame? = SteadyClock.Frame("device/7", 0L)) : SteadyClock.Source {
+        override fun offset(): java.time.Duration = setBack
+    }
+
+    @After
+    fun resetSteadyClock() {
+        SteadyClock.source = null
+    }
+
+    @Test
+    fun `an ended dismissal still hides the widget's old check after the clock is set back`() = runTest {
+        val start = java.time.Instant.parse("2026-09-18T08:00:00Z")
+        val device = Steady()
+        SteadyClock.source = device
+        var now = start
+        val severe = app.stopdash.domain.LineStatus("victoria", 6, "Severe Delays", "Signal failure.")
+        val backing = FakeDataStore(null)
+        val store = DataStoreDismissedAlertsStore(backing, clock = { now })
+        val dismissal = DismissedAlert.ofLineStatus(severe)
+        // The widget's copy was checked, then the alert's end was seen.
+        val old = app.stopdash.domain.LineStatusCheck(severe, SteadyClock.stamp(start.minusSeconds(30)))
+        store.dismiss(dismissal)
+        store.reconcile(live = emptySet(), checkedPlaces = setOf(app.stopdash.domain.lineAlertKey("victoria")))
+        // A minute on, the clock is set back an hour: the old check is still live by the steady
+        // clock, so the end it's weighed against is too, and it stays hidden (Codex, PR #386).
+        device.setBack = java.time.Duration.ofHours(1)
+        now = start.plusSeconds(60).minusSeconds(3_600)
+        assertTrue(old.isLive(now))
+        assertTrue(store.dismissals().first().hide(old))
+        // So too for a process started since, in the same boot, whose frame reads the boot an hour earlier.
+        SteadyClock.source = Steady(frame = SteadyClock.Frame("device/7", -3_600_000L))
+        val moved = app.stopdash.domain.LineStatusCheck(severe, start.minusSeconds(30).minusSeconds(3_600))
+        assertTrue(DataStoreDismissedAlertsStore(backing, clock = { now }).dismissals().first().hide(moved))
+    }
+
+    @Test
+    fun `an ended dismissal kept across a reboot hides the old check however the clock is set after`() = runTest {
+        val start = java.time.Instant.parse("2026-09-18T08:00:00Z")
+        val severe = app.stopdash.domain.LineStatus("victoria", 6, "Severe Delays", "Signal failure.")
+        val dismissal = DismissedAlert.ofLineStatus(severe)
+        // In one boot, the widget's copy was checked, then the alert's end was seen.
+        val before = SteadyClock.Frame("device/7", start.minusSeconds(86_400).toEpochMilli())
+        SteadyClock.source = Steady(frame = before)
+        val backing = FakeDataStore(null)
+        DataStoreDismissedAlertsStore(backing, clock = { start }).run {
+            dismiss(dismissal)
+            reconcile(live = emptySet(), checkedPlaces = setOf(app.stopdash.domain.lineAlertKey("victoria")))
+        }
+        val stored = PersistedSnapshot(
+            lineStatuses = listOf(app.stopdash.domain.LineStatusCheck(severe, start.minusSeconds(30)).toPersisted()),
+            stampFrame = before.toPersisted(),
+        )
+        // The phone reboots, and a read of the stored snapshot takes it into the new boot.
+        val bootStart = start.plusSeconds(90).toEpochMilli()
+        val adopted = stored.inFrame(SteadyClock.Frame("device/8", bootStart))
+        for (setBy in listOf(3_600L, -3_600L)) {
+            // The clock is then set, and a process started since reads the boot as that much later
+            // or earlier: the snapshot's check moves with it, and the end must too (Codex, PR #386).
+            val after = SteadyClock.Frame("device/8", bootStart + setBy * 1_000)
+            SteadyClock.source = Steady(frame = after)
+            val old = adopted.inFrame(after).lineStatuses.single().toDomain()
+            val now = java.time.Instant.ofEpochMilli(after.originMillis).plusSeconds(120)
+            assertTrue(old.isLive(now))
+            val dismissals = DataStoreDismissedAlertsStore(backing, clock = { now }).dismissals().first()
+            assertTrue(dismissals.hide(old))
+            // A check made since the reboot that still has the alert is a recurrence: it shows.
+            assertFalse(dismissals.hide(app.stopdash.domain.LineStatusCheck(severe, now)))
+        }
+    }
+
+    @Test
+    fun `an older build's end time, the wall clock's, is taken in as the wall clock reads it`() = runTest {
+        val start = java.time.Instant.parse("2026-09-18T08:00:00Z")
+        val severe = app.stopdash.domain.LineStatus("victoria", 6, "Severe Delays", "Signal failure.")
+        val dismissal = DismissedAlert.ofLineStatus(severe)
+        val written = PersistedDismissedAlerts(alerts = listOf(PersistedDismissedAlert(dismissal.alertKey, dismissal.contentSignature, start.toEpochMilli())))
+        // The clock was set back an hour since this process started: the end, a minute ago by the wall
+        // clock, is a minute ago in the steady frame too.
+        SteadyClock.source = Steady(setBack = java.time.Duration.ofHours(1))
+        val ended = DataStoreDismissedAlertsStore(FakeDataStore(written), clock = { start.plusSeconds(60) }).dismissals().first().ended
+        assertEquals(mapOf(dismissal to start.plusSeconds(3_600)), ended)
     }
 
     @Test

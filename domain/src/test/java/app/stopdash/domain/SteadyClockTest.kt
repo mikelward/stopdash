@@ -84,4 +84,56 @@ class SteadyClockTest {
         // Once the clock has caught up with the old stamp, it's an hour old, not fresh again.
         assertNull(cache.get("940GEXAMPLE1", now.plusSeconds(1)))
     }
+
+    @Test
+    fun `a line check made before the clock was set back stays as old as it is`() {
+        val device = Device()
+        SteadyClock.source = device
+        val check = LineStatusCheck(LineStatus("victoria", 6, "Severe Delays"), SteadyClock.stamp(now))
+        // Two minutes on, the clock is set back an hour: still two minutes old, and not from the future.
+        device.setBack = Duration.ofHours(1)
+        val wallNow = now.plusSeconds(120).minus(Duration.ofHours(1))
+        assertTrue(check.isLive(wallNow))
+        assertFalse(check.fromFuture(wallNow))
+        // Its mark goes when it's five minutes old, scheduled by the wall clock as set now.
+        val snapshot = DeparturesSnapshot(emptyList(), SteadyClock.stamp(wallNow), lineStatuses = mapOf("victoria" to check))
+        assertEquals(wallNow.plus(Duration.ofMinutes(3)), snapshot.nextBoundary(wallNow))
+        // Once the wall clock has caught up with its stamp, it's an hour old: withheld, not live again.
+        assertFalse(check.isLive(now.plusSeconds(1)))
+        // And a check made since, which reads as earlier by the wall clock, is still the newer one.
+        val since = LineStatusCheck(LineStatus("victoria", 10, "Good Service"), SteadyClock.stamp(wallNow))
+        assertEquals(since, LineStatusCheck.newest(mapOf("victoria" to check), mapOf("victoria" to since), now = wallNow).getValue("victoria"))
+    }
+
+    @Test
+    fun `a stop's closure lookup is aged by the steady clock`() {
+        val device = Device(setBack = Duration.ofHours(1))
+        SteadyClock.source = device
+        val cache = StopClosureCache()
+        // Asked at a wall time, stamped in the steady frame: an hour on from the wall clock, which was set back.
+        assertEquals(now.plus(Duration.ofHours(1)), cache.ask(now).at)
+        assertEquals(Duration.ofMinutes(2), SteadyClock.age(cache.ask(now).at, now.plusSeconds(120)))
+    }
+
+    @Test
+    fun `an ended dismissal is kept and weighed by the steady clock`() {
+        val device = Device()
+        SteadyClock.source = device
+        val severe = LineStatus("victoria", 6, "Severe Delays")
+        val alert = DismissedAlert.ofLineStatus(severe)
+        // Checked, then the clock set back an hour, then the alert's end seen: the check came first.
+        val checkedAt = SteadyClock.stamp(now)
+        device.setBack = Duration.ofHours(1)
+        val seen = now.plusSeconds(60).minus(Duration.ofHours(1))
+        val kept = Dismissed.keepingEnded(setOf(alert), emptyMap(), emptySet(), seen)
+        val endedAt = kept.ended.getValue(alert)
+        val dismissals = Dismissals(emptySet(), kept.ended)
+        assertTrue(dismissals.hide(LineStatusCheck(severe, checkedAt)))
+        // One checked after the end was seen is a recurrence: shown.
+        assertFalse(dismissals.hide(LineStatusCheck(severe, SteadyClock.stamp(seen.plusSeconds(30)))))
+        // Kept for one staleness window by the steady clock: four minutes on, still; six, gone.
+        assertEquals(kept.ended, Dismissed.keepingEnded(setOf(alert), kept.ended, emptySet(), seen.plusSeconds(240)).ended)
+        assertTrue(Dismissed.keepingEnded(setOf(alert), kept.ended, emptySet(), seen.plusSeconds(360)).ended.isEmpty())
+        assertEquals(now.plusSeconds(60), endedAt)
+    }
 }

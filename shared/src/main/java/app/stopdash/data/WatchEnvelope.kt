@@ -43,9 +43,10 @@ data class WatchEnvelope(
     val missingStopIds: List<String> = emptyList(),
     /** The modes hidden from the near-me list, which the widget leaves out, so the watch does too. */
     val hiddenModes: List<String> = emptyList(),
-    /** Each carried line's last status check, stamped ([DeparturesSnapshot.lineStatuses]), so the
-     *  watch marks a disrupted service as the widget does and withholds the mark at the same
-     *  threshold. Additive: an older watch app ignores it and shows what it did before. */
+    /** Each carried line's last status check, stamped ([DeparturesSnapshot.lineStatuses]) as the
+     *  phone's wall clock read it when sent, as each stop's fetch is, so the watch marks a disrupted
+     *  service as the widget does and withholds the mark at the same threshold. Additive: an older
+     *  watch app ignores it and shows what it did before. */
     val lineStatuses: List<PersistedLineStatus> = emptyList(),
 ) {
     /** The disruptions to mark at [now], as [DeparturesSnapshot.liveLineStatuses] judges them. */
@@ -221,8 +222,15 @@ object WatchEnvelopes {
         // The line checks for the lines the kept stops show, so a dropped stop's lines go with it.
         // Less the alert fingerprint: only the phone matches a dismissal against it, and the
         // watch reads the dismissed flag the phone already set.
+        // Sent as the wall clock reads each check now, as a fetch is: the watch ages it by its own clock.
         val allStatuses = snapshot.lineStatuses.toPersistedStatuses()
-            .map { status -> status.copy(fingerprint = null, directions = status.directions.map { it.copy(fingerprint = null) }) }
+            .map { status ->
+                status.copy(
+                    checkedAtMillis = SteadyClock.toWall(Instant.ofEpochMilli(status.checkedAtMillis)).toEpochMilli(),
+                    fingerprint = null,
+                    directions = status.directions.map { it.copy(fingerprint = null) },
+                )
+            }
         fun statusesFor(kept: List<PersistedStop>): List<PersistedLineStatus> {
             val lines = linesOfPersisted(kept)
             return allStatuses.filter { it.lineId in lines }

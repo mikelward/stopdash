@@ -1630,8 +1630,10 @@ tests), not in this spec — but there is exactly one, so no two surfaces can di
 about when data has gone stale.
 
 **How old a fetch is, is told by the device's monotonic clock, not its wall clock** (maintainer,
-2026-09-29), so setting the clock doesn't make old departures read as new. Countdowns stay on the
-wall clock the rider sees; only a fetch's age is kept apart from it. What the phone stores says
+2026-09-29), so setting the clock doesn't make old departures read as new. So is how old a line
+status check or a stop closure check is, since each vouches for what's shown only while it's as
+young as a countdown would be. Countdowns stay on the wall clock the rider sees; only a fetch's or
+a check's age is kept apart from it. What the phone stores says
 which boot of which install its stamps are from (so a copy restored onto another device is never
 taken for this one's), and the watch keeps its own clock's reading with each update it receives,
 in the same write, so a stop fetched before the clock was set back reads at its real age on every
@@ -1639,12 +1641,13 @@ surface, however long it's held and whether or not anything is written in betwee
 
 Across a reboot the monotonic clock starts again, but whatever was fetched before a reboot was
 fetched before the boot began: a stamp from an earlier boot that's later than the boot's start
-can only be from before the clock was set back, so it counts as stale from the first read. A line
-status is stamped by the wall clock, and there (and for data that doesn't record its boot: an older
-build's, or saved where the boot couldn't be told) data stamped **ahead of the clock** counts as
-stale: a stamp more than a moment ahead (a margin for a screen's own tick, and for a watch whose
-clock isn't the phone's) is treated as stale, as is a line status checked then. Such a stop is
-restamped as stale and such a line check dropped.
+can only be from before the clock was set back, so it counts as stale from the first read. For
+data that doesn't record its boot (an older build's, or saved where the boot couldn't be told), and
+on the watch, which is sent the phone's stamps as its wall clock reads them, data stamped **ahead
+of the clock** counts as stale: a stamp more than a moment ahead (a margin for a screen's own tick,
+and for a watch whose clock isn't the phone's) is treated as stale, as is a line status checked
+then. Such a stop is restamped as stale and such a line check dropped. A line check an older build
+stored by the wall clock is read as the wall clock gives it, which is how it was aged before.
 
 **Whatever a read finds is kept**, on the phone and the watch alike: the first read after the
 clock was set, across a reboot or not, moves what's stored into the current clock and records any
@@ -2024,7 +2027,9 @@ snapshot. A copy there was overwritten by whichever writer saved last, and broug
 alerts back. A line's dismissal whose alert a refresh saw end or change is kept for one staleness window
 after, since what the widget has stored can lag that refresh, and forgetting it at once would show
 the ended alert there again. Kept that way, it hides only a check made before the end was seen,
-which is stale by the time the window closes, and the app's own screens, which show what they
+which is stale by the time the window closes; the end and the check are both timed by the
+monotonic clock (*Freshness*), so setting the clock changes neither which checks it hides nor how
+long it's kept. The app's own screens, which show what they
 fetched, never apply it. So the same alert recurring is a new incident and shows everywhere at
 once, and no widget write can race it. **Interim data source**: until Phase 2's user-chosen watched stops exist, the
 widget shows the last *nearby* set the app fetched — "the stops near where you last

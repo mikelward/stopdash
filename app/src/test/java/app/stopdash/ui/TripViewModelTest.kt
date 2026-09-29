@@ -1639,6 +1639,25 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `a check is aged by the steady clock, so setting the device's clock doesn't change it`() {
+        var offset = Duration.ZERO
+        SteadyClock.source = object : SteadyClock.Source {
+            override val frame: SteadyClock.Frame? = null
+            override fun offset(): Duration = offset
+        }
+        try {
+            val checked = SteadyClock.stamp(at(0))
+            // Two minutes on, the clock is set back an hour: the check is two minutes old, current.
+            offset = Duration.ofHours(1)
+            assertTrue(checkCurrent(checked, at(2).minus(Duration.ofHours(1))))
+            // Once the wall clock has caught up with the old stamp, it's an hour old: not current.
+            assertFalse(checkCurrent(checked, at(1)))
+        } finally {
+            SteadyClock.source = null
+        }
+    }
+
+    @Test
     fun `a pole another line shown uses counts toward whether the route could be checked`() {
         // The Planner's 43 from P1, checked open; the 134, found at P2, runs to the same stop.
         val ride = leg("43", "P1", "Q1", 5, 15).copy(mode = "bus", fromArea = "490GP", toArea = "490GQ")

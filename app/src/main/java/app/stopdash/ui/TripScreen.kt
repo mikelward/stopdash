@@ -110,7 +110,6 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.coroutines.cancellation.CancellationException
-import kotlin.time.toKotlinDuration
 
 /**
  * The live trains [leg] can use (SPEC *Trips with a change*): its line's upcoming trains at its
@@ -1931,18 +1930,14 @@ internal fun legStopUnchecked(leg: TripLeg, state: TripViewModel.State, now: Ins
 }
 
 /**
- * Whether a check made [at] still stands as current at [now]: made, and younger than the shared
- * staleness threshold, as a countdown shown from it would be ([Staleness]). One made more than
- * [CHECK_CLOCK_LAG] after [now] isn't: the clock was set back since, so its age can't be told.
+ * Whether a check stamped [at] still stands as current at [now]: made, and younger than the shared
+ * staleness threshold, as a countdown shown from it would be ([Staleness]). Aged by the steady clock
+ * it's stamped by ([SteadyClock]), so setting the device's clock doesn't change it. One stamped more
+ * than [Staleness.CLOCK_SKEW] after [now] isn't: the screen's clock ticks every 10 s, so a check
+ * landing between ticks is dated after it, but further ahead than that its age can't be told.
  */
-internal fun checkCurrent(at: Instant?, now: Instant): Boolean {
-    val age = Duration.between(at ?: return false, now)
-    return age >= CHECK_CLOCK_LAG.negated() && !Staleness.isStale(age.toKotlinDuration())
-}
-
-// How far after the screen's clock a check can be made while the clock runs true: the clock ticks
-// every 10 s, so a check landing between ticks is dated after it.
-internal val CHECK_CLOCK_LAG: Duration = Duration.ofMinutes(1)
+internal fun checkCurrent(at: Instant?, now: Instant): Boolean =
+    !Staleness.isStale(at ?: return false, now)
 
 /** A stop's [notices] in force at [now], as one text, or null when none is. */
 internal fun stopNotice(notices: List<StopDisruption>?, now: Instant): String? =

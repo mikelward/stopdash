@@ -580,8 +580,9 @@ class MainViewModel(
     // still shows each stop as it lands rather than holding the rest until the whole batch is in.
     private var coldLoadUnfinished = false
 
-    // Each line's last DETERMINED status (good or disrupted) and when it came back, reused for
-    // [lineStatusReuse] so a refresh a minute after the last one needn't re-ask about the same lines.
+    // Each line's last DETERMINED status (good or disrupted) and when it came back (stamped by the
+    // steady clock, [SteadyClock]), reused for [lineStatusReuse] so a refresh a minute after the last
+    // one needn't re-ask about the same lines.
     // A line TfL gave no status for, or a failed request, is never cached. In-memory, main thread.
     private val lineStatusCache = mutableMapOf<String, Pair<Instant, LineStatus>>()
     // When each line was last asked about and TfL gave no status for it (a no-verdict check for the
@@ -1118,8 +1119,9 @@ class MainViewModel(
                     }
                     // Stamped when TfL answered, not when this batch began: a slow batch neither loses
                     // the store's newest-wins merge to a check made meanwhile nor saves an answer
-                    // already near its expiry (SPEC D3/D4).
-                    val answeredAt = clock()
+                    // already near its expiry (SPEC D3/D4). By the steady clock, as a fetch is
+                    // ([SteadyClock]).
+                    val answeredAt = SteadyClock.stamp(clock())
                     // The latest answer for a line replaces the other kind outright, so a clock moved
                     // back can't leave a future-dated entry outranking it ([widgetLineChecks]).
                     fetched.forEach {
@@ -1190,12 +1192,13 @@ class MainViewModel(
     }
 
     /**
-     * Whether [at] is less than [window] before [now]. A negative age — the device clock moved back
-     * past [at] — is never within it: it would otherwise read as "just now" until wall time caught
-     * up, and keep reusing an old result the whole while.
+     * Whether [at], a check's steady stamp ([SteadyClock]), is less than [window] before the wall
+     * time [now], aged by the steady clock so setting the device's clock doesn't change it. A
+     * negative age (a stamp from before the clock was set back, across a reboot) is never within it:
+     * it would otherwise read as "just now" and keep reusing an old result the whole while.
      */
     private fun isWithin(at: Instant, now: Instant, window: Duration): Boolean {
-        val age = Duration.between(at, now)
+        val age = SteadyClock.age(at, now)
         return !age.isNegative && age < window
     }
 
