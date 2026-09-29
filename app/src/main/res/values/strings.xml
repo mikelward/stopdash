@@ -550,6 +550,13 @@
         <item quantity="one">%1$d stop · next %2$s</item>
         <item quantity="other">%1$d stops · next %2$s</item>
     </plurals>
+    <!-- As on_the_way_stops, with %3$d the minutes until the train is due where the rider gets off. -->
+    <plurals name="on_the_way_stops_timed">
+        <item quantity="one">%1$d stop (~%3$d min) · next %2$s</item>
+        <item quantity="other">%1$d stops (~%3$d min) · next %2$s</item>
+    </plurals>
+    <!-- The stop to get off at is next; %1$d the minutes until the train is due there. -->
+    <string name="on_the_way_next_stop_timed">Next stop (~%1$d min)</string>
     <!-- A change between two rides with no walk of its own: to the line, at the stop. -->
     <string name="on_the_way_change">Change to %1$s at %2$s</string>
     <string name="on_the_way_change_time">%1$d min to change</string>

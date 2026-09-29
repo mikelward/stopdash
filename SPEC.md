@@ -1374,6 +1374,9 @@ them there:
 - **Only a recent answer is live.** A train's time, the stops left and "get off soon" show only
   while the last answer is under about a minute and a quarter old; back after a while away, the
   step stays but its details say **Updating…** until the next answer (principle 1).
+- **Time left on the ride** beside its stops (maintainer, 2026-09-29): "6 stops (~6 min) · next …",
+  counted to when the train followed is due where they get off, as the boards count a time; none while
+  that stop is beyond TfL's predictions, as no time is claimed there.
 - **Get off soon**, from **one stop, or two minutes, out**, said once per leg.
 - **Where it shows:** the trip's own screen (the next step over the route), a **card pinned at the
   top of the main view** (the near-me list, under the top bar, not scrolling with it; a station's

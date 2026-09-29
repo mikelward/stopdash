@@ -405,10 +405,14 @@ internal fun nextStepText(resources: Resources, progress: TripProgress?, now: In
         is TripProgress.Riding if !progress.seen && !progress.getOffSoon ->
             resources.getString(Vehicle.of(progress.leg).take, progress.leg.toName) to ""
         is TripProgress.Riding -> resources.getString(R.string.on_the_way_get_off, progress.leg.toName) to
+            // The time left on the ride, where the stop is predicted (maintainer, 2026-09-29): counted as
+            // the boards count, never estimated from the plan beyond TfL's predictions.
             when (val left = progress.stopsLeft) {
                 null -> resources.getString(R.string.on_the_way_next_is, progress.nextStop)
-                0, 1 -> resources.getString(R.string.on_the_way_next_stop)
-                else -> resources.getQuantityString(R.plurals.on_the_way_stops, left, left, progress.nextStop)
+                0, 1 -> progress.getOffAt?.let { resources.getString(R.string.on_the_way_next_stop_timed, Countdown.minutes(it, now).toInt()) }
+                    ?: resources.getString(R.string.on_the_way_next_stop)
+                else -> progress.getOffAt?.let { resources.getQuantityString(R.plurals.on_the_way_stops_timed, left, left, progress.nextStop, Countdown.minutes(it, now).toInt()) }
+                    ?: resources.getQuantityString(R.plurals.on_the_way_stops, left, left, progress.nextStop)
             }
         is TripProgress.Changing -> resources.getString(R.string.on_the_way_change, progress.leg.lineName, progress.leg.fromName) to
             resources.getString(R.string.on_the_way_change_time, minutesUntil(now, progress.until))
