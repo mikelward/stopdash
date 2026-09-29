@@ -173,22 +173,25 @@ sealed interface FartherLoad {
  * has already keeps the list's copy), with their line statuses where the list has none; a failed
  * card marks its stops unavailable, so its card offers a retry; a loading one adds nothing yet.
  * The list keeps its own stamp and failure, but a card whose last refresh failed or came back
- * incomplete marks the list partial (SPEC principle 2): its rows are older than the stamp says,
- * so the screen says some stops couldn't refresh. A card whose disruptions are unknown marks its
- * own stops so.
+ * incomplete marks the list partial (SPEC principle 2) where that survives the merge: a stop of
+ * its shown from an older copy, or shown by nothing, is older than the stamp says, so the screen
+ * says some stops couldn't refresh. A stop the list shows is the list's to count, and one another
+ * card shows fresh is fresh. A card whose disruptions are unknown marks its own stops so.
  */
 internal fun withOpenedFarther(
     list: DeparturesUiState.Loaded,
     opened: List<Pair<Set<String>, DeparturesUiState>>,
 ): DeparturesUiState.Loaded {
     if (opened.isEmpty()) return list
-    val ids = list.stops.mapTo(HashSet()) { it.stopId }
+    val listIds = list.stops.mapTo(HashSet()) { it.stopId }
+    val ids = HashSet(listIds)
     val stops = list.stops.toMutableList()
     var lineStatuses = list.lineStatuses
     val determined = list.determinedLineIds.toHashSet()
     val disruptionUnknown = list.stopsDisruptionUnknown.toHashSet()
     val unavailable = list.unavailableStopIds.toHashSet()
-    var cardPartial = false
+    // The stop ids of each card whose last refresh failed or came back incomplete.
+    val failedCards = ArrayList<Set<String>>()
     // A card part-shown by its own cold load, its line status not checked yet: the list says it's
     // still checking, as it would for its own (SPEC *Freshness → Cold load*).
     var cardStatusPending = false
@@ -206,7 +209,7 @@ internal fun withOpenedFarther(
                 disruptionUnknown += state.stopsDisruptionUnknown
                 if (state.disruptionUnknown) added.mapTo(disruptionUnknown) { it.stopId }
                 unavailable += state.unavailableStopIds
-                if (state.partialRefresh || state.refreshFailure != null) cardPartial = true
+                if (state.partialRefresh || state.refreshFailure != null) failedCards += cardIds
                 if (state.statusPending) {
                     cardStatusPending = true
                     openedLoading += cardIds
@@ -223,6 +226,8 @@ internal fun withOpenedFarther(
     // Partial only for named stops a card has since shown fresh, the list isn't any more.
     val listPartial = list.partialRefresh &&
         (list.partialUnnamed || list.partialStops.isEmpty() || listNamed.isNotEmpty())
+    // A failed card's stop shown from an older copy (its own, or a failed card's), or by nothing.
+    val cardPartial = failedCards.any { cardIds -> cardIds.any { it !in listIds && it !in freshFromCards } }
     val partial = listPartial || cardPartial
     return list.copy(
         stops = stops,

@@ -3178,8 +3178,39 @@ class MainViewModelTest {
             refreshFailure = DeparturesUiState.Error.Kind.OFFLINE,
         )
         val shown = withOpenedFarther(list, listOf(setOf("MA") to card))
+        assertFalse("every stop is shown fresh by the list", shown.partialRefresh)
         assertTrue(shown.partialStops.isEmpty())
         assertEquals(null, shown.partialReason)
+        // Nor one that came back incomplete for it.
+        val incomplete = DeparturesUiState.Loaded(stops = emptyList(), fetchedAt = now, partialRefresh = true)
+        assertFalse(withOpenedFarther(list, listOf(setOf("MA") to incomplete)).partialRefresh)
+    }
+
+    @Test
+    fun `a card's failure marks the list partial only where no fresh copy is shown`() {
+        val list = DeparturesUiState.Loaded(stops = listOf(StopArrivals("MA", "Shared", emptyList(), now)), fetchedAt = now)
+        val old = now.minusSeconds(600)
+        // Failed: MA the list shows fresh, MB only its own older copy.
+        val failed = DeparturesUiState.Loaded(
+            stops = listOf(StopArrivals("MA", "Shared", emptyList(), old), StopArrivals("MB", "Farther", emptyList(), old)),
+            fetchedAt = old,
+            refreshFailure = DeparturesUiState.Error.Kind.OFFLINE,
+        )
+        assertTrue(withOpenedFarther(list, listOf(setOf("MA", "MB") to failed)).partialRefresh)
+        // Incomplete: MB kept at an older age, or not loaded at all.
+        val stale = DeparturesUiState.Loaded(
+            stops = listOf(StopArrivals("MB", "Farther", emptyList(), old, arrivalsFresh = false)),
+            fetchedAt = now,
+            partialRefresh = true,
+        )
+        assertTrue(withOpenedFarther(list, listOf(setOf("MA", "MB") to stale)).partialRefresh)
+        val missing = DeparturesUiState.Loaded(stops = emptyList(), fetchedAt = now, partialRefresh = true)
+        assertTrue(withOpenedFarther(list, listOf(setOf("MA", "MB") to missing)).partialRefresh)
+        // Another card showing MB fresh covers it.
+        val fresh = DeparturesUiState.Loaded(stops = listOf(StopArrivals("MB", "Farther", emptyList(), now)), fetchedAt = now)
+        assertFalse(withOpenedFarther(list, listOf(setOf("MB") to fresh, setOf("MA", "MB") to missing)).partialRefresh)
+        // But not once a failed card's older copy is the one shown.
+        assertTrue(withOpenedFarther(list, listOf(setOf("MA", "MB") to failed, setOf("MB") to fresh)).partialRefresh)
     }
 
     @Test
