@@ -39,6 +39,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -581,6 +582,16 @@ private val MINUTE: DateTimeFormatter = DateTimeFormatter.ofPattern("mm")
 private val LONDON: ZoneId = ZoneId.of("Europe/London")
 
 /**
+ * When the rider last pulled on the routes to [destKey] ([TripViewModel.pullRefresh]), for the screen
+ * to [TripViewModel.carryPull] into a trip that takes the pulled one's place. Kept past a new nearest
+ * stop, a trip model of its own, and past a configuration change, which keeps the fix a pull from
+ * here is waiting on (Codex, PR #373).
+ */
+@Composable
+internal fun rememberLastPull(destKey: String): MutableState<Instant?> =
+    rememberSaveable(destKey) { mutableStateOf(null) }
+
+/**
  * A trip with a change (SPEC *Trips with a change*): the routes best first, every route alike — its
  * line pills, ⚠ on a disrupted leg, and duration · arrival, over its first leg's live trains — and,
  * once one is tapped, that route leg by leg in the list's own header and route cards. Renders from
@@ -637,6 +648,10 @@ internal fun TripScreen(
     // The From/To bar in place of [title] over the routes (maintainer, 2026-09-28): where the trip
     // starts and where it goes, each a tap to change. Null (a test) shows the title.
     ends: TripEnds? = null,
+    // A pull on the routes (maintainer, 2026-09-29): plan again and fetch every stop afresh
+    // ([TripViewModel.pullRefresh]); null offers no pull. [pullRefreshing] holds its indicator.
+    pullRefreshing: Boolean = false,
+    onPullRefresh: (() -> Unit)? = null,
 ) {
     // Planned work whose day has come shows as under way, however long ago it was fetched (Codex,
     // PR #337): a kept status outlives the day it was sorted on.
@@ -655,6 +670,8 @@ internal fun TripScreen(
             walkingSpeedWriteFailed,
             onWalkingSpeedWriteFailureShown,
             ends,
+            pullRefreshing,
+            onPullRefresh,
         )
     }
 }
@@ -710,6 +727,8 @@ private fun TripContent(
     walkingSpeedWriteFailed: Boolean = false,
     onWalkingSpeedWriteFailureShown: () -> Unit = {},
     ends: TripEnds? = null,
+    pullRefreshing: Boolean = false,
+    onPullRefresh: (() -> Unit)? = null,
 ) {
     // The open route, kept twice: by the trip when it's given one ([openRoute]), which outlasts the
     // screen leaving composition (an overlay) and, saved by the trip, the process too; and saved with
@@ -993,11 +1012,22 @@ private fun TripContent(
                 when {
                     cards == null -> TripPlaceholder(state, onRetry)
                     open != null -> RouteLegs(open, rideLines, state, now, access, sequences, onRetry, alerts.dismissed, alerts.onDismiss, onHideMode, ::openDetail)
-                    else -> RouteList(
-                        cards, rideLines, state, now, access, sequences, onRetry, alerts.dismissed,
-                        onOpen = { setOpen(openRouteOf(it.route, poled, sequences, hiddenModes)) },
-                        onHideMode = onHideMode,
-                    )
+                    else -> {
+                        val routes = @Composable {
+                            RouteList(
+                                cards, rideLines, state, now, access, sequences, onRetry, alerts.dismissed,
+                                onOpen = { setOpen(openRouteOf(it.route, poled, sequences, hiddenModes)) },
+                                onHideMode = onHideMode,
+                            )
+                        }
+                        // Pulled down, the routes are planned again and every stop fetched afresh, from
+                        // the same ends at the same pace (maintainer, 2026-09-29).
+                        if (onPullRefresh == null) {
+                            routes()
+                        } else {
+                            PullToRefreshBox(pullRefreshing, onPullRefresh, Modifier.fillMaxSize().testTag("tripRoutesPull")) { routes() }
+                        }
+                    }
                 }
             }
         }

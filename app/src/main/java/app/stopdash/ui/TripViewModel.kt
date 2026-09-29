@@ -273,6 +273,9 @@ class TripViewModel(
      * retained model doesn't fetch everything again.
      */
     fun refreshFor(repickId: Long?) {
+        // The re-pick a pull from here was waiting on: the run it starts below serves the pull, and
+        // takes its indicator down when it ends.
+        if (started && repickId != seenRepick) awaitingFix = false
         // A first showing, or a new re-pick, that finds the rider [REPLAN_MOVE_METERS] or more from where
         // the plan walks from: its first walk is from there, so the trip plans again from here rather
         // than time it wrong (a plan reused from earlier, or one made before they walked on).
@@ -405,6 +408,72 @@ class TripViewModel(
     /** Plans again now, after a failure. During a refresh, plans again once it ends. */
     fun retry() = start(replan = true)
 
+    private val _pulling = MutableStateFlow(false)
+
+    /** Whether a pull on the routes ([pullRefresh]) is still planning or fetching: its indicator. */
+    val pulling: StateFlow<Boolean> = _pulling.asStateFlow()
+
+    // When the rider last pulled: a plan made, or arrivals asked for, before then are never reused in
+    // place of asking again, however recent (maintainer, 2026-09-29). Every live refresh fetches such
+    // a stop rather than reuse it within [ArrivalsCache.TTL], for as long as the trip is open, not
+    // only in the pull's own run: a refresh already under way when the pull came, or a re-plan after
+    // it (the fresh fix the pull takes from here, a walking speed changed), would otherwise put a new
+    // stop's older arrivals up (Codex, PR #373). A fetch that fails keeps them, marked failed, as any
+    // failed refresh does: the trip never blanks a leg for want of fresh data. Replaced by the next
+    // pull, here or carried from the trip this one took over from ([carryPull]).
+    private var pulledAt: Instant? = null
+
+    // A pull from here waiting on the fresh fix it took: its indicator holds past its own run until
+    // the trip has refreshed for the re-pick that fix brings ([refreshFor]), which can plan again
+    // after the pull's run has ended (Codex, PR #373), or the re-locate ends without one
+    // ([fixSettled]).
+    private var awaitingFix = false
+
+    /**
+     * A pull on the routes (maintainer, 2026-09-29): the rider asking for the latest, so the trip plans
+     * again now, whatever the plan's age, from the same start to the same place at the same pace, then
+     * fetches every boarding stop's arrivals afresh, as the list's pull does. During a refresh, both
+     * run once it ends. [awaitFix] when the pull also takes a fresh fix, whose re-pick the indicator
+     * waits for. Returns when the pull came, for the screen to [carryPull] into a trip that takes this
+     * one's place.
+     */
+    fun pullRefresh(awaitFix: Boolean = false): Instant {
+        val at = clock()
+        _pulling.value = true
+        pulledAt = at
+        awaitingFix = awaitFix
+        start(replan = true)
+        return at
+    }
+
+    /**
+     * The re-locate a pull from here took has ended, [repickId] the latest re-pick. One this trip has
+     * already refreshed for means the re-locate brought none (it failed, or was superseded), so the
+     * pull has nothing more to wait for: its indicator goes once any run ends. A new one is left to
+     * [refreshFor].
+     */
+    fun fixSettled(repickId: Long?) {
+        if (!awaitingFix || repickId != seenRepick) return
+        awaitingFix = false
+        if (job?.isActive != true) _pulling.value = false
+    }
+
+    /**
+     * A pull at [at] on the trip this one took over from: the fresh fix a pull from here takes can
+     * find a new nearest stop, which is a trip of its own (Codex, PR #373). Nothing from before [at]
+     * is reused here either, a plan kept for reuse included, so this trip plans and fetches afresh:
+     * at once if it's already showing, else on its first refresh, with the pull's indicator up
+     * until that run ends (Codex, PR #373): the trip it replaced is gone, and the fix that moved it
+     * has landed. The screen sets it on every composition, so a pull no later than this trip's own
+     * does nothing.
+     */
+    fun carryPull(at: Instant) {
+        if (pulledAt?.isBefore(at) == false) return
+        pulledAt = at
+        _pulling.value = true
+        if (started) refresh()
+    }
+
     // A Retry tapped while a refresh runs: plan again when it ends rather than drop the tap.
     private var replanAgain = false
 
@@ -415,12 +484,18 @@ class TripViewModel(
             return
         }
         job = viewModelScope.launch {
-            run(replan)
-            while (again) {
-                again = false
-                val next = replanAgain
-                replanAgain = false
-                run(next)
+            try {
+                run(replan)
+                while (again) {
+                    again = false
+                    val next = replanAgain
+                    replanAgain = false
+                    run(next)
+                }
+            } finally {
+                // A pull asked for during this run is served by it, or the trip is gone: either way
+                // its indicator goes, unless the pull still waits on its fresh fix.
+                _pulling.value = awaitingFix
             }
         }
     }
@@ -430,7 +505,10 @@ class TripViewModel(
         val expired = plannedAt == null || Duration.between(plannedAt, clock()) >= PLAN_REUSE
         // After a failed plan only Retry plans again: the tick never retries it in a loop.
         val failed = _state.value.planError != null
-        if (replan || (!failed && (expired || _state.value.routes == null))) plan()
+        // A plan from before the latest pull: one kept for reuse, when the pull was on the trip this
+        // one took over from ([carryPull]).
+        val beforePull = pulledAt?.let { pull -> plannedAt == null || plannedAt.isBefore(pull) } == true
+        if (replan || (!failed && (expired || _state.value.routes == null || beforePull))) plan()
         refreshLive()
     }
 
@@ -533,7 +611,11 @@ class TripViewModel(
             val now = clock()
             // A departure source changed while this refresh's arrivals are out: they're from the old one.
             val source = sourceGeneration
-            val stops = stopsOf(routes).filter { id -> _state.value.live[id]?.let { !recentEnough(it, now) } ?: true }
+            // A stop not fetched since the last pull is fetched, however recent: the rider asked for the latest.
+            val since = pulledAt
+            val stops = stopsOf(routes).filter { id ->
+                _state.value.live[id]?.let { !recentEnough(it, now) || (since != null && it.fetchedAt.isBefore(since)) } ?: true
+            }
             // And the other lines at the rides' boarding stops ([rideLineIds]), in the same request: one
             // of them times a ride only once it's checked as running ([rideTrains]). Only the plan's own
             // lines count toward the trip's "couldn't check" note.
