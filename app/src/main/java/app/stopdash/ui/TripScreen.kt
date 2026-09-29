@@ -161,10 +161,36 @@ private fun timingLines(state: TripViewModel.State, leg: TripLeg, now: Instant, 
     // ([RideLines.vouched]): a suspended line's predictions, one never checked, or one from a closed
     // stop mustn't make a route read as live. The Planner's own is held to the same once another line
     // keeps the ride usable, as its status no longer ranks the route.
-    // Nor from a pole whose refresh failed: its held predictions would pass for current, while the
-    // route's freshness is judged at the Planner's own pole. The Planner's line keeps its own rule.
+    // Nor from a pole whose refresh failed: its held predictions would pass for current. The
+    // Planner's line keeps its own rule, its held trains timing the ride as they age, though only
+    // trains from a stop that refreshed show the ride running every few minutes ([rideRefreshed]).
     (lines[leg] ?: RideLines.only(leg)).timedRunning(rideStatuses(state), lineStopsOpen(state, now))
         .filter { it == leg || state.live[it.fromId]?.failed != true }
+
+/**
+ * Whether [leg]'s ride has arrivals from a refresh that succeeded: its own pole's last refresh didn't
+ * fail, or another line that times it ([timingLines]) boards at a stop whose last one succeeded. The
+ * ride isn't judged at the Planner's pole alone, so a failure there doesn't withhold a ride another
+ * line keeps timing from fresh arrivals (Codex on #309).
+ */
+internal fun rideCurrent(state: TripViewModel.State, leg: TripLeg, now: Instant, lines: Map<TripLeg, RideLines>): Boolean =
+    state.live[leg.fromId]?.failed != true ||
+        timingLines(state, leg, now, lines).any { it != leg && state.live[it.fromId]?.failed == false }
+
+/**
+ * The trains of [leg]'s ride ([rideTrains]) from boarding stops whose last refresh succeeded: those
+ * that may show it running every few minutes ([TripTiming.frequentAt]). The Planner line's trains held
+ * from a pole that failed are left out, as they may have stopped running since.
+ */
+internal fun rideRefreshed(
+    state: TripViewModel.State,
+    leg: TripLeg,
+    now: Instant,
+    sequences: Map<String, LineSequence?>,
+    lines: Map<TripLeg, RideLines>,
+): List<Departure> =
+    timingLines(state, leg, now, lines).filter { state.live[it.fromId]?.failed != true }
+        .flatMap { legTrains(state, it, now, sequences).orEmpty() }.distinct()
 
 /**
  * The line statuses a ride's lines are judged by ([RideLines]): every status held, less those whose
@@ -514,7 +540,8 @@ internal fun tripEstimates(
     val estimates = routes.map { route ->
         TripTiming.estimate(
             route, now, access, { index -> rideTrains(state, route.legs[index], now, sequences, lines) }, notRunning, unknown,
-            current = { index -> state.live[route.legs[index].fromId]?.failed != true },
+            current = { index -> rideCurrent(state, route.legs[index], now, lines) },
+            refreshed = { index -> rideRefreshed(state, route.legs[index], now, sequences, lines) },
             predicted = { index -> ridePredicted(state, route.legs[index], now, lines) },
             // Nor one whose Planner line another line stands in for, unless it's running ([plannerVouched]).
             timetabled = { index -> (planned == null || route.legs[index] in planned) && plannerVouched(state, route.legs[index], now, lines) },

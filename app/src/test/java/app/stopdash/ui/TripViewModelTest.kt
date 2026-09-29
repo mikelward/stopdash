@@ -2464,6 +2464,37 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `a ride whose Planner pole failed is boarded on arrival when another line's refreshed trains show it frequent`() {
+        // Green rides the same stretch from A2, the other pole of the ride's stop. The rider reaches
+        // the stop at 15, past every predicted train and the Planner's red at 6.
+        val red = viaRedOnly.rides.first()
+        val green = red.copy(lineId = "green", lineName = "green", fromId = "A2")
+        val good = listOf("red", "green", "blue").associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") }
+        val atA2 = LineSequence(routes = listOf(LineRoute("A2 ↔ End", listOf("A2", "B", "End"))), stopNames = this.red.stopNames + ("A2" to "A"))
+        val sequences = mapOf("red" to this.red, "green" to atA2, "blue" to blue)
+        val lines = mapOf(red to RideLines(listOf(red, green), listOf(red, green)))
+        val access = Duration.ofMinutes(15)
+        fun first(state: TripViewModel.State) = checkNotNull(tripEstimates(state, now, access, sequences, lines = lines)).single()
+        // A's refresh failed, red's trains there held; A2's refreshed, green every few minutes.
+        val heldRed = TripViewModel.StopLive(listOf(train("red", "End", 2), train("red", "End", 5), train("red", "End", 8)), now, failed = true)
+        val base = redAndGreenAt().copy(statuses = good, live = redAndGreenAt().live + ("A" to heldRed))
+        val frequent = base.copy(live = base.live + ("A2" to TripViewModel.StopLive(listOf(train("green", "End", 3), train("green", "End", 6), train("green", "End", 9)), now)))
+        val estimate = first(frequent)
+        assertTrue(rideCurrent(frequent, red, now, lines))
+        assertEquals(at(15), estimate.legs.first().board)
+        assertFalse(estimate.legs.first().live)
+        // Only trains from a stop that refreshed show it frequent: red's held ones may have stopped
+        // since, so a single green train leaves the arrival withheld.
+        val sparse = base.copy(live = base.live + ("A2" to TripViewModel.StopLive(listOf(train("green", "End", 3)), now)))
+        assertEquals(TripTiming.Basis.UNKNOWN, first(sparse).basis)
+        assertEquals(TripTiming.Reason.INFREQUENT, first(sparse).withheld?.reason)
+        // With A2's refresh failed too, nothing refreshed vouches for the ride.
+        val bothFailed = base.copy(live = base.live + ("A2" to TripViewModel.StopLive(frequent.live.getValue("A2").departures, now, failed = true)))
+        assertFalse(rideCurrent(bothFailed, red, now, lines))
+        assertEquals(TripTiming.Reason.FAILED, first(bothFailed).withheld?.reason)
+    }
+
+    @Test
     fun `a failed refresh at another line's pole is named like the Planner's own`() {
         // Green boards at the other pole of the ride's stop, whose refresh failed: its held trains
         // mustn't read as fresh, so that pole is named in the banner too.

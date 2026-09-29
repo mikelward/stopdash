@@ -126,9 +126,14 @@ object TripTiming {
         live: (Int) -> List<Departure>?,
         notRunning: Set<String> = emptySet(),
         unknown: Set<String> = emptySet(),
-        // Whether leg [index]'s arrivals came from a fetch that succeeded: after a failed refresh the
-        // last ones stand, aged, but don't vouch that the line is still running.
+        // Whether leg [index]'s arrivals came from a fetch that succeeded, at the boarding stop of any
+        // line that times it: after a failed refresh the last ones stand, aged, but don't vouch that
+        // the line is still running.
         current: (Int) -> Boolean = { true },
+        // Leg [index]'s trains ([live]) from boarding stops whose last refresh succeeded: only these
+        // may show its line running every few minutes ([frequentAt]), since one held from a stop that
+        // failed may have stopped running since. All of [live]'s where none failed.
+        refreshed: (Int) -> List<Departure> = { live(it).orEmpty() },
         // How many trains leg [index]'s lines have predicted at its boarding stop before [live]'s
         // checks, for the reason a withheld arrival gives ([Withheld]); timing never reads it.
         predicted: (Int) -> Int = { live(it)?.size ?: 0 },
@@ -176,8 +181,9 @@ object TripTiming {
                 // may outlive it), nor one whose arrivals failed, even with its last ones held.
                 // And only where its predictions show it running every few minutes now: how far
                 // ahead they reach says nothing, since TfL predicts only trains already running,
-                // so near a line's start they end within 15 minutes all day.
-                leg.lineId !in notRunning && current(index) && frequentAt(leg.mode, trains.orEmpty()) -> {
+                // so near a line's start they end within 15 minutes all day. Judged on trains from
+                // stops that refreshed ([refreshed]), not ones held from a stop that failed.
+                leg.lineId !in notRunning && current(index) && frequentAt(leg.mode, refreshed(index)) -> {
                     waits = true
                     LegTiming(ready, ready.plus(leg.run), null, false) to Basis.ESTIMATED
                 }
@@ -206,7 +212,7 @@ object TripTiming {
                 val (timing, _) = time(index, leg, ready)
                 val boardsOnArrival = timing.train == null && !leg.isWalk && timing.board == ready && leg.departure.isBefore(ready)
                 val gap = if (boardsOnArrival) {
-                    Headway.of(live(index).orEmpty().map { it.expectedArrival })?.let { Duration.ofMinutes(it.max.toLong()) } ?: FREQUENT_MAX_GAP
+                    Headway.of(refreshed(index).map { it.expectedArrival })?.let { Duration.ofMinutes(it.max.toLong()) } ?: FREQUENT_MAX_GAP
                 } else {
                     Duration.ZERO
                 }

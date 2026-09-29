@@ -948,6 +948,9 @@ also calls at the same stops in between shares the ride's time on board and time
 gets there another way still shows its trains, but a route is never timed as if it rode that way.
 Its trains are offered, and time the route, only once its line is checked as running and the stops
 it boards and gets off at, its own poles, are checked open; a notice at one of them shows on its ride.
+Nor do they time it from a stop whose last refresh failed. Where the Planner's own stop failed but
+such a line's refreshed, the ride still has fresh arrivals, and only those show whether it runs
+every few minutes (below): trains held from the stop that failed may have stopped running since.
 **A train that runs through a change is a route of its own** (maintainer, 2026-09-28): where a
 ride is followed straight away by another of the same mode, and a line boarding at the first ride's
 stop runs on to where the second gets off, the trip also offers that one ride in place of the two —

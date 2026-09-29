@@ -1206,11 +1206,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             as running from stops checked open (`RideLines.othersTime`), can take it; the Planner's
             line's own trains, and its timetable, then count only if it's checked as running
             (`RideLines.vouched`). A line whose latest status check failed stands in for none.
-      - [ ] **Judge a ride's freshness by any of its lines** (Codex on #309): a route's freshness is
-            judged at the Planner's pole alone, so when that pole failed but another line's pole is
-            current, the frequent-service fallback is withheld though it could stand. The failed
-            pole's held predictions still feed the ride's trains, so the fallback would need them
-            left out before trusting the other line's.
+      - [x] **Judge a ride's freshness by any of its lines** (Codex on #309): a route's freshness was
+            judged at the Planner's pole alone, so when that pole failed but another line's pole was
+            current, the frequent-service fallback was withheld though it could stand. Done: the ride
+            is current while any of its timing lines' stops refreshed (`rideCurrent`), and only trains
+            from stops that refreshed show it running every few minutes (`rideRefreshed`), so the
+            failed pole's held predictions are left out of that judgement.
       - [ ] **Merging by place, parked** (#306, maintainer, 2026-09-27): the same idea across an
             interchange's stops (the 43 and 134 at Archway), set aside for strict same-stop; its
             branch holds the place-based version if that's revisited.

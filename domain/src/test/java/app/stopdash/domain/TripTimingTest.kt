@@ -146,6 +146,24 @@ class TripTimingTest {
         assertEquals(TripTiming.Basis.UNKNOWN, TripTiming.estimate(rail, now, Duration.ZERO, { live[it] }).basis)
     }
 
+    @Test
+    fun `a frequent line past its predictions is judged only on trains from stops that refreshed`() {
+        // Red at 12 reaches B ready at 25, past the Planner's blue at 20. Blue's own stop failed, its
+        // trains held; another line riding the leg refreshed with trains every three minutes.
+        val held = listOf(train("blue", 14), train("blue", 18), train("blue", 22))
+        val other = listOf(train("green", 15), train("green", 18), train("green", 21))
+        val live = mapOf(0 to listOf(train("red", 12)), 1 to held + other)
+        val estimate = TripTiming.estimate(twoLegs, now, Duration.ZERO, { live[it] }, refreshed = { if (it == 1) other else live.getValue(it) })
+        assertEquals(TripTiming.Basis.ESTIMATED, estimate.basis)
+        assertEquals(at(25), estimate.legs[1].board)
+        // The wait it assumes away is up to the refreshed trains' gap, not the held ones' 4 min.
+        assertEquals(Duration.ofMinutes(3), estimate.slack)
+        // Held trains alone never show it frequent: they may have stopped since.
+        val sparse = listOf(train("green", 15))
+        val thin = mapOf(0 to listOf(train("red", 12)), 1 to held + sparse)
+        assertEquals(TripTiming.Basis.UNKNOWN, TripTiming.estimate(twoLegs, now, Duration.ZERO, { thin[it] }, refreshed = { if (it == 1) sparse else thin.getValue(it) }).basis)
+    }
+
     // TfL predicts a bus only about half an hour ahead: one every eight minutes shows two.
     @Test
     fun `a frequent bus past its live predictions is boarded on arrival, with a range`() {
