@@ -1615,6 +1615,8 @@ class MainActivity : ComponentActivity() {
             // Each shown journey's fetched stops, as the screen last reported them; read by a relocate.
             val journeyStopIds = remember { mutableStateOf(emptyMap<String, Set<String>>()) }
             val openJourneyKey = remember { mutableStateOf<String?>(null) }
+            // The fix those journeys faced by when reported, so a relocate can tell one it turns round.
+            val journeyStopsFix = remember { mutableStateOf<Coordinates?>(null) }
             // Brings the retained departures in line with a re-picked nearby set of the same places:
             // updates its tiers and distances and re-fetches (a relocation, or "Show all").
             val reconcileSameSet: (NearbyStopsViewModel.State.Ready) -> Unit = { fresh ->
@@ -1635,13 +1637,23 @@ class MainActivity : ComponentActivity() {
                     // One the fix releases (back in range, or an unconfirmed fix that holds nothing
                     // back) waits for the screen to report its stops, so the refresh runs once with
                     // them (its new card always changes that report). One the screen already shows
-                    // (revealed, or its own view open) isn't waited on.
+                    // (revealed, or its own view open) isn't waited on. Nor, the same way, is the
+                    // old origin of a shown journey the fix turns round: its turned card reports
+                    // the other end, rather than the refresh starting on the old one and again.
+                    val shownFix = journeyStopsFix.value
                     val await = Journeys.releasesHeldJourney(
                         savedJourneys.orEmpty(),
                         fresh.location.latitude,
                         fresh.location.longitude,
                         fixConfirmed = fixConfirmed,
                         heldNow = farJourneyMeters.keys - journeyStopIds.value.keys,
+                    ) || Journeys.turnsShownJourney(
+                        savedJourneys.orEmpty(),
+                        shownFix?.latitude,
+                        shownFix?.longitude,
+                        fresh.location.latitude,
+                        fresh.location.longitude,
+                        shown = journeyStopIds.value.keys,
                     )
                     viewModel.reconcile(
                         fresh.eager,
@@ -1749,6 +1761,7 @@ class MainActivity : ComponentActivity() {
                     onJourneyStopIds = { stopIds, openKey ->
                         journeyStopIds.value = stopIds
                         openJourneyKey.value = openKey
+                        journeyStopsFix.value = ready.location
                         viewModel.journeyStopsReported()
                     },
                     onJourneyDestinations = viewModel::setJourneyDestinations,

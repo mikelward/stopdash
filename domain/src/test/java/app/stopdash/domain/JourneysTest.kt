@@ -519,6 +519,20 @@ class JourneysTest {
     }
 
     @Test
+    fun `a relocate that turns a shown journey round waits for its new origin`() {
+        val shown = setOf(journey.key)
+        // Shown from Top's end; the fresh fix is nearer Mid, so Mid is now the origin.
+        assertTrue(Journeys.turnsShownJourney(listOf(journey), 51.509, -0.12, 51.491, -0.12, shown))
+        // Still nearer Top: the same origin, nothing to wait for.
+        assertFalse(Journeys.turnsShownJourney(listOf(journey), 51.509, -0.12, 51.505, -0.12, shown))
+        // Not on screen (held back far away): the screen won't report it, so nothing to wait for.
+        assertFalse(Journeys.turnsShownJourney(listOf(journey), 51.509, -0.12, 51.491, -0.12, emptySet()))
+        // No end coordinates: the saved direction stands either way.
+        val unplaced = journey.copy(to = journey.to.copy(latitude = null, longitude = null))
+        assertFalse(Journeys.turnsShownJourney(listOf(unplaced), 51.509, -0.12, 51.491, -0.12, shown))
+    }
+
+    @Test
     fun `a card's origin takes its pole's interchange, else its route's`() {
         val sequence = LineSequence(emptyList(), emptyMap(), stopHubs = mapOf("STN" to "HUBSEQ"))
         assertEquals("HUBSEQ", Journeys.originHub("STN", sequence, null))
