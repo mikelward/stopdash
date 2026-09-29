@@ -242,8 +242,9 @@ class WidgetRefreshWorker(appContext: Context, params: WorkerParameters) :
  * [lock]: each reads the snapshot inside it, after the last one saved, so overlapping callers reuse
  * the stops just fetched rather than fetch them twice (the shared TfL budget, and the radio). A
  * refresh that saved nothing (every stop failed) leaves nothing to reuse, so its outcome answers
- * the next caller for a short while instead, as long as the stored snapshot is still the one it
- * started from: a newer one (the app refreshed, or the stops changed) is refreshed on its own terms.
+ * the next caller for a short while instead, as long as the stored arrivals are still the ones it
+ * started from ([sameArrivals]): newer ones (the app refreshed, or the stops changed) are refreshed
+ * on their own terms, while a line check stored since changes nothing the outcome answers for.
  */
 internal object StoredSnapshotRefresh {
     val lock = Mutex()
@@ -263,7 +264,7 @@ internal object StoredSnapshotRefresh {
     suspend fun refresh(context: Context, prior: DeparturesSnapshot, keys: RefreshKeys?): Result {
         lastFailed?.let { last ->
             val age = Duration.between(last.at, Instant.now())
-            if (last.input == prior && WatchRefreshOutcome.answersAgain(last.outcome, age, ARRIVALS_REUSE)) {
+            if (sameArrivals(last.input, prior) && WatchRefreshOutcome.answersAgain(last.outcome, age, ARRIVALS_REUSE)) {
                 // Still re-render, as a refresh with nothing fresh does, so the widget ages honestly.
                 try {
                     StopDashWidget().updateAll(context)
@@ -279,6 +280,12 @@ internal object StoredSnapshotRefresh {
         lastFailed = if (report.savedNothing) Failed(Instant.now(), report.outcome, prior) else null
         return Result(report.outcome, report.saved)
     }
+
+    // Whether [a] and [b] hold the same arrivals, whatever their line checks: a failed refresh's
+    // outcome answers for arrivals, so a check stored since (its own status-only write, or the
+    // app's) doesn't send the next caller to fetch them all again.
+    internal fun sameArrivals(a: DeparturesSnapshot, b: DeparturesSnapshot): Boolean =
+        a.copy(lineStatuses = emptyMap()) == b.copy(lineStatuses = emptyMap())
 }
 
 /**
@@ -383,15 +390,27 @@ internal suspend fun refreshStoredSnapshot(
                     warn = ::logWidgetSnapshotWarning,
                 ))
                 ran = true
-                val arrivalsRefreshed = WidgetRefresh.refreshedArrivals(
+                // The arrivals, then the lines' statuses, in as few requests as TfL accepts (lines
+                // checked moments ago reused), so a disrupted service stays marked while its
+                // countdowns are live (SPEC D3). A failed status lookup keeps the prior checks, which
+                // then age out like a countdown (D4); it doesn't fail the refresh, whose arrivals are
+                // still good. With no arrivals fresh, the lines are still checked, so a suspension
+                // declared during an arrivals outage reaches the widget ([WidgetRefresh.refresh]).
+                var answered: List<LineStatus>? = null
+                val outcome = WidgetRefresh.refresh(
                     prior,
-                    Instant.now(),
+                    Instant::now,
                     // Skip a stop the app fetched moments ago: same data, same shared rate budget.
-                    reuse = ARRIVALS_REUSE,
+                    arrivalsReuse = ARRIVALS_REUSE,
+                    statusReuse = LINE_STATUS_REUSE,
                     // Or one another screen fetched since.
                     shared = ArrivalsCache.SHARED,
                     source = client.arrivalsSource(),
                     railFeed = client::railFeed,
+                    fetchStatuses = { lineIds ->
+                        // Called once per request TfL accepts: every answered one's statuses count.
+                        widgetLineStatuses(client, lineIds)?.also { answered = answered.orEmpty() + it }
+                    },
                 ) { stopId ->
                     attempted.incrementAndGet()
                     try {
@@ -410,45 +429,36 @@ internal suspend fun refreshStoredSnapshot(
                         null
                     }
                 }
-                // With fresh arrivals, their lines' statuses too, in as few requests as TfL accepts
-                // (lines checked moments ago reused), so a disrupted service stays marked while its countdowns are live (SPEC
-                // D3). A failed lookup keeps the prior checks, which then age out like a countdown (D4);
-                // it doesn't fail the refresh, whose arrivals are still good.
-                var answered: List<LineStatus>? = null
-                val refreshed = arrivalsRefreshed?.let { snapshot ->
-                    WidgetRefresh.refreshedLineStatuses(
-                        snapshot,
-                        Instant.now(),
-                        reuse = LINE_STATUS_REUSE,
-                        answeredAt = Instant::now,
-                    ) { lineIds ->
-                        // Called once per request TfL accepts: every answered one's statuses count.
-                        widgetLineStatuses(client, lineIds)?.also { answered = answered.orEmpty() + it }
+                val dismissals = { DataStoreDismissedAlertsStore.from(context.applicationContext, warn = ::logWidgetSnapshotWarning) }
+                savedNothing = outcome !is WidgetRefresh.Outcome.Save
+                when (outcome) {
+                    is WidgetRefresh.Outcome.Save -> {
+                        // Conditional save: persist and poke the widget only if the stored stop set still
+                        // matches the one this cycle loaded and fetched for. In the seconds spent fetching,
+                        // the app may have persisted a different set (the user relocated in-app); an
+                        // unconditional save would let this slow cycle win last and stamp the old location's
+                        // departures fresh over the new set. On a discard the newer in-app snapshot is
+                        // already stored and has poked the widget itself (Codex P1 on #56).
+                        saving = true
+                        val applied = WidgetSnapshotStore(context).saveIfStopsMatch(outcome.snapshot, prior.stops.map { it.stopId })
+                        saving = false
+                        saved = applied
+                        if (!applied) logWidgetSnapshotWarning("widget refresh result discarded: stop set changed during fetch")
+                        // A dismissed disruption TfL now reports as resolved or changed is forgotten, as the
+                        // app's own refresh forgets it, so the same alert recurring while the app stays
+                        // closed is shown again rather than hidden. Only once this refresh's statuses are
+                        // stored; a discarded one leaves it to the app's own refresh.
+                        if (applied) answered?.let { reconcileWidgetDismissals(dismissals(), it) }
                     }
-                }
-                savedNothing = refreshed == null
-                if (refreshed != null) {
-                    // Conditional save: persist and poke the widget only if the stored stop set still
-                    // matches the one this cycle loaded and fetched for. In the seconds spent fetching,
-                    // the app may have persisted a different set (the user relocated in-app); an
-                    // unconditional save would let this slow cycle win last and stamp the old location's
-                    // departures fresh over the new set. On a discard the newer in-app snapshot is
-                    // already stored and has poked the widget itself (Codex P1 on #56).
-                    saving = true
-                    val applied = WidgetSnapshotStore(context).saveIfStopsMatch(refreshed, prior.stops.map { it.stopId })
-                    saving = false
-                    saved = applied
-                    if (!applied) logWidgetSnapshotWarning("widget refresh result discarded: stop set changed during fetch")
-                    // A dismissed disruption TfL now reports as resolved or changed is forgotten, as the
-                    // app's own refresh forgets it, so the same alert recurring while the app stays
-                    // closed is shown again rather than hidden. Only once this refresh's statuses are
-                    // stored; a discarded one leaves it to the app's own refresh.
-                    if (applied) {
-                        answered?.let { reconcileWidgetDismissals(DataStoreDismissedAlertsStore.from(context.applicationContext, warn = ::logWidgetSnapshotWarning), it) }
+                    is WidgetRefresh.Outcome.Statuses -> {
+                        // Only the statuses are stored, merged per line with whatever the app wrote
+                        // meanwhile, for the lines the stored stops show; the arrivals stay as stored,
+                        // to age honestly. The store redraws the widget, as a save does.
+                        WidgetSnapshotStore(context).updateLineStatuses(outcome.checks)
+                        answered?.let { reconcileWidgetDismissals(dismissals(), it) }
                     }
-                } else {
-                    // Nothing fetched fresh: re-render so the unchanged snapshot ages honestly.
-                    StopDashWidget().updateAll(context)
+                    // Nothing fresh: re-render so the unchanged snapshot ages honestly.
+                    WidgetRefresh.Outcome.Unchanged -> StopDashWidget().updateAll(context)
                 }
             }
         } finally {

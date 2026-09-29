@@ -16,6 +16,13 @@ interface SnapshotStore {
     suspend fun load(): DeparturesSnapshot?
 
     /**
+     * The stored snapshot as the widget reads it, even where [load] declines to restore it in-app:
+     * the lines a refresh with none of its own to check can check for the widget
+     * ([updateLineStatuses]).
+     */
+    suspend fun stored(): DeparturesSnapshot? = load()
+
+    /**
      * Persist the stops of [snapshot] like [save], but leave the stored widget journeys as they
      * are — the app's saves never write the pins, which only [updateWidgetJourneys] changes. A stop
      * stored with newer arrivals (the widget's live refresh ran since [snapshot] was fetched) keeps
@@ -86,6 +93,15 @@ interface SnapshotStore {
      * succeeds — and the widget hides by where the rider is now. A no-op when nothing is stored.
      */
     suspend fun updateNearer(nearer: Map<String, Terminating.Nearer>) {}
+
+    /**
+     * Merge [checks] into the stored line statuses, the newer check per line winning, for the lines
+     * the stored stops show, leaving the arrivals as stored. A status check that landed while every
+     * arrivals fetch failed has no arrivals to save beside it, and would otherwise reach the widget
+     * only with the next arrivals it can save: a suspension declared during an arrivals outage would
+     * be late (SPEC D3). A no-op when nothing is stored.
+     */
+    suspend fun updateLineStatuses(checks: Map<String, LineStatusCheck>) {}
 
     companion object {
         /** A store that persists nothing — the default for tests and for a build with no

@@ -9,6 +9,11 @@ import androidx.work.testing.TestListenableWorkerBuilder
 import androidx.work.testing.WorkManagerTestInitHelper
 import app.stopdash.data.DataStoreAppSettings
 import app.stopdash.domain.AppSettings
+import app.stopdash.domain.DeparturesSnapshot
+import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusCheck
+import app.stopdash.domain.StopArrivals
+import java.time.Instant
 import app.stopdash.domain.FontSizeSettings
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
@@ -16,6 +21,8 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -139,5 +146,18 @@ class WidgetRefreshWorkerTest {
     fun `resume gives up without scheduling when the settings read hangs`() = runTest {
         resumeWidgetRefreshIfEnabled(context, FakeSettings(flow { awaitCancellation() }))
         assertEquals(0, enqueuedCount())
+    }
+
+    @Test
+    fun `a failed refresh's outcome still answers once a line check is stored, but not new arrivals`() {
+        val stop = StopArrivals("A", "Stop A", emptyList(), Instant.EPOCH)
+        val before = DeparturesSnapshot(listOf(stop), Instant.EPOCH)
+        // Its own status-only write, or the app's, changes only the line checks.
+        val checked = before.copy(
+            lineStatuses = mapOf("victoria" to LineStatusCheck(LineStatus("victoria", 20, "Suspended"), Instant.EPOCH)),
+        )
+        assertTrue(StoredSnapshotRefresh.sameArrivals(before, checked))
+        val refetched = before.copy(stops = listOf(stop.copy(fetchedAt = Instant.EPOCH.plusSeconds(60))))
+        assertFalse(StoredSnapshotRefresh.sameArrivals(before, refetched))
     }
 }

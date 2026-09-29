@@ -470,6 +470,29 @@ class DataStoreSnapshotStoreTest {
     }
 
     @Test
+    fun `line checks stored alone keep the arrivals and each line's newest check`() = runTest {
+        val backing = FakeDataStore(null)
+        val store = DataStoreSnapshotStore(backing)
+        // Nothing stored: nothing to merge into.
+        store.updateLineStatuses(mapOf("victoria" to check(6, now)))
+        assertNull(store.load())
+        val stored = snapshot().copy(lineStatuses = mapOf("victoria" to check(LineStatus.GOOD_SERVICE, now)))
+        store.save(stored)
+        // A newer check lands during an arrivals outage: its verdict is stored, the arrivals left as
+        // they were; a line no stop shows isn't.
+        val suspended = LineStatusCheck(LineStatus("victoria", 20, "Suspended"), now.plusSeconds(60))
+        val elsewhere = LineStatusCheck(LineStatus("central", 20, "Suspended"), now.plusSeconds(60))
+        store.updateLineStatuses(mapOf("victoria" to suspended, "central" to elsewhere))
+        val updated = store.load()!!
+        assertEquals(stored.stops, updated.stops)
+        assertEquals(setOf("victoria"), updated.lineStatuses.keys)
+        assertEquals(20, updated.lineStatuses.getValue("victoria").status.severity)
+        // An older one doesn't replace it.
+        store.updateLineStatuses(mapOf("victoria" to check(LineStatus.GOOD_SERVICE, now.plusSeconds(30))))
+        assertEquals(now.plusSeconds(60), store.load()!!.lineStatuses.getValue("victoria").checkedAt)
+    }
+
+    @Test
     fun `saveKeepingJourneys keeps each line's newest check`() = runTest {
         val backing = FakeDataStore(null)
         val store = DataStoreSnapshotStore(backing)

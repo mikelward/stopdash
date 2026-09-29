@@ -34,6 +34,7 @@ import app.stopdash.domain.TflException
 import app.stopdash.domain.WidgetJourneyCheck
 import app.stopdash.domain.WidgetJourneys
 import app.stopdash.domain.WidgetJourneysReport
+import app.stopdash.domain.WidgetRefresh
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
@@ -148,8 +149,8 @@ class MainViewModel(
     // in production until then. The seam stays for tests and that later wiring.
     private val warn: (String) -> Unit = {},
     // Best-effort widget redraw: poked after a star toggle (so the widget's pinned order updates
-    // at once — SPEC D8) AND after a completed refresh that did NOT save (a failed or aged-only
-    // cycle), so the static RemoteViews recompute the snapshot's age from the current clock and
+    // at once — SPEC D8) AND after a completed refresh that wrote nothing to the store (a failed
+    // or aged-only cycle; a store write pokes the widget itself), so the static RemoteViews recompute the snapshot's age from the current clock and
     // withhold stale countdowns (SPEC D4) rather than freezing at the last save's stamp. Doesn't
     // persist anything. No-op by default; MainActivity supplies the widget update.
     private val redrawWidget: suspend () -> Unit = {},
@@ -718,6 +719,9 @@ class MainViewModel(
         // line the batch re-checked but TfL then omitted drop out of the merged determined set, rather
         // than keeping a stale "checked" from an earlier fetch.
         val attemptedLineIds: Set<String>,
+        // Whether TfL answered a line-status request this batch, even with nothing for any line: its
+        // omissions are checks too ([lineStatusOmitted]), which the widget must learn of.
+        val statusAnswered: Boolean,
         // Stop ids whose OWN stop-level disruption request failed this batch — an axis independent of
         // line status (a stop's line can be determined while its closure was never checked), so a
         // per-stop surface says "couldn't check" for it (SPEC principle 1, Codex on #100).
@@ -1052,6 +1056,7 @@ class MainViewModel(
         // a re-checked-but-now-omitted line drop out of the merged determined set (see [fetchIncremental]).
         var determinedLineIds = emptySet<String>()
         var attemptedLineIds = emptySet<String>()
+        var statusAnswered = false
         var lineStatusRequests = 0
         if (merged.isNotEmpty()) {
             val predictedLineIds = merged.flatMap { it.departures }.map { it.lineId }
@@ -1100,6 +1105,7 @@ class MainViewModel(
                     val failed = results.failed
                     // Nothing answered at all: the whole lookup failed, as before it was split.
                     if (!results.anyAnswered) throw checkNotNull(results.failure)
+                    statusAnswered = true
                     if (failed.isNotEmpty()) {
                         // Not answered, so not an omission: those lines read unchecked and are asked
                         // again next refresh, while the verdicts the other requests returned stand.
@@ -1174,6 +1180,7 @@ class MainViewModel(
             lineStatuses = lineStatuses,
             determinedLineIds = determinedLineIds,
             attemptedLineIds = attemptedLineIds,
+            statusAnswered = statusAnswered,
             stopsDisruptionUnknown = stopsDisruptionUnknown,
             anyArrivalsFailed = anyArrivalsFailed,
             anyFreshData = anyFreshData,
@@ -1503,7 +1510,33 @@ class MainViewModel(
                 // and countdowns from the last save, ageing invisibly and never crossing into the
                 // withheld "?" state (SPEC D4 / principle 2). Poke a best-effort redraw so it
                 // recomputes from the current clock, without overwriting the last-good snapshot.
-                redrawWidgetBestEffort("failed refresh")
+                // The lines this refresh checked are stored first, alone, the arrivals left as
+                // stored: a suspension declared during an arrivals outage reaches the widget now
+                // rather than with the next arrivals worth saving (SPEC D3).
+                // Gated on TfL having answered, not on any line being determined: an answer that
+                // left every line out is a check too, replacing an older stored disruption.
+                // With no stops of its own to check (a cold start whose arrivals all failed), it
+                // checks the lines the widget shows instead, from the stored snapshot.
+                // That write pokes the widget itself (WidgetSnapshotStore), as a save does, even
+                // when it fails; so only a cycle that wrote nothing redraws it here, not both.
+                val checks = widgetSnapshot?.lineStatuses.orEmpty()
+                var wrote = false
+                val write: suspend (Map<String, LineStatusCheck>) -> Unit = {
+                    wrote = true
+                    withContext(io) { snapshotStore.updateLineStatuses(it) }
+                }
+                try {
+                    if (widgetSnapshot == null) {
+                        checkStoredLines(write)
+                    } else if (batch.statusAnswered && checks.isNotEmpty()) {
+                        write(checks)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    warn("snapshot line status save failed: ${reason(e)}")
+                }
+                if (!wrote) redrawWidgetBestEffort("failed refresh")
             }
             // A journeys write that failed is retried now the fetch is done.
             if (widgetJourneysPending) writeWidgetJourneys()
@@ -1932,6 +1965,40 @@ class MainViewModel(
         } catch (e: Exception) {
             warn("dismissal reconcile failed: ${reason(e)}")
         }
+    }
+
+    /**
+     * Checks the lines of the stored widget snapshot ([SnapshotStore.stored]) and stores what TfL
+     * answers, as the widget's own refresh does with no arrivals fresh ([WidgetRefresh.refresh]): for
+     * a refresh that held no stops to check, so a suspension declared during an arrivals outage still
+     * reaches the widget, and the dismissals of those lines' alerts are reconciled against the answers.
+     * Lines checked within [lineStatusReuse] aren't asked again; a failed request stores nothing.
+     * What's answered is stored through [write].
+     */
+    private suspend fun checkStoredLines(write: suspend (Map<String, LineStatusCheck>) -> Unit) {
+        val stored = withContext(io) { snapshotStore.stored() } ?: return
+        var answered: List<LineStatus>? = null
+        val checked = WidgetRefresh.refreshedLineStatuses(stored, clock(), reuse = lineStatusReuse, answeredAt = clock) { ids ->
+            try {
+                withContext(io) { client.lineStatuses(ids) }.also { answered = answered.orEmpty() + it }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                warn("widget line status failed for ${ids.size} line(s): ${reason(e)}")
+                null
+            }
+        }
+        val found = answered ?: return
+        write(checked.lineStatuses)
+        // The answers settle the dismissals of those lines' alerts, as a refresh's own check does
+        // ([reconcileDismissals]): one TfL now reports changed or ended is forgotten.
+        reconcileDismissals(
+            queriedStops = emptyList(),
+            shownStops = emptyList(),
+            lineStatuses = found.filter { it.hasAlerts }.associateBy { it.lineId },
+            checkedLineIds = found.mapTo(HashSet()) { it.lineId },
+            stopsDisruptionUnknown = emptySet(),
+        )
     }
 
     /**

@@ -8,6 +8,7 @@ import androidx.datastore.core.Serializer
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.dataStoreFile
 import app.stopdash.domain.DeparturesSnapshot
+import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.Terminating
@@ -100,6 +101,20 @@ class DataStoreSnapshotStore internal constructor(
                 stop.copy(nearerIds = n.ids.sorted(), nearerNames = n.names.sorted())
             }
             if (stops == current.stops) current else current.copy(stops = stops)
+        }
+    }
+
+    override suspend fun updateLineStatuses(checks: Map<String, LineStatusCheck>) {
+        if (checks.isEmpty()) return
+        val desired = checks.toPersistedStatuses()
+        val now = clock()
+        // Pure function of `current`, atomic with the read under the write lock (see pruneStops).
+        // A newer build's file isn't this one's to rewrite piecemeal, so it's left alone; a later
+        // full save replaces it.
+        dataStore.updateData { current ->
+            if (current == null || current.version !in PersistedSnapshot.READABLE_VERSIONS) return@updateData current
+            val merged = newestStatuses(current.lineStatuses, desired, current.stops, now)
+            if (merged.toSet() == current.lineStatuses.toSet()) current else current.copy(lineStatuses = merged)
         }
     }
 

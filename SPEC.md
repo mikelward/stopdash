@@ -1907,7 +1907,11 @@ check's expiry as it does at the arrivals' boundary. A live countdown whose line
 check (never checked, the lookup failed, TfL left it out of its answer, or the check aged out)
 makes the widget say "Couldn't
 check for disruptions", as the app does, rather than read as verified-clean. The widget's own
-refresh re-checks the lines with the arrivals. A mark takes a line of the widget's height, and is never the line dropped
+refresh re-checks the lines with the arrivals. When every arrivals request fails but TfL answers
+for the lines, either refresh (the app's or the widget's) stores the new checks alone, leaving the
+arrivals to age: a suspension declared during an arrivals outage reaches the widget at once rather
+than with the next arrivals worth saving. An app refresh with no stops of its own to check (a cold
+start whose arrivals all failed) checks the lines the widget shows instead. A mark takes a line of the widget's height, and is never the line dropped
 to fit another departure. Good-service verdicts are kept too, so when the app and the widget's
 refresh both write, each line keeps whichever check is newer. Stop closures are still not
 persisted: they have no age-stamped rendering. A line status dismissed in the app leaves the widget
