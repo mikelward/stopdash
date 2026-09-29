@@ -478,39 +478,30 @@ class MainScreenScreenshotTest {
     }
 
     @Test
-    fun `a station's To… page is titled by the trip and says what it couldn't check`() {
+    fun `a station's page offers To…`() {
         var planned = false
-        capture("main-station-trip.png") {
-            MainScreen(
-                DeparturesUiState.Loaded(stops(now.minusSeconds(30)), now.minusSeconds(30), lineStatuses = statuses()),
-                now,
-                {},
-                stationTitle = "Whitechapel ➔ Wimbledon",
-                onPlanTo = { planned = true },
-                tripNotice = "Some routes couldn't be checked",
-            )
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                MainScreen(
+                    DeparturesUiState.Loaded(stops(now.minusSeconds(30)), now.minusSeconds(30), lineStatuses = statuses()),
+                    now,
+                    {},
+                    stationTitle = "Whitechapel",
+                    onPlanTo = { planned = true },
+                )
+            }
         }
-        composeRule.onNodeWithText("Whitechapel ➔ Wimbledon").assertExists()
-        composeRule.onNodeWithText("Some routes couldn't be checked").assertExists()
         composeRule.onNodeWithText("To…").performClick()
         assertTrue(planned)
     }
 
     @Test
-    fun `an empty To… page says nothing goes there directly`() {
+    fun `a station's page without To… offers none`() {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
-                MainScreen(
-                    DeparturesUiState.Loaded(emptyList(), now.minusSeconds(30)),
-                    now,
-                    {},
-                    stationTitle = "Whitechapel ➔ Wimbledon",
-                    emptyMessage = "No direct trips to Wimbledon soon",
-                )
+                MainScreen(DeparturesUiState.Loaded(emptyList(), now.minusSeconds(30)), now, {}, stationTitle = "Whitechapel")
             }
         }
-        composeRule.onNodeWithText("No direct trips to Wimbledon soon").assertExists()
-        // No To… action without a handler.
         composeRule.onNodeWithText("To…").assertDoesNotExist()
     }
 

@@ -205,7 +205,6 @@
     <!-- Over a To… list while lines' routes are still loading. -->
     <string name="trip_checking">Checking routes…</string>
     <!-- A To… list with nothing that goes there directly. %1$s is the destination. -->
-    <string name="trip_none">No direct trips to %1$s soon</string>
     <!-- Title of a To… from the near-me list: the direct trips from the stops near you. -->
     <string name="trip_title_here">To %1$s</string>
     <!-- A trip with a change (SPEC *Trips with a change*), while TfL's Journey Planner answers. -->

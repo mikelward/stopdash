@@ -164,9 +164,7 @@ class StationIndexTest {
     }
 
     @Test
-    fun `a folded stop is always within a To destination's reach`() {
-        // Margin for a destination measured from its stops' middle, not the search position.
-        assertTrue(StationIndex.FOLD_RADIUS_METERS + 50 <= DirectTrips.DESTINATION_RADIUS_METERS)
+    fun `a same-named result folds only within the fold radius`() {
         val kept = StationMatch("A", "Example", latitude = 51.5, longitude = -0.12)
         val near = StationMatch("B", "Example", latitude = 51.5020, longitude = -0.12) // ~222 m: folds
         val beyond = StationMatch("C", "Example", latitude = 51.5027, longitude = -0.12) // ~300 m: stays

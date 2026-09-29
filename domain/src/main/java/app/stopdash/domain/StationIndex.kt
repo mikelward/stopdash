@@ -145,9 +145,7 @@ class StationIndex(
         /**
          * How near two same-named results must be to read as one place: a station and the bus stop
          * areas around it ("Archway", once per stand) are a street or two apart, well inside this;
-         * two "Church Street"s in different boroughs are miles apart and both stay. Kept well inside
-         * [DirectTrips.DESTINATION_RADIUS_METERS], so a folded stop is still among a To…'s stops even
-         * measured from the kept station's stops' middle rather than its search position.
+         * two "Church Street"s in different boroughs are miles apart and both stay.
          */
         const val FOLD_RADIUS_METERS = 250.0
 
@@ -155,7 +153,7 @@ class StationIndex(
          * [ranked] with each result dropped when a better-ranked one of the same cleaned name lies
          * within [FOLD_RADIUS_METERS] of it — TfL lists a place's bus stop areas one by one, so
          * "Archway" came back once per stand. The kept result opens the whole place: a From… page
-         * lists the stops around it, and a To… takes them in ([DirectTrips.destinationStops]).
+         * lists the stops around it.
          * A result without a position is never folded, since nothing says it's the same place. The
          * kept result takes on the folded ones' modes, so a station with buses at its door reads
          * "Tube · Bus" rather than "Tube".
