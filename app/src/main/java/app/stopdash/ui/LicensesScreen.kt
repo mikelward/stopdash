@@ -100,11 +100,17 @@ internal fun LicensesContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
+                // The title takes what Back and the overflow leave, wrapping at a large text size
+                // rather than squeezing them off the row.
                 Text(
                     text = stringResource(R.string.settings_licenses_title),
                     style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = onBack) { Text(stringResource(R.string.action_back)) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = onBack) { Text(stringResource(R.string.action_back)) }
+                    AppMenuOverflow()
+                }
             }
             // Just the component names, one compact row each; the version and license live behind
             // a tap so the list stays scannable.

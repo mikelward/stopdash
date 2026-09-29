@@ -179,6 +179,20 @@ class OnTheWayScreenScreenshotTest {
         captureSnapshot("on-the-way-waiting.png")
     }
 
+    @Test
+    fun on_the_way_with_the_app_menu() {
+        // As the activity hosts it: the app's overflow at the bar's end, for a bug report.
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                androidx.compose.runtime.CompositionLocalProvider(LocalAppMenu provides AppMenuActions(false, {}, {}, {})) {
+                    OnTheWayScreen(trip, TripProgress.Waiting(mildmay, at(4)), false, now, {}, {})
+                }
+            }
+        }
+        composeRule.onNodeWithContentDescription("More options").assertIsDisplayed()
+        captureSnapshot("on-the-way-app-menu.png")
+    }
+
     private fun jubileeTrain(destination: String, minutes: Long) =
         Departure("jubilee", "Jubilee", "outbound", destination, null, at(minutes), "tube")
 

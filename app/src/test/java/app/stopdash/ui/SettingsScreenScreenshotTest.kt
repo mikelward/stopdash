@@ -59,6 +59,21 @@ class SettingsScreenScreenshotTest {
     }
 
     @Test
+    fun settings_with_the_app_menu() {
+        // As the activity hosts it: Back and the app's overflow share the header's end.
+        composeRule.setContent {
+            StopDashTheme {
+                androidx.compose.runtime.CompositionLocalProvider(LocalAppMenu provides AppMenuActions(false, {}, {}, {})) {
+                    SettingsScreen(liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {})
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Back").assertIsDisplayed()
+        captureSnapshot("settings-app-menu.png")
+    }
+
+    @Test
     fun settings_on() {
         composeRule.setContent {
             StopDashTheme {

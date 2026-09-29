@@ -113,6 +113,8 @@ internal fun OnTheWayScreen(
                         overflow = TextOverflow.Ellipsis,
                     )
                 },
+                // A trip gone wrong is reported from where it's seen (maintainer, 2026-09-29).
+                actions = { AppMenuOverflow() },
             )
         },
         bottomBar = {

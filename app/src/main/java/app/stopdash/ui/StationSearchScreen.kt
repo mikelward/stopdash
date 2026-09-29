@@ -146,6 +146,8 @@ fun StationSearchScreen(
     // Under the From/To bar, the place chips start where the To field does, so they read as quick
     // picks for it (maintainer, 2026-09-28); elsewhere at the screen's 16dp margin.
     val chipsStart = if (onChangeFrom != null) tripEndsFieldStart(endsLabelWidth, LocalDensity.current) else 16.dp
+    // The app's overflow at the From row's end, as on the trip page; none where the activity gives no menu.
+    val appMenu: (@Composable () -> Unit)? = if (LocalAppMenu.current != null) { { AppMenuOverflow() } } else null
     Scaffold(
         topBar = {
             if (onChangeFrom != null) {
@@ -154,6 +156,7 @@ fun StationSearchScreen(
                     onChangeFrom = onChangeFrom,
                     onBack = onBack,
                     labelWidth = endsLabelWidth,
+                    actions = appMenu,
                 ) { modifier ->
                     BasicTextField(
                         value = field,
@@ -205,6 +208,7 @@ fun StationSearchScreen(
                             modifier = Modifier.fillMaxWidth().focusRequester(focus).testTag("stationSearchField"),
                         )
                     },
+                    actions = { AppMenuOverflow() },
                 )
             }
         },
@@ -615,6 +619,7 @@ fun StationPlaceholderScreen(
                             Icon(CrosshairIcon, contentDescription = stringResource(R.string.locate_here))
                         }
                     }
+                    AppMenuOverflow()
                 },
             )
         },

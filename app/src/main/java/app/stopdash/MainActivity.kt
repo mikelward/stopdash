@@ -625,7 +625,11 @@ class MainActivity : ComponentActivity() {
                 // so a rotation doesn't reopen it for one the rider has seen (reset on success).
                 var endFailuresShown by rememberSaveable { mutableIntStateOf(0) }
                 LaunchedEffect(endFailures) {
-                    if (endFailures > endFailuresShown) onTheWayOpen = true
+                    if (endFailures > endFailuresShown) {
+                        // Over the licenses too, which outrank the trip ([topOverlay]): this is newer.
+                        licensesOpen = false
+                        onTheWayOpen = true
+                    }
                     endFailuresShown = endFailures
                 }
                 val onTheWayTrip by tracker.trip.collectAsStateWithLifecycle()
@@ -643,6 +647,8 @@ class MainActivity : ComponentActivity() {
                 val openOnTheWayAsked by openOnTheWay.collectAsStateWithLifecycle()
                 LaunchedEffect(openOnTheWayAsked) {
                     if (openOnTheWayAsked) {
+                        // The notification tapped over the licenses: the trip is what was asked for.
+                        licensesOpen = false
                         onTheWayOpen = true
                         openOnTheWay.value = false
                     }
@@ -691,9 +697,11 @@ class MainActivity : ComponentActivity() {
                             )
                         },
                         overlayContent = {
-                            // The trip on the way first: it's what the rider opened last. Licenses wins
-                            // over the rest; each closes via its own Back.
-                            if (onTheWayOpen) {
+                            // Which one shows when several are open ([topOverlay]); each closes via its own Back.
+                            val top = topOverlay(licenses = licensesOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, settings = settingsOpen)
+                            if (top == TopOverlay.LICENSES) {
+                                LicensesScreen(onBack = { licensesOpen = false })
+                            } else if (top == TopOverlay.ON_THE_WAY) {
                                 val failed by tracker.failed.collectAsStateWithLifecycle()
                                 val notKept by tracker.notKept.collectAsStateWithLifecycle()
                                 val appOpenOnly by OnTheWayService.refused.collectAsStateWithLifecycle()
@@ -737,9 +745,7 @@ class MainActivity : ComponentActivity() {
                                     },
                                 )
                                 }
-                            } else if (licensesOpen) {
-                                LicensesScreen(onBack = { licensesOpen = false })
-                            } else if (favoritePlacesOpen) {
+                            } else if (top == TopOverlay.FAVORITE_PLACES) {
                                 // Layered above Settings; its Back returns there (settingsOpen stays set).
                                 val favoritePlacesModel: FavoritePlacesViewModel = viewModel(
                                     key = "favorite-places",
@@ -805,7 +811,7 @@ class MainActivity : ComponentActivity() {
                                     onRetrySearch = favoritePlacesModel::retrySearch,
                                     onDismissWriteError = favoritePlacesModel::dismissWriteError,
                                 )
-                            } else if (!settingsOpen) {
+                            } else if (top == TopOverlay.STATIONS) {
                                 StationSearchArea(
                                     onEditPlaces = {
                                         placesFromStation = true
@@ -2126,7 +2132,8 @@ class MainActivity : ComponentActivity() {
                 relocate = { onSameSet -> fromNearby.relocate(onSameSet) },
                 relocating = fromNearby.relocating,
                 locationBanner = fromNearby.locationBanner,
-                // The station page has no overflow (back and To… are in its bar).
+                // The station page has none of the list's overflow items (back and To… are in its
+                // bar); its bug report and About come from [LocalAppMenu].
                 onOpenLicenses = {},
                 onOpenSettings = {},
                 onFindStation = {},
@@ -2963,6 +2970,24 @@ internal fun StopDashAppRoot(content: @Composable () -> Unit) {
     StopDashTheme {
         Surface(modifier = Modifier.fillMaxSize()) { ProvideDistanceSystem(content) }
     }
+}
+
+/** The activity-level overlays, as [topOverlay] picks between them. */
+internal enum class TopOverlay { LICENSES, ON_THE_WAY, FAVORITE_PLACES, STATIONS, SETTINGS }
+
+/**
+ * Which overlay shows when several are open at once. Licenses first: About opens it from any
+ * screen's overflow, On the way's included, and its Back returns to the screen beneath — ranked
+ * under the trip it was a tap that did nothing (Codex on #377). Then the trip on the way, what the
+ * rider opened last; the saved places, layered above Settings; the station pages and search,
+ * unless Settings is open, which is last.
+ */
+internal fun topOverlay(licenses: Boolean, onTheWay: Boolean, favoritePlaces: Boolean, settings: Boolean): TopOverlay = when {
+    licenses -> TopOverlay.LICENSES
+    onTheWay -> TopOverlay.ON_THE_WAY
+    favoritePlaces -> TopOverlay.FAVORITE_PLACES
+    !settings -> TopOverlay.STATIONS
+    else -> TopOverlay.SETTINGS
 }
 
 /**
