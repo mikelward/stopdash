@@ -2126,7 +2126,10 @@ and these carry the rest as their own PRs:
       checked in the last 90 s reused). SPEC *One widget, many surfaces* records the reversal. A line with no current check reads
       "Couldn't check for disruptions", as in the app. Stop closures are still not persisted. The
       watch renders them too: *Disruptions on the watch* (Phase 6).
-- [ ] **Re-check line statuses when arrivals fail (own PR, Codex P1 on #317).** Both writers
+- [x] **Re-check line statuses when arrivals fail (own PR, Codex P1 on #317).** *Done: with no
+      arrivals to save, the widget's refresh still checks the stored stops' lines
+      (`WidgetRefresh.refresh`), and it and the app's refresh store the answered checks alone
+      (`SnapshotStore.updateLineStatuses`), newest per line, the arrivals left as stored.* Both writers
       check statuses only alongside arrivals they save: the worker skips the status call when
       every arrivals request failed, and the app's save gate needs fresh or carried arrivals. So
       during an arrivals-only outage a newly declared suspension doesn't reach the widget. Its rows

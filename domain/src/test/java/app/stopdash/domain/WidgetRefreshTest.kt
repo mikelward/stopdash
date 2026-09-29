@@ -132,6 +132,49 @@ class WidgetRefreshTest {
     }
 
     @Test
+    fun `with no arrivals fresh, the lines are still checked and their statuses stored alone`() = runTest {
+        val prior = snapshot(stop("A", listOf(departure("Brixton"))))
+        val asked = mutableListOf<Set<String>>()
+        val suspended = LineStatus("victoria", 20, "Suspended")
+        val outcome = WidgetRefresh.refresh(prior, { t1 }, fetchStatuses = { ids -> asked += ids; listOf(suspended) }) { null }
+        // The arrivals outage doesn't hold the suspension back: its check is stored, stamped when
+        // TfL answered, and nothing else is.
+        assertEquals(listOf(setOf("victoria")), asked)
+        assertEquals(WidgetRefresh.Outcome.Statuses(mapOf("victoria" to LineStatusCheck(suspended, t1))), outcome)
+    }
+
+    @Test
+    fun `an answer that leaves every line out is stored too, as no verdict`() = runTest {
+        val prior = snapshot(stop("A", listOf(departure("Brixton"))))
+        val outcome = WidgetRefresh.refresh(prior, { t1 }, fetchStatuses = { emptyList() }) { null }
+        val check = (outcome as WidgetRefresh.Outcome.Statuses).checks.getValue("victoria")
+        assertFalse(check.known)
+        assertEquals(t1, check.checkedAt)
+    }
+
+    @Test
+    fun `with neither arrivals nor a status answer, nothing changes`() = runTest {
+        val prior = snapshot(stop("A", listOf(departure("Brixton"))))
+        assertEquals(WidgetRefresh.Outcome.Unchanged, WidgetRefresh.refresh(prior, { t1 }, fetchStatuses = { null }) { null })
+        // Nor when every line was checked moments ago: nothing is asked, so nothing is stored.
+        val checked = prior.copy(lineStatuses = mapOf("victoria" to LineStatusCheck(LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service"), t1.minusSeconds(10))))
+        var asked = false
+        val outcome = WidgetRefresh.refresh(checked, { t1 }, statusReuse = java.time.Duration.ofSeconds(90), fetchStatuses = { asked = true; emptyList() }) { null }
+        assertEquals(WidgetRefresh.Outcome.Unchanged, outcome)
+        assertFalse(asked)
+    }
+
+    @Test
+    fun `fresh arrivals are saved with their lines' statuses`() = runTest {
+        val prior = snapshot(stop("A", listOf(departure("Brixton"))))
+        val good = LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service")
+        val outcome = WidgetRefresh.refresh(prior, { t1 }, fetchStatuses = { listOf(good) }) { listOf(departure("Fresh")) }
+        val saved = (outcome as WidgetRefresh.Outcome.Save).snapshot
+        assertEquals(listOf("Fresh"), saved.stops.single().departures.map { it.destination })
+        assertEquals(LineStatusCheck(good, t1), saved.lineStatuses["victoria"])
+    }
+
+    @Test
     fun `an empty snapshot has nothing to refresh`() = runTest {
         val refreshed = WidgetRefresh.refreshedArrivals(DeparturesSnapshot(emptyList(), t0), t1) {
             listOf(departure("x"))

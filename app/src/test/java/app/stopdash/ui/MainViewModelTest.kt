@@ -15,6 +15,7 @@ import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FartherStations
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.LineStatusBatch
 import app.stopdash.domain.NearbySelection
 import app.stopdash.domain.SnapshotStore
@@ -114,13 +115,18 @@ class MainViewModelTest {
     ) = MainViewModel(client, seeds, clock = { now }, io = dispatcher, snapshotStore = store, warn = warn)
 
     /** An in-memory [SnapshotStore] recording every save, seeded with an optional last-good. */
-    private class FakeStore(initial: DeparturesSnapshot? = null) : SnapshotStore {
+    private class FakeStore(
+        initial: DeparturesSnapshot? = null,
+        // False: kept for the widget but not restored in-app, as the production store does.
+        private val restores: Boolean = true,
+    ) : SnapshotStore {
         var stored: DeparturesSnapshot? = initial
+        override suspend fun stored(): DeparturesSnapshot? = stored
         val saves = mutableListOf<DeparturesSnapshot>()
         // When > 0, the next this-many save() calls throw instead of storing — to exercise a
         // shrink-save that fails so the pending-persist is retried, not dropped (Codex, PR #87).
         var failSaves: Int = 0
-        override suspend fun load(): DeparturesSnapshot? = stored
+        override suspend fun load(): DeparturesSnapshot? = stored.takeIf { restores }
         // Every widget-journeys report written, with the origins it came with.
         val reports = mutableListOf<WidgetJourneysReport>()
         val reportOrigins = mutableListOf<List<StopArrivals>>()
@@ -158,6 +164,12 @@ class MainViewModelTest {
             stored = snapshot
             saves += snapshot
             return true
+        }
+
+        // Line checks stored alone (no arrivals to save beside them), each call's as given.
+        val lineStatusUpdates = mutableListOf<Map<String, LineStatusCheck>>()
+        override suspend fun updateLineStatuses(checks: Map<String, LineStatusCheck>) {
+            lineStatusUpdates += checks
         }
 
         // A targeted removal, independent of [save] and its [failSaves] — the redesign's point is
@@ -1924,6 +1936,179 @@ class MainViewModelTest {
 
         assertTrue(vm.state.value is DeparturesUiState.Error)
         assertTrue(store.saves.isEmpty())
+    }
+
+    @Test
+    fun `a refresh whose arrivals all fail still stores the lines it checked for the widget`() =
+        runTest(dispatcher) {
+            // Every arrivals request fails, but the status one answers: the Victoria line is
+            // suspended. There are no arrivals worth saving, but the widget still learns of it now.
+            val aged = now.minusSeconds(120)
+            val store = FakeStore(
+                DeparturesSnapshot(
+                    stops = listOf(
+                        stopArrivals("940GZZLUOXC", "Oxford Circus", 300, aged),
+                        stopArrivals("940GZZLUKSX", "King's Cross St. Pancras", 300, aged),
+                    ),
+                    fetchedAt = aged,
+                ),
+            )
+            val vm = viewModel(
+                FakeClient(
+                    mapOf(
+                        "940GZZLUOXC" to Result.failure(TflException.Offline(null)),
+                        "940GZZLUKSX" to Result.failure(TflException.Offline(null)),
+                    ),
+                    statuses = Result.success(listOf(status("victoria", 20, "Suspended"))),
+                ),
+                store = store,
+            )
+            advanceUntilIdle()
+
+            assertTrue(vm.state.value is DeparturesUiState.Loaded)
+            assertTrue("no arrivals were saved", store.saves.isEmpty())
+            val check = store.lineStatusUpdates.last().getValue("victoria")
+            assertEquals(20, check.status.severity)
+            assertEquals(now, check.checkedAt)
+        }
+
+    @Test
+    fun `a refresh whose arrivals all fail stores an answer that left every line out`() = runTest(dispatcher) {
+        // TfL answers the status request but names no line: that's a check too, with no verdict,
+        // and it replaces an older disruption the widget holds rather than leaving it standing.
+        val aged = now.minusSeconds(120)
+        val store = FakeStore(
+            DeparturesSnapshot(stops = listOf(stopArrivals("940GZZLUOXC", "Oxford Circus", 300, aged)), fetchedAt = aged),
+        )
+        viewModel(
+            FakeClient(
+                mapOf(
+                    "940GZZLUOXC" to Result.failure(TflException.Offline(null)),
+                    "940GZZLUKSX" to Result.failure(TflException.Offline(null)),
+                ),
+                statuses = Result.success(emptyList()),
+            ),
+            store = store,
+        )
+        advanceUntilIdle()
+        assertTrue(store.saves.isEmpty())
+        val check = store.lineStatusUpdates.last().getValue("victoria")
+        assertFalse(check.known)
+        assertEquals(now, check.checkedAt)
+    }
+
+    @Test
+    fun `a cold start whose arrivals all fail checks the lines the widget shows`() = runTest(dispatcher) {
+        // Nothing restored in-app and no arrivals, so the refresh has no stops of its own; the widget
+        // still shows the Central line, and its suspension reaches it.
+        val aged = now.minusSeconds(120)
+        val widget = DeparturesSnapshot(
+            stops = listOf(StopArrivals("940GZZLUBNK", "Bank", listOf(departure("central", "Central", 300)), aged)),
+            fetchedAt = aged,
+        )
+        val store = FakeStore(widget, restores = false)
+        val client = FakeClient(
+            mapOf(
+                "940GZZLUOXC" to Result.failure(TflException.Offline(null)),
+                "940GZZLUKSX" to Result.failure(TflException.Offline(null)),
+            ),
+            statuses = Result.success(listOf(status("central", 20, "Suspended"))),
+        )
+        viewModel(client, store = store)
+        advanceUntilIdle()
+        assertEquals(setOf("central"), client.requestedLineIds?.toSet())
+        assertTrue(store.saves.isEmpty())
+        assertEquals(20, store.lineStatusUpdates.last().getValue("central").status.severity)
+    }
+
+    @Test
+    fun `a cold start's check of the widget's lines settles their dismissed alerts`() = runTest(dispatcher) {
+        // A Central line alert dismissed earlier has since ended: the check for the widget, made with
+        // every arrivals request failing, forgets the dismissal, so the alert recurring is shown again.
+        val ended = DismissedAlert.ofLineStatus(LineStatus("central", 6, "Severe Delays", "Signal failure."))
+        val backing = MutableStateFlow(setOf(ended))
+        val dismissals = object : DismissedAlertsStore {
+            override fun dismissed() = backing
+            override suspend fun dismiss(alert: DismissedAlert) {
+                backing.value = Dismissed.dismiss(backing.value, alert)
+            }
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) {
+                backing.value = Dismissed.reconcile(backing.value, live, checkedPlaces)
+            }
+        }
+        val aged = now.minusSeconds(120)
+        val widget = DeparturesSnapshot(
+            stops = listOf(StopArrivals("940GZZLUBNK", "Bank", listOf(departure("central", "Central", 300)), aged)),
+            fetchedAt = aged,
+        )
+        MainViewModel(
+            FakeClient(
+                mapOf(
+                    "940GZZLUOXC" to Result.failure(TflException.Offline(null)),
+                    "940GZZLUKSX" to Result.failure(TflException.Offline(null)),
+                ),
+                statuses = Result.success(listOf(status("central", LineStatus.GOOD_SERVICE, "Good Service"))),
+            ),
+            seeds,
+            clock = { now },
+            io = dispatcher,
+            snapshotStore = FakeStore(widget, restores = false),
+            dismissedStore = dismissals,
+        )
+        advanceUntilIdle()
+        assertEquals(emptySet<DismissedAlert>(), backing.value)
+    }
+
+    @Test
+    fun `a refresh whose arrivals and statuses all fail stores nothing`() = runTest(dispatcher) {
+        val aged = now.minusSeconds(120)
+        val store = FakeStore(
+            DeparturesSnapshot(stops = listOf(stopArrivals("940GZZLUOXC", "Oxford Circus", 300, aged)), fetchedAt = aged),
+        )
+        viewModel(
+            FakeClient(
+                mapOf(
+                    "940GZZLUOXC" to Result.failure(TflException.Offline(null)),
+                    "940GZZLUKSX" to Result.failure(TflException.Offline(null)),
+                ),
+                statuses = Result.failure(TflException.Offline(null)),
+            ),
+            store = store,
+        )
+        advanceUntilIdle()
+        assertTrue(store.saves.isEmpty())
+        assertTrue(store.lineStatusUpdates.isEmpty())
+    }
+
+    @Test
+    fun `a status write in an arrivals outage leaves the widget's redraw to the store`() = runTest(dispatcher) {
+        // The store's write re-renders the widget itself, as a save does, so redrawing here too would
+        // render it twice every outage cycle. With nothing written, the refresh redraws it instead.
+        val aged = now.minusSeconds(120)
+        suspend fun writesAndRedraws(statuses: Result<List<LineStatus>>): Pair<Int, Int> {
+            val store = FakeStore(
+                DeparturesSnapshot(stops = listOf(stopArrivals("940GZZLUOXC", "Oxford Circus", 300, aged)), fetchedAt = aged),
+            )
+            var redraws = 0
+            MainViewModel(
+                FakeClient(
+                    mapOf(
+                        "940GZZLUOXC" to Result.failure(TflException.Offline(null)),
+                        "940GZZLUKSX" to Result.failure(TflException.Offline(null)),
+                    ),
+                    statuses = statuses,
+                ),
+                seeds,
+                clock = { now },
+                io = dispatcher,
+                snapshotStore = store,
+                redrawWidget = { redraws++ },
+            )
+            advanceUntilIdle()
+            return store.lineStatusUpdates.size to redraws
+        }
+        assertEquals("TfL answered: written, and redrawn by the store", 1 to 0, writesAndRedraws(Result.success(listOf(status("victoria", 20, "Suspended")))))
+        assertEquals("it didn't: nothing written, redrawn here", 0 to 1, writesAndRedraws(Result.failure(TflException.Offline(null))))
     }
 
     @Test

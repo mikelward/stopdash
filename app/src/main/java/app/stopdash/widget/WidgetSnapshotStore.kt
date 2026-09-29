@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.glance.appwidget.updateAll
 import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.domain.DeparturesSnapshot
+import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.Terminating
@@ -28,6 +29,9 @@ class WidgetSnapshotStore(context: Context) : SnapshotStore {
     private val delegate = DataStoreSnapshotStore.from(appContext, warn = ::logWidgetSnapshotWarning)
 
     override suspend fun load(): DeparturesSnapshot? = null
+
+    // Not restored in-app, but what the widget shows: its lines can still be checked for it.
+    override suspend fun stored(): DeparturesSnapshot? = delegate.load()
 
     override suspend fun saveKeepingJourneys(snapshot: DeparturesSnapshot) {
         delegate.saveKeepingJourneys(snapshot)
@@ -67,6 +71,16 @@ class WidgetSnapshotStore(context: Context) : SnapshotStore {
         // The widget hides by the stored places, so re-render once they're updated.
         delegate.updateNearer(nearer)
         pokeWidget()
+    }
+
+    override suspend fun updateLineStatuses(checks: Map<String, LineStatusCheck>) {
+        // Re-rendered even when the write fails (its failure still reaches the caller): a caller with
+        // no arrivals to save still needs the widget to age, or old countdowns would read as live.
+        try {
+            delegate.updateLineStatuses(checks)
+        } finally {
+            pokeWidget()
+        }
     }
 
     override suspend fun pruneStops(departedStopIds: Collection<String>) {

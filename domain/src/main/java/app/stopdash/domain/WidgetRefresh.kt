@@ -18,13 +18,61 @@ import kotlinx.coroutines.coroutineScope
  * withhold ages it honestly and the whole-widget stamp/warning can't read it as fresh (SPEC D4 /
  * principle 2) rather than blanking it. When **no** stop fetched fresh the whole cycle is a
  * no-op — this returns null and nothing is saved, leaving the last-good in place for the next
- * cycle. Line statuses are refreshed separately, by [refreshedLineStatuses], after the arrivals.
+ * cycle. Line statuses are refreshed separately, by [refreshedLineStatuses], after the arrivals —
+ * even when none came fresh ([refresh]).
  *
  * A stop fetched fresh less than [reuse] before [now] — typically by the app a moment ago, which
  * shares the rate budget — is carried over as it is rather than fetched again. A cycle where every
  * stop was carried over is a no-op too (null): the app's own save already poked the widget.
  */
 object WidgetRefresh {
+    /** What one refresh of the stored snapshot came to ([refresh]). */
+    sealed interface Outcome {
+        /** Fresh arrivals, their lines' statuses checked beside them: [snapshot] is to be saved. */
+        data class Save(val snapshot: DeparturesSnapshot) : Outcome
+
+        /**
+         * No arrivals came fresh, but TfL answered for the lines: [checks] are to be stored alone,
+         * the arrivals left as stored ([SnapshotStore.updateLineStatuses]).
+         */
+        data class Statuses(val checks: Map<String, LineStatusCheck>) : Outcome
+
+        /** Nothing new: the stored snapshot stands, re-rendered so it ages honestly. */
+        data object Unchanged : Outcome
+    }
+
+    /**
+     * One refresh of [prior]: its arrivals ([refreshedArrivals]), then its lines' statuses
+     * ([refreshedLineStatuses]), each step deciding at [clock]'s time then. With fresh arrivals it's a
+     * snapshot to save. Without any, the lines are checked anyway, against the arrivals stored: a
+     * suspension declared during an arrivals outage (the arrivals requests failing while the status
+     * one answers) then reaches the widget at once rather than with the next arrivals it can save,
+     * and nothing else changes (SPEC D3). Checks TfL didn't answer (every status request failed, or
+     * every line was checked moments ago) leave nothing to store.
+     */
+    suspend fun refresh(
+        prior: DeparturesSnapshot,
+        clock: () -> Instant,
+        arrivalsReuse: Duration = Duration.ZERO,
+        statusReuse: Duration = Duration.ZERO,
+        shared: ArrivalsCache? = null,
+        source: Any? = null,
+        railFeed: ((stopId: String) -> RailFeed?)? = null,
+        fetchStatuses: suspend (lineIds: Set<String>) -> List<LineStatus>?,
+        fetchArrivals: suspend (stopId: String) -> List<Departure>?,
+    ): Outcome {
+        val arrivals = refreshedArrivals(prior, clock(), arrivalsReuse, shared, source, railFeed, fetchArrivals)
+        var answered = false
+        val checked = refreshedLineStatuses(arrivals ?: prior, clock(), statusReuse, answeredAt = clock) { ids ->
+            fetchStatuses(ids)?.also { answered = true }
+        }
+        return when {
+            arrivals != null -> Outcome.Save(checked)
+            answered -> Outcome.Statuses(checked.lineStatuses)
+            else -> Outcome.Unchanged
+        }
+    }
+
     suspend fun refreshedArrivals(
         prior: DeparturesSnapshot,
         now: Instant,
