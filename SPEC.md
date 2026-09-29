@@ -1045,7 +1045,12 @@ title and TalkBack use the name alone, so an icon-only chip is still announced b
 
 The trip's top bar carries the app's **overflow** as the list's does — its red dot while an update
 is available, "Update available", "Send bug report" and About — so a problem seen on a trip can be
-reported from it (maintainer, 2026-09-26).
+reported from it (maintainer, 2026-09-26). So does **every other screen** with no menu of its own —
+On the way, a route's page, a station's page, the From…/To… search, Settings, the saved places and
+the licenses (maintainer, 2026-09-29): a problem is reported from where it is seen, and the report's
+screenshot shows that screen. The location gate keeps its own "Send bug report" button instead.
+Settings masks both API keys again as its menu opens, so a key revealed with Show is never in a
+report's screenshot: a credential is not one of the things the report discloses.
 
 Tapping a route opens it, drawn with the list's own parts, **every leg a card**: the leg's platform header ("Highbury
 & Islington – Platform 2") over a route card of that line's live departures toward the change, then

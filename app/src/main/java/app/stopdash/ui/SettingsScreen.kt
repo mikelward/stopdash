@@ -28,6 +28,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -109,6 +110,10 @@ fun SettingsScreen(
     // Opens the favorite-places editor (SPEC D9), hosted as its own overlay by the caller.
     onOpenFavoritePlaces: () -> Unit = {},
 ) {
+    // Counts the overflow's openings: each re-masks both keys ([ApiKeyRow]) before "Send bug report"
+    // can be picked, since the report's screenshot is of this screen and a revealed key would be
+    // in it in plain text (Codex on #377). A credential is never one of the report's disclosures.
+    var menuOpens by remember { mutableIntStateOf(0) }
     BackHandler(onBack = onBack)
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
@@ -118,11 +123,17 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
+                // The title takes what Back and the overflow leave, wrapping at a large text size
+                // rather than squeezing them off the row.
                 Text(
                     text = stringResource(R.string.settings_title),
                     style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = onBack) { Text(stringResource(R.string.action_back)) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = onBack) { Text(stringResource(R.string.action_back)) }
+                    AppMenuOverflow(onOpen = { menuOpens++ })
+                }
             }
             // The rows scroll under the fixed header, so a large text size (up to 160%) stacked on
             // a large Android font scale can't push the lower controls off a short screen where
@@ -218,6 +229,7 @@ fun SettingsScreen(
                     title = stringResource(R.string.settings_api_key_title),
                     summary = stringResource(R.string.settings_api_key_summary),
                     tagPrefix = "apiKey",
+                    maskedAt = menuOpens,
                 )
                 // The optional National Rail key (SPEC *National Rail*): without it, National Rail
                 // lines say "No key"; with it, their live times from National Rail's own feed.
@@ -228,6 +240,7 @@ fun SettingsScreen(
                     title = stringResource(R.string.settings_rail_key_title),
                     summary = stringResource(R.string.settings_rail_key_summary),
                     tagPrefix = "railKey",
+                    maskedAt = menuOpens,
                 )
             }
         }
@@ -258,6 +271,8 @@ private fun ApiKeyRow(
     summary: String,
     // Prefixes the row's test tags ("apiKeyField", "railKeyField"), one row per key.
     tagPrefix: String,
+    // A change masks the key again, in the same frame: the screen's overflow opening (see [SettingsScreen]).
+    maskedAt: Int = 0,
 ) {
     // The editable text, saved across rotation (rememberSaveable) so an unsaved paste survives a
     // configuration change. NOT keyed on [apiKey]: keying it would re-seed the draft on any
@@ -280,7 +295,7 @@ private fun ApiKeyRow(
     // Masked by default — a credential shouldn't sit in plain sight (shoulder-surfing, screen
     // recordings; Codex P2). A Show/Hide toggle still lets the user verify a paste. Not saveable:
     // it resets to hidden on every recomposition-from-scratch, which is the safe default.
-    var revealed by remember { mutableStateOf(false) }
+    var revealed by remember(maskedAt) { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
         Text(
             text = title,

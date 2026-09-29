@@ -1167,6 +1167,11 @@ fun MainScreen(
                                 },
                             )
                         }
+                    } else {
+                        // A station's page keeps the near-me list's own items to it, but a problem seen
+                        // here is reported from here (maintainer, 2026-09-29): the activity's app menu,
+                        // as a trip's page offers it, since a station is hosted without the list's.
+                        AppMenuOverflow()
                     }
                 },
             )
@@ -4174,6 +4179,7 @@ internal fun RouteDetailScreen(
                             )
                         }
                     }
+                    AppMenuOverflow()
                 },
             )
         },

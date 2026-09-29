@@ -111,9 +111,14 @@ fun FavoritePlacesScreen(
                         },
                     ),
                     style = MaterialTheme.typography.titleLarge,
+                    // What Back (or Cancel) and the overflow leave, wrapping at a large text size.
+                    modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = { if (editor != null) onCancelEditor() else onBack() }) {
-                    Text(stringResource(if (editor != null) R.string.favorite_place_cancel else R.string.action_back))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { if (editor != null) onCancelEditor() else onBack() }) {
+                        Text(stringResource(if (editor != null) R.string.favorite_place_cancel else R.string.action_back))
+                    }
+                    AppMenuOverflow()
                 }
             }
             // Separate scroll states for the list and the editor, so opening the editor starts at the

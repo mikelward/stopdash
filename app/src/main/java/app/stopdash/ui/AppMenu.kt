@@ -59,13 +59,18 @@ val LocalAppMenu = compositionLocalOf<AppMenuActions?> { null }
 internal fun AppOverflowMenu(
     updateAvailable: Boolean,
     onOpenAppListing: () -> Unit,
+    // Called as the menu opens, before any item can be picked.
+    onOpen: () -> Unit = {},
     items: @Composable (close: () -> Unit) -> Unit,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     // Button and menu wrapped together so the dropdown anchors to the overflow button and opens from
     // it; a bare DropdownMenu sibling anchors to the row slot instead and drops from the wrong place.
     Box {
-        IconButton(onClick = { expanded = true }) {
+        IconButton(onClick = {
+            onOpen()
+            expanded = true
+        }) {
             Box {
                 Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.menu_more))
                 if (updateAvailable) {
@@ -98,6 +103,48 @@ internal fun AppOverflowMenu(
                 )
             }
         }
+    }
+}
+
+/**
+ * The app's overflow on a screen with no menu of its own — On the way, a route's page, a station,
+ * search, Settings — offering what a trip's page does, so a problem can be reported from wherever
+ * it's seen (maintainer, 2026-09-29): [items] first, then "Send bug report" and About, from the
+ * activity's [LocalAppMenu]. Nothing where none is provided (a test, a preview). [onOpen] runs as
+ * the menu opens: a screen showing something the report's screenshot must not carry hides it there.
+ */
+@Composable
+internal fun AppMenuOverflow(
+    onOpen: () -> Unit = {},
+    items: @Composable (close: () -> Unit) -> Unit = {},
+) {
+    val menu = LocalAppMenu.current ?: return
+    var showAbout by rememberSaveable { mutableStateOf(false) }
+    AppOverflowMenu(menu.updateAvailable, menu.onOpenAppListing, onOpen) { close ->
+        items(close)
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.menu_send_bug_report)) },
+            onClick = {
+                close()
+                menu.onSendBugReport()
+            },
+        )
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.menu_about)) },
+            onClick = {
+                close()
+                showAbout = true
+            },
+        )
+    }
+    if (showAbout) {
+        AboutDialog(
+            onOpenLicenses = {
+                showAbout = false
+                menu.onOpenLicenses()
+            },
+            onDismiss = { showAbout = false },
+        )
     }
 }
 
