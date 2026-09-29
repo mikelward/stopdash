@@ -1295,10 +1295,19 @@ them there:
   its ride ends on its train as before. Where neither can tell — a
   station far bigger than the one point the Planner places it at, a fix that never comes — the
   rider says so (maintainer, 2026-09-28): **Next** (with **Back** beside it, End trip set apart at
-  the other end), or a tap on any leg in the list, puts them at the start of that leg now, as if
-  they'd just got there. A walk's time runs from then, a ride's train is picked at once from then,
-  and a "get off soon" said for the leg left is taken back; Back, or a tap on an earlier leg, goes
-  back to it, so a mistaken tap can be undone. Next, Back or a tap never moves the trip straight to
+  the other end), or a tap on any step in the list, puts them at that step now, as if they'd just
+  got there. A walk is one step and a ride two (maintainer, 2026-09-29): boarding it (its line's row)
+  and **getting off it** ("Get off at …", a row of its own under it), so the rider can say they're on
+  before they say they're off. At a boarding step, a walk's time runs from then and a ride's train is
+  picked at once from then; at a getting-off step they're on board the train followed (the next they
+  could catch, as the trip assumes, or with none yet one at the platform when they said so, due within
+  a minute of it; with none there it says it can't find their train rather than name a later one), counted from its
+  calls with the boarding stop behind them, and never taken back as left behind: that check only
+  second-guesses the trip's own assumption, not their word. A "get off soon" said for the leg left is
+  taken back; Back, or a tap on an earlier step, goes back to it, so a mistaken tap can be undone.
+  Back straight after Next moved them off a ride they were on puts them back on it as it was, on its
+  train or still on none named, rather than looking for one afresh at a stop they left minutes ago
+  (while the app keeps running). Next, Back or a tap never moves the trip straight to
   arriving — past the last leg, or onto a closing walk of no length — so Next is off there (off, not
   gone, so the buttons never move): arriving forgets the trip, which nothing could undo, and End trip
   is already the way out there. A move that can't be saved on the phone isn't made, and the screen

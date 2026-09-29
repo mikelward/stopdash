@@ -814,16 +814,185 @@ class OnTheWayTest {
     }
 
     @Test
-    fun `the rider can go to any leg but the one they're on, and never straight to arriving`() {
-        assertTrue(OnTheWay.canGoTo(walkingTrip, 1, at(1)))
-        assertTrue(OnTheWay.canGoTo(walkingTrip.copy(legIndex = 2), 0, at(1)))
-        assertFalse(OnTheWay.canGoTo(walkingTrip, 0, at(1)))
-        assertFalse(OnTheWay.canGoTo(walkingTrip, -1, at(1)))
-        assertFalse(OnTheWay.canGoTo(walkingTrip, 4, at(1)))
+    fun `the rider can go to any step but the one they're at, and never straight to arriving`() {
+        assertTrue(OnTheWay.canGoTo(walkingTrip, OnTheWay.Step(1), at(1)))
+        assertTrue(OnTheWay.canGoTo(walkingTrip, OnTheWay.Step(1, onBoard = true), at(1)))
+        assertTrue(OnTheWay.canGoTo(walkingTrip.copy(legIndex = 2), OnTheWay.Step(0), at(1)))
+        assertFalse(OnTheWay.canGoTo(walkingTrip, OnTheWay.Step(0), at(1)))
+        assertFalse(OnTheWay.canGoTo(walkingTrip, OnTheWay.Step(-1), at(1)))
+        assertFalse(OnTheWay.canGoTo(walkingTrip, OnTheWay.Step(4), at(1)))
+        // A walk has no second step.
+        assertFalse(OnTheWay.canGoTo(walkingTrip.copy(legIndex = 1), OnTheWay.Step(2, onBoard = true), at(1)))
         // A closing walk of no length arrives the moment it starts: not one to move onto.
         val closing = TripLeg(TripLeg.WALKING, "", "", "E", "E", "E", "E", at(30), at(30))
         val endsAtOnce = ActiveTrip(TripRoute(listOf(ride, closing)), "E", startedAt = t0)
-        assertFalse(OnTheWay.canGoTo(endsAtOnce, 1, at(1)))
+        assertFalse(OnTheWay.canGoTo(endsAtOnce, OnTheWay.Step(1), at(1)))
+    }
+
+    @Test
+    fun `a ride is two steps, boarding it and getting off it`() {
+        assertEquals(
+            listOf(OnTheWay.Step(0), OnTheWay.Step(0, onBoard = true), OnTheWay.Step(1), OnTheWay.Step(2), OnTheWay.Step(2, onBoard = true)),
+            OnTheWay.steps(trip.route),
+        )
+        assertEquals(OnTheWay.Step(0), OnTheWay.stepOf(trip))
+        assertEquals(OnTheWay.Step(0, onBoard = true), OnTheWay.stepOf(trip.copy(boarded = true)))
+        // Back and Next step through them in order, with nothing before the first or after the last.
+        assertNull(OnTheWay.stepBefore(trip))
+        assertEquals(OnTheWay.Step(0, onBoard = true), OnTheWay.stepAfter(trip))
+        val walking = trip.copy(legIndex = 1)
+        assertEquals(OnTheWay.Step(0, onBoard = true), OnTheWay.stepBefore(walking))
+        assertEquals(OnTheWay.Step(2), OnTheWay.stepAfter(walking))
+        assertNull(OnTheWay.stepAfter(trip.copy(legIndex = 2, boarded = true)))
+    }
+
+    @Test
+    fun `an arrival kept because forgetting it failed has no step before or after it`() {
+        // Past the last leg, it isn't at any step: Next would start the trip over from its first, and
+        // the arrival is being forgotten, which Back can't undo; End trip is the way out.
+        val arrived = trip.copy(legIndex = trip.route.legs.size)
+        assertNull(OnTheWay.stepAfter(arrived))
+        assertNull(OnTheWay.stepBefore(arrived))
+        // Nor can any step be tapped: the tracker moves that arrival nowhere (Codex, PR #384).
+        assertTrue(OnTheWay.steps(trip.route).none { OnTheWay.canGoTo(arrived, it, at(20)) })
+        // Every step is behind the rider there, so the route reads as done (Codex, PR #384).
+        assertEquals(OnTheWay.steps(trip.route).size, OnTheWay.stepsDone(arrived))
+        // On the way, only those before their step: none at the first, the ride's two on the walk.
+        assertEquals(0, OnTheWay.stepsDone(trip))
+        assertEquals(2, OnTheWay.stepsDone(trip.copy(legIndex = 1)))
+    }
+
+    @Test
+    fun `a rider who says they're on board is on the train followed, and stays so`() {
+        // At the platform with 8 due in a minute: Next says they're on it.
+        val waiting = OnTheWay.follow(placed, train("8", 5))
+        val onBoard = OnTheWay.atStep(waiting, OnTheWay.Step(0, onBoard = true), at(4))
+        assertTrue(onBoard.boarded)
+        assertEquals("8", onBoard.vehicleId)
+        // TfL still has it at A: that call is behind them, so they're riding, B next, two stops left.
+        val (riding, progress) = OnTheWay.advance(onBoard, listOf(call("A", 5), call("B", 9), call("C", 14)), at(4))
+        progress as TripProgress.Riding
+        assertEquals("B", progress.nextStop)
+        assertEquals(2, progress.stopsLeft)
+        assertTrue(riding.boarded)
+        // TfL late to drop the stop before A too: that's behind them as well.
+        val lagging = OnTheWay.advance(onBoard, listOf(call("Z", 3), call("A", 5), call("B", 9), call("C", 14)), at(4)).second
+        assertEquals(TripProgress.Riding(onBoard.leg!!, "B", 2, at(14), false), lagging)
+        // A call at A after C is a loop's next lap, not the stop they boarded at: nothing is dropped.
+        val lap = OnTheWay.advance(onBoard, listOf(call("B", 9), call("C", 14), call("A", 30)), at(4)).second as TripProgress.Riding
+        assertEquals("B", lap.nextStop)
+        assertEquals(2, lap.stopsLeft)
+        // TfL still showing C from the lap before, ahead of A: that's behind them too, with this
+        // lap's C still to come.
+        val previousLap = OnTheWay.advance(onBoard, listOf(call("C", 2), call("A", 5), call("B", 9), call("C", 14)), at(4)).second
+        assertEquals(TripProgress.Riding(onBoard.leg!!, "B", 2, at(14), false), previousLap)
+        // Said just after it called at A, with the next lap's A listed too: the call behind them is
+        // the one about when it was due, not the next lap's.
+        val justLeft = OnTheWay.advance(onBoard, listOf(call("A", 3), call("B", 9), call("C", 14), call("A", 30)), at(4)).second
+        assertEquals(TripProgress.Riding(onBoard.leg!!, "B", 2, at(14), false), justLeft)
+        // Run seven minutes late since it was last seen due at 5, but at the platform now: the call
+        // there is still the one behind them.
+        val late = OnTheWay.advance(onBoard, listOf(call("A", 12), call("B", 16), call("C", 21)), at(12)).second
+        assertEquals(TripProgress.Riding(onBoard.leg!!, "B", 2, at(21), false), late)
+        // Seven minutes late, with TfL still listing the stop before A: both behind them (Codex, PR #384).
+        val lateLagging = OnTheWay.advance(onBoard, listOf(call("Z", 11), call("A", 12), call("B", 16), call("C", 21)), at(12)).second
+        assertEquals(TripProgress.Riding(onBoard.leg!!, "B", 2, at(21), false), lateLagging)
+        // Held at the platform after they said they're on, its time there slipping a few minutes each
+        // refresh to well past the ride's planned time: still the train they boarded (Codex, PR #384).
+        var held = onBoard
+        for (minute in listOf(5L, 9L, 13L, 16L)) {
+            val (kept, standing) = OnTheWay.advance(held, listOf(call("A", minute), call("B", minute + 4), call("C", minute + 9)), at(minute))
+            assertEquals(TripProgress.Riding(onBoard.leg!!, "B", 2, at(minute + 9), false), standing)
+            held = kept
+        }
+        // Back a lap later, their stop never predicted while the app was away: the next lap's A isn't
+        // the one they boarded at, so nothing's dropped, and the train isn't said to be on their way
+        // to C again (Codex, PR #384).
+        val lapLater = OnTheWay.advance(onBoard, listOf(call("A", 40), call("B", 44), call("C", 49)), at(40)).second
+        assertEquals(TripProgress.Lost(onBoard.leg!!), lapLater)
+        // Nearly round, the next lap's A due soon after C: not the stop they boarded at, so C is
+        // still where they get off, at 14 (Codex, PR #384).
+        val nearlyRound = OnTheWay.advance(onBoard, listOf(call("C", 14), call("A", 16), call("B", 21), call("C", 26)), at(12)).second
+        nearlyRound as TripProgress.Riding
+        assertEquals("C", nearlyRound.nextStop)
+        assertEquals(at(14), nearlyRound.getOffAt)
+        // Still beside the stop as the train stands there: their word stands, it isn't taken back.
+        assertEquals(riding, OnTheWay.seen(riding, stillThere, at(6)))
+        assertFalse(OnTheWay.wantsFix(riding.copy(dueOffAt = null), at(6)))
+        // With no train followed yet, the one picked next is theirs, still on board.
+        val none = OnTheWay.atStep(placed, OnTheWay.Step(0, onBoard = true), at(4))
+        assertEquals("", none.vehicleId)
+        assertTrue(OnTheWay.follow(none, train("7", 4)).boarded)
+        // Back to boarding it: waiting again, a train picked afresh.
+        val back = OnTheWay.atStep(riding, OnTheWay.Step(0), at(6))
+        assertFalse(back.boarded)
+        assertEquals("", back.vehicleId)
+    }
+
+    @Test
+    fun `a train still at the boarding stop on a short ride isn't taken for its next lap`() {
+        // A one-stop ride, B due a minute after A, so the rider is seen due off while TfL still has
+        // the train standing at A.
+        val hop = ride.copy(toId = "B", toName = "B", arrival = at(7), path = listOf("B"))
+        val onBoard = OnTheWay.atStep(OnTheWay.follow(placed.copy(route = TripRoute(listOf(hop, walk))), train("8", 5)), OnTheWay.Step(0, onBoard = true), at(4))
+        val (seen, _) = OnTheWay.advance(onBoard, listOf(call("A", 5), call("B", 6)), at(4))
+        // Held there a moment: that call is still the one behind them, not a lap said to be over
+        // (Codex, PR #384).
+        val (held, standing) = OnTheWay.advance(seen, listOf(call("A", 5), call("B", 6)), at(5))
+        assertEquals(0, held.legIndex)
+        assertEquals(TripProgress.Riding(hop, "B", 1, at(6), true), standing)
+        // Nor with nothing after it predicted: still there, so not got off, but not placed either.
+        val (alone, lost) = OnTheWay.advance(seen, listOf(call("A", 5)), at(5))
+        assertEquals(0, alone.legIndex)
+        assertEquals(TripProgress.Lost(hop), lost)
+        // Held longer, its times slipping past when B was last due: still the train they're on.
+        val (later, stillHeld) = OnTheWay.advance(held, listOf(call("A", 9), call("B", 10)), at(5))
+        assertEquals(0, later.legIndex)
+        assertEquals(TripProgress.Riding(hop, "B", 1, at(10), true), stillHeld)
+        // Once B has had it and the next lap's A is listed, they got off: the walk is next.
+        assertEquals(1, OnTheWay.advance(held, listOf(call("A", 15), call("B", 16)), at(7)).first.legIndex)
+        assertEquals(1, OnTheWay.advance(held, emptyList(), at(7)).first.legIndex)
+    }
+
+    @Test
+    fun `on a tight loop the next lap's boarding stop isn't taken for the one they boarded at`() {
+        // Said on at 6 for a ride planned at ten minutes, run in eight; A comes round again two
+        // minutes after C, inside the ride's planned time after they boarded.
+        val onBoard = OnTheWay.atStep(OnTheWay.follow(placed, train("8", 6)), OnTheWay.Step(0, onBoard = true), at(6))
+        val loop = listOf(call("C", 14), call("A", 16), call("B", 21), call("C", 26))
+        // At C now, its time come, with the next lap listed after: still getting off at C, not
+        // carried round to the next lap's C (Codex, PR #384).
+        val (atC, standing) = OnTheWay.advance(onBoard, loop, at(14))
+        assertEquals(0, atC.legIndex)
+        assertEquals("C", (standing as TripProgress.Riding).nextStop)
+        assertEquals(at(14), standing.getOffAt)
+        // TfL drops C: seen due off there, the next lap's A says they got off; the walk is next.
+        assertEquals(1, OnTheWay.advance(atC, loop.drop(1), at(15)).first.legIndex)
+    }
+
+    @Test
+    fun `Back straight after Next from a ride they're on is back on its train`() {
+        val onBoard = OnTheWay.atStep(OnTheWay.follow(placed, train("8", 5)), OnTheWay.Step(0, onBoard = true), at(4))
+        // Next to the walk after it, too soon; then Back: the same train, as it was (Codex, PR #384).
+        val walking = OnTheWay.atStep(onBoard, OnTheWay.Step(1), at(8))
+        assertEquals(1, walking.legIndex)
+        val back = OnTheWay.atStep(walking, OnTheWay.Step(0, onBoard = true), at(9))
+        assertEquals("8", back.vehicleId)
+        assertTrue(back.boarded)
+        assertEquals(onBoard.legStartedAt, back.legStartedAt)
+        assertEquals(onBoard.boardsAt, back.boardsAt)
+        assertNull(back.leftRide)
+        // Only straight back: a step further on, the ride's getting off is picked afresh.
+        val further = OnTheWay.atStep(walking, OnTheWay.Step(2), at(10))
+        assertEquals("", OnTheWay.atStep(further, OnTheWay.Step(0, onBoard = true), at(11)).vehicleId)
+        // On board with no train named: Back is on board as they said then, not from the Back tap,
+        // which would look for one at the platform by then (Codex, PR #384).
+        val unnamed = OnTheWay.atStep(placed, OnTheWay.Step(0, onBoard = true), at(4))
+        val unnamedBack = OnTheWay.atStep(OnTheWay.atStep(unnamed, OnTheWay.Step(1), at(8)), OnTheWay.Step(0, onBoard = true), at(9))
+        assertEquals("", unnamedBack.vehicleId)
+        assertTrue(unnamedBack.boarded)
+        assertEquals(unnamed.legStartedAt, unnamedBack.legStartedAt)
+        assertEquals(unnamed.boardedAt, unnamedBack.boardedAt)
     }
 
     @Test

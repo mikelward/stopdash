@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyDescendant
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.ui.input.pointer.pointerInput
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Departure
+import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripRoute
@@ -71,7 +73,7 @@ class OnTheWayScreenScreenshotTest {
         alertsOff: Boolean = false,
         appOpenOnly: Boolean = false,
         nextTrains: NextTrains? = null,
-        onGoTo: (Int, Int) -> Unit = { _, _ -> },
+        onGoTo: (OnTheWay.Step, OnTheWay.Step) -> Unit = { _, _ -> },
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -350,10 +352,14 @@ class OnTheWayScreenScreenshotTest {
         assertTrue(composeRule.onAllNodesWithText("None going to Canary Wharf").fetchSemanticsNodes().isEmpty())
     }
 
+    // [text] on the next step's card, not the step of the same name in the list below it.
+    private fun onCard(text: String) =
+        composeRule.onNode(hasText(text) and androidx.compose.ui.test.hasAnyAncestor(androidx.compose.ui.test.hasTestTag("onTheWayNext")))
+
     @Test
     fun on_the_way_on_the_train() {
         show(trip.copy(boarded = true), TripProgress.Riding(mildmay, "Hackney Central", 4, at(16), getOffSoon = false))
-        composeRule.onNodeWithText("Get off at Stratford").assertIsDisplayed()
+        onCard("Get off at Stratford").assertIsDisplayed()
         composeRule.onNodeWithText("4 stops · next Hackney Central").assertIsDisplayed()
         captureSnapshot("on-the-way-riding.png")
     }
@@ -361,7 +367,7 @@ class OnTheWayScreenScreenshotTest {
     @Test
     fun on_the_way_get_off_soon() {
         show(trip.copy(boarded = true), TripProgress.Riding(mildmay, "Stratford", 1, at(1), getOffSoon = true))
-        composeRule.onNodeWithText("Get off at Stratford").assertIsDisplayed()
+        onCard("Get off at Stratford").assertIsDisplayed()
         composeRule.onNodeWithText("Next stop").assertIsDisplayed()
         captureSnapshot("on-the-way-get-off.png")
     }
@@ -385,31 +391,70 @@ class OnTheWayScreenScreenshotTest {
     fun on_the_way_an_old_answer_isnt_shown_as_live() {
         // Back after a while away: the last answer said get off next, but that's no longer known.
         show(trip.copy(boarded = true), TripProgress.Riding(mildmay, "Stratford", 1, at(1), getOffSoon = true), current = false)
-        composeRule.onNodeWithText("Get off at Stratford").assertIsDisplayed()
+        onCard("Get off at Stratford").assertIsDisplayed()
         composeRule.onNodeWithText("Updating…").assertIsDisplayed()
         composeRule.onNodeWithText("Next stop").assertDoesNotExist()
     }
 
     @Test
-    fun next_and_a_tapped_leg_put_the_rider_at_that_leg() {
-        val went = mutableListOf<Pair<Int, Int>>()
+    fun next_and_a_tapped_step_put_the_rider_at_that_step() {
+        val went = mutableListOf<Pair<OnTheWay.Step, OnTheWay.Step>>()
         show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(3)), onGoTo = { from, to -> went += from to to })
         captureSnapshot("on-the-way-next.png")
+        val walking = OnTheWay.Step(1)
         composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoNext")).performClick()
+        // Back from the walk is getting off the ride before it: a ride is two steps (maintainer, 2026-09-29).
         composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoBack")).performClick()
         composeRule.onNodeWithText("Stratford → Canary Wharf").performClick()
+        composeRule.onNodeWithText("Get off at Canary Wharf").performClick()
         composeRule.onNodeWithText("Highbury & Islington → Stratford").performClick()
-        // The leg they're on already: nothing to move to.
+        // The step they're at already: nothing to move to.
         composeRule.onNodeWithText("Stratford → Stratford").performClick()
-        assertEquals(listOf(1 to 2, 1 to 0, 1 to 2, 1 to 0), went)
+        assertEquals(
+            listOf(
+                walking to OnTheWay.Step(2),
+                walking to OnTheWay.Step(0, onBoard = true),
+                walking to OnTheWay.Step(2),
+                walking to OnTheWay.Step(2, onBoard = true),
+                walking to OnTheWay.Step(0),
+            ),
+            went,
+        )
     }
 
     @Test
-    fun next_is_off_on_the_last_leg() {
-        // Next there would arrive and forget the trip, with no Back to undo it.
-        show(trip.copy(legIndex = 2), TripProgress.Waiting(jubilee, at(26)))
+    fun next_from_boarding_is_getting_off_and_is_off_on_the_last_step() {
+        // Waiting for the last ride's train: Next says they're on it.
+        val went = mutableListOf<Pair<OnTheWay.Step, OnTheWay.Step>>()
+        show(trip.copy(legIndex = 2), TripProgress.Waiting(jubilee, at(26)), onGoTo = { from, to -> went += from to to })
+        composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoNext")).performClick()
+        assertEquals(listOf(OnTheWay.Step(2) to OnTheWay.Step(2, onBoard = true)), went)
+    }
+
+    @Test
+    fun next_is_off_on_the_last_step() {
+        // On the last ride: Next there would arrive and forget the trip, with no Back to undo it.
+        show(trip.copy(legIndex = 2, boarded = true), TripProgress.Riding(jubilee, "Canary Wharf", 1, at(33), getOffSoon = true))
         composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoNext")).assertIsNotEnabled()
         composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoBack")).assertIsDisplayed()
+    }
+
+    @Test
+    fun next_and_back_are_off_on_an_arrival_kept_because_forgetting_it_failed() {
+        // Arrived, but the trip couldn't be forgotten: Next mustn't start it over from the first step,
+        // and Back can't move an arrival being forgotten (Codex, PR #384). End trip is the way out.
+        val went = mutableListOf<Pair<OnTheWay.Step, OnTheWay.Step>>()
+        show(trip.copy(legIndex = 3), TripProgress.Arrived, endFailed = true, onGoTo = { from, to -> went += from to to })
+        composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoNext")).assertIsNotEnabled()
+        composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoBack")).assertIsNotEnabled()
+        composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoNext")).performClick()
+        composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoBack")).performClick()
+        // Nor is a step's row a way back (Codex, PR #384).
+        composeRule.onNodeWithText("Get off at Canary Wharf").performClick()
+        composeRule.onNodeWithText("Stratford → Canary Wharf").performClick()
+        assertTrue(composeRule.onAllNodes(hasClickAction() and androidx.compose.ui.test.hasText("Get off at Canary Wharf")).fetchSemanticsNodes().isEmpty())
+        assertEquals(emptyList<Pair<OnTheWay.Step, OnTheWay.Step>>(), went)
+        composeRule.onNodeWithText("End trip").assertIsEnabled()
     }
 
     @Test

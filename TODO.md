@@ -977,6 +977,24 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         - [x] Start, the trip's on-the-way screen and End trip; the trip kept on the device and
               followed while the app is in the foreground.
         - [ ] Picking another train by hand ("I'm on this one"), until location can see it.
+        - [x] **A ride is two steps, boarding it and getting off it** (maintainer, 2026-09-29): Next
+              from boarding says the rider is on the train followed ("Get off at …" its own row).
+          - [ ] **On board by the rider's word, with the train followed still minutes away**: the
+                train they're on is more likely the one at the platform than the one followed, but
+                the trip keeps the one followed (the next it thought they could catch). Take the
+                soonest due within a minute or so of the tap instead, as it does with none followed.
+          - [ ] **On board by the rider's word before the train reaches the stop, on a loop**:
+                the call at the boarding stop they boarded at is told by order, the first there with
+                none of the ride's stops due since they boarded before it. A train still calling at
+                the ride's last stop on its lap before, just ahead of the boarding stop, reads as the
+                next lap, so nothing is dropped until that call has passed.
+          - [ ] **Held at the boarding stop after being seen due off, through a refresh gap**: on a
+                short ride the rider's stop can be due within a minute while the train still stands
+                at the boarding stop. From then on its call there is theirs only within five minutes
+                of when it was last seen, since a tight loop's next lap can come round inside the
+                ride's planned time. Held more than five minutes longer between two refreshes (the
+                app away), it reads as the next lap and the ride ends. The rider's location (still
+                at the stop) would tell them apart.
         - [ ] **The trip's screen as the route view, kept live** (maintainer, 2026-09-27: today's
               Next card and leg list for v1, this after): the route as the rider planned it, done
               legs hidden, a status line (stops left, next stop), the followed train marked, and

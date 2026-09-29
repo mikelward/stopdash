@@ -93,9 +93,9 @@ internal fun OnTheWayScreen(
     // Every train at the next boarding stop that takes the rider on ([rememberNextTrains]): shown
     // while they walk, change or wait for it; null while riding.
     nextTrains: NextTrains? = null,
-    // The rider says they're at the start of a leg, by its index ([ActiveTripTracker.goTo]): Next, or
-    // a leg tapped. Null leaves both out.
-    onGoTo: ((from: Int, to: Int) -> Unit)? = null,
+    // The rider says they're at a step ([OnTheWay.Step], [ActiveTripTracker.goTo]): Next, or a step
+    // tapped. Null leaves both out.
+    onGoTo: ((from: OnTheWay.Step, to: OnTheWay.Step) -> Unit)? = null,
 ) {
     BackHandler(onBack = onBack)
     val destination = trip?.destinationName
@@ -131,6 +131,10 @@ internal fun OnTheWayScreen(
                     // End trip on its own at the start, away from Back and Next, which step through the legs.
                     OutlinedButton(onClick = onEnd, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.on_the_way_end)) }
                     if (onGoTo != null) {
+                        // A ride is two steps, boarding it and getting off it (maintainer, 2026-09-29).
+                        val at = OnTheWay.stepOf(trip)
+                        val back = OnTheWay.stepBefore(trip)
+                        val forward = OnTheWay.stepAfter(trip)
                         // Takes the rest of its line, so Back and Next sit at its end, on the first line or,
                         // when the text is too large for one, on their own.
                         FlowRow(
@@ -139,8 +143,8 @@ internal fun OnTheWayScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             OutlinedButton(
-                                onClick = { onGoTo(trip.legIndex, trip.legIndex - 1) },
-                                enabled = OnTheWay.canGoTo(trip, trip.legIndex - 1, now),
+                                onClick = { back?.let { onGoTo(at, it) } },
+                                enabled = back != null && OnTheWay.canGoTo(trip, back, now),
                                 modifier = Modifier.heightIn(min = 48.dp).testTag("onTheWayGoBack"),
                             ) { Text(stringResource(R.string.on_the_way_go_back)) }
                             // Off where the move would arrive at once (the last leg, or before a closing walk
@@ -148,8 +152,8 @@ internal fun OnTheWayScreen(
                             // trip is the way out there ([OnTheWay.canGoTo]). Off rather than gone, so the
                             // buttons stay where they are (maintainer, 2026-09-28).
                             Button(
-                                onClick = { onGoTo(trip.legIndex, trip.legIndex + 1) },
-                                enabled = OnTheWay.canGoTo(trip, trip.legIndex + 1, now),
+                                onClick = { forward?.let { onGoTo(at, it) } },
+                                enabled = forward != null && OnTheWay.canGoTo(trip, forward, now),
                                 modifier = Modifier.heightIn(min = 48.dp).testTag("onTheWayGoNext"),
                             ) { Text(stringResource(R.string.on_the_way_go_next)) }
                         }
@@ -218,14 +222,22 @@ internal fun OnTheWayScreen(
                 }
             }
             if (trip != null) {
-                trip.route.legs.forEachIndexed { index, leg ->
-                    item(key = "leg$index") {
-                        LegLine(
-                            leg, trip.route.rides, current = index == trip.legIndex, done = index < trip.legIndex,
-                            onTap = onGoTo?.takeIf { OnTheWay.canGoTo(trip, index, now) }?.let { go -> { go(trip.legIndex, index) } },
-                        )
+                val steps = OnTheWay.steps(trip.route)
+                val at = OnTheWay.stepOf(trip)
+                val doneCount = OnTheWay.stepsDone(trip)
+                steps.forEachIndexed { index, step ->
+                    val leg = trip.route.legs[step.leg]
+                    val onTap = onGoTo?.takeIf { OnTheWay.canGoTo(trip, step, now) }?.let { go -> { go(at, step) } }
+                    item(key = if (step.onBoard) "getOff${step.leg}" else "leg${step.leg}") {
+                        // A ride's second step: getting off it, once on board (maintainer, 2026-09-29).
+                        if (step.onBoard) {
+                            GetOffLine(leg, trip.route.rides, current = step == at, done = index < doneCount, onTap = onTap)
+                        } else {
+                            LegLine(leg, trip.route.rides, current = step == at, done = index < doneCount, onTap = onTap)
+                        }
                     }
-                    if (index == nextAt && nextTrains != null) item(key = "nextTrains") { NextTrainsSection(nextTrains, now) }
+                    // The next ride's trains under its boarding step, before getting off it.
+                    if (!step.onBoard && step.leg == nextAt && nextTrains != null) item(key = "nextTrains") { NextTrainsSection(nextTrains, now) }
                 }
             }
         }
@@ -423,12 +435,59 @@ private fun finding(leg: TripLeg) = Vehicle.of(leg).finding
 /**
  * One leg of the route: its line and ends, the leg the rider is on in bold, done legs muted. A walk
  * shows a walker in the room the [rides]' pills take, so its text lines up with theirs, as on a trip
- * card.
+ * card. A ride's line is its boarding step; getting off it is a step of its own ([GetOffLine]).
  */
 @Composable
 private fun LegLine(leg: TripLeg, rides: List<TripLeg>, current: Boolean, done: Boolean, onTap: (() -> Unit)? = null) {
-    val color = if (done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
-    // A leg other than the one the rider is on puts them at its start when tapped, as if they'd got there.
+    val color = stepColor(done)
+    StepLine(
+        slot = {
+            if (leg.isWalk) {
+                // The route's pills, unseen, give the slot its width in the same pass.
+                Box(contentAlignment = Alignment.Center) {
+                    rides.forEach { LinePill(it.lineName, it.lineId, it.mode, Modifier.alpha(0f).clearAndSetSemantics {}) }
+                    Icon(
+                        painter = painterResource(R.drawable.ic_walk),
+                        contentDescription = stringResource(R.string.on_the_way_walk_leg),
+                        tint = color,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            } else {
+                LinePill(leg.lineName, leg.lineId, leg.mode)
+            }
+        },
+        // The walk from where the rider set off names only where it goes.
+        text = if (leg.fromName.isBlank()) stringResource(R.string.on_the_way_walk, leg.toName) else stringResource(R.string.on_the_way_leg, leg.fromName, leg.toName),
+        current = current,
+        color = color,
+        onTap = onTap,
+    )
+}
+
+/**
+ * A ride's second step, getting off it (maintainer, 2026-09-29): under its line, in the room the
+ * [rides]' pills take, so it reads as part of the ride above it and its text lines up with the rest.
+ */
+@Composable
+private fun GetOffLine(leg: TripLeg, rides: List<TripLeg>, current: Boolean, done: Boolean, onTap: (() -> Unit)? = null) {
+    StepLine(
+        slot = { Box { rides.forEach { LinePill(it.lineName, it.lineId, it.mode, Modifier.alpha(0f).clearAndSetSemantics {}) } } },
+        text = stringResource(R.string.on_the_way_get_off, leg.toName),
+        current = current,
+        color = stepColor(done),
+        onTap = onTap,
+    )
+}
+
+// A done step reads muted; the rest as ordinary text.
+@Composable
+private fun stepColor(done: Boolean) = if (done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+
+// A step's row: [slot] in the pills' column, then [text], the step the rider is at in bold. Tapped, a
+// step other than theirs puts them there, as if they'd got there.
+@Composable
+private fun StepLine(slot: @Composable () -> Unit, text: String, current: Boolean, color: androidx.compose.ui.graphics.Color, onTap: (() -> Unit)?) {
     val tap = if (onTap == null) Modifier else {
         Modifier.clickable(onClickLabel = stringResource(R.string.on_the_way_go_here), onClick = onTap)
     }
@@ -437,23 +496,9 @@ private fun LegLine(leg: TripLeg, rides: List<TripLeg>, current: Boolean, done: 
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).then(tap),
     ) {
-        if (leg.isWalk) {
-            // The route's pills, unseen, give the slot its width in the same pass.
-            Box(contentAlignment = Alignment.Center) {
-                rides.forEach { LinePill(it.lineName, it.lineId, it.mode, Modifier.alpha(0f).clearAndSetSemantics {}) }
-                Icon(
-                    painter = painterResource(R.drawable.ic_walk),
-                    contentDescription = stringResource(R.string.on_the_way_walk_leg),
-                    tint = color,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-        } else {
-            LinePill(leg.lineName, leg.lineId, leg.mode)
-        }
+        slot()
         Text(
-            // The walk from where the rider set off names only where it goes.
-            if (leg.fromName.isBlank()) stringResource(R.string.on_the_way_walk, leg.toName) else stringResource(R.string.on_the_way_leg, leg.fromName, leg.toName),
+            text,
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
             color = color,
