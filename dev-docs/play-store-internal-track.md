@@ -252,7 +252,10 @@ Play rejects an AAB whose `versionCode` is `<=` the highest already on any
 track. `versionCode` derives from `git rev-list --count HEAD` (see
 `app/build.gradle.kts`), which increases monotonically as long as `main` only
 moves forward. CI checks out with `fetch-depth: 0` so the count isn't truncated
-by a shallow clone.
+by a shallow clone. A release build fails at its first task
+(`:app:checkReleaseVersion`) when git can't read the history (a source archive)
+or the clone is shallow, rather than ship `versionCode` 1 or a short count; run
+`git fetch --unshallow` first. A debug build takes the fallback with a warning.
 
 ## Troubleshooting
 

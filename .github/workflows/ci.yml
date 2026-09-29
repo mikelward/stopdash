@@ -67,6 +67,25 @@ jobs:
             echo "::error::The Wear OS release build failed, but not at its release gate."
             exit 1
           }
+      - name: A release build refuses a versionCode not from the full history
+        # A release build's first task fails when git can't read the history (a source archive:
+        # GIT_DIR pointing nowhere) or the clone is shallow (a depth-1 copy of this one), rather
+        # than ship versionCode 1 or a short count (app/build.gradle.kts). The release-apk and
+        # release-build jobs show this full clone passing the same check.
+        run: |
+          git clone --quiet --bare --depth 1 "file://$PWD" "$RUNNER_TEMP/shallow.git"
+          for case in "no-git:/nonexistent" "shallow:$RUNNER_TEMP/shallow.git"; do
+            name="${case%%:*}"
+            if GIT_DIR="${case#*:}" ./gradlew :app:checkReleaseVersion > "release-version-$name.log" 2>&1; then
+              echo "::error::A $name release build took a fallback versionCode; its check is gone."
+              exit 1
+            fi
+            grep -q "A release build needs its versionCode from the full git history" "release-version-$name.log" || {
+              cat "release-version-$name.log"
+              echo "::error::The $name release check failed, but not at its versionCode check."
+              exit 1
+            }
+          done
       # The weekly dependency-update workflow trusts this script to decide when a
       # batch changes what the app legally declares, so its suite runs here —
       # dependency-free, under node --test, nothing to install.
