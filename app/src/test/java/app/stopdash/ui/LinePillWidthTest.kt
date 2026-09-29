@@ -30,10 +30,10 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Every line pill is exactly the same width down the column — the fixed label width (see
- * [LinePill]) makes it uniform by construction, so a two-digit bus number, a three-letter tube
- * code, and a four-character bus route all measure the same, at the default font scale and at
- * a large one, and none of them truncates.
+ * Every line pill is the same width down the column — the label width (see [LinePill]) holds the
+ * widest code whole, so a two-digit bus number, a three-letter code and a four-character route all
+ * measure the same, at the default font scale and at a large one, and none of them truncates —
+ * and no wider, so a three-character code isn't lost in its pill.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36], qualifiers = "w411dp-h914dp-420dpi")
@@ -48,11 +48,14 @@ class LinePillWidthTest {
         Surface {
             Row {
                 LinePill(lineName = "12", lineId = "12", mode = "bus")
+                LinePill(lineName = "134", lineId = "134", mode = "bus")
                 LinePill(lineName = "Victoria", lineId = "victoria", mode = "tube")
-                // Hammersmith & City → "HAM", a wide three-letter code.
+                // Hammersmith & City → "HAM", the widest three-letter code.
                 LinePill(lineName = "Hammersmith & City", lineId = "hammersmith-city", mode = "tube")
-                // A four-character night-bus route — the widest code lineCode() emits.
+                // A four-character night-bus route, wider than any three-character code.
                 LinePill(lineName = "N550", lineId = "n550", mode = "bus")
+                // London Northwestern Railway, pinned to LNWR: the widest code lineCode() emits.
+                LinePill(lineName = "London Northwestern Railway", lineId = "london-northwestern-railway", mode = "national-rail")
             }
         }
     }
@@ -63,18 +66,18 @@ class LinePillWidthTest {
     @Test
     fun `every code, two-digit through four-character, is the same width`() {
         composeRule.setContent { StopDashTheme { Pills() } }
-        val bus = widthOf("12")
         val tube = widthOf("Victoria")
-        val wide = widthOf("Hammersmith & City")
-        val route = widthOf("N550")
-        assertEquals(tube, bus, 0.5)
-        assertEquals(tube, wide, 0.5)
-        assertEquals(tube, route, 0.5)
+        for (label in listOf("12", "134", "Hammersmith & City", "N550", "London Northwestern Railway")) {
+            assertEquals(label, tube, widthOf(label), 0.5)
+        }
+        // A 44dp label with 4dp padding (maintainer, 2026-09-28), not the 48dp with 8dp that left a
+        // three-character code lost in its pill.
+        assertEquals(44.0, tube, 0.5)
     }
 
     @Test
     fun `a four-character route code is not truncated`() {
-        // The fixed box must hold the widest code the app shows without ellipsizing it —
+        // The shared box must hold the widest code the app shows without ellipsizing it —
         // uniform width is worthless if N550 and N551 both collapse to "N5…". Compare the
         // pill against a bare label of the same code, same style and padding but no width
         // cap: if the pill (fixed box) is at least as wide as the unconstrained text, the
@@ -83,24 +86,22 @@ class LinePillWidthTest {
             StopDashTheme {
                 Surface {
                     Row {
-                        LinePill(lineName = "N550", lineId = "n550", mode = "bus")
+                        LinePill(lineName = "London Northwestern Railway", lineId = "london-northwestern-railway", mode = "national-rail")
                         Text(
-                            text = "N550",
+                            text = "LNWR",
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
-                            modifier = Modifier
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                                .semantics { contentDescription = "ref-N550" },
+                            modifier = Modifier.semantics { contentDescription = "ref-LNWR" },
                         )
                     }
                 }
             }
         }
-        val pill = widthOf("N550")
-        val natural = widthOf("ref-N550")
+        val pill = widthOf("London Northwestern Railway")
+        val natural = widthOf("ref-LNWR")
         assertTrue(
-            "the fixed pill ($pill) must hold the full N550 code (natural $natural) without ellipsis",
+            "the pill ($pill) must hold the full LNWR code (natural $natural) without ellipsis",
             pill + 0.5 >= natural,
         )
     }
@@ -108,8 +109,8 @@ class LinePillWidthTest {
     @Test
     fun `pills stay uniform and grow with the font scale`() {
         // At 2x font scale the pill scales up (holding a wide code rather than clipping it)
-        // and both codes still measure the same width. The default-scale label is 48dp; at
-        // 2x it is 96dp, so a width well past the default proves it scaled with the font
+        // and both codes still measure the same width. The default-scale label is 44dp; at
+        // 2x it is 88dp, so a width well past the default proves it scaled with the font
         // rather than clipping. Only two pills here: at 2x, four wide pills overflow the test
         // window's width (the app never puts more than one pill in a row), which would clamp
         // the trailing pill and defeat the uniformity check.
@@ -131,6 +132,6 @@ class LinePillWidthTest {
         val bus2x = widthOf("12")
         val route2x = widthOf("N550")
         assertEquals(bus2x, route2x, 0.5)
-        assertTrue("pill should widen at 2x font scale", bus2x > 90.0)
+        assertTrue("pill should widen at 2x font scale", bus2x > 80.0)
     }
 }

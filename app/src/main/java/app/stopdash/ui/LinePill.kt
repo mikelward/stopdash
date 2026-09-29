@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -72,13 +73,13 @@ fun LinePill(lineName: String, lineId: String, mode: String, modifier: Modifier 
     // Zero-offset blurred shadow = a symmetric glow around the glyphs. Only for a solid fill;
     // the hollow and neutral pills read their color off the surface and need no halo.
     val haloBlurPx = with(LocalDensity.current) { 2.dp.toPx() }
-    // A fixed label width so every pill is exactly the same size down the column — uniform
-    // by construction, not just "no narrower than a floor": a two-digit bus number, a
-    // three-letter tube code, and a four-character bus route all render in the same box.
-    // The width holds the *widest* code this app shows (see [LINE_PILL_LABEL_WIDTH]), so
-    // nothing truncates — a shorter code just gets more centering room. Scaled by the font
-    // scale so it still holds those codes at a large accessibility text size rather than
-    // clipping them.
+    // One label width so every pill is the same size down the column: a two-digit bus number,
+    // a three-letter code and a four-character route all render in the same box
+    // ([LINE_PILL_LABEL_WIDTH]), a shorter code with more centering room, so a three-character
+    // code sits snug and a four-character one fills the box with only the pill's slim side
+    // padding to spare. Scaled by the font scale so it still holds those codes at a large
+    // accessibility text size; a code wider still (another system font) widens its own pill
+    // rather than being cut.
     val labelWidth = LINE_PILL_LABEL_WIDTH * LocalDensity.current.fontScale
     val textStyle = MaterialTheme.typography.labelLarge.let { base ->
         if (colors is PillColors.Solid) base.copy(shadow = Shadow(colors.halo, Offset.Zero, haloBlurPx))
@@ -99,29 +100,33 @@ fun LinePill(lineName: String, lineId: String, mode: String, modifier: Modifier 
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            // Fixed width + centered, so every pill is exactly the same width down the column
-            // (see [labelWidth]) — a two-digit bus number and a three-letter code sit in the
-            // same box instead of stepping ragged.
+            // At least the shared width + centered, so the pills are the same width down the
+            // column (see [labelWidth]) — a two-digit bus number and a three-letter code sit in
+            // the same box instead of stepping ragged.
             textAlign = TextAlign.Center,
             // The visible label is the short code; the accessible label stays the full line
             // name so a screen reader announces "Victoria", not "VIC".
             modifier = Modifier
-                .padding(horizontal = 8.dp, vertical = 4.dp)
-                .width(labelWidth)
+                .padding(horizontal = LINE_PILL_SIDE_PADDING, vertical = 4.dp)
+                .widthIn(min = labelWidth)
                 .semantics { contentDescription = lineName },
         )
     }
 }
 
 /**
- * The fixed label width every pill shares at the default font scale, before [LinePill] scales
- * it by the current font scale. Sized to the *widest* code [lineCode] produces — a
- * four-character bus route (`N550`, `SL10`), which is wider than any three-letter tube code
- * (VIC, HAM) or three-digit route — so every supported code renders complete; a shorter code
- * just centers with more room. `LinePillWidthTest` pins that a four-character code neither
- * clips nor widens the column past the others.
+ * The label width every pill shares at the default font scale, before [LinePill] scales it by the
+ * current font scale: the widest four-character code [lineCode] produces (LNWR, ~39dp in the pill's
+ * bold label style; N550 ~34dp) whole with a little to spare, so every pill is one width. With only
+ * [LINE_PILL_SIDE_PADDING] beside it, a four-character code fills the pill with slim padding while a
+ * three-character one (~21–32dp) keeps about twice that (maintainer, 2026-09-28): a 48dp label with
+ * 8dp padding had left a three-character code lost in its pill, and a 40dp one felt a touch tight.
+ * `LinePillWidthTest` pins both.
  */
-private val LINE_PILL_LABEL_WIDTH = 48.dp
+private val LINE_PILL_LABEL_WIDTH = 44.dp
+
+// A lone pill's padding either side of its label box, which is sized so that a code needs no more.
+private val LINE_PILL_SIDE_PADDING = 4.dp
 
 /**
  * Lines that serve one leg alike (the 43 or the 134 to the same stop) as **one pill cut
@@ -164,8 +169,7 @@ fun SharedLinePill(lines: List<LineRef>, description: String, modifier: Modifier
             maxOf(minWidth, measurer.measure(it.code, baseStyle, maxLines = 1).size.width).toDp()
         }
     }
-    // A lone pill's side padding at the pill's two ends; half that either side of a cut, whose lean
-    // already sets the codes apart.
+    // A lone pill's slim side padding at the pill's two ends and either side of a cut alike.
     fun startPad(i: Int) = if (i == 0) SEGMENT_PADDING else CUT_PADDING
     fun endPad(i: Int) = if (i == segments.lastIndex) SEGMENT_PADDING else CUT_PADDING
     val shape = RoundedCornerShape(8.dp)
@@ -250,11 +254,13 @@ fun SharedLinePill(lines: List<LineRef>, description: String, modifier: Modifier
     }
 }
 
-// A [SharedLinePill]'s padding at its two ends, as a lone pill's.
-private val SEGMENT_PADDING = 8.dp
+// A [SharedLinePill]'s padding at its two ends: a lone pill's slim side padding, as a segment is
+// only as wide as its code (maintainer, 2026-09-28).
+private val SEGMENT_PADDING = LINE_PILL_SIDE_PADDING
 
-// A [SharedLinePill] segment's padding either side of a cut.
-private val CUT_PADDING = 4.dp
+// A [SharedLinePill] segment's padding either side of a cut: the same slim padding as at its ends
+// and a lone pill's sides, so every part of every pill is spaced alike (maintainer, 2026-09-28).
+private val CUT_PADDING = LINE_PILL_SIDE_PADDING
 
 /**
  * Fits segments whose natural widths ([natural], in pixels) add up to more than [room]: every

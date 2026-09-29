@@ -1759,6 +1759,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       ("43/134") sizes each part to its own code, never narrower than a two-character one, so it
       no longer comes out half again as wide as the pills beside it (maintainer, 2026-09-28).
       Follow-up: see it on a device.
+- [x] **Snug line pills** (maintainer, 2026-09-28): one width still, sized to the widest
+      four-character code, but a 44dp label box with 4dp padding (52dp overall) in place of 48dp with
+      8dp (64dp), so a three-character code no longer sits lost in its pill; the widget's slot is 40dp
+      with 4dp padding, a fifth over LNWR since it can't widen for a wider system font. A cut pill
+      takes the same 4dp at its ends and either side of the cut (was 8dp at the ends), so every pill
+      is spaced alike. Follow-up: see the column, a night route and LNWR on a device, and on a
+      non-Roboto system font.
 - [x] **Cut pills for three or more lines** — the first line, then "…" in the second's color
       ("43/…"), so the pill stays two parts wide (maintainer, 2026-09-28). Follow-up: see it on a
       device, and reconsider naming every line if the rest turn out to be missed.

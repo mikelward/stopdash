@@ -806,9 +806,9 @@ private fun WidgetCountdown(text: String, stale: Boolean) {
     )
 }
 
-/** A pill's whole width at [fontScale]: its label slot (see [WidgetPill]) plus 8dp padding each side. */
+/** A pill's whole width at [fontScale]: its label slot (see [WidgetPill]) plus 4dp padding each side. */
 private fun widgetPillWidth(fontScale: Float) =
-    WIDGET_PILL_LABEL_WIDTH * fontScale.coerceAtMost(WIDGET_PILL_MAX_SCALE) + 16.dp
+    WIDGET_PILL_LABEL_WIDTH * fontScale.coerceAtMost(WIDGET_PILL_MAX_SCALE) + 8.dp
 
 /** The line pill — short code visible, full line name to TalkBack, fixed-width so a column of
  *  pills and the labels beside them line up (SPEC fixed-width pill invariant). */
@@ -826,7 +826,8 @@ private fun WidgetPill(row: DepartureRow, fontScale: Float) {
         modifier = GlanceModifier
             .background(if (fill != null) ColorProvider(fill) else GlanceTheme.colors.surfaceVariant)
             .cornerRadius(6.dp)
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            // Slim: the label slot is sized to the widest code, so a code needs no more (as in the app).
+            .padding(horizontal = 4.dp, vertical = 4.dp)
             // The visible label is the short code; the accessible label is the full line
             // name, so TalkBack announces "Victoria", not "VIC" (SPEC parity with the app).
             .semantics { contentDescription = row.lineName },
@@ -857,11 +858,15 @@ internal fun logWidgetSnapshotWarning(message: String) = StopdashDebugLog.warnin
 /**
  * The widget line pill's fixed label width — every pill is the same size down the column so
  * destinations and countdowns line up (the SPEC fixed-width pill invariant, matching the in-app
- * [app.stopdash.ui.LinePill]). Sized to the widest code shown — a four-character bus route
- * (`N550`, `SL10`) — so nothing truncates; a shorter code centers with more room. At font scale 1;
- * [WidgetPill] scales it and the label together with the system font, up to [WIDGET_PILL_MAX_SCALE].
+ * [app.stopdash.ui.LinePill]). Sized to the widest code shown, a four-character one (`LNWR`, ~33dp in
+ * the pill's 12sp bold under Roboto; `N550` ~29dp), with only 4dp padding beside it, so a
+ * three-character code sits snug rather than lost in the pill (maintainer, 2026-09-28; it was a 48dp
+ * slot with 8dp padding). Unlike the app's pill it can't widen for a code that doesn't fit, so it
+ * keeps about a fifth over LNWR for a wider system font, which would otherwise cut the code. At font
+ * scale 1; [WidgetPill] scales it and the label together with the system font, up to
+ * [WIDGET_PILL_MAX_SCALE].
  */
-private val WIDGET_PILL_LABEL_WIDTH = 48.dp
+internal val WIDGET_PILL_LABEL_WIDTH = 40.dp
 
 /**
  * How far the pill (its label and slot together) grows with the font scale, so the narrowest

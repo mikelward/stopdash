@@ -765,12 +765,17 @@ train and beats the cryptic legacy TOC codes; the few single-word operators that
 collide are pinned by hand to their official TOC code (Southern SN, Southeastern SE), and
 London Northwestern Railway is pinned to LNWR, since the rail feed's spelling of it yields a code
 too long for the pill. **Every
-pill shares one fixed width**, sized to the widest code shown (a four-character bus route),
-so the codes form a tidy left column the eye runs straight down a card list, rather than a
-ragged edge that steps in and out as each code's length changes; a shorter code centers in
-the shared box, and the width holds the widest code complete rather than truncating it. A pill cut
+pill shares one width**, sized to hold the widest code shown (a four-character one, LNWR or a
+night route like N207) whole, so the codes form a tidy left column the eye runs straight down a
+card list, rather than a ragged edge that steps in and out as each code's length changes; a
+shorter code centers in the shared box. The pill's own side padding is slim, since the box
+already leaves a three-character code room either side: a four-character code fills the pill
+while a three-character one sits snug, where a wider box with more padding had left it lost in
+its pill (maintainer, 2026-09-28). A code wider still (a system font wider than the one the box
+was measured in) widens its own pill rather than being cut. A pill cut
 for several lines is the exception: its parts size to their own codes (*Trips with a change*),
-since one fixed width per part would make it half again as wide as the pills beside it. The
+spaced as a lone pill is, the same slim padding at its ends and either side of the cut, so a
+cut pill stays compact (maintainer, 2026-09-28). The
 full line name is the pill's accessible label, so a screen reader announces "Victoria",
 not "VIC". Tube
 lines take their color by line (Northern black, Central red, …); bus, DLR, the Elizabeth
