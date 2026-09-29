@@ -1410,7 +1410,10 @@ and dismissing that is a second, separate choice.
 northbound diversion says nothing about the buses heading south, and flagging them sends the rider
 reading about a stretch they won't touch. TfL names an alert's direction only in its detailed status
 response, ~40× the regular one, so the refresh stays plain and each new alert's direction is looked
-up once in the background and remembered by its text (reworded text is a new alert). Until that
+up once in the background and remembered by its text (reworded text is a new alert). A lookup that
+fails is tried again a minute later, then after twice as long each time, up to half an hour, so TfL
+failing it over and over costs a detailed response every so often, not one every refresh; a new alert
+on the line is still looked up at once, its wait starting over. Until that
 answer arrives, or if it fails, or where TfL scopes an alert to no direction or a row has none (most
 rail predictions), the alert shows in both directions, as before — the split only ever hides an
 alert TfL itself says is for the other way. The widget and watch do the same: the widget's

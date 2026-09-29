@@ -1065,9 +1065,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 alert (`detail=true`, ~150 KB a line, not waited on: that refresh counts the alert
                 both ways, the next by direction). Placing a part closure on the leg's stretch
                 reads that same answer. It's the one large download: once per new alert while TfL
-                answers it, but asked again each refresh while it fails, up to ~150 KB a line each
-                time, until the status client backs off (*Back off a direction lookup that keeps
-                failing*).
+                answers it; while it fails, again a minute later, then after twice as long each
+                time, up to half an hour, ~150 KB a line each time.
               - **Stop closures**, as the two closure tasks the High tier names fetch them (not
                 yet), shared with the list for five minutes.
               - **Planning again**, only on a signal and only once the mid-route task lands: one
@@ -1881,12 +1880,12 @@ Builds on Phase 1's minimal line-status marking.
             scopes to one direction (its affected routes' `inbound`/`outbound`, only in the
             `?detail=true` response) no longer flags rows heading the other way. Looked up once per
             new alert in the background and cached by its text; unknown counts for both.
-        - [ ] **Back off a direction lookup that keeps failing** (Codex on #366): a failed
+        - [x] **Back off a direction lookup that keeps failing** (Codex on #366): a failed
               detailed lookup is released and asked again on the next refresh, so while TfL keeps
               failing it (a response the app can't decode, say) the list pays up to ~150 KB a line
-              every refresh rather than once per alert. Wait longer after each failure (doubling,
-              capped), or remember the failure for a while; meanwhile the alert shows for both
-              directions, as it does now.
+              every refresh rather than once per alert. Now it's tried again a minute later, then
+              after twice as long each time, up to half an hour; meanwhile the alert shows for both
+              directions, as it did.
         - [x] **The widget and watch by direction too**: the snapshot and the watch envelope keep
               each direction's status, dismissals are marked per direction, the complication marks
               its row's direction, and the widget's refresh fills the shared direction cache.
