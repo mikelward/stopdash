@@ -467,6 +467,7 @@ class KtorTflClientTest {
             ]}
         """.trimIndent()
         // Each detail request's lines, in order; the first detail request about [second] fails.
+        var now = Instant.parse("2026-09-29T08:00:00Z")
         val detailAsks = mutableListOf<List<String>>()
         var secondFailed = false
         val lookups = Job()
@@ -494,6 +495,7 @@ class KtorTflClientTest {
             alertDirections = LineAlertDirections(),
             alertDirectionScope = CoroutineScope(lookups),
             alertDirectionDispatcher = StandardTestDispatcher(testScheduler),
+            clock = { now },
         )
 
         client.lineStatuses(listOf(first, second))
@@ -501,15 +503,76 @@ class KtorTflClientTest {
         lookups.children.toList().joinAll()
         assertEquals(listOf(listOf(first), listOf(second)), detailAsks)
 
-        // The first line's directions were recorded; the failed one is asked about again, alone.
+        // The first line's directions were recorded; the failed one isn't asked about again at once.
         val statuses = client.lineStatuses(listOf(first, second)).associateBy { it.lineId }
         assertEquals(north, statuses.getValue(first).forDirection("inbound").fullText)
         assertFalse(statuses.getValue(first).awaitingDirections)
         assertTrue(statuses.getValue(second).awaitingDirections)
         advanceUntilIdle()
         lookups.children.toList().joinAll()
+        assertEquals(2, detailAsks.size)
+        // A minute on, it is, alone.
+        now = now.plus(LineAlertDirections.RETRY_AFTER)
+        client.lineStatuses(listOf(first, second))
+        advanceUntilIdle()
+        lookups.children.toList().joinAll()
         assertEquals(listOf(second), detailAsks.last())
         assertEquals(3, detailAsks.size)
+    }
+
+    @Test
+    fun `a direction lookup's unsent requests aren't held back like the one that failed`() = runTest {
+        val reason = "STATION A: routes are on diversion northbound via Street A."
+        // Line ids long enough that TfL needs a request for each (LineStatusBatch).
+        val first = "bus-" + "x".repeat(150)
+        val second = "bus-" + "y".repeat(150)
+        fun line(id: String, detail: Boolean) = """
+            {"id": "$id", "name": "$id", "lineStatuses": [
+              {"statusSeverity": 0, "statusSeverityDescription": "Special Service", "reason": "$reason",
+               "disruption": {"affectedRoutes": [${if (detail) """{"direction": "inbound"}""" else ""}]}}
+            ]}
+        """.trimIndent()
+        // The first detail request (about [first]) fails, so the one about [second] is never sent.
+        val detailAsks = mutableListOf<List<String>>()
+        var firstFailed = false
+        val lookups = Job()
+        val engine = MockEngine { request ->
+            val ids = request.url.segments[1].split(",")
+            val detail = request.url.parameters["detail"] == "true"
+            if (detail) detailAsks += ids
+            if (detail && first in ids && !firstFailed) {
+                firstFailed = true
+                respond(ByteReadChannel("{}"), HttpStatusCode.InternalServerError, headersOf(HttpHeaders.ContentType, "application/json"))
+            } else {
+                respond(
+                    ByteReadChannel(ids.joinToString(",", "[", "]") { line(it, detail) }),
+                    headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                )
+            }
+        }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val client = KtorTflClient(
+            httpClient = http,
+            baseUrl = "https://tfl.example",
+            alertDirections = LineAlertDirections(),
+            alertDirectionScope = CoroutineScope(lookups),
+            alertDirectionDispatcher = StandardTestDispatcher(testScheduler),
+            clock = { Instant.parse("2026-09-29T08:00:00Z") },
+        )
+
+        client.lineStatuses(listOf(first, second))
+        advanceUntilIdle()
+        lookups.children.toList().joinAll()
+        assertEquals(listOf(listOf(first)), detailAsks)
+
+        // The next refresh, at once: the unsent line is asked about, the failed one waits.
+        client.lineStatuses(listOf(first, second))
+        advanceUntilIdle()
+        lookups.children.toList().joinAll()
+        assertEquals(listOf(listOf(first), listOf(second)), detailAsks)
     }
 
     @Test

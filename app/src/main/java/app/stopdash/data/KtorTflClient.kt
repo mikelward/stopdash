@@ -378,7 +378,7 @@ class KtorTflClient(
     private fun lookUpAlertDirections(lines: List<TflLineDto>) {
         val cache = alertDirections ?: return
         val scope = alertDirectionScope ?: return
-        val claimed = cache.claimUnknown(lines)
+        val claimed = cache.claimUnknown(lines, clock())
         if (claimed.isEmpty()) return
         scope.launch(alertDirectionDispatcher) {
             try {
@@ -395,10 +395,15 @@ class KtorTflClient(
                     }
                 }
                 results.answers.forEach { answer -> cache.record(answer.lineIds.mapNotNull(byId::get), answer.value) }
-                // The rest keep showing for both directions, as before; the next refresh asks again.
+                // The rest keep showing for both directions, as before, and are asked about again
+                // once they've waited, longer after each failure ([LineAlertDirections.fail]).
                 val unanswered = results.failed + results.unknown
                 if (unanswered.isNotEmpty()) {
-                    cache.release(unanswered.mapNotNull(byId::get))
+                    // A group never sent (after an earlier one failed) didn't fail: it's asked about on
+                    // the next refresh rather than waiting as though it had.
+                    val unsent = results.unsent.toSet()
+                    cache.fail(unanswered.filterNot { it in unsent }.mapNotNull(byId::get), clock())
+                    cache.release(results.unsent.mapNotNull(byId::get))
                     warn("alert directions: ${unanswered.size} lines, ${results.failure?.let { it::class.simpleName } ?: "NotFound"}")
                 }
             } catch (e: CancellationException) {

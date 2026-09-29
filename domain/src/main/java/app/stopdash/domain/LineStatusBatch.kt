@@ -52,12 +52,14 @@ object LineStatusBatch {
         val answers = mutableListOf<Answer<T>>()
         val unknown = mutableListOf<String>()
         val failed = mutableListOf<String>()
+        val unsent = mutableListOf<String>()
         var failure: Exception? = null
         var failedAny = false
         var requests = 0
         for (chunk in chunks(lineIds)) {
             if (failedAny) {
                 failed += chunk
+                unsent += chunk
                 continue
             }
             requests++
@@ -79,7 +81,7 @@ object LineStatusBatch {
                 failed += chunk
             }
         }
-        return Results(answers, unknown, failed, failure, requests)
+        return Results(answers, unknown, failed, failure, requests, unsent)
     }
 
     /** One group of line ids and what TfL answered for it. */
@@ -88,7 +90,8 @@ object LineStatusBatch {
     /**
      * What a [request] found, group by group: the [answers], the lines in groups TfL knows none of
      * ([unknown]), and the lines in a group that failed or went unsent after one did ([failed], with
-     * the [failure] when one was thrown). [requests] counts only what was sent.
+     * the [failure] when one was thrown). [requests] counts only what was sent, and [unsent] names
+     * the lines of [failed] that were never asked about, which a caller counting failures leaves out.
      */
     class Results<T>(
         val answers: List<Answer<T>>,
@@ -96,6 +99,7 @@ object LineStatusBatch {
         val failed: List<String>,
         val failure: Exception?,
         val requests: Int,
+        val unsent: List<String> = emptyList(),
     ) {
         /** Whether TfL answered any group, an empty or unknown-lines answer included. */
         val anyAnswered: Boolean get() = answers.isNotEmpty() || unknown.isNotEmpty()

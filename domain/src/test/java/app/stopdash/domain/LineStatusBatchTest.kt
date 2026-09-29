@@ -72,6 +72,8 @@ class LineStatusBatchRequestTest {
 
         assertEquals(listOf(23), results.answers.map { it.value })
         assertEquals(ids.drop(23), results.failed)
+        // The failed group was sent.
+        assertTrue(results.unsent.isEmpty())
         assertTrue(results.failure is TflException.RateLimited)
         assertTrue(results.anyAnswered)
     }
@@ -83,8 +85,9 @@ class LineStatusBatchRequestTest {
 
         assertEquals(1, calls)
         assertEquals(1, results.requests)
-        // A null answer is a failure too, and the unsent group reads failed with it.
+        // A null answer is a failure too, and the unsent group reads failed with it, named as unsent.
         assertEquals(ids, results.failed)
+        assertEquals(ids.drop(23), results.unsent)
         assertEquals(false, results.anyAnswered)
     }
 
