@@ -278,10 +278,10 @@ object TileTimeline {
         topology: RouteTopology = RouteTopology.EMPTY,
         screen: TileScreen? = null,
     ): TileSchedule {
-        // A check dated after [now] (the clock moved back) is never trusted, and it stays untrusted
-        // for the whole timeline: dropped here once, so a later frame can't start showing it once
-        // its instant passes, with no break at its expiry to take it away again.
-        val envelope = received?.withoutFutureChecks(now)
+        // A check or a stop dated after [now] (the clock moved back) is never trusted, and it stays
+        // untrusted for the whole timeline: dropped or restamped stale here once, so a later frame
+        // can't start showing it once its instant passes, with no break to take it away again.
+        val envelope = received?.distrustingFuture(now)
         if (envelope == null || envelope.stops.isEmpty()) {
             return TileSchedule(listOf(TileEntry(now, null, frame(envelope, now, topology, screen = screen))), refreshAt = null)
         }

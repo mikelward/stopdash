@@ -3,6 +3,7 @@ package app.stopdash.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.stopdash.domain.ArrivalsCache
+import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.RailFeed
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
@@ -489,7 +490,7 @@ class MainViewModel(
                 // Its own stop as the place: a check covers only this stop, so only this stop's
                 // dismissal can be reconciled (below) — an area-wide one could stay hidden forever. At
                 // worst the same notice on the near-me list is dismissed separately; never hidden.
-                StopArrivals(stop.id, stop.name, emptyList(), now, disruptions = disruptions)
+                StopArrivals(stop.id, stop.name, emptyList(), SteadyClock.stamp(now), disruptions = disruptions)
                     .also { checked += it }
             }
             // Every failed check is unknown now, even with an earlier result still shown: that result
@@ -760,6 +761,9 @@ class MainViewModel(
         useShared: Boolean = true,
     ): FetchBatch {
         lastFetchAt = now
+        // This batch's fetches, stamped by the steady clock ([SteadyClock]) so setting the device's
+        // clock doesn't change how old they read.
+        val stamp = SteadyClock.stamp(now)
         val startedAt = elapsedMillis()
         val waitedBefore = rateWaitMillis()
         val merged = mutableListOf<StopArrivals>()
@@ -947,7 +951,7 @@ class MainViewModel(
                             freshDepartures = departures,
                             freshDisruptions = stopDisruptions,
                             prior = prior[stop.id],
-                            now = shared[i]?.fetchedAt ?: now,
+                            now = shared[i]?.fetchedAt ?: stamp,
                             hubId = stop.hubId,
                             hubName = hub.name,
                             placeAliases = hub.aliases,
@@ -1012,7 +1016,7 @@ class MainViewModel(
             val disruptions = closure?.notices
             if (departures != null) {
                 freshArrivalStopIds += stop.id
-                arrivalsFetchedAt[stop.id] = shared[i]?.fetchedAt ?: now
+                arrivalsFetchedAt[stop.id] = shared[i]?.fetchedAt ?: stamp
             }
             if (departures != null || (disruptions != null && !disruptionFromCache[i])) anyFreshData = true
             val hub =
@@ -1029,7 +1033,7 @@ class MainViewModel(
                 freshDepartures = departures,
                 freshDisruptions = disruptions,
                 prior = prior[stop.id],
-                now = shared[i]?.fetchedAt ?: now,
+                now = shared[i]?.fetchedAt ?: stamp,
                 hubId = stop.hubId,
                 hubName = hub.name,
                 placeAliases = hub.aliases,
@@ -1222,7 +1226,8 @@ class MainViewModel(
                 fetchedAt != null &&
                     fetchedAt == stop.fetchedAt &&
                     shownClosure != null && disruptionCache.since(stop.stopId, shownClosure) == null &&
-                    isWithin(fetchedAt, now, window) &&
+                    // Aged by the steady clock the fetch is stamped by ([SteadyClock]).
+                    SteadyClock.age(fetchedAt, now).let { !it.isNegative && it < window } &&
                     stop.arrivalsFresh &&
                     stop.stopId !in loaded.stopsDisruptionUnknown
             }
@@ -1369,7 +1374,7 @@ class MainViewModel(
                 } else if (coldLoad && (shown.isNotEmpty() || (failed.isNotEmpty() && waiting.isNotEmpty()))) {
                     val partial = DeparturesUiState.Loaded(
                         stops = shown,
-                        fetchedAt = shown.maxOfOrNull { it.fetchedAt } ?: now,
+                        fetchedAt = shown.maxOfOrNull { it.fetchedAt } ?: SteadyClock.stamp(now),
                         // Line status is checked once every stop is in; until then it's unchecked.
                         disruptionUnknown = true,
                         pendingStops = toFetch.filter { it.id in waiting },
@@ -1444,7 +1449,7 @@ class MainViewModel(
                 // Nothing came back and nothing failed → there were no stops to fetch
                 // (no watched stops yet, or the seed is empty). That's an empty list, not
                 // a network error — TfL was never contacted.
-                firstError == null -> DeparturesUiState.Loaded(stops = emptyList(), fetchedAt = now)
+                firstError == null -> DeparturesUiState.Loaded(stops = emptyList(), fetchedAt = SteadyClock.stamp(now))
                 // Every stop failed on a first load with no prior snapshot to fall back on
                 // → an honest error, not an empty or stale list (SPEC principles 1–2).
                 else -> DeparturesUiState.Error(kindOf(firstError))

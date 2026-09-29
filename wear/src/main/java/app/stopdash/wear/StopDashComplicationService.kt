@@ -45,7 +45,8 @@ class StopDashComplicationService : SuspendingTimelineComplicationDataSourceServ
                 // A complication added before any other surface ran looks up what the phone already
                 // sent, off this render; a newer envelope then re-renders it.
                 WatchSurfaces.lookUpOnce(context, store)
-                val envelope = (store.state.value as? WatchReceived.Received)?.envelope
+                // As the clock reads it now, however it's been set since it arrived.
+                val envelope = store.current()
                 // A picked stop that left the widget's scope: drop the pick (and tell the phone), so
                 // the complication shows the default row rather than hold the old one.
                 ComplicationSelections.clearIfGone(context, id, envelope)

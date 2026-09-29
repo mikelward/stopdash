@@ -31,6 +31,7 @@ import app.stopdash.data.WatchEnvelope
 import app.stopdash.data.toDomain
 import app.stopdash.domain.DepartureLabels
 import app.stopdash.domain.StarredRow
+import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.isStatusOnly
 import app.stopdash.domain.lineCode
 import java.time.Instant
@@ -97,7 +98,12 @@ class ComplicationConfigActivity : ComponentActivity() {
         val store = WatchEnvelopeStore.from(this)
         // The current pick, read off the main thread with the envelope; unknown until then.
         val pick = MutableStateFlow<PickState>(PickState.Loading)
+        // The watch's clock frame, worked out off the main thread before the envelope is read (it
+        // reads a file and the system settings the first time), and handed to the list below, which
+        // waits for it rather than work it out itself (Codex, PR #371).
+        val frame = MutableStateFlow<FrameRead?>(null)
         lifecycleScope.launch(Dispatchers.IO) {
+            frame.value = FrameRead(store.frameNow())
             store.load()
             pick.value = PickState.Loaded(ComplicationSelections.get(this@ComplicationConfigActivity, id))
             // Opened before anything was stored (a fresh install, cleared data): look up what the
@@ -109,8 +115,10 @@ class ComplicationConfigActivity : ComponentActivity() {
         setContent {
             val received by store.state.collectAsStateWithLifecycle()
             val current by pick.collectAsStateWithLifecycle()
-            val choices = remember(received, current) {
-                ComplicationChoices.of((received as? WatchReceived.Received)?.envelope, Instant.now(), (current as? PickState.Loaded)?.row)
+            val read by frame.collectAsStateWithLifecycle()
+            val choices = remember(received, current, read) {
+                val envelope = read?.let { (received as? WatchReceived.Received)?.current(it.frame) }
+                ComplicationChoices.of(envelope, Instant.now(), (current as? PickState.Loaded)?.row)
             }
             ComplicationPickerScreen(choices, current) { row ->
                 ComplicationSelections.set(this, id, row)
@@ -121,6 +129,9 @@ class ComplicationConfigActivity : ComponentActivity() {
         }
     }
 }
+
+/** The watch's clock frame as read ([WatchEnvelopeStore.frameNow]); [frame] null where it can't be told. */
+private class FrameRead(val frame: SteadyClock.Frame?)
 
 /** The complication's current pick as the picker knows it: still loading, or loaded (null: the default). */
 sealed interface PickState {

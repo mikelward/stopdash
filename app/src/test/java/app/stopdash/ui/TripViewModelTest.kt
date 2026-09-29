@@ -16,6 +16,7 @@ import app.stopdash.domain.Dismissed
 import app.stopdash.domain.JourneyPlanner
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopGroup
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
@@ -1053,6 +1054,31 @@ class TripViewModelTest {
         trip.refresh()
         advanceUntilIdle()
         assertEquals(4, client.asked.size)
+    }
+
+    @Test
+    fun `a pull after the clock was set back still asks afresh for what was fetched before it`() = runTest(dispatcher) {
+        var setBack = Duration.ZERO
+        SteadyClock.source = object : SteadyClock.Source {
+            override val frame: SteadyClock.Frame? = null
+            override fun offset(): Duration = setBack
+        }
+        try {
+            val client = FakeClient(mutableMapOf("A" to listOf(train("red", "B", 9))))
+            val trip = model(FakePlanner(listOf(route)), client)
+            trip.refresh()
+            advanceUntilIdle()
+            assertEquals(listOf("A", "B"), client.asked.sorted())
+            // Thirty seconds on, the clock is set back an hour, and the rider pulls: the stops were
+            // fetched before the pull, though their steady stamps read later than its wall time.
+            setBack = Duration.ofHours(1)
+            now = now.plusSeconds(30).minus(Duration.ofHours(1))
+            trip.pullRefresh()
+            advanceUntilIdle()
+            assertEquals(listOf("A", "A", "B", "B"), client.asked.sorted())
+        } finally {
+            SteadyClock.source = null
+        }
     }
 
     @Test

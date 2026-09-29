@@ -328,7 +328,7 @@ class ComplicationTimelineTest {
 
     @Test
     fun `a check from the future never marks the complication`() {
-        val check = LineStatusCheck(LineStatus("victoria", 6, "Severe Delays"), fetched.plusSeconds(60))
+        val check = LineStatusCheck(LineStatus("victoria", 6, "Severe Delays"), fetched.plusSeconds(120))
         val env = envelope(stop("940GA", listOf(departure(240)))).copy(lineStatuses = listOf(check.toPersisted()))
         val entries = ComplicationTimeline.entries(env, fetched)
         assertTrue(entries.none { (it.content as? ComplicationContent.Departure)?.disruption != null })
@@ -344,4 +344,17 @@ class ComplicationTimelineTest {
         val first = ComplicationTimeline.entries(env, fetched).first().content as ComplicationContent.Empty
         assertEquals("Suspended", first.disruption)
     }
+
+    @Test
+    fun `a stop from before the clock was set back is stale for the whole timeline`() {
+        val env = envelope(stop("940GA", listOf(departure(240), departure(600))))
+        // Built an hour before its stamp: its age can't be told, so it never shows a countdown,
+        // not even once the clock passes the stamp.
+        val entries = ComplicationTimeline.entries(env, fetched.minusSeconds(3600))
+        assertTrue(entries.all { it.content is ComplicationContent.Stale })
+        assertTrue(entries.at(fetched.plusSeconds(10)) is ComplicationContent.Stale)
+        // A moment ahead is another clock's tick, not a rollback: it still counts down.
+        assertTrue(ComplicationTimeline.entries(env, fetched.minusSeconds(30)).first().content is ComplicationContent.Departure)
+    }
+
 }

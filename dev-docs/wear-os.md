@@ -390,6 +390,11 @@ Wear's own APIs solve it without wake-ups:
   (snapshot, now) builder the tile uses. No network, no polling; it stops when the app leaves
   the foreground and recomputes on resume. A test drives a foregrounded app past a departure and
   past a stop's boundary with an injected clock.
+- **Setting the watch's clock:** each surface reads the envelope as the clock reads it now, moved
+  for any setting since it arrived (SPEC *Freshness*). The ticker does so at each wake, and a
+  setting of the clock (`TIME_SET`) asks the tile and complications to re-render, since the system
+  steps their timelines by the wall clock and would otherwise hold an entry built before the
+  change until the clock caught up with it. That's one re-render per setting, no wake-up otherwise.
 - All three use the **one shared staleness constant** from `:domain`, never a watch-specific number.
 
 Verify both mechanisms against the current Tiles and Complications APIs when this is picked up.

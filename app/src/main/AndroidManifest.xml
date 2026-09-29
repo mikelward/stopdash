@@ -75,6 +75,17 @@
                 android:resource="@xml/stopdash_widget_info" />
         </receiver>
 
+        <!-- A setting of the device's clock redraws the widget, whose countdowns and age are
+             drawn against the clock as it read then. A system broadcast, so it reaches a
+             receiver that isn't exported. -->
+        <receiver
+            android:name=".widget.WidgetClockChangeReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.TIME_SET" />
+            </intent-filter>
+        </receiver>
+
         <!-- Serves the bug-report screenshot to the app the user picks in the share sheet.
              Not exported: only the chooser target we grant a read to (per-Uri, per-share) can
              read it; nothing else, and never the rest of the cache (see @xml/file_paths). -->

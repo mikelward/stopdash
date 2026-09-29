@@ -5,6 +5,7 @@ import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LocationFix
 import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripProgress
@@ -483,7 +484,8 @@ class ActiveTripTracker(
 
     private suspend fun readBoard(ride: TripLeg, now: Instant): Result<NextBoard> =
         try {
-            Result.success(NextBoard(ride, arrivals(ride.fromId), now).also { _nextBoard.value = it })
+            // Stamped by the steady clock, as every fetch is ([SteadyClock]).
+            Result.success(NextBoard(ride, arrivals(ride.fromId), SteadyClock.stamp(now)).also { _nextBoard.value = it })
         } catch (e: CancellationException) {
             throw e
         } catch (e: TflException) {

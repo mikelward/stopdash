@@ -10,7 +10,8 @@ import kotlin.time.toKotlinDuration
  * app (as the stamped placeholder shown before the first refresh completes) and by the
  * lock-screen widget (which can't run the fetch itself). It is the honest last-good only:
  * the [stops], each carrying its own fetch age, and the freshest [fetchedAt] for the
- * whole-screen stamp.
+ * whole-screen stamp. Fetch stamps are the steady clock's ([SteadyClock]), so setting the device's
+ * clock doesn't change how old a fetch reads; line checks are stamped by the wall clock.
  *
  * [lineStatuses] is each shown line's last status check, **stamped with when it was checked**,
  * so the widget (and the watch, which renders from the same inputs) can mark a delayed or
@@ -95,7 +96,9 @@ data class DeparturesSnapshot(
      */
     fun nextBoundary(now: Instant): Instant? {
         val threshold = Staleness.THRESHOLD.toJavaDuration()
-        val arrivalsExpire = fetchedAt.plus(threshold)
+        // Fetch stamps are the steady clock's ([SteadyClock]); the boundary is scheduled, and line
+        // checks are stamped, by the wall clock.
+        val arrivalsExpire = SteadyClock.toWall(fetchedAt).plus(threshold)
         // Only an expiry that can change what's drawn: a check from the future (the clock moved
         // back) is never live, and a no-verdict one reads as unchecked from the start. A good
         // service has no mark, so its expiry matters only while a countdown on its line is still
@@ -105,6 +108,7 @@ data class DeparturesSnapshot(
         fun lineFreshUntil(lineId: String): Instant? = stops
             .filter { stop -> stop.departures.any { it.lineId == lineId } }
             .maxOfOrNull { it.fetchedAt }
+            ?.let(SteadyClock::toWall)
             ?.plus(threshold)
         val checkExpiries = lineStatuses.entries
             .filter { (_, check) -> check.known && !check.checkedAt.isAfter(now) }

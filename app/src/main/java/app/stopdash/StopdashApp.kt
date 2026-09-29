@@ -5,12 +5,14 @@ import android.content.Context
 import android.util.Log
 import androidx.glance.appwidget.updateAll
 import app.stopdash.data.DataStoreAppSettings
+import app.stopdash.data.DeviceSteadyClock
 import app.stopdash.data.DistanceUnitsSetting
 import app.stopdash.data.WalkingSpeedSetting
 import app.stopdash.data.HiddenModesSetting
 import app.stopdash.data.RailApiKeySetting
 import app.stopdash.data.UserApiKeySetting
 import app.stopdash.data.logAppSettingsWarning
+import app.stopdash.domain.SteadyClock
 import app.stopdash.telemetry.CrashlyticsLogSink
 import app.stopdash.telemetry.FilePendingMarker
 import app.stopdash.telemetry.FirebaseTelemetryBackend
@@ -105,10 +107,21 @@ open class StopdashApp : Application() {
         // file keeps the full crash, Crashlytics gets the redacted copy.
         installCrashRedaction()
         installDiagnosticLog()
+        // Before anything fetches, so every fetch is stamped by it.
+        installSteadyClock()
         warmSharedState()
         installTelemetry()
         installWatchSync()
         installWidgetDismissalRedraw()
+    }
+
+    /**
+     * The device's monotonic clock as the one a fetch's age is judged by ([SteadyClock], SPEC
+     * *Freshness*), so setting the clock doesn't make old departures read as new. `open` so the test
+     * [Application] can skip it: a unit test judges ages by the wall clock it injects.
+     */
+    protected open fun installSteadyClock() {
+        DeviceSteadyClock.install(this)
     }
 
     /**

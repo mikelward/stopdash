@@ -52,6 +52,7 @@ import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Countdown
 import app.stopdash.domain.Departure
 import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopGrouping
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.Staleness
@@ -60,7 +61,6 @@ import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripProgress
 import java.time.Duration
 import java.time.Instant
-import kotlin.time.toKotlinDuration
 
 /**
  * A trip on the way (SPEC *On the way*): the next step over the route, leg by leg, the leg the rider
@@ -279,7 +279,7 @@ internal fun rememberNextTrains(
     // every line" can be explained.
     val routes = LocalRouteStops.current
     LaunchedEffect(routes, found.misses) { routes?.reportMisses(found.misses) }
-    val stale = Staleness.isStale(Duration.between(fetchedAt, now).toKotlinDuration())
+    val stale = Staleness.isStale(fetchedAt, now)
     return NextTrains(board.ride, found.trains, pending = found.pending, unresolved = found.unresolved, stale = stale, failed = board.failed, readyAt = readyAt, fetchedAt = fetchedAt)
 }
 
@@ -294,7 +294,7 @@ internal fun rememberNextTrains(
 private fun NextTrainsSection(next: NextTrains, now: Instant) {
     val groups = remember(next, now) {
         StopGrouping.groupByStop(
-            DepartureRows.forStop(next.ride.fromId, next.ride.fromName, next.trains, now, fetchedAt = next.fetchedAt ?: now),
+            DepartureRows.forStop(next.ride.fromId, next.ride.fromName, next.trains, now, fetchedAt = next.fetchedAt ?: SteadyClock.stamp(now)),
         )
     }
     Column(Modifier.fillMaxWidth().testTag("onTheWayTrains"), verticalArrangement = Arrangement.spacedBy(4.dp)) {

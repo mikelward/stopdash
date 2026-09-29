@@ -67,7 +67,7 @@ internal fun scheduleStalenessRedrawFor(context: Context, snapshotFetchedAt: Ins
     val remaining = if (snapshotFetchedAt == null) {
         Duration.ZERO
     } else {
-        Staleness.remainingUntilStale(JavaDuration.between(snapshotFetchedAt, now).toKotlinDuration())
+        Staleness.remainingUntilStale(Staleness.age(snapshotFetchedAt, now))
     }
     applyStalenessRedrawPlan(WorkManager.getInstance(context.applicationContext), remaining)
 }
@@ -91,6 +91,20 @@ internal fun applyStalenessRedrawPlan(
     running: String? = runningStalenessSlot,
 ) {
     if (remaining == Duration.ZERO) return
+    enqueueStalenessRedraw(workManager, remaining, running)
+}
+
+/**
+ * A render-only redraw at once, for when the device's clock has been set ([WidgetClockChangeReceiver]):
+ * the widget's countdowns and age are static text drawn against the clock as it read then, and its
+ * next scheduled redraw may be minutes off (Codex, PR #371). It takes the free slot as a boundary's
+ * redraw does, and its render arms the next boundary as any render does.
+ */
+internal fun redrawWidgetNow(workManager: WorkManager, running: String? = runningStalenessSlot) {
+    enqueueStalenessRedraw(workManager, Duration.ZERO, running)
+}
+
+private fun enqueueStalenessRedraw(workManager: WorkManager, delay: Duration, running: String?) {
     // Into the slot that isn't running a redraw right now, so a successor scheduled from within a
     // redraw's own render never replaces (cancels) it; the other slot's pending wake, if it isn't
     // the running one, is dropped so only one boundary is ever pending.
@@ -100,7 +114,7 @@ internal fun applyStalenessRedrawPlan(
         target,
         ExistingWorkPolicy.REPLACE,
         OneTimeWorkRequestBuilder<WidgetStalenessWorker>()
-            .setInitialDelay(remaining.inWholeMilliseconds, TimeUnit.MILLISECONDS)
+            .setInitialDelay(delay.inWholeMilliseconds, TimeUnit.MILLISECONDS)
             .setInputData(workDataOf(SLOT_KEY to target))
             .build(),
     )

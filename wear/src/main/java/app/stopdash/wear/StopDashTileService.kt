@@ -59,7 +59,8 @@ class StopDashTileService : TileService() {
                     if (requestParams.currentState.lastClickableId == TileLayout.REFRESH_ID) WatchRefresh.request(this)
                     val store = WatchEnvelopeStore.from(this)
                     store.load()
-                    val envelope = (store.state.value as? WatchReceived.Received)?.envelope
+                    // As the clock reads it now, however it's been set since it arrived.
+                    val envelope = store.current()
                     // The screen bounds how many lines fit; a request that doesn't say gets the default.
                     val device = requestParams.deviceConfiguration
                     val screen = TileScreen(device.screenHeightDp, device.fontScale).takeIf { it.heightDp > 0 }

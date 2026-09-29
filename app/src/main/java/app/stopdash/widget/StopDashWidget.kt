@@ -70,9 +70,7 @@ import app.stopdash.ui.groupHeaderTitle
 import app.stopdash.ui.lineFillColor
 import app.stopdash.ui.railOperatorColor
 import app.stopdash.ui.textColorOn
-import java.time.Duration
 import java.time.Instant
-import kotlin.time.toKotlinDuration
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 
@@ -287,15 +285,15 @@ internal fun widgetModel(
     if (snapshot == null) {
         return WidgetModel(hasData = false, stale = false, uncertain = false, stamp = null, rows = emptyList())
     }
-    val age = Duration.between(snapshot.fetchedAt, now)
-    val stale = Staleness.isStale(age.toKotlinDuration())
+    val age = Staleness.age(snapshot.fetchedAt, now)
+    val stale = Staleness.isStale(age)
     // Nothing to show but a stop the refresh couldn't get (the others pruned since): say the stops
     // may be out of date, not "open the app to load", so the failure stays explicit.
     val onlyMissing = WidgetModel(
         hasData = true,
         stale = stale,
         uncertain = true,
-        stamp = "Updated ${RelativeTime.formatAge(age.toKotlinDuration())}",
+        stamp = "Updated ${RelativeTime.formatAge(age)}",
         rows = emptyList(),
     )
     if (snapshot.stops.isEmpty()) {
@@ -325,7 +323,7 @@ internal fun widgetModel(
     }
     // A stop the refresh asked for but couldn't get makes the rest incomplete, however fresh.
     val uncertain = stale || snapshot.missingStopIds.isNotEmpty() || shownStops.any {
-        !it.arrivalsFresh || Staleness.isStale(Duration.between(it.fetchedAt, now).toKotlinDuration())
+        !it.arrivalsFresh || Staleness.isStale(it.fetchedAt, now)
     }
     // Order for the cap, matching the in-app list: rank fresh rows ahead of stale ones (so a
     // partial refresh doesn't spend every slot on `?`-withheld stale rows and drop a trustworthy
@@ -340,7 +338,7 @@ internal fun widgetModel(
     // rows carry its status, and a suspended line with no predictions gets a status row.
     val ordered = DepartureRows.freshFirst(
         DepartureRows.across(snapshot.stops, now, snapshot.liveLineStatuses(now), splitPlatforms = false, statusRowsWhenStale = true),
-    ) { Staleness.isStale(Duration.between(it.fetchedAt, now).toKotlinDuration()) }
+    ) { Staleness.isStale(it.fetchedAt, now) }
     // Bound the widget by total RENDERED lines, not outer rows: a branching (line, direction)
     // row expands to one line per destination/branch group, and the widget has a fixed height,
     // so a single multi-destination service must not push later services off the bottom. Fill
@@ -364,7 +362,7 @@ internal fun widgetModel(
     // Whether a drawn row with a live countdown has a line with no current status check (a stale
     // row's countdown is withheld anyway): the widget then says it couldn't check for disruptions.
     fun unchecked(chosen: List<BudgetedRow>) = chosen.any { c ->
-        c.groups.isNotEmpty() && !Staleness.isStale(Duration.between(c.row.fetchedAt, now).toKotlinDuration()) &&
+        c.groups.isNotEmpty() && !Staleness.isStale(c.row.fetchedAt, now) &&
             !snapshot.statusKnown(c.row.lineId, now)
     }
     fun layout(withNote: Boolean): Triple<Boolean, Int, List<BudgetedRow>> {
@@ -396,7 +394,7 @@ internal fun widgetModel(
     val tooSmall = budget < 1 && pinned.isNotEmpty()
     // A stop's reason for no times is vouched for only while its last fetch is current.
     val currentStops = shownStops.filter {
-        it.arrivalsFresh && !Staleness.isStale(Duration.between(it.fetchedAt, now).toKotlinDuration())
+        it.arrivalsFresh && !Staleness.isStale(it.fetchedAt, now)
     }.mapTo(HashSet()) { it.stopId }
     val rows = chosen.map {
         WidgetRowModel(
@@ -411,7 +409,7 @@ internal fun widgetModel(
         stale = stale,
         uncertain = uncertain,
         statusUnknown = statusUnknown,
-        stamp = "Updated ${RelativeTime.formatAge(age.toKotlinDuration())}",
+        stamp = "Updated ${RelativeTime.formatAge(age)}",
         rows = rows,
         compact = compact,
         stacked = stacked,
@@ -440,7 +438,7 @@ internal fun pinJourneys(ordered: List<DepartureRow>, snapshot: DeparturesSnapsh
     }.sortedWith(
         compareBy(
             // A status-only row has no countdown to go stale (only a live check reaches it), and leads.
-            { if (!it.isStatusOnly && Staleness.isStale(Duration.between(it.fetchedAt, now).toKotlinDuration())) 1 else 0 },
+            { if (!it.isStatusOnly && Staleness.isStale(it.fetchedAt, now)) 1 else 0 },
             { it.upcoming.firstOrNull()?.expectedArrival ?: Instant.MIN },
         ),
     )
@@ -657,7 +655,7 @@ private fun WidgetRow(rowModel: WidgetRowModel, now: Instant, fontScale: Float, 
     // Withhold this row's countdown once ITS stop is stale (per-row, from the row's own fetch
     // age — a fresh stop beside a stale one stays live), so old predictions aren't shown as
     // live-looking numbers (SPEC D4). "?" means "unknown", matching the in-app card.
-    val stale = Staleness.isStale(Duration.between(row.fetchedAt, now).toKotlinDuration())
+    val stale = Staleness.isStale(row.fetchedAt, now)
     // A branching (service, direction) row keeps each destination — and each via-branch of one
     // terminus — on its own line with its own countdown, so a divergent train's time never sits
     // under the wrong destination or branch (SPEC D8). The groups were chosen (and line-budgeted)

@@ -35,6 +35,11 @@ class TestStopdashApp : StopdashApp() {
         // DataStore to follow; WidgetDismissalRedrawTest drives the redraw with fakes.
     }
 
+    override fun installSteadyClock() {
+        // Intentionally empty — a test's ages are the wall clock's it injects; SteadyClockTest and
+        // the store's tests install a source of their own where they need one.
+    }
+
     override fun installTelemetry() {
         // Intentionally empty — no Firebase in the test suite, and the consent holder and gate are
         // driven directly by their own tests.

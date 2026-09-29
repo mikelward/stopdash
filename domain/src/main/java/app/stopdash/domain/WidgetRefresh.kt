@@ -98,7 +98,8 @@ object WidgetRefresh {
             return (feed != RailFeed.NO_KEY) == railOn
         }
         fun recent(stop: StopArrivals): Boolean {
-            val age = Duration.between(stop.fetchedAt, now)
+            // By the steady clock, as every fetch is stamped ([SteadyClock]).
+            val age = SteadyClock.age(stop.fetchedAt, now)
             return stop.arrivalsFresh && !age.isNegative && age < reuse && sameSource(stop)
         }
         // A newer fetch of the stop by another screen, where there is one: taken even over a recent
@@ -136,7 +137,7 @@ object WidgetRefresh {
                     anyFresh = true
                     stop.copy(
                         departures = fetched,
-                        fetchedAt = now,
+                        fetchedAt = SteadyClock.stamp(now),
                         arrivalsFresh = true,
                         railFeed = if (railFeed != null) railFeed(stop.stopId) else stop.railFeed,
                     )

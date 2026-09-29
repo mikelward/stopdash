@@ -61,6 +61,17 @@
                 android:value="app.stopdash.wear.CONFIGURE_COMPLICATION" />
         </service>
 
+        <!-- A setting of the watch's clock re-renders the tile and complications, whose timelines
+             the system steps by the wall clock. A system broadcast, so it reaches a receiver that
+             isn't exported. -->
+        <receiver
+            android:name=".ClockChangeReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.TIME_SET" />
+            </intent-filter>
+        </receiver>
+
         <!-- The complication's row picker, opened from the watch face's editor. -->
         <activity
             android:name=".ComplicationConfigActivity"

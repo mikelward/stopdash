@@ -1,7 +1,9 @@
 package app.stopdash.domain
 
+import java.time.Instant
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.toKotlinDuration
 
 /**
  * The single, shared "too old to trust" policy (SPEC D4). One threshold, applied
@@ -10,8 +12,9 @@ import kotlin.time.Duration.Companion.minutes
  * constant, pinned by test, so no two surfaces can disagree about when data has
  * gone stale.
  *
- * Clock-free like [RelativeTime]: the caller passes the age of the fetch (now minus
- * the snapshot's fetch time), so this is JVM-testable without Android.
+ * Clock-free like [RelativeTime]: the caller passes the age of the fetch, or the fetch's stamp and
+ * the wall time to judge it at ([age]), which tells the age by the steady clock ([SteadyClock]) so
+ * setting the device's clock doesn't change it. JVM-testable without Android.
  */
 object Staleness {
     /**
@@ -27,8 +30,32 @@ object Staleness {
      */
     val THRESHOLD: Duration = 5.minutes
 
-    /** True once a fetch this old should no longer have its countdowns shown. */
-    fun isStale(age: Duration): Boolean = age >= THRESHOLD
+    /**
+     * How far a stamp may be ahead of the clock and still count as just now: a screen's own clock
+     * ticks every few seconds behind the fetch it shows, and a watch's clock isn't the phone's.
+     * A stamp further ahead than this was made before the clock was set back, so its real age
+     * can't be told.
+     */
+    val CLOCK_SKEW: Duration = 1.minutes
+
+    /**
+     * True once a fetch this old should no longer have its countdowns shown, and for a fetch
+     * stamped more than [CLOCK_SKEW] in the future ([isFromFuture]): it would otherwise read as
+     * fresh until the clock caught up with it.
+     */
+    fun isStale(age: Duration, threshold: Duration = THRESHOLD): Boolean = isFromFuture(age) || age >= threshold
+
+    /** True for a stamp more than [CLOCK_SKEW] ahead of the clock: made before the clock was set back. */
+    fun isFromFuture(age: Duration): Boolean = age < -CLOCK_SKEW
+
+    /**
+     * How old the fetch stamped [fetchedAt] is at the wall time [now], by the steady clock
+     * ([SteadyClock.age]), so setting the device's clock doesn't make old data read as new.
+     */
+    fun age(fetchedAt: Instant, now: Instant): Duration = SteadyClock.age(fetchedAt, now).toKotlinDuration()
+
+    /** Whether the fetch stamped [fetchedAt] is stale at the wall time [now] ([age], [isStale]). */
+    fun isStale(fetchedAt: Instant, now: Instant, threshold: Duration = THRESHOLD): Boolean = isStale(age(fetchedAt, now), threshold)
 
     /**
      * Time left before a fetch this old crosses the staleness boundary — for scheduling a
