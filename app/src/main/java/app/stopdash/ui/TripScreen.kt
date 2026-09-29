@@ -1278,7 +1278,10 @@ private fun RouteList(
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        val statuses = shownStatuses(state.statuses, dismissed)
+                        // Each line's alerts for the way the card rides it, less those dismissed.
+                        val statuses = remember(card, state.statuses, state.live, now, sequences, rideLines, dismissed) {
+                            shownStatuses(cardStatuses(card, rideLines, state, now, sequences), dismissed)
+                        }
                         val walk = remember(card, access) { walkToStart(card.first().route, access) }
                         CardHeader(card, rideLines, statuses, walk)
                         // Every route's on the card: another line's ride may use another pole of the pair.
@@ -1775,7 +1778,7 @@ private fun RouteLegs(
         // A re-plan that failed says so over the open route too, with its Retry, as the list does.
         state.planError?.let { error -> item(key = "error") { PlanFailure(error, state.planning, onRetry) } }
         if (state.planError == null && state.planIncomplete) item(key = "incomplete") { PlanIncomplete(state.planning, onRetry) }
-        item(key = "summary") { RouteSummary(listOf(estimate), rideLines, shownStatuses(state.statuses, dismissed), Modifier.padding(vertical = 8.dp)) }
+        item(key = "summary") { RouteSummary(listOf(estimate), rideLines, shownStatuses(cardStatuses(listOf(estimate), rideLines, state, now, sequences), dismissed), Modifier.padding(vertical = 8.dp)) }
         val otherLines = RideLines.unchecked(estimate.route.rides.mapNotNull { rideLines[it] }, rideStatuses(state))
         // A Planner line still unchecked says so even where another line keeps the route ranked usable.
         val plannerUnchecked = estimate.route.rides.any { it.lineId in state.statusUnknown || it.lineId !in state.statuses }
@@ -2113,6 +2116,24 @@ internal fun rememberLegRouteStops(leg: TripLeg, retry: Int): RouteStopsUi {
         }
         state
     }
+}
+
+/**
+ * [state]'s line statuses as [card]'s rides travel them ([LineStatus.alongRides]), by the trains seen
+ * along each ride of every line on it ([legTrains]). Display only, like [shownStatuses], which goes
+ * after it: a direction's own alerts are what a dismissal made from its row names.
+ */
+internal fun cardStatuses(
+    card: List<TripTiming.Estimate>,
+    rideLines: Map<TripLeg, RideLines>,
+    state: TripViewModel.State,
+    now: Instant,
+    sequences: Map<String, LineSequence?>,
+): Map<String, LineStatus> {
+    if (state.statuses.values.none { it.byDirection.isNotEmpty() }) return state.statuses
+    val legs = card.flatMap { it.route.rides }.flatMap { rideLines[it]?.legs ?: listOf(it) }.distinct()
+    val rides = legs.groupBy { it.lineId }.mapValues { (_, byLine) -> byLine.map { legTrains(state, it, now, sequences).orEmpty() } }
+    return LineStatus.alongRides(state.statuses, rides)
 }
 
 /**

@@ -2089,6 +2089,25 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `a card takes a line's alerts for the way its ride's trains go`() {
+        // Blue's delays are for trains going inbound; the ride's blue trains at B go outbound (train()),
+        // where there's only work still to come. Which way applies is LineStatus.alongRides's to say;
+        // this is the card handing it the trains along each ride.
+        val sequences = mapOf("red" to red, "blue" to blue)
+        val work = PlannedAlert("Diversion", "Trains divert from 13 October.", LocalDate.of(2026, 10, 13))
+        val inbound = LineStatus("blue", 6, "Severe Delays")
+        val outbound = LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(work))
+        val line = inbound.copy(planned = listOf(work), byDirection = mapOf("inbound" to inbound, "outbound" to outbound))
+        val state = redAndGreenAt(train("red", "End", 6)).copy(statuses = mapOf("blue" to line))
+        val card = listOf(checkNotNull(tripEstimates(state, now, Duration.ZERO, sequences)).first())
+        assertEquals(outbound, cardStatuses(card, emptyMap(), state, now, sequences).getValue("blue"))
+        // Its work dismissed from its row, the card has nothing for blue: the direction is taken first.
+        assertNull(shownStatuses(cardStatuses(card, emptyMap(), state, now, sequences), setOf(DismissedAlert.ofPlanned("blue", work)))["blue"])
+        // No blue train seen yet at B: the line-wide alert stands.
+        assertEquals(line, cardStatuses(card, emptyMap(), state.copy(live = state.live - "B"), now, sequences).getValue("blue"))
+    }
+
+    @Test
     fun `a card's planned work is dismissed on its own`() {
         val work = PlannedAlert("Diversion", "Buses divert from 13 October.", LocalDate.of(2026, 10, 13))
         val severe = LineStatus("blue", 6, "Severe Delays", planned = listOf(work))

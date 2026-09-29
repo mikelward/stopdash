@@ -651,6 +651,16 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun a_route_cards_warning_is_only_for_the_way_its_ride_goes() {
+        // The Windrush's delays are for trains the other way: the ride's trains go outbound (train()).
+        val severe = LineStatus("windrush", 6, "Severe Delays")
+        val good = LineStatus("windrush", LineStatus.GOOD_SERVICE, "Good Service")
+        show(planned.copy(statuses = planned.statuses + ("windrush" to severe.copy(byDirection = mapOf("inbound" to severe, "outbound" to good)))))
+        composeRule.onAllNodesWithContentDescription("Severe Delays").assertCountEquals(0)
+        composeRule.onAllNodesWithContentDescription(" min to ", substring = true).onFirst().assertExists()
+    }
+
+    @Test
     fun a_route_cards_long_press_offers_every_legs_mode() {
         val hidden = mutableListOf<String>()
         composeRule.setContent {
