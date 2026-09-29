@@ -1,6 +1,5 @@
 package app.stopdash.domain
 
-import java.time.Duration
 import java.time.Instant
 import kotlin.time.toJavaDuration
 import kotlin.time.toKotlinDuration
@@ -10,8 +9,8 @@ import kotlin.time.toKotlinDuration
  * app (as the stamped placeholder shown before the first refresh completes) and by the
  * lock-screen widget (which can't run the fetch itself). It is the honest last-good only:
  * the [stops], each carrying its own fetch age, and the freshest [fetchedAt] for the
- * whole-screen stamp. Fetch stamps are the steady clock's ([SteadyClock]), so setting the device's
- * clock doesn't change how old a fetch reads; line checks are stamped by the wall clock.
+ * whole-screen stamp. Fetch and line check stamps are the steady clock's ([SteadyClock]), so
+ * setting the device's clock doesn't change how old either reads.
  *
  * [lineStatuses] is each shown line's last status check, **stamped with when it was checked**,
  * so the widget (and the watch, which renders from the same inputs) can mark a delayed or
@@ -96,8 +95,8 @@ data class DeparturesSnapshot(
      */
     fun nextBoundary(now: Instant): Instant? {
         val threshold = Staleness.THRESHOLD.toJavaDuration()
-        // Fetch stamps are the steady clock's ([SteadyClock]); the boundary is scheduled, and line
-        // checks are stamped, by the wall clock.
+        // Fetch and check stamps are the steady clock's ([SteadyClock]); the boundary is scheduled by
+        // the wall clock.
         val arrivalsExpire = SteadyClock.toWall(fetchedAt).plus(threshold)
         // Only an expiry that can change what's drawn: a check from the future (the clock moved
         // back) is never live, and a no-verdict one reads as unchecked from the start. A good
@@ -111,9 +110,9 @@ data class DeparturesSnapshot(
             ?.let(SteadyClock::toWall)
             ?.plus(threshold)
         val checkExpiries = lineStatuses.entries
-            .filter { (_, check) -> check.known && !check.checkedAt.isAfter(now) }
+            .filter { (_, check) -> check.known && !check.fromFuture(now) }
             .mapNotNull { (lineId, check) ->
-                val expiry = check.checkedAt.plus(threshold)
+                val expiry = SteadyClock.toWall(check.checkedAt).plus(threshold)
                 val matters = check.shown() != null || lineFreshUntil(lineId)?.let { expiry.isBefore(it) } == true
                 expiry.takeIf { matters }
             }
@@ -125,7 +124,9 @@ data class DeparturesSnapshot(
 
 /**
  * A line's [status] as TfL gave it at [checkedAt]: the age stamp that lets a persisted status be
- * withheld once it's as old as a stale countdown (SPEC D4).
+ * withheld once it's as old as a stale countdown (SPEC D4). Stamped and aged by the steady clock, as
+ * a fetch is ([SteadyClock]), so setting the device's clock doesn't make an old check read as new;
+ * the watch, which keeps no steady frame, gets it as the wall clock read it when it was sent.
  */
 data class LineStatusCheck(
     val status: LineStatus,
@@ -184,12 +185,15 @@ data class LineStatusCheck(
 
     /** True while the check is younger than the shared staleness threshold, and not from the future. */
     fun isLive(now: Instant): Boolean {
-        val age = Duration.between(checkedAt, now)
+        val age = SteadyClock.age(checkedAt, now)
         return !age.isNegative && !Staleness.isStale(age.toKotlinDuration())
     }
 
+    /** Whether this was stamped after the wall time [now], by the steady clock: before the clock was set back, across a reboot. */
+    fun fromFuture(now: Instant): Boolean = SteadyClock.age(checkedAt, now).isNegative
+
     companion object {
-        /** A check of [lineId] at [at] that TfL gave no status for ([known] false). */
+        /** A check of [lineId] stamped [at] that TfL gave no status for ([known] false). */
         fun noVerdict(lineId: String, at: Instant): LineStatusCheck =
             LineStatusCheck(LineStatus(lineId, LineStatus.GOOD_SERVICE, ""), at, known = false)
 
@@ -212,7 +216,7 @@ data class LineStatusCheck(
                     val y = b[id]
                     // A check dated after [now] came from before the clock moved back: it can't be
                     // trusted as the newer one, so a real check made since replaces it.
-                    fun future(c: LineStatusCheck) = now != null && c.checkedAt.isAfter(now)
+                    fun future(c: LineStatusCheck) = now != null && c.fromFuture(now)
                     when {
                         x == null -> y!!
                         y == null -> x

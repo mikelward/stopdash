@@ -22,6 +22,7 @@ import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.StopClosureCache
+import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.TflException
@@ -3549,6 +3550,42 @@ class MainViewModelTest {
         val retried = client.statusCalls.drop(2).flatten()
         assertTrue("lioness" in retried)
         assertFalse("214" in retried)
+    }
+
+    @Test
+    fun `lines checked and stops looked up before the clock was set back are reused at their real age`() = runTest(dispatcher) {
+        var offset = Duration.ZERO
+        SteadyClock.source = object : SteadyClock.Source {
+            override val frame: SteadyClock.Frame? = null
+            override fun offset(): Duration = offset
+        }
+        try {
+            val client = object : HubLinesClient() {
+                var closureCalls = 0
+                override suspend fun stopDisruptions(stopId: String): List<StopDisruption> {
+                    closureCalls++
+                    return emptyList()
+                }
+            }
+            var wall = now
+            val vm = MainViewModel(
+                client, listOf(seeds[0]), clock = { wall }, io = dispatcher,
+                lineStatusReuse = LINE_STATUS_REUSE, disruptionReuse = DISRUPTION_REUSE,
+            )
+            advanceUntilIdle()
+            val statusCalls = client.statusCalls.size
+            val closureCalls = client.closureCalls
+            // Thirty seconds on, the clock is set back an hour: both were made thirty seconds ago, so
+            // neither is asked again, where the wall clock would date them an hour in the future.
+            offset = Duration.ofHours(1)
+            wall = now.plusSeconds(30).minus(Duration.ofHours(1))
+            vm.refresh()
+            advanceUntilIdle()
+            assertEquals(statusCalls, client.statusCalls.size)
+            assertEquals(closureCalls, client.closureCalls)
+        } finally {
+            SteadyClock.source = null
+        }
     }
 
     // A client that records every arrivals fetch, so a test can assert which stops a fetch asked for.

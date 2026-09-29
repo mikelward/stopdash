@@ -2,6 +2,7 @@ package app.stopdash.domain
 
 import java.time.Instant
 import kotlin.time.toJavaDuration
+import kotlin.time.toKotlinDuration
 
 /**
  * A **dismissed alert**: the user tapped "dismiss" on a service alert — a stop-closure card or a
@@ -94,8 +95,10 @@ data class DismissedAlert(
  * The user's dismissals as the widget and the watch apply them to what the widget has stored
  * ([DeparturesSnapshot.withDismissals]): the [active] ones, and the [ended] line dismissals kept
  * only for the widget's old copy of their alert ([Dismissed.keepingEnded]), each with when its end
- * was seen. An ended one hides only a check made before then, so it never hides a recurrence, and
- * isn't in [active]: the app's own screens, which show what they fetched, never apply it.
+ * was seen, stamped by the steady clock as the checks it's weighed against are ([SteadyClock]), so
+ * setting the device's clock moves neither against the other. An ended one hides only a check made
+ * before then, so it never hides a recurrence, and isn't in [active]: the app's own screens, which
+ * show what they fetched, never apply it.
  */
 data class Dismissals(
     val active: Set<DismissedAlert>,
@@ -169,8 +172,10 @@ object Dismissed {
      * ([Dismissals.hide]), which is stale, and so not shown at all, by the time the window closes.
      * The app's own screens never apply it. So an identical recurrence, or any newer check of the
      * alert, shows everywhere at once, and no read of what the widget stores is needed: nothing
-     * can race it. Place dismissals aren't kept: the widget doesn't carry closures. One whose end
-     * time is after [now] (the clock went back) is dropped rather than kept.
+     * can race it. Place dismissals aren't kept: the widget doesn't carry closures. End times are
+     * steady stamps ([SteadyClock]), aged against the wall time [now] by the steady clock. One whose
+     * end time is more than a moment after [now] by it ([Staleness.isFromFuture]: the clock went back
+     * where no frame could say so) is dropped rather than kept.
      */
     fun keepingEnded(
         current: Set<DismissedAlert>,
@@ -182,10 +187,10 @@ object Dismissed {
         val base = reconciled - ended.keys
         val kept = (current - base)
             .filter { it.alertKey.startsWith(LINE_ALERT_PREFIX) }
-            .associateWith { ended[it] ?: now }
-            // One from the future means the clock went back since: it would hide checks made after
-            // the end, a recurrence among them, so it goes.
-            .filterValues { !it.isAfter(now) && now.isBefore(it.plus(window)) }
+            .associateWith { ended[it] ?: SteadyClock.stamp(now) }
+            // One more than a moment in the future means the clock went back since: it would hide
+            // checks made after the end, a recurrence among them, so it goes.
+            .filterValues { SteadyClock.age(it, now).let { age -> !Staleness.isFromFuture(age.toKotlinDuration()) && age < window } }
         return Kept(base + kept.keys, kept)
     }
 }

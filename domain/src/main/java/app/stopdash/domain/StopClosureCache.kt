@@ -17,7 +17,11 @@ import java.time.Instant
  * A failure settles the same way: a lookup asked after it that already succeeded answers for it.
  */
 class StopClosureCache {
-    /** A lookup's place in line, taken before it's sent: when it was asked ([at]) and in what order. */
+    /**
+     * A lookup's place in line, taken before it's sent: when it was asked ([at], stamped by the
+     * steady clock as a fetch is, [SteadyClock], so its age for reuse isn't changed by setting the
+     * device's clock) and in what order.
+     */
     class Ask internal constructor(val at: Instant, internal val order: Long)
 
     /**
@@ -26,7 +30,7 @@ class StopClosureCache {
      * by [at], which two lookups can share.
      */
     class Lookup internal constructor(val ask: Ask, val notices: List<StopDisruption>) {
-        /** When it was asked: its age, for reuse. */
+        /** When it was asked, stamped by the steady clock ([Ask.at]): its age, for reuse. */
         val at: Instant get() = ask.at
     }
 
@@ -36,9 +40,9 @@ class StopClosureCache {
     private val failures = LinkedHashMap<String, Ask>()
     private var asked = 0L
 
-    /** A place in line for a lookup about to be sent at [at]: later than every one taken before it. */
+    /** A place in line for a lookup about to be sent at the wall time [at]: later than every one taken before it. */
     @Synchronized
-    fun ask(at: Instant): Ask = Ask(at, ++asked)
+    fun ask(at: Instant): Ask = Ask(SteadyClock.stamp(at), ++asked)
 
     /**
      * [stopId]'s last successful lookup, or null when none is kept, or when a lookup asked after it

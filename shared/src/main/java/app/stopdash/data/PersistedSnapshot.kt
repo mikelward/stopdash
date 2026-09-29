@@ -52,11 +52,11 @@ data class PersistedSnapshot(
     // so an older snapshot reads back with none (no line marked, as before); an older build reading
     // this one ignores it, as it always has.
     val lineStatuses: List<PersistedLineStatus> = emptyList(),
-    // The steady-clock frame the fetch stamps ([fetchedAtMillis], each stop's) were written in
-    // ([SteadyClock.Frame]), so a process of the same boot reads them at their real age however
-    // the wall clock has been set since ([inFrame]). Line checks are the wall clock's and aren't
-    // moved. Defaulted: an older snapshot, or one from a process that couldn't tell its boot, reads
-    // as the wall clock's; an older build ignores it and reads the stamps as the wall clock's too.
+    // The steady-clock frame the fetch and check stamps ([fetchedAtMillis], each stop's, each line
+    // check's from version 4) were written in ([SteadyClock.Frame]), so a process of the same boot
+    // reads them at their real age however the wall clock has been set since ([inFrame]).
+    // Defaulted: an older snapshot, or one from a process that couldn't tell its boot, reads as the
+    // wall clock's; an older build ignores it and reads the stamps as the wall clock's too.
     val stampFrame: PersistedFrame? = null,
 ) {
     companion object {
@@ -66,13 +66,18 @@ data class PersistedSnapshot(
          * must discard a version-2 file, while this build still reads version 1. Version 3 stamps
          * fetches by the steady clock ([stampFrame]): an older reader would take them for the wall
          * clock's, and could show a stop fetched before the clock was set as fresh, so it must
-         * discard a version-3 file (Codex, PR #371). This build still reads both older ones, whose
-         * stamps are the wall clock's.
+         * discard a version-3 file (Codex, PR #371). Version 4 stamps line checks by the steady
+         * clock too: an older reader would take them for the wall clock's, the same way. This build
+         * still reads the older ones, whose line checks are the wall clock's ([inFrame] moves them
+         * into the steady frame), as are all of a version-1 or -2 file's stamps.
          */
-        const val CURRENT_VERSION = 3
+        const val CURRENT_VERSION = 4
+
+        /** The first format whose line checks are stamped by the steady clock, as its fetches are. */
+        const val STEADY_CHECKS_VERSION = 4
 
         /** The formats this build reads. */
-        val READABLE_VERSIONS = setOf(1, 2, CURRENT_VERSION)
+        val READABLE_VERSIONS = setOf(1, 2, 3, CURRENT_VERSION)
     }
 }
 
@@ -215,44 +220,58 @@ fun SteadyClock.Frame.toPersisted(): PersistedFrame = PersistedFrame(boot, origi
 fun PersistedFrame.toDomain(): SteadyClock.Frame = SteadyClock.Frame(boot, originMillis)
 
 /**
- * This snapshot with its fetch stamps moved from the frame they were written in ([stampFrame]) into
- * [to] ([SteadyClock.shiftBetween]), and marked as in it: within one boot, a stop fetched before the
- * clock was set reads at its real age, not as newer or older than it is. Line checks, stamped by the
- * wall clock, stay as they are. One written in an earlier boot can't be moved, but it was written
- * before [to]'s boot started, which bounds it ([fromEarlierBoot]).
+ * This snapshot with its fetch and check stamps moved from the frame they were written in
+ * ([stampFrame]) into [to] ([SteadyClock.shiftBetween]), and marked as in it: within one boot, a
+ * stop fetched or a line checked before the clock was set reads at its real age, not as newer or
+ * older than it is. One written in an earlier boot can't be moved, but it was written before [to]'s
+ * boot started, which bounds it ([fromEarlierBoot]). A line check from before version 4 is the
+ * wall clock's: it's taken into this process's steady frame as it reads the wall clock now
+ * ([SteadyClock.stamp]), which is how it was aged before.
  */
 fun PersistedSnapshot.inFrame(to: SteadyClock.Frame?): PersistedSnapshot {
     val from = stampFrame?.toDomain()
+    val wallChecks = version < PersistedSnapshot.STEADY_CHECKS_VERSION
     val moved = if (from != null && to != null && from.boot != to.boot) {
         // The boot's start, in the fetch stamps' steady frame and as the wall clock reads it now.
-        fromEarlierBoot(to.originMillis, SteadyClock.toWall(Instant.ofEpochMilli(to.originMillis)).toEpochMilli())
+        val bootWall = SteadyClock.toWall(Instant.ofEpochMilli(to.originMillis)).toEpochMilli()
+        fromEarlierBoot(to.originMillis, if (wallChecks) bootWall else to.originMillis)
     } else {
         val shift = SteadyClock.shiftBetween(from, to).toMillis()
         if (shift == 0L) {
             this
         } else {
-            copy(stops = stops.map { it.copy(fetchedAtMillis = it.fetchedAtMillis + shift) }, fetchedAtMillis = fetchedAtMillis + shift)
+            copy(
+                stops = stops.map { it.copy(fetchedAtMillis = it.fetchedAtMillis + shift) },
+                fetchedAtMillis = fetchedAtMillis + shift,
+                lineStatuses = if (wallChecks) lineStatuses else lineStatuses.map { it.copy(checkedAtMillis = it.checkedAtMillis + shift) },
+            )
         }
     }
+    val checks = if (wallChecks) {
+        moved.lineStatuses.map { it.copy(checkedAtMillis = SteadyClock.stamp(Instant.ofEpochMilli(it.checkedAtMillis)).toEpochMilli()) }
+    } else {
+        moved.lineStatuses
+    }
     // Written as this format from here on: its stamps mean the steady clock's now.
-    return moved.copy(stampFrame = to?.toPersisted(), version = PersistedSnapshot.CURRENT_VERSION)
+    return moved.copy(lineStatuses = checks, stampFrame = to?.toPersisted(), version = PersistedSnapshot.CURRENT_VERSION)
 }
 
 /**
  * This snapshot, written in a boot before the one that started at [bootStartMillis] (in its fetch
- * stamps' clock; [bootStartWallMillis] in its line checks'): everything in it was fetched or checked
- * before then, so a stamp later than that, by more than [Staleness.CLOCK_SKEW], can only be from
- * before the clock was set back, and its real age can't be told. Such a stop is restamped stale as
- * of the boot's start and marked unrefreshed ([PersistedStop.notAfter]), and such a line check
- * dropped. The boot's start doesn't move, so every read makes the same call, and the stop stays
- * stale as the clock catches up with its old stamp, with no write needed (Codex, PR #371).
+ * stamps' clock; [bootStartChecksMillis] in its line checks', which is that too from version 4):
+ * everything in it was fetched or checked before then, so a stamp later than that, by more than
+ * [Staleness.CLOCK_SKEW], can only be from before the clock was set back, and its real age can't be
+ * told. Such a stop is restamped stale as of the boot's start and marked unrefreshed
+ * ([PersistedStop.notAfter]), and such a line check dropped. The boot's start doesn't move, so every
+ * read makes the same call, and the stop stays stale as the clock catches up with its old stamp,
+ * with no write needed (Codex, PR #371).
  */
-fun PersistedSnapshot.fromEarlierBoot(bootStartMillis: Long, bootStartWallMillis: Long = bootStartMillis): PersistedSnapshot {
+fun PersistedSnapshot.fromEarlierBoot(bootStartMillis: Long, bootStartChecksMillis: Long = bootStartMillis): PersistedSnapshot {
     val kept = stops.map { it.notAfter(bootStartMillis) }
     return copy(
         stops = kept,
         fetchedAtMillis = if (afterBoot(fetchedAtMillis, bootStartMillis)) kept.maxOfOrNull { it.fetchedAtMillis } ?: staleAtBoot(bootStartMillis) else fetchedAtMillis,
-        lineStatuses = lineStatuses.filterNot { afterBoot(it.checkedAtMillis, bootStartWallMillis) },
+        lineStatuses = lineStatuses.filterNot { afterBoot(it.checkedAtMillis, bootStartChecksMillis) },
     )
 }
 
@@ -275,13 +294,13 @@ private fun staleAtBoot(bootStartMillis: Long) = bootStartMillis - Staleness.THR
  * surface already treats such a stamp as stale, but only while it's ahead: once the clock passes
  * it, it would read as fresh again with nothing to say it was ever ahead. A store applies this on
  * every write, so the first write after the clock moves back records it, and a fresh fetch then
- * replaces the stop rather than losing to its later-looking stamp. Fetch stamps are the steady
- * clock's ([SteadyClock]), so within a boot only one read across a reboot ([inFrame]) can be ahead;
- * line checks are the wall clock's.
+ * replaces the stop rather than losing to its later-looking stamp. Fetch and check stamps are the
+ * steady clock's ([SteadyClock]), so within a boot only one read across a reboot ([inFrame]) can be
+ * ahead.
  */
 fun PersistedSnapshot.distrustingFuture(now: Instant): PersistedSnapshot {
     if (!fetchAhead(fetchedAtMillis, now) && stops.none { fetchAhead(it.fetchedAtMillis, now) } &&
-        lineStatuses.none { checkAhead(it.checkedAtMillis, now) }
+        lineStatuses.none { fetchAhead(it.checkedAtMillis, now) }
     ) {
         return this
     }
@@ -289,7 +308,7 @@ fun PersistedSnapshot.distrustingFuture(now: Instant): PersistedSnapshot {
     return copy(
         stops = kept,
         fetchedAtMillis = if (fetchAhead(fetchedAtMillis, now)) kept.maxOfOrNull { it.fetchedAtMillis } ?: staleAt(now) else fetchedAtMillis,
-        lineStatuses = lineStatuses.filterNot { checkAhead(it.checkedAtMillis, now) },
+        lineStatuses = lineStatuses.filterNot { fetchAhead(it.checkedAtMillis, now) },
     )
 }
 
@@ -297,10 +316,11 @@ fun PersistedSnapshot.distrustingFuture(now: Instant): PersistedSnapshot {
 fun PersistedStop.distrustingFuture(now: Instant): PersistedStop =
     if (fetchAhead(fetchedAtMillis, now)) copy(fetchedAtMillis = staleAt(now), arrivalsFresh = false) else this
 
-// A fetch stamp is the steady clock's ([Staleness.age]); a line check's is the wall clock's.
+// A fetch or check stamp in the stored snapshot is the steady clock's ([Staleness.age]).
 private fun fetchAhead(millis: Long, now: Instant) = Staleness.isFromFuture(Staleness.age(Instant.ofEpochMilli(millis), now))
 
-// Beyond [Staleness.CLOCK_SKEW], so a check stamped by another device's clock a little ahead is kept.
+// A line check the watch holds, which is the wall clock's ([WatchEnvelope]): beyond
+// [Staleness.CLOCK_SKEW], so a check stamped by another device's clock a little ahead is kept.
 internal fun checkAhead(millis: Long, now: Instant) = Staleness.isFromFuture((now.toEpochMilli() - millis).milliseconds)
 
 // Stale as of [now], stamped as a fetch is ([SteadyClock]).

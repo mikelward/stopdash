@@ -2229,13 +2229,17 @@ and these carry the rest as their own PRs:
       seen (a writer drops or invalidates future-stamped entries on its next save, and a render
       treats them as stale), rather than a check-only memory that leaves the countdowns beside it
       trusted.
-- [ ] **Age line checks and closure checks by the steady clock too (follow-up to #371).** A
-      fetch's age is the monotonic clock's (`SteadyClock`), but a line status check and a stop
-      closure check are still stamped and aged by the wall clock, with only the stamp-ahead rule
-      (`Staleness.isFromFuture`, `CHECK_CLOCK_LAG`) behind them: one made before the clock was set
-      back reads as unchecked until the clock passes its stamp, then as current, until it's as old
-      by the wall clock as a stale countdown. Stamp them as fetches are, frame them in the stored
-      snapshot and the envelope the same way, and age them with `Staleness.age`.
+- [x] **Age line checks and closure checks by the steady clock too (follow-up to #371).** *Done:
+      a line status check and a stop closure lookup are stamped by the steady clock as a fetch is,
+      in the list, the widget's refresh, the trip and the shared closure cache, and aged by it
+      (`LineStatusCheck.isLive`, `checkCurrent`, the reuse windows). The stored snapshot keeps line
+      checks in its steady frame from version 4, moving them as it moves fetches; an older file's
+      wall-clock checks are taken into it as the wall clock reads them. The watch is sent them as
+      the phone's wall clock reads them, as it is fetches.* A fetch's age was the monotonic clock's
+      (`SteadyClock`), but a line status check and a stop closure check were still stamped and
+      aged by the wall clock, with only the stamp-ahead rule behind them: one made before the
+      clock was set back read as unchecked until the clock passed its stamp, then as current,
+      until it was as old by the wall clock as a stale countdown.
 - [ ] **Persist a refresh-failure kind / incompleteness for the widget (own PR, rides with the
       above).** *Incompleteness landed (2026-09-24): the snapshot persists the requested stops a
       refresh couldn't get (`missingStopIds`), and the widget is `uncertain` while any is. The

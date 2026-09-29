@@ -653,8 +653,9 @@ class DataStoreSnapshotStoreTest {
         val backing = FakeDataStore(null)
         DataStoreSnapshotStore(backing, clock = { now }).save(snapshot())
         assertEquals(PersistedFrame("device/7", 1_000L), backing.state.value!!.stampFrame)
-        // As the format whose stamps are the steady clock's, which an older build won't misread.
-        assertEquals(3, backing.state.value!!.version)
+        // As the format whose stamps, line checks' too, are the steady clock's, which an older build
+        // won't misread.
+        assertEquals(4, backing.state.value!!.version)
         assertEquals(now.toEpochMilli(), backing.state.value!!.stops.single().fetchedAtMillis)
         // Read back in the same process, as it was written.
         assertEquals(snapshot(), DataStoreSnapshotStore(backing, clock = { now }).load())
@@ -801,14 +802,45 @@ class DataStoreSnapshotStoreTest {
     }
 
     @Test
-    fun `a line check stamped ahead is dropped for good at the first read`() = runTest {
+    fun `a line check made before the clock was set back is read at its real age`() = runTest {
         SteadyClock.source = Steady(SteadyClock.Frame("device/7", 0L))
         val backing = FakeDataStore(null)
         DataStoreSnapshotStore(backing, clock = { now }).save(snapshot().copy(lineStatuses = mapOf("victoria" to check(6, now))))
-        // Read after the clock was set back an hour, then again once it's caught up: the check,
-        // stamped by the wall clock, doesn't come back into trust (Codex, PR #371).
+        // Read just after the clock was set back an hour, by a process of the same boot: the check,
+        // stamped by the steady clock, is as new as it is, not dropped as one from the future.
         SteadyClock.source = Steady(SteadyClock.Frame("device/7", -3_600_000L))
-        DataStoreSnapshotStore(backing, clock = { now.minusSeconds(3600) }).load()
-        assertTrue(DataStoreSnapshotStore(backing, clock = { now.plusSeconds(60) }).load()!!.lineStatuses.isEmpty())
+        val back = now.minusSeconds(3600)
+        assertTrue(DataStoreSnapshotStore(backing, clock = { back }).load()!!.lineStatuses.getValue("victoria").isLive(back))
+        // Once the clock has caught up with its old stamp, it's an hour old: not live again.
+        val caughtUp = now.plusSeconds(60)
+        assertFalse(DataStoreSnapshotStore(backing, clock = { caughtUp }).load()!!.lineStatuses.getValue("victoria").isLive(caughtUp))
+    }
+
+    @Test
+    fun `a line check stamped ahead is dropped for good at the first read`() = runTest {
+        // Written where the boot couldn't be told, an hour ahead of the clock that reads it: from before
+        // the clock was set back, so its age can't be told.
+        val written = snapshot().copy(lineStatuses = mapOf("victoria" to check(6, now.plusSeconds(3600)))).toPersisted()
+        val backing = FakeDataStore(written)
+        assertTrue(DataStoreSnapshotStore(backing, clock = { now }).load()!!.lineStatuses.isEmpty())
+        // Nor does it come back into trust once the clock has caught up (Codex, PR #371).
+        assertTrue(DataStoreSnapshotStore(backing, clock = { now.plusSeconds(3660) }).load()!!.lineStatuses.isEmpty())
+    }
+
+    @Test
+    fun `an older build's line checks, stamped by the wall clock, are taken into the steady frame`() = runTest {
+        // Version 3 stamped fetches by the steady clock but line checks by the wall clock.
+        val written = snapshot().copy(lineStatuses = mapOf("victoria" to check(6, now))).toPersisted()
+            .copy(version = 3, stampFrame = PersistedFrame("device/7", 0L))
+        // This process's clock was set back an hour since it started: the check, a minute old by the
+        // wall clock, is a minute old in the steady frame too.
+        SteadyClock.source = Steady(SteadyClock.Frame("device/7", 0L), setBack = java.time.Duration.ofHours(1))
+        val backing = FakeDataStore(written)
+        val read = DataStoreSnapshotStore(backing, clock = { now.plusSeconds(60) }).load()!!.lineStatuses.getValue("victoria")
+        assertEquals(now.plus(java.time.Duration.ofHours(1)), read.checkedAt)
+        assertTrue(read.isLive(now.plusSeconds(60)))
+        // Written back as the current format, so it isn't taken in again.
+        assertEquals(4, backing.state.value!!.version)
+        assertEquals(now.plus(java.time.Duration.ofHours(1)).toEpochMilli(), backing.state.value!!.lineStatuses.single().checkedAtMillis)
     }
 }

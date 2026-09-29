@@ -477,10 +477,18 @@ class WatchEnvelopeTest {
         }
         try {
             val wallNow = now.minusSeconds(3600 - 60)
-            val snapshot = DeparturesSnapshot(listOf(stop("940GEXAMPLE1", listOf(departure(3)))), now)
+            val severe = LineStatus("victoria", 6, "Severe Delays")
+            val snapshot = DeparturesSnapshot(
+                listOf(stop("940GEXAMPLE1", listOf(departure(3)))),
+                now,
+                lineStatuses = mapOf("victoria" to LineStatusCheck(severe, now)),
+            )
             val envelope = decoded(WatchEnvelopes.build(snapshot, starred = emptySet(), now = wallNow))
             // The watch ages it by its own wall clock, which reads as the phone's does: a minute old.
             assertEquals(now.minusSeconds(3600).toEpochMilli(), envelope.stops.single().fetchedAtMillis)
+            // A line check, stamped by the steady clock as a fetch is, goes out the same way, so the
+            // watch still marks the disruption: it's a minute old, not an hour from the future.
+            assertEquals(now.minusSeconds(3600).toEpochMilli(), envelope.lineStatuses.single().checkedAtMillis)
         } finally {
             SteadyClock.source = null
         }

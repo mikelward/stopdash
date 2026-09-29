@@ -190,7 +190,8 @@ class TripViewModel(
         // for them as current, so the trip says it couldn't check, as after a failed status check.
         val closuresFailed: Set<String> = emptySet(),
         // When each stop's held closure check was asked ([StopClosureCache.Lookup.at]) and each line's
-        // held status answered. A held check is ranked by whatever its age, as a failed one is, but a
+        // held status answered, stamped by the steady clock ([SteadyClock], aged by [checkCurrent]).
+        // A held check is ranked by whatever its age, as a failed one is, but a
         // line's page vouches only while both are as young as a countdown it would show ([Staleness]):
         // a trip shown again, say, holds checks from before, while its fresh re-check is out.
         val closuresAt: Map<String, Instant> = emptyMap(),
@@ -312,7 +313,7 @@ class TripViewModel(
             // ([State.closuresAt]).
             val closuresStale = _state.value.closuresFailed.isNotEmpty() ||
                 (closureStops(routes, _state.value.areaPoles) + shownStops).any { id ->
-                    closureCache[id]?.let { Duration.between(it.at, now).let { age -> age.isNegative || age >= closureReuse } } ?: true
+                    closureCache[id]?.let { SteadyClock.age(it.at, now).let { age -> age.isNegative || age >= closureReuse } } ?: true
                 }
             if (arrivalsStale || closuresStale) refresh()
             return
@@ -815,7 +816,7 @@ class TripViewModel(
         val now = clock()
         val held = (closureStops(routes, state.areaPoles) + shownStops).distinct().mapNotNull { id ->
             val lookup = closureCache[id] ?: return@mapNotNull null
-            val recent = Duration.between(lookup.at, now).let { !it.isNegative && it < closureReuse }
+            val recent = SteadyClock.age(lookup.at, now).let { !it.isNegative && it < closureReuse }
             (id to lookup).takeIf { id in state.closures || recent }
         }.toMap()
         if (held.isEmpty()) return state
@@ -855,8 +856,9 @@ class TripViewModel(
         val found = HashMap<String, List<StopDisruption>>()
         val at = HashMap<String, Instant>()
         val ask = ids.filter { id ->
-            // Dated after now (the clock set back) is an age that can't be told, so asked again.
-            val held = closureCache[id]?.takeIf { Duration.between(it.at, now).let { age -> !age.isNegative && age < closureReuse } }
+            // Aged by the steady clock it's stamped by ([StopClosureCache.Ask.at]). Dated after now (the
+            // clock set back, across a reboot) is an age that can't be told, so asked again.
+            val held = closureCache[id]?.takeIf { SteadyClock.age(it.at, now).let { age -> !age.isNegative && age < closureReuse } }
             held?.let {
                 found[id] = it.notices
                 at[id] = it.at
@@ -942,7 +944,8 @@ class TripViewModel(
         results.failure?.let { warn("trip line status failed for ${results.failed.size} line(s): ${it::class.simpleName}") }
         if (results.unknown.isNotEmpty()) warn("trip line status: TfL doesn't know ${results.unknown.size} line(s)")
         if (!results.anyAnswered) return null
-        return StatusCheck(results.answers.flatMap { it.value }.associateBy { it.lineId }, results.failed.toSet(), clock())
+        // Stamped by the steady clock, as a fetch is ([SteadyClock]).
+        return StatusCheck(results.answers.flatMap { it.value }.associateBy { it.lineId }, results.failed.toSet(), SteadyClock.stamp(clock()))
     }
 
     companion object {
