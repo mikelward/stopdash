@@ -85,16 +85,16 @@ class NearbyStopsViewModel(
         /**
          * Located, with the near-me set as its two tiers (SPEC *Finding stops → Near me now*):
          * [eager] — the nearest [NearbySelection.CLUSTERS_PER_MODE] clusters of each mode, fetched
-         * and shown at once — and [more] — the farther clusters, distance-ordered, that a per-mode
-         * "More" tap reveals and fetches on demand. Both are carried (not just eager) so the
-         * retained departures view can key on the whole nearby set and reconcile a revealed
-         * expansion across a relocation, rather than losing it whenever the eager set's identity
-         * shifts.
+         * and shown at once — and [more] — the farther clusters, distance-ordered, not fetched:
+         * what the farther bus cards draw on, and places the rider may be at. Both are carried (not
+         * just eager) so the retained departures view can key on the whole nearby set and reconcile
+         * the tiers across a relocation, rather than being rebuilt whenever the eager set's
+         * identity shifts.
          *
-         * [distanceMeters] (`stopId` → meters from the fix) spans **both** tiers, so a revealed
-         * stop is collapsed and ordered the same way an eager one is (a line served by several
-         * adjacent stops shows once, from its nearest). It stays in memory for that render and
-         * never reaches a log or the persisted snapshot (SPEC *Privacy*).
+         * [distanceMeters] (`stopId` → meters from the fix) spans **both** tiers, so a stop an opened
+         * card brings in is collapsed and ordered the same way an eager one is (a line served by
+         * several adjacent stops shows once, from its nearest). It stays in memory for that render
+         * and never reaches a log or the persisted snapshot (SPEC *Privacy*).
          *
          * [location] is the exact fix these stops and distances were resolved from, kept in
          * memory alongside them so the **consent-gated bug report** can file the coordinate and
@@ -115,16 +115,16 @@ class NearbyStopsViewModel(
 
             /**
              * Every resolved nearby stop, both tiers — what [distanceMeters] spans. The bug report
-             * uses this rather than just [eagerStops] so a report sent after a "More" reveal still
-             * carries the farther stops the user is now looking at (SPEC *Finding stops*).
+             * uses this rather than just [eagerStops] so a report still carries the farther stops
+             * the list's farther cards offer (SPEC *Finding stops*).
              */
             val nearbyStops: List<StopRef> get() = (eager + more).flatMap { c -> c.stops.map { it.toStopRef() } }
 
             /**
              * Order-independent identity of the WHOLE nearby set (both tiers), so a relocation that
              * only reorders the same clusters — or shifts one across the eager/more boundary while
-             * every cluster stays in range — is recognized as the same set and keeps a revealed
-             * expansion, rather than rebuilding the retained departures view and dropping it.
+             * every cluster stays in range — is recognized as the same set and reconciles the
+             * retained departures view in place, rather than rebuilding it.
              */
             val clusterSetKey: String get() = (eager + more).map { it.key }.sorted().joinToString(",")
         }
@@ -375,9 +375,8 @@ class NearbyStopsViewModel(
                         next.clusterSetKey == current.clusterSetKey
                     ) {
                         // Same nearby set (both tiers, order-independent): reconcile the retained
-                        // departures ViewModel in place — update its tiers, drop a revealed cluster the
-                        // fresh fix no longer offers, and re-fetch — sequenced after the fix (never
-                        // fetched in parallel with it), so a revealed expansion survives the relocation.
+                        // departures ViewModel in place — update its tiers and re-fetch — sequenced
+                        // after the fix (never fetched in parallel with it).
                         onSameSet(next)
                     }
                 }
@@ -611,8 +610,8 @@ class NearbyStopsViewModel(
             }
         val eager = restored(result.eager)
         val more = restored(result.more)
-        // Distance per stop, over BOTH tiers (in memory only), so a revealed stop is collapsed and
-        // ordered like an eager one — the departures list shows a line once, from its nearest stop
+        // Distance per stop, over BOTH tiers (in memory only), so a stop an opened card brings in is
+        // collapsed and ordered like an eager one — the departures list shows a line once, from its nearest stop
         // (SPEC *Finding stops → Near me now*). Never persisted or logged; kept in RecentPositions (below).
         val distances = (eager + more)
             .flatMap { it.stops }

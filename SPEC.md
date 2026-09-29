@@ -336,8 +336,7 @@ The app finds stops two ways:
   Britain") — matches a query starting **any part** as a prefix. Best-effort: a geocode failure yields
   no places and the stops still stand. A better geocoder is a later option (`TODO.md`).
 - **Farther stations** (maintainer, 2026-09-25) — where the near-me list reaches only one tube
-  station, the rest of the network can be two miles off. Below the loaded places and the *More*
-  controls, a **collapsed card** stands for the nearest station of each **rail line** the loaded
+  station, the rest of the network can be two miles off. Below the loaded places, a **collapsed card** stands for the nearest station of each **rail line** the loaded
   nearby stops don't serve (a station left unfetched in the *more* tier doesn't count, since nothing
   else would page it in) — a tube line, a National Rail service (Thameslink, Great Northern…), an
   Overground line, the Elizabeth line, the DLR, a tram — nearest first, within 3 mi, **at most

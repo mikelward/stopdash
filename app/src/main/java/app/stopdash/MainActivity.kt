@@ -1301,7 +1301,7 @@ class MainActivity : ComponentActivity() {
         // failed/empty relocation shows the honest gate) — so a refresh never re-fetches the
         // previous location's stops in parallel with the fix (see relocate). The fresh
         // [NearbyStopsViewModel.State.Ready] is handed back so the retained ViewModel can
-        // reconcile both tiers in place and keep a revealed expansion.
+        // reconcile both tiers in place.
         relocate: (onSameSet: (NearbyStopsViewModel.State.Ready) -> Unit) -> Unit,
         // True while a relocate's fresh fix is in flight (the departures screen stays up). ORed
         // into the refresh indicator so pull-to-refresh doesn't retract the instant the fetch
@@ -2830,8 +2830,8 @@ internal fun bugReportHeader(): BugReport.Header = BugReport.Header(
 internal fun bugReportRequestFor(state: NearbyStopsViewModel.State): BugReportRequest =
     when (state) {
         is NearbyStopsViewModel.State.Ready ->
-            // Every resolved nearby stop (both tiers), so a report after a "More" reveal carries
-            // the farther stops too — matching distanceMeters and the consent's "each nearby stop".
+            // Every resolved nearby stop (both tiers), so a report carries the farther stops too —
+            // matching distanceMeters and the consent's "each nearby stop".
             BugReportRequest(state.location, state.nearbyStops, state.distanceMeters)
         // Empty and Failed obtained a fix (the lookup ran) — carry it so a report from those gates
         // says where "no stops nearby" / "can't reach TfL" happened, the context they need.

@@ -7,16 +7,16 @@ package app.stopdash.domain
  *
  * Stops group into **clusters** (a station's platforms, a bus junction's poles — keyed on
  * TfL's `stationNaptan`, SPEC D8). The nearest [CLUSTERS_PER_MODE] clusters of each mode are
- * **eager** (fetched and shown at once); the rest wait behind a per-mode "More" tap that
- * fetches them on demand ([selectClusters] returns the two tiers as [Result]). Per-mode
- * selection guarantees the nearest station of a sparse mode — a Tube up to the ~1 mile outer
- * radius — is always eager, without a separate reserve rule.
+ * **eager** (fetched and shown at once); the rest are the *more* tier, not fetched, which the
+ * list's farther cards offer instead ([selectClusters] returns the two tiers as [Result]).
+ * Per-mode selection guarantees the nearest station of a sparse mode — a Tube up to the ~1 mile
+ * outer radius — is always eager, without a separate reserve rule.
  *
  * The per-mode cap replaces an "all of the inner ring" set: a dense corner returns many bus
  * poles, and each pole is its own arrivals request (TfL doesn't aggregate a junction), so
- * expanding them all is both long to scan and many fetches. The cap plus the (deferred) "More"
- * affordance keeps the extra options reachable rather than silently hidden (SPEC principle 2)
- * and caps how many *clusters* are fetched — sharply fewer at a dense corner. It bounds the
+ * expanding them all is both long to scan and many fetches. The cap keeps the list short, the
+ * farther cards keep the extra options reachable rather than silently hidden (SPEC principle 2),
+ * and it caps how many *clusters* are fetched — sharply fewer at a dense corner. It bounds the
  * cluster count, not the request count: one large junction cluster is still one arrivals
  * request per pole, so it isn't a hard fetch bound independent of density (a per-cluster fetch
  * budget is a `TODO.md` follow-up). TfL's `/StopPoint` geo query takes the 1609 m radius
@@ -33,8 +33,7 @@ object NearbySelection {
 
     /**
      * How many clusters of each mode the near-me list fetches and expands at once (SPEC
-     * *Finding stops → Near me now*). The rest of that mode's clusters wait behind a "More"
-     * tap. Two keeps a busy corner scannable and the eager fetch small — a bus cluster is one
+     * *Finding stops → Near me now*). The rest of that mode's clusters are the *more* tier. Two keeps a busy corner scannable and the eager fetch small — a bus cluster is one
      * arrivals request per lettered pole, so a low cap matters most for the densest mode. (The
      * cap is on cluster count, not request count — a large junction cluster is still many poles;
      * a hard per-cluster fetch budget is a `TODO.md` follow-up.)
@@ -45,25 +44,14 @@ object NearbySelection {
      * The walking reach of the eager tier (maintainer, 2026-09-23): a mode's clusters are fetched
      * up front only within this distance, up to [CLUSTERS_PER_MODE] of them. A mode with nothing
      * this close still gets its single nearest cluster out to [OUTER_RADIUS_METERS], so a sparse
-     * mode keeps a representative; everything else waits behind "More". Without it, "the nearest two
+     * mode keeps a representative; everything else is the *more* tier. Without it, "the nearest two
      * of each mode" reached a mile out at a big interchange — a second Overground station 1.3 km off
      * — and spent the keyless rate budget on stops nobody would walk to.
      */
     const val EAGER_RADIUS_METERS = 500
 
-    /**
-     * Hard cap on how many clusters a single "More" tap reveals (see [nextReveal]). Reaching through
-     * a redundant run to the next new route must stay bounded: each fetched pole is its own arrivals
-     * + disruption request, so an unbounded per-tap reveal could exceed TfL's keyless ~50 req/min
-     * budget and rate-limit later refreshes (Codex, PR #98). Three eager pages' worth — enough to
-     * span a realistic redundant corridor in one tap, small enough to keep the burst in hand; a dense
-     * outlier just takes another tap. A precise per-request budget is a `TODO.md` follow-up.
-     */
-    const val MAX_REVEAL_PER_TAP = CLUSTERS_PER_MODE * 3
-
     // Selection bucket for a served cluster whose routes TfL gave no mode for, so it isn't dropped
-    // from every mode's top-N and made to vanish. Internal to selection — never a real mode, so it
-    // never surfaces as a "More" button.
+    // from every mode's top-N and made to vanish. Internal to selection — never a real mode.
     private const val UNKNOWN_MODE = "\u0000unknown"
 
     /**
@@ -90,17 +78,14 @@ object NearbySelection {
      * - [eager]: the nearest [CLUSTERS_PER_MODE] clusters of each mode, fetched and shown at
      *   once — so the nearest of a sparse mode (a lone Tube station out to the radius) is always
      *   in, without a separate reserve rule.
-     * - [more]: the remaining clusters, globally distance-ordered, fetched only when the user
-     *   taps "More" for a mode. The button pages this list filtered by that mode; keeping it a
-     *   flat ordered list (not pre-split per mode) means a cluster serving two modes appears
-     *   under each mode's "More".
+     * - [more]: the remaining clusters, globally distance-ordered, not fetched: places the rider
+     *   may be at (a service terminating there), and what the list's farther cards draw on.
      *
      * The per-mode cap replaces the old "show everything in the inner ring" set: a dense corner
      * returns many bus poles, and expanding them all is both long to scan and many arrivals
      * fetches (each bus pole is its own request — TfL doesn't aggregate a junction). The cap
-     * plus the (deferred) "More" affordance keeps the extra options reachable rather than
-     * silently hidden (SPEC principle 2), and caps how many clusters are fetched (the count, not
-     * the request total — a large junction cluster is still many poles).
+     * keeps the list short, and caps how many clusters are fetched (the count, not the request
+     * total — a large junction cluster is still many poles).
      */
     data class Result(
         val eager: List<NearbyCluster>,
@@ -169,83 +154,6 @@ object NearbySelection {
             more = clusters.filterNot { it.key in eagerKeys },
         )
     }
-
-    /**
-     * The one mode with a "More" button (maintainer, 2026-09-25). Every other mode's farther stops
-     * are stations, which the list's farther-station cards already offer line by line, so a
-     * station "More" only duplicated them. Buses get no such card (every stop has them), and a
-     * farther pole of a shown route can be its other direction, so theirs stays.
-     */
-    const val BUS_MODE = "bus"
-
-    /**
-     * The modes that still have an unrevealed *more* cluster — the "More" buttons to show: [BUS_MODE]
-     * while a bus cluster is left to page, else nothing. [revealed] is the set of already-revealed
-     * cluster keys; once every farther bus cluster is revealed the button disappears.
-     */
-    fun revealableBuckets(more: List<NearbyCluster>, revealed: Set<String>): Set<String> =
-        if (more.any { it.key !in revealed && BUS_MODE in it.modes }) setOf(BUS_MODE) else emptySet()
-
-    /**
-     * The next *more* cluster keys to reveal when the user taps "More" for [bucket], in the global
-     * distance order [more] already carries. Keys (not clusters) so a caller tracking revealed
-     * identities adds them directly; empty when the bucket has nothing left to reveal.
-     *
-     * **A tap pages through to the first cluster that adds a genuinely new line**, not just the
-     * next [pageSize] clusters. The near-me list collapses a (line, direction) to its nearest stop
-     * ([DepartureRows.nearbyDeduped]), so revealing a farther cluster whose lines are all already
-     * shown from a nearer stop surfaces *nothing* — the tap looks like it did nothing, then the next
-     * tap (reaching a cluster with a new route) works. So this reveals at least [pageSize] clusters
-     * and keeps going past that until the batch includes a cluster carrying a [bucket]-mode line not
-     * in [shownLineIds] (the routes already on screen — eager plus revealed).
-     *
-     * The dedupe is by (line, direction) and this test is by line id, because direction is only
-     * known after the arrivals fetch — so it is the *safe* approximation: the batch is always a
-     * distance-ordered prefix, so it never permanently skips a cluster (an opposite-direction pole
-     * of an already-shown route is still revealed, just possibly on a later tap); it only decides how
-     * far one tap reaches. When no remaining cluster adds a new line, it falls back to the bounded
-     * [pageSize] page, so the rare all-redundant tail still pages a bounded few per tap rather than
-     * the whole tier at once.
-     *
-     * **Bounded to [maxPerTap] clusters** so one tap can't fan out an unbounded fetch burst. Each
-     * fetched pole is its own arrivals + disruption request, so reaching through a long redundant run
-     * in one tap could exceed TfL's keyless ~50 req/min budget and rate-limit later refreshes. When
-     * the first new route is farther than the cap, a tap stops at the cap and the next tap continues —
-     * so a dense redundant corridor takes a few taps rather than one oversized fetch. (This caps the
-     * cluster *count*; a precise per-pole/request budget across the whole shown set is a `TODO.md`
-     * follow-up, as is fetching only the newly revealed page rather than the whole set.)
-     */
-    fun nextReveal(
-        more: List<NearbyCluster>,
-        bucket: String,
-        revealed: Set<String>,
-        shownLineIds: Set<String> = emptySet(),
-        pageSize: Int = CLUSTERS_PER_MODE,
-        maxPerTap: Int = MAX_REVEAL_PER_TAP,
-    ): List<String> {
-        val candidates = more.filter { it.key !in revealed && bucket in it.modes }
-        if (candidates.isEmpty()) return emptyList()
-        val cap = maxOf(pageSize, maxPerTap)
-        val firstNew = candidates.indexOfFirst { addsNewLine(it, bucket, shownLineIds) }
-        // No unrevealed cluster adds a new route: page a bounded few (the old behavior) rather than
-        // revealing the whole redundant tail at once.
-        if (firstNew < 0) return candidates.take(pageSize).map { it.key }
-        // Reveal through the first cluster that adds a new route — never fewer than a page (so the
-        // common all-new case still reveals a page at a time), never more than [cap] (so a long
-        // redundant run doesn't fan out an unbounded burst; the next tap continues from here).
-        return candidates.take((firstNew + 1).coerceIn(pageSize, cap)).map { it.key }
-    }
-
-    /**
-     * Whether [cluster] carries a [bucket]-mode line whose id is not already in [shownLineIds] — i.e.
-     * revealing it would surface a route the near-me list isn't already showing from a nearer stop.
-     * A blank line id is no cross-stop identity (TfL omits it on some services), so it never counts as
-     * new.
-     */
-    private fun addsNewLine(cluster: NearbyCluster, bucket: String, shownLineIds: Set<String>): Boolean =
-        cluster.stops.any { stop ->
-            stop.lines.any { it.mode == bucket && it.id.isNotBlank() && it.id !in shownLineIds }
-        }
 
     /** The distinct transport modes a stop serves, from its lines (blank modes ignored). */
     private fun StopLocation.modes(): Set<String> =
