@@ -131,8 +131,9 @@ internal const val FIRST_PAINT_GRACE_MS = 2_000L
 class MainViewModel(
     private val client: TflClient,
     seedStops: List<StopRef>,
-    // The farther "more" clusters (SPEC *Finding stops → Near me now*), paged in on a per-mode
-    // "More" tap. Empty for a watched-stops view or a nearby set with nothing beyond the eager tier.
+    // The farther "more" clusters (SPEC *Finding stops → Near me now*): not fetched, but places the
+    // rider may be at for [Terminating]. Empty for a watched-stops view or a nearby set with nothing
+    // beyond the eager tier.
     initialMore: List<NearbySelection.NearbyCluster> = emptyList(),
     private val clock: () -> Instant = Instant::now,
     private val io: CoroutineDispatcher = Dispatchers.IO,
@@ -207,16 +208,14 @@ class MainViewModel(
     departureSourceChanges: Flow<Any?> = emptyFlow(),
 ) : ViewModel() {
     // The near-me tiers, updatable IN PLACE so a relocation that keeps the same nearby set can
-    // reconcile them without rebuilding this ViewModel (which would drop a revealed expansion —
-    // the redesign this reveal is for). The eager tier is fetched and shown at once; a `more`
-    // cluster's stops join the fetched set once its key is revealed.
+    // reconcile them without rebuilding this ViewModel. The eager tier is fetched and shown; the
+    // `more` tier only says where else the rider may be ([nearbyPlaces]).
     private var eagerStops: List<StopRef> = seedStops
     private var stopDistanceMeters: Map<String, Double> = stopDistanceMeters
 
     // Each stop's distance as this model last took it ([remeasure]), for tests.
     internal val distanceMeters: Map<String, Double> get() = stopDistanceMeters
     private var more: List<NearbySelection.NearbyCluster> = initialMore
-    private var revealedKeys: Set<String> = emptySet()
 
     private fun nearbyPlaces(): List<Terminating.Place> {
         val all = eagerStops.map { Triple(it.id, it.clusterId, it.name) } +
@@ -226,14 +225,9 @@ class MainViewModel(
         }
     }
 
-    // The set actually fetched and shown: the eager tier plus every revealed `more` cluster's
-    // stops. DERIVED — so a cluster dropped on a relocation leaves the fetched set automatically,
-    // with no parallel list to fall out of sync (the single-owner reveal design).
+    // The near-me set actually fetched and shown: the eager tier.
     private val nearStops: List<StopRef>
-        get() = eagerStops + more.asSequence()
-            .filter { it.key in revealedKeys }
-            .flatMap { cluster -> cluster.stops.asSequence().map { it.toStopRef() } }
-            .toList()
+        get() = eagerStops
 
     // The origins of the starred journeys (SPEC *Journeys*), fetched alongside the near-me stops so a
     // journey card has its departures. One not already near is fetched but never saved to the widget
@@ -510,22 +504,12 @@ class MainViewModel(
     private val _state = MutableStateFlow<DeparturesUiState>(DeparturesUiState.Loading)
     val state: StateFlow<DeparturesUiState> = _state.asStateFlow()
 
-    // The "More" buttons to offer: bus while a farther bus cluster is left to page (SPEC *Finding
-    // stops → Near me now*). Empty when nothing is left to page.
-    private val _moreState = MutableStateFlow(NearbySelection.revealableBuckets(initialMore, emptySet()))
-    val moreState: StateFlow<Set<String>> = _moreState.asStateFlow()
-
     // The near-me stops this model loads ([nearStops]), for the farther-station cards to count as
-    // reached. Published from here, the one owner of the tiers, so a reveal or a same-set reconcile
-    // that moves a cluster across the eager/more boundary reaches the cards too; the screen's own
-    // copy of the tiers goes stale on those.
+    // reached. Published from here, the one owner of the tiers, so a same-set reconcile that moves a
+    // cluster across the eager/more boundary reaches the cards too; the screen's own copy of the
+    // tiers goes stale on those.
     private val _shownNearStops = MutableStateFlow(nearStops)
     val shownNearStops: StateFlow<List<StopRef>> = _shownNearStops.asStateFlow()
-
-    private fun publishMore() {
-        _moreState.value = NearbySelection.revealableBuckets(more, revealedKeys)
-        _shownNearStops.value = nearStops
-    }
 
     // Drives the pull-to-refresh indicator (SPEC D6); true only while a fetch is in flight.
     private val _refreshing = MutableStateFlow(false)
@@ -714,22 +698,14 @@ class MainViewModel(
 
     /**
      * The result of fetching a set of stops: the merged [StopArrivals] and the disruption/freshness
-     * flags the caller needs to build state and decide whether to persist. Shared by [refresh] (the
-     * whole fetched set) and [fetchIncremental] (only the newly revealed stops), so both fetch, merge
-     * and status-check identically and neither drifts from the other.
+     * flags [refresh] needs to build state and decide whether to persist.
      */
     private data class FetchBatch(
         val merged: List<StopArrivals>,
         val lineStatuses: Map<String, LineStatus>,
         // The line ids TfL returned a definitive status for in this batch (disrupted OR clean), so a
-        // per-line surface can tell "checked, good service" from "never checked" and an incremental
-        // merge can REPLACE their prior entries — dropping a now-clean line's stale disrupted flag —
-        // rather than only appending the disrupted ones (Codex on #100, PR #104).
+        // per-line surface can tell "checked, good service" from "never checked" (Codex on #100).
         val determinedLineIds: Set<String>,
-        // The non-blank line ids this batch actually queried. On an incremental merge it's what lets a
-        // line the batch re-checked but TfL then omitted drop out of the merged determined set, rather
-        // than keeping a stale "checked" from an earlier fetch.
-        val attemptedLineIds: Set<String>,
         // Whether TfL answered a line-status request this batch, even with nothing for any line: its
         // omissions are checks too ([lineStatusOmitted]), which the widget must learn of.
         val statusAnswered: Boolean,
@@ -755,8 +731,7 @@ class MainViewModel(
     /**
      * Fetch [stops] (arrivals + disruptions, each merged into its [prior] at age [now]) and check the
      * status of every line they show, returning a [FetchBatch]. Pure of UI state — the caller decides
-     * how to turn it into a [DeparturesUiState] and whether to save — so the same fetch serves a
-     * whole-set refresh and an incremental reveal.
+     * how to turn it into a [DeparturesUiState] and whether to save.
      */
     // A stop's National Rail feed after its arrivals: as the shared fetch found it, or this client's.
     private fun railFeedOf(stopId: String, departures: List<Departure>?, shared: ArrivalsCache.Entry?): RailFeed? = when {
@@ -835,8 +810,8 @@ class MainViewModel(
         // the per-fetch log line.
         val poleBatchIds = HashSet<String>()
         var poleBatchCount = 0
-        // The near-me places by distance, for [Terminating]: every eager and "more" stop, revealed or
-        // not, since the rider's nearest place may sit in either tier.
+        // The near-me places by distance, for [Terminating]: every eager and "more" stop, since the
+        // rider's nearest place may sit in either tier.
         val places = nearbyPlaces()
         // One interchange lookup per hub per batch, shared by the early per-stop reveal and the final
         // pass, so members asking at once — or a failed lookup, which isn't cached — cost one call.
@@ -1075,11 +1050,8 @@ class MainViewModel(
         // that fails leaves the arrivals shown but flags them "status unknown" rather
         // than passing them off as verified-clean.
         var lineStatuses = emptyMap<String, LineStatus>()
-        // The lines TfL returned a status for (good or disrupted), and the non-blank lines this batch
-        // queried. Both feed the incremental merge: determined replaces prior verdicts, attempted lets
-        // a re-checked-but-now-omitted line drop out of the merged determined set (see [fetchIncremental]).
+        // The lines TfL returned a status for (good or disrupted).
         var determinedLineIds = emptySet<String>()
-        var attemptedLineIds = emptySet<String>()
         var statusAnswered = false
         var lineStatusRequests = 0
         if (merged.isNotEmpty()) {
@@ -1087,7 +1059,6 @@ class MainViewModel(
             val declaredLineIds = merged.flatMap { it.lines }.map { it.id }
             val lineIds = (predictedLineIds + declaredLineIds)
                 .filterTo(mutableSetOf()) { it.isNotBlank() }
-            attemptedLineIds = lineIds
             // A departure whose line TfL didn't identify (blank id) can't have its
             // status checked, so its presence alone leaves the disruption state
             // unknown — never shown as verified-clean (SPEC principle 1). This also
@@ -1203,7 +1174,6 @@ class MainViewModel(
             merged = merged,
             lineStatuses = lineStatuses,
             determinedLineIds = determinedLineIds,
-            attemptedLineIds = attemptedLineIds,
             statusAnswered = statusAnswered,
             stopsDisruptionUnknown = stopsDisruptionUnknown,
             anyArrivalsFailed = anyArrivalsFailed,
@@ -1260,8 +1230,7 @@ class MainViewModel(
 
     /**
      * The screen-wide "some shown departures' disruption state is unverified" flag, derived from the
-     * merged set and its provenance so [refresh] and an incremental reveal compute it identically and
-     * a reveal can't leave it stuck: true when any shown stop's own closure check failed
+     * merged set and its provenance: true when any shown stop's own closure check failed
      * ([stopsDisruptionUnknown]), any shown prediction has no line id to check, or any shown line TfL
      * returned no status for (not in [determinedLineIds]) — never show an unverified line as clean
      * (SPEC principle 1).
@@ -1428,8 +1397,8 @@ class MainViewModel(
             val lineStatuses = batch.lineStatuses
             val determinedLineIds = batch.determinedLineIds
             val stopsDisruptionUnknown = batch.stopsDisruptionUnknown
-            // Screen-wide "status unknown" derives from the merged set and this batch's provenance,
-            // so refresh() and an incremental reveal compute it the same way ([disruptionUnknownOf]).
+            // Screen-wide "status unknown" derives from the merged set and this batch's provenance
+            // ([disruptionUnknownOf]).
             val disruptionUnknown = disruptionUnknownOf(merged, determinedLineIds, stopsDisruptionUnknown)
             val partial = if (anyFreshData) anyArrivalsFailed else priorPartial
 
@@ -1516,11 +1485,7 @@ class MainViewModel(
                 try {
                     // Deliberately CANCELLABLE: cancelFetch() is the relocation guard — it cancels this
                     // job before a fresh fix so the soon-to-be-previous location's snapshot is NOT
-                    // persisted during the fix window (SPEC D4 / principle 1). A superseding "More" tap
-                    // also cancels here, but that page isn't stranded: fetchIncremental persists the
-                    // merged set whenever it carries fresh arrivals — including these just-published
-                    // ones carried onto the reveal — so the fix doesn't need a NonCancellable save that
-                    // would defeat the relocation guard (Codex, PR #104).
+                    // persisted during the fix window (SPEC D4 / principle 1).
                     // Keeping the stored journey pins, and any stop the widget's live refresh stored
                     // newer (a pinned origin this fetch didn't cover, say).
                     withContext(io) { snapshotStore.saveKeepingJourneys(toSave) }
@@ -1586,187 +1551,11 @@ class MainViewModel(
     }
 
     /**
-     * Reveal the next page of [bucket]'s farther clusters (SPEC *Finding stops → Near me now*):
-     * add them to the fetched set and fetch **only** the newly revealed stops, merging them in
-     * beside the ones already shown, rather than re-fetching the whole set. A no-op when the bucket
-     * has nothing left to page; the caller ignores a tap while a relocation's fresh fix is in flight,
-     * so a "More" never pages the pre-fix set. Reveal only *adds* stops, so no prune is needed — an
-     * already-present stop keeps its rows untouched.
-     */
-    fun reveal(bucket: String) {
-        // The lines already on screen (eager plus revealed), so nextReveal can page THROUGH a run of
-        // clusters that only repeat them — the near-me list collapses a route to its nearest stop, so
-        // revealing such a cluster shows nothing — to the first farther cluster with a new route.
-        val next = NearbySelection.nextReveal(more, bucket, revealedKeys, shownLineIds())
-        if (next.isEmpty()) return
-        revealedKeys = revealedKeys + next
-        publishMore()
-        // Fetch only the stops that aren't already shown, merging into the current snapshot, so the
-        // Nth "More" tap costs one page of requests, not the whole shown set (TfL request budget).
-        // Computed as fetchedStops minus what's on screen — so it also picks up any earlier revealed
-        // stop a superseded tap didn't finish fetching, keeping this self-correcting on quick taps.
-        val current = _state.value as? DeparturesUiState.Loaded
-        if (current == null || current.statusPending || coldLoadUnfinished) {
-            // No whole snapshot to merge into yet (still Loading, an Error, or a cold load part-shown)
-            // — fall back to a full fetch, which builds the first whole Loaded from the widened set
-            // and, mid cold load, keeps showing each stop as it lands.
-            refresh()
-            return
-        }
-        val shown = current.stops.mapTo(mutableSetOf()) { it.stopId }
-        val newStops = fetchedStops.filterNot { it.id in shown }
-        if (newStops.isEmpty()) return
-        fetchIncremental(current, newStops)
-    }
-
-    /**
-     * Fetch [newStops] and merge them into [current], without re-fetching the stops already shown
-     * (SPEC *Finding stops → Near me now* — a "More" tap pages one bounded burst, not the whole
-     * set). A newly revealed stop whose fetch fails is simply absent (the reveal is flagged partial),
-     * never an [DeparturesUiState.Error] — the existing snapshot still stands (SPEC principle 2).
-     * The widened set is persisted only when the fetch brought fresh arrivals, so the widget polls
-     * the new stops too (matching [refresh]'s save rule); a reveal with nothing durable leaves the
-     * saved snapshot as-is.
-     */
-    private fun fetchIncremental(current: DeparturesUiState.Loaded, newStops: List<StopRef>) {
-        fetchJob?.cancel()
-        val nearIds = nearStops.mapTo(HashSet()) { it.id }
-        val journeyIds = journeyStops.mapTo(HashSet()) { it.id }
-        _refreshing.value = true
-        val job = viewModelScope.launch {
-            val now = clock()
-            val prior = current.stops.associateBy { it.stopId }
-            val batch = fetchBatch(newStops, prior, now)
-            // Merge the newly fetched stops beside the ones already shown, keeping the shown order
-            // then appending the new ones; the screen re-sorts by distance, so order here is only for
-            // a stable snapshot.
-            val byId = LinkedHashMap<String, StopArrivals>()
-            for (s in current.stops) byId[s.stopId] = s
-            for (s in batch.merged) byId[s.stopId] = s
-            val mergedStops = byId.values.toList()
-            val mergedIds = byId.keys
-            // Merge the disruption provenance across the shown set and the new batch, so the per-line
-            // and per-stop route-detail signals — and the screen-wide banner derived from them — stay
-            // coherent over a partial (incremental) fetch instead of dropping the shown stops' verdicts.
-            // determinedLineIds: keep the shown lines' determinations except ones this batch re-queried
-            // (which its result replaces — so a line TfL now omits drops out), then add the batch's.
-            val determinedLineIds =
-                (current.determinedLineIds - batch.attemptedLineIds) + batch.determinedLineIds
-            // stopsDisruptionUnknown: the shown stops still on screen plus the batch's failed stops.
-            val stopsDisruptionUnknown =
-                (current.stopsDisruptionUnknown + batch.stopsDisruptionUnknown)
-                    .filterTo(mutableSetOf()) { it in mergedIds }
-            val partial = isIncomplete(mergedStops)
-            val newState = current.copy(
-                stops = mergedStops,
-                fetchedAt = mergedStops.maxOfOrNull { it.fetchedAt } ?: current.fetchedAt,
-                // Recompute incompleteness over the merged set rather than OR-ing the prior flag, so a
-                // later reveal that retries and recovers an earlier missing stop CLEARS the "some stops
-                // couldn't refresh" banner instead of leaving it stuck until a full refresh. A stop
-                // still missing (its fetch failed) or carried stale keeps it set (see [isIncomplete]).
-                partialRefresh = partial,
-                // This batch's failures, and each earlier one a stop the batch didn't fetch still has.
-                partialStops = if (partial) {
-                    incompleteStops(mergedStops, batch.arrivalsErrors, current.partialStops)
-                } else {
-                    emptyMap()
-                },
-                partialUnnamed = partial && unnamedIncomplete(mergedStops),
-                // Merge the new batch's line statuses, REPLACING the prior verdict for every line the
-                // batch re-queried (attemptedLineIds), not only the ones it definitively determined:
-                // a line the batch re-checked but TfL now omits (or whose lookup failed) must drop its
-                // stale disrupted entry — it's undetermined now, surfaced via disruptionUnknown — rather
-                // than keep flagging a status this fetch couldn't stand behind (Codex, PR #104). Lines
-                // the batch didn't touch keep theirs.
-                lineStatuses = current.lineStatuses.filterKeys { it !in batch.attemptedLineIds } +
-                    batch.lineStatuses,
-                // Recompute the screen-wide flag over the merged set and merged provenance (like
-                // partialRefresh) rather than OR-ing the prior flag, so a reveal that re-established a
-                // previously unknown line/stop CLEARS the "status unknown" banner ([disruptionUnknownOf]).
-                disruptionUnknown = disruptionUnknownOf(mergedStops, determinedLineIds, stopsDisruptionUnknown),
-                determinedLineIds = determinedLineIds,
-                stopsDisruptionUnknown = stopsDisruptionUnknown,
-                // Clear a prior total-failure "couldn't refresh" banner once this reveal reaches TfL
-                // and gets anything fresh — matching Loaded's contract that the flag clears on the
-                // next fetch that gets anything; a reveal that got nothing keeps the prior state.
-                refreshFailure = if (batch.anyFreshData) null else current.refreshFailure,
-                unavailableStopIds = (current.unavailableStopIds + newStops.map { it.id }) - mergedIds,
-            )
-            _state.value = newState
-            closureShown += batch.closureAsks
-            // Persist when the MERGED set carries fresh arrivals — not only when THIS batch did —
-            // matching refresh()'s authoritative rule (it saves a partial that has any fresh stop).
-            // Keying on the merged set is what lets a superseding "More" tap that canceled a full
-            // refresh's still-in-flight save carry that refresh's just-published fresh stops to disk
-            // here, so the save stays CANCELLABLE (the relocation guard keeps working) yet the page
-            // is never stranded (Codex, PR #104). A reveal whose merged set is all aged (nothing
-            // fresh anywhere) saves nothing and just redraws, as before — the merged stops keep their
-            // own arrivalsFresh, so this never rewrites a complete snapshot to stale.
-            // Judged on the stops the widget keeps, as in refresh().
-            val widgetSnapshot = forWidget(DeparturesSnapshot(newState.stops, newState.fetchedAt), nearIds, journeyIds)
-            if (widgetJudged(widgetSnapshot.stops, nearIds).any { it.arrivalsFresh }) {
-                try {
-                    withContext(io) { snapshotStore.saveKeepingJourneys(widgetSnapshot) }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    warn("snapshot save failed: ${reason(e)}")
-                }
-            } else {
-                // Nothing fresh anywhere in the merged set — like refresh()'s no-save path, poke a
-                // best-effort widget redraw so its static RemoteViews recompute staleness from the
-                // current clock rather than ageing invisibly past the cutoff (SPEC D4 / principle 2).
-                redrawWidgetBestEffort("incremental reveal with no fresh arrivals")
-            }
-            if (widgetJourneysPending) writeWidgetJourneys()
-
-            // Reconcile dismissals for the stops THIS reveal queried too (not just full refreshes):
-            // a "More" tap can surface a previously dismissed place whose notice has since resolved,
-            // and its stale signature must be pruned like on a full refresh. Provenance is [newStops]
-            // (the queried set); the reconcile is scoped per place to the ones whose disruption lookup
-            // succeeded, so it never touches the already-shown stops or a newly-fetched failure.
-            reconcileDismissals(newStops, mergedStops, newState.lineStatuses, batch.determinedLineIds, stopsDisruptionUnknown)
-        }
-        fetchJob = job
-        job.invokeOnCompletion { if (fetchJob === job) _refreshing.value = false }
-        // A revealed stop may be a journey's far end: its closure, just cached, reaches the card too.
-        checkJourneyDestinations()
-    }
-
-    /**
-     * The ids of the routes actually **on screen right now**. A "More" tap uses this so it can tell a
-     * farther cluster that adds a new route from one that only repeats a route already shown (which
-     * the near-me dedupe would collapse to nothing).
-     *
-     * Derived from the rendered rows, not the eager stops' *declared* lines: a stop can declare a
-     * line it has no current departure (or disruption) for, so that line isn't on screen — counting
-     * it would mark a farther stop that does show it as redundant and never reveal it, the dead tap
-     * this fixes (Codex, PR #98). Using the renderer's own output ([DepartureRows.across]) rather
-     * than re-deriving "what's shown" keeps this from drifting from the UI as its filters evolve.
-     */
-    private fun shownLineIds(): Set<String> {
-        val loaded = _state.value as? DeparturesUiState.Loaded ?: return emptySet()
-        // Derive the shown routes from the SAME rows the screen renders — `DepartureRows.across`
-        // against the live clock — rather than reconstructing "what's on screen" from the raw
-        // snapshot. That way every filter the renderer applies (departed predictions dropped, a
-        // disrupted line's status row suppressed on a stale or carried-forward stop, etc.) is
-        // inherited for free, instead of this method drifting from the UI one edge case at a time.
-        // Stop-status rows carry a blank lineId and drop out; a timed or line-status row's lineId is
-        // a genuinely-shown route.
-        return DepartureRows.across(loaded.stops, clock(), loaded.lineStatuses)
-            .mapNotNullTo(mutableSetOf()) { it.lineId.takeIf(String::isNotBlank) }
-    }
-
-    /**
      * Reconcile the tiers to a fresh fix of the SAME nearby set (both tiers, order-independent — see
-     * [NearbyStopsViewModel.State.Ready.clusterSetKey]), keeping a revealed expansion across the
-     * relocation. Updates the tiers, drops a revealed cluster the fresh fix no longer offers,
-     * **synchronously prunes** a departed revealed stop from the shown state (before the re-fetch,
-     * so it can't linger with stale departures through the fetch window — SPEC D4 / principle 1),
-     * then re-fetches. A revealed cluster promoted into the eager tier stays fetched (it's eager
-     * now) *and* keeps its reveal identity, so a later relocation that demotes it back into *more*
-     * keeps it expanded; a member that crossed the radius is pruned here and its replacement
-     * fetched by [refresh].
+     * [NearbyStopsViewModel.State.Ready.clusterSetKey]) without rebuilding this model. Updates the
+     * tiers, **synchronously prunes** a stop that left the eager tier from the shown state (before
+     * the re-fetch, so it can't linger with stale departures through the fetch window — SPEC D4 /
+     * principle 1), then re-fetches, which fetches any stop that joined it.
      */
     fun reconcile(
         newEager: List<NearbySelection.NearbyCluster>,
@@ -1786,16 +1575,7 @@ class MainViewModel(
         if (dropJourneyStopIds.isNotEmpty()) journeyStops = journeyStops.filter { it.id !in dropJourneyStopIds }
         eagerStops = newEager.flatMap { cluster -> cluster.stops.map { it.toStopRef() } }
         more = newMore
-        // Keep a revealed cluster's identity while it is present in EITHER tier. A cluster promoted
-        // into the eager tier is still fetched (via eager) AND stays revealed, so a later relocation
-        // that demotes it back into *more* while the whole set is unchanged keeps it expanded rather
-        // than reverting it to a "More" button (SPEC — a revealed expansion survives an eager/more
-        // boundary shift). Intersecting with `newMore` alone would drop it on the promotion and lose
-        // that on the demotion. A key kept here that is currently eager doesn't affect paging (it
-        // isn't in `more`, so `revealableBuckets`/`nextReveal` never see it).
-        val presentKeys = (newEager + newMore).mapTo(mutableSetOf()) { it.key }
-        revealedKeys = revealedKeys intersect presentKeys
-        publishMore()
+        _shownNearStops.value = nearStops
         remeasure(newDistanceMeters ?: stopDistanceMeters)
         val departed = before - fetchedStops.mapTo(mutableSetOf()) { it.id }
         if (departed.isNotEmpty()) {
@@ -2093,8 +1873,8 @@ class MainViewModel(
         }
         val seedIds = fetchedStops.mapTo(HashSet()) { it.id }
         val unseeded = stops.filter { it.stopId !in seedIds && !it.arrivalsFresh }.map { failed(it.stopId, it.stopName) }
-        // [fetchedStops] puts every eager stop before a revealed farther one, which can be nearer
-        // than a sparse mode's eager stop, so order by distance.
+        // [fetchedStops] is in tier order, not distance order (a journey's stop comes after every
+        // near one, and one cluster's stop can be farther than the next cluster's), so order by distance.
         return byDistance((seeded + unseeded).toMap(), stopDistanceMeters)
     }
 

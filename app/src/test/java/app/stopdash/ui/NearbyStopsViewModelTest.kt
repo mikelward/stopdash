@@ -282,7 +282,7 @@ class NearbyStopsViewModelTest {
 
         val ready = model.state.value as NearbyStopsViewModel.State.Ready
         // Eager is the two nearest bus clusters plus the lone tube — the third bus is beyond the
-        // per-mode cap, so it sits in the `more` tier (paged in by a "More" tap), not eager. (The
+        // per-mode cap, so it sits in the `more` tier, not eager. (The
         // eager/`more` split itself is covered by NearbyClustersTest.)
         assertEquals(listOf("bus1", "bus2", "tube"), ready.eagerStops.map { it.id })
         assertTrue("bus3" !in ready.eagerStops.map { it.id })

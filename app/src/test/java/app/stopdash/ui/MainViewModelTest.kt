@@ -2857,7 +2857,7 @@ class MainViewModelTest {
         assertTrue(warnings.any { it.contains("starred set read failed") })
     }
 
-    // --- The "More" reveal: the retained ViewModel owns both tiers and reconciles across a
+    // --- The near-me tiers: the retained ViewModel owns both and reconciles them across a
     // relocation (SPEC *Finding stops → Near me now*). ---
 
     // A `more` cluster [key] holding one stop per (id, mode). Coordinates don't matter here (the
@@ -2890,109 +2890,6 @@ class MainViewModelTest {
             "MA" to Result.success(listOf(departure("central", "Central", 200))),
         ),
     )
-
-    // A single-stop bus `more` cluster whose stop declares [lineIds] (a route can repeat across
-    // clusters, unlike clusterOf which derives the line id from the stop id).
-    private fun busClusterOf(key: String, stopId: String, vararg lineIds: String) =
-        NearbySelection.NearbyCluster(
-            key = key,
-            stops = listOf(
-                StopLocation(
-                    id = stopId, name = stopId, latitude = 0.0, longitude = 0.0,
-                    lines = lineIds.map { LineRef(it, it, "bus") }, clusterId = key,
-                ),
-            ),
-            distanceMeters = 0.0,
-        )
-
-    @Test
-    fun `reveal reaches through redundant clusters to the first with a new route in one tap`() =
-        runTest(dispatcher) {
-            // The eager stop already shows routes L1 and L2. The two nearest `more` clusters only
-            // repeat those (the near-me list would collapse them to nothing), and the farther one
-            // carries a new route L9 — past the two-per-tap page. One tap must reach it, so the new
-            // stop appears rather than the tap looking like it did nothing.
-            val client = FakeClient(
-                mapOf(
-                    // The eager stop shows both L1 and L2 live, so the two nearer `more` clusters
-                    // (which repeat them) are genuinely redundant.
-                    "EAG" to Result.success(listOf(departure("L1", "Dest", 300), departure("L2", "Dest", 300))),
-                    "R1" to Result.success(listOf(departure("L1", "Dest", 200))),
-                    "R2" to Result.success(listOf(departure("L2", "Dest", 200))),
-                    "NEW" to Result.success(listOf(departure("L9", "Dest", 200))),
-                ),
-            )
-            val eager = listOf(StopRef("EAG", "EAG", lines = listOf(LineRef("L1", "L1", "bus"), LineRef("L2", "L2", "bus"))))
-            val more = listOf(
-                busClusterOf("R1", "R1", "L1"),
-                busClusterOf("R2", "R2", "L2"),
-                busClusterOf("NEW", "NEW", "L9"),
-            )
-            val vm = tierVm(client, eager, more)
-            advanceUntilIdle()
-            assertEquals(listOf("EAG"), shownIds(vm))
-
-            vm.reveal("bus")
-            advanceUntilIdle()
-            // The farther new-route stop is revealed on this tap, not left for a second one.
-            assertTrue("the new-route cluster is revealed in one tap", "NEW" in shownIds(vm))
-        }
-
-    @Test
-    fun `a route only declared by an eager stop, not shown, does not mask a farther stop that shows it`() =
-        runTest(dispatcher) {
-            // The eager stop DECLARES L1 and L2 but only has live L1 departures, so L2 is not on
-            // screen. A farther stop with L2 must still be revealed — counting the declared-only L2
-            // as "shown" would treat it as redundant and never reveal it (the dead tap this fixes).
-            val client = FakeClient(
-                mapOf(
-                    "EAG" to Result.success(listOf(departure("L1", "Dest", 300))), // L2 declared, not live
-                    "R1" to Result.success(listOf(departure("L1", "Dest", 200))),
-                    "R2" to Result.success(listOf(departure("L1", "Dest", 200))),
-                    "N" to Result.success(listOf(departure("L2", "Dest", 200))),
-                ),
-            )
-            val eager = listOf(StopRef("EAG", "EAG", lines = listOf(LineRef("L1", "L1", "bus"), LineRef("L2", "L2", "bus"))))
-            val more = listOf(
-                busClusterOf("R1", "R1", "L1"),
-                busClusterOf("R2", "R2", "L1"),
-                busClusterOf("N", "N", "L2"),
-            )
-            val vm = tierVm(client, eager, more)
-            advanceUntilIdle()
-
-            vm.reveal("bus")
-            advanceUntilIdle()
-            assertTrue("the stop with the not-actually-shown route is revealed", "N" in shownIds(vm))
-        }
-
-    @Test
-    fun `an expired departure's route does not count as shown, so a farther stop with it live is revealed`() =
-        runTest(dispatcher) {
-            // The eager stop has an already-departed L1 prediction (no longer rendered) and a live
-            // L2. L1 is not on screen, so a farther stop with live L1 beyond the page must still be
-            // revealed — counting the expired L1 as shown would treat it as redundant (dead tap).
-            val client = FakeClient(
-                mapOf(
-                    "EAG" to Result.success(listOf(departure("L1", "Dest", -60), departure("L2", "Dest", 300))),
-                    "R1" to Result.success(listOf(departure("L2", "Dest", 200))),
-                    "R2" to Result.success(listOf(departure("L2", "Dest", 200))),
-                    "N" to Result.success(listOf(departure("L1", "Dest", 200))),
-                ),
-            )
-            val eager = listOf(StopRef("EAG", "EAG", lines = listOf(LineRef("L1", "L1", "bus"), LineRef("L2", "L2", "bus"))))
-            val more = listOf(
-                busClusterOf("R1", "R1", "L2"),
-                busClusterOf("R2", "R2", "L2"),
-                busClusterOf("N", "N", "L1"),
-            )
-            val vm = tierVm(client, eager, more)
-            advanceUntilIdle()
-
-            vm.reveal("bus")
-            advanceUntilIdle()
-            assertTrue("the stop with the live route whose earlier prediction expired is revealed", "N" in shownIds(vm))
-        }
 
     private val fartherPlace = CollapsedPlaces.Place("station:FS", "FS", "Farther", 1_600.0, listOf(LineRef("central", "Central", "tube")))
     private val fartherStop = StopLocation(id = "MA", name = "Farther", latitude = 0.0, longitude = 0.0)
@@ -3322,18 +3219,14 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `the shown near stops follow reveals and same-set reconciles`() = runTest(dispatcher) {
+    fun `the shown near stops follow a same-set reconcile`() = runTest(dispatcher) {
         // The farther-station cards count these as reached, so they must track what is loaded,
         // including a reconcile that swaps clusters across the eager/more boundary (Codex P2, PR #226).
         val vm = tierVm(twoStopClient(), listOf(StopRef("E", "E")), listOf(clusterOf("M1", "MA" to "bus")))
         advanceUntilIdle()
         assertEquals(listOf("E"), vm.shownNearStops.value.map { it.id })
 
-        vm.reveal("bus")
-        advanceUntilIdle()
-        assertEquals(setOf("E", "MA"), vm.shownNearStops.value.map { it.id }.toSet())
-
-        // M1 promoted to eager, E demoted to an unrevealed `more` cluster: E is no longer loaded.
+        // M1 promoted to eager, E demoted to the `more` tier: MA is loaded, and E no longer is.
         vm.reconcile(newEager = listOf(clusterOf("M1", "MA" to "bus")), newMore = listOf(clusterOf("EC", "E" to "tube")))
         advanceUntilIdle()
         assertEquals(listOf("MA"), vm.shownNearStops.value.map { it.id })
@@ -3363,84 +3256,6 @@ class MainViewModelTest {
         assertEquals(listOf(setOf("A")), fartherReached(shown, loadedIds = setOf("A")).map { it.ids })
         // Still loading (no list yet): everything shown counts, so cards don't flash up and vanish.
         assertEquals(2, fartherReached(shown, loadedIds = null).size)
-    }
-
-    @Test
-    fun `reveal fetches the more cluster and drops its More button`() = runTest(dispatcher) {
-        val vm = tierVm(twoStopClient(), listOf(StopRef("E", "E")), listOf(clusterOf("M1", "MA" to "bus")))
-        advanceUntilIdle()
-        // Before the tap: only the eager stop is shown, and a "bus" More button is offered.
-        assertEquals(setOf("bus"), vm.moreState.value)
-        assertEquals(listOf("E"), shownIds(vm))
-
-        vm.reveal("bus")
-        advanceUntilIdle()
-        // The revealed cluster's stop is fetched and shown; nothing is left to page, so no button.
-        assertEquals(setOf("E", "MA"), shownIds(vm).toSet())
-        assertTrue(vm.moreState.value.isEmpty())
-    }
-
-    @Test
-    fun `a More tap during a part-shown cold load finishes it whole`() = runTest(dispatcher) {
-        // The first eager stop is slow on the cold load only; "More" is tapped once the other is shown.
-        val slow = CompletableDeferred<Unit>()
-        var firstAsk = true
-        val client = object : TflClient {
-            override suspend fun arrivals(stopId: String): List<Departure> {
-                if (stopId == "S" && firstAsk) {
-                    firstAsk = false
-                    slow.await()
-                }
-                return listOf(departure("victoria", "Victoria", 120))
-            }
-            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
-            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
-        }
-        val vm = tierVm(client, listOf(StopRef("E", "E"), StopRef("S", "S")), listOf(clusterOf("M1", "MA" to "bus")))
-        advanceUntilIdle()
-        assertTrue((vm.state.value as DeparturesUiState.Loaded).statusPending)
-
-        vm.reveal("bus")
-        advanceUntilIdle()
-        val done = vm.state.value as DeparturesUiState.Loaded
-        assertEquals(setOf("E", "S", "MA"), done.stops.mapTo(HashSet()) { it.stopId })
-        assertTrue(done.pendingStops.isEmpty())
-        assertFalse(done.statusPending)
-    }
-
-    @Test
-    fun `revealing a stop whose notice has resolved prunes its dismissal`() = runTest(dispatcher) {
-        // The reconcile hook fires on the incremental "More" path too, not only full refreshes: a
-        // revealed stop whose dismissed notice has since cleared must have its stale signature pruned.
-        val backing = MutableStateFlow<Set<DismissedAlert>>(setOf(DismissedAlert("M1", "Bus Stop Closed")))
-        val store = object : DismissedAlertsStore {
-            override fun dismissed() = backing
-            override suspend fun dismiss(alert: DismissedAlert) {
-                backing.value = Dismissed.dismiss(backing.value, alert)
-            }
-            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) {
-                backing.value = Dismissed.reconcile(backing.value, live, checkedPlaces)
-            }
-        }
-        // The revealed cluster M1's stop MA returns no disruption now (resolved); FakeClient defaults
-        // to an empty (successful) disruption lookup, so the place counts as checked-and-clear.
-        val vm = MainViewModel(
-            twoStopClient(),
-            listOf(StopRef("E", "E")),
-            initialMore = listOf(clusterOf("M1", "MA" to "bus")),
-            clock = { now },
-            io = dispatcher,
-            dismissedStore = store,
-        )
-        advanceUntilIdle()
-        // The initial refresh queried only the eager stop E, not M1, so the M1 dismissal is untouched.
-        assertEquals(setOf(DismissedAlert("M1", "Bus Stop Closed")), backing.value)
-
-        vm.reveal("bus")
-        advanceUntilIdle()
-        assertTrue("MA" in shownIds(vm))
-        // Revealing MA (place M1) with a clear disruption lookup reconciles the resolved dismissal out.
-        assertEquals(emptySet<DismissedAlert>(), backing.value)
     }
 
     @Test
@@ -3736,8 +3551,7 @@ class MainViewModelTest {
         assertFalse("214" in retried)
     }
 
-    // A client that records every arrivals fetch, so a test can assert a "More" tap fetches only the
-    // newly revealed stop and not the ones already shown.
+    // A client that records every arrivals fetch, so a test can assert which stops a fetch asked for.
     private class CountingClient(private val byStop: Map<String, List<Departure>>) : TflClient {
         val arrivalsCalls = mutableListOf<String>()
         override suspend fun arrivals(stopId: String): List<Departure> {
@@ -3808,324 +3622,12 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `reveal fetches only the newly revealed stop, not the ones already shown`() = runTest(dispatcher) {
-        val client = CountingClient(
-            mapOf(
-                "E" to listOf(departure("victoria", "Victoria", 300)),
-                "MA" to listOf(departure("central", "Central", 200)),
-            ),
-        )
-        val vm = tierVm(client, listOf(StopRef("E", "E")), listOf(clusterOf("M1", "MA" to "bus")))
-        advanceUntilIdle()
-        // The initial refresh fetched the eager stop once.
-        assertEquals(listOf("E"), client.arrivalsCalls)
-
-        vm.reveal("bus")
-        advanceUntilIdle()
-        // The tap fetched only the newly revealed MA — E is not re-fetched (the point of the
-        // incremental reveal: one page of requests per tap, not the whole shown set).
-        assertEquals(listOf("E", "MA"), client.arrivalsCalls)
-        assertEquals(setOf("E", "MA"), shownIds(vm).toSet())
-    }
-
-    @Test
-    fun `a revealed stop whose fetch fails leaves the shown ones and flags partial, not an error`() =
-        runTest(dispatcher) {
-            val client = twoStopClient()
-            val vm = tierVm(client, listOf(StopRef("E", "E")), listOf(clusterOf("M1", "MA" to "bus")))
-            advanceUntilIdle()
-            assertEquals(listOf("E"), shownIds(vm))
-
-            // The newly revealed stop's first fetch fails: the existing stop stays shown, the state
-            // stays Loaded (not Error), and it's flagged partial rather than dropping E or blanking.
-            client.failing += "MA"
-            vm.reveal("bus")
-            advanceUntilIdle()
-            val loaded = vm.state.value as DeparturesUiState.Loaded
-            assertEquals(listOf("E"), loaded.stops.map { it.stopId })
-            assertTrue("the failed reveal is flagged partial", loaded.partialRefresh)
-        }
-
-    @Test
-    fun `a revealed stop's clean status clears a stale disruption flag`() = runTest(dispatcher) {
-        // The line-status verdict for L changes: disrupted at init, Good Service by the reveal.
-        val client = object : TflClient {
-            var lineDisrupted = true
-            override suspend fun arrivals(stopId: String) = listOf(departure("L", "L", 200))
-            override suspend fun lineStatuses(lineIds: Collection<String>) =
-                if (lineDisrupted) {
-                    listOf(status("L", 6, "Severe delays"))
-                } else {
-                    listOf(LineStatus("L", LineStatus.GOOD_SERVICE, "Good Service"))
-                }
-            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
-        }
-        val vm = tierVm(
-            client,
-            listOf(StopRef("E", "E", lines = listOf(LineRef("L", "L", "bus")))),
-            listOf(clusterOf("M1", "MA" to "bus")),
-        )
-        advanceUntilIdle()
-        assertTrue("L starts flagged", (vm.state.value as DeparturesUiState.Loaded).lineStatuses.containsKey("L"))
-
-        // The reveal's batch checks L and gets Good Service; the stale disrupted flag must clear,
-        // not linger because the merge only appended disrupted entries.
-        client.lineDisrupted = false
-        vm.reveal("bus")
-        advanceUntilIdle()
-        assertFalse(
-            "the reveal's clean verdict clears L's stale disruption flag",
-            (vm.state.value as DeparturesUiState.Loaded).lineStatuses.containsKey("L"),
-        )
-    }
-
-    @Test
-    fun `an incremental reveal whose merged set is all aged redraws the widget`() = runTest(dispatcher) {
-        // With nothing fresh anywhere in the merged set there's nothing to save, but the widget's
-        // static RemoteViews must still be poked to recompute staleness (as refresh()'s no-save path
-        // does) rather than ageing past the cutoff. E is kept aged (its arrivals fail over a stored
-        // snapshot) and the revealed MA fails too, so the merged set carries no fresh arrivals.
-        var redraws = 0
-        val aged = now.minusSeconds(600)
-        val store = FakeStore(DeparturesSnapshot(listOf(stopArrivals("E", "E", 300, aged)), aged))
-        val client = FakeClient(
-            mapOf(
-                "E" to Result.failure(TflException.Offline(null)),
-                "MA" to Result.success(listOf(departure("central", "Central", 200))),
-            ),
-        )
-        val vm = MainViewModel(
-            client,
-            seedStops = listOf(StopRef("E", "E")),
-            initialMore = listOf(clusterOf("M1", "MA" to "bus")),
-            clock = { now },
-            io = dispatcher,
-            snapshotStore = store,
-            redrawWidget = { redraws++ },
-        )
-        advanceUntilIdle()
-        val before = redraws
-
-        client.failing += "MA"
-        vm.reveal("bus")
-        advanceUntilIdle()
-        assertTrue("the all-aged reveal path redraws the widget", redraws > before)
-    }
-
-    @Test
-    fun `partial clears when a later reveal recovers an earlier failed stop`() = runTest(dispatcher) {
-        val client = FakeClient(
-            mapOf(
-                "E" to Result.success(listOf(departure("victoria", "Victoria", 300))),
-                "MA" to Result.success(listOf(departure("a", "A", 200))),
-                "MB" to Result.success(listOf(departure("b", "B", 200))),
-                "MC" to Result.success(listOf(departure("c", "C", 200))),
-            ),
-        )
-        val vm = tierVm(
-            client,
-            listOf(StopRef("E", "E")),
-            listOf(clusterOf("A", "MA" to "bus"), clusterOf("B", "MB" to "bus"), clusterOf("C", "MC" to "bus")),
-        )
-        advanceUntilIdle()
-
-        // First tap reveals a page (MA + MB); MA's fetch fails, so it's absent and the list is partial.
-        client.failing += "MA"
-        vm.reveal("bus")
-        advanceUntilIdle()
-        var loaded = vm.state.value as DeparturesUiState.Loaded
-        assertTrue("MA" !in loaded.stops.map { it.stopId })
-        assertTrue("a failed reveal is flagged partial", loaded.partialRefresh)
-
-        // Second tap reveals MC and retries the still-missing MA (now succeeding); every revealed stop
-        // is present and fresh, so the "some stops couldn't refresh" banner clears — it isn't stuck on
-        // from the earlier failure.
-        client.failing -= "MA"
-        vm.reveal("bus")
-        advanceUntilIdle()
-        loaded = vm.state.value as DeparturesUiState.Loaded
-        assertEquals(setOf("E", "MA", "MB", "MC"), loaded.stops.map { it.stopId }.toSet())
-        assertFalse("partial clears once the recovered stop is shown", loaded.partialRefresh)
-    }
-
-    @Test
-    fun `a successful reveal clears a prior total-failure banner`() = runTest(dispatcher) {
-        // A saved aged snapshot, then a refresh that fails entirely (E offline): the aged E is kept
-        // and the screen flags "couldn't refresh" (refreshFailure). A later "More" that reaches TfL
-        // and gets a fresh stop must clear that banner — it was inherited through current.copy and
-        // left stuck, contradicting Loaded's contract that it clears on the next fetch that gets
-        // anything (Codex, PR #104).
-        val aged = now.minusSeconds(600)
-        val store = FakeStore(DeparturesSnapshot(listOf(stopArrivals("E", "E", 300, aged)), aged))
-        val client = FakeClient(
-            mapOf(
-                "E" to Result.failure(TflException.Offline(null)),
-                "MA" to Result.success(listOf(departure("central", "Central", 200))),
-            ),
-            // Both of E's requests fail, so nothing fresh comes back at all — a total failure that
-            // sets refreshFailure (an arrivals-only failure would be a partial, with fresh data).
-            disruptionsByStop = mapOf("E" to Result.failure(TflException.Offline(null))),
-        )
-        val vm = tierVm(client, listOf(StopRef("E", "E")), listOf(clusterOf("M1", "MA" to "bus")), store = store)
-        advanceUntilIdle()
-        var loaded = vm.state.value as DeparturesUiState.Loaded
-        assertEquals(
-            "a total-failure refresh over the aged snapshot flags couldn't-refresh",
-            DeparturesUiState.Error.Kind.OFFLINE,
-            loaded.refreshFailure,
-        )
-
-        vm.reveal("bus")
-        advanceUntilIdle()
-        loaded = vm.state.value as DeparturesUiState.Loaded
-        assertEquals(setOf("E", "MA"), loaded.stops.map { it.stopId }.toSet())
-        assertNull("the successful reveal clears the stale total-failure banner", loaded.refreshFailure)
-    }
-
-    @Test
-    fun `a reveal keeps an unverified kept stop flagged status-unknown`() = runTest(dispatcher) {
-        // E's arrivals fail, so it's kept aged from the store and never status-verified this cycle —
-        // it stays disruption-unknown. A "More" that adds a fully clean stop must NOT clear the
-        // screen's "status unknown", because the recompute is over each stop's own provenance: the
-        // kept, unchecked E is still unknown even though the newly revealed MA is clean.
-        val aged = now.minusSeconds(600)
-        val store = FakeStore(DeparturesSnapshot(listOf(stopArrivals("E", "E", 300, aged)), aged))
-        val client = FakeClient(
-            mapOf(
-                "E" to Result.failure(TflException.Offline(null)),
-                "MA" to Result.success(listOf(departure("central", "Central", 200))),
-            ),
-            // MA's line resolves clean; E's "victoria" is left undetermined, so E stays unknown.
-            statuses = Result.success(listOf(status("central", LineStatus.GOOD_SERVICE, "Good Service"))),
-        )
-        val vm = tierVm(client, listOf(StopRef("E", "E")), listOf(clusterOf("M1", "MA" to "bus")), store = store)
-        advanceUntilIdle()
-        assertTrue((vm.state.value as DeparturesUiState.Loaded).disruptionUnknown)
-
-        vm.reveal("bus")
-        advanceUntilIdle()
-        val loaded = vm.state.value as DeparturesUiState.Loaded
-        assertEquals(setOf("E", "MA"), loaded.stops.map { it.stopId }.toSet())
-        assertTrue(
-            "the kept, unchecked stop keeps the screen status-unknown despite the clean reveal",
-            loaded.disruptionUnknown,
-        )
-    }
-
-    @Test
-    fun `a reveal persists the merged fresh set even when its own new stops fail`() = runTest(dispatcher) {
-        // Finding A: a "More" tap cancels the in-flight refresh (fetchJob.cancel), which can abort that
-        // refresh's still-in-flight save. Rather than make the save NonCancellable — which would defeat
-        // the relocation guard cancelFetch() relies on — the reveal keys its own save on the MERGED set,
-        // not just this batch: so it carries the refresh's just-published fresh stops to disk even when
-        // the revealed stop fails. Here E is fetched fresh and the revealed MA fails; the reveal still
-        // saves, carrying fresh E, rather than skipping the save and stranding it.
-        val store = FakeStore()
-        val client = FakeClient(
-            mapOf(
-                "E" to Result.success(listOf(departure("victoria", "Victoria", 300))),
-                "MA" to Result.success(listOf(departure("central", "Central", 200))),
-            ),
-        )
-        val vm = tierVm(client, listOf(StopRef("E", "E")), listOf(clusterOf("M1", "MA" to "bus")), store = store)
-        advanceUntilIdle()
-        val savesAfterInit = store.saves.size
-
-        client.failing += "MA"
-        vm.reveal("bus")
-        advanceUntilIdle()
-
-        val loaded = vm.state.value as DeparturesUiState.Loaded
-        assertEquals("the failed new stop is absent", listOf("E"), loaded.stops.map { it.stopId })
-        assertTrue(
-            "the reveal persisted the merged set because it still carries fresh arrivals",
-            store.saves.size > savesAfterInit,
-        )
-        assertEquals("the saved snapshot carries the fresh eager stop", now, store.stored?.fetchedAt)
-    }
-
-    @Test
-    fun `a reveal drops a stale status for a line the batch re-queried but TfL no longer reports`() =
-        runTest(dispatcher) {
-            // Finding D: E and the revealed MA both serve line L. L is disrupted at init; on the reveal
-            // TfL omits L (returns no status). Because the reveal re-queried L (it's in attemptedLineIds)
-            // and got no verdict, the stale disrupted entry must drop — the line is now unknown, surfaced
-            // via disruptionUnknown, not still flagged from a status this fetch couldn't stand behind.
-            val client = object : TflClient {
-                var reportL = true
-                override suspend fun arrivals(stopId: String) = listOf(departure("L", "L", 200))
-                override suspend fun lineStatuses(lineIds: Collection<String>) =
-                    if (reportL) listOf(status("L", 6, "Severe delays")) else emptyList()
-                override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
-            }
-            val vm = tierVm(
-                client,
-                listOf(StopRef("E", "E", lines = listOf(LineRef("L", "L", "bus")))),
-                listOf(busClusterOf("M1", "MA", "L")),
-            )
-            advanceUntilIdle()
-            assertTrue("L starts flagged", (vm.state.value as DeparturesUiState.Loaded).lineStatuses.containsKey("L"))
-
-            client.reportL = false
-            vm.reveal("bus")
-            advanceUntilIdle()
-            val loaded = vm.state.value as DeparturesUiState.Loaded
-            assertFalse(
-                "the reveal re-queried L and TfL omitted it, so the stale disrupted status drops",
-                loaded.lineStatuses.containsKey("L"),
-            )
-            assertTrue("L is now unverified, so the screen says status unknown", loaded.disruptionUnknown)
-        }
-
-    @Test
-    fun `a reconcile to the same set keeps a revealed cluster fetched`() = runTest(dispatcher) {
-        val vm = tierVm(twoStopClient(), listOf(StopRef("E", "E")), listOf(clusterOf("M1", "MA" to "bus")))
-        advanceUntilIdle()
-        vm.reveal("bus")
+    fun `a relocation that drops a cluster prunes its stop synchronously`() = runTest(dispatcher) {
+        val vm = tierVm(twoStopClient(), listOf(StopRef("E", "E"), StopRef("MA", "MA")), emptyList())
         advanceUntilIdle()
         assertTrue("MA" in shownIds(vm))
 
-        // The same nearby set, re-supplied (a plain relocate that keeps the clusters) — the reveal
-        // survives, since the ViewModel is keyed on the whole set, not rebuilt.
-        vm.reconcile(newEager = eagerOf("E" to "bus"), newMore = listOf(clusterOf("M1", "MA" to "bus")))
-        advanceUntilIdle()
-        assertTrue("MA" in shownIds(vm))
-    }
-
-    @Test
-    fun `a revealed cluster survives a promotion into eager and a later demotion`() = runTest(dispatcher) {
-        val vm = tierVm(twoStopClient(), listOf(StopRef("E", "E")), listOf(clusterOf("M1", "MA" to "bus")))
-        advanceUntilIdle()
-        vm.reveal("bus")
-        advanceUntilIdle()
-
-        // A small move: M1 (MA) crosses into the eager pair, E drops to `more`. The whole cluster
-        // set is unchanged, so MA stays fetched — now via the eager tier — while the demoted E
-        // leaves the shown set and offers its own "More" button.
-        vm.reconcile(newEager = listOf(clusterOf("M1", "MA" to "bus")), newMore = listOf(clusterOf("EC", "E" to "bus")))
-        advanceUntilIdle()
-        assertTrue("MA" in shownIds(vm))
-        assertTrue("E" !in shownIds(vm))
-        assertEquals(setOf("bus"), vm.moreState.value)
-
-        // Move back: M1 demotes to `more` and E returns to eager, still the same whole set. M1's
-        // reveal identity was retained while it was eager, so it stays expanded (MA fetched) rather
-        // than reverting to a "More" button — the eager/more boundary shift is survived both ways.
-        vm.reconcile(newEager = listOf(clusterOf("EC", "E" to "bus")), newMore = listOf(clusterOf("M1", "MA" to "bus")))
-        advanceUntilIdle()
-        assertTrue("MA" in shownIds(vm))
-        assertTrue(vm.moreState.value.isEmpty())
-    }
-
-    @Test
-    fun `a relocation that drops a revealed cluster prunes its stop synchronously`() = runTest(dispatcher) {
-        val vm = tierVm(twoStopClient(), listOf(StopRef("E", "E")), listOf(clusterOf("M1", "MA" to "bus")))
-        advanceUntilIdle()
-        vm.reveal("bus")
-        advanceUntilIdle()
-        assertTrue("MA" in shownIds(vm))
-
-        // Walk on: the fresh fix no longer offers M1. The departed stop must leave the shown list AT
+        // Walk on: the fresh fix no longer offers MA's cluster. The departed stop must leave the shown list AT
         // ONCE — before the re-fetch coroutine runs — so it can't linger with stale departures.
         vm.reconcile(newEager = eagerOf("E" to "bus"), newMore = emptyList())
         assertTrue("MA" !in shownIds(vm))
@@ -4147,9 +3649,7 @@ class MainViewModelTest {
 
             override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
         }
-        val vm = tierVm(client, listOf(StopRef("E", "E")), listOf(clusterOf("M1", "MA" to "bus")))
-        advanceUntilIdle()
-        vm.reveal("bus")
+        val vm = tierVm(client, listOf(StopRef("E", "E"), StopRef("MA", "MA")), emptyList())
         advanceUntilIdle()
         // E's next refresh fails, so it is kept at its older age and named.
         failE = true
@@ -4175,9 +3675,7 @@ class MainViewModelTest {
                 "MA" to Result.success(listOf(departure("central", "Central", 200))),
             ),
         )
-        val vm = tierVm(client, listOf(StopRef("E", "E"), StopRef("F", "F")), listOf(clusterOf("M1", "MA" to "bus")))
-        advanceUntilIdle()
-        vm.reveal("bus")
+        val vm = tierVm(client, listOf(StopRef("E", "E"), StopRef("F", "F"), StopRef("MA", "MA")), emptyList())
         advanceUntilIdle()
         assertEquals(listOf("F"), (vm.state.value as DeparturesUiState.Loaded).partialStops.values.map { it.name })
 
@@ -4200,14 +3698,11 @@ class MainViewModelTest {
         )
         val vm = MainViewModel(
             client,
-            listOf(StopRef("E", "E"), StopRef("F", "F"), StopRef("G", "G")),
-            initialMore = listOf(clusterOf("M1", "MA" to "bus")),
+            listOf(StopRef("E", "E"), StopRef("F", "F"), StopRef("G", "G"), StopRef("MA", "MA")),
             clock = { now },
             io = dispatcher,
             stopDistanceMeters = mapOf("E" to 50.0, "F" to 100.0, "G" to 300.0),
         )
-        advanceUntilIdle()
-        vm.reveal("bus")
         advanceUntilIdle()
         assertEquals(listOf("F", "G"), (vm.state.value as DeparturesUiState.Loaded).partialStops.values.map { it.name })
 
@@ -4222,7 +3717,7 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `a revealed cluster losing a member prunes it synchronously`() = runTest(dispatcher) {
+    fun `a cluster losing a member prunes it synchronously`() = runTest(dispatcher) {
         val client = FakeClient(
             mapOf(
                 "E" to Result.success(listOf(departure("victoria", "Victoria", 300))),
@@ -4230,15 +3725,13 @@ class MainViewModelTest {
                 "PB" to Result.success(listOf(departure("central", "Central", 260))),
             ),
         )
-        val vm = tierVm(client, listOf(StopRef("E", "E")), listOf(clusterOf("M1", "PA" to "bus", "PB" to "bus")))
-        advanceUntilIdle()
-        vm.reveal("bus")
+        val vm = tierVm(client, listOf(StopRef("E", "E"), StopRef("PA", "PA"), StopRef("PB", "PB")), emptyList())
         advanceUntilIdle()
         assertTrue("PA" in shownIds(vm) && "PB" in shownIds(vm))
 
         // The same cluster (same key) now has only PA — PB's pole crossed the radius. PB leaves at
         // once; PA stays. Same-key clusters whose MEMBERS changed are reconciled, not just dropped.
-        vm.reconcile(newEager = eagerOf("E" to "bus"), newMore = listOf(clusterOf("M1", "PA" to "bus")))
+        vm.reconcile(newEager = eagerOf("E" to "bus") + clusterOf("M1", "PA" to "bus"), newMore = emptyList())
         assertTrue("PB" !in shownIds(vm))
         advanceUntilIdle()
         assertTrue("PA" in shownIds(vm))
@@ -4249,9 +3742,7 @@ class MainViewModelTest {
     fun `a pruned set is persisted even when the refetch gets no fresh arrivals`() = runTest(dispatcher) {
         val store = FakeStore()
         val client = twoStopClient()
-        val vm = tierVm(client, listOf(StopRef("E", "E")), listOf(clusterOf("M1", "MA" to "bus")), store)
-        advanceUntilIdle()
-        vm.reveal("bus")
+        val vm = tierVm(client, listOf(StopRef("E", "E"), StopRef("MA", "MA")), emptyList(), store)
         advanceUntilIdle()
         assertEquals(setOf("E", "MA"), store.stored!!.stops.map { it.stopId }.toSet())
 
@@ -4298,9 +3789,7 @@ class MainViewModelTest {
         // save. Under the old flag design a failed save stranded MA until a later retry.
         val store = FakeStore()
         val client = twoStopClient()
-        val vm = tierVm(client, listOf(StopRef("E", "E")), listOf(clusterOf("M1", "MA" to "bus")), store)
-        advanceUntilIdle()
-        vm.reveal("bus")
+        val vm = tierVm(client, listOf(StopRef("E", "E"), StopRef("MA", "MA")), emptyList(), store)
         advanceUntilIdle()
         assertEquals(setOf("E", "MA"), store.stored!!.stops.map { it.stopId }.toSet())
 

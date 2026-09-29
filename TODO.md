@@ -1411,12 +1411,15 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         what the higher cap lets in arrives as tap-to-load cards, like today's farther cards. Keep
         both a count (small pages) and a distance limit (the mile for buses, 3 mi for stations).
         Direction is the one the list already splits rows by; the cap just keeps it.
-  - [ ] **Delete the now-unreachable "More" reveal path.** Nothing calls `MainViewModel.reveal`
-        any more: remove it with `moreState`, `revealedKeys`, `fetchIncremental`, the revealed-
-        cluster handling in `reconcile`, `NearbySelection.nextReveal` / `revealableBuckets` /
-        `MAX_REVEAL_PER_TAP` / `BUS_MODE`, and their tests. Kept out of the bus-cards change to
-        keep that one reviewable; behavior is unchanged either way.
-  - [ ] **Decide "More" progression from fetched/rendered rows, not declared metadata** (Codex P2,
+  - [x] **Delete the now-unreachable "More" reveal path** (landed). Nothing called
+        `MainViewModel.reveal` once the bus cards replaced the last "More" button, so it went with
+        `moreState`, `revealedKeys`, `fetchIncremental`, the revealed-cluster handling in
+        `reconcile`, `NearbySelection.nextReveal` / `revealableBuckets` / `MAX_REVEAL_PER_TAP` /
+        `BUS_MODE`, and their tests; the relocation-prune tests that set up a revealed stop now use
+        an eager one. The *more* tier stays: the farther bus cards and the terminating-service check
+        read it. Behavior unchanged. The two reveal follow-ups below are moot with it.
+  - [x] **Decide "More" progression from fetched/rendered rows, not declared metadata** — *moot:
+        the reveal it tuned was deleted (above).* (Codex P2,
         PR #98). `nextReveal` decides how far to page from cluster *declared* lines, before fetching —
         so a nearer cluster that declares a not-shown route but returns no live departure is counted
         as the productive stop, the page stops there, and a farther cluster that actually has a live
@@ -1425,7 +1428,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         is **fetch-then-decide** — reveal incrementally, fetch, check whether a new *rendered* row
         appeared, continue if not. That is the same redesign as the two request-burst items below, so
         do them together.
-  - [ ] **Don't fetch a "More" cluster that only repeats routes already shown** (Codex P1 follow-up,
+  - [x] **Don't fetch a "More" cluster that only repeats routes already shown** — *moot: the reveal
+        it bounded was deleted (above).* (Codex P1 follow-up,
         PR #98). Reaching through a redundant run reveals — and so fetches arrivals+disruptions for —
         clusters whose rows the near-me dedupe then hides, spending requests for nothing. Skipping the
         fetch for a cluster whose *declared* routes are all already shown would cut the burst, but a
@@ -1436,7 +1440,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         Pairs with the eager request-count budget
         and the incremental-fetch item (fetch only the newly revealed page, not the whole set) — all
         three bound the near-me request burst.
-  - [ ] **"More" reveal riders** (the reveal now exists, above): a **widget "More"** that just
+  - [ ] **"More" reveal riders** (the reveal was deleted, above, so each would need a new "More" or
+        ride the farther cards): a **widget "More"** that just
         opens the app (the widget can't expand in place; keep widget + main-screen rendering one
         parameterized implementation, and consider hiding "More" on the widget); **line hints**
         (a tappable "VIC" chip for a line nearby but not eager); and a **radius-expand chip**
@@ -2637,13 +2642,10 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   it saves and the widget never shows revealed stops. **Reversible:** Option B is a filter on the
   snapshot save (persist only the eager stops), no data-model change. Confirm the widget-load cost
   is acceptable, or flip to B.
-- **"More" button copy is provisional, pending sign-off before translation (autopilot,
-  2026-09-21).** Only "More bus stops" (`more_stops_bus`) remains since the non-bus buttons went
-  (maintainer, 2026-09-25). Wording is the maintainer's call; no other locale exists yet, so
-  nothing is translated — settle the English first. Reversible (a string value).
-- **"More" pages `CLUSTERS_PER_MODE` (2) clusters per tap (autopilot, 2026-09-21).** Symmetric
-  with the eager cap, and keeps each tap's fetch burst bounded; "reveal all of the mode at once"
-  is the alternative. Reversible — the `pageSize` argument to `NearbySelection.nextReveal`.
+- **"More" button copy is provisional — MOOT.** The last button ("More bus stops") went when the
+  farther bus cards replaced it (maintainer, 2026-09-25), and its string with it.
+- **"More" pages `CLUSTERS_PER_MODE` (2) clusters per tap — MOOT.** The reveal it paged was
+  deleted once nothing called it.
 - **Prune-persistence redesigned — RESOLVED (maintainer approved "you choose", 2026-09-21).** Three
   Codex findings on #87 landed on one mechanism: shrink-to-Error skipped the save (round 1); the
   `pruneNeedsPersist` flag was cleared before the async save durably completed (round 3); and the
