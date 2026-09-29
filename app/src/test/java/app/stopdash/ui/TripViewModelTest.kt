@@ -923,6 +923,222 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `a pull plans again at once and fetches every stop afresh`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        val client = FakeClient(mutableMapOf("A" to listOf(train("red", "B", 9))))
+        val trip = model(planner, client)
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(1, planner.calls)
+        assertEquals(listOf("A", "B"), client.asked.sorted())
+        // A minute on, well inside the plan's fifteen and the stops' minute: a tick would do neither.
+        now = now.plusSeconds(30)
+        trip.pullRefresh()
+        assertTrue(trip.pulling.value)
+        advanceUntilIdle()
+        assertEquals(2, planner.calls)
+        assertEquals(listOf("A", "A", "B", "B"), client.asked.sorted())
+        assertEquals(now, trip.state.value.live.getValue("A").fetchedAt)
+        assertFalse(trip.pulling.value)
+        // What the pull fetched is from after it: the next tick reuses it.
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(4, client.asked.size)
+    }
+
+    @Test
+    fun `a pull during a refresh plans again after it, its indicator up until then`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        val client = FakeClient(mutableMapOf())
+        val trip = model(planner, client)
+        trip.refresh()
+        trip.pullRefresh()
+        assertTrue(trip.pulling.value)
+        advanceUntilIdle()
+        assertEquals(2, planner.calls)
+        // The refresh under way fetched every stop after the pull asked: those are what it asked for.
+        assertEquals(listOf("A", "B"), client.asked.sorted())
+        assertFalse(trip.pulling.value)
+    }
+
+    @Test
+    fun `a pull during a refresh fetches the new plan's stops, however recent`() = runTest(dispatcher) {
+        // The re-plan the pull asks for boards at D instead, which another screen fetched 20 s ago.
+        val fromD = TripRoute(listOf(leg("green", "D", "C", 5, 15)))
+        var calls = 0
+        val planner = object : JourneyPlanner {
+            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed): List<TripRoute> =
+                if (calls++ == 0) listOf(route) else listOf(fromD)
+        }
+        val cache = ArrivalsCache()
+        cache.put("D", listOf(train("green", "C", 6)), now.minusSeconds(20))
+        val client = FakeClient(mutableMapOf("D" to listOf(train("green", "C", 7))))
+        val trip = model(planner, client, arrivals = cache)
+        trip.refresh()
+        trip.pullRefresh()
+        advanceUntilIdle()
+        assertEquals(2, calls)
+        assertEquals(listOf(fromD), trip.state.value.routes)
+        // The refresh under way fetched A and B, after the pull asked, so they aren't asked for twice;
+        // D, held from before the pull, is asked for again (Codex, PR #373).
+        assertEquals(listOf("A", "B", "D"), client.asked.sorted())
+        assertEquals(TripViewModel.StopLive(listOf(train("green", "C", 7)), now), trip.state.value.live["D"])
+    }
+
+    @Test
+    fun `a re-plan from the fresh fix a pull takes fetches its new stop, however recent, under the pull's indicator`() = runTest(dispatcher) {
+        // Synthetic positions (SPEC *Privacy*): the fix the pull takes lands ~220 m on, where the
+        // plan boards at D, which another screen fetched 20 s before the pull.
+        var at = Coordinates(51.5, -0.12)
+        val fromD = TripRoute(listOf(leg("green", "D", "C", 5, 15)))
+        var calls = 0
+        // The re-plan from that fix answers when the test says, so its indicator can be seen.
+        val replanned = CompletableDeferred<Unit>()
+        val planner = object : JourneyPlanner {
+            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed): List<TripRoute> =
+                if (calls++ < 2) listOf(route) else listOf(fromD).also { replanned.await() }
+        }
+        val cache = ArrivalsCache()
+        cache.put("D", listOf(train("green", "C", 6)), now.minusSeconds(20))
+        val client = FakeClient(mutableMapOf("D" to listOf(train("green", "C", 7))))
+        val trip = TripViewModel(
+            planner, client, "A", listOf(TripDestination.Stop("C")),
+            clock = { now }, plans = TripPlans(), io = dispatcher, arrivals = cache, origin = { TripOrigin.Here(at) },
+        )
+        trip.refreshFor(1)
+        advanceUntilIdle()
+        // The pull's own run ends before the fix lands; its indicator waits on the fix.
+        trip.pullRefresh(awaitFix = true)
+        advanceUntilIdle()
+        assertTrue(trip.pulling.value)
+        now = now.plusSeconds(5)
+        at = Coordinates(51.502, -0.12)
+        trip.refreshFor(2)
+        // The re-locate has ended with a re-pick the trip is refreshing for: that run is the pull's.
+        trip.fixSettled(2)
+        advanceUntilIdle()
+        assertEquals(3, calls)
+        assertTrue(trip.pulling.value)
+        replanned.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(trip.pulling.value)
+        assertEquals(listOf(fromD), trip.state.value.routes)
+        // D's arrivals were asked for before the pull: asked for again (maintainer, 2026-09-29).
+        assertEquals(1, client.asked.count { it == "D" })
+        assertEquals(TripViewModel.StopLive(listOf(train("green", "C", 7)), now), trip.state.value.live["D"])
+    }
+
+    @Test
+    fun `a pull whose fresh fix brings no new re-pick lets go of its indicator`() = runTest(dispatcher) {
+        val trip = model(FakePlanner(listOf(route)), FakeClient(mutableMapOf("A" to listOf(train("red", "B", 9)))))
+        trip.refreshFor(1)
+        advanceUntilIdle()
+        // Settled during the pull's own run: the indicator goes when that run ends.
+        trip.pullRefresh(awaitFix = true)
+        trip.fixSettled(1)
+        assertTrue(trip.pulling.value)
+        advanceUntilIdle()
+        assertFalse(trip.pulling.value)
+        // Settled after it: the indicator goes at once.
+        trip.pullRefresh(awaitFix = true)
+        advanceUntilIdle()
+        assertTrue(trip.pulling.value)
+        trip.fixSettled(1)
+        assertFalse(trip.pulling.value)
+        // A pull from a From… station waits on no fix.
+        trip.pullRefresh()
+        advanceUntilIdle()
+        assertFalse(trip.pulling.value)
+    }
+
+    @Test
+    fun `a trip taking over from one pulled on plans afresh`() = runTest(dispatcher) {
+        // The pull's fresh fix found a new nearest stop: a trip of its own, planned 20 s before the
+        // pull with its plan kept for reuse ([kept]; the pulled trip keys its plans elsewhere).
+        val planner = FakePlanner(listOf(route))
+        val kept = TripPlans()
+        val cache = ArrivalsCache()
+        val client = FakeClient(mutableMapOf("A" to listOf(train("red", "B", 9))))
+        model(planner, client, kept, arrivals = cache).refresh()
+        advanceUntilIdle()
+        now = now.plusSeconds(20)
+        val at = model(planner, client, TripPlans(), arrivals = cache).pullRefresh()
+        advanceUntilIdle()
+        assertEquals(2, planner.calls)
+        assertEquals(4, client.asked.size)
+        now = now.plusSeconds(5)
+        // Without the pull carried, the trip takes up the plan kept from before it.
+        model(planner, client, kept, arrivals = cache).refreshFor(null)
+        advanceUntilIdle()
+        assertEquals(2, planner.calls)
+        // Carried, it plans again; the arrivals the pull's own run fetched are from after it, so
+        // they're taken up rather than asked for again.
+        val next = model(planner, client, kept, arrivals = cache)
+        next.carryPull(at)
+        // The pull's indicator is up in the trip that took over until its run ends.
+        assertTrue(next.pulling.value)
+        next.refreshFor(null)
+        advanceUntilIdle()
+        assertEquals(3, planner.calls)
+        assertEquals(4, client.asked.size)
+        assertFalse(next.pulling.value)
+    }
+
+    @Test
+    fun `a pull carried into a trip already showing plans and fetches it afresh, once`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        val client = FakeClient(mutableMapOf("A" to listOf(train("red", "B", 9))))
+        val trip = model(planner, client)
+        trip.refreshFor(null)
+        advanceUntilIdle()
+        now = now.plusSeconds(20)
+        trip.carryPull(now)
+        assertTrue(trip.pulling.value)
+        advanceUntilIdle()
+        assertFalse(trip.pulling.value)
+        assertEquals(2, planner.calls)
+        assertEquals(listOf("A", "A", "B", "B"), client.asked.sorted())
+        // The screen carries it on every composition: the same pull again does nothing.
+        trip.carryPull(now)
+        assertFalse(trip.pulling.value)
+        advanceUntilIdle()
+        assertEquals(2, planner.calls)
+        assertEquals(4, client.asked.size)
+    }
+
+    @Test
+    fun `a pull's fetch that fails keeps the stop's last arrivals, marked failed`() = runTest(dispatcher) {
+        val before = listOf(train("red", "B", 9))
+        val client = FakeClient(mutableMapOf("A" to before))
+        val trip = model(FakePlanner(listOf(route)), client)
+        trip.refresh()
+        advanceUntilIdle()
+        now = now.plusSeconds(30)
+        client.failStops = setOf("A")
+        trip.pullRefresh()
+        advanceUntilIdle()
+        // Asked for again, and TfL didn't answer: the leg keeps what it last knew rather than go
+        // blank, as any failed refresh does (SPEC *When something is wrong*).
+        assertEquals(listOf("A", "A", "B", "B"), client.asked.sorted())
+        assertEquals(TripViewModel.StopLive(before, now.minusSeconds(30), failed = true), trip.state.value.live["A"])
+    }
+
+    @Test
+    fun `a pull whose plan fails says why and lets go of its indicator`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        val trip = model(planner, FakeClient(mutableMapOf()))
+        trip.refresh()
+        advanceUntilIdle()
+        planner.failWith = TflException.Offline(null)
+        trip.pullRefresh()
+        advanceUntilIdle()
+        assertNotNull(trip.state.value.planError)
+        // The last plan stays up under its error.
+        assertEquals(listOf(route), trip.state.value.routes)
+        assertFalse(trip.pulling.value)
+    }
+
+    @Test
     fun `a trip reopened within fifteen minutes reuses its plan`() = runTest(dispatcher) {
         val planner = FakePlanner(listOf(route))
         val plans = TripPlans()

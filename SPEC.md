@@ -1138,7 +1138,19 @@ showing "Planning…" rather than the old routes. A new fix that keeps the same 
 plan while the rider is within **150 m** of where it was planned from (a fix's wander, or a few steps);
 once they are farther, the plan's first walk is from somewhere they've left, so the trip plans again
 from where they are, keeping the old routes up meanwhile, so the reachable first-leg trains follow
-the rider. A plan reused from earlier is held to the same test when the trip opens. While a re-locate is in flight, or after
+the rider. A plan reused from earlier is held to the same test when the trip opens. **Pulling the
+routes down** is the rider asking for the latest (maintainer, 2026-09-29): the trip plans again at
+once, from the same start to the same place at the same walking speed, however young its plan, and
+asks afresh for every boarding stop's arrivals, as the list's pull does; the routes stay up until the
+new plan has answered, and a failed one says so over them with its Retry. From "Here" it also takes a
+fresh fix, as the list's pull does, so the 150 m test above applies to where the rider is now, and
+the pull shows as under way until the trip has planned and fetched for that fix. A plan made or arrivals asked for before the pull are never reused in place of asking again, however
+recent (maintainer, 2026-09-29): a later re-plan, from that fix or a walking speed changed, asks
+afresh for any stop it boards at, and a fix nearer another stop, which is a trip of its own, plans
+and fetches afresh too rather than take up a plan or arrivals kept from before the pull. A request
+that fails keeps the stop's last arrivals, marked as failed and aging as any failed refresh's do
+(*When something is wrong*), rather than blank the leg. An
+opened route has no pull: its times keep the minute tick. While a re-locate is in flight, or after
 one that fails (which keeps the old stop, as on the list, and shows the list's location banner over
 the trip), the origin is unconfirmed: until a fix is confirmed again, the walk is
 from the last confirmed position and every route's arrival reads "est." at best, never live-confirmed. A plan older than that is re-planned, on open
@@ -1207,7 +1219,7 @@ protected nothing TfL didn't already have, so it is not to be reinstated as a pr
 (within TfL's anonymous budget). The Planner is called when a trip opens without a plan under 15
 minutes old (the plan is held in memory only, so a trip reopened after process death re-plans), again
 every 15 minutes while the screen stays visible, on a re-locate to a new nearest stop or 150 m on from where it was planned, and once
-per tap of Retry: about four calls an hour for a trip left open, plus one per re-locate or Retry the
+per tap of Retry or pull on the routes: about four calls an hour for a trip left open, plus one per re-locate, Retry or pull the
 rider makes. To a station complex each of those is one call per station plus one for its bus stops
 (about six at King's Cross, two or three at a typical interchange): about 24 an hour at King's Cross. Ranking needs every listed route's live trains, so each refresh fetches arrivals
 at every stop where any listed route boards a ride (its first stop and each change), once per

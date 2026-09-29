@@ -178,6 +178,7 @@ import app.stopdash.ui.favoriteRouteName
 import app.stopdash.ui.hereOriginIds
 import app.stopdash.ui.reachedStopIds
 import app.stopdash.ui.rememberFarReveal
+import app.stopdash.ui.rememberLastPull
 import app.stopdash.ui.rememberListStateFor
 import app.stopdash.ui.rememberPendingTracker
 import app.stopdash.ui.theme.StopDashTheme
@@ -2380,6 +2381,10 @@ class MainActivity : ComponentActivity() {
             .minByOrNull { distanceMeters[it.id] ?: Double.MAX_VALUE } ?: origin.first()
         // Keyed on both ends, so a relocation to a new nearest stop plans afresh.
         val tripKey = "${fromStop.id}>$destKey"
+        // When the rider last pulled on this trip's routes, kept past a new nearest stop (a trip model
+        // of its own) and a configuration change, so the trip a pull's fresh fix moves to plans and
+        // fetches afresh too.
+        var lastPull by rememberLastPull(destKey)
         // Read at each plan, so a re-plan starts from the latest fix.
         val latestHere by rememberUpdatedState(here)
         val owner = remember(tripKey) { stores.ownerFor(tripKey, this@MainActivity) }
@@ -2405,6 +2410,7 @@ class MainActivity : ComponentActivity() {
         )
         val lifecycleOwner = LocalLifecycleOwner.current
         SideEffect { trip.hiddenModes = hiddenModes }
+        SideEffect { lastPull?.let(trip::carryPull) }
         // The model outlives a rotation, and the origin it was made with reads that composition's
         // fix: this composition's replaces it, so a later plan starts from the current one.
         SideEffect { trip.origin = { latestHere?.let(TripOrigin::Here) ?: TripOrigin.Stop(fromStop.id) } }
@@ -2433,6 +2439,11 @@ class MainActivity : ComponentActivity() {
         // walk to add; at a From… station they're at its own stops (a neighbor, when every own stop is
         // hidden, is still a walk from it, at the rider's own pace as the Planner's walks are).
         val access = if (here != null || fromStop.id in fromStopIds) Duration.ZERO else TripTiming.accessWalk(distanceMeters[fromStop.id] ?: 0.0, walkingSpeed)
+        val relocatingNow = relocating.collectAsStateWithLifecycle().value
+        // A re-locate that has ended, with the re-pick it left: one that brought none new leaves a pull
+        // from here nothing more to wait for ([TripViewModel.fixSettled]).
+        LaunchedEffect(trip, relocatingNow) { if (!relocatingNow) trip.fixSettled(repick?.id) }
+        val pulling by trip.pulling.collectAsStateWithLifecycle()
         TripScreen(
             title = title,
             state = tripState,
@@ -2443,7 +2454,7 @@ class MainActivity : ComponentActivity() {
             onBack = close,
             onRetry = trip::retry,
             locationBanner = locationBanner.collectAsStateWithLifecycle().value,
-            relocating = relocating.collectAsStateWithLifecycle().value,
+            relocating = relocatingNow,
             // From a From… station, back to near me; from here, re-locate.
             onRelocate = onLocate ?: relocate,
             hiddenModes = hiddenModes,
@@ -2469,6 +2480,16 @@ class MainActivity : ComponentActivity() {
             // Where it starts and where it goes, each a tap to change (maintainer, 2026-09-28): From
             // opens the From… search, To the destination search, the other end kept.
             ends = onChangeFrom?.let { changeFrom -> TripEnds(fromName, toName, changeFrom, onPlanTo) },
+            // A pull plans again now and fetches every stop afresh; from here it takes a fresh fix too,
+            // as the list's pull does, so a rider who has walked on is planned for from where they are
+            // ([TripViewModel.refreshFor] plans again once the fix lands 150 m on, and a fix nearer
+            // another stop carries the pull into that trip, [lastPull]). The indicator holds until
+            // the trip has refreshed for that fix.
+            pullRefreshing = pulling || (here != null && relocatingNow),
+            onPullRefresh = {
+                lastPull = trip.pullRefresh(awaitFix = here != null)
+                if (here != null) relocate()
+            },
         )
     }
 

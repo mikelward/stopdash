@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -46,6 +47,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
@@ -357,6 +360,36 @@ class TripScreenScreenshotTest {
         )
         composeRule.onNodeWithTag("fromField").assertContentDescriptionEquals("From Highbury & Islington")
         captureSnapshot("trip-from-to-station.png")
+    }
+
+    @Test
+    fun pulling_the_routes_down_asks_for_them_again() {
+        var pulled = 0
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf",
+                    state = planned,
+                    now = now,
+                    access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source),
+                    onBack = {},
+                    onRetry = {},
+                    onPullRefresh = { pulled++ },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("tripRoutes").performTouchInput { swipeDown() }
+        composeRule.waitForIdle()
+        assertEquals(1, pulled)
+        // The routes stay up while the new plan and times come in.
+        composeRule.onNodeWithText("28 min · ~08:30").assertIsDisplayed()
+        // An open route is one choice already made: no pull there, its times refresh on the tick.
+        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("6 stops to Whitechapel").assertIsDisplayed()
+        composeRule.onAllNodesWithTag("tripRoutesPull").assertCountEquals(0)
     }
 
     @Test
@@ -1803,6 +1836,16 @@ class TripScreenScreenshotTest {
         restoration.emulateSavedInstanceStateRestore()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("6 stops to Whitechapel").assertIsDisplayed()
+    }
+
+    @Test
+    fun a_pull_on_the_routes_is_remembered_across_a_configuration_change() {
+        val restoration = StateRestorationTester(composeRule)
+        var lastPull: MutableState<Instant?>? = null
+        restoration.setContent { lastPull = rememberLastPull("C") }
+        composeRule.runOnIdle { lastPull!!.value = now }
+        restoration.emulateSavedInstanceStateRestore()
+        composeRule.runOnIdle { assertEquals(now, lastPull!!.value) }
     }
 
     @Test
