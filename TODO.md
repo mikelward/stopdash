@@ -1002,6 +1002,89 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               is about to arrive (or it's time to head for the platform), on its own channel so it
               can be muted apart from "Get off soon". Today the wait shows only as a countdown on
               the trip's screen and pinned card (and the ongoing notification, once it lands).
+        - [ ] **A "Route disruption" alert** (maintainer, 2026-09-29): a heads-up when a trip on
+              the way learns something that may stop a leg the rider hasn't finished (a "coming
+              leg" below): its boarding stop until its train is boarded, and its line and where it
+              gets off until the rider does, so the one being ridden counts too. It keeps the rider
+              from waiting for a train that won't come (a train through a change that never turns
+              up, say).
+              Named for what's known, not a verdict that the route is dead: the text states the
+              fact ("Northern line: part suspended", "Change at <stop> may be missed"), and it opens
+              the trip, which offers to plan again from where the rider is. It fires on signals of
+              medium confidence or higher (tiers agreed with the maintainer, 2026-09-29). Its
+              contract goes into SPEC's *On the way* with the change that builds it:
+              - **High:** a coming leg's line closed or suspended (as the trip already counts it),
+                or part closed or part suspended where TfL places it on the leg's own stretch
+                (which needs the affected stops kept: `LineStatus` keeps only the direction today,
+                so until it does every part closure or part suspension is Medium); a stop the
+                route still has to reach closed or moved: where a coming leg boards or gets off, or
+                where a walk ends (a change between stations, or the stop the route ends at), once
+                *Check a trip's boarding stops for disruptions* below and *Closure checks where
+                the rider gets off* above fetch them; or planning again can't make the connection.
+              - **Medium:** severe delays on a coming leg's line; a part closure or part
+                suspension on it where it isn't known whether it covers the leg's own stretch; a
+                train through a change still not predicted when the rider is a few minutes from
+                its boarding stop.
+              - **Low, never alerts:** a leg past TfL's prediction window (about half an hour), so
+                no train predicted yet; minor delays; the last train predicted leaving too soon on a
+                line not running every few minutes, which may only be where the predictions end
+                (the trip list withholds such an arrival and plans again rather than call it
+                missed).
+              Only a fresh, successful answer is evidence: a check that failed or has gone stale is
+              unknown, never a signal, so a TfL outage can't read as a train not predicted. A line
+              or stop alert is a signal, at any tier, only where *Disruptions* would warn of it on
+              the trip right now (a line's ⚠ on the leg's row, a stop's closure card), by the same
+              rules, so the alert and the screen never disagree: not planned work before its start
+              day (its ⓘ); not a stop notice outside its window; not one TfL scopes to the other direction from the leg (one with no
+              direction known counts both ways); and not one the rider has dismissed, which comes
+              back as it does there, when it escalates or TfL rewords it, or when planned work
+              starts, since dismissing its advance ⓘ is separate from dismissing its ⚠.
+              Planning again from where the rider is waits on *Explore how a trip recalculates
+              mid-route* below: a re-plan today starts from the trip's first stop, which would judge
+              connections the rider has already made or missed. Until that lands, the re-plan tier
+              is out and the alert opens the trip without offering to plan again. Once it lands, a
+              re-plan with no usable location starts from the stop the trip has the rider at next.
+              It also waits on the trip on the way keeping its destination as chosen: `ActiveTrip`
+              keeps only the route and the destination's name, so a re-plan from it (after a
+              restart, say) would ask for the one stop the route ends at, and could call a
+              connection missed that another stop of a station complex still makes.
+              Kept quiet: one notification per trip, updated in place as signals change, and taken
+              down as soon as no signal remains, the trip ends, or it stops being followed (the app
+              leaving the foreground, until the foreground service below lands), so it never
+              outlives its evidence. It's posted with a system timeout (`setTimeoutAfter`) no later
+              than its evidence goes stale, renewed by each refresh that still finds the signal, so
+              it comes down even when the process dies with nothing left to take it down. Once per
+              leg per signal; on its own channel, muted apart from "Get off soon". Only while the
+              app is open until the foreground service below lands.
+              Cost: every request it can make, each bounded; all £0 and well inside TfL's keyless
+              ~50 a minute.
+              - **Line status**, which the trip screen already checks. Confirm when building it
+                whether the trip on the way has it too, else one batched request for the trip's
+                few lines every 30 s while it's followed, a failure just leaving them unknown.
+              - **The detailed status lookup** the status client makes the first time it sees an
+                alert (`detail=true`, ~150 KB a line, not waited on: that refresh counts the alert
+                both ways, the next by direction). Placing a part closure on the leg's stretch
+                reads that same answer. It's the one large download: once per new alert while TfL
+                answers it, but asked again each refresh while it fails, up to ~150 KB a line each
+                time, until the status client backs off (*Back off a direction lookup that keeps
+                failing*).
+              - **Stop closures**, as the two closure tasks the High tier names fetch them (not
+                yet), shared with the list for five minutes.
+              - **Planning again**, only on a signal and only once the mid-route task lands: one
+                re-plan per new or changed signal, however many legs raised it, never while one is
+                in flight. A re-plan is the trip's own, so it asks the Journey Planner once per
+                stop of the destination (about six to a large complex like King's Cross, SPEC
+                *Trips with a change*). A failed one leaves that tier unknown and waits longer
+                before the next (doubling from a minute, capped at five), so a TfL outage costs at
+                most one such fan-out a minute, not one every refresh. No wakeup of its own: it
+                rides a refresh that's already running.
+              Privacy: the stops and lines it asks about say which route the rider is on, so they
+              are user data (`docs/PRIVACY.md`). They go only to TfL, which a followed trip already
+              asks about the same stops and lines, so no Play Data Safety category is new; but the
+              policy's *On the way* names what a trip on the way asks TfL, so it names this polling
+              before it ships. A re-plan sends the origin the mid-route task settles on (a stop, or
+              where the rider is), so its Data Safety answer is that task's. Finer details are
+              settled in the change that builds it.
         - [ ] **Not to merge until the maintainer's Play declarations:** the ongoing notification
               with the app closed (a foreground service, which replaces the old *Step by step*
               item), and live location to see the train boarded and follow a bus.
