@@ -80,7 +80,12 @@ The app finds stops two ways:
   **forces a fresh fix** (it does not take the
   recent-cached fast path a first open may use): a rider who has walked since the last fix
   must not be re-resolved against the old position, so a cached fix is only a bounded fallback
-  here — a fresh fix is ~1–2 s in the common case, comfortably under the refresh spinner.
+  here — a fresh fix is ~1–2 s in the common case, comfortably under the refresh spinner. For the
+  same reason, a re-locate still under way when the app was backgrounded (a pull, say) doesn't
+  stand in for the return's: it was asked from where the rider was then, so the return re-locates
+  over it and its own fix wins. If it ended while the app was away without stops to show (no fix,
+  a failed lookup, none nearby), the return looks again with a fresh fix rather than leave that
+  outcome up until the rider retries.
   Re-resolving skips the "locating…" spinner on the common success path — the departures stay
   on screen during the fix rather than
   flashing back to the gate on every pull — but an unsuccessful re-resolve is **surfaced

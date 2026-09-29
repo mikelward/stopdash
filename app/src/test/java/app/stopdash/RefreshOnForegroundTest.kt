@@ -89,6 +89,33 @@ class RefreshOnForegroundTest {
     }
 
     @Test
+    fun `each time the app leaves the foreground is reported, but not the observer going away`() = runTest(dispatcher) {
+        // The near-me list marks a relocation still under way as from before the app left, so the
+        // return re-locates over it rather than waiting on it (Codex on #220).
+        val owner = FakeOwner()
+        var left = 0
+        val job = launch { refreshOnForeground(owner.lifecycle, onBackground = { left++ }) {} }
+
+        owner.registry.currentState = Lifecycle.State.STARTED
+        advanceUntilIdle()
+        assertEquals(0, left)
+        owner.registry.currentState = Lifecycle.State.CREATED
+        advanceUntilIdle()
+        assertEquals(1, left)
+        owner.registry.currentState = Lifecycle.State.STARTED
+        owner.registry.currentState = Lifecycle.State.CREATED
+        advanceUntilIdle()
+        assertEquals(2, left)
+
+        // Its host leaving while the app is in the foreground isn't the app leaving.
+        owner.registry.currentState = Lifecycle.State.STARTED
+        advanceUntilIdle()
+        job.cancel()
+        advanceUntilIdle()
+        assertEquals(2, left)
+    }
+
+    @Test
     fun `a recreated activity skips its own first start`() = runTest(dispatcher) {
         // A configuration change restarts refreshOnForeground fresh; its first STARTED is
         // the recreated first frame and must not fetch again (the ViewModel survived).

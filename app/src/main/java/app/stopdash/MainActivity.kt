@@ -47,6 +47,7 @@ import androidx.core.content.FileProvider
 import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.HasDefaultViewModelProviderFactory
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -692,8 +693,10 @@ class MainActivity : ComponentActivity() {
                         aboveOverlay = {
                             ForegroundReturnLatcher(
                                 isReady = { nearbyViewModel.state.value is NearbyStopsViewModel.State.Ready },
-                                isBusy = { nearbyViewModel.relocating.value },
+                                isBusy = nearbyViewModel::relocatingSinceLeft,
                                 onReturn = { returnLatch.pending = true },
+                                onLeave = nearbyViewModel::leftForeground,
+                                onReturnWithoutSet = { nearbyViewModel.locateAfterLeftBehind() },
                             )
                         },
                         overlayContent = {
@@ -1022,6 +1025,7 @@ class MainActivity : ComponentActivity() {
                                         foregroundReturnPending = returnLatch.pending,
                                         onForegroundReturnConsumed = { returnLatch.pending = false },
                                         isRelocating = { nearbyViewModel.relocating.value },
+                                        returnBusy = nearbyViewModel::relocatingSinceLeft,
                                         relocate = { nearbyViewModel.relocate() },
                                         // "Show all" re-picks the set from the same fix, as the list's does,
                                         // so a hidden mode's stops can become origins again.
@@ -1038,6 +1042,7 @@ class MainActivity : ComponentActivity() {
                                         ready = state,
                                         relocate = { onSameSet -> nearbyViewModel.relocate(onSameSet) },
                                         relocating = nearbyViewModel.relocating,
+                                        returnBusy = nearbyViewModel::relocatingSinceLeft,
                                         locationBanner = nearbyViewModel.locationBanner,
                                         refinement = nearbyViewModel.refinement,
                                         applyRefinement = nearbyViewModel::applyRefinement,
@@ -1307,6 +1312,9 @@ class MainActivity : ComponentActivity() {
         // into the refresh indicator so pull-to-refresh doesn't retract the instant the fetch
         // is enqueued, leaving the fix to change the set under a screen that reads as settled.
         relocating: StateFlow<Boolean>,
+        // Whether a relocation a return to the foreground waits on is under way: one started since
+        // the app last left ([NearbyStopsViewModel.relocatingSinceLeft]), not one from before.
+        returnBusy: () -> Boolean,
         // Why the shown nearby set's location is low-confidence, or null — drives the top banner
         // over the list (SPEC *Finding stops*). From the gate's NearbyStopsViewModel, which owns
         // the fix and its confidence.
@@ -1683,7 +1691,7 @@ class MainActivity : ComponentActivity() {
             // out of composition (an overlay) until a re-entry consumes it here — the whole point.
             ConsumeForegroundReturn(
                 pending = foregroundReturnPending,
-                isBusy = { relocating.value },
+                isBusy = returnBusy,
                 onConsumed = onForegroundReturnConsumed,
                 onRelocate = onRelocate,
             )
@@ -2045,8 +2053,10 @@ class MainActivity : ComponentActivity() {
         var returnPending by rememberSaveable { mutableStateOf(false) }
         ForegroundReturnLatcher(
             isReady = { fromNearby.state.value is NearbyStopsViewModel.State.Ready },
-            isBusy = { fromNearby.relocating.value },
+            isBusy = fromNearby::relocatingSinceLeft,
             onReturn = { returnPending = true },
+            onLeave = fromNearby::leftForeground,
+            onReturnWithoutSet = { fromNearby.locateAfterLeftBehind() },
         )
         val closeTrip = { onTo(to.closePicker().clearDestination()) }
         val ready = state as? NearbyStopsViewModel.State.Ready
@@ -2108,6 +2118,7 @@ class MainActivity : ComponentActivity() {
                 foregroundReturnPending = returnPending,
                 onForegroundReturnConsumed = { returnPending = false },
                 isRelocating = { fromNearby.relocating.value },
+                returnBusy = fromNearby::relocatingSinceLeft,
                 relocate = { fromNearby.relocate() },
                 showAllModes = {
                     HiddenModesSetting.showAll()
@@ -2131,6 +2142,7 @@ class MainActivity : ComponentActivity() {
                 ready = ready,
                 relocate = { onSameSet -> fromNearby.relocate(onSameSet) },
                 relocating = fromNearby.relocating,
+                returnBusy = fromNearby::relocatingSinceLeft,
                 locationBanner = fromNearby.locationBanner,
                 // The station page has none of the list's overflow items (back and To… are in its
                 // bar); its bug report and About come from [LocalAppMenu].
@@ -2192,6 +2204,9 @@ class MainActivity : ComponentActivity() {
         foregroundReturnPending: Boolean,
         onForegroundReturnConsumed: () -> Unit,
         isRelocating: () -> Boolean,
+        // Whether a relocation a return to the foreground waits on is under way: one started since
+        // the app last left ([NearbyStopsViewModel.relocatingSinceLeft]), not one from before.
+        returnBusy: () -> Boolean,
         relocate: () -> Unit,
         showAllModes: () -> Unit,
         relocating: StateFlow<Boolean>,
@@ -2228,7 +2243,7 @@ class MainActivity : ComponentActivity() {
         val appContext = applicationContext
         ConsumeForegroundReturn(
             pending = foregroundReturnPending,
-            isBusy = isRelocating,
+            isBusy = returnBusy,
             onConsumed = onForegroundReturnConsumed,
             onRelocate = relocate,
         )
@@ -3036,7 +3051,9 @@ internal class ForegroundReturnLatch : androidx.lifecycle.ViewModel() {
  * is open is still seen — the departures view that consumes the latch is out of composition then, so
  * an observer hosted there would miss the return entirely. The first foreground per activity instance
  * is skipped (the ViewModel init covers it, and a rotation restarts this with its own skip), and
- * [isBusy] gates a return that lands mid-relocate. Extracted (with [ConsumeForegroundReturn]) so the
+ * [isBusy] gates a return that lands mid-relocate — one started since the app left, since one from
+ * before, which [onLeave] marks as the app goes, would be superseded. A return with no set shown goes
+ * to [onReturnWithoutSet] instead. Extracted (with [ConsumeForegroundReturn]) so the
  * observer/overlay/consume wiring is exercised by a test rather than restated — a regression that
  * moved this back inside the departures view leaves the latch unset while an overlay is open.
  */
@@ -3045,6 +3062,9 @@ internal fun ForegroundReturnLatcher(
     isReady: () -> Boolean,
     isBusy: () -> Boolean,
     onReturn: () -> Unit,
+    onLeave: () -> Unit = {},
+    // A return while not [isReady]: a gate has no set to re-locate, but may still be owed a look.
+    onReturnWithoutSet: () -> Unit = {},
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     // Read the latest lambdas without re-keying the effect (a fresh lambda each recomposition would
@@ -3052,9 +3072,11 @@ internal fun ForegroundReturnLatcher(
     val currentIsReady = rememberUpdatedState(isReady)
     val currentIsBusy = rememberUpdatedState(isBusy)
     val currentOnReturn = rememberUpdatedState(onReturn)
+    val currentOnLeave = rememberUpdatedState(onLeave)
+    val currentOnReturnWithoutSet = rememberUpdatedState(onReturnWithoutSet)
     LaunchedEffect(lifecycleOwner) {
-        refreshOnForeground(lifecycleOwner.lifecycle, isBusy = { currentIsBusy.value() }) {
-            if (currentIsReady.value()) currentOnReturn.value()
+        refreshOnForeground(lifecycleOwner.lifecycle, isBusy = { currentIsBusy.value() }, onBackground = { currentOnLeave.value() }) {
+            if (currentIsReady.value()) currentOnReturn.value() else currentOnReturnWithoutSet.value()
         }
     }
 }
@@ -3105,17 +3127,26 @@ internal fun relocateAction(
  * first foreground is the initial load (done in the ViewModel's `init`, and re-run on a
  * fresh activity after process death), and a configuration change restarts this with its
  * own first-skip, so neither path double-fetches while a genuine return from the
- * background does refresh (SPEC D6). Extracted so the skip-first/return-again rule is
+ * background does refresh (SPEC D6). [onBackground] runs each time it leaves STARTED, so what
+ * was under way then can be told from what starts after. Extracted so the skip-first/return-again rule is
  * unit-testable off a device.
  */
 internal suspend fun refreshOnForeground(
     lifecycle: Lifecycle,
     isBusy: () -> Boolean = { false },
+    onBackground: () -> Unit = {},
     onForeground: () -> Unit,
 ) {
     var firstForeground = true
-    lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-        if (firstForeground) firstForeground = false else if (!isBusy()) onForeground()
+    // Told as the lifecycle stops, not from the block below, which a stop can cancel before it runs.
+    val leaving = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) onBackground() }
+    lifecycle.addObserver(leaving)
+    try {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            if (firstForeground) firstForeground = false else if (!isBusy()) onForeground()
+        }
+    } finally {
+        lifecycle.removeObserver(leaving)
     }
 }
 

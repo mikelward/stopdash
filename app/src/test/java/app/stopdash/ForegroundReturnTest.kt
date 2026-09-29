@@ -103,6 +103,9 @@ class ForegroundReturnTest {
         val owner = FakeOwner()
         var pending by mutableStateOf(false)
         val ready = false
+        // Whether the gate is owed a fresh look is the view model's to say
+        // ([NearbyStopsViewModel.locateAfterLeftBehind]): each such return is handed to it.
+        var withoutSet = 0
 
         composeRule.setContent {
             CompositionLocalProvider(LocalLifecycleOwner provides owner) {
@@ -110,17 +113,20 @@ class ForegroundReturnTest {
                     isReady = { ready },
                     isBusy = { false },
                     onReturn = { pending = true },
+                    onReturnWithoutSet = { withoutSet++ },
                 )
             }
         }
 
         composeRule.runOnUiThread { owner.registry.currentState = Lifecycle.State.STARTED }
         composeRule.waitForIdle()
+        assertEquals("the initial start isn't a return", 0, withoutSet)
         composeRule.runOnUiThread {
             owner.registry.currentState = Lifecycle.State.CREATED
             owner.registry.currentState = Lifecycle.State.STARTED
         }
         composeRule.waitForIdle()
         assertEquals("a return before Ready must not latch", false, pending)
+        assertEquals(1, withoutSet)
     }
 }

@@ -243,12 +243,52 @@ class NearbyStopsViewModel(
     // finish last and overwrite the newer result (e.g. a quick double-tap on Try again).
     private var locateJob: Job? = null
 
+    // The relocation that was under way when the app last left the foreground ([leftForeground]).
+    private var leftBehind: Job? = null
+
+    // Whether [leftBehind] has since ended without a set to show ([locateAfterLeftBehind]).
+    private var leftBehindLost = false
+
+    /**
+     * The app left the foreground. A relocation still under way was started from where the rider was
+     * then, so a return mustn't wait on it ([relocatingSinceLeft]): the return re-locates, and its
+     * fresh fix supersedes the older one (Codex on #220). It's left to run meanwhile, since the
+     * activity also stops for a rotation, which has no return to replace it.
+     */
+    fun leftForeground() {
+        leftBehind = locateJob?.takeIf { _relocating.value }
+        leftBehindLost = false
+    }
+
+    /**
+     * The app came back to the foreground with no set shown because the relocation left running as it
+     * went ([leftForeground]) ended without one: no fix (likely, with the app away), a failed lookup,
+     * or nothing nearby. That was from where the rider was then, and a gate has no set for a return
+     * to re-locate, so locate afresh, with the gate, forcing a fresh fix (Codex on #390). True when it
+     * did; false when there's nothing owed, and the gate stands as it is.
+     */
+    fun locateAfterLeftBehind(): Boolean {
+        val owed = leftBehindLost && _state.value !is State.Ready
+        leftBehindLost = false
+        if (owed) locateWith(forceFresh = true)
+        return owed
+    }
+
+    /**
+     * Whether a relocation a return to the foreground can wait on is under way: one started since
+     * the app last left ([leftForeground]). One started before then is from where the rider was when
+     * they left, and its result would be shown as current after they may have moved.
+     */
+    fun relocatingSinceLeft(): Boolean = _relocating.value && locateJob !== leftBehind
+
     /**
      * Resolve the nearby stops. Call once the location permission is held (on open if
      * already granted, or straight after the user grants it), and again for a retry. Safe to
      * call repeatedly — each call cancels any in-flight resolve and supersedes the last state.
      */
-    fun locate() {
+    fun locate() = locateWith(forceFresh = false)
+
+    private fun locateWith(forceFresh: Boolean) {
         locateJob?.cancel()
         stopRefining()
         // The Locating gate is shown instead of an in-place refresh, so clear the re-locate
@@ -256,7 +296,7 @@ class NearbyStopsViewModel(
         _relocating.value = false
         _state.value = State.Locating
         locateJob = viewModelScope.launch {
-            val fix = currentFix(forceFresh = false)
+            val fix = currentFix(forceFresh = forceFresh)
             if (fix == null) {
                 _state.value = State.NoLocation
                 _locationBanner.value = null
@@ -381,6 +421,8 @@ class NearbyStopsViewModel(
                     }
                 }
             }
+            // Left running as the app went, and ended without a set: a return locates afresh.
+            if (coroutineContext[Job] === leftBehind && _state.value !is State.Ready) leftBehindLost = true
         }
         locateJob = job
         _relocating.value = true
