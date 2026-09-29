@@ -352,8 +352,9 @@ internal object OnTheWayNotification {
 
 /**
  * A precise fix for a trip on the way, only while one could tell anything ([OnTheWay.wantsFix]): on a
- * walk to a boarding stop, and in the minutes after the train leaves it. Never logged or kept, only
- * compared with the stop's public position. The service's loop and the app's own both take it.
+ * walk to a boarding stop, while waiting there, in the minutes after the train leaves it, and as it
+ * nears where the rider gets off. Never logged or kept, only compared with stops' public positions.
+ * The service's loop and the app's own both take it.
  */
 internal suspend fun onTheWayFix(location: AndroidLocationProvider, trip: ActiveTrip?): LocationFix? {
     val now = Instant.now()

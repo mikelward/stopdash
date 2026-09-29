@@ -2720,6 +2720,8 @@ class MainActivity : ComponentActivity() {
                     arrivals = journeyPlanner::arrivals,
                     vehicles = journeyPlanner,
                     entrances = journeyPlanner::stationEntrances,
+                    // The same routes, held a day, the trip's cards place its rides with.
+                    lineSequence = { lineId -> routeStops(context.applicationContext).let { it.cached(lineId, "") ?: it.load(lineId, "") } },
                     warn = ::logDepartureWarning,
                     onGetOffSoon = { trip, riding ->
                         GetOffSoonAlert.post(context.applicationContext, trip, riding, Instant.now(), ::logDepartureWarning)

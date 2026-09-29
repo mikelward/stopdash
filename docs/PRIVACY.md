@@ -24,8 +24,8 @@ only approximate, or if no precise fix can be obtained) — or the stop or line 
 you've set an optional TfL API key (`app_key`), that key as your own credential, sent with your own
 TfL calls and nowhere else. Location is **sent only on demand**, never in the background. The one
 use beyond that is a trip you start: it's checked on the phone while you walk to a stop you're
-boarding at, just after you board, and as your train nears the station you get off at, app open or
-closed, and never sent (see *On the way*, below).
+boarding at, while you wait there, just after you board, and as your train nears the station you get
+off at, app open or closed, and never sent (see *On the way*, below).
 
 **National Rail times (optional).** If you paste a National Rail API key (from the Rail Data
 Marketplace) in Settings, stopdash also asks **National Rail's live departure boards** for the
@@ -139,11 +139,12 @@ you can turn it off in Android's settings for StopDash. While a trip is on the w
 notification shows its next step, until you arrive or end the trip (or, for a trip left running,
 four hours after it started). If you've allowed location, stopdash takes your
 precise position about every 30 seconds while you walk to a stop you're boarding at, only to see
-whether you've reached it, a few times in the five minutes after your train leaves that stop, only
-to see whether you got on (you're still at the stop if not), and a few times as your train nears
-the station you get off at, only to see whether you're already there. Each is compared on the
-device with that stop's public position (and a station's entrances) and then dropped: never
-logged, kept, or sent anywhere.
+whether you've reached it, and for the first ten minutes you wait there for your train, only to see
+whether you've already left on another (at a later stop of the ride, or well along it), a few times in the five
+minutes after your train leaves that stop, only to see whether you got on (you're still at the stop
+if not), and a few times as your train nears the station you get off at, only to see whether you're
+already there. Each is compared on the device with the public positions of the ride's stops (and a
+station's entrances) and then dropped: never logged, kept, or sent anywhere.
 
 **Starred journeys** (two stops you travel between) are kept on the device with your other
 settings and stars, so they ride your own Android backup like the rest (above); they are never

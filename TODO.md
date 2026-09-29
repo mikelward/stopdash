@@ -1095,6 +1095,28 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 declaration).
           - [x] Live location: a rider left behind at the boarding stop moves to the next train
                 (built; PR held for the declaration).
+          - [x] Live location: a rider seen along the ride while its train is awaited (at a later
+                stop, or 400 m on toward where they get off) boarded, and is followed on the train
+                of the ride's line that left the stop for them (maintainer, 2026-09-29).
+            - [ ] **The followed train itself, with TfL behind on it**: a rider seen along the ride
+                  on the very train followed, while TfL still shows it due at the boarding stop, isn't
+                  taken as on it (its calls still name that stop), so the trip waits until TfL
+                  catches up. Rare (TfL's lag is about a minute), but a train that has left could be
+                  told apart by its calls moving on past the stop.
+            - [ ] **A train the board never listed**: the trains asked after are those the boarding
+                  stop's board listed while the trip was shown, in memory only, so after a restart,
+                  or for a train that came and went between refreshes, the rider seen along the ride
+                  is left waiting. Asking the board at the stop ahead of them would find it, for one
+                  more request. So is a bus using the other pole of the boarding stop pair from the
+                  one the Planner named: the board read is that pole's alone, for picking a train
+                  too. Reading the pair's other pole as well would find it, for one more request a
+                  refresh while waiting (Codex, PR #383).
+            - [ ] **Two trains between the same two stops**: the train the rider is on is the
+                  newest that left the boarding stop and isn't behind them, judged by the stop each
+                  calls at next. A later train that has caught up to between the same two stops calls
+                  there next too, and would be taken for theirs. Timing would tell them apart: the
+                  rider's train left the boarding stop after the last fix still there and before the
+                  first clear of it, and fixes while waiting could keep those two times.
           - [ ] Following a bus above ground by location (get off soon from where the bus is).
       - [x] **One-tap trips**: the near-me top bar's Directions button opens *To…* in one tap, with
             room freed by shortening the freshness stamp to "1 min ago" (maintainer, 2026-09-26).
@@ -1157,7 +1179,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             the unnamed lines serving its own boarding and getting-off stops (strict same stop, a
             road's two poles as one), as equals on its pill and with rows of their own.
       - [ ] **On the way with a ride's other lines**: a started trip still follows only the
-            Planner's line for each ride, so boarding another of its lines isn't recognized.
+            Planner's line for each ride, so boarding another of its lines isn't recognized, with
+            location or without. Following one needs that line's route to check and place its
+            train, and its line kept to look it up on, since TfL answers for a train on one line
+            only (Codex on #383).
       - [x] **Rank a route by any of a ride's lines** (Codex on #309). A ride whose Planner line is
             closed or unchecked no longer sinks its route while another line that times it, checked
             as running from stops checked open (`RideLines.othersTime`), can take it; the Planner's

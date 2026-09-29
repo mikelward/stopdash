@@ -1382,10 +1382,28 @@ rider arrives or ends the trip, and a process that dies takes it with it: the ne
 app starts it again from the kept trip. With location allowed, the same service **sees a rider left
 behind**: in the five minutes after the followed train leaves the boarding stop, each refresh takes
 one precise fix (used only when sure to within 50 m and taken in the last 10 s), and a rider still within 150 m of the stop a minute or more after it left didn't
-get on, so the next train they can catch is followed instead (switch when seen). The stop's position
-is the Planner's; the fix is only compared with it, on the device, and never logged, kept or sent.
-Underground, where no fix comes, nothing is guessed. Outside that window no fix is asked for; the
-battery cost is at most ten fixes per ride. Following a bus above ground by location is still to do. It holds a partial wake lock (screen off) for the trip, since
+get on, so the next train they can catch is followed instead (switch when seen). It also **sees a
+rider already on their way** (maintainer, 2026-09-29): for the first ten minutes they wait for a
+ride's train, counted from the start of the wait however many trains leave without them (a clock set
+back before it ends it), each
+refresh takes one precise fix (sure to within 150 m; about twenty at most, so a long wait for a
+delayed train doesn't keep GPS on), and a rider seen clear of the boarding stop
+(beyond 150 m of it) and either at one of the ride's later stops or 400 m on toward where they get
+off, within 300 m of the ride's way (its stops joined up), has boarded, whichever train was followed. The trip then follows the train they're on: of the
+trains the stop's board listed while the trip was shown, on the ride's line and bound where the rider
+gets off (not another branch), the one that most recently left it and isn't behind them (up to three
+asked after, a TfL request each, only then; a bus at either pole of the rider's stop pairs counts).
+Behind them is a train still to call at a stop they're past, or, seen at a stop, one due there more
+than a minute later: a newer train is tried first, so this is what keeps it from being taken for
+theirs. Two trains between the same two stops as the rider can't be told apart this way. Seen where
+they get off, they've done the ride, whichever train took them: the trip moves on to the next leg,
+as when a rider on a train is seen at their station. Another line's train isn't followed, as nowhere else on a
+trip is. With none found, the trip waits as it was. The ride's
+stops are placed from its line's route, which the trip's cards already hold. Underground, where no
+fix comes, it can't tell. The stop's position is the Planner's (or its line's route's); the fix is
+only compared with it, on the device, and never logged, kept or sent.
+Underground, where no fix comes, nothing is guessed. Outside those windows no fix is asked for; the
+battery cost is at most ten fixes per ride after boarding, and about twenty while waiting. Following a bus above ground by location is still to do. It holds a partial wake lock (screen off) for the trip, since
 a sleeping phone would otherwise stall the refresh and the get-off alert: renewed for two minutes on
 each refresh, so a stalled service lets go. A trip never ended is followed in the background until
 four hours after it started; the service then stops, and the app still follows the trip whenever it's open.
