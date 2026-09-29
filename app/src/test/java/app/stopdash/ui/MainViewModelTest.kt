@@ -21,6 +21,7 @@ import app.stopdash.domain.NearbySelection
 import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopLocation
+import app.stopdash.domain.StopClosureCache
 import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.TflException
@@ -1079,6 +1080,50 @@ class MainViewModelTest {
             listOf("Station closed until further notice"),
             state.stops.single { it.stopId == "940GZZLUKSX" }.disruptions.map { it.description },
         )
+    }
+
+    @Test
+    fun `a closure lookup landing after a trip's newer one shows the newer`() = runTest(dispatcher) {
+        val shared = StopClosureCache()
+        val closed = listOf(StopDisruption("Station closed until further notice"))
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String): List<Departure> = listOf(departure("victoria", "Victoria", 300))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String): List<StopDisruption> {
+                // A trip's lookup of King's Cross, asked after this one in the same instant, lands first.
+                if (stopId == "940GZZLUKSX") shared.keep(stopId, shared.ask(now), closed)
+                return emptyList()
+            }
+        }
+        val vm = MainViewModel(client, seeds, clock = { now }, io = dispatcher, disruptionCache = shared)
+        advanceUntilIdle()
+        val state = vm.state.value as DeparturesUiState.Loaded
+        assertEquals(closed, state.stops.single { it.stopId == "940GZZLUKSX" }.disruptions)
+        assertTrue(state.stops.single { it.stopId == "940GZZLUOXC" }.disruptions.isEmpty())
+    }
+
+    @Test
+    fun `a closure lookup failing after a trip's newer one landed shows the newer, not a failure`() = runTest(dispatcher) {
+        val shared = StopClosureCache()
+        val closed = listOf(StopDisruption("Station closed until further notice"))
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String): List<Departure> = listOf(departure("victoria", "Victoria", 300))
+            // Every line checked, so only a closure could leave the list unchecked.
+            override suspend fun lineStatuses(lineIds: Collection<String>) = listOf(status("victoria", LineStatus.GOOD_SERVICE, "Good Service"))
+            override suspend fun stopDisruptions(stopId: String): List<StopDisruption> {
+                // A trip's lookup of King's Cross, asked after this one, lands first; this one fails.
+                if (stopId == "940GZZLUKSX") {
+                    shared.keep(stopId, shared.ask(now), closed)
+                    throw TflException.Offline(null)
+                }
+                return emptyList()
+            }
+        }
+        val vm = MainViewModel(client, seeds, clock = { now }, io = dispatcher, disruptionCache = shared)
+        advanceUntilIdle()
+        val state = vm.state.value as DeparturesUiState.Loaded
+        assertEquals(closed, state.stops.single { it.stopId == "940GZZLUKSX" }.disruptions)
+        assertEquals(false, state.disruptionUnknown)
     }
 
     @Test
@@ -4415,6 +4460,32 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `a destination lookup landing after a trip's newer one shows the newer`() = runTest(dispatcher) {
+        val shared = StopClosureCache()
+        val closed = listOf(StopDisruption("Station closed until further notice"))
+        var clockNow = now
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String): List<Departure> = listOf(departure("victoria", "Victoria", 300))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String): List<StopDisruption> {
+                if (stopId == ksxId) {
+                    // A trip asks after this lookup and is answered first; this one lands later still.
+                    shared.keep(stopId, shared.ask(now.plusSeconds(1)), closed)
+                    clockNow = now.plusSeconds(2)
+                }
+                return emptyList()
+            }
+        }
+        val vm = MainViewModel(client, listOf(seeds.first()), clock = { clockNow }, io = dispatcher, disruptionCache = shared)
+        advanceUntilIdle()
+        vm.setJourneyDestinations(listOf(StopRef(ksxId, "King's Cross St. Pancras")))
+        advanceUntilIdle()
+        // Stamped as asked, the older lookup doesn't replace the trip's.
+        assertEquals(now.plusSeconds(1) to closed, shared[ksxId]?.let { it.at to it.notices })
+        assertEquals(closed, vm.journeyDestinationStops.value.single { it.stopId == ksxId }.disruptions)
+    }
+
+    @Test
     fun `a refresh during a destination check waits on its request rather than ask again`() =
         refreshDuringDestinationCheck(failing = false)
 
@@ -5350,5 +5421,38 @@ class MainViewModelTest {
             assertEquals(3, counting.arrivalCalls[ksxId])
             val ksx = (vm.state.value as DeparturesUiState.Loaded).stops.single { it.stopId == ksxId }
             assertTrue(ksx.disruptions.isNotEmpty())
+        }
+
+    @Test
+    fun `a trip's closure asked in the same instant and landing after the list's stops that stop being carried over`() =
+        runTest(dispatcher) {
+            val shared = StopClosureCache()
+            val closed = listOf(StopDisruption("Station closed until further notice"))
+            var tripAsk: StopClosureCache.Ask? = null
+            val counting = ReuseCountingClient()
+            val client = object : TflClient by counting {
+                override suspend fun stopDisruptions(stopId: String): List<StopDisruption> {
+                    // A trip asks about King's Cross in the same instant, after this lookup.
+                    if (stopId == ksxId && tripAsk == null) tripAsk = shared.ask(now)
+                    return counting.stopDisruptions(stopId)
+                }
+            }
+            val vm = MainViewModel(
+                client, seeds, clock = { now }, io = dispatcher, disruptionCache = shared,
+                arrivalsReuse = ARRIVALS_REUSE, disruptionReuse = DISRUPTION_REUSE,
+            )
+            advanceUntilIdle()
+            // The list has shown its own answer; the trip's lands after it, stamped the same instant.
+            shared.keep(ksxId, tripAsk!!, closed)
+            vm.refresh()
+            advanceUntilIdle()
+
+            // King's Cross isn't carried over past the trip's answer: refetched, with the closure the
+            // cache holds rather than asked again. Oxford Circus, with nothing newer, still is.
+            assertEquals(2, counting.arrivalCalls[ksxId])
+            assertEquals(1, counting.disruptionCalls[ksxId])
+            assertEquals(1, counting.arrivalCalls[oxcId])
+            val ksx = (vm.state.value as DeparturesUiState.Loaded).stops.single { it.stopId == ksxId }
+            assertEquals(closed, ksx.disruptions)
         }
 }

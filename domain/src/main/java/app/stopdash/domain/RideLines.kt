@@ -11,10 +11,12 @@ package app.stopdash.domain
  */
 data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
     /** [legs] whose trains may be offered as catchable ([checked]): every use of a ride's trains goes through this. */
-    fun running(statuses: Map<String, LineStatus>): List<TripLeg> = legs.filter { checked(it, legs.first(), statuses) }
+    fun running(statuses: Map<String, LineStatus>, stopsOpen: (TripLeg) -> Boolean): List<TripLeg> =
+        legs.filter { checked(it, legs.first(), statuses, stopsOpen) }
 
     /** [timed] lines that may time the route ([checked]). */
-    fun timedRunning(statuses: Map<String, LineStatus>): List<TripLeg> = timed.filter { checked(it, legs.first(), statuses) }
+    fun timedRunning(statuses: Map<String, LineStatus>, stopsOpen: (TripLeg) -> Boolean): List<TripLeg> =
+        timed.filter { checked(it, legs.first(), statuses, stopsOpen) }
 
     /**
      * A route [through] makes: [route], one ride fewer than [from], whose two rides from leg [at] it
@@ -34,14 +36,15 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
 
         /**
          * Whether [line]'s trains may be offered as catchable and time a route: the Planner's own
-         * line ([planned]) always, as its status is weighed where the route is ranked; another line
-         * only once its status is known ([statuses]) and it's running. One rule for every place that
-         * uses another line's trains, so a line never checked, or suspended, is never passed off as a
-         * way to go.
+         * line ([planned]) always, as its status and stops are weighed where the route is ranked;
+         * another line only once its status is known ([statuses]) and it's running, and the stops it
+         * boards and gets off at, its own poles, are checked open ([stopsOpen], [TripClosures.opens]).
+         * One rule for every place that uses another line's trains, so a line never checked, suspended,
+         * or from a closed stop is never passed off as a way to go.
          */
-        fun checked(line: TripLeg, planned: TripLeg, statuses: Map<String, LineStatus>): Boolean =
+        fun checked(line: TripLeg, planned: TripLeg, statuses: Map<String, LineStatus>, stopsOpen: (TripLeg) -> Boolean): Boolean =
             line.lineId == planned.lineId ||
-                (line.lineId in statuses && line.lineId !in TripTiming.notRunning(statuses.values))
+                (line.lineId in statuses && line.lineId !in TripTiming.notRunning(statuses.values) && stopsOpen(line))
 
         /**
          * Each ride of [routes] to its [RideLines]. A line is considered when it rides first somewhere

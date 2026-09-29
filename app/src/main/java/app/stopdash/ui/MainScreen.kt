@@ -3134,7 +3134,7 @@ private fun StopNoticeCard(row: DepartureRow, closed: Boolean, onDismiss: () -> 
  * platform/pole qualifier to head, and its departures (if any) show in the group cards below.
  */
 @Composable
-private fun StopClosureCard(row: DepartureRow, onDismiss: () -> Unit) {
+internal fun StopClosureCard(row: DepartureRow, onDismiss: (() -> Unit)?) {
     OutlinedCard(modifier = Modifier.fillMaxWidth()) {
         // A traversal group, matching the departure cards. The place name is stripped from the body
         // at display (not upstream) so the near-me fold's identity stays member-independent
@@ -3841,7 +3841,7 @@ private fun PlannedAlertBlock(alert: PlannedAlert, modifier: Modifier = Modifier
  * bleeds onto a different notice when a `LazyColumn` row is recycled.
  */
 @Composable
-private fun StopClosureContent(disruption: String, title: String, onDismiss: () -> Unit = {}) {
+private fun StopClosureContent(disruption: String, title: String, onDismiss: (() -> Unit)? = {}) {
     CollapsibleStatus(text = disruption, title = title, onDismiss = onDismiss)
 }
 
@@ -4313,7 +4313,8 @@ internal fun RouteDetailScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 12.dp),
                 )
-            } else if (status == null && !row.statusDismissed && !stale) {
+            } else if (status == null && !row.statusDismissed && row.stopDisruption == null && !stale) {
+                // Nor with a notice in force at its stop (a closure, a moved stop): not a clean stop.
                 Text(
                     text = stringResource(R.string.route_detail_no_disruption),
                     style = MaterialTheme.typography.bodyMedium,

@@ -260,6 +260,21 @@ class TripTimingTest {
     }
 
     @Test
+    fun `a closed stop blocks the route and an unchecked one marks it unchecked, whatever its lines`() {
+        val live = mapOf(0 to listOf(train("red", 6)), 1 to listOf(train("blue", 22)))
+        val closed = TripTiming.estimate(twoLegs, now, Duration.ZERO, { live[it] }, stops = TripClosures.Standing.CLOSED)
+        assertTrue(closed.blocked)
+        assertFalse(closed.unchecked)
+        // Still timed: a closure ranks the route, it doesn't withhold its arrival.
+        assertEquals(TripTiming.Basis.LIVE, closed.basis)
+        val unchecked = TripTiming.estimate(twoLegs, now, Duration.ZERO, { live[it] }, stops = TripClosures.Standing.UNCHECKED)
+        assertTrue(unchecked.unchecked)
+        assertFalse(unchecked.blocked)
+        val open = TripTiming.estimate(twoLegs, now, Duration.ZERO, { live[it] })
+        assertEquals(listOf(open, unchecked, closed), TripTiming.rank(listOf(closed, unchecked, open)))
+    }
+
+    @Test
     fun `ranks usable before unchecked before blocked, live before estimated before withheld, then earliest`() {
         fun estimate(basis: TripTiming.Basis, arrival: Long?, blocked: Boolean = false) =
             TripTiming.Estimate(twoLegs, basis, arrival?.let(::at), emptyList(), blocked, now)

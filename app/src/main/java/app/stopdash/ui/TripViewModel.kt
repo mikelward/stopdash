@@ -14,9 +14,13 @@ import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.JourneyPlanner
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusBatch
+import app.stopdash.domain.StopClosureCache
+import app.stopdash.domain.StopDisruption
+import app.stopdash.domain.StopDisruptionBatch
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.TflException
 import app.stopdash.domain.NearestStops
+import app.stopdash.domain.TripClosures
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripRoute
@@ -102,6 +106,10 @@ class TripViewModel(
     origin: () -> TripOrigin = { TripOrigin.Stop(fromId) },
     // How fast the rider walks when the trip opens (their setting); [walkingSpeed] follows a change.
     walkingSpeed: WalkingSpeed = WalkingSpeed.AVERAGE,
+    // Each stop's last closure lookup, shared with the list (the app passes [StopClosureCache.SHARED]):
+    // a stop the list or another trip checked within [closureReuse] isn't asked about again.
+    private val closureCache: StopClosureCache = StopClosureCache(),
+    private val closureReuse: Duration = DISRUPTION_REUSE,
 ) : ViewModel() {
     /** Where the next plan starts ([TripOrigin]); set by the screen on every composition. */
     var origin: () -> TripOrigin = origin
@@ -129,6 +137,7 @@ class TripViewModel(
                     planError = null,
                     planIncomplete = false,
                     statusUnknown = kept?.let { (routes, _) -> unknownLines(routes, it) } ?: emptySet(),
+                    closuresUnknown = kept?.let { (routes, _) -> unknownClosures(routes, it) } ?: emptySet(),
                     live = kept?.let { (routes, _) -> cached(routes, it.live) } ?: it.live,
                 )
             }
@@ -148,6 +157,9 @@ class TripViewModel(
         // The last line-status check failed: the statuses shown (if any) are older, so the trip
         // says it couldn't check for disruptions rather than pass its lines off as running normally.
         val statusFailed: Boolean = false,
+        // The lines whose latest status check failed (all asked, when none was answered): a line
+        // page can't vouch for one of them, though an answered line on the same trip it can.
+        val statusFailedLines: Set<String> = emptySet(),
         // The routes' lines with no status known: TfL left them out of its answer, or the check
         // failed before any was known. They can't be vouched for as running (ranked unchecked).
         val statusUnknown: Set<String> = emptySet(),
@@ -161,6 +173,23 @@ class TripViewModel(
         // Every id of the destination, each to its stop, for leaving out the routes that pass it
         // ([shownRoutes]); empty in a state built without them.
         val destinationStops: Map<String, String> = emptyMap(),
+        // Each stop checked for closures ([TripClosures.ends]: where the routes board and get off, a
+        // bus stop pair's every pole) and its notices, from its last successful check: a failed
+        // check keeps the last known, claiming nothing new.
+        val closures: Map<String, List<StopDisruption>> = emptyMap(),
+        // The stops with no check known yet (not checked, or failed with none known), and the stop
+        // pairs whose poles aren't looked up yet: a route getting on or off at one can't be vouched
+        // for as open ([TripClosures.standing]).
+        val closuresUnknown: Set<String> = emptySet(),
+        // The stops whose latest check failed: their last known notices stand, but nothing vouches
+        // for them as current, so the trip says it couldn't check, as after a failed status check.
+        val closuresFailed: Set<String> = emptySet(),
+        // When each stop's held closure check was asked ([StopClosureCache.Lookup.at]) and each line's
+        // held status answered. A held check is ranked by whatever its age, as a failed one is, but a
+        // line's page vouches only while both are as young as a countdown it would show ([Staleness]):
+        // a trip shown again, say, holds checks from before, while its fresh re-check is out.
+        val closuresAt: Map<String, Instant> = emptyMap(),
+        val statusesAt: Map<String, Instant> = emptyMap(),
     ) {
         /**
          * [routes] as shown: without those riding a [hidden] mode, then without the detours
@@ -174,7 +203,7 @@ class TripViewModel(
     }
 
     private val _state = MutableStateFlow(
-        (plans.get(fromId, destinations, origin() is TripOrigin.Here, walkingSpeed)?.let { (routes, at) -> State(routes = routes, plannedAt = at, statusUnknown = linesOf(routes)) } ?: State())
+        (plans.get(fromId, destinations, origin() is TripOrigin.Here, walkingSpeed)?.let { (routes, at) -> State(routes = routes, plannedAt = at, statusUnknown = linesOf(routes), closuresUnknown = unknownClosures(routes, State())) } ?: State())
             .copy(destinationStops = stopIds(destinations).associateWith { it } + destinationIds),
     )
     val state: StateFlow<State> = _state.asStateFlow()
@@ -260,10 +289,20 @@ class TripViewModel(
             // The routes a refresh fetches for ([refreshLive]): a route not shown, or past the cap,
             // is never fetched, so its stops would read as stale on every return.
             val routes = _state.value.shownRoutes(hiddenModes)?.let { bestOf(it, openKeys()) } ?: return
-            _state.update { it.copy(live = cached(routes, it.live)) }
+            // Closures too: a stop the list found closed since this trip's last check shows at once.
+            _state.update { sharedClosures(routes, it.copy(live = cached(routes, it.live))) }
             val now = clock()
             val live = _state.value.live
-            if (stopsOf(routes).any { id -> live[id]?.let { !recentEnough(it, now) } ?: true }) refresh()
+            val arrivalsStale = stopsOf(routes).any { id -> live[id]?.let { !recentEnough(it, now) } ?: true }
+            // Or a stop's closure check is past [closureReuse] (or failed): what the trip holds for it
+            // no longer stands as current, so it's asked again. Until the answer lands the route is
+            // still ranked by it, as by a failed one, but its line's page doesn't vouch on it
+            // ([State.closuresAt]).
+            val closuresStale = _state.value.closuresFailed.isNotEmpty() ||
+                closureStops(routes, _state.value.areaPoles).any { id ->
+                    closureCache[id]?.let { Duration.between(it.at, now).let { age -> age.isNegative || age >= closureReuse } } ?: true
+                }
+            if (arrivalsStale || closuresStale) refresh()
             return
         }
         started = true
@@ -431,7 +470,7 @@ class TripViewModel(
                         val shown = gathered.toList()
                         // A first answer after a failed plan clears its error: the routes it brings stand,
                         // timed at once from any boarding stop's arrivals another screen just fetched.
-                        _state.update { it.copy(routes = shown, planError = null, statusUnknown = unknownLines(shown, it), live = cached(shown, it.live)) }
+                        _state.update { it.copy(routes = shown, planError = null, statusUnknown = unknownLines(shown, it), closuresUnknown = unknownClosures(shown, it), live = cached(shown, it.live)) }
                     }
                 }
             }
@@ -472,6 +511,7 @@ class TripViewModel(
                 planError = null,
                 planIncomplete = failed != null,
                 statusUnknown = unknownLines(routes, it),
+                closuresUnknown = unknownClosures(routes, it),
             )
         }
     }
@@ -500,26 +540,49 @@ class TripViewModel(
             val others = rideLineIds(routes, _state.value, hiddenModes).filterNot { it in lines }
             coroutineScope {
                 val statuses = async { fetchStatuses(lines + others) }
+                // Where the routes board and get off, for a closure or a moved stop (SPEC *Trips with a change*).
+                val closures = async { checkClosures(closureStops(routes, areaPoles)) }
                 val live = stops.map { id -> async { id to fetchStop(id) } }.awaitAll()
                 val fetched = statuses.await()
+                val checked = closures.await()
                 val current = source == sourceGeneration
                 _state.update { state ->
-                    state.copy(
+                    val next = state.copy(
                         live = if (!current) state.live else state.live + live.associate { (id, stop) -> id to (stop ?: state.live[id]?.copy(failed = true) ?: StopLive(emptyList(), Instant.EPOCH, failed = true)) },
                         // A failed request's lines keep their older statuses; the answered ones replace.
                         statuses = fetched?.let { it.statuses + state.statuses.filterKeys { id -> id in it.failed } } ?: state.statuses,
+                        statusesAt = fetched?.let { state.statusesAt + it.answeredAt() } ?: state.statusesAt,
                         statusFailed = fetched == null || fetched.failed.isNotEmpty(),
+                        statusFailedLines = fetched?.failed ?: (lines + others).toSet(),
                         statusUnknown = lines.filterTo(HashSet()) { it !in (fetched?.statuses ?: state.statuses) },
+                        // A stop whose check failed keeps its last known notices.
+                        closures = state.closures + checked.found,
+                        closuresAt = state.closuresAt + checked.at,
+                        closuresFailed = checked.failed,
                     )
+                    next.copy(closuresUnknown = unknownClosures(next.routes.orEmpty(), next))
                 }
             }
             // Lines first seen in this refresh's arrivals: checked now rather than a tick later, so one
             // isn't shown for a minute with nothing said of its status. Merged in; a failure leaves
             // them unchecked, so they neither show as catchable nor time a route, and once this refresh ends
             // the trip says it couldn't check them ([RideLines.unchecked]) rather than still checking.
+            // Their latest check settles their line pages too: one that failed can't be vouched for by
+            // a status an earlier refresh kept.
             val late = rideLineIds(routes, _state.value, hiddenModes).filterNot { it in lines || it in others }
             if (late.isNotEmpty() && source == sourceGeneration) {
-                fetchStatuses(late)?.let { found -> _state.update { it.copy(statuses = it.statuses + found.statuses) } }
+                val found = fetchStatuses(late)
+                // Every line asked about takes this check's verdict, as the first check's lines do: an
+                // answer replaces its status, a failure keeps the old one (marked failed below), and one
+                // left out of the answer keeps none, rather than one an earlier check kept.
+                fun <V> judged(held: Map<String, V>, f: StatusCheck) = held.filterKeys { id -> id !in late || id in f.failed }
+                _state.update {
+                    it.copy(
+                        statuses = found?.let { f -> judged(it.statuses, f) + f.statuses } ?: it.statuses,
+                        statusesAt = found?.let { f -> judged(it.statusesAt, f) + f.answeredAt() } ?: it.statusesAt,
+                        statusFailedLines = it.statusFailedLines - late.toSet() + (found?.failed ?: late.toSet()),
+                    )
+                }
             }
         } finally {
             _state.update { it.copy(refreshing = false) }
@@ -539,7 +602,8 @@ class TripViewModel(
     private val areaPoles = HashMap<String, List<String>>()
 
     private suspend fun lookUpPoles(routes: List<TripRoute>) {
-        val areas = routes.flatMap { route -> route.rides.map { it.fromArea } }.filter { it.isNotBlank() && it !in areaPoles }.distinct()
+        // Where a bus gets off too: the pole it uses there is checked for a closure.
+        val areas = routes.flatMap { route -> route.rides.flatMap { listOf(it.fromArea, it.toArea) } }.filter { it.isNotBlank() && it !in areaPoles }.distinct()
         if (areas.isEmpty()) return
         coroutineScope {
             areas.map { area ->
@@ -594,8 +658,103 @@ class TripViewModel(
             null
         }
 
-    // What a status check found: the statuses TfL returned, and the lines in a request that failed.
-    private class StatusCheck(val statuses: Map<String, LineStatus>, val failed: Set<String>)
+    // The last closure check's place in line: a lookup asked after it is newer than all it learned.
+    private var closureTicket: StopClosureCache.Ask? = null
+
+    /**
+     * [state] with [routes]' closure stops as [closureCache] now holds them: this trip's own last
+     * answer or a newer one another screen found (the list, say, after this trip's check failed), so
+     * a trip shown again takes it without waiting for a refresh. A stop this trip never checked takes
+     * one only within [closureReuse], as a refresh would; a failed one stops counting as failed only
+     * once a lookup asked after this trip's check has come in.
+     */
+    private fun sharedClosures(routes: List<TripRoute>, state: State): State {
+        val now = clock()
+        val held = closureStops(routes, state.areaPoles).mapNotNull { id ->
+            val lookup = closureCache[id] ?: return@mapNotNull null
+            val recent = Duration.between(lookup.at, now).let { !it.isNegative && it < closureReuse }
+            (id to lookup).takeIf { id in state.closures || recent }
+        }.toMap()
+        if (held.isEmpty()) return state
+        val ticket = closureTicket
+        val failed = if (ticket == null) state.closuresFailed else state.closuresFailed.filterTo(HashSet()) { closureCache.since(it, ticket) == null }
+        val next = state.copy(
+            closures = state.closures + held.mapValues { it.value.notices },
+            closuresAt = state.closuresAt + held.mapValues { it.value.at },
+            closuresFailed = failed,
+        )
+        return next.copy(closuresUnknown = unknownClosures(next.routes.orEmpty(), next))
+    }
+
+    // What a closure check learned ([found], each asked [at]), and the stops whose request failed.
+    private class ClosureCheck(val found: Map<String, List<StopDisruption>>, val at: Map<String, Instant>, val failed: Set<String>)
+
+    /**
+     * The closure notices of each of [ids] this check could learn: from [closureCache] when looked up
+     * within [closureReuse], else asked for (a bus stop's poles several to a request, as the list
+     * asks them) and kept there. A stop whose request failed, with no later lookup of it kept, is
+     * named in [ClosureCheck.failed], so its last known notices stand, or it stays unknown; the
+     * failure is logged, never claimed as open.
+     */
+    private suspend fun checkClosures(ids: List<String>): ClosureCheck {
+        val now = clock()
+        val found = HashMap<String, List<StopDisruption>>()
+        val at = HashMap<String, Instant>()
+        val ask = ids.filter { id ->
+            // Dated after now (the clock set back) is an age that can't be told, so asked again.
+            val held = closureCache[id]?.takeIf { Duration.between(it.at, now).let { age -> !age.isNegative && age < closureReuse } }
+            held?.let {
+                found[id] = it.notices
+                at[id] = it.at
+            }
+            held == null
+        }
+        val (poles, others) = ask.partition(StopDisruptionBatch::isPole)
+        // This check's place in line ([StopClosureCache.ask]), taken before any request is sent.
+        val ticket = closureCache.ask(now)
+        closureTicket = ticket
+        val answers = coroutineScope {
+            (
+                poles.chunked(StopDisruptionBatch.MAX_PER_REQUEST).map { chunk ->
+                    async { chunk to askClosures("${chunk.size} bus stop(s)") { client.poleDisruptions(chunk) } }
+                } + others.map { id ->
+                    async { listOf(id) to askClosures("stop $id") { mapOf(id to client.stopDisruptions(id)) } }
+                }
+            ).awaitAll()
+        }
+        val failed = HashSet<String>()
+        for ((asked, answer) in answers) {
+            for (id in asked) {
+                // As the cache settles each: a later lookup (the list's, landing first) wins over this
+                // one, failed or not.
+                closureCache.settle(id, ticket, answer.map { it[id].orEmpty() })
+                    .onSuccess {
+                        found[id] = it.notices
+                        at[id] = it.at
+                    }
+                    .onFailure { failed += id }
+            }
+        }
+        return ClosureCheck(found, at, failed)
+    }
+
+    // One closure request's answer, or its failure (logged: an error kind and what was asked).
+    private suspend fun <T> askClosures(what: String, request: suspend () -> T): Result<T> =
+        try {
+            Result.success(withContext(io) { request() })
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: TflException) {
+            warn("trip closure check failed: ${e::class.simpleName} for $what")
+            Result.failure(e)
+        }
+
+    // What a status check found: the statuses TfL returned, answered [at], and the lines in a request
+    // that failed.
+    private class StatusCheck(val statuses: Map<String, LineStatus>, val failed: Set<String>, val at: Instant) {
+        // Each returned line's answer time, for [State.statusesAt].
+        fun answeredAt(): Map<String, Instant> = statuses.mapValues { at }
+    }
 
     // One request per group TfL accepts (LineStatusBatch), each with its own outcome. Null when none
     // was answered: the last statuses stay rather than pass the lines off as running normally.
@@ -604,7 +763,7 @@ class TripViewModel(
         results.failure?.let { warn("trip line status failed for ${results.failed.size} line(s): ${it::class.simpleName}") }
         if (results.unknown.isNotEmpty()) warn("trip line status: TfL doesn't know ${results.unknown.size} line(s)")
         if (!results.anyAnswered) return null
-        return StatusCheck(results.answers.flatMap { it.value }.associateBy { it.lineId }, results.failed.toSet())
+        return StatusCheck(results.answers.flatMap { it.value }.associateBy { it.lineId }, results.failed.toSet(), clock())
     }
 
     companion object {
@@ -622,6 +781,19 @@ class TripViewModel(
 
         private fun unknownLines(routes: List<TripRoute>, state: State): Set<String> =
             linesOf(routes).filterTo(HashSet()) { it !in state.statuses }
+
+        // The stops [routes] are checked at for closures ([TripClosures.ends]), with every pole of
+        // each stop pair they name that [areaPoles] has looked up: the one a bus uses may be the other.
+        private fun closureStops(routes: List<TripRoute>, areaPoles: Map<String, List<String>>): List<String> =
+            routes.flatMap { route ->
+                TripClosures.ends(route).flatMap { end -> listOf(end.id) + areaPoles[end.area].orEmpty() }
+            }.distinct()
+
+        // [routes]' stops with no closure check known in [state], and the stop pairs whose poles
+        // aren't looked up yet (so the pole a bus uses may not have been asked about).
+        private fun unknownClosures(routes: List<TripRoute>, state: State): Set<String> =
+            closureStops(routes, state.areaPoles).filterTo(HashSet()) { it !in state.closures } +
+                routes.flatMap { route -> TripClosures.ends(route).map { it.area } }.filter { it.isNotEmpty() && it !in state.areaPoles }
 
         /**
          * The routes worth timing among [routes] (the plan's, less those riding a hidden mode, so a

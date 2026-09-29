@@ -116,6 +116,7 @@ import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.StarredJourney
 import app.stopdash.domain.StarredRowSet
 import app.stopdash.domain.StationMatch
+import app.stopdash.domain.StopClosureCache
 import app.stopdash.domain.StopMap
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.OriginChange
@@ -1423,6 +1424,7 @@ class MainActivity : ComponentActivity() {
                             arrivalsReuse = ARRIVALS_REUSE,
                             sharedArrivals = ArrivalsCache.SHARED,
                             disruptionReuse = DISRUPTION_REUSE,
+                            disruptionCache = StopClosureCache.SHARED,
                             lineStatusReuse = LINE_STATUS_REUSE,
                             // Stops past the walking reach refresh every other minute on the timer.
                             stopDistanceMeters = ready.distanceMeters,
@@ -2389,6 +2391,7 @@ class MainActivity : ComponentActivity() {
                         journeyPlanner, departuresClient(appContext), fromStop.id,
                         destinations, warn = ::logDepartureWarning,
                         arrivals = ArrivalsCache.SHARED, departureSourceChanges = RailApiKeySetting.changes,
+                        closureCache = StopClosureCache.SHARED,
                         poles = { area -> routeStops(appContext).loadPoles(area).map { it.id } },
                         savedState = createSavedStateHandle(),
                         dismissedStore = DataStoreDismissedAlertsStore.from(appContext, warn = ::logDepartureWarning),
@@ -2499,6 +2502,7 @@ class MainActivity : ComponentActivity() {
                         arrivalsReuse = ARRIVALS_REUSE,
                         sharedArrivals = ArrivalsCache.SHARED,
                         disruptionReuse = DISRUPTION_REUSE,
+                        disruptionCache = StopClosureCache.SHARED,
                         lineStatusReuse = LINE_STATUS_REUSE,
                         rateWaitMillis = { SharedTflRateLimiter.waitedMillis },
                         logStats = ::logDepartureWarning,
@@ -3445,6 +3449,7 @@ private fun fartherCardModel(
     arrivalsReuse = ARRIVALS_REUSE,
     sharedArrivals = ArrivalsCache.SHARED,
     disruptionReuse = DISRUPTION_REUSE,
+    disruptionCache = StopClosureCache.SHARED,
     lineStatusReuse = LINE_STATUS_REUSE,
     rateWaitMillis = { SharedTflRateLimiter.waitedMillis },
     logStats = ::logDepartureWarning,

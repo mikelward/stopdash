@@ -59,6 +59,8 @@ import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.RouteSequenceSource
 import app.stopdash.domain.RouteStopsRepository
+import app.stopdash.domain.StopDisruption
+import app.stopdash.domain.TripClosures
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
@@ -226,14 +228,21 @@ class TripScreenScreenshotTest {
             sequences.getValue(lineId)
     }
 
+    // Every stop [routes] board or get off at, checked with nothing to report, as a trip holds them
+    // once its closure check has answered.
+    private fun checkedOpen(vararg routes: TripRoute): Map<String, List<StopDisruption>> =
+        routes.flatMap(TripClosures::ends).associate { it.id to emptyList() }
+
     private val planned = TripViewModel.State(
         routes = listOf(viaStratford, viaCanadaWater, viaWhitechapel),
         plannedAt = now,
         live = live,
+        closures = checkedOpen(viaStratford, viaCanadaWater, viaWhitechapel),
         statuses = mapOf(
             "jubilee" to LineStatus("jubilee", 9, "Minor Delays"),
             "windrush" to LineStatus("windrush", LineStatus.GOOD_SERVICE, "Good Service"),
         ),
+        statusesAt = mapOf("jubilee" to now, "windrush" to now),
     )
 
     private fun show(
@@ -737,6 +746,7 @@ class TripScreenScreenshotTest {
         val trip = TripViewModel.State(
             routes = listOf(changing),
             plannedAt = now,
+            closures = checkedOpen(changing),
             live = mapOf(
                 "Aston" to TripViewModel.StopLive(listOf(train("red", "Red", "tube", "Red End", 1, "Platform 1"), train("blue", "Blue", "tube", "Dale", 5, "Platform 2")), now),
                 "Beck" to TripViewModel.StopLive(listOf(train("blue", "Blue", "tube", "Dale", 9, "Platform 2")), now),
@@ -800,6 +810,7 @@ class TripScreenScreenshotTest {
         val refreshed = TripViewModel.State(
             routes = listOf(changing),
             plannedAt = now,
+            closures = checkedOpen(changing),
             live = mapOf(
                 "Aston" to TripViewModel.StopLive(listOf(train("red", "Red", "tube", "Red End", 1, "Platform 1")), now),
                 "Beck" to TripViewModel.StopLive(listOf(train("blue", "Blue", "tube", "Dale", 9, "Platform 2")), now),
@@ -855,6 +866,7 @@ class TripScreenScreenshotTest {
     private fun throughTrip(throughIn: Long?, fetchedAt: Instant = now) = TripViewModel.State(
         routes = listOf(throughChanging),
         plannedAt = now,
+        closures = checkedOpen(throughChanging),
         live = mapOf(
             "Aston" to TripViewModel.StopLive(
                 listOfNotNull(
@@ -1136,9 +1148,155 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun a_route_getting_off_at_a_closed_station_goes_last_and_says_why() {
+        // The Elizabeth line's Canary Wharf station closed: the route getting off there ranks below
+        // the others, still timed, its ride's ⚠ naming the stop; opened, the closure card is where it
+        // gets off, as the list's closure card is.
+        // Every line checked as running, so only the closure moves the route.
+        val running = planned.copy(statuses = planned.statuses + ("elizabeth" to LineStatus("elizabeth", LineStatus.GOOD_SERVICE, "Good Service")))
+        fun arrivals() = composeRule.onAllNodes(hasTestTag("tripArrival"), useUnmergedTree = true).fetchSemanticsNodes().map { node ->
+            node.config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString { it.text }
+        }
+        val state = androidx.compose.runtime.mutableStateOf(running)
+        showWith(state)
+        assertEquals(listOf("27 min · ~08:29", "28 min · ~08:30", "38 min · ~08:40"), arrivals())
+        state.value = running.copy(closures = running.closures + (canaryWharfXr.first to listOf(StopDisruption("Canary Wharf Station: Station closed due to a power failure"))))
+        composeRule.waitForIdle()
+        assertEquals(listOf("27 min · ~08:29", "38 min · ~08:40", "28 min · ~08:30"), arrivals())
+        composeRule.onNodeWithContentDescription("Canary Wharf: Station closed due to a power failure", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("2 stops to Canary Wharf").assertIsDisplayed()
+        composeRule.onNodeWithText("Station closed due to a power failure", substring = true).assertExists()
+        captureSnapshot("trip-route-closure.png")
+    }
+
+    @Test
+    fun a_route_list_says_it_couldnt_check_only_for_a_stop_a_route_shown_uses() {
+        // Every line checked as running, the routes' own and the others at their stops.
+        val lines = planned.routes.orEmpty().flatMap { route -> route.rides.map { it.lineId } } +
+            planned.live.values.flatMap { stop -> stop.departures.map { it.lineId } }
+        val running = planned.copy(statuses = lines.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") })
+        val unknown = composeRule.activity.getString(R.string.disruptions_unknown)
+        // The failed check was for a stop no route shown uses (one of a hidden mode's, say).
+        val state = androidx.compose.runtime.mutableStateOf(running.copy(closuresFailed = setOf("940GZZLUNONE")))
+        showWith(state)
+        composeRule.onNodeWithText(unknown).assertDoesNotExist()
+        // One a shown route gets off at: it can't vouch for that route.
+        state.value = running.copy(closuresFailed = setOf(highbury.first))
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(unknown).assertExists()
+    }
+
+    @Test
+    fun a_route_list_says_it_couldnt_check_only_for_a_line_a_route_shown_rides() {
+        val lines = planned.routes.orEmpty().flatMap { route -> route.rides.map { it.lineId } } +
+            planned.live.values.flatMap { stop -> stop.departures.map { it.lineId } }
+        val running = planned.copy(statuses = lines.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") })
+        val unknown = composeRule.activity.getString(R.string.disruptions_unknown)
+        // The failed or unanswered line is one no route shown rides (a hidden mode's, say).
+        val state = androidx.compose.runtime.mutableStateOf(
+            running.copy(statusFailed = true, statusFailedLines = setOf("hidden"), statusUnknown = setOf("hidden")),
+        )
+        showWith(state)
+        composeRule.onNodeWithText(unknown).assertDoesNotExist()
+        // One a shown route rides: it can't vouch for that route.
+        state.value = running.copy(statusFailed = true, statusFailedLines = setOf("windrush"))
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(unknown).assertExists()
+        state.value = running.copy(statusUnknown = setOf("windrush"))
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(unknown).assertExists()
+    }
+
+    @Test
+    fun a_leg_page_vouches_once_its_line_and_its_stop_are_checked() {
+        // Windrush checked as running and Highbury & Islington checked open: nothing to report.
+        show(planned.copy(closuresAt = mapOf(highbury.first to now)))
+        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithText("Crystal Palace").onFirst().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.route_detail_no_disruption)).assertExists()
+    }
+
+    @Test
+    fun a_leg_page_vouches_for_its_line_when_only_another_lines_check_failed() {
+        // The latest check failed for another line's request, but answered Windrush.
+        show(
+            planned.copy(
+                closuresAt = mapOf(highbury.first to now),
+                statusFailed = true,
+                statusFailedLines = setOf("jubilee"),
+            ),
+        )
+        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithText("Crystal Palace").onFirst().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.route_detail_no_disruption)).assertExists()
+    }
+
+    @Test
+    fun a_leg_page_at_a_closed_stop_never_calls_it_clean() {
+        // Windrush checked as running, but Highbury & Islington checked and closed.
+        show(planned.copy(closures = planned.closures + (highbury.first to listOf(StopDisruption("Station closed due to a power failure")))))
+        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithText("Crystal Palace").onFirst().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.route_detail_no_disruption)).assertDoesNotExist()
+    }
+
+    @Test
+    fun a_leg_page_whose_checks_are_as_old_as_a_stale_countdown_claims_nothing() {
+        // Checked running and open, but longer ago than a countdown is trusted: a trip shown again
+        // holds them while its re-check is out, and ranks by them, but its page doesn't vouch.
+        val old = now.minus(Duration.ofMinutes(6))
+        val checked = planned.copy(closuresAt = mapOf(highbury.first to now))
+        val state = androidx.compose.runtime.mutableStateOf(checked.copy(closuresAt = mapOf(highbury.first to old)))
+        showWith(state)
+        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithText("Crystal Palace").onFirst().performClick()
+        composeRule.waitForIdle()
+        val unknown = composeRule.activity.getString(R.string.disruptions_unknown)
+        composeRule.onNodeWithText(unknown).assertExists()
+        // The same for an old status check.
+        state.value = checked.copy(statusesAt = planned.statusesAt + ("windrush" to old))
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(unknown).assertExists()
+        // Both checked again: it vouches.
+        state.value = checked
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.route_detail_no_disruption)).assertExists()
+    }
+
+    @Test
+    fun a_leg_page_whose_stop_is_not_yet_checked_claims_nothing() {
+        show(planned.copy(closures = planned.closures - highbury.first, closuresUnknown = setOf(highbury.first)))
+        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithText("Crystal Palace").onFirst().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.disruptions_unknown)).assertExists()
+    }
+
+    @Test
+    fun a_leg_page_whose_stop_check_just_failed_claims_nothing() {
+        // Highbury & Islington checked open before, but its latest check failed.
+        show(planned.copy(closuresFailed = setOf(highbury.first)))
+        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithText("Crystal Palace").onFirst().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.disruptions_unknown)).assertExists()
+    }
+
+    @Test
     fun a_leg_opened_after_a_failed_status_check_claims_nothing() {
         // The last statuses are held, but the latest check failed: the line's page can't vouch for it.
-        show(planned.copy(statusFailed = true))
+        show(planned.copy(statusFailed = true, statusFailedLines = setOf("mildmay", "jubilee", "windrush")))
         composeRule.onNodeWithText("27 min · ~08:29", substring = true).performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Stratford").performClick()

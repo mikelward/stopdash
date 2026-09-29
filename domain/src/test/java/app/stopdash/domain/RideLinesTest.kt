@@ -75,10 +75,15 @@ class RideLinesTest {
     fun `another line counts only once checked as running, the Planner's always`() {
         val green = leg("green", "A", "B")
         val good = LineStatus("green", LineStatus.GOOD_SERVICE, "Good Service")
-        assertTrue(RideLines.checked(ride, ride, emptyMap()))
-        assertFalse(RideLines.checked(green, ride, emptyMap()))
-        assertTrue(RideLines.checked(green, ride, mapOf("green" to good)))
-        assertFalse(RideLines.checked(green, ride, mapOf("green" to LineStatus("green", 20, "Service Closed"))))
+        val open = { _: TripLeg -> true }
+        assertTrue(RideLines.checked(ride, ride, emptyMap(), open))
+        assertFalse(RideLines.checked(green, ride, emptyMap(), open))
+        assertTrue(RideLines.checked(green, ride, mapOf("green" to good), open))
+        assertFalse(RideLines.checked(green, ride, mapOf("green" to LineStatus("green", 20, "Service Closed")), open))
+        // Running, but from a stop not checked open (closed, or not checked yet): not a way to go.
+        // The Planner's own line is judged where the route is ranked, so it still counts.
+        assertFalse(RideLines.checked(green, ride, mapOf("green" to good)) { false })
+        assertTrue(RideLines.checked(ride, ride, emptyMap()) { false })
     }
 
     @Test
@@ -86,10 +91,15 @@ class RideLinesTest {
         val lines = linesOf(mapOf("green" to sequence("A", "B", "End")))
         val good = mapOf("green" to LineStatus("green", LineStatus.GOOD_SERVICE, "Good Service"))
         val closed = mapOf("green" to LineStatus("green", 20, "Service Closed"))
-        assertEquals(listOf("red"), lines.running(emptyMap()).map { it.lineId })
-        assertEquals(listOf("red"), lines.timedRunning(closed).map { it.lineId })
-        assertEquals(listOf("red", "green"), lines.running(good).map { it.lineId })
-        assertEquals(listOf("red", "green"), lines.timedRunning(good).map { it.lineId })
+        val open = { _: TripLeg -> true }
+        assertEquals(listOf("red"), lines.running(emptyMap(), open).map { it.lineId })
+        assertEquals(listOf("red"), lines.timedRunning(closed, open).map { it.lineId })
+        assertEquals(listOf("red", "green"), lines.running(good, open).map { it.lineId })
+        assertEquals(listOf("red", "green"), lines.timedRunning(good, open).map { it.lineId })
+        // Green's own stop closed: neither offered nor timing, however it's running.
+        val atClosed = { line: TripLeg -> line.lineId != "green" }
+        assertEquals(listOf("red"), lines.running(good, atClosed).map { it.lineId })
+        assertEquals(listOf("red"), lines.timedRunning(good, atClosed).map { it.lineId })
         // Unknown is unchecked; known, even closed, isn't: that one says why it doesn't count.
         assertEquals(setOf("green"), RideLines.unchecked(listOf(lines), emptyMap()))
         assertEquals(emptySet<String>(), RideLines.unchecked(listOf(lines), closed))

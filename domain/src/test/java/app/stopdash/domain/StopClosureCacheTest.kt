@@ -1,0 +1,102 @@
+package app.stopdash.domain
+
+import java.time.Instant
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/** Synthetic stops only. */
+class StopClosureCacheTest {
+    private val now = Instant.parse("2026-09-26T08:00:00Z")
+    private val closed = listOf(StopDisruption("Station closed"))
+
+    // A kept lookup as when it was asked and what it found.
+    private fun StopClosureCache.Lookup?.pair() = this?.let { it.at to it.notices }
+
+    @Test
+    fun `a stop's lookup is kept with when it was asked`() {
+        val cache = StopClosureCache()
+        cache.keep("A", cache.ask(now), closed)
+        assertEquals(now to closed, cache["A"].pair())
+        assertNull(cache["B"].pair())
+    }
+
+    @Test
+    fun `a lookup asked earlier and landing late doesn't replace one asked later`() {
+        val cache = StopClosureCache()
+        val first = cache.ask(now)
+        val second = cache.ask(now.plusSeconds(10))
+        assertEquals(emptyList<StopDisruption>(), cache.keep("A", second, emptyList()).notices)
+        // The first lands last: what the cache holds, the later lookup's, is what it gives back.
+        assertEquals(emptyList<StopDisruption>(), cache.keep("A", first, closed).notices)
+        assertEquals(now.plusSeconds(10) to emptyList<StopDisruption>(), cache["A"].pair())
+        // One asked later still replaces it.
+        assertEquals(closed, cache.keep("A", cache.ask(now.plusSeconds(20)), closed).notices)
+    }
+
+    @Test
+    fun `lookups asked in the same instant keep their order`() {
+        val cache = StopClosureCache()
+        val first = cache.ask(now)
+        val second = cache.ask(now)
+        cache.keep("A", second, closed)
+        assertEquals(closed, cache.keep("A", first, emptyList()).notices)
+        assertEquals(now to closed, cache["A"].pair())
+    }
+
+    @Test
+    fun `a lookup shown tells a newer one asked in the same instant by its place in line`() {
+        val cache = StopClosureCache()
+        val first = cache.ask(now)
+        val second = cache.ask(now)
+        // The first lands and is shown; the second lands after it.
+        val shown = cache.keep("A", first, emptyList())
+        assertNull(cache.since("A", shown.ask))
+        cache.keep("A", second, closed)
+        // Same instant, but asked later: newer than what's shown.
+        assertEquals(closed, cache.since("A", shown.ask)?.notices)
+        assertNull(cache.since("A", cache["A"]!!.ask))
+    }
+
+    @Test
+    fun `a lookup asked later wins even when the clock stepped back`() {
+        val cache = StopClosureCache()
+        val first = cache.ask(now)
+        val second = cache.ask(now.minusSeconds(60))
+        cache.keep("A", second, closed)
+        assertEquals(closed, cache.keep("A", first, emptyList()).notices)
+    }
+
+    @Test
+    fun `a failed lookup is answered by one asked after it, never by one asked before`() {
+        val cache = StopClosureCache()
+        val failure = Result.failure<List<StopDisruption>>(IllegalStateException("offline"))
+        val first = cache.ask(now)
+        val second = cache.ask(now.plusSeconds(10))
+        // Nothing kept: the failure stands.
+        assertTrue(cache.settle("A", first, failure).isFailure)
+        // One asked later landed first: it answers the late failure.
+        cache.settle("A", second, Result.success(closed))
+        assertEquals(Result.success(closed), cache.settle("A", first, failure).map { it.notices })
+        // One asked earlier doesn't: its answer may be out of date, so the failure stands.
+        assertTrue(cache.settle("A", cache.ask(now.plusSeconds(20)), failure).isFailure)
+        // What was asked after a lookup is newer than it; what was asked before isn't.
+        assertEquals(closed, cache.since("A", first)?.notices)
+        assertNull(cache.since("A", second))
+        // And a failure keeps nothing.
+        assertEquals(now.plusSeconds(10) to closed, cache["A"].pair())
+        // A success settles as it keeps.
+        assertEquals(Result.success(emptyList<StopDisruption>()), cache.settle("A", cache.ask(now.plusSeconds(30)), Result.success(emptyList())).map { it.notices })
+        assertEquals(now.plusSeconds(30) to emptyList<StopDisruption>(), cache["A"].pair())
+    }
+
+    @Test
+    fun `it keeps the most recently looked up stops`() {
+        val cache = StopClosureCache()
+        repeat(StopClosureCache.MAX + 1) { cache.keep("S$it", cache.ask(now), emptyList()) }
+        assertNull(cache["S0"].pair())
+        assertEquals(now to emptyList<StopDisruption>(), cache["S1"].pair())
+        assertEquals(now to emptyList<StopDisruption>(), cache["S${StopClosureCache.MAX}"].pair())
+    }
+}

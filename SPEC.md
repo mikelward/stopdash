@@ -947,6 +947,8 @@ change stays as the Planner gave it. Such a line is found among the boarding sto
 plan's other rides), and needs its route loaded to vouch that it reaches the stop. Only a line that
 also calls at the same stops in between shares the ride's time on board and times the route; one that
 gets there another way still shows its trains, but a route is never timed as if it rode that way.
+Its trains are offered, and time the route, only once its line is checked as running and the stops
+it boards and gets off at, its own poles, are checked open; a notice at one of them shows on its ride.
 **A train that runs through a change is a route of its own** (maintainer, 2026-09-28): where a
 ride is followed straight away by another of the same mode, and a line boarding at the first ride's
 stop runs on to where the second gets off, the trip also offers that one ride in place of the two —
@@ -1055,12 +1057,23 @@ the station ("Cannon Street"), never the street repeated. Line status and stop c
 the ⚠ on a disrupted row, the status chip on a line with no trains, the closure card at a closed
 stop. **Tapping a leg's row opens its line's page**, as a row on the list does: the line's full
 service alert, with the list's × to dismiss it line-wide (*Disruptions*), and its stops (maintainer,
-2026-09-26); back returns to the route. **Every stop the rider gets off at** is checked too — each leg's alighting stop, including
-both ends of a walk between stations, and the destination — as a starred journey's far end is
-(*Alerts for the journey shown*): a closure or move shows where the rider gets off, from the same
-few-minute cache, and a failed check keeps the last known notice and claims nothing new. Routes sort
-in tiers: a route with a suspended or closed leg, or a closed stop it gets off at, sorts below every
-usable one, whether live or
+2026-09-26); back returns to the route. The page says "No disruptions reported" only once both the
+line's status and its stop's closure check are known and current, as the list's does: neither may
+be as old as a stale countdown (D4), as the checks a trip shown again holds are while it checks
+again. The route is still ranked by them meanwhile. **Every stop a route boards
+or gets off at** is checked for a closure or a moved stop — each leg's boarding and alighting stop,
+so both ends of a walk between stations or from a stop the route starts at, and the destination, as a starred journey's far end is
+(*Alerts for the journey shown*), from the list's own few-minute cache, so a stop the list just
+checked isn't asked about again, and a trip shown again takes a closure the list found since. For a
+bus, every pole of the stop pair is checked, since the one it uses may be the other side of the road:
+until its line's route shows which, the route isn't vouched for there, and once it does, only the pole
+the bus uses counts, by a check of its own. A bus station's stand the line's route puts the bus at, in
+place of the one the Planner named, isn't checked yet, so the route isn't vouched for there either.
+A notice shows as the list's closure card on the open route, where
+the ride boards or gets off, and as the ⚠ on the list card's ride. A failed check keeps the last known
+notice and claims nothing new. Routes sort
+in tiers: a route with a suspended or closed leg, or a stop it boards or gets off at that TfL says is
+closed (a moved stop doesn't count), sorts below every usable one, whether live or
 estimated (below), so a route that can't be ridden is never listed first while one that can exists.
 A route whose line status or closure check failed with nothing known yet sits between the two: below
 every route checked and open, above those known not to run, and says it couldn't check for

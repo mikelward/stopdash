@@ -489,6 +489,8 @@ class RouteStopsRepository(
     private val cache = ConcurrentHashMap<String, RouteStopsStore.Timed<LineSequence>>()
     // The index's stations by interchange, once read; empty when no index is wired.
     @Volatile private var stationsByHub: Map<String, List<IndexedStation>>? = if (stations == null) emptyMap() else null
+    // And each such station's interchange, by the station's id.
+    @Volatile private var hubByStation: Map<String, String> = emptyMap()
     private val areaCache = ConcurrentHashMap<String, RouteStopsStore.Timed<List<StopLocation>>>()
     private val storeLock = Mutex()
     // Route sequences share TfL's in-flight request pool with the live refresh, and a National Rail
@@ -507,7 +509,9 @@ class RouteStopsRepository(
     suspend fun warm() {
         if (stationsByHub == null) {
             val index = withContext(io) { stations?.invoke().orEmpty() }
-            stationsByHub = index.filter { it.hubId.isNotBlank() }.groupBy { it.hubId }
+            val inHubs = index.filter { it.hubId.isNotBlank() }
+            hubByStation = inHubs.associate { it.id to it.hubId }
+            stationsByHub = inHubs.groupBy { it.hubId }
         }
         if (storeRead) return
         storeLock.withLock {
@@ -548,6 +552,13 @@ class RouteStopsRepository(
 
     /** The poles of stop area [areaId] if already fetched (and not expired), else null. No IO. */
     fun cachedPoles(areaId: String): List<StopLocation>? = areaCache.freshValue(areaId)
+
+    /**
+     * The interchange ("HUB…") the bundled index puts [stopId] in, or null when it's in none, or
+     * the index isn't read yet ([warm]): where a stop no line's route data places (one a trip only
+     * walks to or from) is keyed as the list keys it ([stopPlaceKey]).
+     */
+    fun hubOf(stopId: String): String? = hubByStation[stopId]
 
     /**
      * The poles of stop area [areaId], fetched once a day and cached (a stop area's poles barely
