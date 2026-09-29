@@ -372,7 +372,8 @@ class OnTheWayScreenScreenshotTest {
     fun on_the_way_on_the_train() {
         show(trip.copy(boarded = true, onBoardSeen = true), TripProgress.Riding(mildmay, "Hackney Central", 4, at(16), getOffSoon = false))
         onCard("Get off at Stratford").assertIsDisplayed()
-        composeRule.onNodeWithText("4 stops · next Hackney Central").assertIsDisplayed()
+        // The time left on the ride, as its stop is predicted (maintainer, 2026-09-29).
+        composeRule.onNodeWithText("4 stops (~16 min) · next Hackney Central").assertIsDisplayed()
         captureSnapshot("on-the-way-riding.png")
     }
 
@@ -397,7 +398,7 @@ class OnTheWayScreenScreenshotTest {
     fun on_the_way_get_off_soon() {
         show(trip.copy(boarded = true, onBoardSeen = true), TripProgress.Riding(mildmay, "Stratford", 1, at(1), getOffSoon = true))
         onCard("Get off at Stratford").assertIsDisplayed()
-        composeRule.onNodeWithText("Next stop").assertIsDisplayed()
+        composeRule.onNodeWithText("Next stop (~1 min)").assertIsDisplayed()
         captureSnapshot("on-the-way-get-off.png")
     }
 
@@ -407,6 +408,13 @@ class OnTheWayScreenScreenshotTest {
         show(trip.copy(legIndex = 2, vehicleId = ""), TripProgress.Changing(jubilee, at(3)))
         composeRule.onNodeWithText("Change to Jubilee at Stratford").assertIsDisplayed()
         composeRule.onNodeWithText("3 min to change").assertIsDisplayed()
+    }
+
+    @Test
+    fun on_the_way_claims_no_time_left_beyond_the_predictions() {
+        // The stop beyond TfL's predictions: its stops counted from the plan, no time claimed.
+        show(trip.copy(boarded = true), TripProgress.Riding(mildmay, "Hackney Central", 4, null, getOffSoon = false))
+        composeRule.onNodeWithText("4 stops · next Hackney Central").assertIsDisplayed()
     }
 
     @Test
