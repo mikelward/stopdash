@@ -2480,6 +2480,7 @@ class MainActivity : ComponentActivity() {
             onStart = LocalOnTheWay.current?.let { onTheWay -> { route -> onTheWay.start(route, toName, Instant.now().plus(access)) } },
             onOpenTrip = LocalOnTheWay.current?.takeIf { it.active }?.open,
             onWithheld = trip::noteWithheld,
+            onShownStops = trip::checkShownStops,
             walkingSpeed = walkingSpeed,
             onWalkingSpeedChange = WalkingSpeedSetting::set,
             walkingSpeedWriteFailed = WalkingSpeedSetting.writeFailed.collectAsStateWithLifecycle().value,

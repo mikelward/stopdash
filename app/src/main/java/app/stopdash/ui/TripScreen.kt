@@ -652,6 +652,9 @@ internal fun TripScreen(
     // ([TripViewModel.pullRefresh]); null offers no pull. [pullRefreshing] holds its indicator.
     pullRefreshing: Boolean = false,
     onPullRefresh: (() -> Unit)? = null,
+    // The stops the routes shown are judged at that only the screen can name ([shownStops]), for the
+    // trip to check too ([TripViewModel.checkShownStops]).
+    onShownStops: (Set<String>) -> Unit = {},
 ) {
     // Planned work whose day has come shows as under way, however long ago it was fetched (Codex,
     // PR #337): a kept status outlives the day it was sorted on.
@@ -672,6 +675,7 @@ internal fun TripScreen(
             ends,
             pullRefreshing,
             onPullRefresh,
+            onShownStops,
         )
     }
 }
@@ -729,6 +733,7 @@ private fun TripContent(
     ends: TripEnds? = null,
     pullRefreshing: Boolean = false,
     onPullRefresh: (() -> Unit)? = null,
+    onShownStops: (Set<String>) -> Unit = {},
 ) {
     // The open route, kept twice: by the trip when it's given one ([openRoute]), which outlasts the
     // screen leaving composition (an overlay) and, saved by the trip, the process too; and saved with
@@ -787,6 +792,11 @@ private fun TripContent(
     LaunchedEffect(estimates) {
         estimates?.let { list -> onWithheld(list.associate { routeKey(it.route) to it.withheld }) }
     }
+    // The stops only the screen can name, handed to the trip to check ([shownStops]).
+    val shown = remember(estimates, sequences, rideLines) {
+        estimates.orEmpty().flatMapTo(HashSet()) { shownStops(it.route, sequences, rideLines) }
+    }
+    LaunchedEffect(shown) { onShownStops(shown) }
     // The list's cards; an open route is looked up among every way timed, so it stays open whichever
     // way its card shows.
     // A route with more changes than another getting there no later is left off the list
@@ -1812,6 +1822,16 @@ internal fun routeClosuresFailed(
 internal fun otherLineStops(route: TripRoute, rideLines: Map<TripLeg, RideLines>): Set<String> =
     route.rides.flatMap { ride -> rideLines[ride]?.legs.orEmpty().filter { it != ride } }
         .flatMapTo(HashSet()) { listOf(it.fromId, it.toId) }
+
+/**
+ * The stops [route] is judged at that only the screen can name: where each ride is placed by its
+ * line's route ([endPole]; a bus station's stand the route puts the bus at in place of the one the
+ * Planner named, say), and the poles another line a ride shows uses ([otherLineStops]). The trip asks
+ * only about the Planner's stops and their pairs' poles by itself, so the screen hands it these
+ * ([TripViewModel.checkShownStops]); one it already asks about is left to it.
+ */
+internal fun shownStops(route: TripRoute, sequences: Map<String, LineSequence?>, rideLines: Map<TripLeg, RideLines>): Set<String> =
+    TripClosures.ends(route).mapNotNullTo(HashSet()) { endPole(route, it, sequences) } + otherLineStops(route, rideLines)
 
 /** Whether a pole another line [route]'s rides show uses has no check held yet ([otherLineStops]). */
 internal fun otherLineStopsUnchecked(route: TripRoute, state: TripViewModel.State, rideLines: Map<TripLeg, RideLines>): Boolean =

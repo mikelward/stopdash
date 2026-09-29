@@ -247,6 +247,10 @@ class TripViewModel(
     // with their boarding stops' every pole, where a train through a change boards too.
     private fun openKeys(): Set<String> = OpenRoute.parse(openRoute.value)?.keys.orEmpty()
 
+    // The routes a refresh fetches for and checks ([refreshLive]): those shown, less a hidden mode's,
+    // the soonest few and the open one ([bestOf]).
+    private fun timedRoutes(): List<TripRoute>? = _state.value.shownRoutes(hiddenModes)?.let { bestOf(it, openKeys()) }
+
     // The saved handle can outlive this trip (it's the activity's, by the model's key): a trip
     // planned afresh must not open this one's route.
     override fun onCleared() {
@@ -291,7 +295,7 @@ class TripViewModel(
             // old, rather than fetch everything again or wait for the minute tick.
             // The routes a refresh fetches for ([refreshLive]): a route not shown, or past the cap,
             // is never fetched, so its stops would read as stale on every return.
-            val routes = _state.value.shownRoutes(hiddenModes)?.let { bestOf(it, openKeys()) } ?: return
+            val routes = timedRoutes() ?: return
             // Closures too: a stop the list found closed since this trip's last check shows at once.
             _state.update { sharedClosures(routes, it.copy(live = cached(routes, it.live))) }
             val now = clock()
@@ -302,7 +306,7 @@ class TripViewModel(
             // still ranked by it, as by a failed one, but its line's page doesn't vouch on it
             // ([State.closuresAt]).
             val closuresStale = _state.value.closuresFailed.isNotEmpty() ||
-                closureStops(routes, _state.value.areaPoles).any { id ->
+                (closureStops(routes, _state.value.areaPoles) + shownStops).any { id ->
                     closureCache[id]?.let { Duration.between(it.at, now).let { age -> age.isNegative || age >= closureReuse } } ?: true
                 }
             if (arrivalsStale || closuresStale) refresh()
@@ -598,7 +602,7 @@ class TripViewModel(
         // Routes riding a hidden mode aren't shown, so their stops and lines aren't fetched either.
         // Only the routes the screen times (the soonest few of those shown, and the open one) are
         // fetched for.
-        val routes = _state.value.shownRoutes(hiddenModes)?.let { bestOf(it, openKeys()) } ?: return
+        val routes = timedRoutes() ?: return
         val lines = routes.flatMap { route -> route.rides.map { it.lineId } }.distinct()
         // Arrivals another screen fetched since show at once; only a stop not fetched within
         // [ArrivalsCache.TTL] is asked for again. Refreshing from the start, so the trip reads as
@@ -623,10 +627,12 @@ class TripViewModel(
             coroutineScope {
                 val statuses = async { fetchStatuses(lines + others) }
                 // Where the routes board and get off, for a closure or a moved stop (SPEC *Trips with a change*).
-                val closures = async { checkClosures(closureStops(routes, areaPoles)) }
+                val asked = (closureStops(routes, areaPoles) + shownStops).distinct()
+                val closures = async { checkClosures(asked) }
                 val live = stops.map { id -> async { id to fetchStop(id) } }.awaitAll()
                 val fetched = statuses.await()
                 val checked = closures.await()
+                val latest = checked.latest()
                 val current = source == sourceGeneration
                 _state.update { state ->
                     val next = state.copy(
@@ -637,10 +643,14 @@ class TripViewModel(
                         statusFailed = fetched == null || fetched.failed.isNotEmpty(),
                         statusFailedLines = fetched?.failed ?: (lines + others).toSet(),
                         statusUnknown = lines.filterTo(HashSet()) { it !in (fetched?.statuses ?: state.statuses) },
-                        // A stop whose check failed keeps its last known notices.
-                        closures = state.closures + checked.found,
-                        closuresAt = state.closuresAt + checked.at,
-                        closuresFailed = checked.failed,
+                        // A stop whose check failed keeps its last known notices. Settled only for the
+                        // stops no check since has asked about ([ClosureCheck.latest]): one checked
+                        // again meanwhile keeps that check's verdict, and one it didn't ask about
+                        // keeps its own while the screen still names it (Codex, PR #375).
+                        closures = state.closures + checked.found.filterKeys { it in latest },
+                        closuresAt = state.closuresAt + checked.at.filterKeys { it in latest },
+                        closuresFailed = state.closuresFailed.filterTo(HashSet()) { if (it in asked) it !in latest else it in shownStops } +
+                            checked.failed.filter { it in latest },
                     )
                     next.copy(closuresUnknown = unknownClosures(next.routes.orEmpty(), next))
                 }
@@ -740,8 +750,51 @@ class TripViewModel(
             null
         }
 
-    // The last closure check's place in line: a lookup asked after it is newer than all it learned.
-    private var closureTicket: StopClosureCache.Ask? = null
+    /**
+     * Each stop's latest closure check's place in line ([StopClosureCache.ask]), whichever check it
+     * was (a refresh's, or the screen's stops on their own, [checkShownStops]): only that check's
+     * verdict settles the stop ([ClosureCheck.latest]), so an older one landing late never replaces
+     * it — a success over a newer failure, say, which would pass the stop off as checked open (Codex,
+     * PR #375) — and a failure stops counting only once a lookup asked after it has come in
+     * ([sharedClosures]).
+     */
+    private val closureAsks = HashMap<String, StopClosureCache.Ask>()
+
+    // The stops of [this] check that no check since has asked about: the ones its verdict settles.
+    private fun ClosureCheck.latest(): Set<String> = ids.filterTo(HashSet()) { closureAsks[it] === ask }
+
+    // The stops the screen judges the routes at ([checkShownStops]), asked about on every refresh.
+    private var shownStops: Set<String> = emptySet()
+
+    /**
+     * The stops the screen judges the routes at ([stops]), among them some the trip doesn't ask about
+     * by itself ([closureStops], the Planner's stops and their pairs' poles): a stand a bus is placed
+     * on in place of the one the Planner named, or a pole another line a ride shows boards or gets
+     * off at. Every one is checked for a closure with the rest on every refresh, all of them kept
+     * whichever routes a refresh times (Codex, PR #375), so a route isn't left unvouched for at a stop
+     * only the screen can name; those new to the trip that the routes it times don't name are checked
+     * at once.
+     */
+    fun checkShownStops(stops: Set<String>) {
+        val added = stops - shownStops
+        shownStops = stops
+        val own = timedRoutes()?.let { closureStops(it, areaPoles) }.orEmpty().toSet()
+        val asked = added - own
+        if (asked.isEmpty()) return
+        viewModelScope.launch {
+            val checked = checkClosures(asked.toList())
+            val latest = checked.latest()
+            _state.update {
+                val next = it.copy(
+                    closures = it.closures + checked.found.filterKeys { id -> id in latest },
+                    closuresAt = it.closuresAt + checked.at.filterKeys { id -> id in latest },
+                    closuresFailed = it.closuresFailed - latest + checked.failed.filter { id -> id in latest },
+                )
+                // The routes can have changed while it was out, making one of these their own.
+                next.copy(closuresUnknown = unknownClosures(next.routes.orEmpty(), next))
+            }
+        }
+    }
 
     /**
      * [state] with [routes]' closure stops as [closureCache] now holds them: this trip's own last
@@ -752,14 +805,14 @@ class TripViewModel(
      */
     private fun sharedClosures(routes: List<TripRoute>, state: State): State {
         val now = clock()
-        val held = closureStops(routes, state.areaPoles).mapNotNull { id ->
+        val held = (closureStops(routes, state.areaPoles) + shownStops).distinct().mapNotNull { id ->
             val lookup = closureCache[id] ?: return@mapNotNull null
             val recent = Duration.between(lookup.at, now).let { !it.isNegative && it < closureReuse }
             (id to lookup).takeIf { id in state.closures || recent }
         }.toMap()
         if (held.isEmpty()) return state
-        val ticket = closureTicket
-        val failed = if (ticket == null) state.closuresFailed else state.closuresFailed.filterTo(HashSet()) { closureCache.since(it, ticket) == null }
+        // A failed stop stops counting as failed once a lookup asked after its own latest check is in.
+        val failed = state.closuresFailed.filterTo(HashSet()) { id -> closureAsks[id]?.let { closureCache.since(id, it) == null } ?: true }
         val next = state.copy(
             closures = state.closures + held.mapValues { it.value.notices },
             closuresAt = state.closuresAt + held.mapValues { it.value.at },
@@ -769,7 +822,14 @@ class TripViewModel(
     }
 
     // What a closure check learned ([found], each asked [at]), and the stops whose request failed.
-    private class ClosureCheck(val found: Map<String, List<StopDisruption>>, val at: Map<String, Instant>, val failed: Set<String>)
+    // Which stops it was for ([ids]), and its place in line ([ask]).
+    private class ClosureCheck(
+        val found: Map<String, List<StopDisruption>>,
+        val at: Map<String, Instant>,
+        val failed: Set<String>,
+        val ids: List<String>,
+        val ask: StopClosureCache.Ask,
+    )
 
     /**
      * The closure notices of each of [ids] this check could learn: from [closureCache] when looked up
@@ -780,6 +840,10 @@ class TripViewModel(
      */
     private suspend fun checkClosures(ids: List<String>): ClosureCheck {
         val now = clock()
+        // This check's place in line ([StopClosureCache.ask]), taken before any request is sent, and
+        // each stop's latest check from now on ([closureAsks]).
+        val ticket = closureCache.ask(now)
+        for (id in ids) closureAsks[id] = ticket
         val found = HashMap<String, List<StopDisruption>>()
         val at = HashMap<String, Instant>()
         val ask = ids.filter { id ->
@@ -792,9 +856,6 @@ class TripViewModel(
             held == null
         }
         val (poles, others) = ask.partition(StopDisruptionBatch::isPole)
-        // This check's place in line ([StopClosureCache.ask]), taken before any request is sent.
-        val ticket = closureCache.ask(now)
-        closureTicket = ticket
         val answers = coroutineScope {
             (
                 poles.chunked(StopDisruptionBatch.MAX_PER_REQUEST).map { chunk ->
@@ -817,7 +878,7 @@ class TripViewModel(
                     .onFailure { failed += id }
             }
         }
-        return ClosureCheck(found, at, failed)
+        return ClosureCheck(found, at, failed, ids, ticket)
     }
 
     // One closure request's answer, or its failure (logged: an error kind and what was asked).

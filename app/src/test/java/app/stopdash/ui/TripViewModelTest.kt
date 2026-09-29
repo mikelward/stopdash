@@ -2664,6 +2664,157 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `a stop only the screen names is checked with the rest`() = runTest(dispatcher) {
+        val client = FakeClient(mutableMapOf("A" to listOf(train("red", "End", 2))))
+        val trip = model(FakePlanner(listOf(route)), client)
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue("S2" !in client.disruptionAsks.flatten())
+        // The screen judges a route at S2 (a stand its bus is placed on, say) and at A, the trip's own.
+        client.disruptions = mapOf("S2" to stationClosed)
+        trip.checkShownStops(setOf("S2", "A"))
+        advanceUntilIdle()
+        assertEquals(stationClosed, trip.state.value.closures["S2"])
+        assertEquals(listOf("S2"), client.disruptionAsks.last())
+        // Handed again, nothing is new: nothing is asked.
+        val asks = client.disruptionAsks.size
+        trip.checkShownStops(setOf("S2", "A"))
+        advanceUntilIdle()
+        assertEquals(asks, client.disruptionAsks.size)
+        // Past its reuse, the next refresh asks about it with the rest.
+        now = now.plus(Duration.ofMinutes(6))
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue("S2" in client.disruptionAsks.drop(asks).flatten())
+        // A check of it that fails says so, as any stop's does.
+        client.failDisruptions = setOf("Q9")
+        trip.checkShownStops(setOf("S2", "Q9"))
+        advanceUntilIdle()
+        assertTrue("Q9" in trip.state.value.closuresFailed)
+    }
+
+    @Test
+    fun `a refresh out when a shown stop's own check fails keeps that failure`() = runTest(dispatcher) {
+        var gate: CompletableDeferred<Unit>? = null
+        val fake = FakeClient(mutableMapOf("A" to listOf(train("red", "End", 2))))
+        val client = object : TflClient by fake {
+            override suspend fun stopDisruptions(stopId: String): List<StopDisruption> {
+                if (stopId != "S2") gate?.await()
+                return fake.stopDisruptions(stopId)
+            }
+        }
+        val trip = model(FakePlanner(listOf(route)), client)
+        trip.refresh()
+        advanceUntilIdle()
+        trip.checkShownStops(setOf("S2"))
+        advanceUntilIdle()
+        assertEquals(emptyList<StopDisruption>(), trip.state.value.closures["S2"])
+        // The screen stops naming it, and a refresh goes out without it...
+        trip.checkShownStops(emptySet())
+        now = now.plus(Duration.ofMinutes(6))
+        gate = CompletableDeferred()
+        trip.refresh()
+        runCurrent()
+        // ...and while it's out, the screen names it again, and its own check fails.
+        fake.failDisruptions = setOf("S2")
+        trip.checkShownStops(setOf("S2"))
+        runCurrent()
+        assertTrue("S2" in trip.state.value.closuresFailed)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        // The refresh never asked about it: its failure stands over its older empty check (Codex, PR #375).
+        assertTrue("S2" in trip.state.value.closuresFailed)
+    }
+
+    @Test
+    fun `an older check of a shown stop landing last never undoes a newer one's failure`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        var s2Calls = 0
+        val fake = FakeClient(mutableMapOf("A" to listOf(train("red", "End", 2))))
+        val client = object : TflClient by fake {
+            override suspend fun stopDisruptions(stopId: String): List<StopDisruption> {
+                if (stopId != "S2") return fake.stopDisruptions(stopId)
+                // The first check of S2 is slow and finds nothing; the next one fails at once.
+                if (++s2Calls == 1) {
+                    gate.await()
+                    return emptyList()
+                }
+                throw TflException.Offline(null)
+            }
+        }
+        val trip = model(FakePlanner(listOf(route)), client)
+        trip.refreshFor(null)
+        advanceUntilIdle()
+        trip.checkShownStops(setOf("S2"))
+        runCurrent()
+        // Its route hidden and shown again while that check is out: S2 is checked again, and fails.
+        trip.checkShownStops(emptySet())
+        trip.checkShownStops(setOf("S2"))
+        runCurrent()
+        assertTrue("S2" in trip.state.value.closuresFailed)
+        // The first check lands last: its older "nothing there" doesn't pass S2 off as checked open.
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertTrue("S2" in trip.state.value.closuresFailed)
+        assertNull(trip.state.value.closures["S2"])
+        // Nor once the trip is shown again and takes what the shared cache holds, which is that older
+        // lookup: asked before the check that failed, it doesn't answer for it (Codex, PR #375).
+        trip.refreshFor(null)
+        assertTrue("S2" in trip.state.value.closuresFailed)
+        // Nor on the refresh being shown again starts, within the reuse window: S2 is asked again
+        // rather than taken from that older lookup, and fails again, so it still counts as failed
+        // (Codex, PR #375).
+        val calls = s2Calls
+        advanceUntilIdle()
+        assertEquals(calls + 1, s2Calls)
+        assertTrue("S2" in trip.state.value.closuresFailed)
+        assertNull(trip.state.value.closures["S2"])
+    }
+
+    @Test
+    fun `a shown stop that only a route the trip doesn't time also ends at is still checked`() = runTest(dispatcher) {
+        // A bus route to S2, hidden, so a refresh never checks it.
+        val bus = TripRoute(listOf(leg("43", "A", "S2", 5, 15).copy(mode = "bus"), leg("blue", "S2", "C", 20, 30)))
+        val client = FakeClient(mutableMapOf("A" to listOf(train("red", "End", 2))))
+        val trip = model(FakePlanner(listOf(route, bus)), client)
+        trip.hiddenModes = setOf("bus")
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue("S2" !in client.disruptionAsks.flatten())
+        // The screen judges a shown route at S2: it's asked about, once and on every refresh after.
+        trip.checkShownStops(setOf("S2"))
+        advanceUntilIdle()
+        assertEquals(listOf("S2"), client.disruptionAsks.last())
+        now = now.plus(Duration.ofMinutes(6))
+        val asks = client.disruptionAsks.size
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue("S2" in client.disruptionAsks.drop(asks).flatten())
+    }
+
+    @Test
+    fun `the stops only the screen can name are where rides are placed and other lines' poles`() {
+        // The 43 is placed where the Planner named it; the 134, found at P2, runs to the same stop.
+        val ride = leg("43", "P1", "Q1", 5, 15).copy(mode = "bus")
+        val other = leg("134", "P2", "Q1", 6, 16).copy(mode = "bus")
+        val route = TripRoute(listOf(ride))
+        assertEquals(setOf("P1", "Q1"), shownStops(route, emptyMap(), emptyMap()))
+        assertEquals(setOf("P1", "P2", "Q1"), shownStops(route, emptyMap(), mapOf(ride to RideLines(listOf(ride, other), listOf(ride)))))
+        // A bus at a pair not yet placed names nothing at either end: the trip already asks about
+        // its pair's poles and the Planner's stops.
+        val paired = ride.copy(fromArea = "490GP")
+        assertEquals(emptySet<String>(), shownStops(TripRoute(listOf(paired)), mapOf("43" to null), emptyMap()))
+        // Once placed, at the bus station stand its route calls at rather than the one the Planner named.
+        val atStation = paired.copy(toName = "Bus Station", path = listOf("M1", "Q1"))
+        val station = LineSequence(
+            routes = listOf(LineRoute("To the station", listOf("P1", "M1", "S2"))),
+            stopNames = mapOf("P1" to "P", "M1" to "M", "S2" to "Bus Station"),
+            stopAreas = mapOf("P1" to "490GP"),
+        )
+        assertEquals(setOf("P1", "S2"), shownStops(TripRoute(listOf(atStation)), mapOf("43" to station), emptyMap()))
+    }
+
+    @Test
     fun `a ride's other lines carry the closures where they board and get off`() {
         // The 43 is the Planner's, from P1; the 134, found in P2's arrivals, runs from P2 to the same stop.
         val ride = leg("43", "P1", "Q1", 5, 15).copy(mode = "bus", fromArea = "490GP", toArea = "490GQ")

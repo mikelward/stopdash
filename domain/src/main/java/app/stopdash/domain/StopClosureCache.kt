@@ -7,8 +7,9 @@ import java.time.Instant
  * and when it was made, shared by the screens that check stops (SPEC *Disruptions*): the list and a
  * trip reuse each other's lookups for a few minutes rather than ask TfL again, since a closure
  * changes over hours and every lookup is a request against TfL's rate budget. A failure is never
- * kept, so it's asked again next time. Memory only: never saved, gone with the process; bounded to
- * [MAX] stops, the least recently looked up dropped first.
+ * kept, so it's asked again next time; only its place in line is, until a lookup asked after it
+ * succeeds, so an answer asked before it isn't reused over it ([get]). Memory only: never saved,
+ * gone with the process; bounded to [MAX] stops, the least recently looked up dropped first.
  *
  * Lookups race: the list and a trip can ask about one stop at once, and the older answer can land
  * last. So each lookup takes its place in line from [ask] before it's sent, and [settle] holds on to
@@ -30,15 +31,24 @@ class StopClosureCache {
     }
 
     private val entries = LinkedHashMap<String, Lookup>()
+
+    // Each stop's latest failed lookup's place in line, while no lookup asked after it has succeeded.
+    private val failures = LinkedHashMap<String, Ask>()
     private var asked = 0L
 
     /** A place in line for a lookup about to be sent at [at]: later than every one taken before it. */
     @Synchronized
     fun ask(at: Instant): Ask = Ask(at, ++asked)
 
-    /** [stopId]'s last successful lookup, or null when none is kept. */
+    /**
+     * [stopId]'s last successful lookup, or null when none is kept, or when a lookup asked after it
+     * has since failed: that one answered nothing, and the one before it doesn't answer for it, so
+     * the stop is asked again rather than taken from an answer older than its latest check (Codex,
+     * PR #375). [since] still finds it for a caller holding an older one.
+     */
     @Synchronized
-    operator fun get(stopId: String): Lookup? = entries[stopId]
+    operator fun get(stopId: String): Lookup? =
+        entries[stopId]?.takeIf { lookup -> failures[stopId]?.let { it.order < lookup.ask.order } ?: true }
 
     /**
      * Keeps [notices], from the lookup [ask] names, as [stopId]'s unless one asked later is already
@@ -52,19 +62,33 @@ class StopClosureCache {
         entries.remove(stopId)
         entries[stopId] = lookup
         while (entries.size > MAX) entries.remove(entries.keys.first())
+        // Answered by a lookup asked after it: that failure no longer stands.
+        if (failures[stopId]?.let { it.order < ask.order } == true) failures.remove(stopId)
         return lookup
     }
 
     /**
      * Settles the lookup [ask] names for [stopId]: a success as [keep] does, and a failure with a
      * lookup asked after it, if one is kept (it landed first), else left a failure — so an older
-     * failure never hides a newer answer another screen already has.
+     * failure never hides a newer answer another screen already has — whose place in line is kept
+     * against reusing an answer asked before it ([get]).
      */
     @Synchronized
     fun settle(stopId: String, ask: Ask, outcome: Result<List<StopDisruption>>): Result<Lookup> =
         outcome.fold(
             onSuccess = { Result.success(keep(stopId, ask, it)) },
-            onFailure = { e -> since(stopId, ask)?.let { Result.success(it) } ?: Result.failure(e) },
+            onFailure = { e ->
+                since(stopId, ask)?.let { Result.success(it) } ?: run {
+                    if (failures[stopId]?.let { it.order < ask.order } != false) {
+                        failures.remove(stopId)
+                        failures[stopId] = ask
+                        // A stop's answer goes with its failure: kept alone, the answer asked before
+                        // it would be offered for reuse again (Codex, PR #375).
+                        while (failures.size > MAX) failures.keys.first().let { failures.remove(it); entries.remove(it) }
+                    }
+                    Result.failure(e)
+                }
+            },
         )
 
     /** A lookup of [stopId] asked after [ask], if one is kept: a newer answer than its. */
