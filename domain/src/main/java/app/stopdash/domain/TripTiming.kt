@@ -30,8 +30,9 @@ object TripTiming {
 
     /**
      * A route's timing: its [arrival] (null when withheld), the [basis] behind it, each leg's
-     * [legs] timing, whether a leg can't be ridden ([blocked]: a line not running), and whether a
-     * leg's line couldn't be checked at all ([unchecked]: its status failed with none known).
+     * [legs] timing, whether a leg can't be ridden ([blocked]: a line not running, or a stop it
+     * boards or gets off at closed), and whether one couldn't be checked at all ([unchecked]: a line's
+     * status or a stop's closure check failed with none known).
      */
     data class Estimate(
         val route: TripRoute,
@@ -114,7 +115,8 @@ object TripTiming {
      * leg by index, the upcoming trains at its boarding stop that call at its alighting stop, or null
      * when there are none StopDash can vouch for (the arrivals failed, went stale, or the route
      * couldn't be checked). [notRunning] is the lines not running now; [unknown] the lines whose
-     * status couldn't be checked, with none known.
+     * status couldn't be checked, with none known; [stops] how the route stands by its stops' closure
+     * checks ([TripClosures.standing]), which ranks it as its lines' would.
      */
     fun estimate(
         route: TripRoute,
@@ -133,9 +135,10 @@ object TripTiming {
         // change, [RideLines.through]) carries the times of the rides it replaces as a placeholder,
         // which belong to other lines, so only a live train times it.
         timetabled: (Int) -> Boolean = { true },
+        stops: TripClosures.Standing = TripClosures.Standing.OPEN,
     ): Estimate {
-        val blocked = route.rides.any { it.lineId in notRunning }
-        val unchecked = !blocked && route.rides.any { it.lineId in unknown }
+        val blocked = route.rides.any { it.lineId in notRunning } || stops == TripClosures.Standing.CLOSED
+        val unchecked = !blocked && (route.rides.any { it.lineId in unknown } || stops == TripClosures.Standing.UNCHECKED)
         var basis = Basis.LIVE
         var waits = false
         var withheld: Withheld? = null

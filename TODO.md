@@ -847,8 +847,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [x] **First version** (#242): *To…* from the near-me list and a *From…* station plans,
             lists and opens routes with live times, walks, ranking tiers, status and refresh
             warnings, the location banner and hidden modes.
-      - [ ] **Closure checks where the rider gets off** (each leg's alighting stop and the
-            destination), from the list's few-minute cache; not yet fetched.
+      - [x] **Closure checks where the rider gets off** (each leg's alighting stop and the
+            destination), from the list's few-minute cache, with the boarding stops (below).
       - [x] **Gray unreachable trains in the leg-by-leg cards** (the list's first-leg row does):
             an opened route grays, on each ride, the trains that leave before the rider gets there.
       - [x] **From row on the destination search** (maintainer, 2026-09-28): the *To…* search's
@@ -1020,9 +1020,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 (which needs the affected stops kept: `LineStatus` keeps only the direction today,
                 so until it does every part closure or part suspension is Medium); a stop the
                 route still has to reach closed or moved: where a coming leg boards or gets off, or
-                where a walk ends (a change between stations, or the stop the route ends at), once
-                *Check a trip's boarding stops for disruptions* below and *Closure checks where
-                the rider gets off* above fetch them; or planning again can't make the connection.
+                where a walk ends (a change between stations, or the stop the route ends at), as
+                the trip screen checks them (*Closure checks where the rider gets off* above); or
+                planning again can't make the connection.
               - **Medium:** severe delays on a coming leg's line; a part closure or part
                 suspension on it where it isn't known whether it covers the leg's own stretch; a
                 train through a change still not predicted when the rider is a few minutes from
@@ -1069,8 +1069,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 reads that same answer. It's the one large download: once per new alert while TfL
                 answers it; while it fails, again a minute later, then after twice as long each
                 time, up to half an hour, ~150 KB a line each time.
-              - **Stop closures**, as the two closure tasks the High tier names fetch them (not
-                yet), shared with the list for five minutes.
+              - **Stop closures**, which the trip screen checks, shared with the list for five
+                minutes. Confirm when building it whether the trip on the way has them too, else
+                one request a stop (a bus stop's poles several to one) at most every five minutes
+                while it's followed, a failure just leaving the stop unknown.
               - **Planning again**, only on a signal and only once the mid-route task lands: one
                 re-plan per new or changed signal, however many legs raised it, never while one is
                 in flight. A re-plan is the trip's own, so it asks the Journey Planner once per
@@ -1115,14 +1117,27 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             steps from it and coming back isn't caught. Judge it by distance from the destination,
             which needs a position for each stop a route calls at (the Planner gives one only for
             each leg's ends) and a cutoff to settle.
-      - [ ] **Check a trip's boarding stops for disruptions** (Codex on PR 259, 2026-09-26): a trip
-            fetches its lines' status but not its stops' own disruptions (a closure, a moved stop),
-            so a leg's line page can't say "No disruptions reported" and reads "Couldn't check"
-            instead. Fetch them as the list does, and let the page vouch once both checks pass.
+      - [x] **Check a trip's boarding stops for disruptions** (Codex on PR 259, 2026-09-26): a trip
+            fetched its lines' status but not its stops' own disruptions (a closure, a moved stop),
+            so a leg's line page couldn't say "No disruptions reported". Fetched as the list does,
+            with the stops it gets off at; the page vouches once both checks pass.
       - [x] **Honor dismissed alerts on a trip's cards** (Codex on PR 259, 2026-09-26): a line alert
             dismissed from a leg's page (or the list) is honored on that page, but the trip's own
             cards still show the line's ⚠. Apply the dismissals there as the list does, keeping
             a dismissed line's status out of the warnings without reading it as unchecked.
+      - [ ] **Check the stand a bus is placed on when the Planner named another** (Codex on #367):
+            at a bus station, a line's route can put the bus at a stand of the same name other than
+            the one the Planner named. The trip judges the route there, but asks only about the
+            Planner's stands and a pair's poles, so such a route is never vouched for at that stop.
+            The trip's model doesn't know the line routes the screen places buses by; it needs the
+            placed stands handed to it, or its own copy of the routes, to ask about them too.
+      - [ ] **Prune a trip's dismissals once its own checks see the alert end** (Codex on #367):
+            the list reconciles its dismissals after each check, dropping one whose alert has ended
+            at a place it checked, so the same text recurring later shows again. A trip never does,
+            for a line or a stop closure: a dismissal made on it is pruned only when the list
+            happens to check that place or line. Needs each checked stop's place as the list keys
+            it (its interchange and stop area, from the route data the screen loads), so a
+            reconcile can't miss the dismissal or drop a live one.
       - [ ] **Arrows between a route's pills** if space permits (dropped for width, 2026-09-26).
       - [ ] **Show a route's fare** (maintainer, 2026-09-27). The Planner response a trip already
             fetches carries one per journey (`journeys[].fare`, ignored today): `totalCost` in

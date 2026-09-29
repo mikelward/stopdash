@@ -115,6 +115,19 @@ class RouteSequenceThameslinkTest {
     }
 
     @Test
+    fun `the repository names a station's interchange once the index is read`() = runTest {
+        val source = object : RouteSequenceSource {
+            override suspend fun routeSequence(lineId: String, direction: String) = fetched
+        }
+        val repository = RouteStopsRepository(source, io = StandardTestDispatcher(testScheduler), stations = { index })
+        assertNull(repository.hubOf(ST_PANCRAS_DOMESTIC))
+        repository.warm()
+        assertEquals(HUB, repository.hubOf(ST_PANCRAS_DOMESTIC))
+        // A stop the index doesn't list (a bus stop) has none.
+        assertNull(repository.hubOf("490G00000000"))
+    }
+
+    @Test
     fun `the sequence carries each stop's interchange`() {
         assertEquals(HUB, fetched.stopHubs[ST_PANCRAS_LL])
         assertEquals(HUB, fetched.stopHubs[KINGS_CROSS])

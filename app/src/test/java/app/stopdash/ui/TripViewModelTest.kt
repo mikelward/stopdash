@@ -23,9 +23,11 @@ import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.RideLines
 import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.RouteStops
+import app.stopdash.domain.StopClosureCache
 import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.TflException
+import app.stopdash.domain.TripClosures
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripLeg
@@ -141,7 +143,16 @@ class TripViewModelTest {
                 if (it in disruptedLines) LineStatus(it, 6, "Severe Delays") else LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service")
             }
         }
-        override suspend fun stopDisruptions(stopId: String): List<StopDisruption> = emptyList()
+        // Each stop's closure notices; asking about one in [failDisruptions] fails. Each request's stops, in order.
+        var disruptions = emptyMap<String, List<StopDisruption>>()
+        var failDisruptions = emptySet<String>()
+        val disruptionAsks = mutableListOf<List<String>>()
+        override suspend fun stopDisruptions(stopId: String): List<StopDisruption> = poleDisruptions(listOf(stopId)).getValue(stopId)
+        override suspend fun poleDisruptions(stopIds: List<String>): Map<String, List<StopDisruption>> {
+            disruptionAsks += stopIds
+            if (stopIds.any { it in failDisruptions }) throw TflException.Offline(null)
+            return stopIds.associateWith { disruptions[it].orEmpty() }
+        }
     }
 
     private fun model(
@@ -150,9 +161,10 @@ class TripViewModelTest {
         plans: TripPlans = TripPlans(),
         toIds: List<String> = listOf("C"),
         arrivals: ArrivalsCache = ArrivalsCache(),
+        closures: StopClosureCache = StopClosureCache(),
     ) = TripViewModel(
         planner, client, "A", toIds.map { TripDestination.Stop(it) },
-        clock = { now }, plans = plans, io = dispatcher, arrivals = arrivals,
+        clock = { now }, plans = plans, io = dispatcher, arrivals = arrivals, closureCache = closures,
     )
 
     @Test
@@ -1000,6 +1012,8 @@ class TripViewModelTest {
         // The failed request's line keeps its last status, and the trip says it couldn't check.
         assertEquals(LineStatus.GOOD_SERVICE, state.statuses.getValue(second).severity)
         assertTrue(state.statusFailed)
+        // Only that line's check failed: the answered one can still be vouched for.
+        assertEquals(setOf(second), state.statusFailedLines)
     }
 
     @Test
@@ -1236,6 +1250,92 @@ class TripViewModelTest {
         assertEquals(false, statusNote(TripViewModel.State(), unchecked = true))
         assertEquals(false, statusNote(TripViewModel.State(statusFailed = true), unchecked = false))
         assertNull(statusNote(TripViewModel.State(), unchecked = false))
+        // A check that failed and is being asked again reads as checking, never as clean.
+        assertEquals(true, statusNote(TripViewModel.State(refreshing = true, statusFailed = true), unchecked = false))
+        assertEquals(true, statusNote(TripViewModel.State(refreshing = true, closuresFailed = setOf("A")), unchecked = false))
+        assertEquals(true, statusNote(TripViewModel.State(planning = true), unchecked = false, closuresFailed = true))
+        // A route whose own checks all answered says nothing while another's retry runs.
+        assertNull(statusNote(TripViewModel.State(refreshing = true, closuresFailed = setOf("A")), unchecked = false, closuresFailed = false, statusFailed = false))
+    }
+
+    @Test
+    fun `an opened route says it couldn't check only a stop of its own`() {
+        val red = TripLeg("tube", "red", "Red", "A", "A", "B", "B", at(10), at(20))
+        val bus = TripLeg("bus", "1", "1", "S", "S", "P1", "P1", at(10), at(20), toArea = "490G0000P")
+        // The latest check failed at C, a stop only another route uses, and at P2, the other pole of P1's pair.
+        val state = TripViewModel.State(closuresFailed = setOf("C", "P2"), areaPoles = mapOf("490G0000P" to listOf("P1", "P2")))
+        assertFalse(routeClosuresFailed(TripRoute(listOf(red)), state, emptyMap()))
+        assertNull(statusNote(state, unchecked = false, closuresFailed = routeClosuresFailed(TripRoute(listOf(red)), state, emptyMap())))
+        // The list shows every route, so it says so there.
+        assertEquals(false, statusNote(state, unchecked = false))
+        // A route getting off at C, or at a pole of P2's pair (the bus may stop at P2), can't be vouched for.
+        assertTrue(routeClosuresFailed(TripRoute(listOf(red.copy(toId = "C"))), state, emptyMap()))
+        assertTrue(routeClosuresFailed(TripRoute(listOf(bus)), state, emptyMap()))
+        assertEquals(false, statusNote(state, unchecked = false, closuresFailed = routeClosuresFailed(TripRoute(listOf(bus)), state, emptyMap())))
+    }
+
+    @Test
+    fun `a check is current until it's as old as a stale countdown, and never once dated after the clock`() {
+        val now = at(0)
+        assertTrue(checkCurrent(now, now))
+        assertTrue(checkCurrent(now.minus(Duration.ofMinutes(4)), now))
+        assertFalse(checkCurrent(now.minus(Duration.ofMinutes(6)), now))
+        assertFalse(checkCurrent(null, now))
+        // Made between the screen clock's ticks: dated a few seconds after it, and current.
+        assertTrue(checkCurrent(now.plusSeconds(9), now))
+        // Made before the clock was set back: its age can't be told, so it isn't current.
+        assertFalse(checkCurrent(now.plus(Duration.ofMinutes(10)), now))
+    }
+
+    @Test
+    fun `a pole another line shown uses counts toward whether the route could be checked`() {
+        // The Planner's 43 from P1, checked open; the 134, found at P2, runs to the same stop.
+        val ride = leg("43", "P1", "Q1", 5, 15).copy(mode = "bus", fromArea = "490GP", toArea = "490GQ")
+        val other = leg("134", "P2", "Q1", 6, 16).copy(mode = "bus")
+        val route = TripRoute(listOf(ride))
+        val shown = mapOf(ride to RideLines(listOf(ride, other), listOf(ride, other)))
+        val checked = TripViewModel.State(closures = mapOf("P1" to emptyList(), "P2" to emptyList(), "Q1" to emptyList()))
+        assertEquals(setOf("P2", "Q1"), otherLineStops(route, shown))
+        assertFalse(otherLineStopsUnchecked(route, checked, shown))
+        assertFalse(routeClosuresFailed(route, checked, emptyMap(), shown))
+        // P2's check failed: the route can't vouch for the 134, though its own stops are fine.
+        val failed = checked.copy(closuresFailed = setOf("P2"))
+        assertFalse(routeClosuresFailed(route, failed, emptyMap()))
+        assertTrue(routeClosuresFailed(route, failed, emptyMap(), shown))
+        // P2 never checked: unchecked, so the note says it's checking, then that it couldn't.
+        val unchecked = checked.copy(closures = checked.closures - "P2")
+        assertTrue(otherLineStopsUnchecked(route, unchecked, shown))
+        assertFalse(otherLineStopsUnchecked(route, unchecked, emptyMap()))
+    }
+
+    @Test
+    fun `an opened route says it couldn't check only a line of its own`() {
+        val red = TripLeg("tube", "red", "Red", "A", "A", "B", "B", at(10), at(20))
+        val green = red.copy(lineId = "green", lineName = "Green")
+        // The latest status request failed for green, a line only another route rides.
+        val state = TripViewModel.State(statusFailed = true, statusFailedLines = setOf("green"))
+        assertFalse(routeStatusFailed(TripRoute(listOf(red)), emptyMap(), state))
+        assertNull(statusNote(state, unchecked = false, statusFailed = routeStatusFailed(TripRoute(listOf(red)), emptyMap(), state)))
+        // The list shows every route, so it says so there.
+        assertEquals(false, statusNote(state, unchecked = false))
+        // A route riding green, or showing it at a stop it boards at, can't be vouched for.
+        assertTrue(routeStatusFailed(TripRoute(listOf(green)), emptyMap(), state))
+        val shown = mapOf(red to RideLines(listOf(red, green), listOf(red)))
+        assertTrue(routeStatusFailed(TripRoute(listOf(red)), shown, state))
+        assertEquals(false, statusNote(state, unchecked = false, statusFailed = routeStatusFailed(TripRoute(listOf(red)), shown, state)))
+    }
+
+    @Test
+    fun `once a bus is placed, only a failed check at its own pole says the route couldn't be checked`() {
+        val route = TripRoute(listOf(plannerBus))
+        val poles = mapOf("BG" to listOf("Bn", "Bs"), "CG" to listOf("Cn", "Cs"))
+        // The Planner's southbound poles failed; the bus boards and gets off northbound.
+        val otherSide = TripViewModel.State(closuresFailed = setOf("Bs", "Cs"), areaPoles = poles)
+        assertFalse(routeClosuresFailed(route, otherSide, mapOf("1" to road)))
+        // Its route not in yet: it may use either side, so it can't be vouched for.
+        assertTrue(routeClosuresFailed(route, otherSide, emptyMap()))
+        // Its own pole's check failed.
+        assertTrue(routeClosuresFailed(route, otherSide.copy(closuresFailed = setOf("Cn")), mapOf("1" to road)))
     }
 
     @Test
@@ -1296,6 +1396,53 @@ class TripViewModelTest {
         val leg = pending.routes!!.single().legs.single()
         assertEquals("Bn", leg.fromId)
         assertTrue(legLoading(pending, leg, mapOf("1" to road)))
+    }
+
+    @Test
+    fun `a bus leg is placed on its poles only once its route gives a single answer`() {
+        assertTrue(placedOnPoles(plannerBus, mapOf("1" to road)))
+        // Its route not in yet, or failed: another pole of the pair may be the one it uses.
+        assertFalse(placedOnPoles(plannerBus, emptyMap()))
+        assertFalse(placedOnPoles(plannerBus, mapOf("1" to null)))
+        // Loaded, but running both ways between the pairs: no single answer, so still not placed.
+        val both = road.copy(routes = road.routes + LineRoute("North again", listOf("As", "Bs", "Xn", "Cs")))
+        assertEquals(plannerBus, onPoles(plannerBus, mapOf("1" to both)))
+        assertFalse(placedOnPoles(plannerBus, mapOf("1" to both)))
+        // A ride named by no pair needs no placing.
+        assertTrue(placedOnPoles(leg("red", "A", "B", 5, 15), emptyMap()))
+        // Where the route ends on foot, no bus is placed there.
+        val walkOn = TripRoute(listOf(plannerBus, leg("", "Cs", "E", 30, 35).copy(mode = "walking", toArea = "EG")))
+        assertEquals("E", endPole(walkOn, TripClosures.End("E", "EG"), emptyMap()))
+        assertNull(endPole(walkOn, TripClosures.End("Bs", "BG", "1"), mapOf("1" to both)))
+        // Placed, at the pole the bus uses rather than the one the Planner named.
+        assertEquals("Bn", endPole(walkOn, TripClosures.End("Bs", "BG", "1"), mapOf("1" to road)))
+        assertEquals("Cn", endPole(walkOn, TripClosures.End("Cs", "CG", "1"), mapOf("1" to road)))
+    }
+
+    @Test
+    fun `a bus leg's line page vouches for its stop only as the ranking would`() {
+        val checked = mapOf("Bn" to emptyList<StopDisruption>(), "Bs" to emptyList())
+        val state = TripViewModel.State(closures = checked, closuresAt = checked.mapValues { now }, areaPoles = mapOf("BG" to listOf("Bn", "Bs")))
+        // Not yet placed: every pole TfL listed checked, but it may use one the list missed, so it can't.
+        assertTrue(legStopUnchecked(plannerBus, state, now, emptyMap()))
+        // Placed on Bn by its route, checked: it can.
+        assertFalse(legStopUnchecked(plannerBus, state, now, mapOf("1" to road)))
+        // Placed on Bn by its route, whose check failed: still can't.
+        assertTrue(legStopUnchecked(plannerBus, state.copy(closuresFailed = setOf("Bn")), now, mapOf("1" to road)))
+        // Placed on Bn, checked: only its failed other side, which it doesn't use.
+        assertFalse(legStopUnchecked(plannerBus, state.copy(closuresFailed = setOf("Bs")), now, mapOf("1" to road)))
+        // Placed on a pole the pair's lookup missed, so never checked: can't.
+        assertTrue(legStopUnchecked(plannerBus, state.copy(closures = mapOf("Bs" to emptyList())), now, mapOf("1" to road)))
+        // Placed on Bn, last known closed, and its latest check failed: it can't say that's current.
+        val closedThen = state.copy(closures = checked + ("Bn" to listOf(StopDisruption("Stop closed"))), closuresFailed = setOf("Bn"))
+        assertTrue(legStopUnchecked(plannerBus, closedThen, now, mapOf("1" to road)))
+        // Placed on Bn, checked open, but as long ago as a stale countdown: nor that. Its other side's
+        // age doesn't count.
+        val old = now.minus(Duration.ofMinutes(5))
+        assertTrue(legStopUnchecked(plannerBus, state.copy(closuresAt = mapOf("Bn" to old, "Bs" to now)), now, mapOf("1" to road)))
+        assertFalse(legStopUnchecked(plannerBus, state.copy(closuresAt = mapOf("Bn" to now, "Bs" to old)), now, mapOf("1" to road)))
+        // Its check's time unknown: nor that.
+        assertTrue(legStopUnchecked(plannerBus, state.copy(closuresAt = emptyMap()), now, mapOf("1" to road)))
     }
 
     @Test
@@ -1659,6 +1806,8 @@ class TripViewModelTest {
             "A" to TripViewModel.StopLive(trains.toList(), now),
             "B" to TripViewModel.StopLive(listOf(train("blue", "C", 10), train("blue", "C", 20)), now),
         ),
+        // Every stop a line here boards or gets off at, checked open, as the trip holds them.
+        closures = listOf("A", "A2", "B", "C", "End").associateWith { emptyList<StopDisruption>() },
     )
 
     @Test
@@ -1719,6 +1868,60 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `another line seen again after a failed check is one its page can't vouch for`() = runTest(dispatcher) {
+        val arrivals = mutableMapOf("A" to listOf(train("red", "End", 2), train("green", "End", 3)))
+        val client = FakeClient(arrivals)
+        val trip = model(FakePlanner(listOf(route)), client)
+        trip.refresh()
+        advanceUntilIdle()
+        // Green leaves the stop's arrivals, then comes back while every status check fails: its
+        // status from before is kept, but its latest check failed, so its page can't stand behind it.
+        arrivals["A"] = listOf(train("red", "End", 2))
+        now = now.plus(Duration.ofMinutes(2))
+        trip.refresh()
+        advanceUntilIdle()
+        arrivals["A"] = listOf(train("red", "End", 2), train("green", "End", 3))
+        client.failStatus = true
+        now = now.plus(Duration.ofMinutes(2))
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue("green" in trip.state.value.statuses)
+        assertTrue("green" in trip.state.value.statusFailedLines)
+        // Checked again and answered, it can.
+        client.failStatus = false
+        now = now.plus(Duration.ofMinutes(2))
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue("green" !in trip.state.value.statusFailedLines)
+    }
+
+    @Test
+    fun `another line a late check leaves out keeps no status from before`() = runTest(dispatcher) {
+        val arrivals = mutableMapOf("A" to listOf(train("red", "End", 2), train("green", "End", 3)))
+        val client = FakeClient(arrivals)
+        val trip = model(FakePlanner(listOf(route)), client)
+        trip.refresh()
+        advanceUntilIdle()
+        // Green leaves the stop's arrivals (still checked this once, from the arrivals before).
+        arrivals["A"] = listOf(train("red", "End", 2))
+        now = now.plus(Duration.ofMinutes(1))
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue("green" in trip.state.value.statuses)
+        // It comes back in a refresh whose first status request fails, and the check of green just
+        // after answers without it: the status from before isn't its verdict any more.
+        arrivals["A"] = listOf(train("red", "End", 2), train("green", "End", 3))
+        client.failLines = setOf("red")
+        client.omitLines = setOf("green")
+        now = now.plus(Duration.ofMinutes(1))
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue("green" !in trip.state.value.statuses)
+        assertTrue("green" !in trip.state.value.statusesAt)
+        assertTrue("red" in trip.state.value.statuses)
+    }
+
+    @Test
     fun `another line's trains read as checking on the card until it's checked as running`() {
         val sequences = mapOf("red" to red, "green" to greenAlike, "blue" to blue)
         val good = listOf("red", "blue").associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") }
@@ -1742,6 +1945,30 @@ class TripViewModelTest {
         val (placed, rest) = placeQuiet(listOf(north), listOf(atPn, atPs))
         assertEquals(listOf(atPn), placed.getValue(north))
         assertEquals(listOf(listOf(atPs)), rest)
+    }
+
+    @Test
+    fun `another line from a stop not checked open neither times the ride nor shows as catchable`() {
+        // Green runs from A2, the other pole of the ride's stop, to the same stop; checked as running.
+        val red = viaRedOnly.rides.first()
+        val green = red.copy(lineId = "green", lineName = "green", fromId = "A2")
+        val good = listOf("red", "green", "blue").associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") }
+        val atA2 = LineSequence(routes = listOf(LineRoute("A2 ↔ End", listOf("A2", "B", "End"))), stopNames = this.red.stopNames + ("A2" to "A"))
+        val sequences = mapOf("red" to this.red, "green" to atA2, "blue" to blue)
+        val lines = mapOf(red to RideLines(listOf(red, green), listOf(red, green)))
+        val base = redAndGreenAt(train("red", "End", 6)).let {
+            it.copy(statuses = good, live = it.live + ("A2" to TripViewModel.StopLive(listOf(train("green", "End", 3)), now)))
+        }
+        assertEquals(setOf("red", "green"), rideTrains(base, red, now, sequences, lines)?.map { it.lineId }?.toSet())
+        // A2 closed, or not checked yet: green's trains don't time the ride, and its open row shows none.
+        val closed = base.copy(closures = base.closures + ("A2" to stationClosed))
+        val unchecked = base.copy(closures = base.closures - "A2")
+        for (state in listOf(closed, unchecked)) {
+            assertEquals(setOf("red"), rideTrains(state, red, now, sequences, lines)?.map { it.lineId }?.toSet())
+            assertEquals(emptyList<DepartureRow>(), rideLegRows(red, listOf(red, green), state, now, sequences, emptySet()).getValue(green))
+        }
+        // The Planner's own line is judged where the route is ranked, not here.
+        assertTrue(rideLegRows(red, listOf(red, green), closed, now, sequences, emptySet()).getValue(red).isNotEmpty())
     }
 
     @Test
@@ -1919,5 +2146,352 @@ class TripViewModelTest {
         assertEquals(listOf(route, slow), estimates.map { it.route })
         assertEquals(TripTiming.Basis.LIVE, estimates[0].basis)
         assertEquals(at(26), estimates[0].arrival)
+    }
+
+    private val stationClosed = listOf(StopDisruption("Station closed due to strike action"))
+
+    @Test
+    fun `checks every stop a route boards or gets off at for closures`() = runTest(dispatcher) {
+        val client = FakeClient(mutableMapOf())
+        val trip = model(FakePlanner(listOf(route)), client)
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf("A", "B", "C"), client.disruptionAsks.flatten().sorted())
+        val state = trip.state.value
+        assertEquals(setOf("A", "B", "C"), state.closures.keys)
+        assertEquals(emptySet<String>(), state.closuresUnknown)
+        assertEquals(TripClosures.Standing.OPEN, TripClosures.standing(route, state.closures, state.closuresUnknown, now))
+    }
+
+    @Test
+    fun `a new plan's stops are unchecked until their check arrives`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val client = object : TflClient by FakeClient(mutableMapOf()) {
+            override suspend fun stopDisruptions(stopId: String): List<StopDisruption> {
+                gate.await()
+                return emptyList()
+            }
+        }
+        val trip = model(FakePlanner(listOf(route)), client)
+        trip.refresh()
+        runCurrent()
+        assertTrue(trip.state.value.routes != null)
+        // Planned, not yet checked: no route passes as open meanwhile.
+        assertEquals(setOf("A", "B", "C"), trip.state.value.closuresUnknown)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(emptySet<String>(), trip.state.value.closuresUnknown)
+    }
+
+    @Test
+    fun `a closed stop where a route changes ranks it below one that avoids it`() = runTest(dispatcher) {
+        val other = TripRoute(listOf(leg("green", "A", "D", 5, 20), leg("blue", "D", "C", 22, 35)))
+        val client = FakeClient(mutableMapOf()).apply { disruptions = mapOf("B" to stationClosed) }
+        val trip = model(FakePlanner(listOf(route, other)), client)
+        trip.refresh()
+        advanceUntilIdle()
+        val estimates = tripEstimates(trip.state.value, now, Duration.ZERO, emptyMap()).orEmpty()
+        // The faster route changes at the closed stop: it goes last, still timed.
+        assertEquals(listOf(other, route), estimates.map { it.route })
+        assertTrue(estimates.last().blocked)
+        assertFalse(estimates.first().blocked)
+    }
+
+    @Test
+    fun `a failed closure check keeps the last known notices, and a stop with none known stays unchecked`() = runTest(dispatcher) {
+        val client = FakeClient(mutableMapOf()).apply { disruptions = mapOf("B" to stationClosed) }
+        val trip = model(FakePlanner(listOf(route)), client)
+        client.failDisruptions = setOf("C")
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(setOf("C"), trip.state.value.closuresUnknown)
+        assertEquals(setOf("C"), trip.state.value.closuresFailed)
+        assertEquals(TripClosures.Standing.CLOSED, TripClosures.standing(route, trip.state.value.closures, trip.state.value.closuresUnknown, now))
+        // Past the reuse, B's check fails too: its closure stands, claiming nothing new.
+        now = now.plus(Duration.ofMinutes(6))
+        client.failDisruptions = setOf("B", "C")
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(stationClosed, trip.state.value.closures["B"])
+        assertEquals(setOf("C"), trip.state.value.closuresUnknown)
+        // B's notice stands, but its check failed: nothing vouches for it as current.
+        assertEquals(setOf("B", "C"), trip.state.value.closuresFailed)
+        assertEquals(false, statusNote(trip.state.value, unchecked = false))
+        // They answer: known and current at last.
+        client.failDisruptions = emptySet()
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(emptySet<String>(), trip.state.value.closuresUnknown)
+        assertEquals(emptySet<String>(), trip.state.value.closuresFailed)
+        assertNull(statusNote(trip.state.value, unchecked = false))
+    }
+
+    @Test
+    fun `a closure lookup landing after a newer one shows the newer`() = runTest(dispatcher) {
+        val shared = StopClosureCache()
+        // The list's own lookup of B, asked after the trip's, lands first.
+        val client = object : TflClient by FakeClient(mutableMapOf()) {
+            override suspend fun stopDisruptions(stopId: String): List<StopDisruption> {
+                if (stopId == "B") shared.keep("B", shared.ask(now.plusSeconds(1)), stationClosed)
+                return emptyList()
+            }
+        }
+        val trip = model(FakePlanner(listOf(route)), client, closures = shared)
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(stationClosed, trip.state.value.closures["B"])
+        assertEquals(now.plusSeconds(1) to stationClosed, shared["B"]?.let { it.at to it.notices })
+    }
+
+    @Test
+    fun `a closure lookup failing after a newer one landed shows the newer, not a failure`() = runTest(dispatcher) {
+        val shared = StopClosureCache()
+        // The list's own lookup of B, asked after the trip's, lands first; the trip's then fails.
+        val client = object : TflClient by FakeClient(mutableMapOf()) {
+            override suspend fun stopDisruptions(stopId: String): List<StopDisruption> {
+                if (stopId == "B") {
+                    shared.keep("B", shared.ask(now.plusSeconds(1)), stationClosed)
+                    throw TflException.Offline(null)
+                }
+                return emptyList()
+            }
+        }
+        val trip = model(FakePlanner(listOf(route)), client, closures = shared)
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(stationClosed, trip.state.value.closures["B"])
+        assertEquals(emptySet<String>(), trip.state.value.closuresFailed)
+    }
+
+    @Test
+    fun `a trip shown again takes a newer closure another screen found meanwhile`() = runTest(dispatcher) {
+        val shared = StopClosureCache()
+        val client = FakeClient(mutableMapOf())
+        client.failDisruptions = setOf("B")
+        val trip = model(FakePlanner(listOf(route)), client, closures = shared)
+        trip.refreshFor(null)
+        advanceUntilIdle()
+        assertEquals(setOf("B"), trip.state.value.closuresFailed)
+        val fetches = client.asked.size to client.disruptionAsks.size
+        // The list then finds B closed, and D (no stop of this trip's) too.
+        shared.keep("B", shared.ask(now), stationClosed)
+        shared.keep("D", shared.ask(now), stationClosed)
+        // Shown again with its arrivals still fresh: nothing is fetched, but B's closure shows.
+        trip.refreshFor(null)
+        advanceUntilIdle()
+        assertEquals(fetches, client.asked.size to client.disruptionAsks.size)
+        assertEquals(stationClosed, trip.state.value.closures["B"])
+        assertNull(trip.state.value.closures["D"])
+        assertEquals(emptySet<String>(), trip.state.value.closuresFailed)
+        assertEquals(emptySet<String>(), trip.state.value.closuresUnknown)
+        assertEquals(TripClosures.Standing.CLOSED, TripClosures.standing(route, trip.state.value.closures, trip.state.value.closuresUnknown, now))
+        // As old as the other screen's lookup: when it was asked, for the line page's vouch.
+        assertEquals(now, trip.state.value.closuresAt["B"])
+    }
+
+    @Test
+    fun `a trip shown again with fresh arrivals still refreshes closures past their reuse`() = runTest(dispatcher) {
+        val cache = ArrivalsCache()
+        val client = FakeClient(mutableMapOf())
+        val trip = model(FakePlanner(listOf(route)), client, arrivals = cache)
+        trip.refreshFor(null)
+        advanceUntilIdle()
+        val asked = client.disruptionAsks.size
+        // Six minutes on, the list has just fetched the boarding stops' arrivals, but the trip's
+        // closure checks are past their reuse: shown again, it asks about them afresh.
+        now = now.plus(Duration.ofMinutes(6))
+        cache.put("A", listOf(train("red", "B", 9)), now.minusSeconds(10))
+        cache.put("B", listOf(train("blue", "C", 9)), now.minusSeconds(10))
+        trip.refreshFor(null)
+        advanceUntilIdle()
+        assertTrue(client.disruptionAsks.size > asked)
+    }
+
+    @Test
+    fun `a stop another screen checked within a few minutes isn't asked about again`() = runTest(dispatcher) {
+        val shared = StopClosureCache()
+        shared.keep("A", shared.ask(now.minus(Duration.ofMinutes(2))), emptyList())
+        shared.keep("B", shared.ask(now.minus(Duration.ofMinutes(2))), stationClosed)
+        // A lookup past the reuse is asked again.
+        shared.keep("C", shared.ask(now.minus(Duration.ofMinutes(6))), emptyList())
+        val client = FakeClient(mutableMapOf())
+        val trip = model(FakePlanner(listOf(route)), client, closures = shared)
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf("C"), client.disruptionAsks.flatten())
+        assertEquals(stationClosed, trip.state.value.closures["B"])
+        // And the trip's own lookup is kept for the list.
+        assertEquals(now, shared["C"]?.at)
+        // Each held as old as the lookup it came from, the reused ones included; each line's status
+        // as old as its answer.
+        assertEquals(now.minus(Duration.ofMinutes(2)), trip.state.value.closuresAt["B"])
+        assertEquals(now, trip.state.value.closuresAt["C"])
+        assertTrue(trip.state.value.statuses.isNotEmpty())
+        assertEquals(trip.state.value.statuses.keys, trip.state.value.statusesAt.keys)
+        assertTrue(trip.state.value.statusesAt.values.all { it == now })
+    }
+
+    @Test
+    fun `a bus stop pair's every pole is checked, in one request, and the pair is unchecked until looked up`() = runTest(dispatcher) {
+        val bus = TripRoute(
+            listOf(
+                leg("25", "490000001A", "490000002A", 5, 15).copy(mode = "bus", fromArea = "490G00001", toArea = "490G00002"),
+            ),
+        )
+        val gate = CompletableDeferred<Unit>()
+        val client = FakeClient(mutableMapOf())
+        val trip = TripViewModel(
+            FakePlanner(listOf(bus)), client, "A", listOf(TripDestination.Stop("490000002A")), clock = { now }, plans = TripPlans(), io = dispatcher,
+            poles = { area ->
+                gate.await()
+                if (area == "490G00001") listOf("490000001A", "490000001B") else listOf("490000002A", "490000002B")
+            },
+        )
+        trip.refresh()
+        runCurrent()
+        assertTrue("490G00001" in trip.state.value.closuresUnknown && "490G00002" in trip.state.value.closuresUnknown)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(listOf(listOf("490000001A", "490000001B", "490000002A", "490000002B")), client.disruptionAsks.map { it.sorted() })
+        assertEquals(emptySet<String>(), trip.state.value.closuresUnknown)
+    }
+
+    @Test
+    fun `a route's closure cards are its stops' notices in force, less those dismissed`() {
+        val moved = listOf(StopDisruption("Stop moved to the next corner"))
+        val later = listOf(StopDisruption("Station closed", validFrom = now.plus(Duration.ofHours(1))))
+        val state = TripViewModel.State(closures = mapOf("A" to moved, "B" to stationClosed, "C" to later))
+        val cards = routeClosures(route, state, now, emptySet())
+        assertEquals(listOf("A", "B"), cards.keys.toList())
+        assertEquals("B", cards.getValue("B").stopName)
+        val dismissed = setOf(DismissedAlert.ofStopClosure(cards.getValue("B")))
+        assertEquals(listOf("A"), routeClosures(route, state, now, dismissed).keys.toList())
+        // A stop with two notices carries both on its one card, as the list's does: a moved stop
+        // doesn't hide a closure beside it.
+        val both = routeClosures(route, state.copy(closures = mapOf("B" to moved + stationClosed)), now, emptySet()).getValue("B")
+        assertTrue(both.stopDisruption.orEmpty().contains("Stop moved"))
+        assertTrue(both.stopDisruption.orEmpty().contains("Station closed"))
+    }
+
+    @Test
+    fun `a route's closure card is placed as the list places it, so a dismissal holds on both`() {
+        val bus = TripRoute(listOf(leg("25", "P1", "Q1", 5, 15).copy(mode = "bus", fromArea = "490GP", toArea = "490GQ")))
+        val state = TripViewModel.State(closures = mapOf("P1" to stationClosed, "Q1" to stationClosed))
+        // P1 is in an interchange; Q1's top parent is only its own stop area, not a hub.
+        val sequence = LineSequence(
+            routes = listOf(LineRoute("P ↔ Q", listOf("P1", "Q1"))),
+            stopNames = mapOf("P1" to "P1", "Q1" to "Q1"),
+            stopAreas = mapOf("P1" to "490GP", "Q1" to "490GQ"),
+            stopHubs = mapOf("P1" to "HUBP", "Q1" to "490GQ"),
+        )
+        val cards = routeClosures(bus, state, now, emptySet(), mapOf("25" to sequence))
+        assertEquals("HUBP", DismissedAlert.ofStopClosure(cards.getValue("P1")).alertKey)
+        assertEquals("490GQ", DismissedAlert.ofStopClosure(cards.getValue("Q1")).alertKey)
+        // Before the route data loads, a bus stop is still placed by its pair.
+        assertEquals("490GQ", DismissedAlert.ofStopClosure(routeClosures(bus, state, now, emptySet()).getValue("Q1")).alertKey)
+    }
+
+    @Test
+    fun `a change's closure card takes whichever ride's route data came in`() {
+        // Q1 is where the 25 gets off and the 73 boards; the 25's route failed to load.
+        val change = TripRoute(
+            listOf(
+                leg("25", "P1", "Q1", 5, 15).copy(mode = "bus", fromArea = "490GP", toArea = "490GQ"),
+                leg("73", "Q1", "R1", 18, 30).copy(mode = "bus", fromArea = "490GQ", toArea = "490GR"),
+            ),
+        )
+        val sequence = LineSequence(
+            routes = listOf(LineRoute("Q ↔ R", listOf("Q1", "R1"))),
+            stopNames = mapOf("Q1" to "Q1", "R1" to "R1"),
+            stopHubs = mapOf("Q1" to "HUBQ"),
+        )
+        val cards = routeClosures(change, TripViewModel.State(closures = mapOf("Q1" to stationClosed)), now, emptySet(), mapOf("25" to null, "73" to sequence))
+        assertEquals("HUBQ", DismissedAlert.ofStopClosure(cards.getValue("Q1")).alertKey)
+    }
+
+    @Test
+    fun `a closure card at a stop only a walk uses takes its interchange from the station index`() {
+        // From station F on foot to A, then the red line to B: no ride's route data covers F.
+        val walkFirst = TripRoute(listOf(leg("", "F", "A", 0, 5).copy(mode = "walking"), leg("red", "A", "B", 5, 15)))
+        val state = TripViewModel.State(closures = mapOf("F" to stationClosed))
+        val hubs = mapOf("F" to "HUBF")
+        val cards = routeClosures(walkFirst, state, now, emptySet(), mapOf("red" to null)) { hubs[it] }
+        assertEquals("HUBF", DismissedAlert.ofStopClosure(cards.getValue("F")).alertKey)
+        // A station in no interchange goes by its own id, as the list keys it.
+        assertEquals("F", DismissedAlert.ofStopClosure(routeClosures(walkFirst, state, now, emptySet()).getValue("F")).alertKey)
+    }
+
+    @Test
+    fun `a list card's ride carries where it gets off, where it boards unless the last ride got off there, and where the route ends`() {
+        val walked = TripRoute(listOf(leg("red", "A", "B", 5, 15), leg("blue", "D", "C", 20, 30)))
+        val state = TripViewModel.State(closures = listOf("A", "B", "C", "D", "E").associateWith { stationClosed })
+        val closures = routeClosures(TripRoute(walked.legs + leg("", "C", "E", 30, 35).copy(mode = "walking")), state, now, emptySet())
+        assertEquals(listOf("A", "B"), rideClosures(walked.rides, 0, "E", closures).map { it.stopId })
+        assertEquals(listOf("D", "C", "E"), rideClosures(walked.rides, 1, "E", closures).map { it.stopId })
+        // Boarding where the last ride got off: that notice is the last ride's.
+        assertEquals(listOf("C"), rideClosures(route.rides, 1, null, closures).map { it.stopId })
+        // Starting on foot from a stop: the first ride carries it too.
+        val fromF = routeClosures(TripRoute(listOf(leg("", "F", "A", 0, 5).copy(mode = "walking")) + walked.legs), state.copy(closures = state.closures + ("F" to stationClosed)), now, emptySet())
+        assertEquals(listOf("F", "A", "B"), rideClosures(walked.rides, 0, null, fromF, starts = "F").map { it.stopId })
+        assertEquals(listOf("D", "C"), rideClosures(walked.rides, 1, null, fromF, starts = "F").map { it.stopId })
+    }
+
+    @Test
+    fun `a shared card's ride carries every line's stop closures, each once`() {
+        // The 43 and the 134 go between the same stop pairs, but the 134 boards at its own pole P2.
+        val first = TripRoute(listOf(leg("43", "P1", "Q1", 5, 15).copy(mode = "bus", fromArea = "490GP", toArea = "490GQ")))
+        val other = TripRoute(listOf(leg("134", "P2", "Q1", 6, 16).copy(mode = "bus", fromArea = "490GP", toArea = "490GQ")))
+        val card = listOf(first, other).map { TripTiming.Estimate(it, TripTiming.Basis.LIVE, null, emptyList(), false, now) }
+        val state = TripViewModel.State(closures = mapOf("P2" to stationClosed, "Q1" to stationClosed))
+        val closures = card.fold(emptyMap<String, DepartureRow>()) { found, estimate -> found + routeClosures(estimate.route, state, now, emptySet()) }
+        assertEquals(listOf("Q1", "P2"), cardClosures(card, 0, closures).map { it.stopId })
+    }
+
+    @Test
+    fun `a ride's other lines carry the closures where they board and get off`() {
+        // The 43 is the Planner's, from P1; the 134, found in P2's arrivals, runs from P2 to the same stop.
+        val ride = leg("43", "P1", "Q1", 5, 15).copy(mode = "bus", fromArea = "490GP", toArea = "490GQ")
+        val other = leg("134", "P2", "Q1", 6, 16).copy(mode = "bus")
+        val route = TripRoute(listOf(ride))
+        val rideLines = mapOf(ride to RideLines(listOf(ride, other), listOf(ride, other)))
+        val state = TripViewModel.State(closures = mapOf("P1" to emptyList(), "P2" to stationClosed, "Q1" to emptyList()))
+        // The route's own stops say nothing; the 134's pole is closed.
+        assertTrue(routeClosures(route, state, now, emptySet()).isEmpty())
+        val closures = routeClosures(route, state, now, emptySet(), rideLines = rideLines)
+        assertEquals(listOf("P2"), closures.keys.toList())
+        val card = listOf(TripTiming.Estimate(route, TripTiming.Basis.LIVE, null, emptyList(), false, now))
+        assertEquals(listOf("P2"), cardClosures(card, 0, closures, rideLines).map { it.stopId })
+
+        // At a change, a stop another line got off at is that ride's, not carried again by the next.
+        val next = leg("73", "Q2", "R1", 18, 30).copy(mode = "bus")
+        val change = TripRoute(listOf(ride, next))
+        val lines = mapOf(ride to RideLines(listOf(ride, other.copy(toId = "Q2")), listOf(ride)))
+        val atQ2 = routeClosures(change, state.copy(closures = mapOf("Q2" to stationClosed)), now, emptySet(), rideLines = lines)
+        assertEquals(listOf("Q2"), rideClosures(change.rides, 0, null, atQ2) { lines[it]?.legs.orEmpty() }.map { it.stopId })
+        assertEquals(emptyList<String>(), rideClosures(change.rides, 1, null, atQ2) { lines[it]?.legs.orEmpty() }.map { it.stopId })
+    }
+
+    @Test
+    fun `one notice at two poles of a stop area makes one card, where the route first reaches it`() {
+        // Off the 25 at Q1, on the 73 at Q2 across the road: TfL gives each pole the area's notice.
+        val change = TripRoute(
+            listOf(
+                leg("25", "P1", "Q1", 5, 15).copy(mode = "bus", fromArea = "490GP", toArea = "490GQ"),
+                leg("73", "Q2", "R1", 18, 30).copy(mode = "bus", fromArea = "490GQ", toArea = "490GR"),
+            ),
+        )
+        val state = TripViewModel.State(closures = mapOf("Q1" to stationClosed, "Q2" to stationClosed))
+        val cards = routeClosures(change, state, now, emptySet())
+        assertEquals(listOf("Q1"), cards.keys.toList())
+        // On the list card too: the first ride carries it where it gets off, the second doesn't again.
+        val estimate = TripTiming.Estimate(change, TripTiming.Basis.LIVE, null, emptyList(), false, now)
+        assertEquals(listOf("Q1"), cardClosures(listOf(estimate), 0, cards).map { it.stopId })
+        assertEquals(emptyList<String>(), cardClosures(listOf(estimate), 1, cards).map { it.stopId })
+        // Across a shared card's routes, one alighting at each pole: once.
+        val atQ1 = TripRoute(listOf(leg("43", "P1", "Q1", 5, 15).copy(mode = "bus", fromArea = "490GP", toArea = "490GQ")))
+        val atQ2 = TripRoute(listOf(leg("134", "P1", "Q2", 6, 16).copy(mode = "bus", fromArea = "490GP", toArea = "490GQ")))
+        val card = listOf(atQ1, atQ2).map { TripTiming.Estimate(it, TripTiming.Basis.LIVE, null, emptyList(), false, now) }
+        val shared = card.fold(emptyMap<String, DepartureRow>()) { found, e -> found + routeClosures(e.route, state, now, emptySet()) }
+        assertEquals(1, cardClosures(card, 0, shared).size)
     }
 }
