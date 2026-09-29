@@ -1050,7 +1050,12 @@ reported from it (maintainer, 2026-09-26).
 Tapping a route opens it, drawn with the list's own parts, **every leg a card**: the leg's platform header ("Highbury
 & Islington – Platform 2") over a route card of that line's live departures toward the change, then
 "6 stops to Whitechapel", then the next leg's header and card at the change station, down to "2 stops
-to Canary Wharf". A walk reads "Walk to ‹place› (5 min)", its minutes in parentheses so they read as how long it
+to Canary Wharf". Only the **next ride's** rows count down; a **later ride's** rows say how often
+each line runs there ("↻ 2–7 min"), as its row on the list's card does and from the same trains, so a
+ride on one line reads the same on both (maintainer, 2026-09-29): the rider isn't at that stop yet, so
+its next few trains say nothing they can use. Each line's row gives its own line's figure, and none
+where fewer than three of its trains are known. A row still opens its line's page, which counts down.
+A walk reads "Walk to ‹place› (5 min)", its minutes in parentheses so they read as how long it
 takes, not a time of day (maintainer, 2026-09-27); a walk to a station's entrance, which the
 Planner names by its street then the station ("Cannon Street, Cannon Street Rail Station"), goes by
 the station ("Cannon Street"), never the street repeated. Line status and stop closures for every leg show exactly as on the list:
@@ -1086,8 +1091,8 @@ shown as the route's first dotted link ("Walk to ‹stop› (7 min)"), and first
 before the rider can get there are grayed (from a *From…* station the rider is taken to be there
 already). That walk is timed at the rider's walking speed (*Walking*, below); where a *From…*
 station's trip starts at a neighboring stop, the phone estimates the walk there itself, at the same
-speed. A later leg shows the change station's live
-trains, with those the rider can't reach in time grayed. The **arrival is worked out leg by leg**:
+speed. A later leg is timed by the change station's live
+trains, those the rider can't reach in time passed over. The **arrival is worked out leg by leg**:
 the first first-leg train the rider can reach plus its run time gives the time at the change, plus
 the change or walk time; the first live train there that the rider can reach starts the next leg,
 and so on to the end. A train only counts for a leg if its route **calls at that leg's alighting

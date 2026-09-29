@@ -1363,10 +1363,24 @@ internal fun cardTimes(
     // its route ([legTrains]); none while stale or unchecked: a suspended line's leftover predictions
     // would make the connection read as more frequent than it is.
     val headways = card.first().route.rides.drop(1).map { ride ->
-        val found = (rideLines[ride] ?: RideLines.only(ride)).running(state.statuses, lineStopsOpen(state, now)).map { legTrains(state, it, now, sequences) }
-        if (found.all { it == null }) null else Headway.of(found.flatMap { it.orEmpty() }.distinct().map { it.expectedArrival })
+        linesHeadway((rideLines[ride] ?: RideLines.only(ride)).running(state.statuses, lineStopsOpen(state, now)), state, now, sequences)
     }
     return CardTimes(shown, checking, reachable, loading, headways)
+}
+
+/**
+ * How often [lines] run together between their stops ([Headway]), from their live trains along the
+ * ride ([legTrains]): the card's figure for a later ride, and each line's own on the open route's.
+ * Null when none of their trains can be vouched for, or too few are known.
+ */
+internal fun linesHeadway(
+    lines: List<TripLeg>,
+    state: TripViewModel.State,
+    now: Instant,
+    sequences: Map<String, LineSequence?>,
+): Headway.Range? {
+    val found = lines.map { legTrains(state, it, now, sequences) }
+    return if (found.all { it == null }) null else Headway.of(found.flatMap { it.orEmpty() }.distinct().map { it.expectedArrival })
 }
 
 /**
@@ -1455,26 +1469,7 @@ private fun RideStops(
                 // 8dp after a ⚠ or ⓘ, as the main screen spaces it from the times; else the usual 12dp.
                 val timesGap = if (warning != null || planned != null) 8.dp else 12.dp
                 if (index > 0) {
-                    times.headways.getOrNull(index - 1)?.let { headway ->
-                        val even = headway.min == headway.max
-                        // ↻ saves width (maintainer, 2026-09-27); TalkBack reads it as "Every".
-                        val description = if (even) {
-                            stringResource(R.string.trip_headway_description, headway.min)
-                        } else {
-                            stringResource(R.string.trip_headway_range_description, headway.min, headway.max)
-                        }
-                        Text(
-                            text = if (even) {
-                                stringResource(R.string.trip_headway, headway.min)
-                            } else {
-                                stringResource(R.string.trip_headway_range, headway.min, headway.max)
-                            },
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            modifier = Modifier.padding(start = timesGap).semantics { contentDescription = description },
-                        )
-                    }
+                    times.headways.getOrNull(index - 1)?.let { headway -> HeadwayLabel(headway, Modifier.padding(start = timesGap)) }
                 }
                 if (index == 0) {
                     // Graying is lost on TalkBack: each time is read with its destination, and whether it's usable.
@@ -1497,6 +1492,29 @@ private fun RideStops(
             }
         }
     }
+}
+
+/** How often a line runs ([Headway]), in a later ride's times column: "↻ 2–4 min", heard as "Every 2 to 4 min". */
+@Composable
+internal fun HeadwayLabel(headway: Headway.Range, modifier: Modifier = Modifier) {
+    val even = headway.min == headway.max
+    // ↻ saves width (maintainer, 2026-09-27); TalkBack reads it as "Every".
+    val description = if (even) {
+        stringResource(R.string.trip_headway_description, headway.min)
+    } else {
+        stringResource(R.string.trip_headway_range_description, headway.min, headway.max)
+    }
+    Text(
+        text = if (even) {
+            stringResource(R.string.trip_headway, headway.min)
+        } else {
+            stringResource(R.string.trip_headway_range, headway.min, headway.max)
+        },
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        modifier = modifier.semantics { contentDescription = description },
+    )
 }
 
 /** The soonest work still to come on any of [lines] ([LineStatus.planned]), for a card's ⓘ; null when none. */
@@ -1679,18 +1697,22 @@ private fun RouteLegs(
             val closure = closures[id]?.takeIf { carded.add(id) } ?: return
             item(key = "closure|$id") { StopClosureCard(closure, onDismissAlert?.let { dismiss -> { dismiss(closure) } }) }
         }
+        // Only the rider's next ride counts down; they aren't at a later one's stop yet.
+        val nextRide = estimate.route.legs.indexOfFirst { !it.isWalk }
         estimate.route.legs.forEachIndexed { index, leg ->
             if (leg.isWalk) {
                 closureCard(leg.fromId)
                 item(key = "leg$index") { WalkLink(stringResource(R.string.trip_walk, leg.toName, leg.run.toMinutes().toInt())) }
                 closureCard(leg.toId)
             } else {
-                // Trains that leave before the rider gets to this leg's stop are grayed, as the list's
-                // first-leg row grays them.
+                // The next ride's trains that leave before the rider gets to its stop are grayed, as the
+                // list's first-leg row grays them.
                 val ready = TripTiming.readyAt(estimate, access, index)
                 val shown = rideLines[leg]?.legs ?: listOf(leg)
                 (listOf(leg) + shown).forEach { closureCard(it.fromId) }
-                item(key = "leg$index") { RideLeg(leg, shown, index == 0, state, now, sequences, dismissed, onOpenDetail, onHideMode, ready) }
+                item(key = "leg$index") {
+                    RideLeg(leg, shown, index == 0, index == nextRide, state, now, sequences, dismissed, onOpenDetail, onHideMode, ready)
+                }
                 (listOf(leg) + shown).forEach { closureCard(it.toId) }
                 // A change the Planner allows time for after this ride (not a walk leg of its own):
                 // shown, since it decides which next train is in reach.
@@ -2144,6 +2166,8 @@ private fun RideLeg(
     // Every line between the leg's two stops ([RideLines]), the Planner's first: a row for each.
     lines: List<TripLeg>,
     first: Boolean,
+    // The rider's next ride, whose rows count down; a later one's say how often each line runs.
+    countsDown: Boolean,
     state: TripViewModel.State,
     now: Instant,
     sequences: Map<String, LineSequence?>,
@@ -2156,6 +2180,13 @@ private fun RideLeg(
     // Each line's rows; a line with none still gets a row of its own below, so every line the pill
     // names is on the page.
     val byLine = remember(leg, lines, state, now, sequences, dismissed) { rideLegRows(leg, lines, state, now, sequences, dismissed) }
+    // A later ride's rows say how often their line runs instead of counting down, as the list's card
+    // does (maintainer, 2026-09-29): the rider isn't there yet, so its next few trains say nothing
+    // they can use. Each line's own figure, from the trains the card's comes from ([linesHeadway]),
+    // so a ride on one line reads the same on both; none where too few are known.
+    val headways = remember(countsDown, lines, state, now, sequences) {
+        if (countsDown) null else lines.associate { it.lineId to linesHeadway(listOf(it), state, now, sequences) }
+    }
     val groups = remember(byLine) { StopGrouping.groupByStop(byLine.values.flatten()) }
     val quiet = lines.filter { byLine[it].isNullOrEmpty() }
     // A row opens its own line's page: the leg as that line rides it.
@@ -2176,6 +2207,7 @@ private fun RideLeg(
                 onOpenDetail = { row, focus -> onOpenDetail(legOf(row), row, focus) },
                 onHideMode = onHideMode,
                 grayBefore = grayBefore,
+                timesInstead = if (headways == null) null else { { row -> headways[row.lineId]?.let { HeadwayLabel(it) } } },
             )
             placed[group].orEmpty().forEach { line -> NoTrainsRow(line, state, now, sequences, dismissed, onOpenDetail, onHideMode) }
         }
