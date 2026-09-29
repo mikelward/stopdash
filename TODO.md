@@ -650,12 +650,15 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         **Start landed:** the widget now uses `SizeMode.Responsive` with a compact (<220dp) and a
         wide bucket; the compact one drops the stamp's "Updated" prefix. Labels can key off
         the same buckets.
-- [ ] **Hide services terminating at the current stop by default** (maintainer, 2026-09-20).
+- [x] **Hide services terminating at the current stop by default** (maintainer, 2026-09-20).
       A train that terminates where you're standing isn't boardable onward, so listing it as
       an upcoming departure is misleading — filter it out by default (a departure whose
-      terminus is this stop). Leave room for a "show terminating services" option. Watch the
-      edge where an interchange train "terminates" only nominally before continuing under a new
-      id; scope it to genuine terminations.
+      terminus is this stop). Watch the edge where an interchange train "terminates" only
+      nominally before continuing under a new id; scope it to genuine terminations. Landed in
+      c77aad1 (SPEC *A service that goes nowhere for the rider is left out*): matched by TfL's
+      destination stop id against the nearby places, by name only when TfL gives no id, and
+      hidden as rows are built, so the widget hides the same services.
+  - [ ] **A "show terminating services" option**: not built. Add it if a rider misses them.
 - [x] **Hide a mode from the near-me list** (maintainer, 2026-09-24): long-press a row or header
       for "Hide ‹mode›"; a one-line "‹Mode› hidden · Show all" banner undoes it; hidden stops aren't
       fetched from the next re-locate; the widget follows. Next ideas, for later:
