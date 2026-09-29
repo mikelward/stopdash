@@ -534,6 +534,13 @@
     <string name="on_the_way_finding_tram">Finding your tram…</string>
     <string name="on_the_way_finding_boat">Finding your boat…</string>
     <string name="on_the_way_finding_cable_car">Finding your cable car…</string>
+    <!-- The ride's train has left, but the rider isn't yet seen on it: %1$s where they get off. -->
+    <string name="on_the_way_take">Take the train to %1$s</string>
+    <string name="on_the_way_take_bus">Take the bus to %1$s</string>
+    <string name="on_the_way_take_coach">Take the coach to %1$s</string>
+    <string name="on_the_way_take_tram">Take the tram to %1$s</string>
+    <string name="on_the_way_take_boat">Take the boat to %1$s</string>
+    <string name="on_the_way_take_cable_car">Take the cable car to %1$s</string>
     <string name="on_the_way_get_off">Get off at %1$s</string>
     <string name="on_the_way_next_stop">Next stop</string>
     <!-- Stops left not known (a bus beyond its predictions); %1$s the next stop. -->

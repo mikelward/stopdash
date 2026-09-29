@@ -97,7 +97,7 @@ class OnTheWayScreenScreenshotTest {
     @Test
     fun the_main_view_pins_the_trip_on_the_way_and_opens_it() {
         var opened = false
-        val state = OnTheWayBannerState(trip.copy(boarded = true), TripProgress.Riding(mildmay, "Hackney Central", 4, at(16), getOffSoon = false), now) {
+        val state = OnTheWayBannerState(trip.copy(boarded = true, onBoardSeen = true), TripProgress.Riding(mildmay, "Hackney Central", 4, at(16), getOffSoon = false), now) {
             opened = true
         }
         composeRule.setContent {
@@ -117,7 +117,7 @@ class OnTheWayScreenScreenshotTest {
     @Test
     fun the_pinned_card_doesnt_show_an_old_answer_as_live() {
         // Last brought up to date ten minutes ago: its "next stop" is no longer known.
-        val state = OnTheWayBannerState(trip.copy(boarded = true), TripProgress.Riding(mildmay, "Stratford", 1, at(1), getOffSoon = true), at(-10)) {}
+        val state = OnTheWayBannerState(trip.copy(boarded = true, onBoardSeen = true), TripProgress.Riding(mildmay, "Stratford", 1, at(1), getOffSoon = true), at(-10)) {}
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 androidx.compose.runtime.CompositionLocalProvider(LocalOnTheWayBanner provides state) {
@@ -358,15 +358,32 @@ class OnTheWayScreenScreenshotTest {
 
     @Test
     fun on_the_way_on_the_train() {
-        show(trip.copy(boarded = true), TripProgress.Riding(mildmay, "Hackney Central", 4, at(16), getOffSoon = false))
+        show(trip.copy(boarded = true, onBoardSeen = true), TripProgress.Riding(mildmay, "Hackney Central", 4, at(16), getOffSoon = false))
         onCard("Get off at Stratford").assertIsDisplayed()
         composeRule.onNodeWithText("4 stops · next Hackney Central").assertIsDisplayed()
         captureSnapshot("on-the-way-riding.png")
     }
 
     @Test
+    fun on_the_way_train_gone_but_rider_not_seen_on_it_still_says_take_it() {
+        // The train followed has left, but no fix or word says the rider is on it: underground at the
+        // boarding station, they look the same (maintainer, 2026-09-29). Still the ride's step, with its
+        // board, until location or Next says they're on.
+        val train = Departure("mildmay", "Mildmay", "outbound", "Stratford", null, at(6), "overground")
+        show(
+            trip.copy(boarded = true),
+            TripProgress.Riding(mildmay, "Hackney Central", 4, at(16), getOffSoon = false, seen = false),
+            nextTrains = NextTrains(mildmay, listOf(train), readyAt = now),
+        )
+        onCard("Take the train to Stratford").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("4 stops · next Hackney Central").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithText("6 min").assertIsDisplayed()
+        captureSnapshot("on-the-way-train-left-not-seen-on-it.png")
+    }
+
+    @Test
     fun on_the_way_get_off_soon() {
-        show(trip.copy(boarded = true), TripProgress.Riding(mildmay, "Stratford", 1, at(1), getOffSoon = true))
+        show(trip.copy(boarded = true, onBoardSeen = true), TripProgress.Riding(mildmay, "Stratford", 1, at(1), getOffSoon = true))
         onCard("Get off at Stratford").assertIsDisplayed()
         composeRule.onNodeWithText("Next stop").assertIsDisplayed()
         captureSnapshot("on-the-way-get-off.png")
@@ -383,14 +400,14 @@ class OnTheWayScreenScreenshotTest {
     @Test
     fun on_the_way_stops_left_unknown_names_the_next_stop() {
         // A bus beyond its predictions: on it, its stops left not counted.
-        show(trip.copy(boarded = true), TripProgress.Riding(mildmay, "Hackney Central", null, null, getOffSoon = false))
+        show(trip.copy(boarded = true, onBoardSeen = true), TripProgress.Riding(mildmay, "Hackney Central", null, null, getOffSoon = false))
         composeRule.onNodeWithText("Next: Hackney Central").assertIsDisplayed()
     }
 
     @Test
     fun on_the_way_an_old_answer_isnt_shown_as_live() {
         // Back after a while away: the last answer said get off next, but that's no longer known.
-        show(trip.copy(boarded = true), TripProgress.Riding(mildmay, "Stratford", 1, at(1), getOffSoon = true), current = false)
+        show(trip.copy(boarded = true, onBoardSeen = true), TripProgress.Riding(mildmay, "Stratford", 1, at(1), getOffSoon = true), current = false)
         onCard("Get off at Stratford").assertIsDisplayed()
         composeRule.onNodeWithText("Updating…").assertIsDisplayed()
         composeRule.onNodeWithText("Next stop").assertDoesNotExist()
@@ -434,7 +451,7 @@ class OnTheWayScreenScreenshotTest {
     @Test
     fun next_is_off_on_the_last_step() {
         // On the last ride: Next there would arrive and forget the trip, with no Back to undo it.
-        show(trip.copy(legIndex = 2, boarded = true), TripProgress.Riding(jubilee, "Canary Wharf", 1, at(33), getOffSoon = true))
+        show(trip.copy(legIndex = 2, boarded = true, onBoardSeen = true), TripProgress.Riding(jubilee, "Canary Wharf", 1, at(33), getOffSoon = true))
         composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoNext")).assertIsNotEnabled()
         composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoBack")).assertIsDisplayed()
     }

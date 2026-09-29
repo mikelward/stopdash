@@ -616,7 +616,7 @@ class ActiveTripTracker(
         return when {
             leg.isWalk -> OnTheWay.advance(trip, null, now).second
             trip.boarded && trip.vehicleId.isBlank() && !picking -> TripProgress.Lost(leg)
-            trip.boarded -> TripProgress.Riding(leg, "", null, trip.dueOffAt, false)
+            trip.boarded -> TripProgress.Riding(leg, "", null, trip.dueOffAt, false, trip.onBoardSeen)
             OnTheWay.changeUntil(trip, now) != null -> TripProgress.Changing(leg, trip.legStartedAt)
             else -> TripProgress.Waiting(leg, trip.boardsAt)
         }

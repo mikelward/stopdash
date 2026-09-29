@@ -389,6 +389,11 @@ internal fun nextStepText(resources: Resources, progress: TripProgress?, now: In
             // As the boards count it ([Countdown.minutes]): the train due here is often on the board
             // below, and the two must never read a minute apart.
             (progress.due?.let { resources.getString(R.string.on_the_way_due, Countdown.minutes(it, now).toInt()) } ?: resources.getString(finding(progress.leg)))
+        // Only taken to be on board, their train having left (maintainer, 2026-09-29): still on the
+        // platform looks the same underground, so the step is still the ride, its board below, until
+        // location or their word says they're on. A stop or two from getting off, it says so all the same.
+        is TripProgress.Riding if !progress.seen && !progress.getOffSoon ->
+            resources.getString(Vehicle.of(progress.leg).take, progress.leg.toName) to ""
         is TripProgress.Riding -> resources.getString(R.string.on_the_way_get_off, progress.leg.toName) to
             when (val left = progress.stopsLeft) {
                 null -> resources.getString(R.string.on_the_way_next_is, progress.nextStop)
@@ -409,13 +414,13 @@ internal fun nextStepText(resources: Resources, progress: TripProgress?, now: In
  * What the rider is looking for on a leg, by its mode's own name (maintainer, 2026-09-28): a bus, a
  * coach, a tram, a boat, a cable car; a train on every rail mode, and on one this doesn't know.
  */
-private enum class Vehicle(val finding: Int, val lost: Int) {
-    TRAIN(R.string.on_the_way_finding, R.string.on_the_way_lost),
-    BUS(R.string.on_the_way_finding_bus, R.string.on_the_way_lost_bus),
-    COACH(R.string.on_the_way_finding_coach, R.string.on_the_way_lost_coach),
-    TRAM(R.string.on_the_way_finding_tram, R.string.on_the_way_lost_tram),
-    BOAT(R.string.on_the_way_finding_boat, R.string.on_the_way_lost_boat),
-    CABLE_CAR(R.string.on_the_way_finding_cable_car, R.string.on_the_way_lost_cable_car),
+private enum class Vehicle(val finding: Int, val lost: Int, val take: Int) {
+    TRAIN(R.string.on_the_way_finding, R.string.on_the_way_lost, R.string.on_the_way_take),
+    BUS(R.string.on_the_way_finding_bus, R.string.on_the_way_lost_bus, R.string.on_the_way_take_bus),
+    COACH(R.string.on_the_way_finding_coach, R.string.on_the_way_lost_coach, R.string.on_the_way_take_coach),
+    TRAM(R.string.on_the_way_finding_tram, R.string.on_the_way_lost_tram, R.string.on_the_way_take_tram),
+    BOAT(R.string.on_the_way_finding_boat, R.string.on_the_way_lost_boat, R.string.on_the_way_take_boat),
+    CABLE_CAR(R.string.on_the_way_finding_cable_car, R.string.on_the_way_lost_cable_car, R.string.on_the_way_take_cable_car),
     ;
 
     companion object {

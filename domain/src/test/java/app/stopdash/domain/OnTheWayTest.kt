@@ -180,7 +180,7 @@ class OnTheWayTest {
         val following = ActiveTrip(TripRoute(listOf(long)), "F", startedAt = t0, vehicleId = "8")
         val (next, progress) = OnTheWay.advance(following, listOf(call("B", 9), call("C", 12)), at(6))
         assertTrue(next.boarded)
-        assertEquals(TripProgress.Riding(long, "B", 5, null, false), progress)
+        assertEquals(TripProgress.Riding(long, "B", 5, null, false, seen = false), progress)
         assertEquals(0, next.legIndex)
     }
 
@@ -270,7 +270,7 @@ class OnTheWayTest {
     fun `a bus with its stop beyond the predictions is ridden, its stops left unknown`() {
         val following = ActiveTrip(TripRoute(listOf(bus)), "Example Street", startedAt = t0, vehicleId = "LX01", boarded = true)
         val progress = OnTheWay.advance(following, listOf(pole("490000000002B", 9), pole("490000000003C", 12)), at(6)).second
-        assertEquals(TripProgress.Riding(bus, "490000000002B", null, null, false), progress)
+        assertEquals(TripProgress.Riding(bus, "490000000002B", null, null, false, seen = false), progress)
     }
 
     @Test
@@ -299,7 +299,7 @@ class OnTheWayTest {
         val onBoard = OnTheWay.follow(trip, train("8", 5)).copy(boarded = true)
         // Past A, due at C at 14, then round the loop to A again at 20.
         val progress = OnTheWay.advance(onBoard, listOf(call("B", 9), call("C", 14), call("A", 20)), at(6)).second
-        assertEquals(TripProgress.Riding(ride, "B", 2, at(14), false), progress)
+        assertEquals(TripProgress.Riding(ride, "B", 2, at(14), false, seen = false), progress)
     }
 
     @Test
@@ -308,7 +308,7 @@ class OnTheWayTest {
         val following = OnTheWay.follow(trip, train("8", 5))
         val (next, progress) = OnTheWay.advance(following, listOf(call("B", 9), call("C", 14), call("A", 20)), at(6))
         assertTrue(next.boarded)
-        assertEquals(TripProgress.Riding(ride, "B", 2, at(14), false), progress)
+        assertEquals(TripProgress.Riding(ride, "B", 2, at(14), false, seen = false), progress)
     }
 
     @Test
@@ -335,13 +335,39 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `a train that left is only taken to be ridden until the rider is seen or says they're on`() {
+        // Due at A at 5; at 6 it has left, and the rider, underground with no fix, may still be there
+        // (maintainer, 2026-09-29).
+        val (left, progress) = OnTheWay.advance(OnTheWay.follow(trip, train("8", 5)), listOf(call("B", 9), call("C", 14)), at(6))
+        assertTrue(left.boarded)
+        assertFalse(left.onBoardSeen)
+        assertEquals(TripProgress.Riding(ride, "B", 2, at(14), false, seen = false), progress)
+        // Still the ride's step, its board and the checks for a rider already on their way still up.
+        assertEquals(OnTheWay.Step(0), OnTheWay.stepOf(left))
+        assertEquals(ride, OnTheWay.upcomingRide(left))
+        assertEquals(ride, OnTheWay.waitingToBoard(left, at(6)))
+        // Next says they're on: its train kept, the step now getting off.
+        val said = OnTheWay.atStep(left, OnTheWay.Step(0, onBoard = true), at(7))
+        assertTrue(said.onBoardSeen)
+        assertEquals("8", said.vehicleId)
+        assertEquals(OnTheWay.Step(0, onBoard = true), OnTheWay.stepOf(said))
+        assertNull(OnTheWay.upcomingRide(said))
+        // Seen along the ride on it: on board as well.
+        val seen = OnTheWay.boardedOn(left, train("8", 5), listOf(call("B", 9), call("C", 14)), 0, at(8))
+        assertEquals(true, seen?.first?.onBoardSeen)
+        assertEquals(TripProgress.Riding(ride, "B", 2, at(14), false), seen?.second)
+        // Left behind on the platform and a new train picked: not on board, seen or not.
+        assertFalse(OnTheWay.atLeg(said, 0, at(9)).onBoardSeen)
+    }
+
+    @Test
     fun `a loop train that just left is ridden, though its next lap is predicted too`() {
         // Picked as due at A at 5; at 6 it has left, and its calls run on round to A at 20 and on again.
         val following = OnTheWay.follow(trip, train("8", 5))
         val calls = listOf(call("B", 9), call("C", 14), call("A", 20), call("B", 23), call("C", 28))
         val (next, progress) = OnTheWay.advance(following, calls, at(6))
         assertTrue(next.boarded)
-        assertEquals(TripProgress.Riding(ride, "B", 2, at(14), false), progress)
+        assertEquals(TripProgress.Riding(ride, "B", 2, at(14), false, seen = false), progress)
     }
 
     @Test
@@ -376,7 +402,7 @@ class OnTheWayTest {
         // Due at C at 14, now at 15 held and due there at 20: the same call, not a later lap.
         val (next, progress) = OnTheWay.advance(onBoard, listOf(call("B", 18), call("C", 20)), at(15))
         assertEquals(0, next.legIndex)
-        assertEquals(TripProgress.Riding(ride, "B", 2, at(20), false), progress)
+        assertEquals(TripProgress.Riding(ride, "B", 2, at(20), false, seen = false), progress)
     }
 
     @Test
@@ -407,7 +433,7 @@ class OnTheWayTest {
         val pathless = bus.copy(path = emptyList())
         val onBoard = ActiveTrip(TripRoute(listOf(pathless)), "Example Street", startedAt = t0, vehicleId = "LX01", boarded = true)
         val progress = OnTheWay.advance(onBoard, listOf(pole("490000000002B", 9)), at(6)).second
-        assertEquals(TripProgress.Riding(pathless, "490000000002B", null, null, false), progress)
+        assertEquals(TripProgress.Riding(pathless, "490000000002B", null, null, false, seen = false), progress)
     }
 
     @Test
@@ -450,7 +476,7 @@ class OnTheWayTest {
         val following = OnTheWay.follow(ActiveTrip(TripRoute(listOf(pathless)), "Example Street", startedAt = t0), Departure("73", "73", "outbound", "Example Terminus", null, at(5), "bus", vehicleId = "LX01"))
         val (next, progress) = OnTheWay.advance(following, listOf(pole("490000000002B", 9)), at(6))
         assertTrue(next.boarded)
-        assertEquals(TripProgress.Riding(pathless, "490000000002B", null, null, false), progress)
+        assertEquals(TripProgress.Riding(pathless, "490000000002B", null, null, false, seen = false), progress)
     }
 
     @Test
@@ -531,7 +557,8 @@ class OnTheWayTest {
         val onBoard = OnTheWay.follow(placed, train("8", 5)).copy(boarded = true, boardedAt = at(6))
         assertTrue(OnTheWay.wantsFix(onBoard, at(7)))
         assertFalse(OnTheWay.wantsFix(onBoard, at(11)))
-        assertFalse(OnTheWay.wantsFix(onBoard.copy(route = trip.route), at(7)))
+        // With the stop not placed, none for a rider left behind; one only while not yet seen on board.
+        assertFalse(OnTheWay.wantsFix(onBoard.copy(route = trip.route, onBoardSeen = true), at(7)))
         // Still waiting for it, a fix is wanted too: they may be on another train already ([seenAlong]).
         assertTrue(OnTheWay.wantsFix(OnTheWay.follow(placed, train("8", 5)), at(4)))
         // Past the window the rider is taken to be on board, wherever the fix says.
@@ -589,8 +616,11 @@ class OnTheWayTest {
         assertNull(OnTheWay.seenAlong(waiting, fix(Coordinates(51.4946, -0.12), 20f), along, at(6)))
         // Far enough on, but the fix too vague to be sure of it.
         assertNull(OnTheWay.seenAlong(waiting, fix(Coordinates(51.505, -0.12), 200f), along, at(6)))
-        // Only while the ride is awaited: not once on board, nor while a change onto it runs.
-        assertNull(OnTheWay.seenAlong(waiting.copy(boarded = true), fix(atB, 20f), along, at(6)))
+        // Only while the ride is awaited: not once seen on board, nor while a change onto it runs.
+        assertNull(OnTheWay.seenAlong(waiting.copy(boarded = true, onBoardSeen = true), fix(atB, 20f), along, at(6)))
+        // Its train gone, the rider only taken to be on it, is still awaited: seen along, they're on
+        // (maintainer, 2026-09-29).
+        assertEquals(OnTheWay.Along(0, atStop = true), OnTheWay.seenAlong(waiting.copy(boarded = true), fix(atB, 20f), along, at(6)))
         val onward = TripLeg("tube", "blue", "Blue", "C", "C", "E", "E", at(16), at(25), path = listOf("E"))
         val changing = trip.copy(route = TripRoute(listOf(ride, onward)), legIndex = 1, legStartedAt = at(17))
         assertNull(OnTheWay.seenAlong(changing, fix(atB, 20f), along, at(16)))
@@ -620,7 +650,9 @@ class OnTheWayTest {
         // A leg of its own starts a wait of its own.
         assertTrue(OnTheWay.wantsFix(OnTheWay.atLeg(left, 2, at(11)), at(12)))
         // On board, past the left-behind window, none is: the train says where they are.
-        assertFalse(OnTheWay.wantsFix(waiting.copy(boarded = true, boardedAt = at(1)), at(9)))
+        assertFalse(OnTheWay.wantsFix(waiting.copy(boarded = true, boardedAt = at(1), onBoardSeen = true), at(9)))
+        // Only taken to be on board, the wait's fixes go on: seen along, they're on it (maintainer, 2026-09-29).
+        assertTrue(OnTheWay.wantsFix(waiting.copy(boarded = true, boardedAt = at(1)), at(9)))
     }
 
     @Test
@@ -696,7 +728,8 @@ class OnTheWayTest {
     fun `a fix is wanted only on a train, not a bus held up near its stop`() {
         val bus = ride.copy(mode = "bus", fromAt = platform)
         val onBus = OnTheWay.follow(placed.copy(route = TripRoute(listOf(bus, walk, second))), train("8", 5)).copy(boarded = true, boardedAt = at(6))
-        assertFalse(OnTheWay.wantsFix(onBus, at(7)))
+        // Seen on it, none is wanted: nothing a fix near the stop says counts on a bus.
+        assertFalse(OnTheWay.wantsFix(onBus.copy(onBoardSeen = true), at(7)))
         // Still near the pole in traffic: kept on the bus it's on.
         assertEquals(onBus, OnTheWay.seen(onBus, stillThere, at(8)))
     }
@@ -837,14 +870,17 @@ class OnTheWayTest {
             OnTheWay.steps(trip.route),
         )
         assertEquals(OnTheWay.Step(0), OnTheWay.stepOf(trip))
-        assertEquals(OnTheWay.Step(0, onBoard = true), OnTheWay.stepOf(trip.copy(boarded = true)))
+        assertEquals(OnTheWay.Step(0, onBoard = true), OnTheWay.stepOf(trip.copy(boarded = true, onBoardSeen = true)))
+        // Only taken to be on board, the train having left: still the ride's first step until seen on it
+        // (maintainer, 2026-09-29).
+        assertEquals(OnTheWay.Step(0), OnTheWay.stepOf(trip.copy(boarded = true)))
         // Back and Next step through them in order, with nothing before the first or after the last.
         assertNull(OnTheWay.stepBefore(trip))
         assertEquals(OnTheWay.Step(0, onBoard = true), OnTheWay.stepAfter(trip))
         val walking = trip.copy(legIndex = 1)
         assertEquals(OnTheWay.Step(0, onBoard = true), OnTheWay.stepBefore(walking))
         assertEquals(OnTheWay.Step(2), OnTheWay.stepAfter(walking))
-        assertNull(OnTheWay.stepAfter(trip.copy(legIndex = 2, boarded = true)))
+        assertNull(OnTheWay.stepAfter(trip.copy(legIndex = 2, boarded = true, onBoardSeen = true)))
     }
 
     @Test
@@ -1166,7 +1202,9 @@ class OnTheWayTest {
         assertEquals(at(20), OnTheWay.readyAt(walking, TripProgress.Walking(walk, at(20))))
         assertEquals(at(3), OnTheWay.readyAt(trip, TripProgress.Changing(ride, at(3))))
         assertEquals(t0, OnTheWay.readyAt(trip, TripProgress.Waiting(ride, null)))
-        assertNull(OnTheWay.readyAt(trip, TripProgress.Riding(ride, "B", 2, null, false)))
+        assertNull(OnTheWay.readyAt(trip.copy(boarded = true, onBoardSeen = true), TripProgress.Riding(ride, "B", 2, null, false)))
+        // Only taken to be on board: still ready from when the wait began, for graying the board.
+        assertEquals(t0, OnTheWay.readyAt(trip.copy(boarded = true), TripProgress.Riding(ride, "B", 2, null, false, seen = false)))
         assertNull(OnTheWay.readyAt(trip, TripProgress.Arrived))
     }
 
@@ -1174,7 +1212,10 @@ class OnTheWayTest {
     fun `the upcoming ride is the one after the walk, the one waited for, and none once on board`() {
         assertEquals(ride.copy(fromAt = platform), OnTheWay.upcomingRide(walkingTrip))
         assertEquals(ride, OnTheWay.upcomingRide(trip))
-        assertNull(OnTheWay.upcomingRide(trip.copy(boarded = true)))
+        assertNull(OnTheWay.upcomingRide(trip.copy(boarded = true, onBoardSeen = true)))
+        // Taken to be on board, its train gone, but not seen on it: the ride and its board are still
+        // the rider's (maintainer, 2026-09-29).
+        assertEquals(ride, OnTheWay.upcomingRide(trip.copy(boarded = true)))
         // The walk to D goes on to the second ride; none after the last leg.
         assertEquals(second, OnTheWay.upcomingRide(trip.copy(legIndex = 1)))
         assertNull(OnTheWay.upcomingRide(trip.copy(legIndex = 3)))
