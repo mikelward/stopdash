@@ -193,6 +193,18 @@ class OnTheWayScreenScreenshotTest {
         captureSnapshot("on-the-way-app-menu.png")
     }
 
+    @Test
+    fun on_the_way_due_reads_as_the_board_below_it_does() {
+        // Four and a half minutes away: the card and the board under it name the same train, so
+        // they round alike rather than reading 5 and 4 (maintainer's report, 2026-09-29).
+        val due = at(4).plusSeconds(30)
+        val train = Departure("mildmay", "Mildmay", "outbound", "Stratford", null, due, "overground")
+        show(trip, TripProgress.Waiting(mildmay, due), nextTrains = NextTrains(mildmay, listOf(train), readyAt = now))
+        composeRule.onNodeWithText("Due in 4 min").assertIsDisplayed()
+        composeRule.onNodeWithText("4 min").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("Due in 5 min").fetchSemanticsNodes().isEmpty())
+    }
+
     private fun jubileeTrain(destination: String, minutes: Long) =
         Departure("jubilee", "Jubilee", "outbound", destination, null, at(minutes), "tube")
 

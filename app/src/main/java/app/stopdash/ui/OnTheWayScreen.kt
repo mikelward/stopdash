@@ -49,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.ActiveTrip
+import app.stopdash.domain.Countdown
 import app.stopdash.domain.Departure
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.StopGrouping
@@ -373,7 +374,9 @@ internal fun nextStepText(resources: Resources, progress: TripProgress?, now: In
     if (live && !current) return nextStepText(resources, progress, now).first to resources.getString(R.string.on_the_way_updating)
     return when (progress) {
         is TripProgress.Waiting -> resources.getString(R.string.on_the_way_board, progress.leg.lineName, progress.leg.fromName) to
-            (progress.due?.let { resources.getString(R.string.on_the_way_due, minutesUntil(now, it)) } ?: resources.getString(finding(progress.leg)))
+            // As the boards count it ([Countdown.minutes]): the train due here is often on the board
+            // below, and the two must never read a minute apart.
+            (progress.due?.let { resources.getString(R.string.on_the_way_due, Countdown.minutes(it, now).toInt()) } ?: resources.getString(finding(progress.leg)))
         is TripProgress.Riding -> resources.getString(R.string.on_the_way_get_off, progress.leg.toName) to
             when (val left = progress.stopsLeft) {
                 null -> resources.getString(R.string.on_the_way_next_is, progress.nextStop)

@@ -35,6 +35,14 @@ class CountdownTest {
     }
 
     @Test
+    fun `minutes round down and never go below zero`() {
+        assertEquals(4, Countdown.minutes(now.plusSeconds(4 * 60 + 30), now))
+        assertEquals(4, Countdown.minutes(now.plusSeconds(4 * 60 + 59), now))
+        assertEquals(0, Countdown.minutes(now.plusSeconds(59), now))
+        assertEquals(0, Countdown.minutes(now.minusSeconds(30), now))
+    }
+
+    @Test
     fun `mergedLabel joins countdowns with the unit written once`() {
         val soon = departure(offsetSeconds = 40) // 0
         val mid = departure(offsetSeconds = 180) // 3 min
