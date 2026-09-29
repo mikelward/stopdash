@@ -1762,6 +1762,58 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `a refresh's prune is stored even when the list is left while it's written`() = runTest(dispatcher) {
+        val backing = MutableStateFlow<Set<DismissedAlert>>(emptySet())
+        var gate: CompletableDeferred<Unit>? = null
+        val writing = CompletableDeferred<Unit>()
+        val store = object : DismissedAlertsStore {
+            override fun dismissed() = backing
+            override suspend fun dismiss(alert: DismissedAlert) {
+                backing.value = Dismissed.dismiss(backing.value, alert)
+            }
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) {
+                gate?.let {
+                    writing.complete(Unit)
+                    it.await()
+                }
+                backing.value = Dismissed.reconcile(backing.value, live, checkedPlaces)
+            }
+        }
+        var closed = true
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) =
+                if (closed) listOf(StopDisruption("Bus Stop Closed")) else emptyList()
+        }
+        val vm = MainViewModel(
+            client,
+            listOf(StopRef("490000001A", "Example Road", clusterId = "490G000EXAMPLE")),
+            clock = { now },
+            io = dispatcher,
+            dismissedStore = store,
+        )
+        advanceUntilIdle()
+        val closure = DepartureRows.across((vm.state.value as DeparturesUiState.Loaded).stops, now)
+            .first { it.stopDisruption != null }
+        vm.dismissAlert(closure)
+        advanceUntilIdle()
+        assertEquals(setOf(DismissedAlert.ofStopClosure(closure)), backing.value)
+
+        closed = false
+        val written = CompletableDeferred<Unit>().also { gate = it }
+        vm.refresh()
+        advanceUntilIdle()
+        assertTrue(writing.isCompleted)
+        // The app is left while the prune is being written: it still lands, so the same notice coming
+        // back later isn't hidden by a dismissal read back from the store (Codex, PR #379).
+        vm.viewModelScope.cancel()
+        written.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(emptySet<DismissedAlert>(), backing.value)
+    }
+
+    @Test
     fun `a transient dismissed-read error recovers so later dismissals still apply`() = runTest(dispatcher) {
         // The first read of the dismissed set throws; the collector must restart rather than die, so
         // a dismiss made after it recovers still hides the card (not silently lost).

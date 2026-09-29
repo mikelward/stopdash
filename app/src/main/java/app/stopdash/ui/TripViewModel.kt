@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
+import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.Dismissed
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.HiddenModes
@@ -27,12 +29,14 @@ import app.stopdash.domain.TripRoute
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.TripTiming
 import app.stopdash.domain.withoutDetours
+import app.stopdash.domain.lineAlertKey
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -654,6 +658,7 @@ class TripViewModel(
                     )
                     next.copy(closuresUnknown = unknownClosures(next.routes.orEmpty(), next))
                 }
+                fetched?.let { reconcileLineDismissals(it) }
             }
             // Lines first seen in this refresh's arrivals: checked now rather than a tick later, so one
             // isn't shown for a minute with nothing said of its status. Merged in; a failure leaves
@@ -675,6 +680,7 @@ class TripViewModel(
                         statusFailedLines = it.statusFailedLines - late.toSet() + (found?.failed ?: late.toSet()),
                     )
                 }
+                found?.let { reconcileLineDismissals(it) }
             }
         } finally {
             _state.update { it.copy(refreshing = false) }
@@ -901,6 +907,34 @@ class TripViewModel(
 
     // One request per group TfL accepts (LineStatusBatch), each with its own outcome. Null when none
     // was answered: the last statuses stay rather than pass the lines off as running normally.
+    /**
+     * Settles the dismissals of the lines [check] answered, as the list's refresh does: one whose
+     * alert TfL no longer reports is forgotten, so the same alert coming back later shows again
+     * rather than staying hidden until the list happened to check that line (Codex on #367). Only an
+     * answered line counts, and not one still waiting on which way its alerts go: a dismissal of
+     * one direction's alert can't be matched against it until the split lands. The write outlasts
+     * the trip, as a dismissal's does: a trip left while it's being written would otherwise leave
+     * the ended alert's dismissal stored, for the next trip or the list to read back. Best-effort: a
+     * failed write is logged, and the next check tries again; what's shown here is pruned either way.
+     */
+    private suspend fun reconcileLineDismissals(check: StatusCheck) {
+        val answered = check.statuses.filterKeys { it !in check.failed }
+        val checked = answered.values.filterNot { it.awaitingDirections }.mapTo(HashSet()) { lineAlertKey(it.lineId) }
+        if (checked.isEmpty()) return
+        val live = DepartureRows.liveLineStatusAlerts(answered, clock())
+        // In memory first, as the list does, so a write that fails can't keep the alert hidden here
+        // (Codex, PR #379).
+        val pruned = Dismissed.reconcile(_dismissed.value, live, checked)
+        if (pruned != _dismissed.value) _dismissed.value = pruned
+        try {
+            withContext(NonCancellable + io) { dismissedStore.reconcile(live, checked) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            warn("trip dismissal reconcile failed: ${e::class.simpleName}")
+        }
+    }
+
     private suspend fun fetchStatuses(lineIds: List<String>): StatusCheck? {
         val results = LineStatusBatch.request(lineIds) { chunk -> withContext(io) { client.lineStatuses(chunk) } }
         results.failure?.let { warn("trip line status failed for ${results.failed.size} line(s): ${it::class.simpleName}") }

@@ -12,6 +12,7 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.DismissedAlert
+import app.stopdash.domain.Dismissed
 import app.stopdash.domain.JourneyPlanner
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.DepartureRows
@@ -135,13 +136,15 @@ class TripViewModelTest {
         // A request asking about any of these fails; these lines are answered as disrupted.
         var failLines = emptySet<String>()
         var disruptedLines = emptySet<String>()
+        // Answered with the lookup of which way their alerts go still under way.
+        var awaitingLines = emptySet<String>()
         var statusChecks = 0
         override suspend fun lineStatuses(lineIds: Collection<String>): List<LineStatus> {
             statusChecks++
             if (failStatus || lineIds.any { it in failLines }) throw TflException.Offline(null)
             return lineIds.filterNot { it in omitLines }.map {
                 if (it in disruptedLines) LineStatus(it, 6, "Severe Delays") else LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service")
-            }
+            }.map { if (it.lineId in awaitingLines) it.copy(awaitingDirections = true) else it }
         }
         // Each stop's closure notices; asking about one in [failDisruptions] fails. Each request's stops, in order.
         var disruptions = emptyMap<String, List<StopDisruption>>()
@@ -219,6 +222,112 @@ class TripViewModelTest {
         assertTrue(failures.dismiss.value)
         trip.dismissWriteFailureShown()
         assertFalse(trip.dismissWriteFailed.value)
+    }
+
+    // A store holding [initial], pruned as the stored one is ([Dismissed.reconcile]).
+    private fun reconcilingStore(initial: Set<DismissedAlert>) = object : DismissedAlertsStore {
+        val stored = MutableStateFlow(initial)
+        override fun dismissed() = stored
+        override suspend fun dismiss(alert: DismissedAlert) {
+            stored.value = stored.value + alert
+        }
+        override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) {
+            stored.value = Dismissed.reconcile(stored.value, live, checkedPlaces)
+        }
+    }
+
+    @Test
+    fun `a trip's line check forgets the dismissal of an alert that has ended`() = runTest(dispatcher) {
+        val blue = DismissedAlert.ofLineStatus(LineStatus("blue", 6, "Severe Delays"))
+        val green = DismissedAlert.ofLineStatus(LineStatus("green", 6, "Severe Delays"))
+        val store = reconcilingStore(setOf(blue, green))
+        val client = FakeClient(mutableMapOf("A" to listOf(train("red", "End", 2))))
+        val trip = TripViewModel(FakePlanner(listOf(route)), client, "A", listOf(TripDestination.Stop("C")), clock = { now }, io = dispatcher, dismissedStore = store)
+        trip.refresh()
+        advanceUntilIdle()
+        // TfL now reports the blue line good, so its dismissal goes, and the same alert coming back
+        // later shows again; the green line, which this trip doesn't check, keeps its (Codex on #367).
+        assertEquals(setOf(green), store.stored.value)
+    }
+
+    @Test
+    fun `a trip forgets an ended alert's dismissal on screen even when the store can't be written`() = runTest(dispatcher) {
+        val blue = DismissedAlert.ofLineStatus(LineStatus("blue", 6, "Severe Delays"))
+        val stored = MutableStateFlow(setOf(blue))
+        val store = object : DismissedAlertsStore {
+            override fun dismissed() = stored
+            override suspend fun dismiss(alert: DismissedAlert) {}
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) {
+                throw java.io.IOException("disk full")
+            }
+        }
+        val client = FakeClient(mutableMapOf("A" to listOf(train("red", "End", 2))))
+        val trip = TripViewModel(FakePlanner(listOf(route)), client, "A", listOf(TripDestination.Stop("C")), clock = { now }, io = dispatcher, dismissedStore = store)
+        advanceUntilIdle()
+        assertEquals(setOf(blue), trip.dismissed.value)
+        trip.refresh()
+        advanceUntilIdle()
+        // Pruned in memory first, as the list does, so the same alert coming back this session shows
+        // (Codex, PR #379).
+        assertTrue(trip.dismissed.value.isEmpty())
+    }
+
+    @Test
+    fun `a trip's finished line check is stored even when the trip is left while it's written`() = runTest(dispatcher) {
+        val blue = DismissedAlert.ofLineStatus(LineStatus("blue", 6, "Severe Delays"))
+        val stored = MutableStateFlow(setOf(blue))
+        val writing = CompletableDeferred<Unit>()
+        val written = CompletableDeferred<Unit>()
+        val store = object : DismissedAlertsStore {
+            override fun dismissed() = stored
+            override suspend fun dismiss(alert: DismissedAlert) {}
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) {
+                writing.complete(Unit)
+                written.await()
+                stored.value = Dismissed.reconcile(stored.value, live, checkedPlaces)
+            }
+        }
+        val models = ViewModelStore()
+        val client = FakeClient(mutableMapOf("A" to listOf(train("red", "End", 2))))
+        val trip = ViewModelProvider.create(
+            models,
+            viewModelFactory {
+                initializer { TripViewModel(FakePlanner(listOf(route)), client, "A", listOf(TripDestination.Stop("C")), clock = { now }, io = dispatcher, dismissedStore = store) }
+            },
+        )[TripViewModel::class]
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue(writing.isCompleted)
+        // The rider leaves the trip while the check's prune is being written: it still lands, so a
+        // later trip or the list doesn't read the ended alert's dismissal back (Codex, PR #379).
+        models.clear()
+        written.complete(Unit)
+        advanceUntilIdle()
+        assertTrue(stored.value.isEmpty())
+    }
+
+    @Test
+    fun `a trip keeps a line's dismissal while its alert is live, its check failed, or its alert is being placed`() = runTest(dispatcher) {
+        val blue = DismissedAlert.ofLineStatus(LineStatus("blue", 6, "Severe Delays"))
+        // Still reported: kept.
+        val live = reconcilingStore(setOf(blue))
+        val disrupted = FakeClient(mutableMapOf("A" to listOf(train("red", "End", 2)))).apply { disruptedLines = setOf("blue") }
+        TripViewModel(FakePlanner(listOf(route)), disrupted, "A", listOf(TripDestination.Stop("C")), clock = { now }, io = dispatcher, dismissedStore = live).refresh()
+        advanceUntilIdle()
+        assertEquals(setOf(blue), live.stored.value)
+        // Not answered: kept.
+        val failed = reconcilingStore(setOf(blue))
+        val offline = FakeClient(mutableMapOf("A" to listOf(train("red", "End", 2)))).apply { failStatus = true }
+        TripViewModel(FakePlanner(listOf(route)), offline, "A", listOf(TripDestination.Stop("C")), clock = { now }, io = dispatcher, dismissedStore = failed).refresh()
+        advanceUntilIdle()
+        assertEquals(setOf(blue), failed.stored.value)
+        // Answered before its alerts are placed by direction, which a dismissal of one direction's
+        // alert can't be matched against yet: kept until the split lands.
+        val awaiting = reconcilingStore(setOf(blue))
+        val placing = FakeClient(mutableMapOf("A" to listOf(train("red", "End", 2)))).apply { awaitingLines = setOf("blue") }
+        TripViewModel(FakePlanner(listOf(route)), placing, "A", listOf(TripDestination.Stop("C")), clock = { now }, io = dispatcher, dismissedStore = awaiting).refresh()
+        advanceUntilIdle()
+        assertEquals(setOf(blue), awaiting.stored.value)
     }
 
     @Test

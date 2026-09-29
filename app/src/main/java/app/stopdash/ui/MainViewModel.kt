@@ -1987,7 +1987,10 @@ class MainViewModel(
         val pruned = Dismissed.reconcile(_dismissed.value, live, checkedPlaces)
         if (pruned != _dismissed.value) _dismissed.value = pruned
         try {
-            withContext(io) { dismissedStore.reconcile(live, checkedPlaces) }
+            // NonCancellable, as a dismissal's write is: leaving while it's written would otherwise
+            // leave the ended notice's dismissal stored, to hide the same notice coming back (Codex,
+            // PR #379).
+            withContext(NonCancellable + io) { dismissedStore.reconcile(live, checkedPlaces) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
