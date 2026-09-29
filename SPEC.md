@@ -1526,8 +1526,9 @@ label, TfL's reason)`: line-wide, so it clears at every stop the line serves, an
 line escalates or TfL rewords it. A dismissed line drops its ⚠ but keeps its countdowns, and the
 detail says "Service alert dismissed" rather than claim a clean line (principle 1); a no-departures
 status row, which exists only to carry the alert, goes with it. A refresh
-prunes it only for a line whose status TfL actually returned, as for places. Expiring a dismissal
-after a day is a `TODO.md` follow-up.
+prunes it only for a line whose status TfL actually returned, as for places, and a trip's own line
+check prunes it the same way, so an alert dismissed on a trip shows again when it recurs, without
+waiting for the list to check that line. Expiring a dismissal after a day is a `TODO.md` follow-up.
 
 The order is **dedupe, then title, then strip** (maintainer, 2026-09-22): the near-me fold groups
 by place first, on the newline-normalized-but-**not-name-stripped** text, so it stays independent
