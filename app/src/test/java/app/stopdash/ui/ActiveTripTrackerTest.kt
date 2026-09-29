@@ -2,6 +2,7 @@ package app.stopdash.ui
 
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Departure
+import app.stopdash.domain.OnTheWay.Step
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripProgress
@@ -407,21 +408,176 @@ class ActiveTripTrackerTest {
         tracker.start(TripRoute(listOf(toA, ride)), "C", readyAt = now)
         now = at(2)
         // Ten minutes by the clock, but the rider is at A after two: the next train they can catch is picked.
-        tracker.goTo(0, 1)
+        tracker.goTo(Step(0), Step(1))
         assertEquals(1, tracker.trip.value?.legIndex)
         assertEquals("2", tracker.trip.value?.vehicleId)
         assertEquals(TripProgress.Waiting(ride, at(3)), tracker.progress.value)
         assertEquals(tracker.trip.value, kept)
         // A tap on the leg they're on changes nothing, and none moves past the last: arriving would
         // forget the trip with no Back to undo it.
-        tracker.goTo(1, 1)
+        tracker.goTo(Step(1), Step(1))
         assertEquals("2", tracker.trip.value?.vehicleId)
-        tracker.goTo(1, 2)
+        tracker.goTo(Step(1), Step(2))
         assertEquals(1, tracker.trip.value?.legIndex)
         assertEquals(tracker.trip.value, kept)
         // A tap made from a leg the trip has since moved off is stale: nothing moves.
-        tracker.goTo(0, 0)
+        tracker.goTo(Step(0), Step(0))
         assertEquals(1, tracker.trip.value?.legIndex)
+    }
+
+    @Test
+    fun `Next from boarding puts the rider on board the train followed`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        now = at(5)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals(TripProgress.Waiting(ride, at(6)), tracker.progress.value)
+        // On it as it stands at A (maintainer, 2026-09-29): riding, B next, two stops to go.
+        tracker.goTo(Step(0), Step(0, onBoard = true))
+        assertTrue(tracker.trip.value?.boarded == true)
+        assertEquals("3", tracker.trip.value?.vehicleId)
+        assertEquals(TripProgress.Riding(ride, "B", 2, at(14), false), tracker.progress.value)
+        assertEquals(tracker.trip.value, kept)
+        // A refresh while TfL still has it at A keeps them on it.
+        tracker.refresh()
+        assertEquals(TripProgress.Riding(ride, "B", 2, at(14), false), tracker.progress.value)
+        // Back: waiting for a train again.
+        tracker.goTo(Step(0, onBoard = true), Step(0))
+        assertFalse(tracker.trip.value?.boarded == true)
+    }
+
+    @Test
+    fun `a step moved to isn't live until TfL answers for it`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        now = at(5)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals(at(5), tracker.updatedAt.value)
+        // Next from boarding while TfL takes its time: on board, its next stop not yet known, and
+        // the last answer not passed off as this step's (Codex, PR #384).
+        val slow = kotlinx.coroutines.CompletableDeferred<Unit>()
+        gate = slow
+        now = at(5).plusSeconds(20)
+        val moving = backgroundScope.launch { tracker.goTo(Step(0), Step(0, onBoard = true)) }
+        runCurrent()
+        assertTrue(tracker.progress.value is TripProgress.Riding)
+        assertNull(tracker.updatedAt.value)
+        gate = null
+        slow.complete(Unit)
+        moving.join()
+        assertEquals(TripProgress.Riding(ride, "B", 2, at(14), false), tracker.progress.value)
+        assertEquals(at(5).plusSeconds(20), tracker.updatedAt.value)
+    }
+
+    @Test
+    fun `Back straight after Next from a ride they're on is back on its train`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "D", "D", at(15), at(20))
+        departures["A"] = listOf(train("3", 6), train("4", 12))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        trains["4"] = listOf(call("A", 12), call("B", 15), call("C", 20))
+        now = at(5)
+        tracker.start(TripRoute(listOf(ride, walkOn)), "D", readyAt = now)
+        tracker.refresh()
+        tracker.goTo(Step(0), Step(0, onBoard = true))
+        assertEquals("3", tracker.trip.value?.vehicleId)
+        // Next to the walk too soon, then Back: on 3 still, past A, not on 4 at A by then or lost
+        // (Codex, PR #384).
+        now = at(8)
+        tracker.goTo(Step(0, onBoard = true), Step(1))
+        now = at(12)
+        trains["3"] = listOf(call("B", 13), call("C", 17))
+        tracker.goTo(Step(1), Step(0, onBoard = true))
+        assertEquals("3", tracker.trip.value?.vehicleId)
+        assertEquals(TripProgress.Riding(ride, "B", 2, at(17), false), tracker.progress.value)
+    }
+
+    @Test
+    fun `Back straight after Next from a ride on no train named is on none still`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10))
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "D", "D", at(15), at(20))
+        // Nothing at A when they say they're on: 3 is eight minutes off.
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 16))
+        tracker.start(TripRoute(listOf(toA, ride, walkOn)), "D", readyAt = now)
+        tracker.goTo(Step(0), Step(1, onBoard = true))
+        assertEquals(TripProgress.Lost(ride), tracker.progress.value)
+        // Next to the walk too soon, then Back as 3 stands at A: still on no train they can be named,
+        // not on 3, which they never boarded (Codex, PR #384).
+        now = at(7)
+        tracker.goTo(Step(1, onBoard = true), Step(2))
+        now = at(8)
+        tracker.goTo(Step(2), Step(1, onBoard = true))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertTrue(tracker.trip.value?.boarded == true)
+        assertEquals(TripProgress.Lost(ride), tracker.progress.value)
+    }
+
+    @Test
+    fun `on board by the rider's word with no train followed, the one at the platform is theirs`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10))
+        // 2 is at A now, due a moment ago; 3 comes later.
+        departures["A"] = listOf(train("2", 3), train("3", 8))
+        trains["2"] = listOf(call("A", 3), call("B", 7), call("C", 11))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 16))
+        tracker.start(TripRoute(listOf(toA, ride)), "C", readyAt = now)
+        now = at(3).plusSeconds(30)
+        // Still walking by the clock, but on the train: straight to getting off.
+        tracker.goTo(Step(0), Step(1, onBoard = true))
+        assertEquals("2", tracker.trip.value?.vehicleId)
+        assertTrue(tracker.trip.value?.boarded == true)
+        assertEquals("B", (tracker.progress.value as TripProgress.Riding).nextStop)
+    }
+
+    @Test
+    fun `on board by the rider's word just after it left, the train is still theirs`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10))
+        // 2 left A a moment ago: the board still lists it, but TfL has dropped its call there.
+        departures["A"] = listOf(train("2", 3), train("3", 8))
+        trains["2"] = listOf(call("B", 7), call("C", 11))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 16))
+        tracker.start(TripRoute(listOf(toA, ride)), "C", readyAt = now)
+        now = at(3).plusSeconds(30)
+        tracker.goTo(Step(0), Step(1, onBoard = true))
+        assertEquals("2", tracker.trip.value?.vehicleId)
+        assertEquals("B", (tracker.progress.value as TripProgress.Riding).nextStop)
+        // Nor does a train off the ride pass for it: 4, gone the other way, isn't.
+        val other = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("4", 3))
+        trains["4"] = listOf(call("X", 7))
+        other.start(TripRoute(listOf(toA, ride)), "C", readyAt = now)
+        other.goTo(Step(0), Step(1, onBoard = true))
+        assertEquals("", other.trip.value?.vehicleId)
+    }
+
+    @Test
+    fun `on board by the rider's word, a train due minutes later isn't taken for theirs`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10))
+        // Nothing at A now: 3 is eight minutes off.
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 16))
+        tracker.start(TripRoute(listOf(toA, ride)), "C", readyAt = now)
+        tracker.goTo(Step(0), Step(1, onBoard = true))
+        // On board, but on no train it can name: said so, rather than claiming the later one.
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertTrue(tracker.trip.value?.boarded == true)
+        assertEquals(TripProgress.Lost(ride), tracker.progress.value)
+        // Nor once that train is due: it's measured from when they said so, not from each refresh.
+        now = at(7).plusSeconds(30)
+        tracker.refresh()
+        assertEquals("", tracker.trip.value?.vehicleId)
+        // Kept so, a restart says the same before any answer, not that they're riding.
+        val restarted = tracker(StandardTestDispatcher(testScheduler), load = { kept })
+        restarted.restore()
+        assertEquals(TripProgress.Lost(ride), restarted.progress.value)
     }
 
     @Test
@@ -439,7 +595,7 @@ class ActiveTripTrackerTest {
         assertEquals(1, warned.size)
         // Off at C before TfL saw the train there: the stop the alert named is behind them.
         val done = alertsDone
-        tracker.goTo(0, 1)
+        tracker.goTo(Step(0, onBoard = true), Step(1))
         assertEquals(done + 1, alertsDone)
         assertEquals(TripProgress.Walking(walkOn, at(17)), tracker.progress.value)
     }
@@ -459,13 +615,13 @@ class ActiveTripTrackerTest {
         assertEquals("said C", alerts.last())
         // The trip, and the alert, stay as a restart would bring them back.
         saves = false
-        tracker.goTo(0, 1)
+        tracker.goTo(Step(0, onBoard = true), Step(1))
         assertEquals(0, tracker.trip.value?.legIndex)
         assertTrue(tracker.notKept.value)
         assertEquals("said C", alerts.last())
         // Tried again once saves work, it's made.
         saves = true
-        tracker.goTo(0, 1)
+        tracker.goTo(Step(0, onBoard = true), Step(1))
         assertEquals(1, tracker.trip.value?.legIndex)
         assertFalse(tracker.notKept.value)
         assertEquals("done", alerts.last())

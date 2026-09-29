@@ -221,21 +221,24 @@ class ActiveTripTracker(
     }
 
     /**
-     * The rider says they're at the start of leg [index] ([OnTheWay.atLeg]): **Next**, or a leg tapped.
-     * The trip moves there now, and a ride's train is picked at once, as a refresh would.
+     * The rider says they're at [to] ([OnTheWay.atStep]): **Next**, or a step tapped. The trip moves
+     * there now, and a ride's train is picked at once, as a refresh would.
      */
-    suspend fun goTo(from: Int, index: Int) = lock.withLock {
+    suspend fun goTo(from: OnTheWay.Step, to: OnTheWay.Step) = lock.withLock {
         val before = _trip.value ?: return@withLock
         if (_progress.value == TripProgress.Arrived) return@withLock
-        // Asked from leg [from], as the screen showed it: a refresh that moved the trip on while the
+        // Asked from step [from], as the screen showed it: a refresh that moved the trip on while the
         // tap waited makes it stale, and acting on it could send the trip back (Codex, PR #351).
-        if (before.legIndex != from) return@withLock
+        if (OnTheWay.stepOf(before) != from) return@withLock
         val now = clock()
         // Never onto an arrival, which would forget the trip past any undoing ([OnTheWay.canGoTo]).
-        if (!OnTheWay.canGoTo(before, index, now)) return@withLock
+        if (!OnTheWay.canGoTo(before, to, now)) return@withLock
         // Leaving a leg whose "get off soon" was said, the move is saved marked as owing its
-        // take-back, which a restart settles if the app dies before it's done ([restore]).
-        val moved = OnTheWay.atLeg(before, index, now).copy(alertLeft = before.warnedLeg == before.legIndex)
+        // take-back, which a restart settles if the app dies before it's done ([restore]). On board
+        // the same ride it was said for, it still stands.
+        val moved = OnTheWay.atStep(before, to, now).let { at ->
+            at.copy(alertLeft = before.warnedLeg == before.legIndex && at.warnedLeg != before.warnedLeg)
+        }
         // Saved before it's made: a move that can't be kept isn't made, and says so ([notKept]). A
         // move made but not kept would leave the "get off soon" at odds with the trip a restart
         // brings back, with no way to tell a taken-back alert from one the rider tapped away
@@ -252,7 +255,10 @@ class ActiveTripTracker(
             unsaved = true
         }
         _trip.value = moved.copy(alertLeft = false)
-        _progress.value = standing(moved, now)
+        // The step moved to has no answer of its own yet: the last one's isn't passed off as its
+        // (a ride's time, its next stop still blank), which waits for the pick below (Codex, PR #384).
+        _updatedAt.value = null
+        _progress.value = standing(moved, now, picking = true)
         val boards = HashMap<TripLeg, Result<NextBoard>>()
         if (step(null, boards)) step(null, boards)
     }
@@ -530,10 +536,16 @@ class ActiveTripTracker(
     // its calls; null when none of the first few does (or none is due).
     private suspend fun pick(trip: ActiveTrip, now: Instant, board: Result<NextBoard>?): Pair<Departure, List<VehicleCall>>? {
         val leg = trip.leg ?: return null
-        val readyAt = maxOf(trip.legStartedAt, now)
+        // On board by the rider's word ([OnTheWay.atStep]): the train they're on is one at the platform
+        // when they said so, maybe due a moment before.
+        val readyAt = if (trip.boarded) trip.legStartedAt.minus(ON_BOARD_GRACE) else maxOf(trip.legStartedAt, now)
         // This refresh's read of the board ([fetchBoard]); its failure thrown for [step] to report.
         val departures = board?.getOrThrow()?.takeIf { it.ride == leg }?.departures ?: arrivals(leg.fromId)
-        val candidates = OnTheWay.candidates(departures, leg, readyAt).take(PICK_TRIES)
+        // On board by their word, only a train at the platform when they said so can be theirs: one due
+        // minutes later isn't, so none is followed rather than that one (the step says it can't find it).
+        val candidates = OnTheWay.candidates(departures, leg, readyAt)
+            .filter { !trip.boarded || !it.expectedArrival.isAfter(trip.legStartedAt.plus(ON_BOARD_GRACE)) }
+            .take(PICK_TRIES)
         for (train in candidates) {
             val calls = try {
                 vehicles.vehicleCalls(train.vehicleId, leg.lineId)
@@ -542,7 +554,11 @@ class ActiveTripTracker(
                 warn("on the way: train not found on line ${leg.lineId}")
                 continue
             }
-            if (!OnTheWay.runsAlong(leg, calls, heading = train.destination)) continue
+            // On board by their word, it may have just left the stop, its call there gone from TfL's
+            // list: then it's judged from where it is ([OnTheWay.runsOn]).
+            val runs = OnTheWay.runsAlong(leg, calls, heading = train.destination) ||
+                (trip.boarded && OnTheWay.runsOn(leg, calls, heading = train.destination))
+            if (!runs) continue
             // Its own calls may have it leave before the rider can be there, however the board
             // shows it: then it's no train of theirs, and the next is tried now, not next refresh.
             if (OnTheWay.advance(OnTheWay.follow(trip, train), calls, now).second is TripProgress.Lost) continue
@@ -587,11 +603,15 @@ class ActiveTripTracker(
         }
 
     // Where [trip] stood when last kept, before any answer: on board with its stop, waiting for its
-    // train when it was due, or walking. Not Lost, which only an answer can say.
-    private fun standing(trip: ActiveTrip, now: Instant): TripProgress {
+    // train when it was due, or walking. Not Lost, which only an answer can say, but for on board with
+    // no train named: the rider said they were on and none at the platform was found then, so it
+    // can't find their train, not that they're riding (Codex, PR #384). Unless [picking], where a
+    // pick follows at once ([goTo]) to say which.
+    private fun standing(trip: ActiveTrip, now: Instant, picking: Boolean = false): TripProgress {
         val leg = trip.leg ?: return TripProgress.Arrived
         return when {
             leg.isWalk -> OnTheWay.advance(trip, null, now).second
+            trip.boarded && trip.vehicleId.isBlank() && !picking -> TripProgress.Lost(leg)
             trip.boarded -> TripProgress.Riding(leg, "", null, trip.dueOffAt, false)
             OnTheWay.changeUntil(trip, now) != null -> TripProgress.Changing(leg, trip.legStartedAt)
             else -> TripProgress.Waiting(leg, trip.boardsAt)
@@ -632,5 +652,9 @@ class ActiveTripTracker(
 
         // How many of a leg's soonest trains are looked up to find one running where the rider is going.
         const val PICK_TRIES = 3
+
+        // How far from when the rider said they're on board the train they boarded can be due, either
+        // way: a train at the platform, due a moment ago or about to leave.
+        val ON_BOARD_GRACE: Duration = Duration.ofMinutes(1)
     }
 }
