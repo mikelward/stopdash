@@ -1276,12 +1276,15 @@ them there:
   from where the rider is to where the route starts comes first of all, as the route shows it,
   whether the route starts with a ride or a walk of its own. A walk to a ride's boarding stop ends
   when the rider is **seen there** (maintainer, 2026-09-28): with location allowed, each refresh on
-  such a walk takes one precise fix, and a rider within 150 m of the stop (the fix's uncertainty
-  included) is there, so the ride's train is picked from then. "The stop" is every place the
-  station can be walked into: the point the Planner gives, the station's own published point and
-  each entrance TfL lists for it (maintainer, 2026-09-28), whichever are known (the Planner often
-  gives no point), since a big station spans far more than one point and the Planner can place it
-  200 m from the entrance a rider stands at. The entrances
+  such a walk takes one precise fix, and a rider seen at the stop is there, so the ride's train is
+  picked from then. "The stop" is every place the station can be walked into: the point the Planner
+  gives, the station's own published point and each entrance TfL lists for it (maintainer,
+  2026-09-28), whichever are known (the Planner often gives no point), since a big station spans far
+  more than one point and the Planner can place it 200 m from the entrance a rider stands at. A
+  rider is at a point within 100 m, since it can sit well inside a big station, but at an entrance
+  only within 50 m, since an entrance is the door itself: 150 m around every point and entrance of a
+  big interchange told riders still in the streets around it that they'd arrived (maintainer,
+  2026-09-29). Both count the fix's uncertainty. The entrances
   cost one TfL request per station walked to (a Tube, Overground, DLR, Elizabeth line or rail
   station; a bus or tram stop has none and costs nothing), asked with the first fix and kept for the
   process; a fix gone stale while TfL answered isn't acted on, and a failed read is asked again on the
@@ -1291,7 +1294,7 @@ them there:
   at the station the rider gets off at (maintainer, 2026-09-28): from about two stops out (the
   train followed due there within 4 minutes) until the ride ends, or 5 minutes past that train's
   time (so a time gone stale, with TfL quiet, doesn't keep GPS on), each refresh takes one precise
-  fix, and a rider within 150 m of that station's placed point, own point or any entrance is off,
+  fix, and a rider seen at that station the same way (its placed or own point, or an entrance) is off,
   on to the next leg, its "get off soon" taken back. The train followed can be a later one than the
   rider's, still a stop away when they're already there, so the train alone can't end the ride
   then. A bus or tram stops in the street, where being near the stop says nothing of being off, so
@@ -1398,7 +1401,7 @@ get on, so the next train they can catch is followed instead (switch when seen).
 rider already on their way** (maintainer, 2026-09-29): for the first ten minutes they wait for a
 ride's train, counted from the start of the wait however many trains leave without them (a clock set
 back before it ends it), each
-refresh takes one precise fix (sure to within 150 m; about twenty at most, so a long wait for a
+refresh takes one precise fix (sure to within 100 m; about twenty at most, so a long wait for a
 delayed train doesn't keep GPS on), and a rider seen clear of the boarding stop
 (beyond 150 m of it) and either at one of the ride's later stops or 400 m on toward where they get
 off, within 300 m of the ride's way (its stops joined up), has boarded, whichever train was followed. The trip then follows the train they're on: of the

@@ -224,6 +224,8 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   against a rough network one, **how far apart** the two are — **never a coordinate**,
 - for each nearby-stops lookup, **how many stops it found** (a count only: several stops'
   distances would pin down where you were),
+- on a trip on the way, **what a location fix saw you at** when it moved the trip on — the stop's
+  placed point or one of the station's entrances — never which stop, how far, or where,
 - **per-refresh request counts and timing**: how many TfL requests a refresh made, of which
   kinds, how long it took, and how long it waited on the app's own rate limit — counts and
   milliseconds only, no stop or place,

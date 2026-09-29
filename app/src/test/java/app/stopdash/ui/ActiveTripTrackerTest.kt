@@ -63,8 +63,8 @@ class ActiveTripTrackerTest {
     private val alerts = mutableListOf<String>()
     // Holds a train's calls back until completed, as a slow TfL answer does.
     private var gate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
-    // Each station's entrances, by stop id, and how often they were asked for (a TfL request each).
-    private val entrancesAt = mutableMapOf<String, List<app.stopdash.domain.Coordinates>>()
+    // Each station's point and entrances, by stop id, and how often they were asked for (a TfL request each).
+    private val entrancesAt = mutableMapOf<String, app.stopdash.domain.StationPlaces>()
     private var entranceReads = 0
     private var entrancesFail = false
     // How long an entrances read takes, on the monotonic clock.
@@ -105,12 +105,12 @@ class ActiveTripTrackerTest {
                 return trains[vehicleId].orEmpty()
             }
         },
-        entrances = { stop ->
+        stationPlaces = { stop ->
             entranceReads++
             ticks += entrancesTake
             entranceClock()
             if (entrancesFail) throw TflException.Offline(null)
-            entrancesAt[stop].orEmpty()
+            entrancesAt[stop] ?: app.stopdash.domain.StationPlaces()
         },
         lineSequence = { lineId ->
             ticks += sequenceTakes
@@ -1175,7 +1175,7 @@ class ActiveTripTrackerTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         departures["A"] = listOf(train("3", 6))
         trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
-        entrancesAt["A"] = listOf(stop, app.stopdash.domain.Coordinates(51.5027, -0.12))
+        entrancesAt["A"] = app.stopdash.domain.StationPlaces(point = stop, entrances = listOf(app.stopdash.domain.Coordinates(51.5027, -0.12)))
         val rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.5029, -0.12), isFallback = false, accuracyMeters = 20f)
         tracker.start(TripRoute(listOf(toA, ride.copy(fromAt = stop))), "C", readyAt = now)
         now = at(2)
@@ -1189,6 +1189,8 @@ class ActiveTripTrackerTest {
         assertEquals(1, tracker.trip.value?.legIndex)
         assertEquals("3", tracker.trip.value?.vehicleId)
         assertEquals(2, entranceReads)
+        // The log says what the fix saw them at, never where.
+        assertTrue(logged.contains("on the way: seen at the stop by an entrance"))
     }
 
     @Test
@@ -1198,7 +1200,7 @@ class ActiveTripTrackerTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         departures["A"] = listOf(train("3", 6))
         trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
-        entrancesAt["A"] = listOf(app.stopdash.domain.Coordinates(51.5, -0.12), app.stopdash.domain.Coordinates(51.5027, -0.12))
+        entrancesAt["A"] = app.stopdash.domain.StationPlaces(point = app.stopdash.domain.Coordinates(51.5, -0.12), entrances = listOf(app.stopdash.domain.Coordinates(51.5027, -0.12)))
         val rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.5029, -0.12), isFallback = false, accuracyMeters = 20f)
         tracker.start(TripRoute(listOf(toA, ride)), "C", readyAt = now)
         now = at(2)
@@ -1214,7 +1216,7 @@ class ActiveTripTrackerTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         departures["A"] = listOf(train("3", 6))
         trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
-        entrancesAt["C"] = listOf(app.stopdash.domain.Coordinates(51.53, -0.12), app.stopdash.domain.Coordinates(51.5327, -0.12))
+        entrancesAt["C"] = app.stopdash.domain.StationPlaces(point = app.stopdash.domain.Coordinates(51.53, -0.12), entrances = listOf(app.stopdash.domain.Coordinates(51.5327, -0.12)))
         tracker.start(TripRoute(listOf(ride, walkOn)), "D", readyAt = now)
         tracker.refresh()
         now = at(12)
@@ -1239,7 +1241,7 @@ class ActiveTripTrackerTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         departures["A"] = listOf(train("3", 6))
         trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
-        entrancesAt["C"] = listOf(app.stopdash.domain.Coordinates(51.53, -0.12))
+        entrancesAt["C"] = app.stopdash.domain.StationPlaces(point = app.stopdash.domain.Coordinates(51.53, -0.12))
         tracker.start(TripRoute(listOf(ride, walkOn)), "D", readyAt = now)
         tracker.refresh()
         now = at(12)
@@ -1253,6 +1255,7 @@ class ActiveTripTrackerTest {
         val rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.5301, -0.12), isFallback = false, accuracyMeters = 20f)
         tracker.refresh(rider)
         assertEquals(1, tracker.trip.value?.legIndex)
+        assertTrue(logged.contains("on the way: seen at the stop by its placed point"))
         assertEquals("said C", alerts.last())
         // Saved on the next refresh: taken back then, and the mark cleared after.
         saves = true
@@ -1269,7 +1272,7 @@ class ActiveTripTrackerTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         departures["A"] = listOf(train("3", 6))
         trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
-        entrancesAt["A"] = listOf(stop, app.stopdash.domain.Coordinates(51.5027, -0.12))
+        entrancesAt["A"] = app.stopdash.domain.StationPlaces(point = stop, entrances = listOf(app.stopdash.domain.Coordinates(51.5027, -0.12)))
         // Taken 5 s ago; the entrances take 8 s to come back, so it's 13 s old when weighed.
         val rider = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.5029, -0.12), isFallback = false, accuracyMeters = 20f, ageMillis = 5_000L)
         entrancesTake = 8_000L
@@ -1289,7 +1292,7 @@ class ActiveTripTrackerTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         departures["A"] = listOf(train("3", 6))
         trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
-        entrancesAt["A"] = listOf(stop)
+        entrancesAt["A"] = app.stopdash.domain.StationPlaces(point = stop)
         // Still well away; the read takes the clock past the walk's two minutes.
         val away = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.51, -0.12), isFallback = false, accuracyMeters = 20f)
         tracker.start(TripRoute(listOf(toA, ride.copy(fromAt = stop))), "C", readyAt = now)
@@ -1315,7 +1318,7 @@ class ActiveTripTrackerTest {
         val stop = app.stopdash.domain.Coordinates(51.5, -0.12)
         val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10))
         val tracker = tracker(StandardTestDispatcher(testScheduler))
-        entrancesAt["A"] = listOf(stop)
+        entrancesAt["A"] = app.stopdash.domain.StationPlaces(point = stop)
         // Well away from A: still walking.
         val away = app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(51.51, -0.12), isFallback = false, accuracyMeters = 20f)
         tracker.start(TripRoute(listOf(toA, ride.copy(fromAt = stop))), "C", readyAt = now)

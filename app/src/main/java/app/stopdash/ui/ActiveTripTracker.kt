@@ -1,11 +1,11 @@
 package app.stopdash.ui
 
 import app.stopdash.domain.ActiveTrip
-import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LocationFix
 import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.StationPlaces
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripLeg
@@ -46,7 +46,7 @@ class ActiveTripTracker(
     private val vehicles: VehicleSource,
     // Where a station can be walked into, by its stop id ([OnTheWay.seen]): its entrances as well as
     // its one published point. Asked once per station while the rider walks to it.
-    private val entrances: suspend (String) -> List<Coordinates> = { emptyList() },
+    private val stationPlaces: suspend (String) -> StationPlaces = { StationPlaces() },
     // A line's route, placing a ride's stops ([OnTheWay.ridePositions]) so a fix can see the rider
     // already along it ([OnTheWay.seenAlong]); null when it can't be had. The trip's cards already
     // hold it, so it's rarely a request.
@@ -111,26 +111,26 @@ class ActiveTripTracker(
 
     private val lock = Mutex()
 
-    // Each station's entrances once read ([entrances]); a failed read isn't kept, so the next
-    // refresh asks again. Held for the process only: a station's entrances don't move.
-    private val stationEntrances = HashMap<String, List<Coordinates>>()
+    // Each station's point and entrances once read ([stationPlaces]); a failed read isn't kept, so
+    // the next refresh asks again. Held for the process only: a station's entrances don't move.
+    private val stationPlacesRead = HashMap<String, StationPlaces>()
 
-    // [stopId]'s entrances ([entrances]), read once; none while they can't be, so the walk ends on
-    // its placed position or its time as before, and the failure is logged.
-    private suspend fun entrancesOf(stopId: String): List<Coordinates> {
-        if (stopId.isBlank()) return emptyList()
-        stationEntrances[stopId]?.let { return it }
+    // [stopId]'s point and entrances ([stationPlaces]), read once; none while they can't be, so the
+    // walk ends on its placed position or its time as before, and the failure is logged.
+    private suspend fun placesOf(stopId: String): StationPlaces {
+        if (stopId.isBlank()) return StationPlaces()
+        stationPlacesRead[stopId]?.let { return it }
         return try {
-            entrances(stopId).also { stationEntrances[stopId] = it }
+            stationPlaces(stopId).also { stationPlacesRead[stopId] = it }
         } catch (e: CancellationException) {
             throw e
         } catch (e: TflException.NotFound) {
             // TfL doesn't know the station: asking again won't change that.
             warn("on the way: station entrances lookup failed: NotFound")
-            emptyList<Coordinates>().also { stationEntrances[stopId] = it }
+            StationPlaces().also { stationPlacesRead[stopId] = it }
         } catch (e: TflException) {
             warn("on the way: station entrances lookup failed: ${e::class.simpleName}")
-            emptyList()
+            StationPlaces()
         }
     }
     private var restored = false
@@ -339,7 +339,7 @@ class ActiveTripTracker(
         } else {
             null
         }
-        val entrances = station?.let { entrancesOf(it) }.orEmpty()
+        val places = station?.let { placesOf(it) } ?: StationPlaces()
         // When [seenRider]'s age holds: a use after further reads ages it again ([boardedAlong]).
         val seenAt = elapsed()
         val seenRider = if (station == null) rider else rider?.let { aged(it, Duration.ofMillis(seenAt - reading)) }
@@ -347,7 +347,11 @@ class ActiveTripTracker(
         // The train followed coming in, before a fix may have dropped it ([OnTheWay.seen]).
         val followed = _trip.value?.vehicleId.orEmpty()
         val before = _trip.value ?: return false
-        var trip = OnTheWay.seen(before, seenRider, now, entrances)
+        var trip = OnTheWay.seen(before, seenRider, now, places)
+        // What a fix moved the trip on by, never where: a point or an entrance.
+        if (trip.legIndex != before.legIndex) {
+            OnTheWay.seenAtStop(before, seenRider, now, places)?.let { warn("on the way: seen at the stop by ${it.label}") }
+        }
         // Left behind by a train get off soon was already said for: the stop it named was that
         // train's, so it's taken back, and said again for the next train in its time.
         // Seen off at their stop, too: the alert has done its job.

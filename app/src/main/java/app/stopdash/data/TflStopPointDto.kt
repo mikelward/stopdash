@@ -2,6 +2,7 @@ package app.stopdash.data
 
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.LineRef
+import app.stopdash.domain.StationPlaces
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.cleanStopName
 import java.util.Locale
@@ -180,13 +181,16 @@ fun TflStopPointDto.leaves(): List<TflStopPointDto> =
  * entrance is there (SPEC *On the way*). Empty when [id] isn't in the tree; a position TfL left
  * unset is skipped.
  */
-fun TflStopPointDto.entrancesOf(id: String): List<Coordinates> {
-    val station = find(id) ?: return emptyList()
-    return (listOf(station) + station.descendants().filter { it.stopType.endsWith(ENTRANCE) })
-        // Both axes given, or none is taken: one alone would place it on the equator or meridian.
-        .mapNotNull { stop -> stop.lat?.let { lat -> stop.lon?.let { lon -> Coordinates(lat, lon) } } }
-        .distinct()
+fun TflStopPointDto.placesOf(id: String): StationPlaces {
+    val station = find(id) ?: return StationPlaces()
+    return StationPlaces(
+        point = station.position(),
+        entrances = station.descendants().filter { it.stopType.endsWith(ENTRANCE) }.mapNotNull { it.position() }.distinct(),
+    )
 }
+
+// Both axes given, or none is taken: one alone would place it on the equator or meridian.
+private fun TflStopPointDto.position(): Coordinates? = lat?.let { lat -> lon?.let { lon -> Coordinates(lat, lon) } }
 
 private const val ENTRANCE = "Entrance"
 
