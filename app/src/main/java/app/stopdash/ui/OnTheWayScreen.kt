@@ -264,6 +264,10 @@ data class NextTrains(
     val readyAt: Instant? = null,
     // When the board was read: its rows' age, as the departures board ages a stop's.
     val fetchedAt: Instant? = null,
+    // The boarding pole's letter and "towards" ([ActiveTripTracker.NextBoard.pole]), so the board is
+    // headed as the main view heads that stop ("Stop D"), not by where the ride goes; blank for none.
+    val stopLetter: String = "",
+    val towards: String = "",
 )
 
 /**
@@ -292,7 +296,10 @@ internal fun rememberNextTrains(
     val routes = LocalRouteStops.current
     LaunchedEffect(routes, found.misses) { routes?.reportMisses(found.misses) }
     val stale = Staleness.isStale(fetchedAt, now)
-    return NextTrains(board.ride, found.trains, pending = found.pending, unresolved = found.unresolved, stale = stale, failed = board.failed, readyAt = readyAt, fetchedAt = fetchedAt)
+    return NextTrains(
+        board.ride, found.trains, pending = found.pending, unresolved = found.unresolved, stale = stale, failed = board.failed,
+        readyAt = readyAt, fetchedAt = fetchedAt, stopLetter = board.pole?.stopLetter.orEmpty(), towards = board.pole?.towards.orEmpty(),
+    )
 }
 
 /**
@@ -306,7 +313,10 @@ internal fun rememberNextTrains(
 private fun NextTrainsSection(next: NextTrains, now: Instant) {
     val groups = remember(next, now) {
         StopGrouping.groupByStop(
-            DepartureRows.forStop(next.ride.fromId, next.ride.fromName, next.trains, now, fetchedAt = next.fetchedAt ?: SteadyClock.stamp(now)),
+            DepartureRows.forStop(
+                next.ride.fromId, next.ride.fromName, next.trains, now, fetchedAt = next.fetchedAt ?: SteadyClock.stamp(now),
+                stopLetter = next.stopLetter, towards = next.towards,
+            ),
         )
     }
     Column(Modifier.fillMaxWidth().testTag("onTheWayTrains"), verticalArrangement = Arrangement.spacedBy(4.dp)) {

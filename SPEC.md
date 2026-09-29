@@ -1321,7 +1321,8 @@ them there:
   so its "get off soon" is never at odds with it. While the rider walks to a ride,
   changes onto it or waits for it, **the trains at its boarding stop that take them on** are listed
   under that ride's own row in the route's legs, drawn as the departures board draws a stop — its
-  platform header over the board's own outlined card — so they read as a board, not as another step
+  platform header, or a bus pole's letter ("Archway – Stop D", maintainer, 2026-09-29: not where the
+  buses go), over the board's own outlined card — so they read as a board, not as another step
   (maintainer, 2026-09-28), and after its train has left until they're seen on board (above): every line of the ride's mode whose route calls at
   where they get off — judged by each train's own line route, so another branch's trains stay out —
   a row per line and terminus with its next few times, not only the train followed, a time grayed
@@ -1329,7 +1330,8 @@ them there:
   once the board is too old to stand behind (D4); it shows "Loading" from the step's first frame
   until the first board is in. It costs one arrivals request per refresh during those steps, plus,
   for a line at that stop whose route isn't already held, the same route lookup a trip's cards make
-  (one or two TfL requests per line, kept a day and shared with them). All free, within the
+  (one or two TfL requests per line, kept a day and shared with them), and for a bus, coach or tram
+  stop one request for its pole's letter, kept for the process. All free, within the
   keyless budget, and naming only stops and lines, never the rider; a route that can't be loaded
   says "Couldn't check every line" rather than drop its trains. The walk's check costs one GPS fix
   per refresh until the rider is seen there or the walk's estimated time is up. Below the next step
