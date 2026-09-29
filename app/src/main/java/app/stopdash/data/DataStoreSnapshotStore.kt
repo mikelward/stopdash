@@ -10,10 +10,12 @@ import androidx.datastore.dataStoreFile
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.SnapshotStore
+import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.Terminating
 import app.stopdash.domain.WidgetJourneys
 import app.stopdash.domain.WidgetJourneysReport
+import java.io.IOException
 import java.io.InputStream
 import java.time.Instant
 import java.io.OutputStream
@@ -37,26 +39,86 @@ import kotlinx.serialization.json.Json
  */
 class DataStoreSnapshotStore internal constructor(
     private val dataStore: DataStore<PersistedSnapshot?>,
-    // For merging line checks: one dated after it predates a clock rollback and loses.
+    // For merging line checks, and for every write: what's dated after it predates a clock
+    // rollback, and is distrusted ([update]).
     private val clock: () -> Instant = Instant::now,
+    // The sanitized log seam ([from]).
+    private val warn: (String) -> Unit = {},
 ) : SnapshotStore {
 
-    override suspend fun load(): DeparturesSnapshot? = dataStore.data.first()?.toDomain()
+    /**
+     * [DataStore.updateData], with the stored snapshot [transform] starts from and what it writes
+     * both in this process's steady-clock frame ([here]) and distrusting anything stamped from
+     * before the clock was set back ([distrustingFuture], as of [now]): so no merge keeps an old
+     * stop over a fresh one because its stamp looks later, and what's written says which frame its
+     * stamps are in. A newer build's file is left as it is, as every write here leaves it. Pure over
+     * `current` and [now], since DataStore may re-run the transform.
+     */
+    private suspend fun update(
+        now: Instant = clock(),
+        transform: (current: PersistedSnapshot?) -> PersistedSnapshot?,
+    ): PersistedSnapshot? {
+        fun trusted(s: PersistedSnapshot?) = here(s)?.distrustingFuture(now) ?: s
+        return dataStore.updateData { stored -> trusted(transform(trusted(stored))) }
+    }
+
+    /**
+     * [stored] with its fetch stamps moved into this process's steady-clock frame
+     * ([PersistedSnapshot.inFrame]), so one written before the clock was set is read at its real
+     * age, from the first read on (Codex, PR #371); null for a newer build's file, which is left
+     * as it is.
+     */
+    private fun here(stored: PersistedSnapshot?): PersistedSnapshot? =
+        stored?.takeIf { it.version in PersistedSnapshot.READABLE_VERSIONS }?.inFrame(SteadyClock.source?.frame)
+
+    /**
+     * [stored] as this process reads it, and kept that way: moved into its steady-clock frame
+     * ([here]), and distrusting anything stamped ahead of now ([PersistedSnapshot.distrustingFuture]),
+     * written back when that changed anything ([update]). Every judgment a read makes of what the
+     * clock has done is then made once and kept, not made again by each later read against a clock
+     * that has moved on (Codex, PR #371): a stop found stale across a reboot stays stale however the
+     * clock is set after, a line check found ahead of the clock stays dropped once it catches up, and
+     * a snapshot with no frame (an older build's, or one saved where the boot couldn't be told) takes
+     * this process's. DataStore writes only a change, so a read with nothing to move or distrust
+     * writes nothing. A failed write is logged, and what it would have written is read in its place,
+     * and kept ([unwritten]) while the file is still that one; a later process tries the write again.
+     */
+    private suspend fun readStored(stored: PersistedSnapshot?): PersistedSnapshot? {
+        if (stored == null || stored.version !in PersistedSnapshot.READABLE_VERSIONS) return stored
+        val now = clock()
+        unwritten?.let { (from, read) ->
+            if (from == stored) return read.distrustingFuture(now).also { unwritten = stored to it }
+        }
+        return try {
+            update(now) { it }
+        } catch (e: IOException) {
+            warn("snapshot rewrite failed: ${e::class.simpleName}")
+            (here(stored)?.distrustingFuture(now) ?: stored).also { unwritten = stored to it }
+        }
+    }
+
+    // A snapshot this process couldn't write back, and what it reads as ([readStored]).
+    @Volatile
+    private var unwritten: Pair<PersistedSnapshot, PersistedSnapshot>? = null
+
+    override suspend fun load(): DeparturesSnapshot? = readStored(dataStore.data.first())?.let(::here)?.toDomain()
 
     /** Every stored snapshot as it's written, from any writer (the app, the widget's worker). */
-    fun snapshots(): Flow<DeparturesSnapshot?> = dataStore.data.map { it?.toDomain() }
+    fun snapshots(): Flow<DeparturesSnapshot?> = dataStore.data.map { readStored(it)?.let(::here)?.toDomain() }
 
     override suspend fun save(snapshot: DeparturesSnapshot) {
-        dataStore.updateData { snapshot.toPersisted() }
+        update { snapshot.toPersisted() }
     }
 
     override suspend fun saveIfStopsMatch(
         snapshot: DeparturesSnapshot,
         expectedStopIds: List<String>,
     ): Boolean {
-        val desired = snapshot.toPersisted()
         // Captured once, so the transform stays a pure function of `current` if DataStore re-runs it.
         val now = clock()
+        // Framed and distrusted as the write will be ([update]), so a written match compares equal to
+        // it below.
+        val desired = snapshot.toPersisted().inFrame(SteadyClock.source?.frame).distrustingFuture(now)
         // The transform runs under DataStore's write lock, so the compare and the write are one
         // atomic step — no reload→save window a concurrent writer could slip through. Keep the
         // stored snapshot untouched when its stop set no longer matches what the caller worked
@@ -84,7 +146,7 @@ class DataStoreSnapshotStore internal constructor(
                 lineStatuses = newestStatuses(current.lineStatuses, desired.lineStatuses, desired.stops, now),
             )
         }
-        val written = dataStore.updateData { current ->
+        val written = update(now) { current ->
             if (current != null && current.matchesStops(expectedStopIds)) keepingAppsOwn(current) else current
         }
         return written != null && written == keepingAppsOwn(written)
@@ -94,8 +156,8 @@ class DataStoreSnapshotStore internal constructor(
         if (nearer.isEmpty()) return
         // A pure function of `current` and the immutable map, atomic under the write lock like
         // [pruneStops].
-        dataStore.updateData { current ->
-            if (current == null) return@updateData null
+        update { current ->
+            if (current == null) return@update null
             val stops = current.stops.map { stop ->
                 val n = nearer[stop.stopId] ?: return@map stop
                 stop.copy(nearerIds = n.ids.sorted(), nearerNames = n.names.sorted())
@@ -111,8 +173,8 @@ class DataStoreSnapshotStore internal constructor(
         // Pure function of `current`, atomic with the read under the write lock (see pruneStops).
         // A newer build's file isn't this one's to rewrite piecemeal, so it's left alone; a later
         // full save replaces it.
-        dataStore.updateData { current ->
-            if (current == null || current.version !in PersistedSnapshot.READABLE_VERSIONS) return@updateData current
+        update(now) { current ->
+            if (current == null || current.version !in PersistedSnapshot.READABLE_VERSIONS) return@update current
             val merged = newestStatuses(current.lineStatuses, desired, current.stops, now)
             if (merged.toSet() == current.lineStatuses.toSet()) current else current.copy(lineStatuses = merged)
         }
@@ -125,8 +187,8 @@ class DataStoreSnapshotStore internal constructor(
         // only the immutable `departed`): drop the departed stops and re-derive the whole-snapshot
         // stamp from what remains, leaving the kept stops at their own ages. Atomic with the read
         // under the write lock, so a concurrent save can't be lost through a reload→save window.
-        dataStore.updateData { current ->
-            if (current == null) return@updateData null
+        update { current ->
+            if (current == null) return@update null
             // A departed stop a pinned journey starts from stays, as a journey-only stop: the widget
             // shows (and refreshes) just its journey there.
             val origins = current.journeys.mapTo(HashSet()) { it.originId }
@@ -152,10 +214,12 @@ class DataStoreSnapshotStore internal constructor(
     }
 
     override suspend fun saveKeepingJourneys(snapshot: DeparturesSnapshot) {
-        val desired = snapshot.toPersisted()
         val now = clock()
+        // Distrusted before the merge ([update]), so a stop of the caller's stamped from before the
+        // clock was set back can't win over a fresher one stored.
+        val desired = snapshot.toPersisted().distrustingFuture(now)
         // Pure function of `current`, atomic with the read under the write lock (see pruneStops).
-        dataStore.updateData { current ->
+        update(now) { current ->
             // A newer build's file isn't this one's to rewrite piecemeal: replace it outright.
             val journeys = current?.takeIf { it.version in PersistedSnapshot.READABLE_VERSIONS }?.journeys.orEmpty()
             val origins = journeys.mapTo(HashSet()) { it.originId }
@@ -214,13 +278,20 @@ class DataStoreSnapshotStore internal constructor(
     }
 
     override suspend fun updateWidgetJourneys(report: WidgetJourneysReport, origins: List<StopArrivals>) {
+        val now = clock()
+        // An origin stamped from before the clock was set back is distrusted before the merge
+        // ([update]), so it can't replace a fresher one stored for its later-looking stamp.
+        val trusted = origins.map { origin ->
+            val stop = origin.toPersisted()
+            stop.distrustingFuture(now).takeIf { it != stop }?.toDomain() ?: origin
+        }
         // Pure function of `current`, atomic with the read under the write lock (see pruneStops),
         // so every report builds on the pins as stored, whichever writer came before.
-        dataStore.updateData { current ->
+        update(now) { current ->
             // A newer build's file: leave it rather than rewrite it in this build's format.
-            if (current != null && current.version !in PersistedSnapshot.READABLE_VERSIONS) return@updateData current
+            if (current != null && current.version !in PersistedSnapshot.READABLE_VERSIONS) return@update current
             // Written as the current version: journeys and journey-only stops are version-2 fields.
-            WidgetJourneys.apply(current?.toDomain(), report, origins)?.toPersisted()
+            WidgetJourneys.apply(current?.toDomain(), report, trusted)?.toPersisted()
         }
     }
 
@@ -240,8 +311,8 @@ class DataStoreSnapshotStore internal constructor(
          * [warn] is the sanitized log seam (no-op until the shared on-device logger lands, the
          * same as the ViewModel's): a corrupt or truncated file is logged and then discarded
          * by the corruption handler rather than swallowed, so the failure leaves a trace and
-         * the next read starts clean. Only the first caller's [warn] is used, since the store
-         * is a process singleton.
+         * the next read starts clean; so is a failed write-back of what a read found. Only the
+         * first caller's [warn] is used, since the store is a process singleton.
          */
         fun from(context: Context, warn: (String) -> Unit = {}): DataStoreSnapshotStore =
             instance ?: synchronized(this) {
@@ -259,6 +330,7 @@ class DataStoreSnapshotStore internal constructor(
                     ) {
                         context.applicationContext.dataStoreFile(FILE_NAME)
                     },
+                    warn = warn,
                 ).also { instance = it }
             }
     }

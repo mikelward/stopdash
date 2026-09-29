@@ -495,9 +495,12 @@ class TileTimelineTest {
 
     @Test
     fun `a check from the future stays unshown for the whole timeline, even once its instant passes`() {
-        val env = withStatus(envelope(stop("940GA", listOf(departure(240)))), severe, at = fetched.plusSeconds(60))
+        val env = withStatus(envelope(stop("940GA", listOf(departure(240)))), severe, at = fetched.plusSeconds(120))
         val entries = TileTimeline.entries(env, fetched)
         assertTrue(entries.none { (it.frame as? TileFrame.Rows)?.lines.orEmpty().any { l -> l is TileLine.Disruption } })
+        // A moment ahead is the phone's clock running ahead of the watch's, not a rollback: shown.
+        val ahead = withStatus(envelope(stop("940GA", listOf(departure(240)))), severe, at = fetched.plusSeconds(30))
+        assertTrue(TileTimeline.entries(ahead, fetched).any { (it.frame as? TileFrame.Rows)?.lines.orEmpty().any { l -> l is TileLine.Disruption } })
     }
 
     @Test
@@ -506,4 +509,16 @@ class TileTimelineTest {
         val entries = TileTimeline.entries(env, fetched)
         assertEquals(fetched.plusSeconds(300), entries.last().start)
     }
+
+    @Test
+    fun `a stop from before the clock was set back stays stale for the whole timeline`() {
+        val env = envelope(stop("940GA", listOf(departure(240), departure(600))))
+        // Built an hour before its stamp: stale from the start, and no later frame trusts it once
+        // the clock passes the stamp.
+        val entries = TileTimeline.entries(env, fetched.minusSeconds(3600))
+        assertTrue(entries.all { (it.frame as? TileFrame.Rows)?.stale == true })
+        // A moment ahead is another clock's tick, not a rollback.
+        assertFalse((TileTimeline.frame(env, fetched.minusSeconds(30)) as TileFrame.Rows).stale)
+    }
+
 }

@@ -185,9 +185,7 @@ import app.stopdash.domain.followedDeparture
 import app.stopdash.domain.PlatformDirection
 import app.stopdash.domain.routeDepartures
 import app.stopdash.ui.theme.LocalStarredBorderColor
-import java.time.Duration
 import java.time.Instant
-import kotlin.time.toKotlinDuration
 
 /** Test tag on the red "update available" dot overlaying the overflow menu icon. */
 internal const val UPDATE_AVAILABLE_DOT_TAG = "update_available_dot"
@@ -608,7 +606,7 @@ fun MainScreen(
                     // well call at the far end. A line whose route is still loading says checking.
                     // The same holds for each neighboring pole.
                     val current = (listOf(origin) + siblingStops.filterNotNull()).all { stop ->
-                        stop.arrivalsFresh && !Staleness.isStale(Duration.between(stop.fetchedAt, now).toKotlinDuration())
+                        stop.arrivalsFresh && !Staleness.isStale(stop.fetchedAt, now)
                     }
                     // A line still loading holds the whole card at "checking", so a first line's trains
                     // aren't shown as if they were all; one that couldn't be checked is said so beneath
@@ -1010,7 +1008,7 @@ fun MainScreen(
                 detailRow.stopId in loaded.stopsDisruptionUnknown,
             // This row's own age (the same per-row rule the card uses to withhold countdowns): a
             // stale snapshot's disruption status isn't presented as current (SPEC D4).
-            stale = Staleness.isStale(Duration.between(detailRow.fetchedAt, now).toKotlinDuration()),
+            stale = Staleness.isStale(detailRow.fetchedAt, now),
             now = now,
             onToggleStar = { onToggleStar(detailRow) },
             onBack = { detailKey = null },
@@ -1485,11 +1483,11 @@ private fun LoadedContent(
         state.refreshFailure != null ||
             state.partialRefresh ||
             state.stops.any {
-                Staleness.isStale(Duration.between(it.fetchedAt, now).toKotlinDuration())
+                Staleness.isStale(it.fetchedAt, now)
             } ||
             // No retained stops to age individually — fall back to the snapshot stamp, so an
             // aged empty snapshot (e.g. one restored from storage) still prompts a refresh.
-            (state.stops.isEmpty() && Staleness.isStale(Duration.between(state.fetchedAt, now).toKotlinDuration()))
+            (state.stops.isEmpty() && Staleness.isStale(state.fetchedAt, now))
     }
     // Pull-to-refresh over the whole loaded surface (SPEC D6).
     PullToRefreshBox(isRefreshing = refreshing, onRefresh = onRefresh, modifier = modifier) {
@@ -1671,7 +1669,7 @@ private fun FreshnessStamp(state: DeparturesUiState, now: Instant, onRefresh: ()
         // than the stamp popping in late.
         DeparturesUiState.Loading -> stringResource(R.string.loading_stamp)
         is DeparturesUiState.Loaded -> {
-            val age = Duration.between(state.fetchedAt, now).toKotlinDuration()
+            val age = Staleness.age(state.fetchedAt, now)
             when {
                 // A cold load with nothing back yet — only failures so far, or cut short before any
                 // stop landed: no update to stamp, so still loading, not "Just now".
@@ -3456,7 +3454,7 @@ internal fun StopGroupCard(
         Column(modifier = Modifier.semantics { isTraversalGroup = true }) {
             var firstRow = true
             group.rows.forEach { row ->
-                val stale = Staleness.isStale(Duration.between(row.fetchedAt, now).toKotlinDuration())
+                val stale = Staleness.isStale(row.fetchedAt, now)
                 val isStarred = StarredRow.of(row) in starred
                 if (row.upcoming.isEmpty()) {
                     // A status row: the line is suspended (its reason shown) and returned no

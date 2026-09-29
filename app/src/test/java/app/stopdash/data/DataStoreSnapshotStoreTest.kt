@@ -6,6 +6,8 @@ import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.JourneyCall
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCheck
+import app.stopdash.domain.Staleness
+import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.WidgetJourney
 import app.stopdash.domain.WidgetJourneyCheck
 import app.stopdash.domain.WidgetJourneysReport
@@ -15,6 +17,7 @@ import java.time.Instant
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -542,5 +545,270 @@ class DataStoreSnapshotStoreTest {
         val stored = store.load()!!
         assertFalse(stored.lineStatuses.getValue("victoria").known)
         assertTrue(stored.liveLineStatuses(now.plusSeconds(130)).isEmpty())
+    }
+
+    @Test
+    fun `the first write after the clock is set back distrusts what it stamped ahead`() = runTest {
+        // Stored before the clock went back an hour: a stop and a line check stamped at [now].
+        val backing = FakeDataStore(snapshot().copy(lineStatuses = mapOf("victoria" to check(6, now))).toPersisted())
+        val back = now.minusSeconds(3600)
+        val store = DataStoreSnapshotStore(backing, clock = { back })
+        // Any write records it: here, only the rider's nearer places change.
+        store.updateNearer(mapOf("940GZZLUOXC" to Terminating.Nearer(setOf("940GZZLUKSX"), setOf("King's Cross"))))
+        val stored = store.load()!!
+        val stop = stored.stops.single()
+        // Stale from now on, and unrefreshed, so it stays so once the clock passes its old stamp.
+        assertEquals(back.minus(java.time.Duration.ofMinutes(5)), stop.fetchedAt)
+        assertFalse(stop.arrivalsFresh)
+        assertEquals(stop.fetchedAt, stored.fetchedAt)
+        // Its departures are still there, to be shown as stale ones are.
+        assertEquals(snapshot().stops.single().departures, stop.departures)
+        // The line check is gone: the line reads unchecked rather than disrupted on an unknown age.
+        assertTrue(stored.lineStatuses.isEmpty())
+    }
+
+    @Test
+    fun `a stamp a moment ahead of the clock is kept as it is`() = runTest {
+        // Within the margin for a screen's tick or another device's clock: not a rollback.
+        val stored = snapshot().copy(lineStatuses = mapOf("victoria" to check(6, now)))
+        val backing = FakeDataStore(stored.toPersisted())
+        val store = DataStoreSnapshotStore(backing, clock = { now.minusSeconds(30) })
+        store.updateNearer(mapOf("940GZZLUOXC" to Terminating.Nearer(emptySet(), emptySet())))
+        val kept = store.load()!!
+        assertEquals(stored.stops.map { it.fetchedAt to it.arrivalsFresh }, kept.stops.map { it.fetchedAt to it.arrivalsFresh })
+        assertEquals(setOf("victoria"), kept.lineStatuses.keys)
+    }
+
+    @Test
+    fun `a fresh fetch replaces a stop stamped from before the clock was set back`() = runTest {
+        val backing = FakeDataStore(snapshot().toPersisted())
+        val back = now.minusSeconds(3600)
+        val store = DataStoreSnapshotStore(backing, clock = { back })
+        // The app's fetch made since, stamped by the clock as it now reads: earlier than the stored stamp.
+        val fresh = StopArrivals(
+            "940GZZLUOXC", "Oxford Circus",
+            listOf(Departure("victoria", "Victoria", "inbound", "Walthamstow Central", null, back.plusSeconds(120), "tube")),
+            back,
+        )
+        store.saveKeepingJourneys(DeparturesSnapshot(listOf(fresh), back))
+        val stop = store.load()!!.stops.single()
+        assertEquals(back, stop.fetchedAt)
+        assertEquals(listOf("Walthamstow Central"), stop.departures.map { it.destination })
+        assertTrue(stop.arrivalsFresh)
+    }
+
+    @Test
+    fun `a journey origin stamped from before the clock was set back doesn't replace a fresher stored one`() = runTest {
+        val back = now.minusSeconds(3600)
+        val stored = snapshot().copy(stops = snapshot().stops.map { it.copy(fetchedAt = back) }, fetchedAt = back)
+        val backing = FakeDataStore(stored.toPersisted())
+        val store = DataStoreSnapshotStore(backing, clock = { back.plusSeconds(10) })
+        val pin = WidgetJourney("940GZZLUOXC", setOf(JourneyCall("victoria", "Brixton", null)), key = "j1")
+        // The app's copy of the origin was fetched before the clock went back: it looks newer.
+        val ahead = snapshot().stops.single().copy(departures = emptyList(), fetchedAt = now)
+        store.updateWidgetJourneys(pinning(pin), listOf(ahead))
+        val stop = store.load()!!.stops.single()
+        assertEquals(back, stop.fetchedAt)
+        assertEquals(stored.stops.single().departures, stop.departures)
+    }
+
+    @Test
+    fun `a worker's result carrying a stop from before the clock was set back still counts as written`() = runTest {
+        val back = now.minusSeconds(3600)
+        val backing = FakeDataStore(snapshot().toPersisted())
+        val store = DataStoreSnapshotStore(backing, clock = { back })
+        // Its fetch of the stop failed, so it carries the stored copy on, stamp and all.
+        assertTrue(store.saveIfStopsMatch(snapshot().copy(stops = snapshot().stops.map { it.copy(arrivalsFresh = false) }), listOf("940GZZLUOXC")))
+        assertEquals(back.minus(java.time.Duration.ofMinutes(5)), store.load()!!.stops.single().fetchedAt)
+    }
+
+    // This process's clock frame, the wall clock set by [setBack] since it started.
+    private class Steady(override val frame: SteadyClock.Frame?, private val setBack: java.time.Duration = java.time.Duration.ZERO) : SteadyClock.Source {
+        override fun offset(): java.time.Duration = setBack
+    }
+
+    @After
+    fun resetSteadyClock() {
+        SteadyClock.source = null
+    }
+
+    @Test
+    fun `a snapshot read after the clock was set back is as old as it is, with no write`() = runTest {
+        // Written by a process of boot 7, a stop fetched at [now].
+        val written = snapshot().toPersisted().copy(stampFrame = PersistedFrame("device/7", 0L))
+        // Read by a later process of the same boot, started after the clock was set back an hour.
+        SteadyClock.source = Steady(SteadyClock.Frame("device/7", -3_600_000L))
+        val stop = DataStoreSnapshotStore(FakeDataStore(written)).load()!!.stops.single()
+        assertEquals(now.minusSeconds(3600), stop.fetchedAt)
+        // Two minutes after the fetch, as the clock now reads it, it's two minutes old...
+        assertFalse(Staleness.isStale(stop.fetchedAt, now.minusSeconds(3600 - 120)))
+        // ...and once the clock is back past its old stamp, an hour old: not new again (Codex, PR #371).
+        assertTrue(Staleness.isStale(stop.fetchedAt, now.plusSeconds(60)))
+        assertTrue(Staleness.isStale(stop.fetchedAt, now.minusSeconds(3600 - 300)))
+    }
+
+    @Test
+    fun `a write records the frame its stamps are in, and moves nothing it doesn't need to`() = runTest {
+        SteadyClock.source = Steady(SteadyClock.Frame("device/7", 1_000L))
+        val backing = FakeDataStore(null)
+        DataStoreSnapshotStore(backing, clock = { now }).save(snapshot())
+        assertEquals(PersistedFrame("device/7", 1_000L), backing.state.value!!.stampFrame)
+        // As the format whose stamps are the steady clock's, which an older build won't misread.
+        assertEquals(3, backing.state.value!!.version)
+        assertEquals(now.toEpochMilli(), backing.state.value!!.stops.single().fetchedAtMillis)
+        // Read back in the same process, as it was written.
+        assertEquals(snapshot(), DataStoreSnapshotStore(backing, clock = { now }).load())
+    }
+
+    @Test
+    fun `a stop fetched before the clock was set back in this process is kept as fresh as it is`() = runTest {
+        // Fetched, and stamped by the steady clock, before the clock went back an hour: so its stamp
+        // is an hour ahead of the wall clock, but this process's clock says it's a minute old.
+        SteadyClock.source = Steady(SteadyClock.Frame("device/7", 0L), setBack = java.time.Duration.ofHours(1))
+        val back = now.minusSeconds(3600 - 60)
+        val backing = FakeDataStore(null)
+        val store = DataStoreSnapshotStore(backing, clock = { back })
+        store.save(snapshot())
+        val stop = store.load()!!.stops.single()
+        // Not restamped stale as one from before the clock was set back would be.
+        assertEquals(now, stop.fetchedAt)
+        assertTrue(stop.arrivalsFresh)
+        assertFalse(Staleness.isStale(stop.fetchedAt, back))
+    }
+
+    @Test
+    fun `a snapshot from an earlier boot is read as the wall clock's, up to the boot's start`() = runTest {
+        val written = snapshot().copy(lineStatuses = mapOf("victoria" to check(6, now))).toPersisted().copy(stampFrame = PersistedFrame("device/6", 0L))
+        // This boot started ten minutes after the fetch: the stop is as old as the wall clock says.
+        SteadyClock.source = Steady(SteadyClock.Frame("device/7", now.plusSeconds(600).toEpochMilli()))
+        val later = DataStoreSnapshotStore(FakeDataStore(written)).load()!!
+        assertEquals(now, later.stops.single().fetchedAt)
+        assertEquals(setOf("victoria"), later.lineStatuses.keys)
+    }
+
+    @Test
+    fun `a snapshot from before a reboot the clock was set back across stays stale`() = runTest {
+        val written = snapshot().copy(lineStatuses = mapOf("victoria" to check(6, now))).toPersisted().copy(stampFrame = PersistedFrame("device/6", 0L))
+        // This boot started, by the clock as set back, an hour before the fetch: it can't be that new.
+        val bootStart = now.minusSeconds(3600)
+        SteadyClock.source = Steady(SteadyClock.Frame("device/7", bootStart.toEpochMilli()))
+        val read = DataStoreSnapshotStore(FakeDataStore(written)).load()!!
+        val stop = read.stops.single()
+        assertEquals(bootStart.minus(java.time.Duration.ofMinutes(5)), stop.fetchedAt)
+        assertFalse(stop.arrivalsFresh)
+        assertTrue(read.lineStatuses.isEmpty())
+        // Stale from the first read, and still once the clock has caught up with the old stamp, with
+        // nothing written in between (Codex, PR #371).
+        assertTrue(Staleness.isStale(stop.fetchedAt, bootStart.plusSeconds(60)))
+        assertTrue(Staleness.isStale(stop.fetchedAt, now.plusSeconds(60)))
+    }
+
+    @Test
+    fun `a snapshot restored from another device is never taken for this boot's`() = runTest {
+        // Written by another install whose boot count happens to match this one's.
+        val written = snapshot().toPersisted().copy(stampFrame = PersistedFrame("other/7", 0L))
+        val bootStart = now.minusSeconds(1800)
+        SteadyClock.source = Steady(SteadyClock.Frame("device/7", bootStart.toEpochMilli()))
+        val stop = DataStoreSnapshotStore(FakeDataStore(written)).load()!!.stops.single()
+        // Not moved by the two devices' uptimes: read as from an earlier boot, so a stamp later than
+        // this boot's start is stale (Codex, PR #371).
+        assertEquals(bootStart.minus(java.time.Duration.ofMinutes(5)), stop.fetchedAt)
+        assertFalse(stop.arrivalsFresh)
+    }
+
+    @Test
+    fun `an older build's snapshot is read as the wall clock's and written as the steady clock's`() = runTest {
+        SteadyClock.source = Steady(SteadyClock.Frame("device/7", 0L))
+        val backing = FakeDataStore(snapshot().toPersisted().copy(version = 2))
+        val store = DataStoreSnapshotStore(backing, clock = { now })
+        assertEquals(now, store.load()!!.stops.single().fetchedAt)
+        store.updateNearer(mapOf("940GZZLUOXC" to Terminating.Nearer(emptySet(), emptySet())))
+        assertEquals(PersistedSnapshot.CURRENT_VERSION, backing.state.value!!.version)
+        assertEquals(PersistedFrame("device/7", 0L), backing.state.value!!.stampFrame)
+    }
+
+    @Test
+    fun `an older build's snapshot stamped ahead stays stale once the clock catches up`() = runTest {
+        // Written by an older build, with no frame: a stop fetched at [now], and a line checked then.
+        val backing = FakeDataStore(snapshot().copy(lineStatuses = mapOf("victoria" to check(6, now))).toPersisted().copy(version = 2))
+        // First read by this build after the clock was set back an hour: stale while it's ahead.
+        SteadyClock.source = Steady(SteadyClock.Frame("device/7", 0L))
+        val back = now.minusSeconds(3600)
+        assertTrue(Staleness.isStale(DataStoreSnapshotStore(backing, clock = { back }).load()!!.stops.single().fetchedAt, back))
+        // A later read, once the clock is back past the old stamp, with nothing written in between
+        // but that first read's rewrite: still stale (Codex, PR #371).
+        val caughtUp = now.plusSeconds(60)
+        val later = DataStoreSnapshotStore(backing, clock = { caughtUp }).load()!!
+        val stop = later.stops.single()
+        assertEquals(back.minus(java.time.Duration.ofMinutes(5)), stop.fetchedAt)
+        assertFalse(stop.arrivalsFresh)
+        assertTrue(Staleness.isStale(stop.fetchedAt, caughtUp))
+        assertTrue(later.lineStatuses.isEmpty())
+        assertEquals(PersistedSnapshot.CURRENT_VERSION, backing.state.value!!.version)
+    }
+
+    @Test
+    fun `a snapshot written where the boot couldn't be told stays stale once the clock catches up`() = runTest {
+        // This build's format, but with no frame: the device couldn't tell its boot.
+        SteadyClock.source = Steady(null)
+        val backing = FakeDataStore(null)
+        DataStoreSnapshotStore(backing, clock = { now }).save(snapshot())
+        assertNull(backing.state.value!!.stampFrame)
+        // Read by a later process after the clock was set back an hour, then once it's caught up.
+        val back = now.minusSeconds(3600)
+        assertTrue(Staleness.isStale(DataStoreSnapshotStore(backing, clock = { back }).load()!!.stops.single().fetchedAt, back))
+        val caughtUp = now.plusSeconds(60)
+        val stop = DataStoreSnapshotStore(backing, clock = { caughtUp }).load()!!.stops.single()
+        // Still stale, from the first read's rewrite (Codex, PR #371).
+        assertEquals(back.minus(java.time.Duration.ofMinutes(5)), stop.fetchedAt)
+        assertTrue(Staleness.isStale(stop.fetchedAt, caughtUp))
+    }
+
+    @Test
+    fun `an older build's snapshot that can't be rewritten stays distrusted, and the failure is logged`() = runTest {
+        SteadyClock.source = Steady(SteadyClock.Frame("device/7", 0L))
+        val failing = object : DataStore<PersistedSnapshot?> {
+            override val data: Flow<PersistedSnapshot?> = MutableStateFlow(snapshot().toPersisted().copy(version = 2))
+            override suspend fun updateData(transform: suspend (t: PersistedSnapshot?) -> PersistedSnapshot?): PersistedSnapshot? =
+                throw java.io.IOException("disk full")
+        }
+        val warned = mutableListOf<String>()
+        // First read after the clock was set back an hour, then again once it's caught up.
+        var clock = now.minusSeconds(3600)
+        val store = DataStoreSnapshotStore(failing, clock = { clock }, warn = warned::add)
+        assertTrue(Staleness.isStale(store.load()!!.stops.single().fetchedAt, clock))
+        clock = now.plusSeconds(60)
+        val stop = store.load()!!.stops.single()
+        // Read as the failed write would have left it, so still stale (Codex, PR #371).
+        assertFalse(stop.arrivalsFresh)
+        assertTrue(Staleness.isStale(stop.fetchedAt, clock))
+        assertEquals(listOf("snapshot rewrite failed: IOException"), warned)
+    }
+
+    @Test
+    fun `a snapshot from before a reboot, found stale, stays so once the clock is set forward`() = runTest {
+        val backing = FakeDataStore(snapshot().toPersisted().copy(stampFrame = PersistedFrame("device/6", 0L)))
+        // First read in boot 7, which started, as the clock then read, half an hour before the stamp.
+        val bootStart = now.minusSeconds(1800)
+        SteadyClock.source = Steady(SteadyClock.Frame("device/7", bootStart.toEpochMilli()))
+        assertEquals(bootStart.minus(java.time.Duration.ofMinutes(5)), DataStoreSnapshotStore(backing, clock = { bootStart.plusSeconds(300) }).load()!!.stops.single().fetchedAt)
+        // A later process of that boot, the clock set forward so the boot started, as it now reads,
+        // at the old stamp: the stop, three minutes on, is still stale, as that first read found it
+        // (Codex, PR #371).
+        SteadyClock.source = Steady(SteadyClock.Frame("device/7", now.toEpochMilli()))
+        val later = now.plusSeconds(180)
+        assertTrue(Staleness.isStale(DataStoreSnapshotStore(backing, clock = { later }).load()!!.stops.single().fetchedAt, later))
+    }
+
+    @Test
+    fun `a line check stamped ahead is dropped for good at the first read`() = runTest {
+        SteadyClock.source = Steady(SteadyClock.Frame("device/7", 0L))
+        val backing = FakeDataStore(null)
+        DataStoreSnapshotStore(backing, clock = { now }).save(snapshot().copy(lineStatuses = mapOf("victoria" to check(6, now))))
+        // Read after the clock was set back an hour, then again once it's caught up: the check,
+        // stamped by the wall clock, doesn't come back into trust (Codex, PR #371).
+        SteadyClock.source = Steady(SteadyClock.Frame("device/7", -3_600_000L))
+        DataStoreSnapshotStore(backing, clock = { now.minusSeconds(3600) }).load()
+        assertTrue(DataStoreSnapshotStore(backing, clock = { now.plusSeconds(60) }).load()!!.lineStatuses.isEmpty())
     }
 }

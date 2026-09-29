@@ -1,5 +1,6 @@
 package app.stopdash.wear
 
+import app.stopdash.data.WatchEnvelope
 import app.stopdash.domain.RouteTopology
 import java.time.Duration
 import java.time.Instant
@@ -31,19 +32,26 @@ object WatchAppFrames {
         stored: WatchReceived,
         topology: RouteTopology,
         clock: () -> Instant,
+        // The envelope as the clock reads it now ([WatchEnvelopeStore.current]), given the one the
+        // ticker last judged.
+        current: (WatchReceived.Received) -> WatchEnvelope = { it.envelope },
         emit: (TileFrame?) -> Unit,
     ) {
-        // As the tile's schedule does: a check dated after the start (the clock moved back) stays
-        // untrusted for the whole run, so a later redraw can't start showing it once its instant
-        // passes, with nothing scheduled at its expiry to take it away again.
-        val received = (stored as? WatchReceived.Received)
-            ?.let { it.copy(envelope = it.envelope.withoutFutureChecks(clock())) }
-            ?: stored
-        val envelope = (received as? WatchReceived.Received)?.envelope
+        var received = stored
         while (true) {
             val now = clock()
+            // Judged again at each wake, as the tile's schedule is when it's built: the envelope as
+            // the clock reads it now, however it's been set since it arrived, the ticker's own run
+            // included ([WatchReceived.Received.current]), so a stop fetched before the clock was set
+            // back mid-run keeps its real age rather than turning fresh again once the clock catches
+            // up with its stamp (Codex, PR #371). A check or a stop dated after now (the clock moved
+            // back) stays untrusted from then on, since each wake judges what the last one kept, so a
+            // later redraw can't start showing it once its instant passes.
+            received = (received as? WatchReceived.Received)
+                ?.let { it.copy(envelope = current(it).distrustingFuture(now), arrivedIn = null) }
+                ?: received
             emit(at(received, now, topology))
-            val next = TileTimeline.nextChange(envelope, now) ?: return
+            val next = TileTimeline.nextChange((received as? WatchReceived.Received)?.envelope, now) ?: return
             delay(Duration.between(clock(), next).toMillis().coerceAtLeast(0))
         }
     }

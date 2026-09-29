@@ -1,8 +1,6 @@
 package app.stopdash.domain
 
-import java.time.Duration
 import java.time.Instant
-import kotlin.time.toKotlinDuration
 
 /**
  * Groups a stop's [Departure]s into the flat list's rows (SPEC D8): one
@@ -28,9 +26,10 @@ object DepartureRows {
         departures: List<Departure>,
         now: Instant,
         lineStatuses: Map<String, LineStatus> = emptyMap(),
-        // Defaults to `now` (rows "as of now") so a grouping-only caller need not supply it;
-        // `across` passes the stop's own fetch age so the screen can withhold per stop.
-        fetchedAt: Instant = now,
+        // Defaults to `now` (rows "as of now", stamped as a fetch is, [SteadyClock]) so a grouping-only
+        // caller need not supply it; `across` passes the stop's own fetch age so the screen can
+        // withhold per stop.
+        fetchedAt: Instant = SteadyClock.stamp(now),
         // The stop's cluster (TfL `stationNaptan` else display name), stamped on each row so the
         // screen groups by place rather than name (SPEC D8). Blank groups the stop alone.
         clusterId: String = "",
@@ -784,8 +783,7 @@ object DepartureRows {
     }
 
     /** Whether a stop fetched at [fetchedAt] is past the shared staleness bound at [now]. */
-    private fun isStale(fetchedAt: Instant, now: Instant): Boolean =
-        Staleness.isStale(Duration.between(fetchedAt, now).toKotlinDuration())
+    private fun isStale(fetchedAt: Instant, now: Instant): Boolean = Staleness.isStale(fetchedAt, now)
 
     /**
      * The discriminator that keeps directions apart within a line at a stop. TfL's

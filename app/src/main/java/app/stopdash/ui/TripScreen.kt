@@ -78,6 +78,7 @@ import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.DirectTrips
 import app.stopdash.domain.DismissedAlert
+import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.remainingAfter
 import app.stopdash.domain.Headway
 import app.stopdash.domain.HiddenModes
@@ -125,7 +126,7 @@ internal fun legTrains(
 ): List<Departure>? {
     if (leg.isWalk) return null
     val stop = state.live[leg.fromId] ?: return null
-    if (Staleness.isStale(Duration.between(stop.fetchedAt, now).toKotlinDuration())) return null
+    if (Staleness.isStale(stop.fetchedAt, now)) return null
     val calling = legFilter(leg, stop, now, sequences)?.stops?.firstOrNull()?.departures.orEmpty()
     // On a loop or a reconverging line both ways can reach the alighting stop: only a train leaving
     // for the leg's next stop takes the Planner's path (and run time).
@@ -174,7 +175,7 @@ internal fun ridePredicted(state: TripViewModel.State, leg: TripLeg, now: Instan
     if (leg.isWalk) return 0
     return timingLines(state, leg, now, lines).sumOf { line ->
         val stop = state.live[line.fromId] ?: return@sumOf 0
-        if (Staleness.isStale(Duration.between(stop.fetchedAt, now).toKotlinDuration())) return@sumOf 0
+        if (Staleness.isStale(stop.fetchedAt, now)) return@sumOf 0
         Countdown.upcoming(stop.departures.filter { it.lineId == line.lineId }, now).size
     }
 }
@@ -336,7 +337,7 @@ internal fun pendingTrains(
     // is, and the other side's buses run the other way.
     if (leg.fromArea.isNotEmpty()) return emptyList()
     val stop = state.live[leg.fromId] ?: return emptyList()
-    if (Staleness.isStale(Duration.between(stop.fetchedAt, now).toKotlinDuration())) return emptyList()
+    if (Staleness.isStale(stop.fetchedAt, now)) return emptyList()
     // A train with no destination couldn't be labeled but by the Planner's terminus, which the live
     // feed never said it runs to: left out until the route check vouches for it.
     val line = Countdown.upcoming(stop.departures.filter { it.lineId == leg.lineId && it.destination.isNotBlank() }, now)
@@ -431,7 +432,7 @@ private fun legChecks(
 ): List<DirectTrips.Result> =
     estimates.flatMap { it.route.rides }.distinct().flatMap { lines[it]?.legs ?: listOf(it) }.distinct().mapNotNull { leg ->
         val stop = state.live[leg.fromId] ?: return@mapNotNull null
-        if (Staleness.isStale(Duration.between(stop.fetchedAt, now).toKotlinDuration())) return@mapNotNull null
+        if (Staleness.isStale(stop.fetchedAt, now)) return@mapNotNull null
         legFilter(leg, stop, now, sequences)
     }
 
@@ -881,7 +882,7 @@ private fun TripContent(
                 detailRow.stopId !in state.closures || detailLeg?.let { legStopUnchecked(it, state, now, sequences) } != false,
             // Stale too once its stop's last refresh failed: the held arrivals no longer stand as
             // current, and this page doesn't carry the route's failure banner.
-            stale = Staleness.isStale(Duration.between(detailRow.fetchedAt, now).toKotlinDuration()) ||
+            stale = Staleness.isStale(detailRow.fetchedAt, now) ||
                 state.live[detailRow.stopId]?.failed == true,
             now = now,
             onToggleStar = {},
@@ -1869,7 +1870,7 @@ internal fun routeClosures(
         // Only an interchange ("HUB…") is a hub: a stop with none has its stop area as its top parent.
         val hub = (sequence?.stopHubs?.get(end.id) ?: hubOf(end.id))?.takeIf { it.startsWith(HUB_PREFIX) }.orEmpty()
         val area = sequence?.stopAreas?.get(end.id) ?: end.area
-        val stop = StopArrivals(end.id, names[end.id].orEmpty(), emptyList(), now, disruptions = notices, clusterId = area, hubId = hub)
+        val stop = StopArrivals(end.id, names[end.id].orEmpty(), emptyList(), SteadyClock.stamp(now), disruptions = notices, clusterId = area, hubId = hub)
         DepartureRows.across(listOf(stop), now).filter { it.stopDisruption != null }
     }
     // One card per notice at a place, folded as the list folds them (two poles of a stop area can
@@ -2003,7 +2004,7 @@ internal fun legRows(
         trains,
         now,
         lineStatuses = state.statuses,
-        fetchedAt = state.live[leg.fromId]?.fetchedAt ?: now,
+        fetchedAt = state.live[leg.fromId]?.fetchedAt ?: SteadyClock.stamp(now),
     )
 }
 
@@ -2132,7 +2133,7 @@ internal fun legStatusRow(state: TripViewModel.State, leg: TripLeg, now: Instant
     destination = leg.headings.firstOrNull() ?: leg.toName,
     mode = leg.mode,
     upcoming = emptyList(),
-    fetchedAt = state.live[leg.fromId]?.fetchedAt ?: now,
+    fetchedAt = state.live[leg.fromId]?.fetchedAt ?: SteadyClock.stamp(now),
     // Only a disruption, as a row's status always is: a good service is no alert.
     status = state.statuses[leg.lineId]?.takeIf { it.disrupted },
     // Its page lists the line's work still to come, as a list row's does (Codex, PR #337).

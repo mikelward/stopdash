@@ -127,9 +127,9 @@ object ComplicationTimeline {
         topology: RouteTopology = RouteTopology.EMPTY,
     ): List<ComplicationEntry> {
         val noData = listOf(ComplicationEntry(now, null, ComplicationContent.NoData))
-        // As the tile does: a check dated after [now] stays untrusted for the whole timeline,
-        // including the hand-over rebuilt later in it.
-        val envelope = received?.withoutFutureChecks(now) ?: return noData
+        // As the tile does: a check or a stop dated after [now] stays untrusted for the whole
+        // timeline, including the hand-over rebuilt later in it.
+        val envelope = received?.distrustingFuture(now) ?: return noData
         // A pick the widget no longer shows (its stop gone, or its mode hidden on the phone) gives
         // way to the default row; the pick itself is kept, so un-hiding the mode brings it back.
         val picked = row?.takeIf { shows(envelope, it, now) }

@@ -5,6 +5,7 @@ import app.stopdash.data.WatchPayload
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.Dismissals
 import app.stopdash.domain.StarredRow
+import app.stopdash.domain.SteadyClock
 import java.security.MessageDigest
 import java.time.Instant
 import kotlin.time.Duration
@@ -75,7 +76,7 @@ class WatchPublisher(
         force: Boolean = false,
         emptyIfNone: Boolean = false,
     ): Outcome {
-        val snapshot = snapshot ?: if (emptyIfNone) DeparturesSnapshot(emptyList(), now()) else return Outcome.NothingStored
+        val snapshot = snapshot ?: if (emptyIfNone) DeparturesSnapshot(emptyList(), SteadyClock.stamp(now())) else return Outcome.NothingStored
         return try {
             // Asked first, so a phone with no watch app never builds or hashes an envelope.
             if (!channel.watchInstalled()) return Outcome.NoWatch

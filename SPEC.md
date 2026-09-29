@@ -1592,6 +1592,31 @@ wrong. The exact value is a tuned constant defined in one place in code (and pin
 tests), not in this spec — but there is exactly one, so no two surfaces can disagree
 about when data has gone stale.
 
+**How old a fetch is, is told by the device's monotonic clock, not its wall clock** (maintainer,
+2026-09-29), so setting the clock doesn't make old departures read as new. Countdowns stay on the
+wall clock the rider sees; only a fetch's age is kept apart from it. What the phone stores says
+which boot of which install its stamps are from (so a copy restored onto another device is never
+taken for this one's), and the watch keeps its own clock's reading with each update it receives,
+in the same write, so a stop fetched before the clock was set back reads at its real age on every
+surface, however long it's held and whether or not anything is written in between.
+
+Across a reboot the monotonic clock starts again, but whatever was fetched before a reboot was
+fetched before the boot began: a stamp from an earlier boot that's later than the boot's start
+can only be from before the clock was set back, so it counts as stale from the first read. A line
+status is stamped by the wall clock, and there (and for data that doesn't record its boot: an older
+build's, or saved where the boot couldn't be told) data stamped **ahead of the clock** counts as
+stale: a stamp more than a moment ahead (a margin for a screen's own tick, and for a watch whose
+clock isn't the phone's) is treated as stale, as is a line status checked then. Such a stop is
+restamped as stale and such a line check dropped.
+
+**Whatever a read finds is kept**, on the phone and the watch alike: the first read after the
+clock was set, across a reboot or not, moves what's stored into the current clock and records any
+stop or line check it found stale, so no later read reconsiders it against a clock that has moved
+on since. Neither comes back into trust however the clock is set after, and a fetch made since
+always replaces such a stop rather than losing to its later-looking stamp. A read that finds
+nothing to change writes nothing. A surface already showing it reads it again once the clock has
+been set, so none keeps showing what it judged before.
+
 - The **app** refreshes on open, on return to the foreground, on pull-to-refresh, and
   **auto-refreshes once a minute while the screen is on** (paused when backgrounded).
   The primary targets are home users and an always-on **kiosk** display (see *Non-goals*
@@ -1930,7 +1955,8 @@ the widget also schedules **one render-only redraw at its staleness boundary**, 
 left untouched after the app closes flips itself to the stale `?` treatment instead of
 holding live-looking countdowns forever (D4) — a single bounded wake per snapshot, not a
 polling cadence, and not a data refresh (fetching new data while the app isn't driving the
-widget stays deferred, D5). The snapshot also records which of the stops it should show a
+widget stays deferred, D5). A setting of the device's clock redraws a placed widget at once too,
+since its countdowns and age are drawn against the clock as it read then (*Freshness*). The snapshot also records which of the stops it should show a
 refresh asked for but couldn't get, with nothing earlier to fall back on; while any is missing
 the widget says its stops are partly out of date, so a first refresh where one stop failed never
 reads as complete (principle 1). **Disruptions reach the widget too** (D3): the snapshot keeps each

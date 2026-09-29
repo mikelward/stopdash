@@ -9,6 +9,7 @@ import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.NoTimes
 import app.stopdash.domain.RailFeed
 import app.stopdash.domain.StarredRow
+import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.Terminating
 import java.time.Instant
@@ -464,5 +465,24 @@ class WatchEnvelopeTest {
         val live = envelope.liveLineStatuses(now).getValue("victoria")
         assertEquals(false, live.forDirection("inbound").disrupted)
         assertEquals(9, live.forDirection("outbound").severity)
+    }
+
+    @Test
+    fun `a fetch goes out as the phone's wall clock reads it, whatever the clock was set since`() {
+        // Fetched a minute before the phone's clock was set back an hour: its steady stamp is an
+        // hour ahead of the wall clock now, but it's a minute old.
+        SteadyClock.source = object : SteadyClock.Source {
+            override val frame: SteadyClock.Frame? = SteadyClock.Frame("device/7", 0L)
+            override fun offset(): java.time.Duration = java.time.Duration.ofHours(1)
+        }
+        try {
+            val wallNow = now.minusSeconds(3600 - 60)
+            val snapshot = DeparturesSnapshot(listOf(stop("940GEXAMPLE1", listOf(departure(3)))), now)
+            val envelope = decoded(WatchEnvelopes.build(snapshot, starred = emptySet(), now = wallNow))
+            // The watch ages it by its own wall clock, which reads as the phone's does: a minute old.
+            assertEquals(now.minusSeconds(3600).toEpochMilli(), envelope.stops.single().fetchedAtMillis)
+        } finally {
+            SteadyClock.source = null
+        }
     }
 }

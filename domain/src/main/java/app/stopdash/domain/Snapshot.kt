@@ -45,7 +45,8 @@ object Snapshot {
      * The result's `fetchedAt` tracks the **departures'** age, which is what staleness
      * withholds: [now] when arrivals refreshed; else the prior fetch time (the departures
      * shown are that old); else — no prior and arrivals failed, so the only content is a
-     * disruption fetched just now — [now].
+     * disruption fetched just now — [now]. So [now] is a fetch stamp, the steady clock's
+     * ([SteadyClock.stamp]), like the prior's.
      */
     fun mergeStop(
         stopId: String,

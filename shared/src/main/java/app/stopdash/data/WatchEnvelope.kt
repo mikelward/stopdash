@@ -6,6 +6,7 @@ import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.StarredRow
+import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopArrivals
 import java.time.Instant
 import kotlin.time.Duration
@@ -68,12 +69,49 @@ data class WatchEnvelope(
             .map { it.plus(Staleness.THRESHOLD.toJavaDuration()) }
 
     /**
-     * This envelope without the line checks dated after [now] (the clock moved back). A timeline
-     * built at [now] drops them once, so a frame later in it can't start trusting one when its
-     * instant passes.
+     * This envelope with every stamp in it (each stop's fetch, each line check) moved by [by]: as the
+     * watch's wall clock reads them after being set by that much since the envelope arrived.
      */
-    fun withoutFutureChecks(now: Instant): WatchEnvelope =
-        copy(lineStatuses = lineStatuses.filterNot { it.toDomain().checkedAt.isAfter(now) })
+    fun shifted(by: java.time.Duration): WatchEnvelope {
+        if (by.isZero) return this
+        val millis = by.toMillis()
+        return copy(
+            stops = stops.map { it.copy(fetchedAtMillis = it.fetchedAtMillis + millis) },
+            lineStatuses = lineStatuses.map { it.copy(checkedAtMillis = it.checkedAtMillis + millis) },
+        )
+    }
+
+    /**
+     * This envelope, received in a boot before the one that started at [bootStartMillis] (as the wall
+     * clock reads it now): each stop and line check stamped later than that is from before the clock
+     * was set back ([PersistedSnapshot.fromEarlierBoot]), so the stop is restamped stale as of the
+     * boot's start and the check dropped, the same on every read.
+     */
+    fun fromEarlierBoot(bootStartMillis: Long): WatchEnvelope =
+        copy(
+            stops = stops.map { it.notAfter(bootStartMillis) },
+            lineStatuses = lineStatuses.filterNot { afterBoot(it.checkedAtMillis, bootStartMillis) },
+        )
+
+    /**
+     * This envelope as a timeline built at [now] can trust it: without the line checks dated more
+     * than a moment after [now] (the clock moved back), and with each stop stamped more than a
+     * moment ahead of it restamped stale ([PersistedStop.distrustingFuture]), as the phone's store
+     * does on a write. The moment ([Staleness.CLOCK_SKEW]) is the phone's clock running a little
+     * ahead of the watch's: a check that's only that far ahead is kept, since the watch keeps what
+     * this finds for good, and would otherwise leave the line unchecked until the next envelope
+     * (Codex, PR #371). A
+     * timeline applies it once, so a frame later in it can't start trusting either when its instant
+     * passes, with nothing scheduled to take it away again. A setting of the watch's clock since the
+     * envelope arrived is taken out first ([shifted]), and the phone sends its stamps as its wall
+     * clock reads them when it sends, so this catches only what neither can: a clock set back
+     * across a reboot of either device.
+     */
+    fun distrustingFuture(now: Instant): WatchEnvelope =
+        copy(
+            stops = stops.map { it.distrustingFuture(now) },
+            lineStatuses = lineStatuses.filterNot { checkAhead(it.checkedAtMillis, now) },
+        )
 
     companion object {
         /** Bump on any change an older watch app would misread; it refuses rather than guesses. */
@@ -153,8 +191,13 @@ object WatchEnvelopes {
         val stops = snapshot.stops
             .filterNot { it.stopId in snapshot.journeyOnlyStopIds }
             .map { stop ->
-                val boundary = stop.fetchedAt.plus(threshold.toJavaDuration())
-                stop.toPersisted().let { it.copy(departures = trim(it.departures, boundary.toEpochMilli(), now.toEpochMilli(), perGroupCap)) }
+                // Sent as the wall clock reads the fetch now ([SteadyClock.toWall]): the watch ages it
+                // by its own clock, which isn't this one's steady frame.
+                val fetchedAt = SteadyClock.toWall(stop.fetchedAt)
+                val boundary = fetchedAt.plus(threshold.toJavaDuration())
+                stop.toPersisted().let {
+                    it.copy(fetchedAtMillis = fetchedAt.toEpochMilli(), departures = trim(it.departures, boundary.toEpochMilli(), now.toEpochMilli(), perGroupCap))
+                }
             }
         // Only the keys for stops the envelope carries: a star elsewhere pins nothing on the watch,
         // and leaving it out keeps the non-stop part of the payload bounded by the stops sent.
@@ -230,7 +273,7 @@ object WatchEnvelopes {
         // A suspended line's status row ranks its stop as the widget would.
         lineStatuses: Map<String, LineStatus>,
     ): List<String> {
-        val staleStop = stops.associate { it.stopId to (java.time.Duration.between(it.fetchedAt, now) >= threshold.toJavaDuration()) }
+        val staleStop = stops.associate { it.stopId to Staleness.isStale(it.fetchedAt, now, threshold) }
         // Fresh first as the widget orders them, a live suspension's status row counting as fresh.
         val rows = DepartureRows.freshFirst(
             HiddenModes.rows(

@@ -28,6 +28,22 @@ class StalenessTest {
     }
 
     @Test
+    fun `data stamped ahead of the clock is stale, beyond a moment's margin`() {
+        // A screen's clock ticks behind the fetch it shows, and a watch's isn't the phone's.
+        assertFalse(Staleness.isStale(-10.seconds))
+        assertFalse(Staleness.isStale(-Staleness.CLOCK_SKEW))
+        // Further ahead, it was fetched before the clock was set back: its age can't be told.
+        assertTrue(Staleness.isStale(-Staleness.CLOCK_SKEW - 1.seconds))
+        assertTrue(Staleness.isStale(-60.minutes))
+        assertTrue(Staleness.isFromFuture(-60.minutes))
+        assertFalse(Staleness.isFromFuture(10.minutes))
+        // A caller's own threshold changes only the older side.
+        assertTrue(Staleness.isStale(2.minutes, threshold = 1.minutes))
+        assertTrue(Staleness.isStale(-60.minutes, threshold = 1.minutes))
+        assertFalse(Staleness.isStale(30.seconds, threshold = 1.minutes))
+    }
+
+    @Test
     fun `remaining until stale counts down from the threshold`() {
         // The delay a caller schedules a one-shot staleness redraw after (SPEC D4).
         assertEquals(5.minutes, Staleness.remainingUntilStale(0.seconds))

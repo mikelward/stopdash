@@ -24,18 +24,18 @@ class ArrivalsCache {
     /**
      * [stopId]'s last arrivals from [source] (the reader's own, [TflClient.arrivalsSource]), or null
      * when none were fetched from it — a National Rail key added or removed since, however that came
-     * about — or they're stale at [now], or dated after [now] (the clock set back), an age that can't
-     * be told.
+     * about — or they're stale at the wall time [now] (aged by the steady clock, [Staleness.age]), or
+     * dated after it, an age that can't be told.
      */
     @Synchronized
     fun get(stopId: String, now: Instant, source: Any? = null): Entry? = entries[stopId]?.takeIf {
-        val age = Duration.between(it.fetchedAt, now)
-        it.source == source && !age.isNegative && !Staleness.isStale(age.toKotlinDuration())
+        val age = Staleness.age(it.fetchedAt, now)
+        it.source == source && !age.isNegative() && !Staleness.isStale(age)
     }
 
     /** [stopId]'s last arrivals if fetched within [TTL] of [now]: recent enough to show rather than ask again. */
     fun recent(stopId: String, now: Instant, source: Any? = null): Entry? =
-        get(stopId, now, source)?.takeIf { Duration.between(it.fetchedAt, now) < TTL }
+        get(stopId, now, source)?.takeIf { Staleness.age(it.fetchedAt, now) < TTL.toKotlinDuration() }
 
     /**
      * How many times the cache has been [clear]ed: a fetch asked for before the last clear (under a
@@ -100,12 +100,13 @@ class CachingTflClient(
     private val cache: ArrivalsCache = ArrivalsCache.SHARED,
     private val clock: () -> Instant = Instant::now,
 ) : TflClient by tfl {
-    // Stamped when asked, not answered, as the list stamps its fetches (SPEC D4): an older request
+    // Stamped when asked, not answered, as the list stamps its fetches (SPEC D4), and by the steady
+    // clock ([SteadyClock]), as every fetch is, so setting the clock doesn't age it: an older request
     // answering late can't pass for a newer one, or overwrite it. Kept only if shareable both when
     // asked and when answered, and asked since the cache was last cleared: a source changed in
     // between (a National Rail key added or removed) leaves nothing behind.
     override suspend fun arrivals(stopId: String): List<Departure> {
-        val askedAt = clock()
+        val askedAt = SteadyClock.stamp(clock())
         val generation = cache.generation
         val shareable = tfl.shareable(stopId)
         val source = tfl.arrivalsSource()

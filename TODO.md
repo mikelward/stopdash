@@ -2163,7 +2163,16 @@ and these carry the rest as their own PRs:
       already show `?` and the stale note then, and an older check ages out at the threshold rather
       than being shown, so nothing false is asserted, but the news is late. Fix: merge a successful
       status check into the stored snapshot on its own, keeping the last-good arrivals.
-- [ ] **Distrust a snapshot the clock was set back across (own PR, Codex P2 on #317).** A check
+- [x] **Distrust a snapshot the clock was set back across (own PR, Codex P2 on #317).** *Done:
+      a fetch's age is told by the device's monotonic clock (`SteadyClock`, maintainer 2026-09-29):
+      each fetch is stamped in the process's steady frame, the stored snapshot records which boot
+      and frame its stamps are in, and the watch keeps its clock's frame with each envelope, so a
+      stop fetched before the clock was set reads at its real age everywhere, however long it's
+      held. Across a reboot, a stamp later than the boot's start reads as stale on every read
+      (`fromEarlierBoot`: it was fetched before the boot began). For line checks, a stamp more
+      than a minute ahead of the clock reads as stale (`Staleness.isStale`), and every write to the
+      stored snapshot restamps such a stop as stale and drops such a line check
+      (`distrustingFuture`).* A check
       or a stop's arrivals stamped in the future (the clock moved back) comes back into trust once
       wall time reaches its stamp, with no record that it was once seen in the future. Arrivals
       already behave this way (a negative age reads fresh), and a line check is rejected only
@@ -2172,6 +2181,13 @@ and these carry the rest as their own PRs:
       seen (a writer drops or invalidates future-stamped entries on its next save, and a render
       treats them as stale), rather than a check-only memory that leaves the countdowns beside it
       trusted.
+- [ ] **Age line checks and closure checks by the steady clock too (follow-up to #371).** A
+      fetch's age is the monotonic clock's (`SteadyClock`), but a line status check and a stop
+      closure check are still stamped and aged by the wall clock, with only the stamp-ahead rule
+      (`Staleness.isFromFuture`, `CHECK_CLOCK_LAG`) behind them: one made before the clock was set
+      back reads as unchecked until the clock passes its stamp, then as current, until it's as old
+      by the wall clock as a stale countdown. Stamp them as fetches are, frame them in the stored
+      snapshot and the envelope the same way, and age them with `Staleness.age`.
 - [ ] **Persist a refresh-failure kind / incompleteness for the widget (own PR, rides with the
       above).** *Incompleteness landed (2026-09-24): the snapshot persists the requested stops a
       refresh couldn't get (`missingStopIds`), and the widget is `uncertain` while any is. The

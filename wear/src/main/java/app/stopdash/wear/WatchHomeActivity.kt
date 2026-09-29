@@ -39,7 +39,7 @@ class WatchHomeActivity : ComponentActivity() {
                 // countdowns before the ticker has recomputed them from now.
                 launch {
                     try {
-                        store.state.collectLatest { WatchAppFrames.tick(it, topology, Instant::now) { f -> frame.value = f } }
+                        store.state.collectLatest { WatchAppFrames.tick(it, topology, Instant::now, { r -> store.current() ?: r.envelope }) { f -> frame.value = f } }
                     } finally {
                         frame.value = null
                     }

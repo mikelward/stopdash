@@ -6,6 +6,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.stopdash.domain.ArrivalsCache
+import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
@@ -619,10 +620,11 @@ class TripViewModel(
             val now = clock()
             // A departure source changed while this refresh's arrivals are out: they're from the old one.
             val source = sourceGeneration
-            // A stop not fetched since the last pull is fetched, however recent: the rider asked for the latest.
+            // A stop not fetched since the last pull is fetched, however recent: the rider asked for the
+            // latest. The pull is the wall clock's, a fetch the steady clock's ([SteadyClock.toWall]).
             val since = pulledAt
             val stops = stopsOf(routes).filter { id ->
-                _state.value.live[id]?.let { !recentEnough(it, now) || (since != null && it.fetchedAt.isBefore(since)) } ?: true
+                _state.value.live[id]?.let { !recentEnough(it, now) || (since != null && SteadyClock.toWall(it.fetchedAt).isBefore(since)) } ?: true
             }
             // And the other lines at the rides' boarding stops ([rideLineIds]), in the same request: one
             // of them times a ride only once it's checked as running ([rideTrains]). Only the plan's own
@@ -691,7 +693,7 @@ class TripViewModel(
     // Fetched within [ArrivalsCache.TTL] of [now], and not failed: not asked for again. Dated after now
     // (the clock set back) is an age that can't be told, so asked for again.
     private fun recentEnough(held: StopLive, now: Instant): Boolean {
-        val age = Duration.between(held.fetchedAt, now)
+        val age = SteadyClock.age(held.fetchedAt, now)
         return !held.failed && !age.isNegative && age < ArrivalsCache.TTL
     }
 
@@ -738,9 +740,9 @@ class TripViewModel(
     // Null on a failure, so the last arrivals stay (aged) rather than blank the leg.
     private suspend fun fetchStop(stopId: String): StopLive? =
         try {
-            // Stamped when asked, as the list stamps its fetches (SPEC D4); kept for the other screens
-            // unless another client could answer differently.
-            val at = clock()
+            // Stamped when asked, as the list stamps its fetches (SPEC D4), and by the steady clock
+            // ([SteadyClock]); kept for the other screens unless another client could answer differently.
+            val at = SteadyClock.stamp(clock())
             val generation = arrivals.generation
             val source = client.arrivalsSource()
             val (departures, shared) = withContext(io) {

@@ -1,6 +1,7 @@
 package app.stopdash.wear
 
 import app.stopdash.data.WatchEnvelope
+import app.stopdash.data.WatchEnvelopes
 import app.stopdash.data.WatchStarKey
 import app.stopdash.data.toPersisted
 import app.stopdash.domain.Departure
@@ -8,8 +9,11 @@ import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.RouteTopology
+import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
+import java.io.File
+import java.nio.file.Files
 import java.time.Instant
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -104,14 +108,62 @@ class WatchAppFramesTest {
     fun `a check from the future stays unshown for the whole ticker run`() = runTest {
         val frames = mutableListOf<TileFrame?>()
         val clock = { fetched.plusMillis(testScheduler.currentTime) }
-        val check = LineStatusCheck(LineStatus("victoria", 6, "Severe Delays"), fetched.plusSeconds(60))
+        val check = LineStatusCheck(LineStatus("victoria", 6, "Severe Delays"), fetched.plusSeconds(120))
         val stored = received(stop("940GA", listOf(departure(90), departure(200))))
             .let { it.copy(envelope = it.envelope.copy(lineStatuses = listOf(check.toPersisted()))) }
         val job = launch { WatchAppFrames.tick(stored, RouteTopology.EMPTY, clock) { frames += it } }
         runCurrent()
         // Past the check's instant: still not shown, as the tile and complication leave it.
-        advanceTimeBy(120_000)
+        advanceTimeBy(180_000)
         assertTrue(frames.none { (it as? TileFrame.Rows)?.lines.orEmpty().any { l -> l is TileLine.Disruption } })
         job.cancel()
+    }
+
+    @Test
+    fun `a stop from before the clock was set back stays stale for the whole ticker run`() = runTest {
+        val frames = mutableListOf<TileFrame?>()
+        // The watch's clock reads an hour before the stop's stamp.
+        val clock = { fetched.minusSeconds(3600).plusMillis(testScheduler.currentTime) }
+        val stored = received(stop("940GA", listOf(departure(90), departure(200))))
+        val job = launch { WatchAppFrames.tick(stored, RouteTopology.EMPTY, clock) { frames += it } }
+        runCurrent()
+        assertTrue(frames.isNotEmpty())
+        assertTrue(frames.all { (it as TileFrame.Rows).stale })
+        assertTrue("nothing changes once stale, so the ticker ends", job.isCompleted)
+    }
+
+    @Test
+    fun `a clock set back while the ticker runs leaves the stop as old as it is`() = runTest {
+        val dir = Files.createTempDirectory("watch").toFile()
+        try {
+            // How far the watch's clock has been set since the start: the wall clock, and the frame
+            // its boot origin reads in, move together.
+            var set = 0L
+            val clock = { fetched.plusMillis(set + testScheduler.currentTime) }
+            val store = WatchEnvelopeStore(File(dir, "envelope"), now = clock, log = {}, frame = { SteadyClock.Frame("device/7", set) })
+            val envelope = received(stop("940GA", listOf(departure(90), departure(200)))).envelope
+            assertTrue(store.ingest(WatchEnvelopes.encode(envelope)))
+            val frames = mutableListOf<Pair<Long, TileFrame?>>()
+            val job = launch {
+                WatchAppFrames.tick(store.state.value, RouteTopology.EMPTY, clock, { store.current() ?: it.envelope }) {
+                    frames += testScheduler.currentTime to it
+                }
+            }
+            runCurrent()
+            assertEquals("1 · 3 min", rows(frames.last().second).single().countdown)
+
+            // A minute in, the clock is set back an hour, then two hours pass.
+            advanceTimeBy(60_000)
+            set = -3_600_000L
+            advanceTimeBy(2 * 3_600_000L)
+
+            // It went stale at its real age, and nothing shown after that trusts it again once the
+            // clock catches up with its stamp.
+            assertTrue(frames.filter { (at, _) -> at >= 5 * 60_000L }.all { (_, f) -> (f as TileFrame.Rows).stale })
+            assertTrue((frames.last().second as TileFrame.Rows).stale)
+            assertTrue("nothing changes once stale, so the ticker ends", job.isCompleted)
+        } finally {
+            dir.deleteRecursively()
+        }
     }
 }
