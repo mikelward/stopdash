@@ -1352,9 +1352,12 @@ them there:
 - **Get off soon**, from **one stop, or two minutes, out**, said once per leg.
 - **Where it shows:** the trip's own screen (the next step over the route), a **card pinned at the
   top of the main view** (the near-me list, under the top bar, not scrolling with it; a station's
-  page, and a station, platform or starred journey opened from the list, are each their own view;
-  over the location prompt too, when near me can't come up),
-  and the notifications below; each opens the trip.
+  page, and a station, platform or starred journey opened from the list, are each their own view),
+  pinned in the same place over the location prompt and the "Finding stops near you…" spinner too,
+  while near me can't come up or isn't up yet (maintainer, 2026-09-29: at the top, not centered
+  with them). On a short window or with large text, where pinned it could crowd out the prompt's
+  buttons, it scrolls with the prompt instead, at its top. And the notifications below; each opens
+  the trip.
 - **Kept on the device** while on the way (the route, the leg, the train followed), in app storage
   that is never backed up, so it survives the app being closed; where a rider is going is theirs
   (*Privacy*), and it's forgotten when the trip ends.
