@@ -7,6 +7,7 @@ import app.stopdash.domain.LocationFix
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.StationPlaces
 import app.stopdash.domain.SteadyClock
+import app.stopdash.domain.StopLocation
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripProgress
@@ -51,6 +52,9 @@ class ActiveTripTracker(
     // already along it ([OnTheWay.seenAlong]); null when it can't be had. The trip's cards already
     // hold it, so it's rarely a request.
     private val lineSequence: suspend (String) -> LineSequence? = { null },
+    // A stop area's poles ([StopAreaSource]), for a bus ride's boarding pole: its letter and "towards",
+    // so its board is headed as the main view heads that stop ("Stop D"). Asked once per stop.
+    private val stopPoles: suspend (String) -> List<StopLocation> = { emptyList() },
     private val clock: () -> Instant = Instant::now,
     // A monotonic clock in ms, for timing a wait the wall clock could be set back during.
     private val elapsed: () -> Long = { System.nanoTime() / 1_000_000 },
@@ -99,7 +103,15 @@ class ActiveTripTracker(
      * (principle 2): the last board is kept, its [fetchedAt] aging it into stale (D4), and with none
      * read yet [fetchedAt] is null and there are no departures.
      */
-    data class NextBoard(val ride: TripLeg, val departures: List<Departure>, val fetchedAt: Instant?, val failed: Boolean = false)
+    data class NextBoard(
+        val ride: TripLeg,
+        val departures: List<Departure>,
+        val fetchedAt: Instant?,
+        val failed: Boolean = false,
+        // The boarding pole as TfL lists it ([stopPoles]), for its letter and "towards"; null for a
+        // station, or while it can't be read.
+        val pole: StopLocation? = null,
+    )
 
     private val _nextBoard = MutableStateFlow<NextBoard?>(null)
     val nextBoard: StateFlow<NextBoard?> = _nextBoard.asStateFlow()
@@ -110,6 +122,24 @@ class ActiveTripTracker(
     private val boardSeen = LinkedHashMap<String, Departure>()
 
     private val lock = Mutex()
+
+    // Each bus boarding pole once read ([stopPoles]), by its id; one that couldn't be isn't kept.
+    private val poles = HashMap<String, StopLocation?>()
+
+    // [ride]'s boarding pole ([stopPoles]) when it boards at a bus stop, read once; null otherwise, or
+    // while it can't be read, when its board is headed by its name alone and the failure logged.
+    private suspend fun poleOf(ride: TripLeg): StopLocation? {
+        if (ride.mode !in POLE_MODES || ride.fromId.isBlank()) return null
+        if (ride.fromId in poles) return poles[ride.fromId]
+        return try {
+            stopPoles(ride.fromArea.ifBlank { ride.fromId }).firstOrNull { it.id == ride.fromId }.also { poles[ride.fromId] = it }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: TflException) {
+            warn("on the way: boarding stop lookup failed for line ${ride.lineId}: ${e::class.simpleName}")
+            null
+        }
+    }
 
     // Each station's point and entrances once read ([stationPlaces]); a failed read isn't kept, so
     // the next refresh asks again. Held for the process only: a station's entrances don't move.
@@ -587,7 +617,8 @@ class ActiveTripTracker(
     private suspend fun readBoard(ride: TripLeg, now: Instant): Result<NextBoard> =
         try {
             // Stamped by the steady clock, as every fetch is ([SteadyClock]).
-            Result.success(NextBoard(ride, arrivals(ride.fromId), SteadyClock.stamp(now)).also { board ->
+            val departures = arrivals(ride.fromId)
+            Result.success(NextBoard(ride, departures, SteadyClock.stamp(now), pole = poleOf(ride)).also { board ->
                 _nextBoard.value = board
                 if (boardSeenRide != ride) {
                     boardSeenRide = ride
@@ -656,6 +687,9 @@ class ActiveTripTracker(
 
         // How many of a leg's soonest trains are looked up to find one running where the rider is going.
         const val PICK_TRIES = 3
+
+        // Modes that board at a lettered pole in the street ([poleOf]); a station's board splits by platform.
+        private val POLE_MODES = setOf("bus", "replacement-bus", "coach", "tram")
 
         // How far from when the rider said they're on board the train they boarded can be due, either
         // way: a train at the platform, due a moment ago or about to leave.

@@ -77,6 +77,10 @@ class ActiveTripTrackerTest {
     private var sequenceTakes = 0L
     // How long a train's calls take to read, on the monotonic clock.
     private var vehicleTakes = 0L
+    // Each stop area's poles, and how often they were asked for (a TfL request each).
+    private val polesAt = mutableMapOf<String, List<app.stopdash.domain.StopLocation>>()
+    private var poleReads = 0
+    private var polesFail = false
 
     private fun tracker(dispatcher: kotlinx.coroutines.CoroutineDispatcher, load: () -> ActiveTrip? = { null }) = ActiveTripTracker(
         load = load,
@@ -115,6 +119,11 @@ class ActiveTripTrackerTest {
         lineSequence = { lineId ->
             ticks += sequenceTakes
             sequences[lineId]
+        },
+        stopPoles = { area ->
+            poleReads++
+            if (polesFail) throw TflException.Offline(null)
+            polesAt[area].orEmpty()
         },
         clock = { now },
         elapsed = { ticks },
@@ -1509,6 +1518,36 @@ class ActiveTripTrackerTest {
         tracker.refresh()
         assertTrue(tracker.progress.value is TripProgress.Walking)
         assertEquals(0, tracker.trip.value?.legIndex)
+    }
+
+    @Test
+    fun `a bus ride's board carries its pole's letter, read once, and none from a station`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        // An example pole of an example stop area; the Planner names the area as the ride's end.
+        val bus = TripLeg("bus", "73", "73", "490000000001D", "Example Road", "490000000002A", "Other Road", at(5), at(15), fromArea = "490G00000001")
+        val pole = app.stopdash.domain.StopLocation("490000000001D", "Example Road", 0.0, 0.0, stopLetter = "D", towards = "Other Road")
+        polesAt["490G00000001"] = listOf(app.stopdash.domain.StopLocation("490000000001C", "Example Road", 0.0, 0.0, stopLetter = "C"), pole)
+        polesFail = true
+        tracker.start(TripRoute(listOf(bus)), "Other Road", readyAt = now)
+        tracker.refresh()
+        // Couldn't be read: the board shows headed by name alone, the failure logged, and asked again.
+        assertNull(tracker.nextBoard.value?.pole)
+        assertTrue(logged.any { it.startsWith("on the way: boarding stop lookup failed") })
+        polesFail = false
+        tracker.refresh()
+        assertEquals(pole, tracker.nextBoard.value?.pole)
+        val reads = poleReads
+        tracker.refresh()
+        assertEquals(pole, tracker.nextBoard.value?.pole)
+        assertEquals(reads, poleReads)
+        // A station's board splits by platform: no pole is asked for.
+        tracker.end()
+        poleReads = 0
+        departures["A"] = listOf(train("3", 6))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertNull(tracker.nextBoard.value?.pole)
+        assertEquals(0, poleReads)
     }
 
     @Test

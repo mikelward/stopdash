@@ -2720,6 +2720,8 @@ class MainActivity : ComponentActivity() {
                     arrivals = journeyPlanner::arrivals,
                     vehicles = journeyPlanner,
                     stationPlaces = journeyPlanner::stationPlaces,
+                    // A bus ride's boarding pole, for its letter on the trip's board: one request per stop.
+                    stopPoles = journeyPlanner::stopAreaPoles,
                     // The same routes, held a day, the trip's cards place its rides with.
                     lineSequence = { lineId -> routeStops(context.applicationContext).let { it.cached(lineId, "") ?: it.load(lineId, "") } },
                     warn = ::logDepartureWarning,

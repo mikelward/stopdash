@@ -278,6 +278,18 @@ class OnTheWayScreenScreenshotTest {
     }
 
     @Test
+    fun a_bus_ride_board_is_headed_by_its_stop_letter_as_the_main_view_heads_it() {
+        // Headed "Stratford – Stop D", as the main view heads that pole, not by where the buses go
+        // (maintainer, 2026-09-29).
+        val bus = TripLeg("bus", "25", "25", "490000000001D", "Stratford", "490000000002A", "Bow", at(4), at(20))
+        val buses = listOf(Departure("25", "25", "outbound", "Bow", null, at(6), "bus"))
+        show(trip.copy(route = TripRoute(listOf(bus))), TripProgress.Waiting(bus, at(6)), nextTrains = NextTrains(bus, buses, readyAt = now, stopLetter = "D", towards = "Bow"))
+        composeRule.onNodeWithText("Stop D", substring = true).assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("➔", substring = true).fetchSemanticsNodes().isEmpty())
+        captureSnapshot("on-the-way-bus-board-stop-letter.png")
+    }
+
+    @Test
     fun a_board_row_with_nothing_to_open_leaves_the_touch_to_what_holds_it() {
         // No tap and no long press: the row takes no gesture at all, so a touch goes through.
         var touched = false
