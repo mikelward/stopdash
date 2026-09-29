@@ -3435,6 +3435,9 @@ internal fun StopGroupCard(
     onHideMode: ((String) -> Unit)? = null,
     // Grays a time due before the rider can board ([CountdownLabel]); null grays none.
     grayBefore: Instant? = null,
+    // Draws a timed row's times in place of its countdowns: a trip's later ride, which says how often
+    // its line runs. Null counts down.
+    timesInstead: (@Composable (DepartureRow) -> Unit)? = null,
 ) {
     // Cap the line pill at half the card's inner width, so a long name at a large font scale
     // ellipsizes rather than consuming the card and starving the countdown, which must stay one line
@@ -3538,7 +3541,9 @@ internal fun StopGroupCard(
                         focus = RouteFocus.of(group2),
                         onHideMode = onHideMode,
                         destination = { modifier -> DestinationLabelContent(label = label, branch = group2.branch, modifier = modifier) },
-                        times = { CountdownLabel(group2.times, stale, now, grayBefore = grayBefore) },
+                        times = {
+                            if (timesInstead != null) timesInstead(row) else CountdownLabel(group2.times, stale, now, grayBefore = grayBefore)
+                        },
                     )
                 }
             }

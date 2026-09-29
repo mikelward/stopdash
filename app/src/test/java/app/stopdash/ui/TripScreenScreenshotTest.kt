@@ -663,20 +663,56 @@ class TripScreenScreenshotTest {
     }
 
     @Test
-    fun an_open_routes_later_leg_grays_the_trains_that_leave_before_the_rider_gets_there() {
+    fun an_open_routes_later_leg_says_how_often_its_line_runs() {
         show(planned)
         composeRule.onNodeWithText("28 min · ~08:30").performClick()
         composeRule.waitForIdle()
-        // The Windrush train in 3 min reaches Whitechapel at 16; with 3 min to change the rider is on
-        // the Elizabeth line's platform at 19, so its trains in 14 and 18 min leave too soon.
-        assertEquals(listOf("14", "18"), grayedTimes("14 · 18 · 24 min"))
-        // A screen reader hears which, since gray alone doesn't reach it.
-        composeRule.onNodeWithText("14 · 18 · 24 min")
-            .assertContentDescriptionEquals("14 min, can't catch, 18 min, can't catch, 24 min")
-        // The first leg is reached after the 2 min walk: its train in 3 min is caught, nothing grays,
-        // and its times are read as shown.
+        composeRule.onNodeWithText("2 stops to Canary Wharf").assertIsDisplayed()
+        // The Elizabeth line, ridden after the change, says how often it runs instead of counting
+        // down (maintainer, 2026-09-29): its trains at 14, 18 and 24 are every 4 to 6 minutes, the
+        // figure its row on the list's card gives, and none of its countdowns show.
+        composeRule.onAllNodesWithText("↻ 4–6 min", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onAllNodesWithContentDescription("Every 4 to 6 min", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onAllNodesWithText("14 · 18 · 24 min", useUnmergedTree = true).assertCountEquals(0)
+        // The next ride still counts down, reached after the 2 min walk: its train in 3 min is caught,
+        // nothing grays, and its times are read as shown.
         assertEquals(emptyList<String>(), grayedTimes("3 · 11 min"))
         assertTrue(SemanticsProperties.ContentDescription !in composeRule.onNodeWithText("3 · 11 min").fetchSemanticsNode().config)
+        composeRule.onAllNodesWithText("↻", substring = true, useUnmergedTree = true).assertCountEquals(1)
+    }
+
+    @Test
+    fun an_open_routes_next_ride_counts_down_after_a_walk_to_it() {
+        // A route starting with a walk leg of the Planner's own: the ride after it is the rider's next,
+        // so it counts down, and its trains gone before the rider gets there are grayed.
+        val walkFirst = TripRoute(
+            listOf(
+                TripLeg(
+                    mode = "walking", lineId = "", lineName = "", fromId = "", fromName = "Here",
+                    toId = whitechapelXr.first, toName = whitechapelXr.second, departure = now, arrival = at(16),
+                ),
+                leg("elizabeth-line", "elizabeth", "Elizabeth line", whitechapelXr, canaryWharfXr, 19, 23, 2),
+            ),
+        )
+        show(planned.copy(routes = listOf(walkFirst)), access = Duration.ZERO)
+        composeRule.onNodeWithTag("rideStops", useUnmergedTree = true).performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("2 stops to Canary Wharf").assertIsDisplayed()
+        // On the Elizabeth line's platform at 16: its train in 14 min leaves too soon.
+        assertEquals(listOf("14"), grayedTimes("14 · 18 · 24 min"))
+        composeRule.onAllNodesWithText("↻", substring = true, useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun an_open_routes_later_leg_with_too_few_trains_known_shows_no_times() {
+        show(planned)
+        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("1 stop to Canary Wharf").assertIsDisplayed()
+        // One Jubilee train known at Canada Water says nothing of how often the line runs, and its
+        // countdown would say nothing the rider can use there: the row shows neither.
+        composeRule.onAllNodesWithText("↻", substring = true, useUnmergedTree = true).assertCountEquals(0)
+        composeRule.onAllNodesWithText("25 min", useUnmergedTree = true).assertCountEquals(0)
     }
 
     // The times a countdown shows grayed: those it styles apart from the rest of its label.
