@@ -1158,12 +1158,16 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             road's two poles as one), as equals on its pill and with rows of their own.
       - [ ] **On the way with a ride's other lines**: a started trip still follows only the
             Planner's line for each ride, so boarding another of its lines isn't recognized.
-      - [ ] **Rank a route by any of a ride's lines** (Codex on #309): a route is ranked by its
-            Planner lines' status alone, so one whose Planner line is closed or unchecked still sinks
-            even when another checked, running line between the same stops could take the ride.
-            Changes how routes rank, so it's a follow-up rather than part of #309. Likewise a
-            route's freshness is judged at the Planner's pole alone: when that pole failed but another
-            line's pole is current, the frequent-service fallback is withheld though it could stand.
+      - [x] **Rank a route by any of a ride's lines** (Codex on #309). A ride whose Planner line is
+            closed or unchecked no longer sinks its route while another line that times it, checked
+            as running from stops checked open (`RideLines.othersTime`), can take it; the Planner's
+            line's own trains, and its timetable, then count only if it's checked as running
+            (`RideLines.vouched`). A line whose latest status check failed stands in for none.
+      - [ ] **Judge a ride's freshness by any of its lines** (Codex on #309): a route's freshness is
+            judged at the Planner's pole alone, so when that pole failed but another line's pole is
+            current, the frequent-service fallback is withheld though it could stand. The failed
+            pole's held predictions still feed the ride's trains, so the fallback would need them
+            left out before trusting the other line's.
       - [ ] **Merging by place, parked** (#306, maintainer, 2026-09-27): the same idea across an
             interchange's stops (the 43 and 134 at Archway), set aside for strict same-stop; its
             branch holds the place-based version if that's revisited.

@@ -2202,6 +2202,96 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `a ride another running line takes isn't sunk by its Planner line's status`() {
+        val sequences = mapOf("red" to red, "green" to greenAlike, "blue" to blue)
+        val good = { id: String -> LineStatus(id, LineStatus.GOOD_SERVICE, "Good Service") }
+        val closed = { id: String -> LineStatus(id, 20, "Service Closed") }
+        fun estimate(statuses: Map<String, LineStatus>, others: Boolean = true): TripTiming.Estimate {
+            val state = redAndGreenAt(train("red", "End", 6), train("green", "End", 3)).copy(statuses = statuses)
+            val lines = if (others) rideLines(state.routes.orEmpty(), state, sequences) else emptyMap()
+            return tripEstimates(state, now, Duration.ZERO, sequences, lines = lines)!!.single()
+        }
+        // Red, the Planner's line, closed or unchecked, while green runs between the same stops: the
+        // route can be taken, so it isn't ranked below the others (Codex on #309)...
+        val redClosed = mapOf("red" to closed("red"), "green" to good("green"), "blue" to good("blue"))
+        assertFalse(estimate(redClosed).blocked)
+        val redUnchecked = mapOf("green" to good("green"), "blue" to good("blue"))
+        assertFalse(estimate(redUnchecked).unchecked)
+        // ...as it was with no other line to take the ride.
+        assertTrue(estimate(redClosed, others = false).blocked)
+        assertTrue(estimate(redUnchecked, others = false).unchecked)
+        // Green closed too, or never checked: nothing else takes the ride.
+        assertTrue(estimate(redClosed + ("green" to closed("green"))).blocked)
+        assertTrue(estimate(mapOf("red" to closed("red"), "blue" to good("blue"))).blocked)
+        // Another ride's Planner line is still its own: blue closed sinks the route whatever takes red's.
+        assertTrue(estimate(redClosed + ("blue" to closed("blue"))).blocked)
+    }
+
+    @Test
+    fun `a Planner line another line stands in for doesn't time the ride unless it's running`() {
+        val sequences = mapOf("red" to red, "green" to greenAlike, "blue" to blue)
+        val good = { id: String -> LineStatus(id, LineStatus.GOOD_SERVICE, "Good Service") }
+        // Red's leftover prediction is sooner than green's train.
+        val base = redAndGreenAt(train("red", "End", 1), train("green", "End", 3))
+        fun firstTrain(state: TripViewModel.State): Departure? {
+            val lines = rideLines(state.routes.orEmpty(), state, sequences)
+            return tripEstimates(state, now, Duration.ZERO, sequences, lines = lines)!!.single().legs.firstNotNullOf { it.train }
+        }
+        fun usable(state: TripViewModel.State): Set<String> {
+            val lines = rideLines(state.routes.orEmpty(), state, sequences)
+            val card = tripCards(checkNotNull(tripEstimates(state, now, Duration.ZERO, sequences, lines = lines))).single()
+            return cardTimes(card, state, now, Duration.ZERO, sequences, lines).shown.filter { it.second }.mapTo(HashSet()) { it.first.lineId }
+        }
+        // Red running: its train is the first that can take the ride.
+        val running = base.copy(statuses = listOf("red", "green", "blue").associateWith(good))
+        assertEquals("red", firstTrain(running)?.lineId)
+        assertEquals(setOf("red", "green"), usable(running))
+        // Red closed, or never checked, while green runs: green keeps the route usable, so green's is
+        // the train it's timed from and the only one offered, not red's leftover (Codex on #382).
+        val redClosed = base.copy(statuses = mapOf("red" to LineStatus("red", 20, "Service Closed"), "green" to good("green"), "blue" to good("blue")))
+        val redUnchecked = base.copy(statuses = mapOf("green" to good("green"), "blue" to good("blue")))
+        for (state in listOf(redClosed, redUnchecked)) {
+            assertEquals("green", firstTrain(state)?.lineId)
+            assertEquals(setOf("green"), usable(state))
+        }
+        // With no green train to time it either, the ride isn't timed from red's timetable: that's a
+        // service that can't be relied on, so the arrival is withheld until a train times it.
+        fun estimate(state: TripViewModel.State, others: Boolean = true): TripTiming.Estimate {
+            val lines = if (others) rideLines(state.routes.orEmpty(), state, sequences) else emptyMap()
+            return tripEstimates(state, now, Duration.ZERO, sequences, lines = lines)!!.single()
+        }
+        // Green found at A by a train already gone: nothing of its own to time the ride with.
+        val noTrains = redAndGreenAt(train("green", "End", -1))
+        for (statuses in listOf(redClosed.statuses, redUnchecked.statuses)) {
+            val state = noTrains.copy(statuses = statuses)
+            assertFalse(estimate(state).blocked)
+            assertNull(estimate(state).arrival)
+        }
+        // Red running, or nothing else to take the ride (it's ranked by red's status then): its
+        // timetable stands in as before.
+        assertEquals(TripTiming.Basis.ESTIMATED, estimate(noTrains.copy(statuses = running.statuses)).basis)
+        assertEquals(TripTiming.Basis.ESTIMATED, estimate(noTrains.copy(statuses = redUnchecked.statuses), others = false).basis)
+    }
+
+    @Test
+    fun `a line whose latest status check failed can't stand in for the Planner's`() {
+        val sequences = mapOf("red" to red, "green" to greenAlike, "blue" to blue)
+        val good = { id: String -> LineStatus(id, LineStatus.GOOD_SERVICE, "Good Service") }
+        val redClosed = mapOf("red" to LineStatus("red", 20, "Service Closed"), "green" to good("green"), "blue" to good("blue"))
+        val base = redAndGreenAt(train("red", "End", 1), train("green", "End", 3)).copy(statuses = redClosed)
+        fun estimate(state: TripViewModel.State): TripTiming.Estimate =
+            tripEstimates(state, now, Duration.ZERO, sequences, lines = rideLines(state.routes.orEmpty(), state, sequences))!!.single()
+        assertFalse(estimate(base).blocked)
+        // Green's good service is kept from before its latest check failed: the last known, not a
+        // current one, so red, closed now, sinks the route (Codex on #382)...
+        val failed = base.copy(statusFailed = true, statusFailedLines = setOf("green"))
+        assertTrue(estimate(failed).blocked)
+        // ...and green's trains aren't offered meanwhile, as its line page can't vouch for them.
+        val lines = rideLines(failed.routes.orEmpty(), failed, sequences)
+        assertEquals(setOf("red"), rideTrains(failed, viaRedOnly.rides.first(), now, sequences, lines)?.map { it.lineId }?.toSet())
+    }
+
+    @Test
     fun `another line at a boarding stop has its status checked in the same refresh, apart from the plan's`() = runTest(dispatcher) {
         val client = FakeClient(mutableMapOf("A" to listOf(train("red", "End", 2), train("green", "End", 3))))
         val trip = model(FakePlanner(listOf(route)), client)
@@ -2316,10 +2406,10 @@ class TripViewModelTest {
         val unchecked = base.copy(closures = base.closures - "A2")
         for (state in listOf(closed, unchecked)) {
             assertEquals(setOf("red"), rideTrains(state, red, now, sequences, lines)?.map { it.lineId }?.toSet())
-            assertEquals(emptyList<DepartureRow>(), rideLegRows(red, listOf(red, green), state, now, sequences, emptySet()).getValue(green))
+            assertEquals(emptyList<DepartureRow>(), rideLegRows(lines.getValue(red), state, now, sequences, emptySet()).getValue(green))
         }
         // The Planner's own line is judged where the route is ranked, not here.
-        assertTrue(rideLegRows(red, listOf(red, green), closed, now, sequences, emptySet()).getValue(red).isNotEmpty())
+        assertTrue(rideLegRows(lines.getValue(red), closed, now, sequences, emptySet()).getValue(red).isNotEmpty())
     }
 
     @Test
@@ -2328,18 +2418,19 @@ class TripViewModelTest {
         val red = viaRedOnly.rides.first()
         val green = red.copy(lineId = "green", lineName = "green")
         val state = redAndGreenAt(train("red", "End", 6), train("green", "End", 3))
-        val unchecked = rideLegRows(red, listOf(red, green), state, now, sequences, emptySet())
+        val lines = RideLines(listOf(red, green), listOf(red, green))
+        val unchecked = rideLegRows(lines, state, now, sequences, emptySet())
         assertTrue(unchecked.getValue(red).isNotEmpty())
         assertEquals(emptyList<DepartureRow>(), unchecked.getValue(green))
         val good = state.copy(statuses = mapOf("green" to LineStatus("green", LineStatus.GOOD_SERVICE, "Good Service")))
-        assertTrue(rideLegRows(red, listOf(red, green), good, now, sequences, emptySet()).getValue(green).isNotEmpty())
+        assertTrue(rideLegRows(lines, good, now, sequences, emptySet()).getValue(green).isNotEmpty())
     }
 
     @Test
     fun `another line at a pole whose refresh failed doesn't time the ride`() {
         val red = viaRedOnly.rides.first()
         val green = red.copy(lineId = "green", lineName = "green", fromId = "A2")
-        val good = mapOf("green" to LineStatus("green", LineStatus.GOOD_SERVICE, "Good Service"))
+        val good = listOf("red", "green").associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") }
         val base = redAndGreenAt(train("red", "End", 6)).copy(statuses = good)
         val lines = mapOf(red to RideLines(listOf(red, green), listOf(red, green)))
         val atA2 = LineSequence(routes = listOf(LineRoute("A2 ↔ End", listOf("A2", "B", "End"))), stopNames = this.red.stopNames + ("A2" to "A"))

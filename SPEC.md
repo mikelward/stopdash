@@ -1087,7 +1087,14 @@ closed (a moved stop doesn't count), sorts below every usable one, whether live 
 estimated (below), so a route that can't be ridden is never listed first while one that can exists.
 A route whose line status or closure check failed with nothing known yet sits between the two: below
 every route checked and open, above those known not to run, and says it couldn't check for
-disruptions, until a check succeeds.
+disruptions, until a check succeeds. A ride goes by any of its lines: one whose Planner line is
+suspended or unchecked still counts as usable while another line riding the same stretch, checked
+as running from stops checked open, can take it, since that line's trains time it too. The Planner's
+line then answers to its status like any other: suspended or unchecked, its trains neither time the
+route nor show as catchable, and its timetable gives no time either, so the arrival waits for a
+train that can take the ride. A line whose latest status check failed stands in for none: the status
+kept from before is the last one known, not a current one. The trip still says it couldn't check the
+Planner's line.
 
 **TfL's Journey Planner chooses the lines and changes; StopDash's live arrivals give the times**
 (principle 1). The first leg counts down like any row. From "Here", the rider still has to reach the

@@ -10,13 +10,34 @@ package app.stopdash.domain
  * then only while [checked].
  */
 data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
-    /** [legs] whose trains may be offered as catchable ([checked]): every use of a ride's trains goes through this. */
+    /** [legs] whose trains may be offered as catchable ([vouched]): every use of a ride's trains goes through this. */
     fun running(statuses: Map<String, LineStatus>, stopsOpen: (TripLeg) -> Boolean): List<TripLeg> =
-        legs.filter { checked(it, legs.first(), statuses, stopsOpen) }
+        legs.filter { vouched(it, statuses, stopsOpen) }
 
-    /** [timed] lines that may time the route ([checked]). */
+    /** [timed] lines that may time the route ([vouched]). */
     fun timedRunning(statuses: Map<String, LineStatus>, stopsOpen: (TripLeg) -> Boolean): List<TripLeg> =
-        timed.filter { checked(it, legs.first(), statuses, stopsOpen) }
+        timed.filter { vouched(it, statuses, stopsOpen) }
+
+    /**
+     * Whether a line other than the Planner's may take and time the ride: one of [timed], [checked]
+     * as running. Then the route is ranked by that line, not by the Planner line's status (Codex on
+     * #309).
+     */
+    fun othersTime(statuses: Map<String, LineStatus>, stopsOpen: (TripLeg) -> Boolean): Boolean =
+        timed.any { it.lineId != legs.first().lineId && checked(it, legs.first(), statuses, stopsOpen) }
+
+    /**
+     * Whether [line], one of [legs], may be offered as catchable and time the ride: [checked], with
+     * one exception. The Planner's own line is exempt from its status only while that status ranks
+     * the route. Once another line keeps the ride usable ([othersTime]), the route no longer answers
+     * to it, so the line does here: a suspended or unchecked line's leftover predictions mustn't
+     * time a route another line keeps usable (Codex on #382).
+     */
+    fun vouched(line: TripLeg, statuses: Map<String, LineStatus>, stopsOpen: (TripLeg) -> Boolean): Boolean {
+        val planned = legs.first()
+        if (!checked(line, planned, statuses, stopsOpen)) return false
+        return line.lineId != planned.lineId || runs(planned.lineId, statuses) || !othersTime(statuses, stopsOpen)
+    }
 
     /**
      * A route [through] makes: [route], one ride fewer than [from], whose two rides from leg [at] it
@@ -40,11 +61,15 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
          * another line only once its status is known ([statuses]) and it's running, and the stops it
          * boards and gets off at, its own poles, are checked open ([stopsOpen], [TripClosures.opens]).
          * One rule for every place that uses another line's trains, so a line never checked, suspended,
-         * or from a closed stop is never passed off as a way to go.
+         * or from a closed stop is never passed off as a way to go. A ride's own [vouched] adds the
+         * case where the route stops weighing the Planner's status.
          */
         fun checked(line: TripLeg, planned: TripLeg, statuses: Map<String, LineStatus>, stopsOpen: (TripLeg) -> Boolean): Boolean =
-            line.lineId == planned.lineId ||
-                (line.lineId in statuses && line.lineId !in TripTiming.notRunning(statuses.values) && stopsOpen(line))
+            line.lineId == planned.lineId || (runs(line.lineId, statuses) && stopsOpen(line))
+
+        // Whether [lineId]'s status is known ([statuses]) and says it's running.
+        private fun runs(lineId: String, statuses: Map<String, LineStatus>): Boolean =
+            lineId in statuses && lineId !in TripTiming.notRunning(statuses.values)
 
         /**
          * Each ride of [routes] to its [RideLines]. A line is considered when it rides first somewhere

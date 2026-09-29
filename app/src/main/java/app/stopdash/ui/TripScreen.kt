@@ -159,12 +159,39 @@ internal fun lineStopsOpen(state: TripViewModel.State, now: Instant): (TripLeg) 
  */
 private fun timingLines(state: TripViewModel.State, leg: TripLeg, now: Instant, lines: Map<TripLeg, RideLines>): List<TripLeg> =
     // Another line times the ride only once checked as running, from stops checked open
-    // ([RideLines.checked]): a suspended line's predictions, one never checked, or one from a closed
-    // stop mustn't make a route read as live.
+    // ([RideLines.vouched]): a suspended line's predictions, one never checked, or one from a closed
+    // stop mustn't make a route read as live. The Planner's own is held to the same once another line
+    // keeps the ride usable, as its status no longer ranks the route.
     // Nor from a pole whose refresh failed: its held predictions would pass for current, while the
     // route's freshness is judged at the Planner's own pole. The Planner's line keeps its own rule.
-    (lines[leg] ?: RideLines.only(leg)).timedRunning(state.statuses, lineStopsOpen(state, now))
+    (lines[leg] ?: RideLines.only(leg)).timedRunning(rideStatuses(state), lineStopsOpen(state, now))
         .filter { it == leg || state.live[it.fromId]?.failed != true }
+
+/**
+ * The line statuses a ride's lines are judged by ([RideLines]): every status held, less those whose
+ * latest check failed. A status kept from before a failed check is the last one known, not a current
+ * one, so it mustn't let a line stand in for another or be offered as a way to go (Codex on #382),
+ * as its own line page can't vouch for it either.
+ */
+internal fun rideStatuses(state: TripViewModel.State): Map<String, LineStatus> = state.statuses - state.statusFailedLines
+
+/**
+ * Whether [leg]'s own line, the Planner's, may still give its ride's times: a walk, or a ride whose
+ * line is [RideLines.vouched]. One another line stands in for, not itself checked as running, has no
+ * times of its own to give, timetabled or live: only a train of a line that takes the ride times it
+ * then (Codex on #382).
+ */
+internal fun plannerVouched(state: TripViewModel.State, leg: TripLeg, now: Instant, lines: Map<TripLeg, RideLines>): Boolean =
+    leg.isWalk || (lines[leg] ?: RideLines.only(leg)).vouched(leg, rideStatuses(state), lineStopsOpen(state, now))
+
+/**
+ * Whether a line other than [leg]'s own may take and time its ride ([RideLines.othersTime]: checked
+ * as running, from stops checked open), so the route is ranked by it rather than by the Planner's
+ * line alone (Codex on #309). Its trains' freshness isn't asked: that times the route, it doesn't
+ * decide whether the ride can be taken.
+ */
+internal fun otherLineRuns(state: TripViewModel.State, leg: TripLeg, now: Instant, lines: Map<TripLeg, RideLines>): Boolean =
+    !leg.isWalk && (lines[leg] ?: RideLines.only(leg)).othersTime(rideStatuses(state), lineStopsOpen(state, now))
 
 /**
  * How many trains [leg]'s timing lines ([rideTrains]) have predicted at their boarding stops, before
@@ -490,11 +517,14 @@ internal fun tripEstimates(
             route, now, access, { index -> rideTrains(state, route.legs[index], now, sequences, lines) }, notRunning, unknown,
             current = { index -> state.live[route.legs[index].fromId]?.failed != true },
             predicted = { index -> ridePredicted(state, route.legs[index], now, lines) },
-            timetabled = { index -> planned == null || route.legs[index] in planned },
+            // Nor one whose Planner line another line stands in for, unless it's running ([plannerVouched]).
+            timetabled = { index -> (planned == null || route.legs[index] in planned) && plannerVouched(state, route.legs[index], now, lines) },
             // A stop it boards or gets off at closed ranks it below every usable route, as a line
             // not running does; one not yet checked, with the unchecked (SPEC *Trips with a change*).
             // A bus stop is judged at its pole once its line's route gives one ([endPole]).
             stops = TripClosures.standing(route, state.closures, state.closuresUnknown, now) { end -> endPole(route, end, sequences) },
+            // A ride another running line can take and time isn't sunk by its Planner line's status.
+            otherLine = { index -> otherLineRuns(state, route.legs[index], now, lines) },
         )
             .let { if (originUnconfirmed && it.basis == TripTiming.Basis.LIVE) it.copy(basis = TripTiming.Basis.ESTIMATED) else it }
     }
@@ -843,13 +873,13 @@ private fun TripContent(
         val live = legRows(state, detailLeg, now, sequences, withUnchecked = true)
         // Another line not yet checked as running has its no-trains row on the open route though its
         // trains are in ([rideLegRows]): that row opens its page too, as a list card's rows still do.
-        val planned = rideLines.values.firstOrNull { detailLeg in it.legs }?.legs?.first() ?: detailLeg
+        val ride = rideLines.values.firstOrNull { detailLeg in it.legs } ?: RideLines.only(detailLeg)
         val statusRow = withDismissedMarked(legStatusRow(state, detailLeg, now), alerts.dismissed)
         val rows = when {
             live.isEmpty() -> listOf(statusRow)
             // First, so a live row keyed alike (a departure with no direction, destination or
             // platform) can't open the countdown the open route withholds.
-            !RideLines.checked(detailLeg, planned, state.statuses, lineStopsOpen(state, now)) -> listOf(statusRow) + DepartureRows.withoutDismissed(live, alerts.dismissed)
+            !ride.vouched(detailLeg, rideStatuses(state), lineStopsOpen(state, now)) -> listOf(statusRow) + DepartureRows.withoutDismissed(live, alerts.dismissed)
             else -> DepartureRows.withoutDismissed(live, alerts.dismissed)
         }
         rows.firstOrNull { tripDetailKey(detailLeg, it) == detailKey }
@@ -1182,12 +1212,13 @@ private fun RouteList(
         // A route revealed since the last refresh (a mode shown again) counts by its own lines.
         // So does another line shown with its trains grayed ([RideLines.unchecked]): once the check is
         // over it isn't still "checking", it couldn't be.
-        val otherLines = RideLines.unchecked(cards.flatMap { card -> card.flatMap { it.route.rides } }.mapNotNull { rideLines[it] }, state.statuses)
+        val otherLines = RideLines.unchecked(cards.flatMap { card -> card.flatMap { it.route.rides } }.mapNotNull { rideLines[it] }, rideStatuses(state))
         // Only the routes shown: a hidden mode's line or failed stop isn't these routes'.
         val shownLines = cards.flatMap { card -> card.flatMap { it.route.rides } }.mapTo(HashSet()) { it.lineId }
         statusNote(
             state,
-            state.statusUnknown.any { it in shownLines } || otherLines.isNotEmpty() ||
+            // A Planner line still unchecked says so even where another line keeps its route usable.
+            state.statusUnknown.any { it in shownLines } || shownLines.any { it !in state.statuses } || otherLines.isNotEmpty() ||
                 cards.any { card -> card.any { it.unchecked || otherLineStopsUnchecked(it.route, state, rideLines) } },
             cards.any { card -> card.any { routeClosuresFailed(it.route, state, sequences, rideLines) } },
             cards.any { card -> card.any { routeStatusFailed(it.route, rideLines, state) } },
@@ -1381,9 +1412,10 @@ internal fun cardTimes(
     }.distinctBy { it.first }
     lines.forEach { (leg, ride) ->
         val live = legTrains(state, leg, now, sequences)
-        // Another line not yet checked as running ([RideLines.checked]) shows its trains as still
-        // being checked, never as catchable: it may be suspended.
-        if (!RideLines.checked(leg, ride, state.statuses, lineStopsOpen(state, now))) {
+        // A line not yet checked as running ([RideLines.vouched]) shows its trains as still being
+        // checked, never as catchable: it may be suspended. That's the Planner's own too, once
+        // another line is what keeps the ride usable.
+        if (!(rideLines[ride] ?: RideLines.only(ride)).vouched(leg, rideStatuses(state), lineStopsOpen(state, now))) {
             trains += live.orEmpty()
             checking += live.orEmpty()
             return@forEach
@@ -1404,7 +1436,7 @@ internal fun cardTimes(
     // its route ([legTrains]); none while stale or unchecked: a suspended line's leftover predictions
     // would make the connection read as more frequent than it is.
     val headways = card.first().route.rides.drop(1).map { ride ->
-        linesHeadway((rideLines[ride] ?: RideLines.only(ride)).running(state.statuses, lineStopsOpen(state, now)), state, now, sequences)
+        linesHeadway((rideLines[ride] ?: RideLines.only(ride)).running(rideStatuses(state), lineStopsOpen(state, now)), state, now, sequences)
     }
     return CardTimes(shown, checking, reachable, loading, headways)
 }
@@ -1718,10 +1750,12 @@ private fun RouteLegs(
         state.planError?.let { error -> item(key = "error") { PlanFailure(error, state.planning, onRetry) } }
         if (state.planError == null && state.planIncomplete) item(key = "incomplete") { PlanIncomplete(state.planning, onRetry) }
         item(key = "summary") { RouteSummary(listOf(estimate), rideLines, shownStatuses(state.statuses, dismissed), Modifier.padding(vertical = 8.dp)) }
-        val otherLines = RideLines.unchecked(estimate.route.rides.mapNotNull { rideLines[it] }, state.statuses)
+        val otherLines = RideLines.unchecked(estimate.route.rides.mapNotNull { rideLines[it] }, rideStatuses(state))
+        // A Planner line still unchecked says so even where another line keeps the route ranked usable.
+        val plannerUnchecked = estimate.route.rides.any { it.lineId in state.statusUnknown || it.lineId !in state.statuses }
         statusNote(
             state,
-            estimate.unchecked || otherLines.isNotEmpty() || otherLineStopsUnchecked(estimate.route, state, rideLines),
+            estimate.unchecked || plannerUnchecked || otherLines.isNotEmpty() || otherLineStopsUnchecked(estimate.route, state, rideLines),
             routeClosuresFailed(estimate.route, state, sequences, rideLines),
             routeStatusFailed(estimate.route, rideLines, state),
         )?.let { checking -> item(key = "status") { StatusUnknown(checking) } }
@@ -1749,10 +1783,11 @@ private fun RouteLegs(
                 // The next ride's trains that leave before the rider gets to its stop are grayed, as the
                 // list's first-leg row grays them.
                 val ready = TripTiming.readyAt(estimate, access, index)
-                val shown = rideLines[leg]?.legs ?: listOf(leg)
+                val ride = rideLines[leg] ?: RideLines.only(leg)
+                val shown = ride.legs
                 (listOf(leg) + shown).forEach { closureCard(it.fromId) }
                 item(key = "leg$index") {
-                    RideLeg(leg, shown, index == 0, index == nextRide, state, now, sequences, dismissed, onOpenDetail, onHideMode, ready)
+                    RideLeg(leg, ride, index == 0, index == nextRide, state, now, sequences, dismissed, onOpenDetail, onHideMode, ready)
                 }
                 (listOf(leg) + shown).forEach { closureCard(it.toId) }
                 // A change the Planner allows time for after this ride (not a walk leg of its own):
@@ -2141,20 +2176,19 @@ internal fun legStatusRow(state: TripViewModel.State, leg: TripLeg, now: Instant
 )
 
 /**
- * An open ride's rows by line: [leg]'s own and every other of its [lines] checked as running
- * ([RideLines.checked]). One not yet checked, or not running, shows no countdowns, as a train whose
- * route isn't checked shows none ([pendingCardTrains]): its row says "–", with its status chip or the
- * page's status note saying why, never a countdown the card wouldn't offer.
+ * An open ride's rows by line: each of [ride]'s lines checked as running ([RideLines.vouched]). One
+ * not yet checked, or not running, shows no countdowns, as a train whose route isn't checked shows
+ * none ([pendingCardTrains]): its row says "–", with its status chip or the page's status note saying
+ * why, never a countdown the card wouldn't offer.
  */
 internal fun rideLegRows(
-    leg: TripLeg,
-    lines: List<TripLeg>,
+    ride: RideLines,
     state: TripViewModel.State,
     now: Instant,
     sequences: Map<String, LineSequence?>,
     dismissed: Set<DismissedAlert>,
-): Map<TripLeg, List<DepartureRow>> = lines.associateWith { line ->
-    if (!RideLines.checked(line, leg, state.statuses, lineStopsOpen(state, now))) emptyList()
+): Map<TripLeg, List<DepartureRow>> = ride.legs.associateWith { line ->
+    if (!ride.vouched(line, rideStatuses(state), lineStopsOpen(state, now))) emptyList()
     else DepartureRows.withoutDismissed(legRows(state, line, now, sequences), dismissed)
 }
 
@@ -2215,7 +2249,7 @@ private fun NoTrainsRow(
 private fun RideLeg(
     leg: TripLeg,
     // Every line between the leg's two stops ([RideLines]), the Planner's first: a row for each.
-    lines: List<TripLeg>,
+    ride: RideLines,
     first: Boolean,
     // The rider's next ride, whose rows count down; a later one's say how often each line runs.
     countsDown: Boolean,
@@ -2230,7 +2264,8 @@ private fun RideLeg(
 ) {
     // Each line's rows; a line with none still gets a row of its own below, so every line the pill
     // names is on the page.
-    val byLine = remember(leg, lines, state, now, sequences, dismissed) { rideLegRows(leg, lines, state, now, sequences, dismissed) }
+    val lines = ride.legs
+    val byLine = remember(ride, state, now, sequences, dismissed) { rideLegRows(ride, state, now, sequences, dismissed) }
     // A later ride's rows say how often their line runs instead of counting down, as the list's card
     // does (maintainer, 2026-09-29): the rider isn't there yet, so its next few trains say nothing
     // they can use. Each line's own figure, from the trains the card's comes from ([linesHeadway]),
