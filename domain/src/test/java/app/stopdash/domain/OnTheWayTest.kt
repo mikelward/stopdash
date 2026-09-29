@@ -532,9 +532,163 @@ class OnTheWayTest {
         assertTrue(OnTheWay.wantsFix(onBoard, at(7)))
         assertFalse(OnTheWay.wantsFix(onBoard, at(11)))
         assertFalse(OnTheWay.wantsFix(onBoard.copy(route = trip.route), at(7)))
-        assertFalse(OnTheWay.wantsFix(OnTheWay.follow(placed, train("8", 5)), at(4)))
+        // Still waiting for it, a fix is wanted too: they may be on another train already ([seenAlong]).
+        assertTrue(OnTheWay.wantsFix(OnTheWay.follow(placed, train("8", 5)), at(4)))
         // Past the window the rider is taken to be on board, wherever the fix says.
         assertEquals(onBoard, OnTheWay.seen(onBoard, stillThere, at(12)))
+    }
+
+    // Synthetic stops on a line running north: A (the platform above), B 1.1 km on, C 2.2 km on.
+    private val atB = Coordinates(51.51, -0.12)
+    private val atC = Coordinates(51.52, -0.12)
+    private val redLine = LineSequence(
+        routes = listOf(LineRoute("A ↔ C", listOf("A", "B", "C"))),
+        stopNames = mapOf("A" to "A", "B" to "B", "C" to "C"),
+        stopPositions = mapOf("A" to (51.5 to -0.12), "B" to (51.51 to -0.12), "C" to (51.52 to -0.12)),
+    )
+    private val along = OnTheWay.ridePositions(ride, redLine)
+
+    @Test
+    fun `a ride's stops are placed from its line's route, a stop area at its poles' middle`() {
+        assertEquals(mapOf("A" to platform, "B" to atB, "C" to atC), along)
+        // A bus ride the Planner names by stop area: placed between its two poles.
+        val bus = ride.copy(mode = "bus", path = listOf("490GB", "C"))
+        val poles = redLine.copy(
+            stopPositions = redLine.stopPositions + ("Bn" to (51.5102 to -0.12)) + ("Bs" to (51.5098 to -0.12)),
+            stopAreas = mapOf("Bn" to "490GB", "Bs" to "490GB"),
+        )
+        val placedB = OnTheWay.ridePositions(bus, poles).getValue("490GB")
+        assertEquals(51.51, placedB.latitude, 1e-9)
+        // The Planner's own point where the route places no boarding stop.
+        assertEquals(platform, OnTheWay.ridePositions(ride.copy(fromId = "Z", fromAt = platform), redLine)["Z"])
+    }
+
+    @Test
+    fun `a rider seen along the ride while waiting for its train has boarded`() {
+        val waiting = OnTheWay.follow(trip, train("9", 8))
+        // At a later stop: the index of the stop they're at along the ride's path.
+        assertEquals(OnTheWay.Along(0, atStop = true), OnTheWay.seenAlong(waiting, fix(atB, 20f), along, at(6)))
+        // At C, where they get off: the ride is done, whichever train took them (Codex, PR #383).
+        assertEquals(OnTheWay.Along(2, atStop = true, atEnd = true), OnTheWay.seenAlong(waiting, fix(atC, 20f), along, at(6)))
+        val done = OnTheWay.rideDone(waiting, at(9))
+        assertEquals(1, done.legIndex)
+        assertEquals(at(9), done.legStartedAt)
+        assertEquals("", done.vehicleId)
+        assertEquals(TripProgress.Walking(walk, at(9).plus(walk.run)), OnTheWay.advance(done, null, at(9)).second)
+        // Between stops, most of a kilometer on toward where they get off (maintainer, 2026-09-29):
+        // short of B, or past B and short of C, so a train still to reach B is behind them.
+        assertEquals(OnTheWay.Along(0, atStop = false), OnTheWay.seenAlong(waiting, fix(Coordinates(51.505, -0.12), 20f), along, at(6)))
+        assertEquals(OnTheWay.Along(1, atStop = false), OnTheWay.seenAlong(waiting, fix(Coordinates(51.515, -0.12), 20f), along, at(6)))
+        // Beside the ride's way, 200 m east of it, still on it; a kilometer east, off it, however much
+        // nearer C (Codex, PR #383).
+        assertEquals(OnTheWay.Along(1, atStop = false), OnTheWay.seenAlong(waiting, fix(Coordinates(51.515, -0.1171), 20f), along, at(6)))
+        assertNull(OnTheWay.seenAlong(waiting, fix(Coordinates(51.51, -0.1056), 20f), along, at(6)))
+        // Still on the platform, 300 m up the road, or 600 m the other way: waiting, as before.
+        assertNull(OnTheWay.seenAlong(waiting, stillThere, along, at(6)))
+        assertNull(OnTheWay.seenAlong(waiting, fix(Coordinates(51.5027, -0.12), 20f), along, at(6)))
+        assertNull(OnTheWay.seenAlong(waiting, fix(Coordinates(51.4946, -0.12), 20f), along, at(6)))
+        // Far enough on, but the fix too vague to be sure of it.
+        assertNull(OnTheWay.seenAlong(waiting, fix(Coordinates(51.505, -0.12), 200f), along, at(6)))
+        // Only while the ride is awaited: not once on board, nor while a change onto it runs.
+        assertNull(OnTheWay.seenAlong(waiting.copy(boarded = true), fix(atB, 20f), along, at(6)))
+        val onward = TripLeg("tube", "blue", "Blue", "C", "C", "E", "E", at(16), at(25), path = listOf("E"))
+        val changing = trip.copy(route = TripRoute(listOf(ride, onward)), legIndex = 1, legStartedAt = at(17))
+        assertNull(OnTheWay.seenAlong(changing, fix(atB, 20f), along, at(16)))
+        // With the boarding stop not placed, nothing to measure from.
+        assertNull(OnTheWay.seenAlong(waiting, fix(atB, 20f), along - "A", at(6)))
+    }
+
+    @Test
+    fun `waiting for a ride's train, a fix is wanted and one sure to 150 m will do`() {
+        val waiting = OnTheWay.follow(trip, train("9", 8))
+        assertTrue(OnTheWay.wantsFix(waiting, at(6)))
+        assertTrue(OnTheWay.sureEnoughFor(waiting, at(6))(fix(atB, 100f)))
+        // Only for the first ten minutes of the wait: a long one for a delayed train keeps GPS off.
+        assertFalse(OnTheWay.wantsFix(waiting, at(10)))
+        // A clock set back to before the wait began: its ten minutes can't be counted, so none
+        // (Codex, PR #383).
+        val set = waiting.copy(waitFrom = at(5))
+        assertTrue(OnTheWay.watchesWait(set, at(6)))
+        assertFalse(OnTheWay.watchesWait(set, at(3)))
+        // Left behind by a train seven minutes in, the wait goes on, but its ten minutes don't start
+        // again: they'd be twenty fixes more for each train missed.
+        val left = OnTheWay.seen(OnTheWay.follow(placed, train("8", 5)).copy(boarded = true, boardedAt = at(6)), fix(Coordinates(51.50126, -0.12), 5f), at(7))
+        assertEquals("", left.vehicleId)
+        assertTrue(OnTheWay.wantsFix(left, at(9)))
+        assertFalse(OnTheWay.wantsFix(left, at(10)))
+        // A leg of its own starts a wait of its own.
+        assertTrue(OnTheWay.wantsFix(OnTheWay.atLeg(left, 2, at(11)), at(12)))
+        // On board, past the left-behind window, none is: the train says where they are.
+        assertFalse(OnTheWay.wantsFix(waiting.copy(boarded = true, boardedAt = at(1)), at(9)))
+    }
+
+    @Test
+    fun `seen along, the rider is on the train that has left the boarding stop on the ride`() {
+        val waiting = OnTheWay.follow(trip, train("9", 8))
+        // An earlier train, gone from A, next at B: theirs.
+        val (onBoard, progress) = checkNotNull(OnTheWay.boardedOn(waiting, train("7", 5), listOf(call("B", 7), call("C", 12)), 0, at(6)))
+        assertEquals("7", onBoard.vehicleId)
+        assertTrue(onBoard.boarded)
+        assertEquals(at(5), onBoard.boardedAt)
+        progress as TripProgress.Riding
+        assertEquals("B", progress.nextStop)
+        assertEquals(2, progress.stopsLeft)
+        // Still to call at A: it hasn't left, so it isn't theirs.
+        assertNull(OnTheWay.boardedOn(waiting, train("9", 8), listOf(call("A", 8), call("B", 10), call("C", 14)), 0, at(6)))
+        // Seen at C, a train still to reach B is behind them.
+        assertNull(OnTheWay.boardedOn(waiting, train("7", 5), listOf(call("B", 7), call("C", 12)), 1, at(6)))
+        assertEquals("7", OnTheWay.boardedOn(waiting, train("7", 5), listOf(call("C", 12)), 1, at(6))?.first?.vehicleId)
+        // Off the ride altogether.
+        assertNull(OnTheWay.boardedOn(waiting, train("7", 5), listOf(call("X", 7), call("Y", 12)), 0, at(6)))
+        // Seen at B: a train due at B now is at the platform or pulling in; one due there in three
+        // minutes is on its way to it, behind them.
+        assertEquals("7", OnTheWay.boardedOn(waiting, train("7", 5), listOf(call("B", 6), call("C", 12)), 0, at(6), atStop = true)?.first?.vehicleId)
+        assertNull(OnTheWay.boardedOn(waiting, train("8", 5), listOf(call("B", 9), call("C", 14)), 0, at(6), atStop = true))
+        // Short of B, it's where the train they're on calls next, whenever it's due there.
+        assertEquals("8", OnTheWay.boardedOn(waiting, train("8", 5), listOf(call("B", 9), call("C", 14)), 0, at(6))?.first?.vehicleId)
+    }
+
+    @Test
+    fun `seen along a bus ride, a bus is taken only once its calls reach where the rider gets off`() {
+        val bus = ride.copy(mode = "bus", path = listOf("490GB", "C"))
+        val waiting = OnTheWay.follow(trip.copy(route = TripRoute(listOf(bus, walk, second))), train("9", 8))
+        assertEquals("7", OnTheWay.boardedOn(waiting, train("7", 5), listOf(call("Bn", 7), call("C", 12)), 0, at(6))?.first?.vehicleId)
+        // Its stops can't be matched by pole, so any bus of the mode would pass the rest.
+        assertNull(OnTheWay.boardedOn(waiting, train("7", 5), listOf(call("Bn", 7), call("Q", 12)), 0, at(6)))
+        // The Planner named one pole of each stop pair; a bus using the other is still the ride.
+        val paired = waiting.copy(route = TripRoute(listOf(bus.copy(fromArea = "490GA", toArea = "490GC"), walk, second)))
+        val otherPole = listOf(call("Bn", 7), call("Cs", 12))
+        assertNull(OnTheWay.boardedOn(paired, train("7", 5), otherPole, 0, at(6)))
+        val onOther = checkNotNull(OnTheWay.boardedOn(paired, train("7", 5), otherPole, 0, at(6), alightingPoles = setOf("C", "Cs"))).first
+        assertEquals("7", onOther.vehicleId)
+        // Its stop there is known as the rider's from then on: due off at 12, and got off once past it.
+        assertEquals("Cs", onOther.vehicleOffId)
+        val (due, riding) = OnTheWay.advance(onOther, otherPole, at(8))
+        assertEquals(at(12), (riding as TripProgress.Riding).getOffAt)
+        assertEquals(1, OnTheWay.advance(due, emptyList(), at(13)).first.legIndex)
+        // Still to call at the other boarding pole: it hasn't left for the rider.
+        assertNull(OnTheWay.boardedOn(paired, train("7", 5), listOf(call("As", 6)) + otherPole, 0, at(6), setOf("A", "As"), setOf("C", "Cs")))
+    }
+
+    @Test
+    fun `seen further along a bus ride, a bus still behind the rider isn't theirs`() {
+        val bus = ride.copy(mode = "bus", path = listOf("490GB", "490GD", "C"))
+        val waiting = OnTheWay.follow(trip.copy(route = TripRoute(listOf(bus, walk, second))), train("9", 8))
+        val areas = mapOf("Bn" to "490GB", "Dn" to "490GD")
+        // Seen at D (the path's second stop): the bus next calling at B is a later one, behind them.
+        assertNull(OnTheWay.boardedOn(waiting, train("8", 7), listOf(call("Bn", 9), call("Dn", 11), call("C", 14)), 1, at(8), areas = areas))
+        // The one next calling at D, or past it, can be theirs.
+        assertEquals("7", OnTheWay.boardedOn(waiting, train("7", 5), listOf(call("Dn", 8), call("C", 11)), 1, at(8), areas = areas)?.first?.vehicleId)
+        assertEquals("7", OnTheWay.boardedOn(waiting, train("7", 5), listOf(call("C", 9)), 1, at(8), areas = areas)?.first?.vehicleId)
+        // With its next stop unplaced, it can't be told from a later bus.
+        assertNull(OnTheWay.boardedOn(waiting, train("7", 5), listOf(call("Dn", 8), call("C", 11)), 1, at(8)))
+    }
+
+    @Test
+    fun `a stop pair's poles are those its line's route puts in it`() {
+        val poles = redLine.copy(stopAreas = mapOf("Cn" to "490GC", "Cs" to "490GC", "B" to "490GB"))
+        assertEquals(setOf("Cn", "Cs"), OnTheWay.pairPoles("490GC", poles))
+        assertEquals(emptySet<String>(), OnTheWay.pairPoles("", poles))
     }
 
     @Test
@@ -795,6 +949,23 @@ class OnTheWayTest {
         // The walk to D goes on to the second ride; none after the last leg.
         assertEquals(second, OnTheWay.upcomingRide(trip.copy(legIndex = 1)))
         assertNull(OnTheWay.upcomingRide(trip.copy(legIndex = 3)))
+    }
+
+    @Test
+    fun `a ride's trains, gone or still to come, are those whose route takes them to the stop`() {
+        val red = LineSequence(
+            listOf(LineRoute("A-C", listOf("A", "B", "C")), LineRoute("A-Z", listOf("A", "B", "Z"))),
+            mapOf("A" to "A", "B" to "B", "C" to "C", "Z" to "Z"),
+        )
+        // Both left A a while ago: the one for C takes the ride, the one for the Z branch doesn't,
+        // though both run through B first.
+        val gone = listOf(
+            Departure("red", "Red", "outbound", "C", null, t0, "tube", vehicleId = "1"),
+            Departure("red", "Red", "outbound", "Z", null, t0, "tube", vehicleId = "2"),
+        )
+        assertEquals(listOf("1"), OnTheWay.takesRide(ride, gone, mapOf("red" to red)).map { it.vehicleId })
+        // With no route for the line, none is vouched for.
+        assertEquals(emptyList<Departure>(), OnTheWay.takesRide(ride, gone, emptyMap()))
     }
 
     @Test
