@@ -928,12 +928,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         - [ ] **Remember a picked place in *Recent***: a chosen geocoded place isn't recorded (no stop
               id); *To…*'s *Recent* keeps only stops. Consider a device-local recent-places list.
         - [x] **Extend geocoded places to the From-station To… picker**: its search offers places too.
-      - [ ] **Delete the unreachable direct-trips page path**: `LookDepartures`' `destination` and
-            `hereTiers` are always null now. Delete their branches and everything only they reach
-            (find it by a repo-wide search: `rememberTripView`, `tripMessages`, `tripLoaded`,
-            `hereTripTiers`/`HereTripTiers`, `DirectTrips.lineIds`, and `StationStopsViewModel`'s
-            `around` with `DirectTrips.destinationStops`, so far), with its tests. Keep
-            what the planner calls: `DirectTrips.filter`, `rememberLineSequences`, `hereOriginIds`.
+      - [x] **Delete the unreachable direct-trips page path**: `LookDepartures` is now only a
+            station page with nowhere to stand; the direct-trips filter page, a trip from here
+            through it, and a To… destination's widening to the stops around it are gone, with
+            their tests. The planner keeps `DirectTrips.filter`, `rememberLineSequences` and
+            `hereOriginIds`.
       - [x] **Plan to every station of a complex** (maintainer, 2026-09-26: the best way to King's
             Cross St. Pancras whatever the line or mode): once per station code plus one bus
             stop, in parallel, merged, the soonest six routes timed.

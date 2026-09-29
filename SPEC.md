@@ -1266,7 +1266,7 @@ them there:
   under that ride's own row in the route's legs, drawn as the departures board draws a stop — its
   platform header over the board's own outlined card — so they read as a board, not as another step
   (maintainer, 2026-09-28): every line of the ride's mode whose route calls at
-  where they get off — the same check as a From… To… page, so another branch's trains stay out —
+  where they get off — judged by each train's own line route, so another branch's trains stay out —
   a row per line and terminus with its next few times, not only the train followed, a time grayed
   when it leaves before the rider can be there (as a trip's cards gray one); "Updating…"
   once the board is too old to stand behind (D4); it shows "Loading" from the step's first frame

@@ -347,6 +347,9 @@ internal fun pendingCardTrains(
     sequences: Map<String, LineSequence?>,
 ): List<Departure> = pendingTrains(state, leg, now, sequences).let { pending -> pending - uncheckedPending(pending, leg) }
 
+/** Why a trip's live trains may not all have been checked ([tripCheckState]). */
+internal enum class TripMessage { CHECKING, INCOMPLETE }
+
 /**
  * Whether some listed route's live trains couldn't be checked against where the rider gets off:
  * [TripMessage.CHECKING] while a line's route loads, [TripMessage.INCOMPLETE] once one failed or a
@@ -1003,7 +1006,7 @@ private fun TripBanners(
     when (check) {
         TripMessage.CHECKING -> Banner(stringResource(R.string.trip_checking))
         TripMessage.INCOMPLETE -> Banner(stringResource(R.string.journey_incomplete))
-        else -> Unit
+        null -> Unit
     }
     if (hiddenModes.isNotEmpty()) {
         ActionBanner(

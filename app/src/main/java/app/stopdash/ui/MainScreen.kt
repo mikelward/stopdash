@@ -350,12 +350,6 @@ fun MainScreen(
     // there. An app-bar action on a searched station's page; an overflow item on the near-me list,
     // where the trip starts from the stops near the rider. Null leaves it out.
     onPlanTo: (() -> Unit)? = null,
-    // A line over the list saying a To… filter is still checking, or couldn't check, some
-    // departures (SPEC principle 2); null hides it.
-    tripNotice: String? = null,
-    // The empty list's text in place of "No upcoming departures": a To… filter's "No direct
-    // services to ‹place› soon".
-    emptyMessage: String? = null,
     // The saved favorite places to offer as route chips atop the near-me list (SPEC D9 → *Routing
     // from the near-me list*), already less the ones the rider is at; [onRouteToPlace] plans a trip
     // to the one tapped. Empty (the default, and on a station's page) shows no row.
@@ -1327,8 +1321,6 @@ fun MainScreen(
                         // A platform/station drill-down shows one place's stops, not the near-me set, so
                         // the "your location is low-confidence" banner doesn't apply there.
                         locationBanner = if (platformRows != null) null else locationBanner,
-                        tripNotice = if (platformRows != null) null else tripNotice,
-                        emptyMessage = if (platformRows != null) null else emptyMessage,
                         // A journey heading opens the journey's own view (from the full list only).
                         onOpenJourney = { journey -> journeyViewKey = journey.key },
                         // The full near-me list only: not a platform or station drill-down, nor a
@@ -1456,10 +1448,6 @@ private fun LoadedContent(
     // Non-null when the shown stops are backed by a low-confidence location: a top banner says so
     // and offers "Try again" (runs [onRefresh], a re-locate). Null hides it.
     locationBanner: LocationBanner? = null,
-    // A To… filter still checking, or unable to check, some departures (see [MainScreen]).
-    tripNotice: String? = null,
-    // The empty list's text in place of "No upcoming departures" (see [MainScreen]).
-    emptyMessage: String? = null,
     // The modes hidden from this list, their banner's "Show all", and the long-press "Hide ‹mode›"
     // (null on a list that doesn't offer it). See [MainScreen].
     hiddenModes: Set<String> = emptySet(),
@@ -1517,7 +1505,6 @@ private fun LoadedContent(
                     onTryAgain = onRefresh,
                 )
             }
-            tripNotice?.let { Banner(it) }
             // Modes the user hid (SPEC *Finding stops → Hiding a mode*): one line saying which, so a
             // shorter list never passes for all there is, with "Show all" to bring them back.
             if (hiddenModes.isNotEmpty()) {
@@ -1586,7 +1573,7 @@ private fun LoadedContent(
                                 hiddenGroupsLabel(hiddenModes),
                             )
                             emptyStateUncertain -> stringResource(R.string.departures_stale_empty)
-                            else -> emptyMessage ?: stringResource(R.string.departures_empty)
+                            else -> stringResource(R.string.departures_empty)
                         },
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -1,12 +1,11 @@
 package app.stopdash.domain
 
 /**
- * The departures from a searched station that call at another (SPEC *Finding stops → From… To…*):
- * "From… Highgate, To… Euston" keeps the Northern line trains whose path reaches Euston and drops
- * the rest. Direct only — a trip needing a change is journey planning, not yet built. Like a starred
- * journey's card ([Journeys.trains]), a departure is judged by its own line's route ([RouteStops]);
- * one whose route is still loading or failed, or whose path the route can't resolve, is left out
- * and flagged rather than guessed either way (SPEC principle 1).
+ * The departures from a stop that call at another (SPEC *Finding stops → From… To…*): a trip's leg
+ * boarding at Highgate and getting off at Euston keeps the Northern line trains whose path reaches
+ * Euston and drops the rest. Like a starred journey's card ([Journeys.trains]), a departure is judged
+ * by its own line's route ([RouteStops]); one whose route is still loading or failed, or whose path
+ * the route can't resolve, is left out and flagged rather than guessed either way (SPEC principle 1).
  */
 object DirectTrips {
     /** One of the destination station's stops: its TfL id, name and interchange (blank if none). */
@@ -123,38 +122,6 @@ object DirectTrips {
     /** How far from the rider a stop still counts as "here" for To… from the near-me list: 0.2 mi. */
     const val ORIGIN_RADIUS_METERS = 320.0
 
-    /** How far from a destination station a stop still counts as arriving there: 0.2 mi, as for origins. */
-    const val DESTINATION_RADIUS_METERS = 320
-
-    /**
-     * The stops a To… counts as arriving at [station] (SPEC *Finding stops → From… To…*): the
-     * station's own stops, then the stops [around] it, nearest first. A station's own record holds
-     * its platforms, not the bus stops at its door — "To… Archway" found only the tube until the
-     * buses stopping outside counted too — so a station takes in every stop within
-     * [DESTINATION_RADIUS_METERS] of [center]. A bus stop picked as the destination is a single
-     * place already, so it takes in only its same-named neighbors within the search's fold
-     * ([StationIndex.FOLD_RADIUS_METERS]) — the stands the search listed as one — never an
-     * unrelated pole down the road that another route happens to call at.
-     */
-    fun destinationStops(station: List<StopLocation>, around: List<StopLocation>, center: Coordinates): List<StopLocation> {
-        val busOnly = station.isNotEmpty() && station.all { stop ->
-            stop.lines.isNotEmpty() && stop.lines.all { it.mode.equals("bus", ignoreCase = true) }
-        }
-        val names = station.mapTo(HashSet()) { StationMatcher.normalize(cleanStopName(it.name)) }
-        val near = around
-            .map { it to NearestStops.distanceMeters(center.latitude, center.longitude, it.latitude, it.longitude) }
-            .filter { (stop, meters) ->
-                if (busOnly) {
-                    meters <= StationIndex.FOLD_RADIUS_METERS && StationMatcher.normalize(cleanStopName(stop.name)) in names
-                } else {
-                    meters <= DESTINATION_RADIUS_METERS
-                }
-            }
-            .sortedBy { it.second }
-            .map { it.first }
-        return (station + near).distinctBy { it.id }
-    }
-
     /**
      * The stops a To… from the near-me list starts from (SPEC *Finding stops → From… To…*): every
      * stop the list is showing ([shown], a "More" reveal included), plus any stop the nearby lookup
@@ -170,15 +137,6 @@ object DirectTrips {
         val ids = (near + rest).distinct()
         return ids.ifEmpty { listOfNotNull(byDistance.firstOrNull()?.key) }
     }
-
-    /** The lines to load routes for: every line departing from or declared at [stops], less [hidden] modes. */
-    fun lineIds(stops: List<StopArrivals>, hidden: Set<String> = emptySet()): List<String> =
-        stops.flatMap { stop ->
-            stop.departures.filterNot { HiddenModes.isHidden(it.mode, it.lineId, hidden) }.map { it.lineId } +
-                stop.lines.filterNot { HiddenModes.isHidden(it, hidden) }.map { it.id }
-        }
-            .filter { it.isNotBlank() }
-            .distinct()
 
     /**
      * [this] also knowing [stopId]'s interchange and name, where the station index didn't already
