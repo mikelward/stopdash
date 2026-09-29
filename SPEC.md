@@ -1078,7 +1078,8 @@ checked isn't asked about again, and a trip shown again takes a closure the list
 bus, every pole of the stop pair is checked, since the one it uses may be the other side of the road:
 until its line's route shows which, the route isn't vouched for there, and once it does, only the pole
 the bus uses counts, by a check of its own. A bus station's stand the line's route puts the bus at, in
-place of the one the Planner named, isn't checked yet, so the route isn't vouched for there either.
+place of the one the Planner named, is checked too once the route shows it, and until then the route
+isn't vouched for there.
 A notice shows as the list's closure card on the open route, where
 the ride boards or gets off, and as the ⚠ on the list card's ride. A failed check keeps the last known
 notice and claims nothing new. Routes sort
@@ -1871,7 +1872,8 @@ surface.)
   reused for 5 minutes — closures change over hours, and the check is half of every stop's cost —
   while line status, the fast-moving signal, is reused for 90 s — so the 60 s auto-refresh
   re-checks it every other cycle and a new suspension still shows within about two minutes. Both live in memory
-  only; a failed request is never reused. A junction's **bus poles share one closure request**
+  only; a failed request is never reused, nor is a closure answer asked before a check of that
+  stop that has failed since, so the stop is asked again. A junction's **bus poles share one closure request**
   (TfL takes several stop ids at once); each pole gets only its own notices, so an open pole
   never shows a sibling's closure. A station keeps its own request, since its closures live on
   child platforms. Keyless, the app sends up to **20 requests at once, then 40 a minute**, at most

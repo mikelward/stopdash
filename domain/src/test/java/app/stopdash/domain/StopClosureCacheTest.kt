@@ -84,8 +84,9 @@ class StopClosureCacheTest {
         // What was asked after a lookup is newer than it; what was asked before isn't.
         assertEquals(closed, cache.since("A", first)?.notices)
         assertNull(cache.since("A", second))
-        // And a failure keeps nothing.
-        assertEquals(now.plusSeconds(10) to closed, cache["A"].pair())
+        // And a failure keeps no answer, but the one asked before it isn't reused over it (Codex,
+        // PR #375).
+        assertNull(cache["A"])
         // A success settles as it keeps.
         assertEquals(Result.success(emptyList<StopDisruption>()), cache.settle("A", cache.ask(now.plusSeconds(30)), Result.success(emptyList())).map { it.notices })
         assertEquals(now.plusSeconds(30) to emptyList<StopDisruption>(), cache["A"].pair())
@@ -98,5 +99,36 @@ class StopClosureCacheTest {
         assertNull(cache["S0"].pair())
         assertEquals(now to emptyList<StopDisruption>(), cache["S1"].pair())
         assertEquals(now to emptyList<StopDisruption>(), cache["S${StopClosureCache.MAX}"].pair())
+    }
+
+    @Test
+    fun `an answer asked before a lookup that failed since isn't reused, until one asked after it succeeds`() {
+        val cache = StopClosureCache()
+        val first = cache.ask(now)
+        val second = cache.ask(now.plusSeconds(10))
+        val third = cache.ask(now.plusSeconds(20))
+        // The third fails at once; the second lands after it, and is kept as the stop's last answer.
+        assertTrue(cache.settle("A", third, Result.failure(IllegalStateException())).isFailure)
+        assertEquals(closed, cache.settle("A", second, Result.success(closed)).getOrNull()?.notices)
+        // But it was asked before the lookup that failed, so it isn't given for reuse (Codex, PR #375).
+        assertNull(cache["A"])
+        // The first, failing last, is answered by the second, as before, and changes nothing.
+        assertEquals(closed, cache.settle("A", first, Result.failure(IllegalStateException())).getOrNull()?.notices)
+        assertNull(cache["A"])
+        // One asked after the failure answers for it.
+        cache.keep("A", cache.ask(now.plusSeconds(30)), emptyList())
+        assertEquals(now.plusSeconds(30) to emptyList<StopDisruption>(), cache["A"].pair())
+    }
+
+    @Test
+    fun `a failure dropped for room takes the answer asked before it too`() {
+        val cache = StopClosureCache()
+        cache.keep("A", cache.ask(now), closed)
+        cache.settle("A", cache.ask(now.plusSeconds(10)), Result.failure(IllegalStateException()))
+        assertNull(cache["A"])
+        // Enough failures at other stops that A's is dropped: its older answer isn't offered again
+        // (Codex, PR #375).
+        repeat(StopClosureCache.MAX) { cache.settle("S$it", cache.ask(now.plusSeconds(20)), Result.failure(IllegalStateException())) }
+        assertNull(cache["A"])
     }
 }

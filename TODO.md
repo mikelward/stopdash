@@ -1125,12 +1125,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             dismissed from a leg's page (or the list) is honored on that page, but the trip's own
             cards still show the line's ⚠. Apply the dismissals there as the list does, keeping
             a dismissed line's status out of the warnings without reading it as unchecked.
-      - [ ] **Check the stand a bus is placed on when the Planner named another** (Codex on #367):
+      - [x] **Check the stand a bus is placed on when the Planner named another** (Codex on #367):
             at a bus station, a line's route can put the bus at a stand of the same name other than
             the one the Planner named. The trip judges the route there, but asks only about the
             Planner's stands and a pair's poles, so such a route is never vouched for at that stop.
             The trip's model doesn't know the line routes the screen places buses by; it needs the
-            placed stands handed to it, or its own copy of the routes, to ask about them too.
+            placed stands handed to it, or its own copy of the routes, to ask about them too. Done:
+            the screen hands it every stop it judges the routes at, placed stands and other lines'
+            poles included, and the trip checks those it doesn't ask about itself.
       - [ ] **Prune a trip's dismissals once its own checks see the alert end** (Codex on #367):
             the list reconciles its dismissals after each check, dropping one whose alert has ended
             at a place it checked, so the same text recurring later shows again. A trip never does,
