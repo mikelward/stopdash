@@ -1002,6 +1002,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             card ("Fastest") and over the one riding fewest ("Simplest"), or "Fastest · Simplest" on
             one card that is both (`routeLabels`, `:domain`). The rules are autopilot's; see
             *Decisions needing review*.
+            - [x] **"Other" over the rest** (maintainer, 2026-09-30): one header over the cards
+                  neither Fastest nor Simplest, after those two (`headedCards`), so Simplest moves
+                  up beside Fastest; no Other where neither of those is shown.
       - [ ] **Step-free trips** (maintainer, 2026-09-30; after the intermediate work): a dropdown
             atop a trip, **Step-free: Any / Station / Fully** (Station: step-free from the street to
             the platform; Fully: to the train as well; the maintainer's names, 2026-09-30), planning
@@ -2701,8 +2704,9 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   none on a lone card or one whose arrival is withheld; Simplest over the card with the fewest
   rides, the earliest shown on a tie, and none when every card rides as often; "Fastest ·
   Simplest" when one card is both. *Alternatives:* Fastest by raw earliest arrival across tiers
-  (could crown an "est." route over a live one); a header on every card ("Other"); "Simplest" read
-  as fewest walking minutes. **Reversible:** `routeLabels` in `:domain` and `RouteLabelHeader`.
+  (could crown an "est." route over a live one); "Simplest" read as fewest walking minutes. (The
+  rest now sit under one "Other" header: the maintainer's call, 2026-09-30, not autopilot's.)
+  **Reversible:** `routeLabels` in `:domain` and `RouteLabelHeader`.
   **To confirm:** on a device, that the headers read well over the cards.
 - [ ] **Trip mode toggles: which groups, and where (autopilot, 2026-09-30).** Taken: chips under the
   step-free dropdown atop a trip only (not in Settings), one per `ModeGroups` group under the list's

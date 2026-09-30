@@ -22,7 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -107,7 +107,7 @@ import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTiming
 import app.stopdash.domain.riderLineName
-import app.stopdash.domain.routeLabels
+import app.stopdash.domain.headedCards
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.StepFree
@@ -1295,19 +1295,21 @@ private fun RouteList(
         if (cards.isEmpty()) {
             item(key = "none") { Text(stringResource(R.string.trip_no_routes), style = MaterialTheme.typography.bodyLarge) }
         }
-        // Which card gets there soonest and which rides fewest, over each (maintainer, 2026-09-30).
-        val labels = routeLabels(cards.map { it.first() })
+        // Which card gets there soonest and which rides fewest, over each, then the rest under
+        // "Other" (maintainer, 2026-09-30).
+        val shown = headedCards(cards.map { it.first() })
         // Routes sharing every stop but differing in their first line are one card: one header, a
         // row per ride, and the first ride's times for every line together. The card is one choice
         // (maintainer, 2026-09-27): tapping it opens the best of its routes, and a long press
         // anywhere offers to hide each group any of its legs rides.
-        itemsIndexed(cards, key = { _, card -> cardKey(card.first().route) }) { index, card ->
+        items(shown, key = { cardKey(cards[it.index].first().route) }) { headed ->
+            val card = cards[headed.index]
             val modes = remember(card) { cardModes(card) }
             var menuOpen by remember { mutableStateOf(false) }
             val onLongPress = if (onHideMode != null && modes.isNotEmpty()) ({ menuOpen = true }) else null
             val moreLabel = stringResource(R.string.more_actions)
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                labels.getOrNull(index)?.let { RouteLabelHeader(it) }
+                headed.header?.let { RouteLabelHeader(it) }
                 Box {
                     // Each row takes the card's tap and long press itself: a clickable card would merge
                     // its rows into one, and a screen reader would lose the rows' own times.
@@ -1356,7 +1358,7 @@ private fun RouteList(
     }
 }
 
-/** The bold header over a card: "Fastest", "Simplest", or both ([routeLabels]), read as a heading. */
+/** The bold header over a card: "Fastest", "Simplest", both, or "Other" ([headedCards]), read as a heading. */
 @Composable
 private fun RouteLabelHeader(label: RouteLabel) {
     Text(
@@ -1365,6 +1367,7 @@ private fun RouteLabelHeader(label: RouteLabel) {
                 RouteLabel.FASTEST -> R.string.trip_label_fastest
                 RouteLabel.SIMPLEST -> R.string.trip_label_simplest
                 RouteLabel.FASTEST_AND_SIMPLEST -> R.string.trip_label_fastest_simplest
+                RouteLabel.OTHER -> R.string.trip_label_other
             },
         ),
         style = MaterialTheme.typography.titleSmall,

@@ -284,18 +284,24 @@ class TripScreenScreenshotTest {
     }
 
     @Test
-    fun the_first_route_is_headed_fastest() {
-        // Every route here rides twice, so the first card is fastest and none is simplest.
+    fun the_first_route_is_headed_fastest_and_the_rest_other() {
+        // Every route here rides twice, so the first card is fastest, none is simplest, and the
+        // other two share one "Other" header.
         show(planned)
-        composeRule.onAllNodesWithTag("routeLabel").assertCountEquals(1)
-        composeRule.onNodeWithTag("routeLabel").assertTextEquals("Fastest")
-        composeRule.onNodeWithTag("routeLabel").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+        val headers = composeRule.onAllNodesWithTag("routeLabel")
+        headers.assertCountEquals(2)
+        headers[0].assertTextEquals("Fastest")
+        headers[1].assertTextEquals("Other")
+        headers[0].assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+        headers[1].assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
         composeRule.onAllNodesWithText("Simplest").assertCountEquals(0)
-        // Over the first card, the one arriving soonest.
-        val header = composeRule.onNodeWithTag("routeLabel").getUnclippedBoundsInRoot()
+        // Fastest over the first card, the one arriving soonest; Other between it and the rest.
+        val fastest = headers[0].getUnclippedBoundsInRoot()
+        val other = headers[1].getUnclippedBoundsInRoot()
         val first = composeRule.onNodeWithText("27 min · ~08:29").getUnclippedBoundsInRoot()
         val second = composeRule.onNodeWithText("28 min · ~08:30").getUnclippedBoundsInRoot()
-        assertTrue(header.bottom <= first.top && first.top < second.top)
+        val third = composeRule.onNodeWithText("38 min · ~08:40").getUnclippedBoundsInRoot()
+        assertTrue(fastest.bottom <= first.top && first.bottom <= other.top && other.bottom <= second.top && second.top < third.top)
     }
 
     @Test

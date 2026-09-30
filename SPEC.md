@@ -972,7 +972,10 @@ out later. A bold header says
 so over it, **Fastest**, and **Simplest** heads the card riding fewest times (fewest changes; the
 earliest shown on a tie), or **Fastest · Simplest** heads one card that is both (maintainer,
 2026-09-30), so the trade between them reads at a glance. Neither heads a lone card, Fastest never a
-card whose arrival is withheld, and Simplest only when the cards don't all ride as often. Routes riding the
+card whose arrival is withheld, and Simplest only when the cards don't all ride as often. The cards
+headed so come first, Fastest then Simplest, and the rest follow in their own order under one
+**Other** header (maintainer, 2026-09-30), so a Simplest card arriving later moves up beside Fastest
+rather than splitting the rest in two. With neither header shown, no card is headed Other. Routes riding the
 same lines in turn but changing at a different stop are **cards of their own**, told apart by the
 stops their ride rows name (below) (maintainer, 2026-09-27). Routes whose first ride goes between the
 same two stops by the same mode and then ride the same lines — the 43 or the 134 to Highgate
