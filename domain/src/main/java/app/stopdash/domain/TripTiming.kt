@@ -295,15 +295,47 @@ object TripTiming {
     /**
      * [estimates] best first: routes that can be ridden, then those that can't; among those that can,
      * any that couldn't be checked with no live train to time them by ([Estimate.doubted]) last.
-     * Within each, fully live before estimated before withheld, then the earliest arrival, then one
-     * checked before one that couldn't be, then the fewest changes.
+     * Within each, fully live before estimated before withheld, each by the earliest arrival, then one
+     * checked before one that couldn't be, then the fewest changes; except that an estimate goes ahead
+     * of a live route it beats even at its latest ([beatsEvenLate]): a route faster however its waits
+     * fall isn't buried under a slower one because part of it is only estimated (maintainer,
+     * 2026-09-30: a live ride then a frequent bus sat below a slower live route even at its worst).
      */
     fun rank(estimates: List<Estimate>): List<Estimate> =
-        estimates.sortedWith(
-            compareBy<Estimate>(
-                { it.blocked }, { it.doubted }, { it.basis }, { it.arrival ?: Instant.MAX }, { it.unchecked }, { it.route.rides.size },
-            ),
-        )
+        estimates.groupBy { it.blocked to it.doubted }.toSortedMap(compareBy<Pair<Boolean, Boolean>>({ it.first }, { it.second }))
+            .values.flatMap { tier ->
+                val live = tier.filter { it.basis == Basis.LIVE }.sortedWith(WITHIN_BASIS)
+                val estimated = tier.filter { it.basis == Basis.ESTIMATED }.sortedWith(WITHIN_BASIS)
+                merge(live, estimated) + tier.filter { it.basis == Basis.UNKNOWN }.sortedWith(WITHIN_BASIS)
+            }
+
+    // Within one basis: the earliest arrival, then checked before unchecked, then the fewest changes.
+    private val WITHIN_BASIS = compareBy<Estimate>({ it.arrival ?: Instant.MAX }, { it.unchecked }, { it.route.rides.size })
+
+    // [live] and [estimated], each already in order, as one list: the next estimate goes ahead of the
+    // next live route only when it beats that route even at its latest. Each list keeps its own order,
+    // so an estimate never passes another estimate to get there.
+    private fun merge(live: List<Estimate>, estimated: List<Estimate>): List<Estimate> {
+        val merged = ArrayList<Estimate>(live.size + estimated.size)
+        var l = 0
+        var e = 0
+        while (l < live.size || e < estimated.size) {
+            val takeEstimate = e < estimated.size && (l >= live.size || beatsEvenLate(estimated[e], live[l]))
+            merged += if (takeEstimate) estimated[e++] else live[l++]
+        }
+        return merged
+    }
+
+    /**
+     * Whether [estimate] gets there before [live] even at its latest ([Estimate.latest]): timed from at
+     * least one live train, so it isn't a timetable alone, and with a latest to give. One whose latest
+     * ties or passes the live route's arrival, or that has none, stays below it.
+     */
+    fun beatsEvenLate(estimate: Estimate, live: Estimate): Boolean {
+        val latest = estimate.latest ?: return false
+        val arrival = live.arrival ?: return true
+        return estimate.legs.any { it.live } && latest.isBefore(arrival)
+    }
 
     /**
      * [estimates] without a route another beats on both counts (maintainer, 2026-09-28): one with
