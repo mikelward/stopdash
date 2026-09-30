@@ -155,12 +155,17 @@ class CachingTflClient(
     // answering late can't pass for a newer one, or overwrite it. Kept only if shareable both when
     // asked and when answered, and asked since the cache was last cleared: a source changed in
     // between (a National Rail key added or removed) leaves nothing behind.
-    override suspend fun arrivals(stopId: String): List<Departure> {
+    override suspend fun arrivals(stopId: String): List<Departure> = kept(stopId) { tfl.arrivals(stopId) }
+
+    override suspend fun arrivals(stopId: String, railBoard: Boolean): List<Departure> =
+        kept(stopId) { tfl.arrivals(stopId, railBoard) }
+
+    private suspend fun kept(stopId: String, fetch: suspend () -> List<Departure>): List<Departure> {
         val askedAt = SteadyClock.stamp(clock())
         val generation = cache.generation
         val shareable = tfl.shareable(stopId)
         val source = tfl.arrivalsSource()
-        return tfl.arrivals(stopId).also {
+        return fetch().also {
             if (shareable && tfl.shareable(stopId) && tfl.arrivalsSource() == source) {
                 cache.put(stopId, it, tfl.stampOf(stopId, askedAt), tfl.railFeed(stopId), generation, source)
             }

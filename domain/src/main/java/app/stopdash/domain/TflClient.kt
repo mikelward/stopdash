@@ -18,6 +18,20 @@ interface TflClient {
     suspend fun arrivals(stopId: String): List<Departure>
 
     /**
+     * [stopId]'s [arrivals], less its National Rail station's board when [railBoard] is false: the
+     * rider has hidden National Rail and nothing shown at the stop runs on it
+     * ([HiddenModes.wantsRailBoard]), so the board would spend a request on rows nobody sees (SPEC
+     * *Finding stops → Hiding a mode*). A client with no National Rail feed answers as [arrivals].
+     */
+    suspend fun arrivals(stopId: String, railBoard: Boolean): List<Departure> = arrivals(stopId)
+
+    /**
+     * Whether [stopId]'s [arrivals] can carry a National Rail board: a station with one, National Rail
+     * times being on ([RailAwareTflClient]). False for a client with no National Rail feed.
+     */
+    fun hasRailBoard(stopId: String): Boolean = false
+
+    /**
      * Where [stopId]'s National Rail times stood in its last [arrivals] (SPEC *National Rail*): the
      * board came back, no key is set, or the board failed; null when none apply. Read after
      * [arrivals] returns; a client with no National Rail feed always answers null.

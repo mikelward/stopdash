@@ -37,6 +37,32 @@ class WidgetRefreshTest {
         DeparturesSnapshot(stops = stops.toList(), fetchedAt = stops.maxOf { it.fetchedAt })
 
     @Test
+    fun `with National Rail hidden only a pinned National Rail journey keeps its station's board`() {
+        val tube = LineRef("victoria", "Victoria", "tube")
+        val rail = LineRef("thameslink", "Thameslink", "national-rail")
+        // Three mixed stations, each declaring a tube and a National Rail line.
+        fun station(id: String) = stop(id, listOf(departure("Brixton"))).copy(lines = listOf(tube, rail))
+        val prior = snapshot(station("910GRAIL"), station("910GTUBE"), station("910GNONE")).copy(
+            journeys = listOf(
+                WidgetJourney("910GRAIL", setOf(JourneyCall("Thameslink", "Brighton", null))),
+                WidgetJourney("910GTUBE", setOf(JourneyCall("victoria", "Brixton", null))),
+            ),
+        )
+        val railHidden = setOf("national-rail")
+        assertEquals(
+            mapOf("910GRAIL" to true, "910GTUBE" to false, "910GNONE" to false),
+            WidgetRefresh.railBoards(prior, railHidden),
+        )
+        assertTrue("nothing hidden", WidgetRefresh.railBoards(prior, emptySet()).values.all { it })
+        // A pinned line the stop doesn't declare takes its mode from the stop's last departures.
+        val undeclared = snapshot(
+            stop("910GRAIL", listOf(departure("Brighton").copy(lineId = "southern", lineName = "Southern", mode = "national-rail")))
+                .copy(lines = listOf(tube)),
+        ).copy(journeys = listOf(WidgetJourney("910GRAIL", setOf(JourneyCall("southern", "Brighton", null)))))
+        assertEquals(mapOf("910GRAIL" to true), WidgetRefresh.railBoards(undeclared, railHidden))
+    }
+
+    @Test
     fun `a refreshed stop keeps its nearer places, so the widget hides the same services`() = runTest {
         val nearer = Terminating.Nearer(ids = setOf("940GZZLUBXN"))
         val prior = snapshot(stop("A", emptyList()).copy(nearer = nearer))

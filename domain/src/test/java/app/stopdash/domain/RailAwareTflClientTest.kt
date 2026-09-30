@@ -8,6 +8,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -47,6 +48,49 @@ class RailAwareTflClientTest {
         val lines = client.arrivals("910GEXAMPLE").map { it.lineId }
         assertEquals(listOf("overground-example", "great-example"), lines)
         assertEquals(listOf("EXA"), board.asked)
+    }
+
+    @Test
+    fun `a stop not wanting the board asks TfL alone and has no National Rail feed`() = runTest {
+        val board = Board()
+        val client = CachingTflClient(RailAwareTflClient(tfl, board, { codes }), ArrivalsCache())
+        assertTrue(client.hasRailBoard("910GEXAMPLE"))
+        assertFalse("not a station with a board", client.hasRailBoard("940GZZLUEXA"))
+        board.key = false
+        assertFalse("no key", client.hasRailBoard("910GEXAMPLE"))
+        board.key = true
+        client.arrivals("910GEXAMPLE")
+        assertEquals(RailFeed.LIVE, client.railFeed("910GEXAMPLE"))
+        assertEquals(listOf("overground-example"), client.arrivals("910GEXAMPLE", railBoard = false).map { it.lineId })
+        assertEquals("the board asked once, for the first fetch only", listOf("EXA"), board.asked)
+        assertEquals(null, client.railFeed("910GEXAMPLE"))
+        assertEquals(null, client.fetchedAt("910GEXAMPLE"))
+        // Wanting it again asks again.
+        assertEquals(2, client.arrivals("910GEXAMPLE", railBoard = true).size)
+        assertEquals(listOf("EXA", "EXA"), board.asked)
+    }
+
+    @Test
+    fun `leaving the board out without a key keeps the station's No key`() = runTest {
+        val board = Board(key = false)
+        val client = RailAwareTflClient(tfl, board, { codes })
+        assertEquals(listOf("overground-example"), client.arrivals("910GEXAMPLE", railBoard = false).map { it.lineId })
+        assertEquals(RailFeed.NO_KEY, client.railFeed("910GEXAMPLE"))
+        assertTrue(board.asked.isEmpty())
+    }
+
+    @Test
+    fun `a twin wanting the board takes it at once from an owner that stopped wanting it`() = runTest {
+        val board = Board()
+        val shared = RailStationCodes(mapOf("TWINA" to "TWN", "TWINB" to "TWN"))
+        val client = RailAwareTflClient(tfl, board, { shared }, elapsedMillis = { 0L })
+        fun List<Departure>.rail() = count { it.mode == "national-rail" }
+        assertEquals(1, client.arrivals("910GTWINA").rail())
+        // National Rail hidden: the near-me stop leaves the board out; a starred journey's origin,
+        // its twin, still shows it, well within the owner's hold.
+        assertEquals(0, client.arrivals("910GTWINA", railBoard = false).rail())
+        assertEquals(1, client.arrivals("910GTWINB", railBoard = true).rail())
+        assertEquals(listOf("TWN", "TWN"), board.asked)
     }
 
     @Test

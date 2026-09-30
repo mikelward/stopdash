@@ -20,6 +20,7 @@ import androidx.work.await
 import app.stopdash.data.DataStoreAppSettings
 import app.stopdash.data.DataStoreDismissedAlertsStore
 import app.stopdash.data.DataStoreSnapshotStore
+import app.stopdash.data.HiddenModesSetting
 import app.stopdash.data.KtorTflClient
 import app.stopdash.data.LineAlertDirections
 import app.stopdash.data.SharedTflRateLimiter
@@ -391,6 +392,10 @@ internal suspend fun refreshStoredSnapshot(
                     boards = ArrivalsCache.SHARED,
                 ))
                 ran = true
+                // A station's National Rail board is left out while National Rail is hidden, since it
+                // would only fill rows the widget leaves out, but kept for a pinned journey calling on
+                // a National Rail line there (SPEC *Finding stops → Hiding a mode*).
+                val railBoards = WidgetRefresh.railBoards(prior, HiddenModesSetting.loaded())
                 // The arrivals, then the lines' statuses, in as few requests as TfL accepts (lines
                 // checked moments ago reused), so a disrupted service stays marked while its
                 // countdowns are live (SPEC D3). A failed status lookup keeps the prior checks, which
@@ -416,7 +421,7 @@ internal suspend fun refreshStoredSnapshot(
                 ) { stopId ->
                     attempted.incrementAndGet()
                     try {
-                        client.arrivals(stopId).also { succeeded.incrementAndGet() }
+                        client.arrivals(stopId, railBoards[stopId] ?: true).also { succeeded.incrementAndGet() }
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {

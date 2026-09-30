@@ -1431,6 +1431,7 @@ class MainActivity : ComponentActivity() {
                         MainViewModel(
                             client = departuresClient(appContext),
                             departureSourceChanges = RailApiKeySetting.changes,
+                            hiddenModes = { HiddenModesSetting.current },
                             seedStops = ready.eagerStops,
                             initialMore = ready.more,
                             // Save-only snapshot store: the app writes each fresh snapshot for
@@ -2609,6 +2610,8 @@ class MainActivity : ComponentActivity() {
                     MainViewModel(
                         client = departuresClient(appContext),
                         departureSourceChanges = RailApiKeySetting.changes,
+                        // No hidden modes: a searched station's page shows all of its services, so
+                        // it asks for its National Rail board whatever the near-me list hides.
                         seedStops = stops,
                         // Stars and dismissals are per row/place across every view, so a star
                         // set here shows on the near-me list too, and the other way round.
@@ -3605,6 +3608,7 @@ private fun fartherCardModel(
 ) = MainViewModel(
     client = client,
     departureSourceChanges = RailApiKeySetting.changes,
+    hiddenModes = { HiddenModesSetting.current },
     seedStops = stops,
     stopDistanceMeters = distanceMeters,
     farArrivalsReuse = FAR_ARRIVALS_REUSE,
