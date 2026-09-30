@@ -1248,6 +1248,18 @@ buggy that Station suits them too. A change plans the trip again at once, as a w
 (above) takes in the step-free level too, so a rider who needs step-free routes is never first shown
 routes with stairs.
 
+**Modes.** A row of chips under the step-free dropdown says which kinds of transport a trip may
+ride: one per group the list already hides modes by, under the same names
+(**Tube & DLR**, **Train**, **Bus**, **Tram**, **Boat**, **Coach**), selected while the trip rides it.
+A tap turns a group off or on and plans again at once, as the options above do; plans are kept per
+choice, and the choice is remembered across trips. It is sent as the Planner's `mode` list, less the
+groups turned off. Walking, the cable car and rail replacement buses always stay: every route needs
+its walks, the cable car is in no group, and a replacement bus stands in for a train or Tube the
+rider still rides. The last group riding can't be turned off, since a trip riding nothing has no
+route. It is its own setting, not the list's hidden modes: a mode hidden from the nearby list (a
+noisy bus stop outside) can still be the best way somewhere, and a mode turned off for a trip (a
+Tube strike) doesn't empty the list. The settings wait takes it in too.
+
 **Two requests per plan.** The Planner answers with about three routes, often one route at three
 departures, so each plan asks it twice at once: for the quickest routes (its default) and for the
 **fewest changes**, which finds the walk to a station or the one bus the whole way that the quickest
@@ -1308,8 +1320,7 @@ covers it, for the same purpose (app functionality) and with the same handling (
 answer the request, not collected or kept by StopDash); the form is re-checked before the release
 that ships it.
 
-**Later:** mode toggles at the top of a trip, remembered across trips (the Planner takes a mode
-list), and avoiding a line, done on the phone: the Planner has no way to exclude a line, so the trip
+**Later:** avoiding a line, done on the phone: the Planner has no way to exclude a line, so the trip
 asks it for alternative routes and drops those using the avoided line.
 
 ### On the way

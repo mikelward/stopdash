@@ -2,7 +2,9 @@ package app.stopdash.data
 
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.StepFree
+import app.stopdash.domain.TripModes
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripOrigin
@@ -449,6 +451,23 @@ class JourneyPlannerTest {
         client.journeys(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"))
         assertEquals(2, requests.size)
         assertTrue(requests.none { "accessibilityPreference" in it.url.parameters.names() })
+    }
+
+    @Test
+    fun `asks both requests for only the modes the rider rides`() = runTest {
+        val requests = mutableListOf<HttpRequestData>()
+        val noBusOrTrain = listOf("bus", "train").fold(TripModes.DEFAULT) { modes, key ->
+            modes.with(ModeGroups.ALL.single { it.key == key }, ride = false)
+        }
+        client(fixture, capture = { synchronized(requests) { requests += it } })
+            .journeys(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"), modes = noBusOrTrain)
+        assertEquals(2, requests.size)
+        requests.forEach { request ->
+            val modes = checkNotNull(request.url.parameters["mode"]).split(",")
+            assertTrue(modes.none { it in setOf("bus", "overground", "elizabeth-line", "national-rail") })
+            // Still walking, so the rider's pace applies, and the Tube, tram and the rest.
+            assertTrue(modes.containsAll(listOf("walking", "tube", "dlr", "tram", "river-bus", "coach", "replacement-bus")))
+        }
     }
 
     @Test

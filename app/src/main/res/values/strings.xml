@@ -433,6 +433,7 @@
     <string name="step_free_station_detail">Street to platform, for luggage or a stroller</string>
     <string name="step_free_fully_detail">Onto the train too, for a wheelchair</string>
     <string name="step_free_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
+    <string name="trip_modes_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
 
     <!-- Optional user TfL app_key (SPEC D7). StopDash works keyless; a user's own free key raises
          the request budget. The key is a credential, kept on-device and never logged. -->

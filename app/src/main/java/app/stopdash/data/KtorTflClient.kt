@@ -25,6 +25,7 @@ import app.stopdash.domain.TflClient
 import app.stopdash.domain.TflRateLimiter
 import app.stopdash.domain.TflRequestPool
 import app.stopdash.domain.TripDestination
+import app.stopdash.domain.TripModes
 import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.TripRoute
@@ -106,7 +107,14 @@ class KtorTflClient(
     // day is planned, not a disruption. Injected so a test can pin it.
     private val clock: () -> Instant = Instant::now,
 ) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, JourneyPlanner, PostcodeResolver, PlaceSearch, VehicleSource {
-    override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree): List<TripRoute> {
+    override suspend fun journeys(
+        from: TripOrigin,
+        to: TripDestination,
+        speed: WalkingSpeed,
+        maxWalk: MaxWalk,
+        stepFree: StepFree,
+        modes: TripModes,
+    ): List<TripRoute> {
         // From here, the rider's own coordinate ("lat,lon"): TfL walks from it to the stop that
         // serves the trip best, the same position the nearby lookup already sends (SPEC *Trips
         // with a change*). Never logged, as neither end is.
@@ -126,8 +134,8 @@ class KtorTflClient(
         // station, or one bus the whole way, that the quickest three passed over (SPEC *Trips with a
         // change*). Either answer alone still plans the trip; only both failing fails it.
         val (quickest, fewestChanges) = coroutineScope {
-            val quickest = async { attemptPlan { plan(fromParam, toParam, speed, maxWalk, stepFree, preference = null) } }
-            val fewestChanges = async { attemptPlan { plan(fromParam, toParam, speed, maxWalk, stepFree, preference = LEAST_INTERCHANGE) } }
+            val quickest = async { attemptPlan { plan(fromParam, toParam, speed, maxWalk, stepFree, modes, preference = null) } }
+            val fewestChanges = async { attemptPlan { plan(fromParam, toParam, speed, maxWalk, stepFree, modes, preference = LEAST_INTERCHANGE) } }
             quickest.await() to fewestChanges.await()
         }
         val routes = when {
@@ -173,6 +181,7 @@ class KtorTflClient(
         speed: WalkingSpeed,
         maxWalk: MaxWalk,
         stepFree: StepFree,
+        modes: TripModes,
         preference: String?,
     ): List<TripRoute> {
         val source = if (preference == null) "journey planner" else "journey planner (fewest changes)"
@@ -186,8 +195,8 @@ class KtorTflClient(
                     parameter("walkingSpeed", speed.plannerValue)
                     // The Planner applies that pace to a route's walks only when the request names its
                     // modes, walking among them; left to its default modes, every walk comes back at the
-                    // average whatever the speed ([PLANNER_MODES]).
-                    parameter("mode", PLANNER_MODES)
+                    // average whatever the speed ([TripModes.PLANNER_MODES]). Less any the rider turned off.
+                    parameter("mode", modes.plannerModes)
                     preference?.let { parameter("journeyPreference", it) }
                     // Only routes as step-free as the rider chose ([StepFree]); none sent for any.
                     stepFree.plannerValue?.let { parameter("accessibilityPreference", it) }
@@ -599,18 +608,6 @@ class KtorTflClient(
 
         /** The Planner's `journeyPreference` for the routes with the fewest changes. */
         const val LEAST_INTERCHANGE: String = "leastinterchange"
-
-        /**
-         * The modes a trip is planned over: the Planner's own default set, named so that it times each
-         * walk at the rider's `walkingSpeed`. Without `mode=` it ignores the speed for every walk in a
-         * route that rides — the first, the changes and the last alike (measured 2026-09-28: a 649 m
-         * first walk read 11 min at Slow, Average and Fast; named, 15, 11 and 8, and a slower pace
-         * made it offer other connections). Named, it offered the same routes as its default on every
-         * trip compared, boats and the cable car included; tour boats (`river-tour`) and
-         * `international-rail` stay out, as the default leaves them.
-         */
-        const val PLANNER_MODES: String =
-            "bus,cable-car,coach,dlr,elizabeth-line,national-rail,overground,replacement-bus,river-bus,tram,tube,walking"
 
         /**
          * The fixed, always-resolvable destination the postcode resolver plans to — King's Cross St

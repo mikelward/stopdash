@@ -1,15 +1,18 @@
 package app.stopdash.ui
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -28,7 +31,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.StepFree
+import app.stopdash.domain.TripModes
 import app.stopdash.domain.WalkingSpeed
 
 /** The label each [WalkingSpeed] is shown by: the Planner's "Average" reads as "Medium". */
@@ -139,6 +144,42 @@ internal fun StepFreePicker(
         modifier = modifier,
         enabled = enabled,
     )
+}
+
+/**
+ * Which kinds of transport a trip may ride, atop its routes: one chip per mode group, by the names
+ * the list's hide-mode menu uses ("Tube & DLR", "Train", "Bus"…), selected while the trip rides it.
+ * A tap turns a group off or on and plans again ([TripViewModel.tripModes]); the last group riding
+ * stays on, since a trip riding nothing has no route. The row scrolls sideways when the chips don't
+ * fit. Until the stored choice is read ([enabled] false) none shows selected and none responds.
+ */
+@Composable
+internal fun TripModeChips(
+    modes: TripModes,
+    onChange: (TripModes) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    // A plain scrolling row, not a lazy one: six chips, all composed, so each can be found and read.
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("tripModes")
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        ModeGroups.ALL.forEach { group ->
+            val rides = modes.rides(group)
+            FilterChip(
+                selected = enabled && rides,
+                onClick = { if (!modes.isLast(group)) onChange(modes.with(group, !rides)) },
+                label = { Text(groupName(group), maxLines = 1) },
+                enabled = enabled,
+                modifier = Modifier.testTag("tripMode-${group.key}"),
+            )
+        }
+    }
 }
 
 /**

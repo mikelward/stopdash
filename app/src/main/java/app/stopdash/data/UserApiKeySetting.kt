@@ -4,6 +4,7 @@ import app.stopdash.domain.AppSettings
 import app.stopdash.domain.DistanceUnits
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.StepFree
+import app.stopdash.domain.TripModes
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.ModeGroups
 import kotlinx.coroutines.CancellationException
@@ -392,6 +393,39 @@ object StepFreeSetting {
 
     /** The user chose [stepFree]: applied at once, persisted in order. */
     fun set(stepFree: StepFree) = holder.set(stepFree)
+
+    /** True while the latest choice failed to save (a later successful save clears it); the screen says so. */
+    val writeFailed: StateFlow<Boolean> get() = holder.writeFailed
+
+    /** The screen has told the user a choice didn't save. */
+    fun writeFailureShown() = holder.writeFailureShown()
+}
+
+/**
+ * Which kinds of transport a trip may ride (SPEC *Trips with a change*), held in memory for a trip
+ * to read before its first plan and persisted in order. Starts at [TripModes.DEFAULT], every group;
+ * a trip waits for [isLoaded] before planning, so a rider who turned buses off isn't shown them first.
+ */
+object TripModesSetting {
+    private val holder = StoredSettingHolder(
+        CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        initial = TripModes.DEFAULT,
+        read = AppSettings::tripModes,
+        write = { settings, modes -> settings.setTripModes(modes) },
+        label = "trip modes",
+    )
+
+    /** [TripModes] as a flow, for a trip's plans and its toggles. */
+    val changes: StateFlow<TripModes> get() = holder.changes
+
+    /** Begins reading the stored choice. Idempotent. */
+    fun warm(appSettings: AppSettings) = holder.warm(appSettings)
+
+    /** Whether the stored choice has been read, so a trip can hold until then. */
+    val isLoaded: StateFlow<Boolean> get() = holder.isLoaded
+
+    /** The user chose [modes]: applied at once, persisted in order. */
+    fun set(modes: TripModes) = holder.set(modes)
 
     /** True while the latest choice failed to save (a later successful save clears it); the screen says so. */
     val writeFailed: StateFlow<Boolean> get() = holder.writeFailed

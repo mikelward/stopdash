@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -27,6 +29,8 @@ import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.filter
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyAncestor
@@ -55,7 +59,9 @@ import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.Departure
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.StepFree
+import app.stopdash.domain.TripModes
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.HiddenModes
@@ -374,6 +380,7 @@ class TripScreenScreenshotTest {
                     onWalkingSpeedChange = {},
                     onMaxWalkChange = {},
                     onStepFreeChange = {},
+                    onTripModesChange = {},
                     planOptionsLoaded = false,
                 )
             }
@@ -381,6 +388,52 @@ class TripScreenScreenshotTest {
         composeRule.onNodeWithTag("walkingSpeed").assertIsNotEnabled().assertContentDescriptionEquals("Walking speed, –")
         composeRule.onNodeWithTag("maxWalk").assertIsNotEnabled().assertContentDescriptionEquals("Max walk, –")
         composeRule.onNodeWithTag("stepFree").assertIsNotEnabled().assertContentDescriptionEquals("Step-free, –")
+        // No mode chip reads as riding, nor responds, until the rider's choice is read.
+        ModeGroups.ALL.forEach { composeRule.onNodeWithTag("tripMode-${it.key}").assertIsNotEnabled().assertIsNotSelected() }
+    }
+
+    @Test
+    fun trip_mode_chips() {
+        // One chip per kind of transport under the pickers, by the list's hide-mode names, selected
+        // while the trip rides it; a tap turns it off or on, but the last one riding stays on.
+        val group = { key: String -> ModeGroups.ALL.single { it.key == key } }
+        var modes by mutableStateOf(TripModes.DEFAULT.with(group("bus"), ride = false))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf",
+                    state = planned,
+                    now = now,
+                    access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source),
+                    onBack = {},
+                    onRetry = {},
+                    onWalkingSpeedChange = {},
+                    onMaxWalkChange = {},
+                    onStepFreeChange = {},
+                    tripModes = modes,
+                    onTripModesChange = { modes = it },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("tripMode-tube").assertTextEquals("Tube & DLR").assertIsSelected()
+        composeRule.onNodeWithTag("tripMode-train").assertTextEquals("Train").assertIsSelected()
+        composeRule.onNodeWithTag("tripMode-bus").assertTextEquals("Bus").assertIsNotSelected()
+        ModeGroups.ALL.forEach { composeRule.onNodeWithTag("tripMode-${it.key}").assertExists() }
+        captureSnapshot("trip-routes-modes.png")
+        // Off, then on again.
+        composeRule.onNodeWithTag("tripMode-train").performClick()
+        assertEquals(TripModes(setOf("bus", "train")), modes)
+        composeRule.onNodeWithTag("tripMode-train").assertIsNotSelected()
+        composeRule.onNodeWithTag("tripMode-bus").performClick()
+        assertEquals(TripModes(setOf("train")), modes)
+        composeRule.onNodeWithTag("tripMode-bus").assertIsSelected()
+        // Down to one: a tap on it changes nothing, since a trip riding nothing has no route.
+        modes = ModeGroups.ALL.filter { it.key != "tram" }.fold(TripModes.DEFAULT) { m, g -> m.with(g, ride = false) }
+        composeRule.onNodeWithTag("tripMode-tram").performClick()
+        composeRule.onNodeWithTag("tripMode-tram").assertIsSelected()
+        assertEquals(TripModes(ModeGroups.ALL.map { it.key }.toSet() - "tram"), modes)
     }
 
     @Test

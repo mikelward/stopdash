@@ -110,6 +110,7 @@ import app.stopdash.domain.routeLabels
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.StepFree
+import app.stopdash.domain.TripModes
 import app.stopdash.domain.PlacedStand
 import app.stopdash.domain.alightingKey
 import app.stopdash.domain.boardingKey
@@ -653,8 +654,14 @@ internal fun TripScreen(
     onStepFreeChange: ((StepFree) -> Unit)? = null,
     stepFreeWriteFailed: Boolean = false,
     onStepFreeWriteFailureShown: () -> Unit = {},
-    // Whether the walking speed, max walk and step-free level have been read from storage: until then
-    // their pickers show no value and open nothing, so a pick can't be saved over a choice not yet read.
+    // Which kinds of transport the routes may ride, and a change of them; null shows no chips.
+    tripModes: TripModes = TripModes.DEFAULT,
+    onTripModesChange: ((TripModes) -> Unit)? = null,
+    tripModesWriteFailed: Boolean = false,
+    onTripModesWriteFailureShown: () -> Unit = {},
+    // Whether the walking speed, max walk, step-free level and trip modes have been read from storage:
+    // until then their pickers show no value and respond to nothing, so a pick can't be saved over a
+    // choice not yet read.
     planOptionsLoaded: Boolean = true,
     // The From/To bar in place of [title] over the routes (maintainer, 2026-09-28): where the trip
     // starts and where it goes, each a tap to change. Null (a test) shows the title.
@@ -694,6 +701,10 @@ internal fun TripScreen(
             onStepFreeChange,
             stepFreeWriteFailed,
             onStepFreeWriteFailureShown,
+            tripModes,
+            onTripModesChange,
+            tripModesWriteFailed,
+            onTripModesWriteFailureShown,
             planOptionsLoaded,
             ends,
             pullRefreshing,
@@ -762,6 +773,10 @@ private fun TripContent(
     onStepFreeChange: ((StepFree) -> Unit)? = null,
     stepFreeWriteFailed: Boolean = false,
     onStepFreeWriteFailureShown: () -> Unit = {},
+    tripModes: TripModes = TripModes.DEFAULT,
+    onTripModesChange: ((TripModes) -> Unit)? = null,
+    tripModesWriteFailed: Boolean = false,
+    onTripModesWriteFailureShown: () -> Unit = {},
     planOptionsLoaded: Boolean = true,
     ends: TripEnds? = null,
     pullRefreshing: Boolean = false,
@@ -985,6 +1000,14 @@ private fun TripContent(
             snackbarHostState.showSnackbar(stepFreeWriteFailedMessage)
         }
     }
+    // A mode turned on or off here that didn't save, likewise.
+    val tripModesWriteFailedMessage = stringResource(R.string.trip_modes_write_failed)
+    LaunchedEffect(tripModesWriteFailed) {
+        if (tripModesWriteFailed) {
+            onTripModesWriteFailureShown()
+            snackbarHostState.showSnackbar(tripModesWriteFailedMessage)
+        }
+    }
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         // An open route starts on the way from here: followed by its train to the destination. Above
@@ -1081,6 +1104,10 @@ private fun TripContent(
             // Step-free under them: it too changes which routes the Planner offers.
             if (onStepFreeChange != null) {
                 StepFreePicker(stepFree, onStepFreeChange, enabled = planOptionsLoaded)
+            }
+            // The kinds of transport the routes may ride, last: chips, a tap each, rather than a menu.
+            if (onTripModesChange != null) {
+                TripModeChips(tripModes, onTripModesChange, enabled = planOptionsLoaded)
             }
             TripBanners(shown, rideLines, state, check, locationBanner, onRelocate, hiddenModes, onShowAllModes)
             Box(Modifier.fillMaxSize()) {

@@ -36,7 +36,9 @@ import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.StepFree
+import app.stopdash.domain.TripModes
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.onPoles
 import app.stopdash.domain.TripTiming
@@ -117,12 +119,15 @@ class TripViewModelTest {
         val maxWalks = mutableListOf<MaxWalk>()
         // The step-free level each call asked for, in order.
         val stepFrees = mutableListOf<StepFree>()
-        override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree): List<TripRoute> {
+        // The trip modes each call asked for, in order.
+        val tripModes = mutableListOf<TripModes>()
+        override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes): List<TripRoute> {
             calls++
             origins += from
             speeds += speed
             maxWalks += maxWalk
             stepFrees += stepFree
+            tripModes += modes
             // Keyed by the stop id (or a place's name), matching how these tests plan by destination.
             val key = when (to) {
                 is TripDestination.Stop -> to.id
@@ -707,6 +712,41 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `plans over the rider's modes, and again at once when they change`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        val plans = TripPlans()
+        val bus = ModeGroups.ALL.single { it.key == "bus" }
+        val tram = ModeGroups.ALL.single { it.key == "tram" }
+        val noBus = TripModes.DEFAULT.with(bus, ride = false)
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+            clock = { now }, plans = plans, io = dispatcher, tripModes = noBus,
+        )
+        trip.refreshFor(1)
+        advanceUntilIdle()
+        assertEquals(listOf(noBus), planner.tripModes)
+        // The same choice again plans nothing.
+        trip.tripModes = TripModes.DEFAULT.with(bus, ride = false)
+        advanceUntilIdle()
+        assertEquals(1, planner.calls)
+        // Routes planned over other modes aren't shown under these while they plan.
+        val noBusOrTram = noBus.with(tram, ride = false)
+        trip.tripModes = noBusOrTram
+        assertNull(trip.state.value.routes)
+        advanceUntilIdle()
+        assertEquals(listOf(noBus, noBusOrTram), planner.tripModes)
+        val destinations = listOf(TripDestination.Stop("C"))
+        assertNotNull(plans.get("A", destinations, modes = noBus))
+        assertNotNull(plans.get("A", destinations, modes = noBusOrTram))
+        assertNull(plans.get("A", destinations, modes = TripModes.DEFAULT))
+        // Back to modes a plan was kept for: shown at once, without planning again.
+        trip.tripModes = noBus
+        assertEquals(listOf(route), trip.state.value.routes)
+        advanceUntilIdle()
+        assertEquals(2, planner.calls)
+    }
+
+    @Test
     fun `a walk change before the trip starts opens it on the plan kept for the new walk`() = runTest(dispatcher) {
         // The model is made before the walk settings are read: it opens on the defaults' kept plan
         // until they land, then on the rider's own, without planning before it's started.
@@ -1272,7 +1312,7 @@ class TripViewModelTest {
         val fromD = TripRoute(listOf(leg("green", "D", "C", 5, 15)))
         var calls = 0
         val planner = object : JourneyPlanner {
-            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree): List<TripRoute> =
+            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes): List<TripRoute> =
                 if (calls++ == 0) listOf(route) else listOf(fromD)
         }
         val cache = ArrivalsCache()
@@ -1300,7 +1340,7 @@ class TripViewModelTest {
         // The re-plan from that fix answers when the test says, so its indicator can be seen.
         val replanned = CompletableDeferred<Unit>()
         val planner = object : JourneyPlanner {
-            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree): List<TripRoute> =
+            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes): List<TripRoute> =
                 if (calls++ < 2) listOf(route) else listOf(fromD).also { replanned.await() }
         }
         val cache = ArrivalsCache()
