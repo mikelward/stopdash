@@ -1532,9 +1532,10 @@ private fun LoadedContent(
             }
             // Arrivals loaded but their disruption status couldn't be checked — say so
             // rather than let the times read as verified-clean (SPEC *Disruptions*).
-            // While a cold load is still out, not yet checked rather than couldn't.
-            if (state.disruptionUnknown) {
-                Banner(stringResource(if (state.statusPending && !state.checkFailed) R.string.disruptions_checking else R.string.disruptions_unknown))
+            // While a cold load is still checking, the stamp says so instead, so a banner doesn't
+            // push the list down and back up (SPEC *Freshness → Cold load*).
+            if (state.disruptionUnknown && !state.checkingDisruptions) {
+                Banner(stringResource(R.string.disruptions_unknown))
             }
             // Starred journeys still show when nothing nearby has departures: their origins can be
             // farther away, and hiding them behind "No departures" would drop live trains.
@@ -1674,7 +1675,12 @@ private fun FreshnessStamp(state: DeparturesUiState, now: Instant, onRefresh: ()
                 // A cold load with nothing back yet — only failures so far, or cut short before any
                 // stop landed: no update to stamp, so still loading, not "Just now".
                 state.stops.isEmpty() && (state.statusPending || state.partialRefresh) -> stringResource(R.string.loading_stamp)
+                // Stale outranks checking: rows past the cutoff withhold their times, and the stamp
+                // must still offer the refresh they need (SPEC D4).
                 Staleness.isStale(age) -> stringResource(R.string.stale_stamp)
+                // Disruptions still being checked mid-load: said here rather than in a banner that
+                // would move the list (maintainer, 2026-09-30).
+                state.checkingDisruptions -> stringResource(R.string.checking_stamp)
                 // The age alone ("1 min ago", "Just now"): an "Updated" before it cost top-bar room
                 // and said nothing the position doesn't (maintainer, 2026-09-26).
                 else -> RelativeTime.formatAge(age).replaceFirstChar { it.uppercaseChar() }

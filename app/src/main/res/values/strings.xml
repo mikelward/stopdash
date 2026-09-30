@@ -8,6 +8,9 @@
          persisted snapshot is read off disk), so the placeholder frame carries a stamp
          rather than appearing without one (SPEC snapshot-render). -->
     <string name="loading_stamp">Loading…</string>
+    <!-- Stamp while a part-loaded list's disruptions are still being checked, in place of a
+         banner that would move the list (SPEC Freshness → Cold load). -->
+    <string name="checking_stamp">Checking…</string>
 
     <!-- Departures list -->
     <string name="departures_loading">Loading departures…</string>

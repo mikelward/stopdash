@@ -3678,7 +3678,8 @@ class MainScreenScreenshotTest {
     fun `a cold load shows the stops back so far and the rest loading in place`() {
         // SPEC *Freshness → Cold load*: King's Cross is back; Euston Square (nearer) and Euston
         // (farther) are still out, each a collapsed "Loading" card where it will land, with the
-        // line-status banner saying it's still checking. Public station names as stand-ins.
+        // stamp saying it's still checking disruptions rather than a banner. Public station names as
+        // stand-ins.
         capture("main-cold-load-partial.png") {
             MainScreen(
                 DeparturesUiState.Loaded(
@@ -3698,7 +3699,9 @@ class MainScreenScreenshotTest {
         }
         composeRule.onNodeWithText("Euston Square").assertExists()
         composeRule.onAllNodesWithText("Loading").assertCountEquals(2)
-        composeRule.onNodeWithText("Checking for disruptions").assertExists()
+        composeRule.onNodeWithText("Checking…").assertExists()
+        composeRule.onNodeWithText("Checking for disruptions").assertDoesNotExist()
+        composeRule.onNodeWithText("Couldn't check for disruptions").assertDoesNotExist()
         composeRule.onNodeWithText("No upcoming departures").assertDoesNotExist()
     }
 
@@ -3723,7 +3726,53 @@ class MainScreenScreenshotTest {
             }
         }
         composeRule.onNodeWithText("Couldn't check for disruptions").assertExists()
-        composeRule.onNodeWithText("Checking for disruptions").assertDoesNotExist()
+        composeRule.onNodeWithText("Checking…").assertDoesNotExist()
+    }
+
+    @Test
+    fun `a load still checking whose rows went stale offers the refresh`() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(
+                            listOf(oneStarrableStop()),
+                            now.minusSeconds(3600),
+                            disruptionUnknown = true,
+                            statusPending = true,
+                            pendingStops = listOf(StopRef("940GZZLUESQ", "Euston Square")),
+                        ),
+                        now,
+                        {},
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("Tap to refresh").assertExists()
+        composeRule.onNodeWithText("Checking…").assertDoesNotExist()
+    }
+
+    @Test
+    fun `a load still out with its lines checked shows its age, not checking`() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(
+                            listOf(oneStarrableStop()),
+                            now.minusSeconds(60),
+                            statusPending = true,
+                            pendingStops = listOf(StopRef("940GZZLUESQ", "Euston Square")),
+                        ),
+                        now,
+                        {},
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("1 min ago").assertExists()
+        composeRule.onNodeWithText("Checking…").assertDoesNotExist()
+        composeRule.onNodeWithText("Couldn't check for disruptions").assertDoesNotExist()
     }
 
     @Test

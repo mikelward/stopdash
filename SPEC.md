@@ -1733,10 +1733,12 @@ been set, so none keeps showing what it judged before.
   every stop is back with nothing running anywhere, the screen says so ("No upcoming
   departures") rather than keep a list of dashes. Line status is checked alongside the
   departures — the lines each stop lists, once the first stop is back — so the list vouches for
-  them without waiting on the slowest stop and seldom says it's still checking for disruptions
-  (maintainer, 2026-09-30). A line only a departure names, not the stop's own list, is checked
-  once every stop is back, as is every line on the watched list, whose stops don't carry their
-  lines yet; until then those read as still checking. A
+  them without waiting on the slowest stop (maintainer, 2026-09-30). A line only a departure
+  names, not the stop's own list, is checked once every stop is back, as is every line on the
+  watched list, whose stops don't carry their lines yet. While any shown line is still to be
+  checked, the stamp reads **"Checking…"** in place of the age rather than a banner, so the list
+  doesn't move (maintainer, 2026-09-30); a check that comes back failed shows the "Couldn't check
+  for disruptions" banner at once, since it won't be asked again before the load finishes. A
   part-loaded list is never saved for the widget or the next launch; only the whole batch is. A
   load cut short (a relocation) names the stops it never got, like any other failed stop. With
   a saved snapshot on screen, a refresh keeps it whole until the batch is done.
