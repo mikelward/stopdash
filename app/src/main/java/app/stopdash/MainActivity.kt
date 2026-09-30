@@ -132,6 +132,7 @@ import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripTiming
 import app.stopdash.domain.YourStops
+import app.stopdash.domain.refreshTopology
 import app.stopdash.domain.stopPlace
 import app.stopdash.telemetry.TelemetryConsent
 import app.stopdash.ui.ARRIVALS_REUSE
@@ -385,6 +386,17 @@ class MainActivity : ComponentActivity() {
         // without rebuilding them (SPEC D7).
         lifecycleScope.launch {
             routeTopology.value = withContext(Dispatchers.IO) { RouteTopologyStore.load(applicationContext) }
+            // Then TfL's current routes over the bundled ones where they still cover them, so a line
+            // extended since this build is grouped as it runs now (SPEC *Branch merging*). Through
+            // the route stops' cache, so TfL is asked at most daily; the bundled topology stays in
+            // use until this is back, and for any line it can't be had for.
+            val bundled = withContext(Dispatchers.IO) { RouteTopologyStore.bundled(applicationContext) }
+            val refreshed = refreshTopology(bundled, routeStops(applicationContext), ::logTopologyWarning)
+            // Unchanged (the usual case) puts nothing new in place, so nothing re-renders for it.
+            if (refreshed.patternsByLine != routeTopology.value.patternsByLine) {
+                RouteTopologyStore.use(refreshed)
+                routeTopology.value = refreshed
+            }
         }
         setContent {
             // TfL refused the key in force: one bar atop every screen says so and clears it (SPEC D7).
@@ -3394,6 +3406,8 @@ private fun recordPosition(what: String, at: Coordinates) {
 }
 
 private fun logRouteStopsWarning(message: String) = StopdashDebugLog.warning("route stops: %s", message)
+
+private fun logTopologyWarning(message: String) = StopdashDebugLog.warning("route topology: %s", message)
 
 /**
  * The process-wide nearby-lookup cache: top-level so it outlives an Activity or ViewModel (a
