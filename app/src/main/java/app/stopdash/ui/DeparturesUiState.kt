@@ -82,9 +82,14 @@ sealed interface DeparturesUiState {
         // A cold load still out: the stops not back yet, each shown as a collapsed "Loading" card
         // where it will land, while [stops] holds the ones that are. Never persisted (SPEC D4).
         val pendingStops: List<StopRef> = emptyList(),
-        // A cold load shown before its one line-status check has run (every stop may be in): the
+        // A cold load shown before its line-status checks have all run (every stop may be in): the
         // banner says it's still checking rather than that it couldn't.
         val statusPending: Boolean = false,
+        // With [statusPending]: a check already back left something shown unchecked — a failed
+        // request, a line TfL gave no status for, a stop's closure check, a departure with no line —
+        // and the rest of the load won't ask again, so the banner says it couldn't check rather
+        // than that it's still checking.
+        val checkFailed: Boolean = false,
         // The stops of an opened farther card whose own cold load is still out, landed or not: its
         // card keeps saying "Loading" until they all settle, rather than a dash for one back empty.
         val openedLoadingStopIds: Set<String> = emptySet(),

@@ -1728,8 +1728,12 @@ been set, so none keeps showing what it judged before.
   place isn't known, and that place could be above what's on screen. One that
   lands off screen opens in full, and rows landing above the screen don't move what's on it. When
   every stop is back with nothing running anywhere, the screen says so ("No upcoming
-  departures") rather than keep a list of dashes. Line status is checked once
-  every stop is back, so until then the list says it's still checking for disruptions. A
+  departures") rather than keep a list of dashes. Line status is checked alongside the
+  departures — the lines each stop lists, once the first stop is back — so the list vouches for
+  them without waiting on the slowest stop and seldom says it's still checking for disruptions
+  (maintainer, 2026-09-30). A line only a departure names, not the stop's own list, is checked
+  once every stop is back, as is every line on the watched list, whose stops don't carry their
+  lines yet; until then those read as still checking. A
   part-loaded list is never saved for the widget or the next launch; only the whole batch is. A
   load cut short (a relocation) names the stops it never got, like any other failed stop. With
   a saved snapshot on screen, a refresh keeps it whole until the batch is done.
