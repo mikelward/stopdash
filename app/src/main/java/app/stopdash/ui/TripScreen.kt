@@ -1742,7 +1742,7 @@ private fun arrivalText(estimate: TripTiming.Estimate): String {
         // A longer wait could miss a connection nothing else times: no latest to give, so say it may be later.
         slack == null -> stringResource(R.string.trip_duration_arrival_open, minutes, clock)
         // A wait for a frequent line could make it a few minutes later: say how many, once they matter.
-        end != null -> stringResource(R.string.trip_duration_arrival_range, minutes, minutes + slack.toMinutes().toInt(), clock, end)
+        end != null -> stringResource(R.string.trip_duration_arrival_range, minutes, latestMinutes(estimate.duration, slack), clock, end)
         estimate.basis == TripTiming.Basis.LIVE -> stringResource(R.string.trip_duration_arrival, minutes, clock)
         else -> stringResource(R.string.trip_duration_arrival_estimated, minutes, clock)
     }
@@ -1763,8 +1763,19 @@ internal fun arrivalEnd(arrival: Instant, slack: Duration): String? {
     return if (sameHour) MINUTE.format(latest) else CLOCK.format(latest)
 }
 
-/** The fewest minutes of [TripTiming.Estimate.slack] an arrival shows as a range; less reads as noise. */
-internal const val SHOWN_SLACK_MINUTES = 3
+/**
+ * Whole minutes to the latest end of a range: the [duration] and [slack] added before rounding down, so
+ * 16m30s plus 1m40s reads 18 like the clock it sits beside, not 16 + 1.
+ */
+internal fun latestMinutes(duration: Duration?, slack: Duration): Int =
+    (duration ?: Duration.ZERO).plus(slack).toMinutes().toInt()
+
+/**
+ * The fewest minutes of [TripTiming.Estimate.slack] an arrival shows as a range: any whole minute
+ * (maintainer, 2026-09-30), since an estimate ranks on its latest ([TripTiming.rank]) and a single
+ * time would hide why it sorted where it did.
+ */
+internal const val SHOWN_SLACK_MINUTES = 1
 
 /**
  * How TalkBack reads a first-leg train: plain when [catchable]; "can't catch" when it leaves before the
