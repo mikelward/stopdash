@@ -1222,7 +1222,7 @@ rides: 10, 15, 20, 30, 45 or 60 minutes, **30 by default** (maintainer, 2026-09-
 at the average pace) was never offered (maintainer's report, 2026-09-30). It is one setting, chosen in Settings (under the walking speed) or from a dropdown under the walking
 speed atop a trip's routes (maintainer, 2026-09-30), and a change plans the trip again at once, as a
 speed change does; plans are kept per limit. Every plan, whatever asks for it, waits for the walking
-speed and max walk to be read from storage, and the trip's dropdowns open nothing until then, so no
+speed and max walk (and step-free level, below) to be read from storage, and the trip's dropdowns open nothing until then, so no
 route is planned under the defaults in place of the rider's own choice; a read that never lands delays
 a plan by two seconds at most, then it plans with the defaults and plans again once the read lands. Every
 walk is timed at the rider's **walking speed** — Slow, Medium or Fast (the Planner's `walkingSpeed`;
@@ -1235,6 +1235,18 @@ The request names the Planner's modes (its own default set, walking among them):
 defaults, the Planner accepts `walkingSpeed` but times every walk in a route that rides at its
 average, so the setting changed nothing (2026-09-28). Named, the pace times each walk and so which
 connections it offers, while the routes stay those it offers by default.
+
+**Step-free.** A trip's routes can be held to a step-free level (maintainer, 2026-09-30), the
+Planner's `accessibilityPreference`: **Any** (no requirement, the default; nothing sent), **Station**
+(step-free from the street to the platform, maybe a step or gap onto the train: what a suitcase or a
+buggy needs) or **Fully** (step-free onto the train as well: what a wheelchair needs). The Planner
+then plans with lifts, ramps and level walkways in place of stairs and escalators. It is one
+setting, chosen in Settings or from a dropdown under the max walk atop a trip's routes, labeled
+**Step-free: Any / Station / Fully** (the maintainer's names). In its menu, Station and Fully each
+carry a line saying what they're for, since the bare names don't tell a rider with a suitcase or a
+buggy that Station suits them too. A change plans the trip again at once, as a walk change does; plans are kept per level. A plan's wait for the settings to be read
+(above) takes in the step-free level too, so a rider who needs step-free routes is never first shown
+routes with stairs.
 
 **Two requests per plan.** The Planner answers with about three routes, often one route at three
 departures, so each plan asks it twice at once: for the quickest routes (its default) and for the

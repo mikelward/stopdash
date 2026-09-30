@@ -2,6 +2,7 @@ package app.stopdash.data
 
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.StepFree
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripOrigin
@@ -431,6 +432,23 @@ class JourneyPlannerTest {
             assertEquals("60", request.url.parameters["maxWalkingMinutes"])
             assertEquals("Fast", request.url.parameters["walkingSpeed"])
         }
+    }
+
+    @Test
+    fun `asks both requests for the rider's step-free level, and none for any`() = runTest {
+        val requests = mutableListOf<HttpRequestData>()
+        val client = client(fixture, capture = { synchronized(requests) { requests += it } })
+        client.journeys(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"), stepFree = StepFree.STATION)
+        assertEquals(2, requests.size)
+        assertTrue(requests.all { it.url.parameters["accessibilityPreference"] == "StepFreeToPlatform" })
+        requests.clear()
+        client.journeys(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"), stepFree = StepFree.FULLY)
+        assertTrue(requests.all { it.url.parameters["accessibilityPreference"] == "StepFreeToVehicle" })
+        requests.clear()
+        // No requirement sends nothing, leaving the Planner its own default.
+        client.journeys(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"))
+        assertEquals(2, requests.size)
+        assertTrue(requests.none { "accessibilityPreference" in it.url.parameters.names() })
     }
 
     @Test

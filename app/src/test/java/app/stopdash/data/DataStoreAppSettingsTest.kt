@@ -3,6 +3,7 @@ package app.stopdash.data
 import androidx.datastore.core.DataStore
 import app.stopdash.domain.DistanceUnits
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.StepFree
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -62,6 +63,20 @@ class DataStoreAppSettingsTest {
     fun `a max walk this build doesn't know reads as the default`() = runTest {
         val store = DataStoreAppSettings(FakeDataStore(PersistedSettings(maxWalk = "NINETY")))
         assertEquals(MaxWalk.DEFAULT, store.maxWalk().first())
+    }
+
+    @Test
+    fun `step-free asks nothing by default and persists a change`() = runTest {
+        val store = DataStoreAppSettings(FakeDataStore(null))
+        assertEquals(StepFree.ANY, store.stepFree().first())
+        store.setStepFree(StepFree.FULLY)
+        assertEquals(StepFree.FULLY, store.stepFree().first())
+    }
+
+    @Test
+    fun `a step-free level this build doesn't know reads as the default`() = runTest {
+        val store = DataStoreAppSettings(FakeDataStore(PersistedSettings(stepFree = "LEVEL")))
+        assertEquals(StepFree.DEFAULT, store.stepFree().first())
     }
 
     @Test

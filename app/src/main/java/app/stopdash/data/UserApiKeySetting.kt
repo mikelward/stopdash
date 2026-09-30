@@ -3,6 +3,7 @@ package app.stopdash.data
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.DistanceUnits
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.StepFree
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.ModeGroups
 import kotlinx.coroutines.CancellationException
@@ -363,6 +364,39 @@ object MaxWalkSetting {
     val writeFailed: StateFlow<Boolean> get() = holder.writeFailed
 
     /** The trip has told the user a choice didn't save. */
+    fun writeFailureShown() = holder.writeFailureShown()
+}
+
+/**
+ * The step-free choice (SPEC *Trips with a change*), held in memory for a trip to read before its
+ * first plan and persisted in order. Starts at [StepFree.DEFAULT], no requirement; a trip waits for
+ * [isLoaded] before planning, so a rider who needs step-free routes isn't shown others first.
+ */
+object StepFreeSetting {
+    private val holder = StoredSettingHolder(
+        CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        initial = StepFree.DEFAULT,
+        read = AppSettings::stepFree,
+        write = { settings, stepFree -> settings.setStepFree(stepFree) },
+        label = "step-free",
+    )
+
+    /** [StepFree] as a flow, for a trip's plans and its dropdown. */
+    val changes: StateFlow<StepFree> get() = holder.changes
+
+    /** Begins reading the stored choice. Idempotent. */
+    fun warm(appSettings: AppSettings) = holder.warm(appSettings)
+
+    /** Whether the stored choice has been read, so a trip and Settings can hold until then. */
+    val isLoaded: StateFlow<Boolean> get() = holder.isLoaded
+
+    /** The user chose [stepFree]: applied at once, persisted in order. */
+    fun set(stepFree: StepFree) = holder.set(stepFree)
+
+    /** True while the latest choice failed to save (a later successful save clears it); the screen says so. */
+    val writeFailed: StateFlow<Boolean> get() = holder.writeFailed
+
+    /** The screen has told the user a choice didn't save. */
     fun writeFailureShown() = holder.writeFailureShown()
 }
 

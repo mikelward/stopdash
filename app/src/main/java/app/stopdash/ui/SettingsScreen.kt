@@ -48,6 +48,7 @@ import app.stopdash.R
 import app.stopdash.domain.DEFAULT_FONT_SCALE
 import app.stopdash.domain.DistanceUnits
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.StepFree
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.MAX_FONT_SCALE
 import app.stopdash.domain.MIN_FONT_SCALE
@@ -114,6 +115,12 @@ fun SettingsScreen(
     maxWalkLoaded: Boolean = true,
     maxWalkWriteFailed: Boolean = false,
     onDismissMaxWalkError: () -> Unit = {},
+    // How step-free a trip's routes must be, as [maxWalk] is handled: held until read.
+    stepFree: StepFree = StepFree.DEFAULT,
+    onStepFreeChange: (StepFree) -> Unit = {},
+    stepFreeLoaded: Boolean = true,
+    stepFreeWriteFailed: Boolean = false,
+    onDismissStepFreeError: () -> Unit = {},
     // Opens the favorite-places editor (SPEC D9), hosted as its own overlay by the caller.
     onOpenFavoritePlaces: () -> Unit = {},
 ) {
@@ -214,6 +221,18 @@ fun SettingsScreen(
                     SettingErrorRow(
                         text = stringResource(R.string.max_walk_write_failed),
                         onDismiss = onDismissMaxWalkError,
+                    )
+                }
+                StepFreePicker(
+                    stepFree = stepFree,
+                    onChange = onStepFreeChange,
+                    tag = "stepFreeSetting",
+                    enabled = stepFreeLoaded,
+                )
+                if (stepFreeWriteFailed) {
+                    SettingErrorRow(
+                        text = stringResource(R.string.step_free_write_failed),
+                        onDismiss = onDismissStepFreeError,
                     )
                 }
                 SettingSwitchRow(

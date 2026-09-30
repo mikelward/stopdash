@@ -2656,6 +2656,13 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   (could crown an "est." route over a live one); a header on every card ("Other"); "Simplest" read
   as fewest walking minutes. **Reversible:** `routeLabels` in `:domain` and `RouteLabelHeader`.
   **To confirm:** on a device, that the headers read well over the cards.
+- [ ] **What the step-free menu says under each level (autopilot, 2026-09-30; Codex, #408).** Taken:
+  the maintainer's names stay, and Station and Fully each get a small line under them in the menu:
+  "Street to platform, for luggage or a buggy" ("stroller" in US English) and "Onto the train too,
+  for a wheelchair". Any gets none. *Alternatives:* longer names in place of the maintainer's; a line
+  under the dropdown row itself, which would show all the time. **Reversible:** `stepFreeDetail`
+  and its two strings. **To confirm:** the wording, and whether the row should also explain the
+  level once the menu is closed.
 - [ ] **Max walk in Settings is a dropdown, not radio rows (autopilot, 2026-09-30).** Taken: the
   same one-row *Max walk* dropdown as atop a trip, under the walking speed's radio rows; until the
   stored choice is read it shows "–" and opens nothing. *Alternative:* six radio rows like the

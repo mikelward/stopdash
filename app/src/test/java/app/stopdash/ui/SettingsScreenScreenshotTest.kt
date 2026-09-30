@@ -23,6 +23,7 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import app.stopdash.domain.DistanceUnits
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.StepFree
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -546,6 +547,51 @@ class SettingsScreenScreenshotTest {
         // No limit shown, so the default can't pass for the choice, and nothing to open.
         composeRule.onNodeWithTag("maxWalkSetting").performScrollTo().assertIsNotEnabled()
         composeRule.onNodeWithTag("maxWalkSetting").assertContentDescriptionEquals("Max walk, –")
+        composeRule.onNodeWithText("Couldn't save that", substring = true).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Dismiss").performScrollTo().performClick()
+        assertEquals(true, dismissed)
+    }
+
+    /** Step-free shows the stored level and offers the three; a pick is reported. */
+    @Test
+    fun stepFree_reportsTheTappedChoice() {
+        var chosen: StepFree? = null
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(
+                    liveWidgetRefresh = false,
+                    onLiveWidgetRefreshChange = {},
+                    onBack = {},
+                    stepFree = StepFree.STATION,
+                    onStepFreeChange = { chosen = it },
+                )
+            }
+        }
+        composeRule.onNodeWithTag("stepFreeSetting").performScrollTo().assertContentDescriptionEquals("Step-free, Station")
+        composeRule.onNodeWithTag("stepFreeSetting").performClick()
+        StepFree.entries.forEach { composeRule.onNodeWithTag("stepFreeSetting-${it.name}").assertExists() }
+        composeRule.onNodeWithTag("stepFreeSetting-FULLY").performClick()
+        assertEquals(StepFree.FULLY, chosen)
+    }
+
+    /** Until the stored step-free level is read nothing shows or opens; a failed save says so. */
+    @Test
+    fun stepFree_disabledUntilLoaded_andAFailedSaveIsShown() {
+        var dismissed = false
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(
+                    liveWidgetRefresh = false,
+                    onLiveWidgetRefreshChange = {},
+                    onBack = {},
+                    stepFreeLoaded = false,
+                    stepFreeWriteFailed = true,
+                    onDismissStepFreeError = { dismissed = true },
+                )
+            }
+        }
+        composeRule.onNodeWithTag("stepFreeSetting").performScrollTo().assertIsNotEnabled()
+        composeRule.onNodeWithTag("stepFreeSetting").assertContentDescriptionEquals("Step-free, –")
         composeRule.onNodeWithText("Couldn't save that", substring = true).performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Dismiss").performScrollTo().performClick()
         assertEquals(true, dismissed)
