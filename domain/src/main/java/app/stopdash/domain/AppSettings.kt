@@ -117,6 +117,12 @@ interface AppSettings {
     /** Stores the max-walk choice. */
     suspend fun setMaxWalk(maxWalk: MaxWalk) {}
 
+    /** How step-free a trip's routes must be ([StepFree]); [StepFree.DEFAULT] until chosen. */
+    fun stepFree(): Flow<StepFree> = flowOf(StepFree.DEFAULT)
+
+    /** Stores the step-free choice. */
+    suspend fun setStepFree(stepFree: StepFree) {}
+
     companion object {
         /** A store that persists nothing and always reads the defaults — the default for tests
          *  and a build with no wired DataStore, so the app runs identically minus persistence. */

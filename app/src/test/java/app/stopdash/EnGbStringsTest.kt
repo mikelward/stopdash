@@ -47,7 +47,7 @@ class EnGbStringsTest {
             "traveled" to "travelled", "traveling" to "travelling",
             "behavior" to "behaviour", "neighbor" to "neighbour", "neighbors" to "neighbours",
             "catalog" to "catalogue", "meter" to "metre", "meters" to "metres",
-            "percent" to "per cent",
+            "percent" to "per cent", "stroller" to "buggy",
         )
     }
 }

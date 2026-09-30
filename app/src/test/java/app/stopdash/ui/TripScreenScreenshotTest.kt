@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.Departure
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.StepFree
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.HiddenModes
@@ -310,6 +311,7 @@ class TripScreenScreenshotTest {
         // (2026-09-30); a pick of either is reported to its setting.
         var chosen: WalkingSpeed? = null
         var chosenMaxWalk: MaxWalk? = null
+        var chosenStepFree: StepFree? = null
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 TripScreen(
@@ -324,6 +326,8 @@ class TripScreenScreenshotTest {
                     onWalkingSpeedChange = { chosen = it },
                     maxWalk = MaxWalk.THIRTY,
                     onMaxWalkChange = { chosenMaxWalk = it },
+                    stepFree = StepFree.ANY,
+                    onStepFreeChange = { chosenStepFree = it },
                 )
             }
         }
@@ -341,6 +345,16 @@ class TripScreenScreenshotTest {
         composeRule.onNodeWithText("60 min").assertIsDisplayed()
         composeRule.onNodeWithTag("maxWalk-SIXTY").performClick()
         assertEquals(MaxWalk.SIXTY, chosenMaxWalk)
+        // Step-free under them: the maintainer's three levels, by their names, each but Any saying
+        // what it's for, so a rider with luggage sees Station suits them too.
+        composeRule.onNodeWithTag("stepFree").assertContentDescriptionEquals("Step-free, Any").performClick()
+        StepFree.entries.forEach { composeRule.onNodeWithTag("stepFree-${it.name}").assertExists() }
+        composeRule.onNodeWithTag("stepFree-ANY").assertTextEquals("Any")
+        composeRule.onNodeWithTag("stepFree-STATION")
+            .assertTextEquals("Station", "Street to platform, for luggage or a stroller")
+        composeRule.onNodeWithTag("stepFree-FULLY").assertTextEquals("Fully", "Onto the train too, for a wheelchair")
+        composeRule.onNodeWithTag("stepFree-FULLY").performClick()
+        assertEquals(StepFree.FULLY, chosenStepFree)
     }
 
     @Test
@@ -359,12 +373,14 @@ class TripScreenScreenshotTest {
                     onRetry = {},
                     onWalkingSpeedChange = {},
                     onMaxWalkChange = {},
-                    walkSettingsLoaded = false,
+                    onStepFreeChange = {},
+                    planOptionsLoaded = false,
                 )
             }
         }
         composeRule.onNodeWithTag("walkingSpeed").assertIsNotEnabled().assertContentDescriptionEquals("Walking speed, –")
         composeRule.onNodeWithTag("maxWalk").assertIsNotEnabled().assertContentDescriptionEquals("Max walk, –")
+        composeRule.onNodeWithTag("stepFree").assertIsNotEnabled().assertContentDescriptionEquals("Step-free, –")
     }
 
     @Test

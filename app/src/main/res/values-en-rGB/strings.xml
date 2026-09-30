@@ -13,4 +13,5 @@
     <string name="place_icon_shop">Shop</string>
     <string name="place_icon_theater">Theatre</string>
     <string name="favorite_places_edit_action">Edit favourite places</string>
+    <string name="step_free_station_detail">Street to platform, for luggage or a buggy</string>
 </resources>

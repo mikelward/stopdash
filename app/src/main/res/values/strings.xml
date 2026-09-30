@@ -424,6 +424,15 @@
     <string name="max_walk_title">Max walk</string>
     <string name="max_walk_minutes">%1$d min</string>
     <string name="max_walk_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
+    <!-- How step-free a trip's routes must be: the dropdown atop a trip's routes and in Settings.
+         Station: step-free from the street to the platform; Fully: to the train as well. -->
+    <string name="step_free_title">Step-free</string>
+    <string name="step_free_any">Any</string>
+    <string name="step_free_station">Station</string>
+    <string name="step_free_fully">Fully</string>
+    <string name="step_free_station_detail">Street to platform, for luggage or a stroller</string>
+    <string name="step_free_fully_detail">Onto the train too, for a wheelchair</string>
+    <string name="step_free_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
 
     <!-- Optional user TfL app_key (SPEC D7). StopDash works keyless; a user's own free key raises
          the request budget. The key is a credential, kept on-device and never logged. -->

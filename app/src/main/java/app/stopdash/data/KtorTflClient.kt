@@ -8,6 +8,7 @@ import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusBatch
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.StepFree
 import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.PlaceSearch
 import app.stopdash.domain.PostcodeResolution
@@ -105,7 +106,7 @@ class KtorTflClient(
     // day is planned, not a disruption. Injected so a test can pin it.
     private val clock: () -> Instant = Instant::now,
 ) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, JourneyPlanner, PostcodeResolver, PlaceSearch, VehicleSource {
-    override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk): List<TripRoute> {
+    override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree): List<TripRoute> {
         // From here, the rider's own coordinate ("lat,lon"): TfL walks from it to the stop that
         // serves the trip best, the same position the nearby lookup already sends (SPEC *Trips
         // with a change*). Never logged, as neither end is.
@@ -125,8 +126,8 @@ class KtorTflClient(
         // station, or one bus the whole way, that the quickest three passed over (SPEC *Trips with a
         // change*). Either answer alone still plans the trip; only both failing fails it.
         val (quickest, fewestChanges) = coroutineScope {
-            val quickest = async { attemptPlan { plan(fromParam, toParam, speed, maxWalk, preference = null) } }
-            val fewestChanges = async { attemptPlan { plan(fromParam, toParam, speed, maxWalk, preference = LEAST_INTERCHANGE) } }
+            val quickest = async { attemptPlan { plan(fromParam, toParam, speed, maxWalk, stepFree, preference = null) } }
+            val fewestChanges = async { attemptPlan { plan(fromParam, toParam, speed, maxWalk, stepFree, preference = LEAST_INTERCHANGE) } }
             quickest.await() to fewestChanges.await()
         }
         val routes = when {
@@ -166,7 +167,14 @@ class KtorTflClient(
 
     // One Planner request between [fromParam] and [toParam], preferring the quickest routes (its
     // default) or [preference]. Its warnings name which request they came from.
-    private suspend fun plan(fromParam: String, toParam: String, speed: WalkingSpeed, maxWalk: MaxWalk, preference: String?): List<TripRoute> {
+    private suspend fun plan(
+        fromParam: String,
+        toParam: String,
+        speed: WalkingSpeed,
+        maxWalk: MaxWalk,
+        stepFree: StepFree,
+        preference: String?,
+    ): List<TripRoute> {
         val source = if (preference == null) "journey planner" else "journey planner (fewest changes)"
         return tflRequest { key ->
             val dto = try {
@@ -181,6 +189,8 @@ class KtorTflClient(
                     // average whatever the speed ([PLANNER_MODES]).
                     parameter("mode", PLANNER_MODES)
                     preference?.let { parameter("journeyPreference", it) }
+                    // Only routes as step-free as the rider chose ([StepFree]); none sent for any.
+                    stepFree.plannerValue?.let { parameter("accessibilityPreference", it) }
                     applyAppKey(key)
                     // The Planner can take several seconds to answer a trip it hasn't cached.
                     allowSlowAnswer()

@@ -72,6 +72,7 @@ import app.stopdash.data.DataStoreStarredRowsStore
 import app.stopdash.data.DistanceUnitsSetting
 import app.stopdash.data.WalkingSpeedSetting
 import app.stopdash.data.MaxWalkSetting
+import app.stopdash.data.StepFreeSetting
 import app.stopdash.data.FileActiveTripStore
 import app.stopdash.data.FileNearbyStopsStore
 import app.stopdash.data.FileRecentStationsStore
@@ -575,6 +576,9 @@ class MainActivity : ComponentActivity() {
                 val maxWalk by MaxWalkSetting.changes.collectAsStateWithLifecycle()
                 val maxWalkLoaded by MaxWalkSetting.isLoaded.collectAsStateWithLifecycle()
                 val maxWalkWriteFailed by MaxWalkSetting.writeFailed.collectAsStateWithLifecycle()
+                val stepFree by StepFreeSetting.changes.collectAsStateWithLifecycle()
+                val stepFreeLoaded by StepFreeSetting.isLoaded.collectAsStateWithLifecycle()
+                val stepFreeWriteFailed by StepFreeSetting.writeFailed.collectAsStateWithLifecycle()
 
                 // The user's TfL app_key for the Settings field. Read from the store (the source of
                 // truth), so an external change — a restore, or the warmed holder's own write —
@@ -954,6 +958,11 @@ class MainActivity : ComponentActivity() {
                                     maxWalkLoaded = maxWalkLoaded,
                                     maxWalkWriteFailed = maxWalkWriteFailed,
                                     onDismissMaxWalkError = MaxWalkSetting::writeFailureShown,
+                                    stepFree = stepFree,
+                                    onStepFreeChange = StepFreeSetting::set,
+                                    stepFreeLoaded = stepFreeLoaded,
+                                    stepFreeWriteFailed = stepFreeWriteFailed,
+                                    onDismissStepFreeError = StepFreeSetting::writeFailureShown,
                                     onOpenFavoritePlaces = { favoritePlacesOpen = true },
                                     onBack = { settingsOpen = false },
                                 )
@@ -2450,7 +2459,9 @@ class MainActivity : ComponentActivity() {
                         origin = { latestHere?.let(TripOrigin::Here) ?: TripOrigin.Stop(fromStop.id) },
                         walkingSpeed = WalkingSpeedSetting.changes.value,
                         maxWalk = MaxWalkSetting.changes.value,
-                        optionsLoaded = WalkingSpeedSetting.isLoaded.value && MaxWalkSetting.isLoaded.value,
+                        stepFree = StepFreeSetting.changes.value,
+                        optionsLoaded = WalkingSpeedSetting.isLoaded.value && MaxWalkSetting.isLoaded.value &&
+                            StepFreeSetting.isLoaded.value,
                     )
                 }
             },
@@ -2467,13 +2478,17 @@ class MainActivity : ComponentActivity() {
         // The walk-limit setting, from the picker atop the routes: a change plans again too.
         val maxWalk by MaxWalkSetting.changes.collectAsStateWithLifecycle()
         SideEffect { trip.maxWalk = maxWalk }
-        // Nothing is planned, nor picked, until both are read: a plan under the defaults would show
-        // routes past the rider's own limit, and a pick then would be saved over their choice. Every
-        // plan waits for it in the model ([TripViewModel.optionsLoaded]), set after the values so a
-        // plan it releases reads them.
-        val walkSettingsLoaded = WalkingSpeedSetting.isLoaded.collectAsStateWithLifecycle().value &&
-            MaxWalkSetting.isLoaded.collectAsStateWithLifecycle().value
-        SideEffect { trip.optionsLoaded = walkSettingsLoaded }
+        // The step-free setting, likewise.
+        val stepFree by StepFreeSetting.changes.collectAsStateWithLifecycle()
+        SideEffect { trip.stepFree = stepFree }
+        // Nothing is planned, nor picked, until all three are read: a plan under the defaults would
+        // show routes past the rider's own limit, or with stairs they asked to avoid, and a pick then
+        // would be saved over their choice. Every plan waits for it in the model
+        // ([TripViewModel.optionsLoaded]), set after the values so a plan it releases reads them.
+        val planOptionsLoaded = WalkingSpeedSetting.isLoaded.collectAsStateWithLifecycle().value &&
+            MaxWalkSetting.isLoaded.collectAsStateWithLifecycle().value &&
+            StepFreeSetting.isLoaded.collectAsStateWithLifecycle().value
+        SideEffect { trip.optionsLoaded = planOptionsLoaded }
         // A re-pick of the nearby set (a fresh fix, a retried location) that kept the same nearest
         // stop keeps this trip, but its walk and live times follow the new fix at once rather than
         // wait for the next tick.
@@ -2540,7 +2555,11 @@ class MainActivity : ComponentActivity() {
             onMaxWalkChange = MaxWalkSetting::set,
             maxWalkWriteFailed = MaxWalkSetting.writeFailed.collectAsStateWithLifecycle().value,
             onMaxWalkWriteFailureShown = MaxWalkSetting::writeFailureShown,
-            walkSettingsLoaded = walkSettingsLoaded,
+            stepFree = stepFree,
+            onStepFreeChange = StepFreeSetting::set,
+            stepFreeWriteFailed = StepFreeSetting.writeFailed.collectAsStateWithLifecycle().value,
+            onStepFreeWriteFailureShown = StepFreeSetting::writeFailureShown,
+            planOptionsLoaded = planOptionsLoaded,
             // Where it starts and where it goes, each a tap to change (maintainer, 2026-09-28): From
             // opens the From… search, To the destination search, the other end kept.
             ends = onChangeFrom?.let { changeFrom -> TripEnds(fromName, toName, changeFrom, onPlanTo) },

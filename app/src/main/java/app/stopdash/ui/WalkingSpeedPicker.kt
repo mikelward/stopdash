@@ -2,6 +2,7 @@ package app.stopdash.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -27,6 +28,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.StepFree
 import app.stopdash.domain.WalkingSpeed
 
 /** The label each [WalkingSpeed] is shown by: the Planner's "Average" reads as "Medium". */
@@ -91,7 +93,58 @@ internal fun MaxWalkPicker(
     )
 }
 
-/** A setting atop a trip's routes: its [title], and the [selected] option opening a menu of [options]. */
+/** The label each [StepFree] level is shown by: the maintainer's names (2026-09-30). */
+@Composable
+internal fun stepFreeLabel(stepFree: StepFree): String = stringResource(
+    when (stepFree) {
+        StepFree.ANY -> R.string.step_free_any
+        StepFree.STATION -> R.string.step_free_station
+        StepFree.FULLY -> R.string.step_free_fully
+    },
+)
+
+/**
+ * The line under each [StepFree] level in its menu, saying what it's for (Codex, #408): the bare
+ * names don't tell a rider with a suitcase or a buggy that Station suits them. Any needs none.
+ */
+@Composable
+internal fun stepFreeDetail(stepFree: StepFree): String? = when (stepFree) {
+    StepFree.ANY -> null
+    StepFree.STATION -> stringResource(R.string.step_free_station_detail)
+    StepFree.FULLY -> stringResource(R.string.step_free_fully_detail)
+}
+
+/**
+ * How step-free a trip's routes must be (maintainer, 2026-09-30): "Step-free" and Any, Station (to the
+ * platform) or Fully (to the train as well). Atop a trip's routes, where a pick plans again
+ * ([TripViewModel.stepFree]), and in Settings, tagged [tag] there; the same setting either way.
+ * Until the stored choice is read ([enabled] false) it shows none and opens nothing.
+ */
+@Composable
+internal fun StepFreePicker(
+    stepFree: StepFree,
+    onChange: (StepFree) -> Unit,
+    modifier: Modifier = Modifier,
+    tag: String = "stepFree",
+    enabled: Boolean = true,
+) {
+    PickerRow(
+        title = stringResource(R.string.step_free_title),
+        tag = tag,
+        selected = stepFree,
+        options = StepFree.entries,
+        label = { stepFreeLabel(it) },
+        detail = { stepFreeDetail(it) },
+        onChange = onChange,
+        modifier = modifier,
+        enabled = enabled,
+    )
+}
+
+/**
+ * A setting atop a trip's routes: its [title], and the [selected] option opening a menu of [options],
+ * each shown by its [label] over its [detail], if it has one.
+ */
 @Composable
 private fun <T : Enum<T>> PickerRow(
     title: String,
@@ -102,6 +155,7 @@ private fun <T : Enum<T>> PickerRow(
     onChange: (T) -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    detail: @Composable (T) -> String? = { null },
 ) {
     var expanded by remember { mutableStateOf(false) }
     val current = if (enabled) label(selected) else "–"
@@ -123,7 +177,18 @@ private fun <T : Enum<T>> PickerRow(
             DropdownMenu(expanded = expanded && enabled, onDismissRequest = { expanded = false }) {
                 options.forEach { option ->
                     DropdownMenuItem(
-                        text = { Text(label(option)) },
+                        text = {
+                            Column {
+                                Text(label(option))
+                                detail(option)?.let {
+                                    Text(
+                                        it,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        },
                         onClick = {
                             expanded = false
                             onChange(option)

@@ -109,6 +109,7 @@ import app.stopdash.domain.TripTiming
 import app.stopdash.domain.routeLabels
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.StepFree
 import app.stopdash.domain.PlacedStand
 import app.stopdash.domain.alightingKey
 import app.stopdash.domain.boardingKey
@@ -647,9 +648,14 @@ internal fun TripScreen(
     onMaxWalkChange: ((MaxWalk) -> Unit)? = null,
     maxWalkWriteFailed: Boolean = false,
     onMaxWalkWriteFailureShown: () -> Unit = {},
-    // Whether the walking speed and max walk have been read from storage: until then their pickers
-    // show no value and open nothing, so a pick can't be saved over a choice not yet read.
-    walkSettingsLoaded: Boolean = true,
+    // How step-free the routes must be, and a pick of another; null shows no picker.
+    stepFree: StepFree = StepFree.DEFAULT,
+    onStepFreeChange: ((StepFree) -> Unit)? = null,
+    stepFreeWriteFailed: Boolean = false,
+    onStepFreeWriteFailureShown: () -> Unit = {},
+    // Whether the walking speed, max walk and step-free level have been read from storage: until then
+    // their pickers show no value and open nothing, so a pick can't be saved over a choice not yet read.
+    planOptionsLoaded: Boolean = true,
     // The From/To bar in place of [title] over the routes (maintainer, 2026-09-28): where the trip
     // starts and where it goes, each a tap to change. Null (a test) shows the title.
     ends: TripEnds? = null,
@@ -684,7 +690,11 @@ internal fun TripScreen(
             onMaxWalkChange,
             maxWalkWriteFailed,
             onMaxWalkWriteFailureShown,
-            walkSettingsLoaded,
+            stepFree,
+            onStepFreeChange,
+            stepFreeWriteFailed,
+            onStepFreeWriteFailureShown,
+            planOptionsLoaded,
             ends,
             pullRefreshing,
             onPullRefresh,
@@ -748,7 +758,11 @@ private fun TripContent(
     onMaxWalkChange: ((MaxWalk) -> Unit)? = null,
     maxWalkWriteFailed: Boolean = false,
     onMaxWalkWriteFailureShown: () -> Unit = {},
-    walkSettingsLoaded: Boolean = true,
+    stepFree: StepFree = StepFree.DEFAULT,
+    onStepFreeChange: ((StepFree) -> Unit)? = null,
+    stepFreeWriteFailed: Boolean = false,
+    onStepFreeWriteFailureShown: () -> Unit = {},
+    planOptionsLoaded: Boolean = true,
     ends: TripEnds? = null,
     pullRefreshing: Boolean = false,
     onPullRefresh: (() -> Unit)? = null,
@@ -963,6 +977,14 @@ private fun TripContent(
             snackbarHostState.showSnackbar(maxWalkWriteFailedMessage)
         }
     }
+    // A step-free level picked here that didn't save, likewise.
+    val stepFreeWriteFailedMessage = stringResource(R.string.step_free_write_failed)
+    LaunchedEffect(stepFreeWriteFailed) {
+        if (stepFreeWriteFailed) {
+            onStepFreeWriteFailureShown()
+            snackbarHostState.showSnackbar(stepFreeWriteFailedMessage)
+        }
+    }
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         // An open route starts on the way from here: followed by its train to the destination. Above
@@ -1050,11 +1072,15 @@ private fun TripContent(
             // are timed at it as the list's are. A pick plans again; an open route stays
             // open when the new plan still offers it ([routeKey] names lines and stops, not times).
             if (onWalkingSpeedChange != null) {
-                WalkingSpeedPicker(walkingSpeed, onWalkingSpeedChange, enabled = walkSettingsLoaded)
+                WalkingSpeedPicker(walkingSpeed, onWalkingSpeedChange, enabled = planOptionsLoaded)
             }
             // The walk limit sits under it: the two decide together which walks the routes can take.
             if (onMaxWalkChange != null) {
-                MaxWalkPicker(maxWalk, onMaxWalkChange, enabled = walkSettingsLoaded)
+                MaxWalkPicker(maxWalk, onMaxWalkChange, enabled = planOptionsLoaded)
+            }
+            // Step-free under them: it too changes which routes the Planner offers.
+            if (onStepFreeChange != null) {
+                StepFreePicker(stepFree, onStepFreeChange, enabled = planOptionsLoaded)
             }
             TripBanners(shown, rideLines, state, check, locationBanner, onRelocate, hiddenModes, onShowAllModes)
             Box(Modifier.fillMaxSize()) {
