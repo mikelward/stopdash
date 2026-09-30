@@ -3,12 +3,14 @@ package app.stopdash.widget
 import androidx.glance.appwidget.testing.unit.runGlanceAppWidgetUnitTest
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.glance.testing.unit.hasContentDescriptionEqualTo
 import androidx.glance.testing.unit.hasText
 import androidx.glance.testing.unit.hasTextEqualTo
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.lineCode
+import app.stopdash.domain.riderLineName
 import java.time.Instant
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -251,6 +253,32 @@ class WidgetContentTest {
         onNode(hasText("Walthamstow Central")).assertExists()
         // Each destination line carries its own pill, as each row of the in-app card does.
         onAllNodes(hasTextEqualTo(lineCode("victoria", "tube"))).assertCountEquals(2)
+    }
+
+    @Test
+    fun `a named Overground line's hollow pill still shows its code, and TalkBack its name`() = runGlanceAppWidgetUnitTest {
+        val windrush = DepartureRow(
+            stopId = "910GEXAMPLE",
+            stopName = "Example Station",
+            lineId = "windrush",
+            lineName = "Windrush",
+            direction = "outbound",
+            directionKey = "outbound",
+            destination = "Highbury & Islington",
+            mode = "overground",
+            upcoming = listOf(
+                Departure("windrush", "Windrush", "outbound", "Highbury & Islington", null, now.plusSeconds(120), "overground"),
+            ),
+            fetchedAt = now.minusSeconds(30),
+        )
+        provideComposable {
+            WidgetContent(
+                WidgetModel(hasData = true, stale = false, uncertain = false, stamp = "Updated just now", rows = listOf(rowModel(windrush))),
+                now,
+            )
+        }
+        onNode(hasTextEqualTo(lineCode("Windrush", "overground", "windrush"))).assertExists()
+        onNode(hasContentDescriptionEqualTo(riderLineName("Windrush", "overground"))).assertExists()
     }
 
     @Test

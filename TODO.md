@@ -2411,14 +2411,13 @@ and these carry the rest as their own PRs:
       Fix properly: decide stacking per row from its estimated countdown width, count the line budget in
       dp instead of lines, and add width buckets (the 220dp bucket stands for every width above it).
       Glance can't measure text, so this stays an estimate; judge it on a device.
-- [ ] **Named Overground pills on the widget (own PR, Codex P2 on #44).** The in-app pill
-      renders the six named Overground lines as a *hollow* pill (surface fill + accent border
-      + accent label, via `overgroundAccentColor`); the widget falls back to a neutral pill for
-      them because `lineFillColor` returns null. Glance has no border modifier, so a hollow pill
-      needs a nested-Box ring hack that the node harness can't verify — and a solid accent fill
-      would reintroduce the tube-color collision #42's hollow treatment exists to avoid (Windrush
-      red ≈ Central). So the widget shows a safe neutral pill for named Overground for now;
-      revisit with a verifiable Glance hollow treatment (or once pixel rendering lands).
+- [x] **Named Overground pills on the widget (own PR, Codex P2 on #44).** The widget now draws
+      the six named Overground lines hollow, as the app and the watch do (`widgetPillStyle`, from
+      the shared `pillColors`): Glance has no border, so the ring is the accent behind a box of the
+      widget's background, and every pill takes the one fixed width so the ring's insets can't make
+      it narrower. The accent is nudged for a light and a dark background (Material's baseline, since
+      the host's dynamic color is known only when it draws). Pixel-checked by `WidgetScreenshotTest`
+      (`widget-overground*.png`); an on-device look at the real host is still owed with the rest.
 - [ ] **Widget should reuse the in-app row, differences as parameters (own PR, maintainer
       2026-09-21).** The widget re-implements the departure-row shape (destination + branch
       label, countdown, pill) in Glance rather than sharing the in-app card's composable, so a

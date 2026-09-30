@@ -831,7 +831,8 @@ label — rather than a solid fill. Two reasons: several of the Overground color
 a tube line's (Windrush red ≈ Central, Mildmay ≈ a tube blue), so a solid pill would read as
 that tube line; and TfL itself draws the Overground as hollow/parallel lines — so the hollow
 shape says "Overground, not tube" even where the color collides. The accent is nudged to
-stay legible on the surface (darker on the light card, brighter on the dark one). An
+stay legible on the surface (darker on the light card, brighter on the dark one). The widget and
+the watch draw it the same way. An
 Overground service whose id isn't one of the six (legacy `london-overground`) falls back to
 the single mode orange. National Rail resolves by **operator** rather than mode — every rail
 service shares the one `national-rail` mode, so its operator is its identity — and each operator
