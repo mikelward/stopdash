@@ -1610,6 +1610,47 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `the couldn't-check note names the lines, then the stops, that couldn't be checked`() {
+        val now = at(0)
+        val red = TripLeg("tube", "red", "Red", "A", "Alpha", "B", "Bravo", at(10), at(20))
+        val bus = TripLeg("bus", "1", "Route 1", "B", "Bravo", "P1", "Papa", at(25), at(35), toArea = "490G0000P")
+        val route = TripRoute(listOf(red, bus))
+        val estimates = listOf(TripTiming.Estimate(route, TripTiming.Basis.LIVE, at(35), emptyList(), false, now))
+        val sequences = mapOf(
+            "1" to LineSequence(
+                routes = listOf(LineRoute("B ↔ P1", listOf("B", "P1"))),
+                stopNames = mapOf("B" to "Bravo", "P1" to "Papa"),
+                stopAreas = mapOf("P1" to "490G0000P"),
+            ),
+        )
+        val good = LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service")
+        val checked = TripViewModel.State(
+            routes = listOf(route),
+            statuses = mapOf("red" to good, "1" to good.copy(lineId = "1")),
+            closures = mapOf("A" to emptyList(), "B" to emptyList(), "P1" to emptyList()),
+        )
+        fun names(state: TripViewModel.State, lines: Map<TripLeg, RideLines> = emptyMap(), seqs: Map<String, LineSequence?> = sequences) =
+            uncheckedNames(estimates, state, now, seqs, lines)
+        // Every line and stop checked: nothing to name.
+        assertEquals(emptyList<String>(), names(checked))
+        // A line with no status known, one whose check failed, a stop whose check failed: lines first.
+        assertEquals(listOf("Red", "Bravo"), names(checked.copy(statusUnknown = setOf("red"), closuresFailed = setOf("B"))))
+        assertEquals(listOf("Route 1"), names(checked.copy(statusFailed = true, statusFailedLines = setOf("1"))))
+        assertEquals(listOf("Route 1"), names(checked.copy(statuses = checked.statuses - "1")))
+        // A stop with no check held yet, or one not yet vouched for.
+        assertEquals(listOf("Alpha"), names(checked.copy(closures = checked.closures - "A")))
+        assertEquals(listOf("Papa"), names(checked.copy(closuresUnknown = setOf("P1"))))
+        // The bus not placed on a pole of its pair (its route failed to load): both its stops, once each.
+        assertEquals(listOf("Bravo", "Papa"), names(checked, seqs = mapOf("1" to null)))
+        // Another line a ride shows, never checked, and a pole of its own with no check held.
+        val two = bus.copy(lineId = "2", lineName = "Route 2", toId = "P2", toName = "Papa (other side)")
+        val lines = mapOf(bus to RideLines(listOf(bus, two), listOf(bus, two)))
+        assertEquals(listOf("Route 2", "Papa (other side)"), names(checked, lines))
+        // A closed stop is no gap in the check: it's known.
+        assertEquals(emptyList<String>(), names(checked.copy(closures = checked.closures + ("B" to listOf(StopDisruption("Station closed due to a power failure"))))))
+    }
+
+    @Test
     fun `an opened route says it couldn't check only a stop of its own`() {
         val red = TripLeg("tube", "red", "Red", "A", "A", "B", "B", at(10), at(20))
         val bus = TripLeg("bus", "1", "1", "S", "S", "P1", "P1", at(10), at(20), toArea = "490G0000P")

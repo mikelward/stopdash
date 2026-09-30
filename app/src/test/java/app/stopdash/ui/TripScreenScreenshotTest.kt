@@ -1260,11 +1260,11 @@ class TripScreenScreenshotTest {
         // The failed check was for a stop no route shown uses (one of a hidden mode's, say).
         val state = androidx.compose.runtime.mutableStateOf(running.copy(closuresFailed = setOf("940GZZLUNONE")))
         showWith(state)
-        composeRule.onNodeWithText(unknown).assertDoesNotExist()
-        // One a shown route gets off at: it can't vouch for that route.
+        composeRule.onNodeWithText(unknown, substring = true).assertDoesNotExist()
+        // One a shown route gets off at: it can't vouch for that route, and names the stop.
         state.value = running.copy(closuresFailed = setOf(highbury.first))
         composeRule.waitForIdle()
-        composeRule.onNodeWithText(unknown).assertExists()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.trip_disruptions_unknown_named, highbury.second)).assertExists()
     }
 
     @Test
@@ -1278,14 +1278,19 @@ class TripScreenScreenshotTest {
             running.copy(statusFailed = true, statusFailedLines = setOf("hidden"), statusUnknown = setOf("hidden")),
         )
         showWith(state)
-        composeRule.onNodeWithText(unknown).assertDoesNotExist()
-        // One a shown route rides: it can't vouch for that route.
+        composeRule.onNodeWithText(unknown, substring = true).assertDoesNotExist()
+        // One a shown route rides: it can't vouch for that route, and names the line.
+        val windrush = composeRule.activity.getString(R.string.trip_disruptions_unknown_named, "Windrush")
         state.value = running.copy(statusFailed = true, statusFailedLines = setOf("windrush"))
         composeRule.waitForIdle()
-        composeRule.onNodeWithText(unknown).assertExists()
+        composeRule.onNodeWithText(windrush).assertExists()
         state.value = running.copy(statusUnknown = setOf("windrush"))
         composeRule.waitForIdle()
-        composeRule.onNodeWithText(unknown).assertExists()
+        composeRule.onNodeWithText(windrush).assertExists()
+        // A line and a stop together: the line first.
+        state.value = running.copy(statusUnknown = setOf("windrush"), closuresFailed = setOf(highbury.first))
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.trip_disruptions_unknown_named, "Windrush, ${highbury.second}")).assertExists()
     }
 
     @Test

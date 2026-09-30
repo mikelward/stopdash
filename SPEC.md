@@ -1099,8 +1099,10 @@ A route whose line status or closure check failed with nothing known yet ranks o
 checked one while a live train times any of its rides: the Planner offered it, and the train shows it
 running (maintainer, 2026-09-30: a faster route isn't buried under a slower one because a check
 failed). With none, it sits between the two: below every route checked and open, above those known
-not to run. Either way it says it couldn't check for disruptions, until a check succeeds, and of two
-arriving together the one checked comes first. A ride goes by any of its lines: one whose Planner line is
+not to run. Either way it says what it couldn't check, until a check succeeds — "Couldn't check for
+disruptions: ‹names›", each line whose status isn't known or whose check failed, then each stop with
+no current check (its bus not yet placed on a pole there included), by the names the cards show
+(maintainer, 2026-09-30) — and of two arriving together the one checked comes first. A ride goes by any of its lines: one whose Planner line is
 suspended or unchecked still counts as usable while another line riding the same stretch, checked
 as running from stops checked open, can take it, since that line's trains time it too. The Planner's
 line then answers to its status like any other: suspended or unchecked, its trains neither time the
