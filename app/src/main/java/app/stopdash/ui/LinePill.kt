@@ -94,7 +94,7 @@ fun LinePill(lineName: String, lineId: String, mode: String, modifier: Modifier 
         modifier = modifier,
     ) {
         Text(
-            text = lineCode(lineName, mode),
+            text = lineCode(lineName, mode, lineId),
             style = textStyle,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
@@ -294,9 +294,9 @@ private data class Segment(val line: LineRef, val code: String, val fill: Color,
  */
 internal fun cutPillCodes(lines: List<LineRef>): List<String> =
     if (lines.size > MAX_NAMED_LINES) {
-        listOf(lineCode(lines[0].name, lines[0].mode), MORE_LINES)
+        listOf(lineCode(lines[0].name, lines[0].mode, lines[0].id), MORE_LINES)
     } else {
-        lines.map { lineCode(it.name, it.mode) }
+        lines.map { lineCode(it.name, it.mode, it.id) }
     }
 
 /** The most lines a [SharedLinePill] names; past that, the second part reads [MORE_LINES]. */

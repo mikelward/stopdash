@@ -68,8 +68,11 @@ private val modeColors: Map<String, Color> = mapOf(
 
 /**
  * National Rail operator **brand** colors, keyed by a punctuation- and case-insensitive form
- * of the operator name (see [normalizeRailOperator]) — TfL's `lineName` for a national-rail
- * service, the same field [lineCode] reads for the operator code. Unlike the tube/mode colors
+ * of the operator name (see [normalizeRailOperator]) — a service's `lineName`, the same field
+ * [lineCode] reads for the operator code. A key is also looked up from the service's TfL line
+ * id, which on a rail board comes from the operator's code, so a line matches by name or by code
+ * (see [railOperatorColor]): TfL's ids are its operator names with hyphens, and normalize to these
+ * same keys. Unlike the tube/mode colors
  * these are each operator's own brand hex, not a TfL palette color — the deliberate departure
  * from "add a line color only as a confirmed TfL hex" the maintainer authorized (SPEC / TODO),
  * so a rail departure wears its operator's identity (c2c magenta, Southern green, EMR aubergine)
@@ -106,9 +109,10 @@ private val railOperatorColors: Map<String, Color> = mapOf(
     "chilternrailways" to Color(0xFF00BFFF),
     "gatwickexpress" to Color(0xFFEB1E2D),
     "heathrowexpress" to Color(0xFF532E63),
+    // The rail feed names it by its brand alone.
+    "lner" to Color(0xFFCE0E2D),
     "eurostar" to Color(0xFF086BFE),
     "caledoniansleeper" to Color(0xFF1D2E35),
-    "lumo" to Color(0xFF2B6EF5),
     "grandcentral" to Color(0xFF1D1D1B),
     "hulltrains" to Color(0xFFDE005C),
     "transpennineexpress" to Color(0xFF09A4EC),
@@ -120,12 +124,16 @@ private val railOperatorColors: Map<String, Color> = mapOf(
     "scotrail" to Color(0xFF1E467D),
     "merseyrail" to Color(0xFFFFF200),
     "islandline" to Color(0xFF1E90FF),
-    // West Midlands Trains runs two brands under one operator code (LM) and one TfL line: this
-    // orange for West Midlands Railway, green for London Northwestern (below), both from the
-    // route-map legend in Wikipedia's *West Midlands Trains* article (the maintainer's pick,
-    // 2026-09-30, over the template's `#FF8300`, so the sister brands match). The parent name,
-    // "West Midlands Trains", is TfL's and names no brand a rider sees, so it stays neutral.
+    // West Midlands Trains runs two brands, London Northwestern and West Midlands Railway, under
+    // one operator code (LM) and one TfL line. The rail feed doesn't tell them apart ("LNR &
+    // WMR"), so the line wears London Northwestern's green (below) under that name, TfL's
+    // "West Midlands Trains" and its line id: every train it runs from London is LNR
+    // (maintainer, 2026-09-30). West Midlands Railway, named on its own, keeps its orange. Both
+    // are from the route-map legend in Wikipedia's *West Midlands Trains* article (the
+    // maintainer's pick, 2026-09-30, over the template's `#FF8300`, so the sister brands match).
     "westmidlandsrailway" to Color(0xFFF27B15),
+    "lnrwmr" to Color(0xFF27B67A),
+    "westmidlandstrains" to Color(0xFF27B67A),
 )
 
 /** An operator name reduced to lowercase letters and digits, so "Great Western Railway",
@@ -148,15 +156,24 @@ fun lineFillColor(lineId: String, mode: String): Color? {
 }
 
 /**
- * The **solid** brand fill for a national-rail [operator] (TfL's `lineName`), or `null` for a
- * non-rail mode or a rail operator without a confirmed brand hex (→ neutral pill). Gated on
+ * The **solid** brand fill for a national-rail [operator] (the service's `lineName`), or `null`
+ * for a non-rail mode or a rail operator without a confirmed brand hex (→ neutral pill). Gated on
  * [mode] so a tube/bus line that happens to share an operator's name can't pick up a rail
- * brand color. Resolved by operator, not by [lineId]/mode, because every national-rail service
- * shares the one `national-rail` mode — its operator is its identity (see [railOperatorColors]).
+ * brand color. Resolved by operator, because every national-rail service shares the one
+ * `national-rail` mode — its operator is its identity (see [railOperatorColors]).
+ *
+ * The name is tried first, so a brand the feed names (West Midlands Railway) keeps its own color;
+ * then [lineId], which a rail board derives from the operator's code. The feed spells some names
+ * its own way ("LNER", "LNR & WMR") and a name that matches nothing would otherwise leave the
+ * pill neutral, so the code is the net that catches a new spelling.
  */
-fun railOperatorColor(mode: String, operator: String): Color? {
+fun railOperatorColor(mode: String, operator: String, lineId: String = ""): Color? {
     if (!mode.equals("national-rail", ignoreCase = true)) return null
-    val key = normalizeRailOperator(operator)
+    return railColorFor(normalizeRailOperator(operator)) ?: railColorFor(normalizeRailOperator(lineId))
+}
+
+private fun railColorFor(key: String): Color? {
+    if (key.isEmpty()) return null
     railOperatorColors[key]?.let { return it }
     return railOperatorColorPrefixes.firstOrNull { (prefix, _) -> key.startsWith(prefix) }?.second
 }
@@ -170,6 +187,8 @@ fun railOperatorColor(mode: String, operator: String): Color? {
  */
 private val railOperatorColorPrefixes: List<Pair<String, Color>> = listOf(
     "londonnorthwestern" to Color(0xFF27B67A),
+    // Lumo, and the rail feed's "Lumo Stirling", which carries a code of its own.
+    "lumo" to Color(0xFF2B6EF5),
 )
 
 /**
@@ -312,7 +331,7 @@ fun pillColors(lineName: String, lineId: String, mode: String, surface: Color): 
     overgroundAccentColor(lineId)?.let { accent ->
         return PillColors.Hollow(label = accentInkOn(accent, surface), border = accentEdgeOn(accent, surface))
     }
-    val fill = railOperatorColor(mode, lineName) ?: lineFillColor(lineId, mode) ?: return PillColors.Neutral
+    val fill = railOperatorColor(mode, lineName, lineId) ?: lineFillColor(lineId, mode) ?: return PillColors.Neutral
     val label = textColorOn(fill)
     return PillColors.Solid(fill = fill, label = label, border = borderColorOn(fill), halo = haloFor(label))
 }

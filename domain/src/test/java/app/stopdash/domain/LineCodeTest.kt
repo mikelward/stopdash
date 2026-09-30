@@ -83,7 +83,26 @@ class LineCodeTest {
     }
 
     @Test
-    fun `West Midlands Railway is WMR`() {
+    fun `West Midlands Railway named on its own is WMR`() {
         assertEquals("WMR", lineCode("West Midlands Railway", "national-rail"))
+        assertEquals("WMR", lineCode("West Midlands Railway", "national-rail", "west-midlands-trains"))
+    }
+
+    @Test
+    fun `West Midlands Trains' line is LNR by the feed's name, TfL's name, or its line id`() {
+        // The rail feed names both brands "LNR & WMR"; its capitals would overflow the pill.
+        assertEquals("LNR", lineCode("LNR & WMR", "national-rail"))
+        assertEquals("LNR", lineCode("LNR & WMR", "national-rail", "west-midlands-trains"))
+        // TfL's line list calls it West Midlands Trains.
+        assertEquals("LNR", lineCode("West Midlands Trains", "national-rail", "west-midlands-trains"))
+        // A spelling nobody has listed, caught by the line id its operator code maps to.
+        assertEquals("LNR", lineCode("London & Birmingham", "national-rail", "west-midlands-trains"))
+        // The line id pins rail only.
+        assertEquals("WES", lineCode("West Midlands Trains", "tube", "west-midlands-trains"))
+    }
+
+    @Test
+    fun `LNER, named by its brand alone, is LNER`() {
+        assertEquals("LNER", lineCode("LNER", "national-rail", "london-north-eastern-railway"))
     }
 }

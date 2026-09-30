@@ -6,9 +6,9 @@ package app.stopdash.domain
  * RB1), so the page doesn't repeat it. A trailing bracketed alias ("… Railway (LNR)") is dropped:
  * the pill already carries the short form.
  */
-fun serviceName(lineName: String, mode: String): String? {
+fun serviceName(lineName: String, mode: String, lineId: String = ""): String? {
     val name = lineName.trim().replace(TRAILING_ALIAS, "").trim()
-    return if (name.isEmpty() || name.equals(lineCode(lineName, mode), ignoreCase = true)) null else name
+    return if (name.isEmpty() || name.equals(lineCode(lineName, mode, lineId), ignoreCase = true)) null else name
 }
 
 /**

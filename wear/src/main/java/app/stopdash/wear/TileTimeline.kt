@@ -215,7 +215,7 @@ object TileTimeline {
                 val row = chosen.row
                 val stale = staleStop[row.stopId] == true
                 val star = StarredRow.of(row) in starred
-                val code = lineCode(row.lineName, row.mode)
+                val code = lineCode(row.lineName, row.mode, row.lineId)
                 for (group in chosen.groups) {
                     val label = DepartureLabels.destinationLabel(group.destination, row.directionKey) ?: "—"
                     val shown = if (group.branch != null) "$label/${group.branch}" else label

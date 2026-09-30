@@ -123,6 +123,37 @@ class LineColorsTest {
     }
 
     @Test
+    fun `an operator the rail feed names its own way matches by name or by its line id`() {
+        val lner = Color(0xFFCE0E2D)
+        // A rail board names LNER by its brand alone.
+        assertEquals(lner, railOperatorColor("national-rail", "LNER", "london-north-eastern-railway"))
+        assertEquals(lner, railOperatorColor("national-rail", "LNER"))
+        // A spelling nobody has listed still matches through the line id its operator code maps to.
+        assertEquals(lner, railOperatorColor("national-rail", "L.N.E.R. Trains", "london-north-eastern-railway"))
+        assertEquals(Color(0xFF8CC63E), railOperatorColor("national-rail", "", "southern"))
+        // Still rail only.
+        assertNull(railOperatorColor("tube", "LNER", "london-north-eastern-railway"))
+    }
+
+    @Test
+    fun `West Midlands Trains' line is London Northwestern green under every name but WMR's own`() {
+        val green = Color(0xFF27B67A)
+        // The rail feed's name for both brands, TfL's name for the line, and the line id.
+        assertEquals(green, railOperatorColor("national-rail", "LNR & WMR", "west-midlands-trains"))
+        assertEquals(green, railOperatorColor("national-rail", "West Midlands Trains", "west-midlands-trains"))
+        assertEquals(green, railOperatorColor("national-rail", "", "west-midlands-trains"))
+        // A service named for West Midlands Railway alone keeps its brand's orange.
+        assertEquals(Color(0xFFF27B15), railOperatorColor("national-rail", "West Midlands Railway", "west-midlands-trains"))
+        val pill = pillColors("West Midlands Trains", "west-midlands-trains", "national-rail", Color.White)
+        assertEquals(green, (pill as PillColors.Solid).fill)
+    }
+
+    @Test
+    fun `Lumo Stirling wears Lumo's blue`() {
+        assertEquals(Color(0xFF2B6EF5), railOperatorColor("national-rail", "Lumo Stirling", "lumo-stirling"))
+    }
+
+    @Test
     fun `London Northwestern is green however the feed spells it`() {
         val green = Color(0xFF27B67A)
         assertEquals(green, railOperatorColor("national-rail", "London Northwestern Railway"))
@@ -155,8 +186,8 @@ class LineColorsTest {
         // Not in the confirmed set → null, so LinePill shows a neutral pill rather than an
         // invented shade (SPEC: never an invented color).
         assertNull(railOperatorColor("national-rail", "Example Rail"))
-        // The parent company of West Midlands Railway and London Northwestern names neither brand.
-        assertNull(railOperatorColor("national-rail", "West Midlands Trains"))
+        // Nor does a line id that is only that unknown operator's name.
+        assertNull(railOperatorColor("national-rail", "Example Rail", "example-rail"))
     }
 
     @Test
