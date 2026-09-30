@@ -29,6 +29,7 @@ import app.stopdash.domain.TripClosures
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripRoute
+import app.stopdash.domain.stampOf
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.StepFree
@@ -902,8 +903,11 @@ class TripViewModel(
                 val before = client.shareable(stopId)
                 client.arrivals(stopId).let { it to (before && client.shareable(stopId) && client.arrivalsSource() == source) }
             }
-            if (shared) arrivals.put(stopId, departures, at, client.railFeed(stopId), generation, source)
-            StopLive(departures, at)
+            // Dated by their oldest part: a National Rail board another screen fetched moments ago
+            // keeps its age ([TflClient.fetchedAt]).
+            val fetchedAt = client.stampOf(stopId, at)
+            if (shared) arrivals.put(stopId, departures, fetchedAt, client.railFeed(stopId), generation, source)
+            StopLive(departures, fetchedAt)
         } catch (e: CancellationException) {
             throw e
         } catch (e: TflException) {

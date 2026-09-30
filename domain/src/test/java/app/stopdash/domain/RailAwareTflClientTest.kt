@@ -1,11 +1,14 @@
 package app.stopdash.domain
 
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -254,5 +257,129 @@ class RailAwareTflClientTest {
         assertEquals(true, client.shareable("910GEXAMPLE"))
         // Its arrivals now come without National Rail times: another source.
         assertEquals(false, client.arrivalsSource())
+    }
+
+    @Test
+    fun `a trip's client gives every stop of a station its board, asked for once`() = runTest {
+        val board = Board()
+        val shared = RailStationCodes(mapOf("TWINA" to "TWN", "TWINB" to "TWN"))
+        val cache = ArrivalsCache()
+        val client = RailAwareTflClient(tfl, board, { shared }, boardAtEveryStop = true, boards = cache, clock = { now })
+        fun List<Departure>.rail() = count { it.mode == "national-rail" }
+        // A train boarding at either stop is timed from the station's board.
+        assertEquals(1, client.arrivals("910GTWINA").rail())
+        assertEquals(1, client.arrivals("910GTWINB").rail())
+        assertEquals(RailFeed.LIVE, client.railFeed("910GTWINB"))
+        assertEquals(listOf("TWN"), board.asked)
+        // Still never another client's to reuse by stop: a list's client shows it under one only.
+        assertEquals(false, client.shareable("910GTWINB"))
+    }
+
+    @Test
+    fun `a trip's stops of one station asking at once share one board request and its outcome`() = runTest {
+        val shared = RailStationCodes(mapOf("TWINA" to "TWN", "TWINB" to "TWN"))
+        for (fails in listOf(false, true)) {
+            val gate = CompletableDeferred<Unit>()
+            val board = object : RailBoardSource {
+                val asked = mutableListOf<String>()
+                override val available = true
+                override suspend fun departures(crs: String): List<Departure> {
+                    asked += crs
+                    gate.await()
+                    if (fails) throw TflException.Unreachable("HTTP 503", null)
+                    return listOf(departure("great-example", "national-rail"))
+                }
+            }
+            val client = RailAwareTflClient(tfl, board, { shared }, boardAtEveryStop = true, boards = ArrivalsCache(), clock = { now })
+            val (a, b) = coroutineScope {
+                val a = async { client.arrivals("910GTWINA") }
+                val b = async { client.arrivals("910GTWINB") }
+                // Both are waiting on the board before it answers.
+                delay(1)
+                gate.complete(Unit)
+                a.await() to b.await()
+            }
+            assertEquals(listOf("TWN"), board.asked)
+            val expected = if (fails) 0 else 1
+            assertEquals(expected, a.count { it.mode == "national-rail" })
+            assertEquals(expected, b.count { it.mode == "national-rail" })
+            val feed = if (fails) RailFeed.UNAVAILABLE else RailFeed.LIVE
+            assertEquals(feed, client.railFeed("910GTWINA"))
+            assertEquals(feed, client.railFeed("910GTWINB"))
+        }
+    }
+
+    @Test
+    fun `two screens' clients asking for one station at once share one board request`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val board = object : RailBoardSource {
+            val asked = mutableListOf<String>()
+            override val available = true
+            override suspend fun departures(crs: String): List<Departure> {
+                asked += crs
+                gate.await()
+                return listOf(departure("great-example", "national-rail"))
+            }
+        }
+        val cache = ArrivalsCache()
+        val list = RailAwareTflClient(tfl, board, { codes }, boards = cache, clock = { now })
+        val trip = RailAwareTflClient(tfl, board, { codes }, boardAtEveryStop = true, boards = cache, clock = { now })
+        val (fromList, fromTrip) = coroutineScope {
+            val a = async { list.arrivals("910GEXAMPLE") }
+            val b = async { trip.arrivals("910GEXAMPLE") }
+            delay(1)
+            gate.complete(Unit)
+            a.await() to b.await()
+        }
+        assertEquals(listOf("EXA"), board.asked)
+        assertEquals(1, fromList.count { it.mode == "national-rail" })
+        assertEquals(1, fromTrip.count { it.mode == "national-rail" })
+    }
+
+    @Test
+    fun `a board fetched for one screen is every screen's until it's a minute old`() = runTest {
+        val board = Board()
+        val cache = ArrivalsCache()
+        var at = now
+        val list = RailAwareTflClient(tfl, board, { codes }, boards = cache, clock = { at })
+        val trip = RailAwareTflClient(tfl, board, { codes }, boardAtEveryStop = true, boards = cache, clock = { at })
+        val listAsked = at
+        list.arrivals("910GEXAMPLE")
+        assertEquals("fetched as the stop was asked for: no older part", listAsked, list.stampOf("910GEXAMPLE", listAsked))
+        at = at.plusSeconds(20)
+        assertEquals(listOf("overground-example", "great-example"), trip.arrivals("910GEXAMPLE").map { it.lineId })
+        assertEquals("the trip reads the list's board", listOf("EXA"), board.asked)
+        // At its own age: the trip's arrivals there are as old as their oldest part.
+        assertEquals(listAsked, trip.fetchedAt("910GEXAMPLE"))
+        assertEquals(listAsked, trip.stampOf("910GEXAMPLE", at))
+        // Past the arrivals' own time to live, it's asked for afresh.
+        at = at.plus(ArrivalsCache.TTL)
+        trip.arrivals("910GEXAMPLE")
+        assertEquals(listOf("EXA", "EXA"), board.asked)
+        // A pull to refresh clears it with every stop's arrivals.
+        cache.clear()
+        list.arrivals("910GEXAMPLE")
+        assertEquals(listOf("EXA", "EXA", "EXA"), board.asked)
+    }
+
+    @Test
+    fun `a failed board is never kept`() = runTest {
+        val board = Board(fail = true)
+        val cache = ArrivalsCache()
+        val client = RailAwareTflClient(tfl, board, { codes }, boardAtEveryStop = true, boards = cache, clock = { now })
+        assertEquals(listOf("overground-example"), client.arrivals("910GEXAMPLE").map { it.lineId })
+        assertEquals(RailFeed.UNAVAILABLE, client.railFeed("910GEXAMPLE"))
+        board.fail = false
+        assertEquals(listOf("overground-example", "great-example"), client.arrivals("910GEXAMPLE").map { it.lineId })
+        assertEquals(listOf("EXA", "EXA"), board.asked)
+    }
+
+    @Test
+    fun `a trip's stop whose TfL fetch fails fails, as any stop does`() {
+        val failing = object : TflClient by tfl {
+            override suspend fun arrivals(stopId: String): List<Departure> = throw TflException.Unreachable("HTTP 503", null)
+        }
+        val client = RailAwareTflClient(failing, Board(), { codes }, boardAtEveryStop = true, boards = ArrivalsCache(), clock = { now })
+        assertThrows(TflException.Unreachable::class.java) { runBlocking { client.arrivals("910GEXAMPLE") } }
     }
 }

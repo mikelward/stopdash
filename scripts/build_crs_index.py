@@ -28,10 +28,10 @@ URL = "https://naptan.api.dft.gov.uk/v1/access-nodes?dataFormat=xml&atcoAreaCode
 ATCO_PREFIX = "9100"
 MIN_CODES = 2000
 FORMAT_VERSION = 1
-# Codes the departure-board service refuses, left out so the app doesn't spend a failing request
-# on them every refresh: St Pancras low level (SPL) answers HTTP 400, and its Thameslink trains
-# already come on St Pancras's own board (STP).
-NO_BOARD = {"SPL"}
+# Codes the departure-board service refuses, each with the code whose board carries its trains:
+# St Pancras low level (SPL) answers HTTP 400, and its Thameslink trains come on St Pancras's own
+# board (STP). So a train boarding there is timed from STP's board, never a failing request.
+BOARD_OF = {"SPL": "STP"}
 RETRY_DELAYS = (5, 15, 45)
 
 
@@ -107,7 +107,7 @@ def read_station_modes(path):
 
 
 def build(xml_bytes, stations=None):
-    codes = {t: c for t, c in one_per_crs(parse(xml_bytes), stations).items() if c not in NO_BOARD}
+    codes = {t: BOARD_OF.get(c, c) for t, c in one_per_crs(parse(xml_bytes), stations).items()}
     if len(codes) < MIN_CODES:
         raise SystemExit(f"only {len(codes)} station codes (want at least {MIN_CODES}); not writing")
     return {

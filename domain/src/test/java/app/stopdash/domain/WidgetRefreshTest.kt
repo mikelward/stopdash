@@ -109,6 +109,21 @@ class WidgetRefreshTest {
     }
 
     @Test
+    fun `a stop whose arrivals carry an older part is stamped as old as it`() = runTest {
+        val prior = snapshot(stop("A", listOf(departure("Brixton"))), stop("B", listOf(departure("Walthamstow"))))
+        // B's National Rail board was fetched by another screen before this refresh asked.
+        val boardAt = t1.minusSeconds(40)
+        val refreshed = WidgetRefresh.refreshedArrivals(prior, t1, fetchedAt = { id -> if (id == "B") boardAt else null }) { id ->
+            listOf(departure("Fresh $id"))
+        }
+        assertEquals(t1, refreshed!!.stops.first { it.stopId == "A" }.fetchedAt)
+        assertEquals(boardAt, refreshed.stops.first { it.stopId == "B" }.fetchedAt)
+        // A time reported after the ask (the board fetched just now) doesn't make the stop look newer.
+        val later = WidgetRefresh.refreshedArrivals(prior, t1, fetchedAt = { t1.plusSeconds(1) }) { listOf(departure("Fresh")) }
+        assertTrue(later!!.stops.all { it.fetchedAt == t1 })
+    }
+
+    @Test
     fun `a stop whose fetch fails keeps its aged last-good`() = runTest {
         val prior = snapshot(stop("A", listOf(departure("Brixton"))), stop("B", listOf(departure("Walthamstow"))))
         val refreshed = WidgetRefresh.refreshedArrivals(prior, t1) { id ->

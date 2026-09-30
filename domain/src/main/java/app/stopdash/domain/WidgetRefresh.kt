@@ -58,10 +58,11 @@ object WidgetRefresh {
         shared: ArrivalsCache? = null,
         source: Any? = null,
         railFeed: ((stopId: String) -> RailFeed?)? = null,
+        fetchedAt: ((stopId: String) -> Instant?)? = null,
         fetchStatuses: suspend (lineIds: Set<String>) -> List<LineStatus>?,
         fetchArrivals: suspend (stopId: String) -> List<Departure>?,
     ): Outcome {
-        val arrivals = refreshedArrivals(prior, clock(), arrivalsReuse, shared, source, railFeed, fetchArrivals)
+        val arrivals = refreshedArrivals(prior, clock(), arrivalsReuse, shared, source, railFeed, fetchedAt, fetchArrivals)
         var answered = false
         val checked = refreshedLineStatuses(arrivals ?: prior, clock(), statusReuse, answeredAt = clock) { ids ->
             fetchStatuses(ids)?.also { answered = true }
@@ -85,6 +86,9 @@ object WidgetRefresh {
         // A fetched stop's National Rail feed after its fetch ([TflClient.railFeed]); null keeps the
         // row's own (a test with no National Rail).
         railFeed: ((stopId: String) -> RailFeed?)? = null,
+        // When the oldest part of a fetched stop's arrivals was fetched ([TflClient.fetchedAt]): a
+        // National Rail board another screen fetched moments ago keeps its age. Null for none.
+        fetchedAt: ((stopId: String) -> Instant?)? = null,
         fetchArrivals: suspend (stopId: String) -> List<Departure>?,
     ): DeparturesSnapshot? {
         if (prior.stops.isEmpty()) return null
@@ -135,9 +139,10 @@ object WidgetRefresh {
                 null -> stop.copy(arrivalsFresh = false)
                 else -> {
                     anyFresh = true
+                    val stamp = SteadyClock.stamp(now)
                     stop.copy(
                         departures = fetched,
-                        fetchedAt = SteadyClock.stamp(now),
+                        fetchedAt = fetchedAt?.invoke(stop.stopId)?.takeIf { it.isBefore(stamp) } ?: stamp,
                         arrivalsFresh = true,
                         railFeed = if (railFeed != null) railFeed(stop.stopId) else stop.railFeed,
                     )
