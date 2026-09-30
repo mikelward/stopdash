@@ -7,6 +7,7 @@ import app.stopdash.domain.JourneyPlanner
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusBatch
+import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.PlaceCandidate
 import app.stopdash.domain.PlaceSearch
 import app.stopdash.domain.PostcodeResolution
@@ -29,6 +30,7 @@ import app.stopdash.domain.TripRoute
 import app.stopdash.domain.VehicleCall
 import app.stopdash.domain.VehicleSource
 import app.stopdash.domain.cleanStopName
+import app.stopdash.domain.mergedRoutes
 import app.stopdash.domain.TflException
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -53,6 +55,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import okhttp3.Dispatcher
@@ -101,33 +105,82 @@ class KtorTflClient(
     // day is planned, not a disruption. Injected so a test can pin it.
     private val clock: () -> Instant = Instant::now,
 ) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, JourneyPlanner, PostcodeResolver, PlaceSearch, VehicleSource {
-    override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed): List<TripRoute> =
-        tflRequest { key ->
-            // From here, the rider's own coordinate ("lat,lon"): TfL walks from it to the stop that
-            // serves the trip best, the same position the nearby lookup already sends (SPEC *Trips
-            // with a change*). Never logged, as neither end is.
-            val fromParam = when (from) {
-                is TripOrigin.Stop -> from.id
-                is TripOrigin.Here -> "${from.coordinate.latitude},${from.coordinate.longitude}"
+    override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk): List<TripRoute> {
+        // From here, the rider's own coordinate ("lat,lon"): TfL walks from it to the stop that
+        // serves the trip best, the same position the nearby lookup already sends (SPEC *Trips
+        // with a change*). Never logged, as neither end is.
+        val fromParam = when (from) {
+            is TripOrigin.Stop -> from.id
+            is TripOrigin.Here -> "${from.coordinate.latitude},${from.coordinate.longitude}"
+        }
+        // A stop goes by id; a place goes by its coordinate ("lat,lon"), which TfL routes to with a
+        // final walk leg (SPEC D9). The coordinate is the rider's chosen destination, so — like the
+        // trip's ends — it isn't logged (SPEC *Privacy*).
+        val toParam = when (to) {
+            is TripDestination.Stop -> to.id
+            is TripDestination.Place -> "${to.coordinate.latitude},${to.coordinate.longitude}"
+        }
+        // The Planner offers three routes, often one route at three departures, so it's asked twice
+        // at once: for the quickest (its default) and for the fewest changes, which finds a walk to a
+        // station, or one bus the whole way, that the quickest three passed over (SPEC *Trips with a
+        // change*). Either answer alone still plans the trip; only both failing fails it.
+        val (quickest, fewestChanges) = coroutineScope {
+            val quickest = async { attemptPlan { plan(fromParam, toParam, speed, maxWalk, preference = null) } }
+            val fewestChanges = async { attemptPlan { plan(fromParam, toParam, speed, maxWalk, preference = LEAST_INTERCHANGE) } }
+            quickest.await() to fewestChanges.await()
+        }
+        val routes = when {
+            quickest.isSuccess && fewestChanges.isSuccess -> mergedRoutes(quickest.getOrThrow(), fewestChanges.getOrThrow())
+            quickest.isSuccess -> {
+                warn("journey planner (fewest changes): ${fewestChanges.exceptionOrNull()?.let { it::class.simpleName }}")
+                quickest.getOrThrow()
             }
-            // A stop goes by id; a place goes by its coordinate ("lat,lon"), which TfL routes to with a
-            // final walk leg (SPEC D9). The coordinate is the rider's chosen destination, so — like the
-            // trip's ends — it isn't logged (SPEC *Privacy*).
-            val toParam = when (to) {
-                is TripDestination.Stop -> to.id
-                is TripDestination.Place -> "${to.coordinate.latitude},${to.coordinate.longitude}"
+            fewestChanges.isSuccess -> {
+                warn("journey planner (quickest): ${quickest.exceptionOrNull()?.let { it::class.simpleName }}")
+                fewestChanges.getOrThrow()
             }
+            else -> {
+                // Both failed: the quickest's failure fails the plan (the trip logs it), so the other's
+                // is logged here, as they can differ (offline and rate-limited, say).
+                warn("journey planner (fewest changes): ${fewestChanges.exceptionOrNull()?.let { it::class.simpleName }}")
+                throw checkNotNull(quickest.exceptionOrNull())
+            }
+        }
+        // TfL names a coordinate arrival by whatever (if anything) sits there, not the favorite the
+        // rider picked, so the final walk leg reads with the name they know it by (SPEC D9). The
+        // last leg of every route to a place is that walk.
+        val named = if (to is TripDestination.Place) routes.map { it.namedTo(to.name) } else routes
+        return if (from is TripOrigin.Here) named.map { it.fromHere() } else named
+    }
+
+    // [block]'s routes, or the failure it threw; never a cancellation, which is rethrown so the plan
+    // actually stops.
+    private suspend fun attemptPlan(block: suspend () -> List<TripRoute>): Result<List<TripRoute>> =
+        try {
+            Result.success(block())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: TflException) {
+            Result.failure(e)
+        }
+
+    // One Planner request between [fromParam] and [toParam], preferring the quickest routes (its
+    // default) or [preference]. Its warnings name which request they came from.
+    private suspend fun plan(fromParam: String, toParam: String, speed: WalkingSpeed, maxWalk: MaxWalk, preference: String?): List<TripRoute> {
+        val source = if (preference == null) "journey planner" else "journey planner (fewest changes)"
+        return tflRequest { key ->
             val dto = try {
                 httpClient.get("$baseUrl/Journey/JourneyResults/$fromParam/to/$toParam") {
-                    // No leg asks the rider to walk longer than this (the Planner's default allows
-                    // far more, offering an all-walk route beside the rides).
-                    parameter("maxWalkingMinutes", MAX_WALKING_MINUTES)
+                    // No leg asks the rider to walk longer than they chose ([MaxWalk]; the Planner's
+                    // default allows far more, offering an all-walk route beside the rides).
+                    parameter("maxWalkingMinutes", maxWalk.minutes)
                     // Every walk timed at the rider's own pace (their setting; the Planner's average by default).
                     parameter("walkingSpeed", speed.plannerValue)
                     // The Planner applies that pace to a route's walks only when the request names its
                     // modes, walking among them; left to its default modes, every walk comes back at the
                     // average whatever the speed ([PLANNER_MODES]).
                     parameter("mode", PLANNER_MODES)
+                    preference?.let { parameter("journeyPreference", it) }
                     applyAppKey(key)
                     // The Planner can take several seconds to answer a trip it hasn't cached.
                     allowSlowAnswer()
@@ -136,24 +189,21 @@ class KtorTflClient(
                 // 300: the Planner couldn't place an end and offers look-alike places instead. The
                 // trip has no route StopDash can stand behind, so none is shown. The two ends together
                 // are a trip the rider chose, so neither is logged (SPEC *Privacy*).
-                warn("journey planner: HTTP ${e.response.status.value}")
+                warn("$source: HTTP ${e.response.status.value}")
                 return@tflRequest emptyList()
             }
             val routes = dto.toRoutes()
             // Journeys offered but none readable: a decode failure, not "no routes" (which would be
             // reused as a real answer for the plan's lifetime).
             if (routes.isEmpty() && dto.journeys.isNotEmpty()) {
-                throw TflException.Unreachable("journey planner: ${dto.journeys.size} routes, none readable", null)
+                throw TflException.Unreachable("$source: ${dto.journeys.size} routes, none readable", null)
             }
             if (routes.size < dto.journeys.size) {
-                warn("journey planner: ${dto.journeys.size - routes.size} of ${dto.journeys.size} routes unreadable")
+                warn("$source: ${dto.journeys.size - routes.size} of ${dto.journeys.size} routes unreadable")
             }
-            // TfL names a coordinate arrival by whatever (if anything) sits there, not the favorite the
-            // rider picked, so the final walk leg reads with the name they know it by (SPEC D9). The
-            // last leg of every route to a place is that walk.
-            val named = if (to is TripDestination.Place) routes.map { it.namedTo(to.name) } else routes
-            if (from is TripOrigin.Here) named.map { it.fromHere() } else named
+            routes
         }
+    }
 
     // The route with its first leg's start unnamed when it starts at the rider's coordinate (no stop
     // id): TfL names that point by whatever sits there, often the coordinate itself, which is neither
@@ -537,8 +587,8 @@ class KtorTflClient(
          */
         const val SLOW_SOCKET_TIMEOUT_MILLIS: Long = 30_000
 
-        /** The longest walk a planned trip may ask of the rider, in minutes (fixed for now). */
-        const val MAX_WALKING_MINUTES: Int = 15
+        /** The Planner's `journeyPreference` for the routes with the fewest changes. */
+        const val LEAST_INTERCHANGE: String = "leastinterchange"
 
         /**
          * The modes a trip is planned over: the Planner's own default set, named so that it times each

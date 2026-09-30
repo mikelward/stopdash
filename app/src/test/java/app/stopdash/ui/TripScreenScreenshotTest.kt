@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.Departure
+import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.HiddenModes
@@ -305,8 +306,10 @@ class TripScreenScreenshotTest {
 
     @Test
     fun trip_routes_walking_speed() {
-        // The walking speed heads the routes (maintainer, 2026-09-28); a pick is reported to the setting.
+        // The walking speed heads the routes (maintainer, 2026-09-28), the max walk under it
+        // (2026-09-30); a pick of either is reported to its setting.
         var chosen: WalkingSpeed? = null
+        var chosenMaxWalk: MaxWalk? = null
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 TripScreen(
@@ -319,15 +322,49 @@ class TripScreenScreenshotTest {
                     onRetry = {},
                     walkingSpeed = WalkingSpeed.AVERAGE,
                     onWalkingSpeedChange = { chosen = it },
+                    maxWalk = MaxWalk.THIRTY,
+                    onMaxWalkChange = { chosenMaxWalk = it },
                 )
             }
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Walking speed").assertIsDisplayed()
+        composeRule.onNodeWithText("Max walk").assertIsDisplayed()
+        composeRule.onNodeWithTag("maxWalk").assertContentDescriptionEquals("Max walk, 30 min")
         captureSnapshot("trip-routes-walking-speed.png")
         composeRule.onNodeWithTag("walkingSpeed").performClick()
         composeRule.onNodeWithTag("walkingSpeed-FAST").performClick()
         assertEquals(WalkingSpeed.FAST, chosen)
+        // Every limit is offered, 60 minutes the longest.
+        composeRule.onNodeWithTag("maxWalk").performClick()
+        MaxWalk.entries.forEach { composeRule.onNodeWithTag("maxWalk-${it.name}").assertExists() }
+        composeRule.onNodeWithText("60 min").assertIsDisplayed()
+        composeRule.onNodeWithTag("maxWalk-SIXTY").performClick()
+        assertEquals(MaxWalk.SIXTY, chosenMaxWalk)
+    }
+
+    @Test
+    fun trip_walk_pickers_wait_for_the_stored_choices() {
+        // Until the walking speed and max walk are read, neither picker shows a value or opens, so a
+        // pick can't be saved over a choice not yet read.
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf",
+                    state = planned,
+                    now = now,
+                    access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source),
+                    onBack = {},
+                    onRetry = {},
+                    onWalkingSpeedChange = {},
+                    onMaxWalkChange = {},
+                    walkSettingsLoaded = false,
+                )
+            }
+        }
+        composeRule.onNodeWithTag("walkingSpeed").assertIsNotEnabled().assertContentDescriptionEquals("Walking speed, –")
+        composeRule.onNodeWithTag("maxWalk").assertIsNotEnabled().assertContentDescriptionEquals("Max walk, –")
     }
 
     @Test

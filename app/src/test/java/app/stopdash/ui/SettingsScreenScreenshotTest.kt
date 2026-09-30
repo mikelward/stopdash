@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
@@ -21,6 +22,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import app.stopdash.domain.DistanceUnits
+import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -272,7 +274,7 @@ class SettingsScreenScreenshotTest {
         }
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("TfL API key").assertIsDisplayed()
+        composeRule.onNodeWithText("TfL API key").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("apiKeyField").performScrollTo().assertExists()
         composeRule.onNodeWithTag("apiKeySave").performScrollTo().assertIsNotEnabled()
     }
@@ -501,6 +503,52 @@ class SettingsScreenScreenshotTest {
         composeRule.onNodeWithText("Medium").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("walkingSpeedSetting-FAST").performScrollTo().performClick()
         assertEquals(WalkingSpeed.FAST, chosen)
+    }
+
+    /** The max walk shows the stored limit and offers every one; a pick is reported. */
+    @Test
+    fun maxWalk_reportsTheTappedChoice() {
+        var chosen: MaxWalk? = null
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(
+                    liveWidgetRefresh = false,
+                    onLiveWidgetRefreshChange = {},
+                    onBack = {},
+                    maxWalk = MaxWalk.THIRTY,
+                    onMaxWalkChange = { chosen = it },
+                )
+            }
+        }
+        composeRule.onNodeWithTag("maxWalkSetting").performScrollTo().assertContentDescriptionEquals("Max walk, 30 min")
+        composeRule.onNodeWithTag("maxWalkSetting").performClick()
+        MaxWalk.entries.forEach { composeRule.onNodeWithTag("maxWalkSetting-${it.name}").assertExists() }
+        composeRule.onNodeWithTag("maxWalkSetting-SIXTY").performClick()
+        assertEquals(MaxWalk.SIXTY, chosen)
+    }
+
+    /** Until the stored max walk is read nothing is selected or tappable; a failed save says so. */
+    @Test
+    fun maxWalk_disabledUntilLoaded_andAFailedSaveIsShown() {
+        var dismissed = false
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(
+                    liveWidgetRefresh = false,
+                    onLiveWidgetRefreshChange = {},
+                    onBack = {},
+                    maxWalkLoaded = false,
+                    maxWalkWriteFailed = true,
+                    onDismissMaxWalkError = { dismissed = true },
+                )
+            }
+        }
+        // No limit shown, so the default can't pass for the choice, and nothing to open.
+        composeRule.onNodeWithTag("maxWalkSetting").performScrollTo().assertIsNotEnabled()
+        composeRule.onNodeWithTag("maxWalkSetting").assertContentDescriptionEquals("Max walk, –")
+        composeRule.onNodeWithText("Couldn't save that", substring = true).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Dismiss").performScrollTo().performClick()
+        assertEquals(true, dismissed)
     }
 
     /** Until the stored choice is read the segments are disabled; a failed save says so. */

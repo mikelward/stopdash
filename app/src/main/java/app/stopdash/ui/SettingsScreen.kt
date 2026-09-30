@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.DEFAULT_FONT_SCALE
 import app.stopdash.domain.DistanceUnits
+import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.MAX_FONT_SCALE
 import app.stopdash.domain.MIN_FONT_SCALE
@@ -107,6 +108,12 @@ fun SettingsScreen(
     walkingSpeedLoaded: Boolean = true,
     walkingSpeedWriteFailed: Boolean = false,
     onDismissWalkingSpeedError: () -> Unit = {},
+    // The longest walk a trip's routes may take, as [walkingSpeed] is handled: held until read.
+    maxWalk: MaxWalk = MaxWalk.DEFAULT,
+    onMaxWalkChange: (MaxWalk) -> Unit = {},
+    maxWalkLoaded: Boolean = true,
+    maxWalkWriteFailed: Boolean = false,
+    onDismissMaxWalkError: () -> Unit = {},
     // Opens the favorite-places editor (SPEC D9), hosted as its own overlay by the caller.
     onOpenFavoritePlaces: () -> Unit = {},
 ) {
@@ -193,6 +200,20 @@ fun SettingsScreen(
                     SettingErrorRow(
                         text = stringResource(R.string.settings_walking_speed_write_failed),
                         onDismiss = onDismissWalkingSpeedError,
+                    )
+                }
+                // Six limits: the trip's one-row dropdown rather than six radio rows, which pushed
+                // the rest of the screen well down.
+                MaxWalkPicker(
+                    maxWalk = maxWalk,
+                    onChange = onMaxWalkChange,
+                    tag = "maxWalkSetting",
+                    enabled = maxWalkLoaded,
+                )
+                if (maxWalkWriteFailed) {
+                    SettingErrorRow(
+                        text = stringResource(R.string.max_walk_write_failed),
+                        onDismiss = onDismissMaxWalkError,
                     )
                 }
                 SettingSwitchRow(

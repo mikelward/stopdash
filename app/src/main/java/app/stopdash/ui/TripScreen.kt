@@ -108,6 +108,7 @@ import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTiming
 import app.stopdash.domain.routeLabels
 import app.stopdash.domain.WalkingSpeed
+import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.PlacedStand
 import app.stopdash.domain.alightingKey
 import app.stopdash.domain.boardingKey
@@ -641,6 +642,14 @@ internal fun TripScreen(
     // A pick that didn't save, said once as a mode hidden from here is, then acknowledged.
     walkingSpeedWriteFailed: Boolean = false,
     onWalkingSpeedWriteFailureShown: () -> Unit = {},
+    // The longest walk the routes may take, under the speed, and a pick of another; null shows no picker.
+    maxWalk: MaxWalk = MaxWalk.DEFAULT,
+    onMaxWalkChange: ((MaxWalk) -> Unit)? = null,
+    maxWalkWriteFailed: Boolean = false,
+    onMaxWalkWriteFailureShown: () -> Unit = {},
+    // Whether the walking speed and max walk have been read from storage: until then their pickers
+    // show no value and open nothing, so a pick can't be saved over a choice not yet read.
+    walkSettingsLoaded: Boolean = true,
     // The From/To bar in place of [title] over the routes (maintainer, 2026-09-28): where the trip
     // starts and where it goes, each a tap to change. Null (a test) shows the title.
     ends: TripEnds? = null,
@@ -671,6 +680,11 @@ internal fun TripScreen(
             onWalkingSpeedChange,
             walkingSpeedWriteFailed,
             onWalkingSpeedWriteFailureShown,
+            maxWalk,
+            onMaxWalkChange,
+            maxWalkWriteFailed,
+            onMaxWalkWriteFailureShown,
+            walkSettingsLoaded,
             ends,
             pullRefreshing,
             onPullRefresh,
@@ -730,6 +744,11 @@ private fun TripContent(
     onWalkingSpeedChange: ((WalkingSpeed) -> Unit)? = null,
     walkingSpeedWriteFailed: Boolean = false,
     onWalkingSpeedWriteFailureShown: () -> Unit = {},
+    maxWalk: MaxWalk = MaxWalk.DEFAULT,
+    onMaxWalkChange: ((MaxWalk) -> Unit)? = null,
+    maxWalkWriteFailed: Boolean = false,
+    onMaxWalkWriteFailureShown: () -> Unit = {},
+    walkSettingsLoaded: Boolean = true,
     ends: TripEnds? = null,
     pullRefreshing: Boolean = false,
     onPullRefresh: (() -> Unit)? = null,
@@ -936,6 +955,14 @@ private fun TripContent(
             snackbarHostState.showSnackbar(walkingSpeedWriteFailedMessage)
         }
     }
+    // A walk limit picked here that didn't save, likewise.
+    val maxWalkWriteFailedMessage = stringResource(R.string.max_walk_write_failed)
+    LaunchedEffect(maxWalkWriteFailed) {
+        if (maxWalkWriteFailed) {
+            onMaxWalkWriteFailureShown()
+            snackbarHostState.showSnackbar(maxWalkWriteFailedMessage)
+        }
+    }
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         // An open route starts on the way from here: followed by its train to the destination. Above
@@ -1023,7 +1050,11 @@ private fun TripContent(
             // are timed at it as the list's are. A pick plans again; an open route stays
             // open when the new plan still offers it ([routeKey] names lines and stops, not times).
             if (onWalkingSpeedChange != null) {
-                WalkingSpeedPicker(walkingSpeed, onWalkingSpeedChange)
+                WalkingSpeedPicker(walkingSpeed, onWalkingSpeedChange, enabled = walkSettingsLoaded)
+            }
+            // The walk limit sits under it: the two decide together which walks the routes can take.
+            if (onMaxWalkChange != null) {
+                MaxWalkPicker(maxWalk, onMaxWalkChange, enabled = walkSettingsLoaded)
             }
             TripBanners(shown, rideLines, state, check, locationBanner, onRelocate, hiddenModes, onShowAllModes)
             Box(Modifier.fillMaxSize()) {

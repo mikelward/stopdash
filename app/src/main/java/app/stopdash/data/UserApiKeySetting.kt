@@ -2,6 +2,7 @@ package app.stopdash.data
 
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.DistanceUnits
+import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.ModeGroups
 import kotlinx.coroutines.CancellationException
@@ -329,6 +330,39 @@ object WalkingSpeedSetting {
     val writeFailed: StateFlow<Boolean> get() = holder.writeFailed
 
     /** Settings has told the user a choice didn't save. */
+    fun writeFailureShown() = holder.writeFailureShown()
+}
+
+/**
+ * The max-walk choice (SPEC *Trips with a change*), held in memory for a trip to read before its
+ * first plan and persisted in order. Starts at [MaxWalk.DEFAULT], the stored default, so a plan made
+ * before [warm] lands asks for the walks a rider who never chose gets.
+ */
+object MaxWalkSetting {
+    private val holder = StoredSettingHolder(
+        CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        initial = MaxWalk.DEFAULT,
+        read = AppSettings::maxWalk,
+        write = { settings, maxWalk -> settings.setMaxWalk(maxWalk) },
+        label = "max walk",
+    )
+
+    /** [MaxWalk] as a flow, for a trip's plans and its dropdown. */
+    val changes: StateFlow<MaxWalk> get() = holder.changes
+
+    /** Begins reading the stored choice. Idempotent. */
+    fun warm(appSettings: AppSettings) = holder.warm(appSettings)
+
+    /** Whether the stored choice has been read, so Settings can hold its row until then. */
+    val isLoaded: StateFlow<Boolean> get() = holder.isLoaded
+
+    /** The user chose [maxWalk]: applied at once, persisted in order. */
+    fun set(maxWalk: MaxWalk) = holder.set(maxWalk)
+
+    /** True while the latest choice failed to save (a later successful save clears it); the trip says so. */
+    val writeFailed: StateFlow<Boolean> get() = holder.writeFailed
+
+    /** The trip has told the user a choice didn't save. */
     fun writeFailureShown() = holder.writeFailureShown()
 }
 

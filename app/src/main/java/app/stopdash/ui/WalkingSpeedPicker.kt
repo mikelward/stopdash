@@ -26,6 +26,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
+import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.WalkingSpeed
 
 /** The label each [WalkingSpeed] is shown by: the Planner's "Average" reads as "Medium". */
@@ -44,10 +45,66 @@ internal fun walkingSpeedLabel(speed: WalkingSpeed): String = stringResource(
  * for later trips too; the trip plans again at the new pace ([TripViewModel.walkingSpeed]).
  */
 @Composable
-internal fun WalkingSpeedPicker(speed: WalkingSpeed, onChange: (WalkingSpeed) -> Unit, modifier: Modifier = Modifier) {
+internal fun WalkingSpeedPicker(
+    speed: WalkingSpeed,
+    onChange: (WalkingSpeed) -> Unit,
+    modifier: Modifier = Modifier,
+    // False until the stored choice is read: shows no pace and opens nothing, as [MaxWalkPicker].
+    enabled: Boolean = true,
+) {
+    PickerRow(
+        title = stringResource(R.string.walking_speed_title),
+        tag = "walkingSpeed",
+        selected = speed,
+        options = WalkingSpeed.entries,
+        label = { walkingSpeedLabel(it) },
+        onChange = onChange,
+        modifier = modifier,
+        enabled = enabled,
+    )
+}
+
+/**
+ * The longest walk a trip's routes may take, under the walking speed (maintainer, 2026-09-30): "Max
+ * walk" and the current limit, which opens a menu of them. Atop a trip's routes, where a pick plans
+ * again under the new limit ([TripViewModel.maxWalk]), and in Settings, tagged [tag] there; the same
+ * setting either way. Until the stored choice is read ([enabled] false) it shows no limit and opens
+ * nothing, so the default can't pass for the rider's choice.
+ */
+@Composable
+internal fun MaxWalkPicker(
+    maxWalk: MaxWalk,
+    onChange: (MaxWalk) -> Unit,
+    modifier: Modifier = Modifier,
+    tag: String = "maxWalk",
+    enabled: Boolean = true,
+) {
+    PickerRow(
+        title = stringResource(R.string.max_walk_title),
+        tag = tag,
+        selected = maxWalk,
+        options = MaxWalk.entries,
+        label = { stringResource(R.string.max_walk_minutes, it.minutes) },
+        onChange = onChange,
+        modifier = modifier,
+        enabled = enabled,
+    )
+}
+
+/** A setting atop a trip's routes: its [title], and the [selected] option opening a menu of [options]. */
+@Composable
+private fun <T : Enum<T>> PickerRow(
+    title: String,
+    tag: String,
+    selected: T,
+    options: List<T>,
+    label: @Composable (T) -> String,
+    onChange: (T) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
     var expanded by remember { mutableStateOf(false) }
-    val title = stringResource(R.string.walking_speed_title)
-    val current = walkingSpeedLabel(speed)
+    val current = if (enabled) label(selected) else "–"
     Row(
         modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -57,20 +114,21 @@ internal fun WalkingSpeedPicker(speed: WalkingSpeed, onChange: (WalkingSpeed) ->
         Box {
             TextButton(
                 onClick = { expanded = true },
-                modifier = Modifier.testTag("walkingSpeed").semantics { contentDescription = "$title, $current" },
+                enabled = enabled,
+                modifier = Modifier.testTag(tag).semantics { contentDescription = "$title, $current" },
             ) {
                 Text(current)
                 Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
             }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                WalkingSpeed.entries.forEach { option ->
+            DropdownMenu(expanded = expanded && enabled, onDismissRequest = { expanded = false }) {
+                options.forEach { option ->
                     DropdownMenuItem(
-                        text = { Text(walkingSpeedLabel(option)) },
+                        text = { Text(label(option)) },
                         onClick = {
                             expanded = false
                             onChange(option)
                         },
-                        modifier = Modifier.testTag("walkingSpeed-${option.name}"),
+                        modifier = Modifier.testTag("$tag-${option.name}"),
                     )
                 }
             }

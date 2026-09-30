@@ -963,7 +963,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             trip's routes or an opened route, sent as the Planner's `walkingSpeed`. The device check found every walk
             unchanged: the Planner ignores the speed unless the request names its modes, which it now
             does (walking among them).
-      - [ ] **Configurable walking limit**: the Planner's `maxWalkingMinutes`, fixed at 15 for now.
+      - [x] **Configurable walking limit** (maintainer, 2026-09-30): the Planner's `maxWalkingMinutes`,
+            *Max walk* in Settings and as a dropdown under the walking speed atop a trip (10–60 min, default 30; it was
+            a fixed 15). Each plan also asks the Planner for the fewest changes beside the quickest,
+            merged, since its three quickest routes are often one route at three departures.
       - [ ] **Mode toggles** at the top of a trip, remembered across trips (the Planner's `mode=`).
       - [ ] **Avoid a line**: request `includeAlternativeRoutes` and drop routes using it, since
             the Planner has no line exclusion (each returned route names its lines, so filtering
@@ -2653,6 +2656,12 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   (could crown an "est." route over a live one); a header on every card ("Other"); "Simplest" read
   as fewest walking minutes. **Reversible:** `routeLabels` in `:domain` and `RouteLabelHeader`.
   **To confirm:** on a device, that the headers read well over the cards.
+- [ ] **Max walk in Settings is a dropdown, not radio rows (autopilot, 2026-09-30).** Taken: the
+  same one-row *Max walk* dropdown as atop a trip, under the walking speed's radio rows; until the
+  stored choice is read it shows "–" and opens nothing. *Alternative:* six radio rows like the
+  walking speed's three, tried first: they pushed the rest of Settings well down (the API key rows
+  and the live-refresh error fell off the first screen). **Reversible:** `SettingsScreen`'s
+  `MaxWalkPicker` call. **To confirm:** that a dropdown beside radio rows reads fine on a device.
 - [ ] **Where a glance surface says why a rail line has no times (autopilot, 2026-09-28).** Taken:
   a disrupted National Rail line with no times says "No key" or "No data" after its status, in
   the same text ("⚠ Part Suspended · No key"), on the widget, tile and watch app, so the
