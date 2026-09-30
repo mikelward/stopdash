@@ -92,6 +92,10 @@ class KtorTflClient(
     // opening one connection per stop. Unbounded by default (tests, an unwired client); production
     // passes [SharedTflRequestPool.pool] so the app and widget share one cap.
     private val requestPool: TflRequestPool = TflRequestPool.UNBOUNDED,
+    // Told how TfL answered each request sent with the user's key — accepted, or refused (a 401 or
+    // 403) — so one app-wide bar can say a refused key is the reason and offer to clear it (SPEC D7).
+    // No-op by default (tests, an unwired client); production passes [RejectedApiKey.SHARED].
+    private val keyAnswered: (key: String, rejected: Boolean) -> Unit = { _, _ -> },
     // Sink for recoverable response oddities (an unparseable disruption date), coarse facts only —
     // a stop id, never a coordinate or key (SPEC *Privacy*). No-op by default (tests, widget).
     private val warn: (String) -> Unit = {},
@@ -585,16 +589,19 @@ class KtorTflClient(
     private suspend fun <T> tflRequest(block: suspend (key: String?) -> T): T =
         requestPool.run { tflRequestInSlot(block) }
 
-    private suspend inline fun <T> tflRequestInSlot(block: suspend (key: String?) -> T): T =
-        try {
+    private suspend inline fun <T> tflRequestInSlot(block: suspend (key: String?) -> T): T {
+        // The key this request sent, so a refusal can be told as the key's (see below).
+        var sent: String? = null
+        return try {
             // One read of the active key per request, used for both the budget and the app_key so
             // they can't disagree (Codex). Throttle toward the budget before issuing the request
             // (item 6): acquire() may suspend (deferring this background refresh) or throw
             // RateLimited when the budget is spent; both are handled below — RateLimited propagates
             // as the honest state, and a canceled wait rethrows CancellationException.
             val key = appKey()
+            sent = key
             rateLimiterFor(key).acquire()
-            block(key)
+            block(key).also { if (key != null) keyAnswered(key, false) }
         } catch (e: CancellationException) {
             // Never swallow cancellation — rethrow first so structured concurrency
             // isn't broken (a canceled refresh must actually cancel).
@@ -602,9 +609,16 @@ class KtorTflClient(
         } catch (e: ClientRequestException) {
             // 4xx. 429 is the one the UI treats specially (a user app_key lifts the
             // limit); any other client error is "reached TfL, request rejected".
+            // A 401/403 answering the user's own key is the key refused (SPEC D7); keyless, it
+            // says nothing about a key, so it stays a plain rejection.
             throw when (e.response.status) {
                 HttpStatusCode.TooManyRequests -> TflException.RateLimited(e)
                 HttpStatusCode.NotFound -> TflException.NotFound(e)
+                HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden ->
+                    sent?.let { key ->
+                        keyAnswered(key, true)
+                        TflException.KeyRejected(e)
+                    } ?: TflException.Unreachable("HTTP ${e.response.status.value}", e)
                 else -> TflException.Unreachable("HTTP ${e.response.status.value}", e)
             }
         } catch (e: ServerResponseException) {
@@ -627,6 +641,7 @@ class KtorTflClient(
             // couldn't produce a result. Sanitized — the class name, no payload.
             throw TflException.Unreachable("unexpected: ${e::class.simpleName}", e)
         }
+    }
 
     companion object {
         const val DEFAULT_BASE_URL: String = "https://api.tfl.gov.uk"

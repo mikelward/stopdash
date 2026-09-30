@@ -44,6 +44,16 @@ object UserApiKeySetting {
     /** The key applied to TfL requests right now, or null when keyless. See [UserApiKeyHolder]. */
     val current: String? get() = holder.current
 
+    /** [current] as a flow, so a screen can act when the key changes. */
+    val changes: StateFlow<String?> get() = holder.changes
+
+    /**
+     * True while the latest change failed to save: it holds in memory but not across a restart, nor
+     * for the widget, which reads the stored key. A Clear that didn't save would leave a refused key
+     * to come back, so the app says so ([writeFailed] until a later save succeeds).
+     */
+    val writeFailed: StateFlow<Boolean> get() = holder.writeFailed
+
     /** Begins reading the stored key into [current] and keeps it live for later writes. Idempotent. */
     fun warm(appSettings: AppSettings) = holder.warm(appSettings)
 

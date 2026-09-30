@@ -2,6 +2,7 @@ package app.stopdash.widget
 
 import app.stopdash.data.KtorDarwinClient
 import app.stopdash.data.RailStationCodesStore
+import app.stopdash.data.RejectedApiKey
 import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.CachingTflClient
 import app.stopdash.domain.RailAwareTflClient
@@ -378,6 +379,8 @@ internal suspend fun refreshStoredSnapshot(
                         appKey = { userKey },
                         rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
                         requestPool = SharedTflRequestPool.pool,
+                        // The app says a refused key when it's next opened (SPEC D7).
+                        keyAnswered = RejectedApiKey.SHARED::record,
                         // Where a failed alert-direction lookup is reported; it's caught inside the
                         // client, so the lookup scope's handler never sees it.
                         warn = ::logWidgetSnapshotWarning,

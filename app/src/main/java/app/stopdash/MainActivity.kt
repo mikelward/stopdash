@@ -86,6 +86,7 @@ import app.stopdash.data.LineAlertDirections
 import app.stopdash.data.RailApiKeySetting
 import app.stopdash.data.RailStationCodesStore
 import app.stopdash.data.RecentSearches
+import app.stopdash.data.RejectedApiKey
 import app.stopdash.data.RouteTopologyStore
 import app.stopdash.data.SharedTflRateLimiter
 import app.stopdash.data.SharedTflRequestPool
@@ -149,6 +150,7 @@ import app.stopdash.ui.FavoritePlacesViewModel
 import app.stopdash.ui.FollowActiveTrip
 import app.stopdash.ui.rememberNextTrains
 import app.stopdash.ui.FontSizeSetting
+import app.stopdash.ui.KeyRejectedFrame
 import app.stopdash.ui.LINE_STATUS_REUSE
 import app.stopdash.ui.LicensesScreen
 import app.stopdash.ui.LocalAppMenu
@@ -298,6 +300,7 @@ class MainActivity : ComponentActivity() {
             appKey = { UserApiKeySetting.current },
             rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
             requestPool = SharedTflRequestPool.pool,
+            keyAnswered = RejectedApiKey.SHARED::record,
         )
     }
     private val nearbyStopFinder by lazy { CachingStopFinder(nearbyTflClient, nearbyStopsCache(applicationContext)) }
@@ -384,7 +387,18 @@ class MainActivity : ComponentActivity() {
             routeTopology.value = withContext(Dispatchers.IO) { RouteTopologyStore.load(applicationContext) }
         }
         setContent {
-            StopDashAppRoot {
+            // TfL refused the key in force: one bar atop every screen says so and clears it (SPEC D7).
+            // A refusal recorded for an earlier key (the widget's snapshot of it) shows nothing.
+            val refusedKey by RejectedApiKey.SHARED.key.collectAsStateWithLifecycle()
+            val currentKey by UserApiKeySetting.changes.collectAsStateWithLifecycle()
+            val keySaveFailed by UserApiKeySetting.writeFailed.collectAsStateWithLifecycle()
+            StopDashAppRoot(
+                keyRejected = RejectedApiKey.refusesInForce(refusedKey, currentKey),
+                onClearKey = { UserApiKeySetting.set(null) },
+                // A key change that didn't save (a Clear included) says so; Try again saves it again.
+                keySaveFailed = keySaveFailed,
+                onRetryKeySave = { UserApiKeySetting.set(UserApiKeySetting.current) },
+            ) {
                 val nearby by nearbyViewModel.state.collectAsStateWithLifecycle()
 
                 // True once a request has come back denied with the rationale suppressed —
@@ -2762,6 +2776,7 @@ class MainActivity : ComponentActivity() {
                 appKey = { UserApiKeySetting.current },
                 rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
                 requestPool = SharedTflRequestPool.pool,
+                keyAnswered = RejectedApiKey.SHARED::record,
                 warn = ::logDepartureWarning,
                 // A new line alert's direction is looked up once, off the refresh, so a row only
                 // carries alerts for the way it is going (SPEC *Disruptions*).
@@ -2783,6 +2798,7 @@ class MainActivity : ComponentActivity() {
                 appKey = { UserApiKeySetting.current },
                 rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
                 requestPool = SharedTflRequestPool.pool,
+                keyAnswered = RejectedApiKey.SHARED::record,
             )
         }
 
@@ -2797,6 +2813,7 @@ class MainActivity : ComponentActivity() {
                 appKey = { UserApiKeySetting.current },
                 rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
                 requestPool = SharedTflRequestPool.pool,
+                keyAnswered = RejectedApiKey.SHARED::record,
                 warn = ::logDepartureWarning,
                 // A train the Planner names by its platform alone leaves from the station the
                 // bundled index lists that platform under.
@@ -2877,6 +2894,7 @@ class MainActivity : ComponentActivity() {
                     appKey = { UserApiKeySetting.current },
                     rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
                     requestPool = SharedTflRequestPool.pool,
+                    keyAnswered = RejectedApiKey.SHARED::record,
                 ),
                 warn = ::logRouteStopsWarning,
                 store = FileRouteStopsStore(File(context.applicationContext.cacheDir, "route-stops.json"), ::logRouteStopsWarning),
@@ -3072,9 +3090,19 @@ internal fun nearbyPermissionAction(
  * `LocationGateScreenshotTest` can't catch that, since it installs its own Surface.
  */
 @Composable
-internal fun StopDashAppRoot(content: @Composable () -> Unit) {
+internal fun StopDashAppRoot(
+    // TfL refused the user's key: the bar atop every screen saying so, and its Clear key (SPEC D7).
+    keyRejected: Boolean = false,
+    onClearKey: () -> Unit = {},
+    // A change to that key didn't save: the bar saying so, and its Try again.
+    keySaveFailed: Boolean = false,
+    onRetryKeySave: () -> Unit = {},
+    content: @Composable () -> Unit,
+) {
     StopDashTheme {
-        Surface(modifier = Modifier.fillMaxSize()) { ProvideDistanceSystem(content) }
+        Surface(modifier = Modifier.fillMaxSize()) {
+            ProvideDistanceSystem { KeyRejectedFrame(keyRejected, onClearKey, keySaveFailed, onRetryKeySave, content) }
+        }
     }
 }
 

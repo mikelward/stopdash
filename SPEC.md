@@ -2064,7 +2064,17 @@ surface.)
 - **D7 — stopdash ships no baked-in key.** It works keyless out of the box, and a user
   may paste their own free `app_key` in settings for the higher limit. A shared, baked-in
   key would pool every user's traffic into one 500/min bucket and put a credential in
-  the APK; a per-user key does neither.
+  the APK; a per-user key does neither. A key TfL refuses (a 401 or 403 answering it:
+  mistyped, expired, revoked) is said as such: one bar atop every screen reads "TfL
+  rejected your API key" with a one-tap **Clear key**, since every request with it fails
+  the same way, and a screen that names its failure says the same rather than "can't reach
+  TfL". One bar, not an action per screen, because many screens fold a failure into a plain
+  "couldn't update". Clearing it goes on keyless from the next request; a later answer to
+  the same key, or a different key pasted, ends the bar. A key change that fails to save (a
+  Clear included) says so with Try again, since it would not survive a restart and the
+  widget, which reads the stored key, would go on sending the old one. No request checks a key when it is
+  pasted: the refusal surfaces on the next request that would have sent it anyway. A
+  keyless refusal says nothing about a key and stays a plain failure.
 - **National Rail (optional, the user's own key).** TfL's arrivals feed has no times for
   National Rail services (Great Northern, Thameslink, Southern…). With a free Rail Data
   Marketplace key pasted in settings (maintainer, 2026-09-24), a rail station's departures also

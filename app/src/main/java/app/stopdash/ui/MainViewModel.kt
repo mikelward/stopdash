@@ -2112,11 +2112,15 @@ class MainViewModel(
     private fun kindOf(e: Throwable?): DeparturesUiState.Error.Kind = errorKindOf(e)
 }
 
-/** The user-facing error a failed TfL call maps to: offline, rate-limited, a network error, or else a server one. */
+/**
+ * The user-facing error a failed TfL call maps to: offline, rate-limited, a network error, the user's
+ * key rejected, or else a server one.
+ */
 internal fun errorKindOf(e: Throwable?): DeparturesUiState.Error.Kind = when (e) {
     is TflException.Offline -> DeparturesUiState.Error.Kind.OFFLINE
     is TflException.RateLimited -> DeparturesUiState.Error.Kind.RATE_LIMITED
     is TflException.Network -> DeparturesUiState.Error.Kind.NETWORK
+    is TflException.KeyRejected -> DeparturesUiState.Error.Kind.KEY_REJECTED
     else -> DeparturesUiState.Error.Kind.SERVER
 }
 

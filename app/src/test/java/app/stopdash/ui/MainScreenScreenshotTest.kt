@@ -4011,6 +4011,17 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `a rejected key offers to clear it`() {
+        // TfL refused the user's key (SPEC D7): the app-wide bar says so with Clear key, over the
+        // screen's own error.
+        capture("main-error-key-rejected.png") {
+            KeyRejectedFrame(rejected = true, onClearKey = {}) {
+                MainScreen(DeparturesUiState.Error(DeparturesUiState.Error.Kind.KEY_REJECTED), now, {})
+            }
+        }
+    }
+
+    @Test
     fun `a destination that fits keeps its full name`() {
         // Shrink step, not always-on: at a normal width the full name shows, unabbreviated.
         val stop = StopArrivals(

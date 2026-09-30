@@ -349,6 +349,8 @@ class MainViewModelTest {
         assertEquals(DeparturesUiState.Error.Kind.NETWORK, errorKindOf(TflException.Network("transport: X", null)))
         // TfL answered with an error (a 503), or with something that couldn't be read.
         assertEquals(DeparturesUiState.Error.Kind.SERVER, errorKindOf(TflException.Unreachable("HTTP 503", null)))
+        // TfL refused the user's own key: only clearing it mends that (SPEC D7).
+        assertEquals(DeparturesUiState.Error.Kind.KEY_REJECTED, errorKindOf(TflException.KeyRejected(null)))
     }
 
     @Test
