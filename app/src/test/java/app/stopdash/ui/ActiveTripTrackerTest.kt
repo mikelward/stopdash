@@ -156,6 +156,40 @@ class ActiveTripTrackerTest {
         assertEquals(tracker.trip.value, kept)
     }
 
+    @Test
+    fun `a pick asks only after trains the line's route takes the rider's way`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        // The red line forks after A: to C, the rider's way, and to Z.
+        sequences["red"] = app.stopdash.domain.LineSequence(
+            routes = listOf(app.stopdash.domain.LineRoute("A-C", listOf("A", "B", "C")), app.stopdash.domain.LineRoute("A-Z", listOf("A", "Y", "Z"))),
+            stopNames = mapOf("A" to "A", "B" to "B", "C" to "C", "Y" to "Y", "Z" to "Z"),
+        )
+        // The first three due turn off to Z; the fourth runs to C.
+        val toZ = listOf(train("1", 5), train("2", 6), train("3", 7)).map { it.copy(destination = "Z") }
+        departures["A"] = toZ + train("4", 8)
+        toZ.forEach { trains[it.vehicleId] = listOf(call("A", 5), call("Y", 8), call("Z", 12)) }
+        trains["4"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // Found at once, and only it asked after: the ones to Z cost no request.
+        assertEquals("4", tracker.trip.value?.vehicleId)
+        assertEquals(listOf("4"), asked)
+    }
+
+    @Test
+    fun `without the line's route, a pick asks after the first few as before`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        val toZ = listOf(train("1", 5), train("2", 6), train("3", 7)).map { it.copy(destination = "Z") }
+        departures["A"] = toZ + train("4", 8)
+        toZ.forEach { trains[it.vehicleId] = listOf(call("A", 5), call("Y", 8), call("Z", 12)) }
+        trains["4"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // Their calls decide: the three asked after all turn off, so none is followed yet.
+        assertEquals(listOf("1", "2", "3"), asked)
+        assertEquals("", tracker.trip.value?.vehicleId)
+    }
+
     // A line running north through synthetic stops A, B (1.1 km on) and C (2.2 km on).
     private val redLine = app.stopdash.domain.LineSequence(
         routes = listOf(app.stopdash.domain.LineRoute("A ↔ C", listOf("A", "B", "C"))),

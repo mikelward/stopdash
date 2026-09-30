@@ -1239,6 +1239,21 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `a pick asks only after trains the route doesn't send another way`() {
+        val red = LineSequence(
+            listOf(LineRoute("A-C", listOf("A", "B", "C")), LineRoute("A-Z", listOf("A", "Y", "Z"))),
+            mapOf("A" to "A", "B" to "B", "C" to "C", "Y" to "Y", "Z" to "Z"),
+        )
+        fun due(vehicle: String, destination: String) = Departure("red", "Red", "outbound", destination, null, t0, "tube", vehicleId = vehicle)
+        // To the Z branch, to C, and one with no destination yet, which could take either.
+        val trains = listOf(due("1", "Z"), due("2", "C"), due("3", ""))
+        assertEquals(listOf("2", "3"), OnTheWay.mayTakeRide(ride, trains, mapOf("red" to red)).map { it.vehicleId })
+        // With the route loading, or failed, none is ruled out: their calls decide.
+        assertEquals(listOf("1", "2", "3"), OnTheWay.mayTakeRide(ride, trains, emptyMap()).map { it.vehicleId })
+        assertEquals(listOf("1", "2", "3"), OnTheWay.mayTakeRide(ride, trains, mapOf("red" to null)).map { it.vehicleId })
+    }
+
+    @Test
     fun `the next ride's board keeps every line that reaches the stop, and no other branch`() {
         // Two lines from A: red to C, and green, which also reaches C; red's "Z" branch doesn't.
         val red = LineSequence(

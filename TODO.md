@@ -975,11 +975,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 later between two refreshes, is taken for its next lap (it gives the very same calls
                 as one that just left with its next lap predicted). Tell them apart from the rider's
                 location (still at the stop), or from how long since the call was last seen.
-          - [ ] **Candidates past the first three**: a pick asks after at most three trains (one
+          - [x] **Candidates past the first three**: a pick asks after at most three trains (one
                 request each, within the keyless rate limit). At a fork where the first three turn
-                off, none is found until one that runs along the leg comes up. Filter the board by
-                the line's route sequences first (as the trip view's leg rows do), at no request cost,
-                so the three asked after are ones that run the rider's way.
+                off, none was found until one that runs along the leg came up. The board is now
+                filtered by the line's route first (`OnTheWay.mayTakeRide`, as the trip view's leg
+                rows judge them), at no request cost, so the three asked after are ones that may run
+                the rider's way; a train the route can't place, or any without the route, is still
+                left to its calls.
           - [ ] **A boarded train that leaves the leg** (a diversion, a short working): it's shown as
                 lost and kept followed, since the rider is on it, not at the boarding stop to take
                 another. Re-plan from where it goes instead, or, with location, from where they are.
