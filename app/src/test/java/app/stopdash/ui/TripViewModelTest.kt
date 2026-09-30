@@ -2486,7 +2486,7 @@ class TripViewModelTest {
         val afterStatus = shownStatuses(mapOf("blue" to severe), setOf(DismissedAlert.ofLineStatus(severe)))["blue"]
         assertEquals(false, afterStatus?.disrupted)
         assertEquals(listOf(work), afterStatus?.planned)
-        // Dismissing the work leaves the disruption, without the ⓘ.
+        // Dismissing the work leaves the disruption, without the calendar.
         val afterWork = shownStatuses(mapOf("blue" to severe), setOf(DismissedAlert.ofPlanned("blue", work)))["blue"]
         assertEquals(true, afterWork?.disrupted)
         assertEquals(emptyList<PlannedAlert>(), afterWork?.planned)

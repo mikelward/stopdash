@@ -133,6 +133,7 @@ import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.stopdash.R
 import app.stopdash.domain.cleanDisruptionBody
 import app.stopdash.domain.serviceName
@@ -3758,23 +3759,25 @@ internal fun DisruptionWarningGlyph(description: String, modifier: Modifier = Mo
 }
 
 /**
- * The note on a route row for work that hasn't started ([PlannedAlert]): an ⓘ in the muted text
- * color, not the error one, since nothing is wrong yet — the row's countdowns stand. Announced
- * first, like [DisruptionWarningGlyph], as the alert and the day it starts.
+ * The note on a route row for work that hasn't started ([PlannedAlert]): a calendar ([CalendarIcon])
+ * in the muted text color, not the error one, since nothing is wrong yet — the row's countdowns
+ * stand. Sized in sp, like the ⚠ glyph it stands in for, so the two scale alike with the font.
+ * Announced first, like [DisruptionWarningGlyph], as the alert and the day it starts.
  */
 @Composable
 internal fun PlannedAlertGlyph(alert: PlannedAlert, modifier: Modifier = Modifier) {
     val description = stringResource(R.string.planned_alert_description, alert.label, plannedDate(alert))
-    Text(
-        text = "ⓘ",
-        style = MaterialTheme.typography.titleMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier.semantics {
-            contentDescription = description
-            traversalIndex = -1f
-        },
+    val size = with(LocalDensity.current) { PLANNED_GLYPH_SIZE.toDp() }
+    Icon(
+        imageVector = CalendarIcon,
+        contentDescription = description,
+        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier.size(size).semantics { traversalIndex = -1f },
     )
 }
+
+/** The row's calendar, the height of the titleMedium ⚠ it stands in for. */
+private val PLANNED_GLYPH_SIZE = 18.sp
 
 /** The day [alert] starts, short and in the rider's own locale ("13 Oct"). */
 @Composable
@@ -3800,14 +3803,26 @@ private fun PlannedAlertBlock(alert: PlannedAlert, modifier: Modifier = Modifier
                 shape = RoundedCornerShape(8.dp),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
             ) {
-                Text(
-                    text = "ⓘ ${alert.label}",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                Row(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                )
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // The row's calendar, so the chip reads as the same planned work; the date beside
+                    // the chip says when, so the icon itself is left unannounced.
+                    Icon(
+                        imageVector = CalendarIcon,
+                        contentDescription = null,
+                        modifier = Modifier.size(with(LocalDensity.current) { 14.sp.toDp() }),
+                    )
+                    Text(
+                        text = alert.label,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 4.dp),
+                    )
+                }
             }
             Text(
                 text = stringResource(R.string.planned_alert_from, plannedDate(alert)),

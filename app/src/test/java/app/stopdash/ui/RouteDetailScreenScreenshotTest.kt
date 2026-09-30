@@ -246,7 +246,7 @@ class RouteDetailScreenScreenshotTest {
         }
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("ⓘ Part Closure").assertIsDisplayed()
+        composeRule.onNodeWithText("Part Closure").assertIsDisplayed()
         composeRule.onNodeWithText("From 3 Oct").assertIsDisplayed()
         composeRule.onNodeWithText(planned.fullText, substring = true).assertIsDisplayed()
         // Only the planned alert's own ×: there is no disruption to dismiss.

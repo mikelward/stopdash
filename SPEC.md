@@ -1585,13 +1585,13 @@ planned work the start is read from the alert's own text — its **first** date,
 makes it a start: a start word before it ("from 13 Oct", "on 10 October") or the first of a range
 ("12-17 October"). Any other first date — "until 23 November", "expected to finish by 13 October",
 wording not foreseen — is work already under way. A year TfL leaves out is the one nearest the day it posted the alert — work is
-announced around when it starts, often just after it has. When the start is a later day, the row carries a muted ⓘ instead of the ⚠ and keeps its
+announced around when it starts, often just after it has. When the start is a later day, the row carries a muted calendar icon instead of the ⚠ (a date to come; the circled "i" it replaced read as a clock, maintainer 2026-09-30) and keeps its
 countdowns as they are, and the route's page lists the alert under its chip with the day it starts
 ("From 13 Oct"), each with its own × to dismiss it like any other alert. Anything the text doesn't date plainly — no date, an end first, a shape not
 recognized — counts as under way, and work starting later today already counts: the guess errs
 toward the ⚠, since a disruption flagged a day early beats one hidden while it runs. The start is
 judged against the day the rows are drawn, not the day the status was fetched: a status kept past a
-failed check turns its ⓘ into the ⚠ once the work's day comes. Dismissing the ⓘ puts away the
+failed check turns its calendar into the ⚠ once the work's day comes. Dismissing the calendar puts away the
 notice, not the disruption: on the day the work starts its ⚠ shows as it would for any new alert,
 and dismissing that is a second, separate choice.
 

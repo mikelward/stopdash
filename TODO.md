@@ -2051,9 +2051,9 @@ Builds on Phase 1's minimal line-status marking.
               direction its trains along the ride are seen going (`LineStatus.alongRides`), before
               dismissals, as a list row's is; a line not seen yet, or seen both ways, keeps the
               line-wide status. The open route's summary does the same.
-        - [ ] **Planned work's ⓘ on the widget and watch**: they persist a line check without its
+        - [ ] **Planned work's calendar icon on the widget and watch**: they persist a line check without its
               planned work, so a line whose only alert is still to come shows as a clean
-              line there (it showed the ⚠ before), with no ⓘ in its place (Codex, PR #337). Needs
+              line there (it showed the ⚠ before), with no calendar in its place (Codex, PR #337). Needs
               `planned` persisted with the check (and the watch envelope, a privacy-doc check) and
               the glyph drawn by both surfaces. A check is refetched on the widget's own schedule,
               so work that has started still reaches them as a disruption.

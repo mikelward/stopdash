@@ -52,7 +52,7 @@
     <string name="route_detail_alert_dismissed">Service alert dismissed</string>
     <!-- Beside a planned alert's chip on a route's page: the day the work starts ("From 13 Oct"). -->
     <string name="planned_alert_from">From %1$s</string>
-    <!-- Read out for the ⓘ on a route row: the planned alert and the day it starts. -->
+    <!-- Read out for the calendar icon on a route row: the planned alert and the day it starts. -->
     <string name="planned_alert_description">Planned %1$s from %2$s</string>
     <!-- Shown in the route detail when its snapshot is stale: the disruption status is from old
          data, so the detail (which carries no freshness stamp of its own) says so rather than

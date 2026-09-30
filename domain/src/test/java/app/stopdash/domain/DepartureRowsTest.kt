@@ -648,7 +648,7 @@ class DepartureRowsTest {
 
     @Test
     fun `a dismissed notice of work to come still flags the work once it starts`() {
-        // The ⓘ was put away; the disruption, on its day, is a new thing to see (SPEC *Disruptions*).
+        // The calendar was put away; the disruption, on its day, is a new thing to see (SPEC *Disruptions*).
         val planned = PlannedAlert("Part Closure", "No service on Friday 18 September.", java.time.LocalDate.of(2026, 9, 18), 5)
         val statuses = mapOf("victoria" to LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(planned)))
         val rows = DepartureRows.withoutDismissed(
