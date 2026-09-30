@@ -54,6 +54,7 @@ class WidgetScreenshotTest {
         offsetSeconds: Long,
         fetchedAt: Instant = now.minusSeconds(30),
         branch: String? = null,
+        mode: String = "tube",
     ) = DepartureRow(
         stopId = "490000001A",
         stopName = "Example Stop",
@@ -62,9 +63,9 @@ class WidgetScreenshotTest {
         direction = "inbound",
         directionKey = "inbound",
         destination = destination,
-        mode = "tube",
+        mode = mode,
         upcoming = listOf(
-            Departure(lineId, lineName, "inbound", destination, null, now.plusSeconds(offsetSeconds), "tube", branch = branch),
+            Departure(lineId, lineName, "inbound", destination, null, now.plusSeconds(offsetSeconds), mode, branch = branch),
         ),
         fetchedAt = fetchedAt,
     )
@@ -122,6 +123,25 @@ class WidgetScreenshotTest {
             dark = true,
         )
     }
+
+    // Two named Overground lines, hollow, around a tube line, solid: the same size down the column.
+    private fun overgroundModel() = WidgetModel(
+        hasData = true,
+        stale = false,
+        uncertain = false,
+        stamp = "Updated just now",
+        rows = listOf(
+            rowModel(row("windrush", "Windrush", "Highbury & Islington", 120, mode = "overground")),
+            rowModel(row("central", "Central", "Ealing Broadway", 180)),
+            rowModel(row("lioness", "Lioness", "Watford Junction", 240, mode = "overground")),
+        ),
+    )
+
+    @Test
+    fun `named Overground lines are hollow pills, light`() = capture("widget-overground.png", overgroundModel())
+
+    @Test
+    fun `named Overground lines are hollow pills, dark`() = capture("widget-overground-dark.png", overgroundModel(), dark = true)
 
     @Test
     fun `a disrupted line is marked, and a suspended one shows as its status`() {

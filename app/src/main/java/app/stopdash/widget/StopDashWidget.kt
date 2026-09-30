@@ -1,6 +1,7 @@
 package app.stopdash.widget
 
 import android.content.Context
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -18,6 +19,7 @@ import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
+import androidx.glance.color.ColorProvider as DayNightColor
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
 import androidx.glance.layout.Column
@@ -68,9 +70,8 @@ import app.stopdash.ui.hiddenGroupsLabel
 import app.stopdash.ui.BudgetedRow
 import app.stopdash.ui.BudgetedRows
 import app.stopdash.ui.groupHeaderTitle
-import app.stopdash.ui.lineFillColor
-import app.stopdash.ui.railOperatorColor
-import app.stopdash.ui.textColorOn
+import app.stopdash.ui.PillColors
+import app.stopdash.ui.pillColors
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
@@ -807,7 +808,7 @@ private fun WidgetCountdown(text: String, stale: Boolean) {
     )
 }
 
-/** A pill's whole width at [fontScale]: its label slot (see [WidgetPill]) plus 8dp padding each side. */
+/** A pill's whole width at [fontScale], every pill's: its label slot (see [WidgetPill]) plus 8dp each side. */
 private fun widgetPillWidth(fontScale: Float) =
     WIDGET_PILL_LABEL_WIDTH * fontScale.coerceAtMost(WIDGET_PILL_MAX_SCALE) + 16.dp
 
@@ -815,37 +816,118 @@ private fun widgetPillWidth(fontScale: Float) =
  *  pills and the labels beside them line up (SPEC fixed-width pill invariant). */
 @androidx.compose.runtime.Composable
 private fun WidgetPill(row: DepartureRow, fontScale: Float) {
-    // A national-rail service takes its operator's brand color; every other line/mode resolves
-    // by id/mode. Both render solid here — the widget has no hollow (Overground) treatment.
-    val fill = railOperatorColor(row.mode, row.lineName, row.lineId) ?: lineFillColor(row.lineId, row.mode)
     // The label and its fixed-width slot grow together with the system [fontScale], up to
     // WIDGET_PILL_MAX_SCALE; past that both hold (the sp size is divided back down), so the widest
     // code always fits the slot whole and a very large font can't grow the pill until it crowds out
     // the countdown. TalkBack still reads the full line name.
     val pillScale = fontScale.coerceAtMost(WIDGET_PILL_MAX_SCALE)
-    Box(
-        modifier = GlanceModifier
-            .background(if (fill != null) ColorProvider(fill) else GlanceTheme.colors.surfaceVariant)
-            .cornerRadius(6.dp)
-            .padding(horizontal = 8.dp, vertical = 4.dp)
-            // The visible label is the short code; the accessible label is the full line
-            // name, so TalkBack announces "Victoria", not "VIC" (SPEC parity with the app).
-            .semantics { contentDescription = riderLineName(row.lineName, row.mode) },
-    ) {
-        Text(
-            text = lineCode(row.lineName, row.mode, row.lineId),
-            maxLines = 1,
-            modifier = GlanceModifier.width(WIDGET_PILL_LABEL_WIDTH * pillScale),
-            style = TextStyle(
-                color = if (fill != null) ColorProvider(textColorOn(fill)) else GlanceTheme.colors.onSurfaceVariant,
-                fontWeight = FontWeight.Bold,
-                // 12sp at scales up to the cap; beyond it, held at the cap's size.
-                fontSize = (12f * pillScale / fontScale).sp,
-                textAlign = TextAlign.Center,
-            ),
-        )
+    // The visible label is the short code; the accessible label is the full line name, so TalkBack
+    // announces "Victoria", not "VIC" (SPEC parity with the app).
+    val name = riderLineName(row.lineName, row.mode)
+    val code = lineCode(row.lineName, row.mode, row.lineId)
+    when (val style = widgetPillStyle(row.lineName, row.lineId, row.mode)) {
+        is WidgetPillStyle.Hollow -> {
+            // Glance draws no border, so the ring is the accent behind a box of the background inset
+            // by the ring's width. Every pill takes the one fixed width ([widgetPillWidth]), so the
+            // ring's insets, rounded to pixels differently from a solid pill's padding, can't make
+            // it a pixel narrower; the inner box fills it and centers the label.
+            Box(
+                modifier = GlanceModifier
+                    .width(widgetPillWidth(fontScale))
+                    .background(DayNightColor(day = style.day.border, night = style.night.border))
+                    .cornerRadius(WIDGET_PILL_CORNER)
+                    .padding(WIDGET_PILL_RING)
+                    .semantics { contentDescription = name },
+            ) {
+                Box(
+                    modifier = GlanceModifier
+                        .fillMaxWidth()
+                        .background(GlanceTheme.colors.background)
+                        .cornerRadius(WIDGET_PILL_CORNER - WIDGET_PILL_RING)
+                        .padding(vertical = 4.dp - WIDGET_PILL_RING),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    WidgetPillLabel(code, DayNightColor(day = style.day.label, night = style.night.label), pillScale, fontScale)
+                }
+            }
+        }
+        else -> {
+            val solid = style as? WidgetPillStyle.Solid
+            Box(
+                modifier = GlanceModifier
+                    .width(widgetPillWidth(fontScale))
+                    .background(if (solid != null) ColorProvider(solid.fill) else GlanceTheme.colors.surfaceVariant)
+                    .cornerRadius(WIDGET_PILL_CORNER)
+                    .padding(vertical = 4.dp)
+                    .semantics { contentDescription = name },
+                contentAlignment = Alignment.Center,
+            ) {
+                WidgetPillLabel(
+                    code,
+                    if (solid != null) ColorProvider(solid.label) else GlanceTheme.colors.onSurfaceVariant,
+                    pillScale,
+                    fontScale,
+                )
+            }
+        }
     }
 }
+
+/** How the widget draws a line's pill ([widgetPillStyle]). */
+internal sealed interface WidgetPillStyle {
+    /** An official line, mode or rail-operator color, with its APCA black-or-white [label]. */
+    data class Solid(val fill: Color, val label: Color) : WidgetPillStyle
+
+    /** A named Overground line: the widget's background shows through, the accent the ring and
+     *  the label, nudged to stay legible on it in the light theme ([day]) and the dark ([night]). */
+    data class Hollow(val day: PillColors.Hollow, val night: PillColors.Hollow) : WidgetPillStyle
+
+    /** No confirmed color: the theme's neutral pill. */
+    data object Neutral : WidgetPillStyle
+}
+
+/**
+ * The widget's pill for a line, from the resolver the app and the watch draw with (SPEC *Line pill
+ * colors*), against the widget's background in each theme: a named Overground line hollow, as in
+ * the app, rather than a solid fill that would read as a tube line.
+ */
+internal fun widgetPillStyle(lineName: String, lineId: String, mode: String): WidgetPillStyle =
+    when (val day = pillColors(lineName, lineId, mode, WIDGET_SURFACE_DAY)) {
+        is PillColors.Hollow -> WidgetPillStyle.Hollow(day, pillColors(lineName, lineId, mode, WIDGET_SURFACE_NIGHT) as PillColors.Hollow)
+        is PillColors.Solid -> WidgetPillStyle.Solid(day.fill, day.label)
+        PillColors.Neutral -> WidgetPillStyle.Neutral
+    }
+
+@androidx.compose.runtime.Composable
+private fun WidgetPillLabel(code: String, color: ColorProvider, pillScale: Float, fontScale: Float) {
+    Text(
+        text = code,
+        maxLines = 1,
+        modifier = GlanceModifier.width(WIDGET_PILL_LABEL_WIDTH * pillScale),
+        style = TextStyle(
+            color = color,
+            fontWeight = FontWeight.Bold,
+            // 12sp at scales up to the cap; beyond it, held at the cap's size.
+            fontSize = (12f * pillScale / fontScale).sp,
+            textAlign = TextAlign.Center,
+        ),
+    )
+}
+
+private val WIDGET_PILL_CORNER = 6.dp
+
+// The hollow pill's ring, a stroke rather than spacing: a touch heavier than the app's 1.5dp outline,
+// for the widget's smaller pill.
+private val WIDGET_PILL_RING = 2.dp
+
+/**
+ * What the widget's background is taken to be, in each theme, for nudging a hollow pill's accent
+ * to stay legible on it ([app.stopdash.ui.accentInkOn]). The background itself is the host's
+ * dynamic color, known only when it draws: a near-white neutral in the light theme and a near-black
+ * one in the dark, which these stand for (Material's baseline background).
+ */
+internal val WIDGET_SURFACE_DAY = Color(0xFFFFFBFE)
+internal val WIDGET_SURFACE_NIGHT = Color(0xFF1C1B1F)
 
 /**
  * Sanitized log sink for the widget's snapshot read — a discarded corrupt file, or a read
