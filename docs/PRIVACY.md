@@ -189,7 +189,9 @@ What it sends:
   go through the log's off-device filter first, so a stop ID, line ID or coordinate in them is
   replaced by `•••`, and an error's message text is dropped (its type and code location stay).
   Errors the app catches and survives are reported the same way, and so is a crash that closes
-  the app: its message text is dropped before Crashlytics sees it.
+  the app: its message text is dropped before Crashlytics sees it. The first lines of each start
+  are logged before the app has read your choice back, so they're held in memory until it has:
+  sent if you're opted in, and discarded if you're not.
 - **Usage statistics** — that the app was opened, for how long and on which screen, your device
   model, Android version and app version, and the **country, region and city** Google infers from
   your IP address, under a **random app-instance ID** Firebase generates on the device and replaces

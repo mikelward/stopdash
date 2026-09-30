@@ -2255,7 +2255,8 @@ user to agree. A build without a Firebase config never starts Firebase, and a de
 one. Crash reports carry the diagnostic log's **off-device** rendering (`mikelward/androidlog`),
 where any argument not explicitly marked safe — a stop ID, a line id, a coordinate — is replaced
 before it leaves, and exceptions travel without their messages — a fatal crash too, redacted in a
-handler placed in front of Crashlytics' own. Usage stats carry Firebase's
+handler placed in front of Crashlytics' own. Lines logged at startup, before the stored choice has
+loaded, are held in memory and follow that choice: sent on a yes, dropped on a no. Usage stats carry Firebase's
 automatic events and its IP-derived region, under a random app-instance ID (reset on opt-out;
 Crashlytics keeps its own installation ID); the advertising ID is not collected. Turning the setting
 on never releases a crash captured before consent: collection starts at once only if the crash SDK

@@ -90,9 +90,6 @@ object TelemetryConsent {
     /** Null until the stored choice is loaded, then the user's answer. */
     val state: StateFlow<Boolean?> get() = holder.state
 
-    /** Whether collection is allowed right now — false until the choice is known to be yes. */
-    val optedIn: Boolean get() = holder.state.value == true
-
     /** Loads the stored choice and applies it to [gate] (null in a build without Firebase). Blocking. */
     fun load(store: ConsentStore, gate: TelemetryGate?) = holder.load(store, gate)
 

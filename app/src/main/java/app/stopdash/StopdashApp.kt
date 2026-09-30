@@ -23,6 +23,7 @@ import app.stopdash.telemetry.NoPendingMarker
 import app.stopdash.telemetry.PrefsConsentStore
 import app.stopdash.telemetry.TelemetryConsent
 import app.stopdash.telemetry.TelemetryGate
+import app.stopdash.telemetry.settleWhenConsentLoads
 import app.stopdash.telemetry.startTelemetry
 import app.stopdash.watch.WatchSync
 import app.stopdash.widget.WidgetDismissalRedraw
@@ -110,11 +111,12 @@ open class StopdashApp : Application() {
         // file keeps the full crash, Crashlytics gets the redacted copy.
         installCrashRedaction()
         installDiagnosticLog()
+        // Next, so its log sink sees startup's lines; it holds them until the stored choice loads.
+        installTelemetry()
         logProcessExits()
         // Before anything fetches, so every fetch is stamped by it.
         installSteadyClock()
         warmSharedState()
-        installTelemetry()
         installWatchSync()
         installWidgetDismissalRedraw()
     }
@@ -196,9 +198,10 @@ open class StopdashApp : Application() {
             registerSink = {
                 // Fails closed through startTelemetry: without redaction, the SDKs are switched off.
                 check(crashRedacted) { "crash redaction not installed" }
-                val sink = CrashlyticsLogSink { TelemetryConsent.optedIn }
+                val sink = CrashlyticsLogSink { TelemetryConsent.state.value }
                 StopdashDebugLog.addSink(sink, DebugLog.Destination.OFF_DEVICE)
                 crashlyticsSink = sink
+                settleWhenConsentLoads(sink, TelemetryConsent.state, applicationScope)
             },
             startLoad = { backend ->
                 // The stored choice is a small prefs read, but still disk I/O: off the main thread.
