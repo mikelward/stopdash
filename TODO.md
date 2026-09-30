@@ -959,12 +959,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             - a long press on a route offering "Avoid <line>" for each of its lines;
             - an avoided-lines chip at the top of the trip;
             - a setting listing lines to avoid.
-      - [ ] **Move bus stop placement into `:domain`** (Codex, #398): which pole of a stop pair, or
-            which stand of a bus station, a bus leg boards and gets off at is product logic, but
-            `polesOf`, `onPoles`, `placedOnPoles`, `endPole`, `placedStands`, `canStart`'s placement
-            rule and `boardingKey`/`alightingKey` live in the app's `TripScreen.kt`, tested from
-            `TripViewModelTest`. Move them, and `PlacedStand`, into `app.stopdash.domain` as one
-            refactor with no change in behavior, leaving the screen to consume the result.
+      - [x] **Move bus stop placement into `:domain`** (Codex, #398): which pole of a stop pair, or
+            which stand of a bus station, a bus leg boards and gets off at is product logic, so
+            `polesOf`, `onPoles`, `placedOnPoles`, `endPole`, `placedStands`, `PlacedStand`,
+            `boardingKey`/`alightingKey` and `canStart`'s placement rule (`busesSettled`) now live in
+            the domain's `BusPlacement.kt`, tested by `BusPlacementTest`. The screen keeps what reads
+            the trip's state: which placed poles are fetched, and whether a leg is still loading.
       - [ ] **On the way** (maintainer, 2026-09-26; SPEC *On the way*; autopilot): Start on an open
             route follows the rider there, assuming the next train they can catch and switching
             when another is seen (this replaces the mock's "I'm on this one" tap as the way in).
