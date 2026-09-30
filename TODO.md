@@ -190,7 +190,8 @@ exercises the whole spine the widget later renders from.
           added late. The fix belongs in the sink rather than per caller: hold what arrives before
           the choice is known in a small bounded queue, then send it once the load says yes or
           drop it on a no. Low stakes today: Crashlytics reads Android's exit records itself for
-          its own ANR reports, and the bug report and on-device log carry every line. *Done: the
+          its own ANR reports, the on-device log carries every line, and the bug report carries
+          the pinned process-exit record and as many of the newest lines as fit. *Done: the
           sink is registered straight after the log is installed, holds up to 64 lines while the
           choice is unknown (the newest, with a count of any dropped), and settles as soon as the
           choice loads, on the next line, or before a fatal crash's drain.*
@@ -2489,8 +2490,9 @@ and these carry the rest as their own PRs:
       the location-safe option; it is not the one that reveals location.
 - [x] **A richer shareable bug report — exact location — behind a consent gate** (requested
       2026-09-20; **maintainer decided 2026-09-20: include the exact location, gated by a consent
-      dialog**). Shipped as the overflow's *Send bug report*: it shares the diagnostic log (in
-      full, not redacted), the **exact location**, and the **per-stop distances** via the platform
+      dialog**). Shipped as the overflow's *Send bug report*: it shares the diagnostic log (not
+      redacted; since 2026-09-30 a busy run's oldest lines are left out so the report stays
+      small enough to share), the **exact location**, and the **per-stop distances** via the platform
       share sheet, behind a **consent screen that spells out exactly what leaves** and a persisted
       **"don't ask again"** opt-out. Rides the shared `mikelward/androidlog` `DebugReport`
       (clipboard + `ACTION_SEND`), reuses the retained nearby fix so the coordinate and distances

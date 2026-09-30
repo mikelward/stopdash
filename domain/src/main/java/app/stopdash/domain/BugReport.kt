@@ -82,7 +82,7 @@ object BugReport {
         appendLine(if (recentPositions.isEmpty()) "(none)" else recentPositions.joinToString("\n"))
         appendLine()
 
-        appendLine("--- log (this run) ---")
+        appendLine("--- log (this run, newest last; older lines are dropped to keep the report shareable) ---")
         if (logLines.isEmpty()) {
             append("(no diagnostics recorded this run)")
         } else {
