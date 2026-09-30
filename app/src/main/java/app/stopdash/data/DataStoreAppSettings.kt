@@ -13,6 +13,7 @@ import app.stopdash.domain.DEFAULT_FONT_SCALE
 import app.stopdash.domain.DistanceUnits
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.StepFree
+import app.stopdash.domain.TripModes
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.FontSizeSettings
 import app.stopdash.domain.clampFontScale
@@ -144,6 +145,13 @@ class DataStoreAppSettings internal constructor(
         dataStore.updateData { (it ?: PersistedSettings()).copy(stepFree = stepFree.name) }
     }
 
+    override fun tripModes(): Flow<TripModes> =
+        persisted().map { TripModes.fromStored(it?.tripModesOff) }
+
+    override suspend fun setTripModes(modes: TripModes) {
+        dataStore.updateData { (it ?: PersistedSettings()).copy(tripModesOff = modes.off) }
+    }
+
     // The shared read flow: DataStore's `data`, with a transient I/O read failure retried rather
     // than collapsed to a terminal default. A `catch`-and-emit would end the flow, leaving a
     // long-lived collector stuck at the default after storage recovered (Codex P2 on #56).
@@ -257,6 +265,9 @@ data class PersistedSettings(
     // The step-free choice by enum name, or null for no requirement; a string for the same reason as
     // [distanceUnits].
     val stepFree: String? = null,
+    // The mode groups a trip doesn't ride, by [ModeGroups.Group.key]; empty rides everything, so a
+    // group added later rides until turned off.
+    val tripModesOff: Set<String> = emptySet(),
 )
 
 /**

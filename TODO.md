@@ -967,7 +967,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             *Max walk* in Settings and as a dropdown under the walking speed atop a trip (10–60 min, default 30; it was
             a fixed 15). Each plan also asks the Planner for the fewest changes beside the quickest,
             merged, since its three quickest routes are often one route at three departures.
-      - [ ] **Mode toggles** at the top of a trip, remembered across trips (the Planner's `mode=`).
+      - [x] **Mode toggles** at the top of a trip, remembered across trips (the Planner's `mode=`):
+            chips under the step-free dropdown, one per mode group the list hides by (SPEC *Modes*);
+            the design is autopilot's, see *Decisions needing review*.
       - [ ] **Avoid a line**: request `includeAlternativeRoutes` and drop routes using it, since
             the Planner has no line exclusion (each returned route names its lines, so filtering
             on the phone is enough). UI to settle; the maintainer leans to the first:
@@ -983,10 +985,16 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             the platform; Fully: to the train as well; the maintainer's names, 2026-09-30), planning
             to it and remembered like the walking speed; an **"Accessible"** header over a route that
             meets it, as Fastest / Simplest are; and wheelchair icons on step-free stations (the
-            step-free status item above). Check first what the Planner takes for this
-            (`accessibilityPreference`, and whether it has street-to-platform and street-to-train
-            values) and how TfL grades a station with some platforms step-free and some not. The
-            labels should tell a rider with a suitcase or a buggy that Station suits them too.
+            step-free status item above). The labels should tell a rider with a suitcase or a buggy
+            that Station suits them too.
+            - [x] The dropdown (#408): sent as `accessibilityPreference` (`StepFreeToPlatform`,
+                  `StepFreeToVehicle`), with a line under Station and Fully saying what each is for.
+            - [ ] The "Accessible" header: the legs' `obstacles` list stairs, lifts and ramps, so a
+                  route can be judged; *to decide:* what it means with "Any" chosen.
+            - [ ] The wheelchair icons: TfL's live StopPoint data leaves `accessibilitySummary`
+                  empty, so they need another source (likely TfL's station-facilities data,
+                  bundled); *to decide* by the maintainer. Also how TfL grades a station with some
+                  platforms step-free and some not.
       - [x] **Move bus stop placement into `:domain`** (Codex, #398): which pole of a stop pair, or
             which stand of a bus station, a bus leg boards and gets off at is product logic, so
             `polesOf`, `onPoles`, `placedOnPoles`, `endPole`, `placedStands`, `PlacedStand`,
@@ -2656,6 +2664,15 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   (could crown an "est." route over a live one); a header on every card ("Other"); "Simplest" read
   as fewest walking minutes. **Reversible:** `routeLabels` in `:domain` and `RouteLabelHeader`.
   **To confirm:** on a device, that the headers read well over the cards.
+- [ ] **Trip mode toggles: which groups, and where (autopilot, 2026-09-30).** Taken: chips under the
+  step-free dropdown atop a trip only (not in Settings), one per `ModeGroups` group under the list's
+  names (Tube & DLR, Train, Bus, Tram, Boat, Coach), all on by default and stored as the groups turned
+  off; a trip setting of its own rather than the list's hidden modes; walking, the cable car and
+  replacement buses always sent; the last group riding can't be turned off (a tap on it does
+  nothing). *Alternatives:* a finer split (Overground, Elizabeth line, DLR each their own chip), a
+  row in Settings too, sharing the list's hidden modes, or a disabled look for the last chip.
+  **Reversible:** `TripModes` in `:domain` and `TripModeChips`. **To confirm:** on a device, that
+  the chip row reads well under the three dropdowns.
 - [ ] **What the step-free menu says under each level (autopilot, 2026-09-30; Codex, #408).** Taken:
   the maintainer's names stay, and Station and Fully each get a small line under them in the menu:
   "Street to platform, for luggage or a buggy" ("stroller" in US English) and "Onto the train too,

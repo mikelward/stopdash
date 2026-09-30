@@ -177,8 +177,8 @@ sealed interface TripOrigin {
 interface JourneyPlanner {
     /**
      * Every walk in the routes is timed at [speed] ([WalkingSpeed], the rider's setting), none is
-     * longer than [maxWalk] ([MaxWalk], also theirs), and every route is as step-free as [stepFree]
-     * ([StepFree], theirs too).
+     * longer than [maxWalk] ([MaxWalk], also theirs), every route is as step-free as [stepFree]
+     * ([StepFree], theirs too), and none rides a kind of transport [modes] turns off ([TripModes]).
      */
     suspend fun journeys(
         from: TripOrigin,
@@ -186,6 +186,7 @@ interface JourneyPlanner {
         speed: WalkingSpeed = WalkingSpeed.AVERAGE,
         maxWalk: MaxWalk = MaxWalk.DEFAULT,
         stepFree: StepFree = StepFree.DEFAULT,
+        modes: TripModes = TripModes.DEFAULT,
     ): List<TripRoute>
 }
 

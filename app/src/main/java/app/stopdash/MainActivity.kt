@@ -73,6 +73,7 @@ import app.stopdash.data.DistanceUnitsSetting
 import app.stopdash.data.WalkingSpeedSetting
 import app.stopdash.data.MaxWalkSetting
 import app.stopdash.data.StepFreeSetting
+import app.stopdash.data.TripModesSetting
 import app.stopdash.data.FileActiveTripStore
 import app.stopdash.data.FileNearbyStopsStore
 import app.stopdash.data.FileRecentStationsStore
@@ -2460,8 +2461,9 @@ class MainActivity : ComponentActivity() {
                         walkingSpeed = WalkingSpeedSetting.changes.value,
                         maxWalk = MaxWalkSetting.changes.value,
                         stepFree = StepFreeSetting.changes.value,
+                        tripModes = TripModesSetting.changes.value,
                         optionsLoaded = WalkingSpeedSetting.isLoaded.value && MaxWalkSetting.isLoaded.value &&
-                            StepFreeSetting.isLoaded.value,
+                            StepFreeSetting.isLoaded.value && TripModesSetting.isLoaded.value,
                     )
                 }
             },
@@ -2481,13 +2483,17 @@ class MainActivity : ComponentActivity() {
         // The step-free setting, likewise.
         val stepFree by StepFreeSetting.changes.collectAsStateWithLifecycle()
         SideEffect { trip.stepFree = stepFree }
-        // Nothing is planned, nor picked, until all three are read: a plan under the defaults would
-        // show routes past the rider's own limit, or with stairs they asked to avoid, and a pick then
-        // would be saved over their choice. Every plan waits for it in the model
-        // ([TripViewModel.optionsLoaded]), set after the values so a plan it releases reads them.
+        // The kinds of transport the routes may ride, from the chips atop the routes, likewise.
+        val tripModes by TripModesSetting.changes.collectAsStateWithLifecycle()
+        SideEffect { trip.tripModes = tripModes }
+        // Nothing is planned, nor picked, until all four are read: a plan under the defaults would
+        // show routes past the rider's own limit, with stairs they asked to avoid, or on a mode they
+        // turned off, and a pick then would be saved over their choice. Every plan waits for it in the
+        // model ([TripViewModel.optionsLoaded]), set after the values so a plan it releases reads them.
         val planOptionsLoaded = WalkingSpeedSetting.isLoaded.collectAsStateWithLifecycle().value &&
             MaxWalkSetting.isLoaded.collectAsStateWithLifecycle().value &&
-            StepFreeSetting.isLoaded.collectAsStateWithLifecycle().value
+            StepFreeSetting.isLoaded.collectAsStateWithLifecycle().value &&
+            TripModesSetting.isLoaded.collectAsStateWithLifecycle().value
         SideEffect { trip.optionsLoaded = planOptionsLoaded }
         // A re-pick of the nearby set (a fresh fix, a retried location) that kept the same nearest
         // stop keeps this trip, but its walk and live times follow the new fix at once rather than
@@ -2559,6 +2565,10 @@ class MainActivity : ComponentActivity() {
             onStepFreeChange = StepFreeSetting::set,
             stepFreeWriteFailed = StepFreeSetting.writeFailed.collectAsStateWithLifecycle().value,
             onStepFreeWriteFailureShown = StepFreeSetting::writeFailureShown,
+            tripModes = tripModes,
+            onTripModesChange = TripModesSetting::set,
+            tripModesWriteFailed = TripModesSetting.writeFailed.collectAsStateWithLifecycle().value,
+            onTripModesWriteFailureShown = TripModesSetting::writeFailureShown,
             planOptionsLoaded = planOptionsLoaded,
             // Where it starts and where it goes, each a tap to change (maintainer, 2026-09-28): From
             // opens the From… search, To the destination search, the other end kept.

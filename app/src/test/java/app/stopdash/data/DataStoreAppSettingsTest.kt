@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import app.stopdash.domain.DistanceUnits
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.StepFree
+import app.stopdash.domain.TripModes
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -77,6 +78,20 @@ class DataStoreAppSettingsTest {
     fun `a step-free level this build doesn't know reads as the default`() = runTest {
         val store = DataStoreAppSettings(FakeDataStore(PersistedSettings(stepFree = "LEVEL")))
         assertEquals(StepFree.DEFAULT, store.stepFree().first())
+    }
+
+    @Test
+    fun `a trip rides every mode by default and persists a change`() = runTest {
+        val store = DataStoreAppSettings(FakeDataStore(null))
+        assertEquals(TripModes.DEFAULT, store.tripModes().first())
+        store.setTripModes(TripModes(setOf("bus", "tram")))
+        assertEquals(TripModes(setOf("bus", "tram")), store.tripModes().first())
+    }
+
+    @Test
+    fun `a trip mode group this build doesn't know is dropped`() = runTest {
+        val store = DataStoreAppSettings(FakeDataStore(PersistedSettings(tripModesOff = setOf("bus", "hovercraft"))))
+        assertEquals(TripModes(setOf("bus")), store.tripModes().first())
     }
 
     @Test

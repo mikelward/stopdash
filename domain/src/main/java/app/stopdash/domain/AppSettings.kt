@@ -123,6 +123,12 @@ interface AppSettings {
     /** Stores the step-free choice. */
     suspend fun setStepFree(stepFree: StepFree) {}
 
+    /** Which kinds of transport a trip may ride ([TripModes]); [TripModes.DEFAULT], all of them, until chosen. */
+    fun tripModes(): Flow<TripModes> = flowOf(TripModes.DEFAULT)
+
+    /** Stores the trip-modes choice. */
+    suspend fun setTripModes(modes: TripModes) {}
+
     companion object {
         /** A store that persists nothing and always reads the defaults — the default for tests
          *  and a build with no wired DataStore, so the app runs identically minus persistence. */
