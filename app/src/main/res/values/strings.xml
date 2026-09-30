@@ -80,6 +80,8 @@
     <!-- Shown when arrivals loaded but the disruption lookup failed, so these times'
          disruption status was never checked (SPEC Disruptions: not verified-clean). -->
     <string name="disruptions_unknown">Couldn\'t check for disruptions</string>
+    <!-- A trip's routes: the lines and stops named ("Victoria, Oxford Circus") that couldn't be checked. -->
+    <string name="trip_disruptions_unknown_named">Couldn\'t check for disruptions: %1$s</string>
     <!-- While a cold load is still bringing stops in: line status is checked once they're all back. -->
     <string name="disruptions_checking">Checking for disruptions</string>
     <!-- Click labels for the stop-closure card, which collapses a long TfL notice to one

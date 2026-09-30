@@ -1248,7 +1248,10 @@ private fun RouteList(
                 cards.any { card -> card.any { it.unchecked || otherLineStopsUnchecked(it.route, state, rideLines) } },
             cards.any { card -> card.any { routeClosuresFailed(it.route, state, sequences, rideLines) } },
             cards.any { card -> card.any { routeStatusFailed(it.route, rideLines, state) } },
-        )?.let { checking -> item(key = "status") { StatusUnknown(checking) } }
+        )?.let { checking ->
+            val names = if (checking) emptyList() else uncheckedNames(cards.flatten(), state, now, sequences, rideLines)
+            item(key = "status") { StatusUnknown(checking, names) }
+        }
         if (cards.isEmpty()) {
             item(key = "none") { Text(stringResource(R.string.trip_no_routes), style = MaterialTheme.typography.bodyLarge) }
         }
@@ -1787,7 +1790,10 @@ private fun RouteLegs(
             estimate.unchecked || plannerUnchecked || otherLines.isNotEmpty() || otherLineStopsUnchecked(estimate.route, state, rideLines),
             routeClosuresFailed(estimate.route, state, sequences, rideLines),
             routeStatusFailed(estimate.route, rideLines, state),
-        )?.let { checking -> item(key = "status") { StatusUnknown(checking) } }
+        )?.let { checking ->
+            val names = if (checking) emptyList() else uncheckedNames(listOf(estimate), state, now, sequences, rideLines)
+            item(key = "status") { StatusUnknown(checking, names) }
+        }
         val firstStop = estimate.route.legs.firstOrNull()?.fromName
         if (access > Duration.ZERO && firstStop != null) {
             item(key = "access") { WalkLink(stringResource(R.string.trip_walk_first, firstStop, access.toMinutes().toInt())) }
@@ -1901,6 +1907,42 @@ internal fun shownStops(route: TripRoute, sequences: Map<String, LineSequence?>,
 /** Whether a pole another line [route]'s rides show uses has no check held yet ([otherLineStops]). */
 internal fun otherLineStopsUnchecked(route: TripRoute, state: TripViewModel.State, rideLines: Map<TripLeg, RideLines>): Boolean =
     otherLineStops(route, rideLines).any { it !in state.closures }
+
+/**
+ * What the "couldn't check" note names for [estimates]' routes ([statusNote]), as their cards name
+ * them (maintainer, 2026-09-30: say what couldn't be checked, not only that something couldn't).
+ * First each line whose status isn't known or whose latest check failed, the Planner's and the other
+ * lines a ride shows ([rideLines]); then each stop a route is judged at that no current check vouches
+ * for — none held yet, its latest failed, or its bus not yet placed on a pole there ([endPole]) — and
+ * each pole another line shows boards or gets off at with none ([otherLineStops]). Each once, in the
+ * routes' order.
+ */
+internal fun uncheckedNames(
+    estimates: List<TripTiming.Estimate>,
+    state: TripViewModel.State,
+    now: Instant,
+    sequences: Map<String, LineSequence?>,
+    rideLines: Map<TripLeg, RideLines>,
+): List<String> {
+    val statuses = rideStatuses(state)
+    val lines = LinkedHashSet<String>()
+    val stops = LinkedHashSet<String>()
+    for (route in estimates.map { it.route }) {
+        val others = route.rides.flatMap { ride -> rideLines[ride]?.legs.orEmpty().filter { it != ride } }
+        route.rides.filter { it.lineId in state.statusUnknown || it.lineId !in state.statuses || it.lineId in state.statusFailedLines }
+            .mapTo(lines) { it.lineName }
+        others.filter { it.lineId !in statuses }.mapTo(lines) { it.lineName }
+        // Named as the route names a stop, else as the other line does ([routeClosures]).
+        val names = (others + route.legs).flatMap { listOf(it.fromId to it.fromName, it.toId to it.toName) }.toMap()
+        for (end in TripClosures.ends(route)) {
+            val used = endPole(route, end, sequences)
+            val unchecked = TripClosures.judge(end, state.closures, state.closuresUnknown, now, used) == TripClosures.Standing.UNCHECKED
+            if (unchecked || TripClosures.reads(end, state.areaPoles, used).any { it in state.closuresFailed }) names[end.id]?.let(stops::add)
+        }
+        otherLineStops(route, rideLines).filter { it !in state.closures || it in state.closuresFailed }.forEach { id -> names[id]?.let(stops::add) }
+    }
+    return (lines + stops).filter { it.isNotBlank() }.distinct()
+}
 
 /**
  * The closure notices along [route] (a closure, a moved stop) as the list's closure cards show them,
@@ -2019,11 +2061,18 @@ internal fun cardClosures(
         }
     }.distinctBy { it.stopId }.let(DepartureRows::stopStatusFolded)
 
-/** A line shown without ⚠ may still be disrupted: its status is being checked, or couldn't be. */
+/**
+ * A line shown without ⚠ may still be disrupted: its status is being checked, or couldn't be — then
+ * naming the lines and stops that couldn't ([uncheckedNames]), where there are any to name.
+ */
 @Composable
-private fun StatusUnknown(checking: Boolean) {
+private fun StatusUnknown(checking: Boolean, names: List<String> = emptyList()) {
     Text(
-        stringResource(if (checking) R.string.disruptions_checking else R.string.disruptions_unknown),
+        when {
+            checking -> stringResource(R.string.disruptions_checking)
+            names.isEmpty() -> stringResource(R.string.disruptions_unknown)
+            else -> stringResource(R.string.trip_disruptions_unknown_named, names.joinToString(", "))
+        },
         style = MaterialTheme.typography.bodyMedium,
         color = if (checking) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
         modifier = Modifier.padding(vertical = 4.dp),
