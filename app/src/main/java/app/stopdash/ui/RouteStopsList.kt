@@ -431,6 +431,7 @@ private fun routeStopsFailureMessage(kind: DeparturesUiState.Error.Kind): Int = 
     DeparturesUiState.Error.Kind.RATE_LIMITED -> R.string.route_stops_failed_rate_limited
     // Wording not split yet: both still read "can't reach TfL" here.
     DeparturesUiState.Error.Kind.NETWORK, DeparturesUiState.Error.Kind.SERVER -> R.string.route_stops_failed_unreachable
+    DeparturesUiState.Error.Kind.KEY_REJECTED -> R.string.route_stops_failed_key_rejected
 }
 
 /** The rail color for a row's line: the color its pill takes (TfL line, rail operator, Overground accent), kept visible on the surface, else a neutral tone. */

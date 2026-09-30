@@ -4680,6 +4680,7 @@ internal fun errorMessage(kind: DeparturesUiState.Error.Kind): Int = when (kind)
     DeparturesUiState.Error.Kind.OFFLINE -> R.string.error_offline
     DeparturesUiState.Error.Kind.RATE_LIMITED -> R.string.error_rate_limited
     DeparturesUiState.Error.Kind.NETWORK, DeparturesUiState.Error.Kind.SERVER -> R.string.error_unreachable
+    DeparturesUiState.Error.Kind.KEY_REJECTED -> R.string.error_key_rejected
 }
 
 /**
@@ -4707,6 +4708,7 @@ private fun partialReason(kind: DeparturesUiState.Error.Kind): Int = when (kind)
     DeparturesUiState.Error.Kind.RATE_LIMITED -> R.string.partial_reason_rate_limited
     DeparturesUiState.Error.Kind.NETWORK -> R.string.partial_reason_network
     DeparturesUiState.Error.Kind.SERVER -> R.string.partial_reason_server
+    DeparturesUiState.Error.Kind.KEY_REJECTED -> R.string.partial_reason_key_rejected
 }
 
 private fun refreshFailureMessage(kind: DeparturesUiState.Error.Kind): Int = when (kind) {
@@ -4714,6 +4716,7 @@ private fun refreshFailureMessage(kind: DeparturesUiState.Error.Kind): Int = whe
     DeparturesUiState.Error.Kind.RATE_LIMITED -> R.string.refresh_failed_rate_limited
     DeparturesUiState.Error.Kind.NETWORK -> R.string.refresh_failed_network
     DeparturesUiState.Error.Kind.SERVER -> R.string.refresh_failed_server
+    DeparturesUiState.Error.Kind.KEY_REJECTED -> R.string.refresh_failed_key_rejected
 }
 
 private const val MAX_TIMES = 3

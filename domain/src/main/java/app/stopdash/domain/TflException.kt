@@ -22,6 +22,13 @@ sealed class TflException(message: String, cause: Throwable?) : Exception(messag
      */
     class NotFound(cause: Throwable?) : TflException("HTTP 404", cause)
 
+    /**
+     * TfL refused the user's own `app_key` (401 or 403): mistyped, expired or revoked (SPEC D7).
+     * Asking again with it fails the same way, so a surface says so and offers to clear it, and the
+     * app goes on keyless. Only raised when a key was sent; a keyless refusal is [Unreachable].
+     */
+    class KeyRejected(cause: Throwable?) : TflException("app_key rejected", cause)
+
     /** Reached TfL but the request still failed — a non-2xx, or a decode failure. */
     class Unreachable(reason: String, cause: Throwable?) : TflException(reason, cause)
 

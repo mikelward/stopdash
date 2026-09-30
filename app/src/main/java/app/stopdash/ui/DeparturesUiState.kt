@@ -119,7 +119,8 @@ sealed interface DeparturesUiState {
      * snapshot item) a failure keeps showing the aged last-good data instead.
      */
     data class Error(val kind: Kind) : DeparturesUiState {
-        // NETWORK: online but the request didn't complete; SERVER: TfL answered with an error.
-        enum class Kind { OFFLINE, RATE_LIMITED, NETWORK, SERVER }
+        // NETWORK: online but the request didn't complete; SERVER: TfL answered with an error;
+        // KEY_REJECTED: TfL refused the user's own key (SPEC D7), which only clearing it mends.
+        enum class Kind { OFFLINE, RATE_LIMITED, NETWORK, SERVER, KEY_REJECTED }
     }
 }

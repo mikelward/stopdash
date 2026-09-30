@@ -63,6 +63,7 @@
     <string name="route_stops_failed_offline">Couldn\'t load stops — you\'re offline</string>
     <string name="route_stops_failed_rate_limited">Couldn\'t load stops — TfL is rate-limiting</string>
     <string name="route_stops_failed_unreachable">Couldn\'t load stops — can\'t reach TfL</string>
+    <string name="route_stops_failed_key_rejected">Couldn\'t load stops — TfL rejected your API key</string>
     <string name="route_stops_stale">Stops shown once departures refresh</string>
     <string name="route_stops_retry">Retry</string>
     <!-- The route page's one-time tip on starring a journey (SPEC *Journeys*), and its dismiss action. -->
@@ -80,6 +81,7 @@
     <string name="partial_reason_rate_limited">rate limited</string>
     <string name="partial_reason_network">network error</string>
     <string name="partial_reason_server">server error</string>
+    <string name="partial_reason_key_rejected">API key rejected</string>
     <!-- Shown when arrivals loaded but the disruption lookup failed, so these times'
          disruption status was never checked (SPEC Disruptions: not verified-clean). -->
     <string name="disruptions_unknown">Couldn\'t check for disruptions</string>
@@ -134,11 +136,17 @@
     <string name="refresh_failed_rate_limited">Couldn\'t refresh — TfL is rate-limiting</string>
     <string name="refresh_failed_network">Couldn\'t refresh — network error</string>
     <string name="refresh_failed_server">Couldn\'t refresh — server error</string>
+    <string name="refresh_failed_key_rejected">Couldn\'t refresh — TfL rejected your API key</string>
 
     <!-- Honest failure states (SPEC principles 1–2) -->
     <string name="error_offline">You\'re offline</string>
     <string name="error_rate_limited">TfL is rate-limiting requests</string>
     <string name="error_unreachable">Can\'t reach TfL</string>
+    <!-- TfL refused the user's own key (SPEC D7): the action clears it and the app goes on keyless. -->
+    <string name="error_key_rejected">TfL rejected your API key</string>
+    <string name="clear_api_key">Clear key</string>
+    <!-- A change to the TfL key (a Clear, or a paste) didn't save: it holds until a restart. -->
+    <string name="api_key_write_failed">Couldn\'t save your API key change; it resets when StopDash restarts</string>
 
     <!-- Location gate: the nearby-stops search (SPEC Finding stops). The rationale is
          honest about the location leaving the device, since it does — it's sent to TfL to

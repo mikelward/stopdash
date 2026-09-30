@@ -1760,15 +1760,15 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       warmed into `UserApiKeySetting` so the long-lived request clients read it per request (a
       paste takes effect on the next refresh, no rebuild). Sent only with the user's own TfL
       requests; never logged or put in any other off-device artifact.
-- [ ] **Surface a rejected user `app_key` distinctly** (follow-up to the D7 paste field, Codex).
-      A mistyped/expired/revoked key that TfL rejects with a non-429 4xx currently maps to the
-      generic `Unreachable` state, so the app says "can't reach TfL" and keeps retrying the bad key
-      (the user recovers by clearing it in Settings — an honest but imprecise state). Map an auth
-      4xx (401/403) to a key-specific `TflException` and render it with a one-tap "clear key" action
-      on the affected surfaces, **or** validate the key on Save. Weigh validate-on-save's extra TfL
-      round-trip (a network call, offline handling, and a Data Safety note) against the simpler
-      surface-the-error path. Kept out of the paste-field PR to avoid widening it into error-UX
-      plumbing; the baseline there stays an honest typed error, not a silent failure.
+- [x] **Surface a rejected user `app_key` distinctly** (follow-up to the D7 paste field, Codex).
+      A 401/403 answering the user's own key is `TflException.KeyRejected`, recorded process-wide
+      (`RejectedApiKey`) so one bar atop every screen says "TfL rejected your API key" with a
+      one-tap **Clear key**; screens that name their failure say it too. Chosen over
+      validate-on-save: no extra TfL round-trip, and it also catches a key revoked later.
+- [ ] **Say a rejected key on the watch too.** A watch refresh whose every stop failed reports
+      `WatchRefreshOutcome.Failure.RATE_LIMITED` or `UNREACHABLE`, so a rejected key reads there as
+      "can't reach TfL". A third value crosses the phone–watch boundary, so it needs the version-skew
+      handling an older watch app reading it would need; the phone app already says it precisely.
 - [ ] Extend the persisted snapshot (from Phase 1) to cover the watched-stop set,
       filters, and the **stop-set key it's keyed by** (not the TfL `app_key`, which persists
       separately in settings). **This is what re-enables persistence for the location view**: the

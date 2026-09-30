@@ -238,4 +238,5 @@ private fun failureMessage(kind: DeparturesUiState.Error.Kind): Int = when (kind
     DeparturesUiState.Error.Kind.OFFLINE -> R.string.error_offline
     DeparturesUiState.Error.Kind.RATE_LIMITED -> R.string.error_rate_limited
     DeparturesUiState.Error.Kind.NETWORK, DeparturesUiState.Error.Kind.SERVER -> R.string.error_unreachable
+    DeparturesUiState.Error.Kind.KEY_REJECTED -> R.string.error_key_rejected
 }

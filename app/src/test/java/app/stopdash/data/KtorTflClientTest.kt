@@ -381,6 +381,7 @@ class KtorTflClientTest {
         capture: (HttpRequestData) -> Unit = {},
         warn: (String) -> Unit = {},
         httpTimeout: Boolean = false,
+        keyAnswered: (String, Boolean) -> Unit = { _, _ -> },
     ): KtorTflClient {
         val engine = MockEngine { request ->
             capture(request)
@@ -395,7 +396,7 @@ class KtorTflClientTest {
             if (httpTimeout) install(HttpTimeout)
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
-        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", appKey = { appKey }, warn = warn)
+        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", appKey = { appKey }, warn = warn, keyAnswered = keyAnswered)
     }
 
     @Test
@@ -1036,6 +1037,37 @@ class KtorTflClientTest {
         assertThrows(TflException.RateLimited::class.java) {
             runTest { client("{}", status = HttpStatusCode.TooManyRequests).arrivals("940GZZLUVIC") }
         }
+    }
+
+    @Test
+    fun `a 401 or 403 answering the user's key maps to KeyRejected`() {
+        for (status in listOf(HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden)) {
+            assertThrows("$status", TflException.KeyRejected::class.java) {
+                runTest { client("{}", status = status, appKey = "EXAMPLE").arrivals("940GZZLUVIC") }
+            }
+        }
+    }
+
+    @Test
+    fun `a keyless 401 or 403 says nothing about a key, so it stays Unreachable`() {
+        for (status in listOf(HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden)) {
+            assertThrows("$status", TflException.Unreachable::class.java) {
+                runTest { client("{}", status = status).arrivals("940GZZLUVIC") }
+            }
+        }
+    }
+
+    @Test
+    fun `how TfL answered the user's key is reported, for the app-wide bar`() = runTest {
+        val answers = mutableListOf<Pair<String, Boolean>>()
+        client("[]", appKey = "EXAMPLE", keyAnswered = { key, rejected -> answers += key to rejected }).arrivals("940GZZLUVIC")
+        assertEquals(listOf("EXAMPLE" to false), answers)
+        runCatching { client("{}", status = HttpStatusCode.Forbidden, appKey = "EXAMPLE", keyAnswered = { key, rejected -> answers += key to rejected }).arrivals("940GZZLUVIC") }
+        assertEquals(listOf("EXAMPLE" to false, "EXAMPLE" to true), answers)
+        // Keyless, or a failure that says nothing about the key: nothing to report.
+        client("[]", keyAnswered = { key, rejected -> answers += key to rejected }).arrivals("940GZZLUVIC")
+        runCatching { client("{}", status = HttpStatusCode.InternalServerError, appKey = "EXAMPLE", keyAnswered = { key, rejected -> answers += key to rejected }).arrivals("940GZZLUVIC") }
+        assertEquals(2, answers.size)
     }
 
     @Test
