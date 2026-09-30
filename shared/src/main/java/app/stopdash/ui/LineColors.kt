@@ -76,8 +76,11 @@ private val modeColors: Map<String, Color> = mapOf(
  * instead of the neutral fallback, the way Google Maps shows them.
  *
  * Each value is the operator's **confirmed** brand hex — the color Wikipedia's UK-railways colour
- * templates carry, except Great Northern, whose Wikipedia value is a route-diagram blue rather
- * than its brand, so its purple is taken from the operator's own site (greatnorthernrail.com).
+ * templates carry (`Template:National Rail colour`, which for Eurostar reads its route module),
+ * except Great Northern, whose Wikipedia value is a route-diagram blue rather than its brand, so
+ * its purple is taken from the operator's own site (greatnorthernrail.com). Where a template
+ * varies by route (Northern, ScotRail, Merseyrail, TransPennine Express), the value is its
+ * default, the operator's own color rather than one route's.
  * A national-rail operator not listed here still falls back to a neutral pill rather than an
  * invented shade.
  *
@@ -103,6 +106,24 @@ private val railOperatorColors: Map<String, Color> = mapOf(
     "chilternrailways" to Color(0xFF00BFFF),
     "gatwickexpress" to Color(0xFFEB1E2D),
     "heathrowexpress" to Color(0xFF532E63),
+    "eurostar" to Color(0xFF086BFE),
+    "caledoniansleeper" to Color(0xFF1D2E35),
+    "lumo" to Color(0xFF2B6EF5),
+    "grandcentral" to Color(0xFF1D1D1B),
+    "hulltrains" to Color(0xFFDE005C),
+    "transpennineexpress" to Color(0xFF09A4EC),
+    // "Northern" on a rail board, "Northern Rail" in TfL's own line list; the tube's Northern
+    // line is mode `tube`, so the national-rail gate keeps it black.
+    "northern" to Color(0xFF262262),
+    "northernrail" to Color(0xFF262262),
+    "transportforwales" to Color(0xFFFF0000),
+    "scotrail" to Color(0xFF1E467D),
+    "merseyrail" to Color(0xFFFFF200),
+    "islandline" to Color(0xFF1E90FF),
+    // West Midlands Trains runs two brands under one operator code (LM) and one TfL line: this
+    // orange for West Midlands Railway, green for London Northwestern (below). The parent name,
+    // "West Midlands Trains", is TfL's and names no brand a rider sees, so it stays neutral.
+    "westmidlandsrailway" to Color(0xFFFF8300),
 )
 
 /** An operator name reduced to lowercase letters and digits, so "Great Western Railway",
@@ -142,8 +163,8 @@ fun railOperatorColor(mode: String, operator: String): Color? {
  * Brand colors matched by the start of the normalized operator name, for an operator the rail
  * feed spells more than one way (the same reason its pill code is prefix-pinned in
  * `LineCode.kt`). London Northwestern's green is the maintainer's pick (2026-09-24) of
- * `#27B67A`, from the route-map legend in Wikipedia's *West Midlands Trains* article, over an
- * unsourced `#00BF6F`: it takes a white label like most rail pills.
+ * `#27B67A`, from the route-map legend in Wikipedia's *West Midlands Trains* article, over
+ * `#00BF6F` (its Wikipedia colour template): it takes a white label like most rail pills.
  */
 private val railOperatorColorPrefixes: List<Pair<String, Color>> = listOf(
     "londonnorthwestern" to Color(0xFF27B67A),

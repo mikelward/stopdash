@@ -801,10 +801,13 @@ wears its own **brand** color (c2c magenta, Southern green, EMR aubergine), a so
 tube, the way Google Maps shows them. These are operator brand hexes, not TfL's palette — the one
 authorized departure from "a confirmed TfL hex only" — so each is a confirmed brand value (the
 color Wikipedia's UK-railways templates carry, or the operator's own site where that value is a
-route-diagram color rather than the brand, as for Great Northern's purple). One exception, by
-the maintainer's choice (2026-09-24): London Northwestern Railway has no template color, so it wears
-the green from Wikipedia's *West Midlands Trains* route-map legend, picked from two candidates
-rendered side by side, until a template or operator value confirms or replaces it. The operator code
+route-diagram color rather than the brand, as for Great Northern's purple). Where a template
+varies by route (Northern, ScotRail), the operator takes its default, not one route's. One
+exception, by the maintainer's choice (2026-09-24): London Northwestern Railway wears the green from
+Wikipedia's *West Midlands Trains* route-map legend rather than its template's, picked from the two
+rendered side by side. West Midlands Trains runs it and West Midlands Railway (orange) as two brands
+under one operator code and one TfL line; each brand wears its own color, and TfL's parent name for
+the line, which no rider sees on a train, stays neutral. The operator code
 (EMR, AWC, c2c) already reads distinct from any tube code, so the rare color collision with a tube
 line (a rail red near Central) can't be mistaken for it — the identity is text, not color. An
 operator without a confirmed brand hex still falls back to a neutral pill rather than an invented

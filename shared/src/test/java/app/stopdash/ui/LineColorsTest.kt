@@ -99,6 +99,30 @@ class LineColorsTest {
     }
 
     @Test
+    fun `the rest of the rail operators wear their template color`() {
+        assertEquals(Color(0xFF086BFE), railOperatorColor("national-rail", "Eurostar"))
+        assertEquals(Color(0xFF1D2E35), railOperatorColor("national-rail", "Caledonian Sleeper"))
+        assertEquals(Color(0xFF2B6EF5), railOperatorColor("national-rail", "Lumo"))
+        assertEquals(Color(0xFF1D1D1B), railOperatorColor("national-rail", "Grand Central"))
+        assertEquals(Color(0xFFDE005C), railOperatorColor("national-rail", "Hull Trains"))
+        assertEquals(Color(0xFF09A4EC), railOperatorColor("national-rail", "TransPennine Express"))
+        assertEquals(Color(0xFFFF0000), railOperatorColor("national-rail", "Transport for Wales"))
+        assertEquals(Color(0xFF1E467D), railOperatorColor("national-rail", "ScotRail"))
+        assertEquals(Color(0xFFFFF200), railOperatorColor("national-rail", "Merseyrail"))
+        assertEquals(Color(0xFF1E90FF), railOperatorColor("national-rail", "Island Line"))
+        assertEquals(Color(0xFFFF8300), railOperatorColor("national-rail", "West Midlands Railway"))
+    }
+
+    @Test
+    fun `Northern Rail is indigo by either name, and the tube's Northern line stays black`() {
+        val indigo = Color(0xFF262262)
+        assertEquals(indigo, railOperatorColor("national-rail", "Northern"))
+        assertEquals(indigo, railOperatorColor("national-rail", "Northern Rail"))
+        val tube = pillColors("Northern", "northern", "tube", Color.White)
+        assertEquals(Color(0xFF000000), (tube as PillColors.Solid).fill)
+    }
+
+    @Test
     fun `London Northwestern is green however the feed spells it`() {
         val green = Color(0xFF27B67A)
         assertEquals(green, railOperatorColor("national-rail", "London Northwestern Railway"))
@@ -130,8 +154,9 @@ class LineColorsTest {
     fun `a rail operator without a confirmed brand hex falls back to neutral`() {
         // Not in the confirmed set → null, so LinePill shows a neutral pill rather than an
         // invented shade (SPEC: never an invented color).
-        assertNull(railOperatorColor("national-rail", "Merseyrail"))
-        assertNull(railOperatorColor("national-rail", "Lumo"))
+        assertNull(railOperatorColor("national-rail", "Example Rail"))
+        // The parent company of West Midlands Railway and London Northwestern names neither brand.
+        assertNull(railOperatorColor("national-rail", "West Midlands Trains"))
     }
 
     @Test
