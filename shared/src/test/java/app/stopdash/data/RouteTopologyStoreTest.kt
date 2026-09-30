@@ -1,5 +1,8 @@
 package app.stopdash.data
 
+import app.stopdash.domain.LineRoute
+import app.stopdash.domain.routePatternsOf
+import app.stopdash.domain.withLive
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -79,6 +82,23 @@ class RouteTopologyStoreTest {
         assertNotEquals("test asset must contain version:1", assetText(), bumped)
         // An unknown version resolves every branch as raw (nothing merged), the safe fallback.
         assertEquals("Bank", RouteTopologyStore.parse(bumped).grouping("northern", CAMDEN, "High Barnet", "Bank").label)
+    }
+
+    @Test
+    fun `routes read back from the bundled asset derive the same patterns, so a refresh changes nothing`() {
+        // TfL's Route/Sequence names each route "A  &harr;  B  via X" and lists it both ways; the
+        // asset was made from exactly that, so the same routes read back must give the same lines.
+        val topology = bundled()
+        for ((lineId, patterns) in topology.patternsByLine) {
+            val routes = patterns.flatMap { p ->
+                val name = "${p.endA}  &harr;  ${p.endB}" + (p.branch?.let { "  via ${if (it == "Charing X") "Charing Cross" else it}" } ?: "")
+                listOf(LineRoute(name, p.stops, "inbound"), LineRoute(name, p.stops.reversed(), "outbound"))
+            }
+            val derived = routePatternsOf(routes)
+            assertEquals(lineId, patterns, derived)
+            // And they stand in for the bundled line, unchanged.
+            assertEquals(lineId, patterns, topology.withLive(mapOf(lineId to derived!!)).patternsByLine[lineId])
+        }
     }
 
     private fun assetText(): String {

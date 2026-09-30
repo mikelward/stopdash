@@ -50,7 +50,7 @@ data class BranchGrouping(val mergeKey: String, val label: String?)
  * unknown, so the label is kept exactly as TfL gave it and nothing merges — the safe default,
  * never a wrong merge.
  */
-class RouteTopology(patternsByLine: Map<String, List<RoutePattern>>) {
+class RouteTopology(val patternsByLine: Map<String, List<RoutePattern>>) {
     // Endpoint names pre-cleaned once, so matching a (cleaned) arrival destination is plain
     // equality rather than a trim on every lookup.
     private class Pattern(val branch: String?, val stops: List<String>, val endA: String, val endB: String)

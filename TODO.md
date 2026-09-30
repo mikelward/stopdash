@@ -292,13 +292,19 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       two same-path trunks. Validated against live TfL data. Unknown line / uncovered stop or
       terminus falls back to TfL's raw label (no merge), so it never merges wrongly on
       incomplete data.
-- [ ] **Refresh the bundled route topology at runtime** (follow-up). The asset is static and
-      ships with the build, so a TfL branch change (a line extension) needs an app update to
-      reach it. A cached refresh from `/Line/{id}/Route/Sequence` (warmed at startup, off every
-      decision/render path, falling back to the bundled asset) would close that — the maintainer
-      approved the "bundled asset + cached refresh" shape (2026-09-20); only the bundled half
-      shipped first. Free API; state the cost/reliability note (an added background fetch, no
-      user-facing latency) when it lands.
+- [x] **Refresh the bundled route topology at runtime** (follow-up). The asset is static and
+      ships with the build, so a TfL branch change (a line extension) needed an app update to
+      reach it. Now, once the app starts, each bundled line's current `/Line/{id}/Route/Sequence`
+      (through the route stops' day-long cache) is read the way the asset was made
+      (`routePatternsOf`) and replaces the bundled patterns where it still runs every bundled
+      route, an extension past a terminus included (`withLive`); otherwise the bundled line stands. Validated against live TfL on
+      2026-09-30: all 16 bundled patterns of the three lines come back identical. Cost £0; at most
+      six requests a day (three lines, both ways), shared with the route pages' cache.
+- [ ] **The refreshed route topology on the widget-only process and the watch.** The refresh runs
+      in the app's process and puts its result in the shared `RouteTopologyStore`, so a widget
+      refreshed there uses it, but a widget-only process (the app not opened since a restart)
+      and the watch still read the bundled asset. The widget could derive it from the persisted
+      route stops cache without a request; the watch would need it sent in the envelope.
 - [ ] **Branch truncation follow-up: a fuller branch form under pressure** (maintainer,
       2026-09-19). **Superseded design (2026-09-22):** the original ask below — abbreviate across
       both halves, keep one full word in each — was replaced, ultimately by the floor-and-ellipsis

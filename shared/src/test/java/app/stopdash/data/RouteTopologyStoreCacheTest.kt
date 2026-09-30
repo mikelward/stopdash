@@ -1,6 +1,7 @@
 package app.stopdash.data
 
 import androidx.test.core.app.ApplicationProvider
+import app.stopdash.domain.RouteTopology
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Test
@@ -30,5 +31,22 @@ class RouteTopologyStoreCacheTest {
         // The synchronous peek now returns that same instance with no IO — the value a recreated
         // activity reads for its initial state, so the first frame is already merged.
         assertSame(loaded, RouteTopologyStore.cached())
+    }
+
+    @Test
+    fun `a refreshed topology is used from then on, and the bundled one stays apart`() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val bundled = RouteTopologyStore.bundled(context)
+        val refreshed = RouteTopology(bundled.patternsByLine)
+        try {
+            RouteTopologyStore.use(refreshed)
+            assertSame(refreshed, RouteTopologyStore.load(context))
+            assertSame(refreshed, RouteTopologyStore.cached())
+            // A later refresh still compares with the asset, not with the last refresh.
+            assertSame(bundled, RouteTopologyStore.bundled(context))
+        } finally {
+            // Process-wide: leave the bundled one in use for the other tests in this sandbox.
+            RouteTopologyStore.use(bundled)
+        }
     }
 }

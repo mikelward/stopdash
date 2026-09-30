@@ -12,7 +12,9 @@ import kotlinx.serialization.json.Json
  * Loads the bundled route-topology asset into a [RouteTopology] (SPEC *Branch merging*). The
  * asset is static app data regenerated from TfL Route/Sequence, so it is read **once per
  * process** and cached — both the app and the widget worker share the one instance, and it is
- * warmed off the render path (the activity's `onCreate`, the widget's coroutine).
+ * warmed off the render path (the activity's `onCreate`, the widget's coroutine). The app then
+ * puts TfL's current patterns over it where they still cover it ([use]), so a line extended since
+ * the build is grouped as it runs now.
  *
  * Fails safe to [RouteTopology.EMPTY]: a missing or corrupt asset, or a version this build
  * doesn't understand, degrades to "show TfL's branch as-is, merge nothing" rather than
@@ -25,8 +27,13 @@ object RouteTopologyStore {
 
     private val json = Json { ignoreUnknownKeys = true }
 
+    // The topology in use: the bundled one, or TfL's current patterns over it ([use]).
     @Volatile
     private var cached: RouteTopology? = null
+
+    // The bundled asset as parsed, kept apart from [cached] so a refresh always starts from it.
+    @Volatile
+    private var bundled: RouteTopology? = null
 
     /**
      * The topology if it is **already parsed and cached**, else [RouteTopology.EMPTY] — a
@@ -39,9 +46,23 @@ object RouteTopologyStore {
      */
     fun cached(): RouteTopology = cached ?: RouteTopology.EMPTY
 
-    /** The bundled topology, parsed once and cached. Safe to call from any thread. */
+    /**
+     * The topology in use: the bundled one, parsed once and cached, or the refreshed one once [use]
+     * has put it in place. Safe to call from any thread.
+     */
     fun load(context: Context): RouteTopology {
         cached?.let { return it }
+        val topology = bundled(context)
+        // A refresh that landed while the asset was read stays in place.
+        return cached ?: topology.also { cached = it }
+    }
+
+    /**
+     * The bundled asset alone, parsed once and cached, whatever is in use: what a refresh compares
+     * TfL's current patterns with ([app.stopdash.domain.withLive]). Safe to call from any thread.
+     */
+    fun bundled(context: Context): RouteTopology {
+        bundled?.let { return it }
         val topology = try {
             val text = context.assets.open(ASSET).bufferedReader().use { it.readText() }
             // Static asset, no user data in a failure — safe to name the failure mode in the log.
@@ -52,8 +73,16 @@ object RouteTopologyStore {
             Log.w("StopDash.Topology", "route topology load failed: ${e::class.simpleName}")
             RouteTopology.EMPTY
         }
-        cached = topology
+        bundled = topology
         return topology
+    }
+
+    /**
+     * Puts [topology] in use for the rest of the process: the bundled one with TfL's current
+     * patterns over it, which [load] and [cached] then return (SPEC *Branch merging*).
+     */
+    fun use(topology: RouteTopology) {
+        cached = topology
     }
 
     /**
