@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -76,6 +77,12 @@ class RailStationCodes(private val codes: Map<String, String>) {
  * is logged ([warn], sanitized: the stop id and reason) and the stop keeps its TfL departures, its
  * National Rail lines' status rows saying "No data" ([RailFeed.UNAVAILABLE]). Everything else is
  * [tfl]'s.
+ *
+ * A station's board is kept in [boards], the app's one cache ([ArrivalsCache]), under its code: a
+ * board fetched for one stop or screen is what every other reads until it's [ArrivalsCache.TTL]
+ * old, as a stop's arrivals are. A list shows the board under one of the station's stops only
+ * (below); with [boardAtEveryStop] every stop gets it, as a trip needs for a train boarding at any
+ * of them.
  */
 class RailAwareTflClient(
     private val tfl: TflClient,
@@ -84,11 +91,17 @@ class RailAwareTflClient(
     private val codes: () -> RailStationCodes,
     private val warn: (String) -> Unit = {},
     private val elapsedMillis: () -> Long = { System.nanoTime() / 1_000_000 },
+    // A trip times each leg from the station it boards at, whichever of the station's stops the
+    // Planner names; a list would show the trains twice.
+    private val boardAtEveryStop: Boolean = false,
+    // Null keeps nothing between requests (tests, an unwired client).
+    private val boards: ArrivalsCache? = null,
+    private val clock: () -> Instant = Instant::now,
 ) : TflClient by tfl {
     // Each station code's owner: the one stop its board is fetched for and shown under, and when it
     // last asked. Two TfL stops can share a code (St Pancras's two National Rail ids, side by side in
-    // every lookup); the board is asked for and joined to only one of them, or its trains would show
-    // twice and the user's key be spent twice. The first stop whose own TfL fetch works owns it,
+    // every lookup); in a list the board is joined to only one of them, or its trains would show
+    // twice ([boardAtEveryStop] turns this off for a trip). The first stop whose own TfL fetch works owns it,
     // and keeps it while it keeps asking, so the trains don't hop between the two; after
     // [OWNER_IDLE_MILLIS] without a request, or once its own TfL fetch fails, another stop may take
     // over.
@@ -97,7 +110,7 @@ class RailAwareTflClient(
     private val inFlight = HashMap<String, CompletableDeferred<Unit>>()
     // A board a failed owner fetched, handed to the twin that takes over in the same refresh so the
     // station still costs one request; with when it was fetched, and used once.
-    private val handoffs = HashMap<String, Pair<List<Departure>, Long>>()
+    private val handoffs = HashMap<String, Pair<ArrivalsCache.Entry, Long>>()
     private val ownersLock = Mutex()
 
     // Each stop's [RailFeed] from its last [arrivals]; absent when none applies (not a National Rail
@@ -105,6 +118,12 @@ class RailAwareTflClient(
     private val feeds = ConcurrentHashMap<String, RailFeed>()
 
     override fun railFeed(stopId: String): RailFeed? = feeds[stopId]
+
+    // When each stop's last board was fetched, which a kept one ([boards]) makes older than the stop's
+    // own request; absent when its last arrivals carried no board.
+    private val boardTimes = ConcurrentHashMap<String, Instant>()
+
+    override fun fetchedAt(stopId: String): Instant? = boardTimes[stopId]
 
     // With National Rail times on, a station's board goes under whichever of its stops this client
     // picked, so its arrivals aren't another client's to reuse; with none, it's TfL's alone.
@@ -114,6 +133,7 @@ class RailAwareTflClient(
     override fun arrivalsSource(): Any? = rail.available
 
     override suspend fun arrivals(stopId: String): List<Departure> {
+        boardTimes.remove(stopId)
         val crs = codes().crsFor(stopId)
         if (crs == null || !rail.available) {
             // A station a key would give National Rail times says so; any other stop has none to give.
@@ -121,6 +141,7 @@ class RailAwareTflClient(
             return tfl.arrivals(stopId)
         }
         feeds.remove(stopId)
+        if (boardAtEveryStop) return withBoard(stopId, crs)
         return coroutineScope {
             // The standing owner asks for its board alongside TfL, and marks its own fetch in flight;
             // any other stop claims the board only once its own TfL fetch worked. So of two twins
@@ -161,25 +182,46 @@ class RailAwareTflClient(
                 !shows -> fromTfl.also { early?.cancel() }
                 else -> {
                     val board = if (early != null) early.await() else takeHandoff(crs) ?: fetchBoard(crs, stopId)
-                    feeds[stopId] = if (board == null) RailFeed.UNAVAILABLE else RailFeed.LIVE
-                    fromTfl + board.orEmpty()
+                    showed(stopId, board)
+                    fromTfl + board?.departures.orEmpty()
                 }
             }
         }
     }
 
-    /** [crs]'s board, or null when it failed (logged). */
-    private suspend fun fetchBoard(crs: String, stopId: String): List<Departure>? =
-        try {
-            rail.departures(crs)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: TflException) {
-            warn("national rail board failed for stop $stopId: ${e.message}")
-            null
-        }
+    /** [stopId]'s TfL arrivals with its station's board, asked for together. */
+    private suspend fun withBoard(stopId: String, crs: String): List<Departure> = coroutineScope {
+        val board = async { fetchBoard(crs, stopId) }
+        // A failed TfL fetch fails the stop, as ever, and cancels the board's.
+        val fromTfl = tfl.arrivals(stopId)
+        val fetched = board.await()
+        showed(stopId, fetched)
+        fromTfl + fetched?.departures.orEmpty()
+    }
 
-    private suspend fun takeHandoff(crs: String): List<Departure>? = ownersLock.withLock {
+    // [stopId]'s feed and board time once its arrivals carry [board], or would have (null: it failed).
+    private fun showed(stopId: String, board: ArrivalsCache.Entry?) {
+        feeds[stopId] = if (board == null) RailFeed.UNAVAILABLE else RailFeed.LIVE
+        board?.let { boardTimes[stopId] = it.fetchedAt }
+    }
+
+    /** [crs]'s board, kept or asked for, with when it was fetched; null when it failed (logged). */
+    private suspend fun fetchBoard(crs: String, stopId: String): ArrivalsCache.Entry? {
+        suspend fun request(): List<Departure>? =
+            try {
+                rail.departures(crs)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: TflException) {
+                warn("national rail board failed for stop $stopId: ${e.message}")
+                null
+            }
+        val cache = boards ?: return request()?.let { ArrivalsCache.Entry(it, SteadyClock.stamp(clock())) }
+        // Kept, and asked for once however many screens and stops ask at the same time.
+        return cache.fetchOnce(BOARD_KEY + crs, clock(), BOARD_SOURCE) { request() }
+    }
+
+    private suspend fun takeHandoff(crs: String): ArrivalsCache.Entry? = ownersLock.withLock {
         val (board, at) = handoffs.remove(crs) ?: return@withLock null
         board.takeIf { elapsedMillis() - at < HANDOFF_MILLIS }
     }
@@ -209,6 +251,12 @@ class RailAwareTflClient(
 
         /** How long a failed owner's board waits for a twin to take it over: one refresh's span. */
         const val HANDOFF_MILLIS = 30_000L
+
+        // A board's key in [boards], beside the stops' ids: no stop id has a colon.
+        private const val BOARD_KEY = "national-rail:"
+
+        // What a kept board was fetched from: a board, whatever key asked for it.
+        private val BOARD_SOURCE = Any()
     }
 }
 

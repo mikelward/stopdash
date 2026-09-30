@@ -388,6 +388,7 @@ internal suspend fun refreshStoredSnapshot(
                     rail = KtorDarwinClient(http, apiKey = { railKey }, warn = ::logWidgetSnapshotWarning),
                     codes = { RailStationCodesStore.load(context) },
                     warn = ::logWidgetSnapshotWarning,
+                    boards = ArrivalsCache.SHARED,
                 ))
                 ran = true
                 // The arrivals, then the lines' statuses, in as few requests as TfL accepts (lines
@@ -407,6 +408,7 @@ internal suspend fun refreshStoredSnapshot(
                     shared = ArrivalsCache.SHARED,
                     source = client.arrivalsSource(),
                     railFeed = client::railFeed,
+                    fetchedAt = client::fetchedAt,
                     fetchStatuses = { lineIds ->
                         // Called once per request TfL accepts: every answered one's statuses count.
                         widgetLineStatuses(client, lineIds)?.also { answered = answered.orEmpty() + it }

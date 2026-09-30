@@ -26,6 +26,7 @@ import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StarredRowSet
 import app.stopdash.domain.StarredRowsStore
 import app.stopdash.domain.StopArrivals
+import app.stopdash.domain.stampOf
 import app.stopdash.domain.LoadStats
 import app.stopdash.domain.StopClosureCache
 import app.stopdash.domain.StopDisruption
@@ -1018,7 +1019,7 @@ class MainViewModel(
                             freshDepartures = departures,
                             freshDisruptions = stopDisruptions,
                             prior = prior[stop.id],
-                            now = shared[i]?.fetchedAt ?: stamp,
+                            now = shared[i]?.fetchedAt ?: client.stampOf(stop.id, stamp),
                             hubId = stop.hubId,
                             hubName = hub.name,
                             placeAliases = hub.aliases,
@@ -1084,9 +1085,12 @@ class MainViewModel(
             }
             closure?.let { closureAsks[stop.id] = it.ask }
             val disruptions = closure?.notices
+            // As old as the oldest part of its arrivals (a National Rail board another screen fetched,
+            // say), both on screen and in what a later refresh carries over by: the two must match.
+            val fetchedAt = shared[i]?.fetchedAt ?: client.stampOf(stop.id, stamp)
             if (departures != null) {
                 freshArrivalStopIds += stop.id
-                arrivalsFetchedAt[stop.id] = shared[i]?.fetchedAt ?: stamp
+                arrivalsFetchedAt[stop.id] = fetchedAt
             }
             if (departures != null || (disruptions != null && !disruptionFromCache[i])) anyFreshData = true
             val hub =
@@ -1103,7 +1107,7 @@ class MainViewModel(
                 freshDepartures = departures,
                 freshDisruptions = disruptions,
                 prior = prior[stop.id],
-                now = shared[i]?.fetchedAt ?: stamp,
+                now = fetchedAt,
                 hubId = stop.hubId,
                 hubName = hub.name,
                 placeAliases = hub.aliases,

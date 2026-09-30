@@ -1,5 +1,7 @@
 package app.stopdash.domain
 
+import java.time.Instant
+
 /**
  * Reads live departures from TfL, behind a domain interface so the decision
  * logic (and later the ViewModel) depends on this, not on Ktor or the network —
@@ -21,6 +23,15 @@ interface TflClient {
      * [arrivals] returns; a client with no National Rail feed always answers null.
      */
     fun railFeed(stopId: String): RailFeed? = null
+
+    /**
+     * When the oldest part of [stopId]'s last [arrivals] was fetched, where that's before they were
+     * asked for: a station's National Rail board another screen fetched moments ago, kept for every
+     * screen ([ArrivalsCache.fetchOnce]). Null when all of it was asked for then. Read after
+     * [arrivals] returns; a screen dates the arrivals by it ([stampOf]), so they show at their real
+     * age (SPEC D4).
+     */
+    fun fetchedAt(stopId: String): Instant? = null
 
     /**
      * Whether [stopId]'s [arrivals] are the same whichever client asked, so another screen may show
@@ -81,3 +92,10 @@ interface TflClient {
 
 /** An interchange's resolved display [name] and every member-station [aliases] spelling. */
 data class HubInfo(val name: String = "", val aliases: List<String> = emptyList())
+
+/**
+ * When [stopId]'s last [TflClient.arrivals], asked for at [askedAt], were fetched: then, or as long
+ * ago as the oldest part of them was ([TflClient.fetchedAt]).
+ */
+fun TflClient.stampOf(stopId: String, askedAt: Instant): Instant =
+    fetchedAt(stopId)?.takeIf { it.isBefore(askedAt) } ?: askedAt

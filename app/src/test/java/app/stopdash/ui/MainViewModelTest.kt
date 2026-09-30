@@ -4136,6 +4136,12 @@ class MainViewModelTest {
         // Held open while set, so a test can act with a fetch in flight.
         var arrivalsGate: CompletableDeferred<Unit>? = null
 
+        // When part of a stop's arrivals was fetched, if before the ask: a National Rail board
+        // another screen fetched, say ([TflClient.fetchedAt]).
+        val partFetchedAt = mutableMapOf<String, Instant>()
+
+        override fun fetchedAt(stopId: String): Instant? = partFetchedAt[stopId]
+
         override suspend fun arrivals(stopId: String): List<Departure> {
             arrivalCalls.merge(stopId, 1) { a, b -> a + b }
             arrivalsGate?.await()
@@ -4569,6 +4575,29 @@ class MainViewModelTest {
         advanceUntilIdle()
         assertEquals(3, client.arrivalCalls[oxcId])
         assertEquals(2, client.arrivalCalls[ksxId])
+    }
+
+    @Test
+    fun `a far stop showing an older board is still carried over on the timer`() = runTest(dispatcher) {
+        var current = now
+        val client = ReuseCountingClient()
+        // King's Cross's board came from another screen's fetch, 20 s before this one.
+        client.partFetchedAt[ksxId] = now.minusSeconds(20)
+        val vm = MainViewModel(
+            client, seeds, clock = { current }, io = dispatcher,
+            arrivalsReuse = ARRIVALS_REUSE, disruptionReuse = DISRUPTION_REUSE,
+            stopDistanceMeters = mapOf(oxcId to 100.0, ksxId to 900.0),
+            farArrivalsReuse = FAR_ARRIVALS_REUSE,
+        )
+        advanceUntilIdle()
+        val ksx = (vm.state.value as DeparturesUiState.Loaded).stops.single { it.stopId == ksxId }
+        assertEquals("the stop is as old as its board", now.minusSeconds(20), ksx.fetchedAt)
+
+        // The minute timer: at 80 s old, within the far stop's window, it's carried over.
+        current = now.plusSeconds(60)
+        vm.refresh(automatic = true)
+        advanceUntilIdle()
+        assertEquals(1, client.arrivalCalls[ksxId])
     }
 
     @Test

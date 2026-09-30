@@ -962,11 +962,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             from St Pancras and the Elizabeth line from Liverpool Street went missing that way. The
             bundled station list now carries the platforms TfL lists under each station, and the leg
             is read as leaving that station (`StationIndex.stationOf`).
-      - [ ] **Time a Thameslink leg from St Pancras low level**: such a leg now shows, boarding at
-            `910GSTPXBOX`, but with no live time. The station codes leave out its CRS (SPL), whose
-            board the departure service refuses, and its trains come on St Pancras's own board
-            (STP) instead. Time it from STP's board, with the twin-stop owner logic in
-            `RailAwareTflClient` keeping the trains from showing twice.
+      - [x] **Time a Thameslink leg from St Pancras low level** (maintainer, 2026-09-30: a trip
+            fetches everything it needs, through the same cache as everything else): SPL takes
+            STP's board in the station codes; a trip's client gives every stop of a station its
+            board (`boardAtEveryStop`), while a list still shows it under one; and each board is
+            kept once per station in the shared arrivals cache, so screens share one request.
       - [x] **Delete the unreachable direct-trips page path**: `LookDepartures` is now only a
             station page with nowhere to stand; the direct-trips filter page, a trip from here
             through it, and a To… destination's widening to the stops around it are gone, with

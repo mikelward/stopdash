@@ -55,11 +55,13 @@ class ParseTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             build_crs_index.build(xml(stop("9100EXAMPLE", "EXA")))
 
-    def test_a_code_the_board_service_refuses_is_left_out(self):
+    def test_a_code_the_board_service_refuses_takes_the_board_its_trains_come_on(self):
         stops = [stop(f"9100S{i:04d}", f"{chr(65 + i % 26)}{chr(65 + i // 26 % 26)}{chr(65 + i // 676 % 26)}") for i in range(2100)]
         table = build_crs_index.build(xml(*stops, stop("9100STPXBOX", "SPL"), stop("9100STPX", "STP")))
-        self.assertNotIn("STPXBOX", table["codes"])
+        # St Pancras low level's board is refused; its trains come on St Pancras's own.
+        self.assertEqual("STP", table["codes"]["STPXBOX"])
         self.assertEqual("STP", table["codes"]["STPX"])
+        self.assertNotIn("SPL", table["codes"].values())
 
     def test_the_table_is_sorted_and_versioned(self):
         stops = [stop(f"9100S{i:04d}", f"{chr(65 + i % 26)}{chr(65 + i // 26 % 26)}{chr(65 + i // 676 % 26)}") for i in range(2100)]

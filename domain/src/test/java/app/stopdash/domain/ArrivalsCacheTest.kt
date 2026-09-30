@@ -4,7 +4,11 @@ import java.time.Instant
 import org.junit.Test
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 
 class ArrivalsCacheTest {
     private val now = Instant.parse("2026-09-26T08:00:00Z")
@@ -138,5 +142,78 @@ class ArrivalsCacheTest {
         cache.put("910GEXAMPLE", listOf(departure(3)), now, source = false)
         assertNull(cache.get("910GEXAMPLE", now, source = true))
         assertEquals(1, cache.get("910GEXAMPLE", now, source = false)?.departures?.size)
+    }
+
+    private val source = Any()
+
+    @Test
+    fun `askers at once share one fetch, kept for the next`() = runTest {
+        val cache = ArrivalsCache()
+        val gate = CompletableDeferred<Unit>()
+        var fetches = 0
+        val fetch: suspend () -> List<Departure>? = { fetches++; gate.await(); listOf(departure(3)) }
+        val a = async { cache.fetchOnce("board", now, source, fetch) }
+        val b = async { cache.fetchOnce("board", now, source, fetch) }
+        runCurrent()
+        gate.complete(Unit)
+        assertEquals(listOf(departure(3)), a.await()?.departures)
+        assertEquals(listOf(departure(3)), b.await()?.departures)
+        assertEquals(1, fetches)
+        val kept = cache.fetchOnce("board", now.plusSeconds(20), source) { error("kept, so not fetched") }
+        assertEquals(listOf(departure(3)), kept?.departures)
+        // With its own age, not the later ask's.
+        assertEquals(now, kept?.fetchedAt)
+    }
+
+    @Test
+    fun `a failed fetch is shared by its askers and never kept`() = runTest {
+        val cache = ArrivalsCache()
+        val gate = CompletableDeferred<Unit>()
+        var fetches = 0
+        val fetch: suspend () -> List<Departure>? = { fetches++; gate.await(); null }
+        val a = async { cache.fetchOnce("board", now, source, fetch) }
+        val b = async { cache.fetchOnce("board", now, source, fetch) }
+        runCurrent()
+        gate.complete(Unit)
+        assertNull(a.await())
+        assertNull(b.await())
+        assertEquals(1, fetches)
+        cache.fetchOnce("board", now, source, fetch)
+        assertEquals("asked again", 2, fetches)
+    }
+
+    @Test
+    fun `an ask after a clear doesn't join a fetch from before it, whose answer isn't kept`() = runTest {
+        val cache = ArrivalsCache()
+        val gate = CompletableDeferred<Unit>()
+        var fetches = 0
+        val fetch: suspend () -> List<Departure>? = { val n = ++fetches; gate.await(); listOf(departure(n.toLong())) }
+        val before = async { cache.fetchOnce("board", now, source, fetch) }
+        runCurrent()
+        // A pull to refresh.
+        cache.clear()
+        val after = async { cache.fetchOnce("board", now, source, fetch) }
+        runCurrent()
+        gate.complete(Unit)
+        assertEquals(listOf(departure(1)), before.await()?.departures)
+        assertEquals(listOf(departure(2)), after.await()?.departures)
+        assertEquals(listOf(departure(2)), cache.recent("board", now, source)?.departures)
+    }
+
+    @Test
+    fun `when the asker whose fetch it is gives up, the others ask afresh`() = runTest {
+        val cache = ArrivalsCache()
+        val gate = CompletableDeferred<Unit>()
+        var fetches = 0
+        val fetch: suspend () -> List<Departure>? = { fetches++; gate.await(); listOf(departure(3)) }
+        val first = async { cache.fetchOnce("board", now, source, fetch) }
+        runCurrent()
+        val second = async { cache.fetchOnce("board", now, source, fetch) }
+        runCurrent()
+        first.cancel()
+        runCurrent()
+        gate.complete(Unit)
+        assertEquals(listOf(departure(3)), second.await()?.departures)
+        assertEquals(2, fetches)
     }
 }

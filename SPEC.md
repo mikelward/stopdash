@@ -1231,7 +1231,8 @@ from where they are, keeping the old routes up meanwhile, so the reachable first
 the rider. A plan reused from earlier is held to the same test when the trip opens. **Pulling the
 routes down** is the rider asking for the latest (maintainer, 2026-09-29): the trip plans again at
 once, from the same start to the same place at the same walking speed, however young its plan, and
-asks afresh for every boarding stop's arrivals, as the list's pull does; the routes stay up until the
+asks afresh for every boarding stop's arrivals and National Rail board, forgetting what every screen
+keeps, as the list's pull does; the routes stay up until the
 new plan has answered, and a failed one says so over them with its Retry. From "Here" it also takes a
 fresh fix, as the list's pull does, so the 150 m test above applies to where the rider is now, and
 the pull shows as under way until the trip has planned and fetched for that fix. A plan made or arrivals asked for before the pull are never reused in place of asking again, however
@@ -1871,8 +1872,8 @@ been set, so none keeps showing what it judged before.
   **Pull-to-refresh** is the rider asking for fresh times: it asks afresh for every stop and
   forgets the rest; the crosshairs re-locate and reuse what's recent, and a National Rail key
   added or removed forgets them too. A station whose National Rail board a screen places under one
-  of its twin stop ids isn't shared, since another screen may place it under the other. Nothing is
-  saved to storage.
+  of its twin stop ids isn't shared by stop, since another screen may place it under the other; the
+  board itself is kept once for the station, and read by every screen. Nothing is saved to storage.
 - The **widget** refreshes opportunistically — on tap, on host update, and on a
   bounded periodic schedule while it is plausibly visible — and degrades to on-demand
   rather than polling hard in the background (**D5**). The spec's guarantee is honesty
@@ -2064,8 +2065,14 @@ surface.)
   key" and opens Settings (*Departures*). Like D7, stopdash ships no key. TfL's `910G` ids end in the station's TIPLOC, and
   NaPTAN (DfT, Open Government Licence v3.0) pairs each TIPLOC with its CRS, so the app bundles
   that table (rebuilt weekly with the station list) and the two join exactly, never by name.
-  Where TfL lists one station under two National Rail ids, its board is fetched once and shown
-  under one of them, the first whose own TfL fetch works, which keeps it while it keeps asking.
+  Where TfL lists one station under two National Rail ids, a list shows its board under one of
+  them, the first whose own TfL fetch works, which keeps it while it keeps asking; a trip times a
+  train from the board whichever of them it boards at. A board is kept with the stops' arrivals
+  (*Freshness → Shared arrivals*), so it's fetched once for every screen until it's 50 s old, and
+  screens asking at the same moment share that one request. A stop's arrivals are as old as their
+  oldest part, so a board read from the cache keeps its own age. A
+  station whose own board the service refuses takes the board its trains come on: St Pancras's
+  low-level Thameslink platforms (SPL) read St Pancras's (STP).
   Only times National Rail gives are shown: a cancelled train, or one "Delayed" with no estimate,
   is left out, and the TfL-run services it also lists (Overground, Elizabeth line, and tube trains
   on shared platforms, such as the District at Richmond) come from TfL alone. A board's train
@@ -2077,7 +2084,8 @@ surface.)
   clean. The optional dependency fails on its own: a failed board (down, rate-limited, a bad key,
   a garbled answer) leaves the station's TfL departures in place, its National Rail lines' status rows saying
   "No data", and is logged; it never fails the stop or blanks the list. **Cost:
-  £0**, one request per rail station per refresh against the user's own key's limit.
+  £0**, at most one request per rail station per refresh against the user's own key's limit,
+  shared by every screen.
   **Play Data Safety:** no new data type — a request carries only a public station code and the
   user's own key for that service, sent at their request; `docs/PRIVACY.md` names National Rail as
   a recipient, and the Data Safety form and privacy-policy link are re-checked before the release

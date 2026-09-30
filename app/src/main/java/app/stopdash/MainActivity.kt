@@ -2447,7 +2447,7 @@ class MainActivity : ComponentActivity() {
             factory = viewModelFactory {
                 initializer {
                     TripViewModel(
-                        journeyPlanner(appContext), departuresClient(appContext), fromStop.id,
+                        journeyPlanner(appContext), departuresClient(appContext, boardAtEveryStop = true), fromStop.id,
                         destinations, warn = ::logDepartureWarning,
                         arrivals = ArrivalsCache.SHARED, departureSourceChanges = RailApiKeySetting.changes,
                         closureCache = StopClosureCache.SHARED,
@@ -2572,13 +2572,16 @@ class MainActivity : ComponentActivity() {
             // Where it starts and where it goes, each a tap to change (maintainer, 2026-09-28): From
             // opens the From… search, To the destination search, the other end kept.
             ends = onChangeFrom?.let { changeFrom -> TripEnds(fromName, toName, changeFrom, onPlanTo) },
-            // A pull plans again now and fetches every stop afresh; from here it takes a fresh fix too,
+            // A pull plans again now and fetches every stop afresh, its stations' National Rail
+            // boards included, here and on the other screens, as every pull does (SPEC *Freshness →
+            // Shared arrivals*); from here it takes a fresh fix too,
             // as the list's pull does, so a rider who has walked on is planned for from where they are
             // ([TripViewModel.refreshFor] plans again once the fix lands 150 m on, and a fix nearer
             // another stop carries the pull into that trip, [lastPull]). The indicator holds until
             // the trip has refreshed for that fix.
             pullRefreshing = pulling || (here != null && relocatingNow),
             onPullRefresh = {
+                ArrivalsCache.SHARED.clear()
                 lastPull = trip.pullRefresh(awaitFix = here != null)
                 if (here != null) relocate()
             },
@@ -2747,8 +2750,10 @@ class MainActivity : ComponentActivity() {
         // station once the user has pasted a National Rail key (SPEC *National Rail*). The key and
         // the bundled station codes are read per request, so a paste applies on the next refresh.
         // Every screen's arrivals land in the shared cache, so each shows what the others just
-        // fetched (SPEC *Freshness → Shared arrivals*).
-        private fun departuresClient(context: Context): TflClient = CachingTflClient(RailAwareTflClient(
+        // fetched (SPEC *Freshness → Shared arrivals*), each station's National Rail board with
+        // them. A trip gets the board at every stop it boards at ([boardAtEveryStop]); a list shows
+        // it under one stop of a station.
+        private fun departuresClient(context: Context, boardAtEveryStop: Boolean = false): TflClient = CachingTflClient(RailAwareTflClient(
             tfl = KtorTflClient(
                 httpClient,
                 appKey = { UserApiKeySetting.current },
@@ -2763,6 +2768,8 @@ class MainActivity : ComponentActivity() {
             rail = KtorDarwinClient(httpClient, apiKey = { RailApiKeySetting.current }, warn = ::logDepartureWarning),
             codes = { RailStationCodesStore.load(context.applicationContext) },
             warn = ::logDepartureWarning,
+            boardAtEveryStop = boardAtEveryStop,
+            boards = ArrivalsCache.SHARED,
         ))
 
         // "Find a station": the name search and a station's stop lookup, both on demand from the

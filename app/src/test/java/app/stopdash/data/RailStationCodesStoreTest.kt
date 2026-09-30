@@ -20,6 +20,9 @@ class RailStationCodesStoreTest {
         assertEquals("STP", codes.crsFor("910GSTPADOM"))
         assertEquals("CLJ", codes.crsFor("910GCLPHMJC"))
         assertEquals("CLJ", codes.crsFor("910GCLPHMJ1"))
+        // St Pancras low level, whose own board the service refuses: its Thameslink trains come on
+        // St Pancras's.
+        assertEquals("STP", codes.crsFor("910GSTPXBOX"))
     }
 
     @Test

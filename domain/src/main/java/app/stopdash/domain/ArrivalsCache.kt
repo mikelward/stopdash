@@ -2,6 +2,7 @@ package app.stopdash.domain
 
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
 import kotlin.time.toKotlinDuration
 
 /**
@@ -73,6 +74,55 @@ class ArrivalsCache {
         generation++
     }
 
+    // Each key's fetch under way through [fetchOnce], with the [generation] it was asked in.
+    private val fetching = HashMap<String, Pair<Long, CompletableDeferred<Fetch>>>()
+
+    private sealed interface Fetch {
+        class Done(val entry: Entry?) : Fetch
+
+        // Its asker was canceled before it answered.
+        object Abandoned : Fetch
+    }
+
+    /**
+     * [key]'s departures, fetched once for every asker, with when they were fetched: those kept
+     * within [TTL] of [now] from [source], else the answer of a [fetch] of the same key already under
+     * way since the last [clear], else [fetch]'s own, kept for the rest ([put]). Null when the fetch
+     * had nothing to keep (it failed), which is never kept. One whose asker is canceled leaves the
+     * others to ask afresh. For what several screens' clients each ask for, such as a station's
+     * National Rail board; a kept answer keeps its age, as any stop's does.
+     */
+    suspend fun fetchOnce(key: String, now: Instant, source: Any?, fetch: suspend () -> List<Departure>?): Entry? {
+        val pending = CompletableDeferred<Fetch>()
+        val (askedIn, running) = synchronized(this) {
+            // What's kept and what's under way are read together: a fetch keeps its answer before
+            // it gives up its place, so one answering meanwhile is found either way, never missed.
+            recent(key, now, source)?.let { return it }
+            val current = generation
+            val under = fetching[key]?.takeIf { it.first == current }?.second
+            if (under == null) fetching[key] = current to pending
+            current to under
+        }
+        if (running != null) {
+            return when (val outcome = running.await()) {
+                is Fetch.Done -> outcome.entry
+                Fetch.Abandoned -> fetchOnce(key, now, source, fetch)
+            }
+        }
+        var outcome: Fetch = Fetch.Abandoned
+        try {
+            // Stamped when asked, as [CachingTflClient] stamps a stop's.
+            val askedAt = SteadyClock.stamp(now)
+            val entry = fetch()?.let { Entry(it, askedAt, source = source) }
+            if (entry != null) put(key, entry.departures, askedAt, generation = askedIn, source = source)
+            outcome = Fetch.Done(entry)
+            return entry
+        } finally {
+            synchronized(this) { if (fetching[key]?.second === pending) fetching.remove(key) }
+            pending.complete(outcome)
+        }
+    }
+
     companion object {
         /**
          * How old a stop's arrivals may be before a screen asks TfL again: about a minute (maintainer,
@@ -112,7 +162,7 @@ class CachingTflClient(
         val source = tfl.arrivalsSource()
         return tfl.arrivals(stopId).also {
             if (shareable && tfl.shareable(stopId) && tfl.arrivalsSource() == source) {
-                cache.put(stopId, it, askedAt, tfl.railFeed(stopId), generation, source)
+                cache.put(stopId, it, tfl.stampOf(stopId, askedAt), tfl.railFeed(stopId), generation, source)
             }
         }
     }
