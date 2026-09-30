@@ -110,7 +110,7 @@ class LineColorsTest {
         assertEquals(Color(0xFF1E467D), railOperatorColor("national-rail", "ScotRail"))
         assertEquals(Color(0xFFFFF200), railOperatorColor("national-rail", "Merseyrail"))
         assertEquals(Color(0xFF1E90FF), railOperatorColor("national-rail", "Island Line"))
-        assertEquals(Color(0xFFFF8300), railOperatorColor("national-rail", "West Midlands Railway"))
+        assertEquals(Color(0xFFF27B15), railOperatorColor("national-rail", "West Midlands Railway"))
     }
 
     @Test

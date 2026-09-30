@@ -1838,13 +1838,17 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       rail operator not in the confirmed set still falls back to a neutral pill. The confirmed set
       wants a final eyeball on a real device once rail departures land — the brand hexes weren't
       verifiable against a live TfL operator set from CI.
-      London Northwestern Railway (LNWR) joined later, green `#27B67A`: no color template had
-      it, so the maintainer picked it (2026-09-24) from the route-map legend in Wikipedia's *West
-      Midlands Trains* article over an unsourced `#00BF6F`, after seeing both rendered. Matched
-      by name prefix, like its pill code, since the rail feed's exact spelling is unconfirmed.
+      London Northwestern Railway (LNR) joined later, green `#27B67A`: the maintainer picked it
+      (2026-09-24) from the route-map legend in Wikipedia's *West Midlands Trains* article over its
+      template's `#00BF6F`, after seeing both rendered. Matched by name prefix, like its pill code,
+      since the rail feed's exact spelling is unconfirmed. Its pill code was LNWR until the
+      maintainer switched it (2026-09-30) to LNR, the operator's own short name; LNWR was the
+      London and North Western Railway, which ended in 1923.
       The rest of the operators then joined from the same Wikipedia templates: Eurostar, Caledonian
       Sleeper, Lumo, Grand Central, Hull Trains, TransPennine Express, Northern, Transport for
-      Wales, ScotRail, Merseyrail, Island Line, and West Midlands Railway. Every operator in TfL's
+      Wales, ScotRail, Merseyrail, Island Line, and West Midlands Railway (WMR, whose orange
+      `#F27B15` comes from the same legend as LNR's green, the maintainer's call on 2026-09-30,
+      over its template's `#FF8300`). Every operator in TfL's
       national-rail line list now has a color except TfL's "West Midlands Trains", the parent of
       two brands, which stays neutral.
 - [ ] (Later) **Revisit auto-locate-on-open and the location states.** StopDash

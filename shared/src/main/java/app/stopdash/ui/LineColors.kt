@@ -121,9 +121,11 @@ private val railOperatorColors: Map<String, Color> = mapOf(
     "merseyrail" to Color(0xFFFFF200),
     "islandline" to Color(0xFF1E90FF),
     // West Midlands Trains runs two brands under one operator code (LM) and one TfL line: this
-    // orange for West Midlands Railway, green for London Northwestern (below). The parent name,
+    // orange for West Midlands Railway, green for London Northwestern (below), both from the
+    // route-map legend in Wikipedia's *West Midlands Trains* article (the maintainer's pick,
+    // 2026-09-30, over the template's `#FF8300`, so the sister brands match). The parent name,
     // "West Midlands Trains", is TfL's and names no brand a rider sees, so it stays neutral.
-    "westmidlandsrailway" to Color(0xFFFF8300),
+    "westmidlandsrailway" to Color(0xFFF27B15),
 )
 
 /** An operator name reduced to lowercase letters and digits, so "Great Western Railway",

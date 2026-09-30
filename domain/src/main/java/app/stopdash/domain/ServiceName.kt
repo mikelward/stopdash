@@ -1,11 +1,10 @@
 package app.stopdash.domain
 
 /**
- * The service's full name, shown at the top of the route detail page so a short pill code (LNWR,
+ * The service's full name, shown at the top of the route detail page so a short pill code (LNR,
  * AWC, HAM) can always be looked up; `null` when the pill already says it all (a bus number, DLR,
  * RB1), so the page doesn't repeat it. A trailing bracketed alias ("… Railway (LNR)") is dropped:
- * the pill already carries the short form, and a second, different abbreviation beside it only
- * confuses.
+ * the pill already carries the short form.
  */
 fun serviceName(lineName: String, mode: String): String? {
     val name = lineName.trim().replace(TRAILING_ALIAS, "").trim()

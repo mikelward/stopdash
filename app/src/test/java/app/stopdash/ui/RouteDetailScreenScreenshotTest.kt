@@ -412,7 +412,7 @@ class RouteDetailScreenScreenshotTest {
 
     @Test
     fun aRailOperator_isNamedInFullAtTheTop() {
-        // The pill only says "LNWR"; the page spells out whose train it is.
+        // The pill only says "LNR"; the page spells out whose train it is.
         val stop = StopArrivals(
             stopId = "910GEUSTON",
             stopName = "London Euston",
@@ -446,7 +446,7 @@ class RouteDetailScreenScreenshotTest {
         composeRule.onNodeWithText("London Northwestern Railway").assertIsDisplayed()
         composeRule.onNodeWithText("London Northwestern Railway")
             .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
-        composeRule.onNodeWithText("LNWR").assertIsDisplayed()
+        composeRule.onNodeWithText("LNR").assertIsDisplayed()
         captureSnapshot("route-detail-rail-operator.png")
     }
 

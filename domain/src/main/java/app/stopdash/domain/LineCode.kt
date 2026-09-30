@@ -74,7 +74,7 @@ private fun railOperatorCode(operator: String): String? {
  * - the Express services take the "…X" TOC code (Gatwick GX, Heathrow HX) — nicer than the plain
  *   initials GE/HE;
  * - CrossCountry takes its TOC code XC rather than the heuristic's "CC", to stay clear of c2c.
- * - London Northwestern Railway is in [railOperatorPrefixes] instead: matched by prefix, since
+ * - London Northwestern Railway (LNR) is in [railOperatorPrefixes] instead: matched by prefix, since
  *   the capitals read differently depending on how the feed spells the name.
  */
 private val railOperatorExceptions: Map<String, String> = mapOf(
@@ -90,11 +90,12 @@ private val railOperatorExceptions: Map<String, String> = mapOf(
  * Hand-pinned codes matched by the start of the normalized operator name, for an operator whose
  * name the rail feed spells more than one way. London Northwestern Railway showed up as a
  * truncated "LNR…" pill, so its spelling there yields a code of five or more letters from the
- * capitals heuristic. Matching on "londonnorthwestern" takes every spelling to LNWR — the name
- * riders know from the old London & North Western Railway — rather than betting on one.
+ * capitals heuristic. Matching on "londonnorthwestern" takes every spelling to LNR, the short
+ * name the operator itself uses (its sister brand, West Midlands Railway, is WMR by the
+ * heuristic), rather than betting on one.
  */
 private val railOperatorPrefixes: List<Pair<String, String>> = listOf(
-    "londonnorthwestern" to "LNWR",
+    "londonnorthwestern" to "LNR",
 )
 
 /** An operator name reduced to lowercase letters and digits, so "South Western Railway",
