@@ -308,7 +308,9 @@ the watch app ships would break pairing between old and new installs.
     does nothing (principle 2):
     - *refreshed*, with the new snapshot following as a `DataItem`;
     - *partly refreshed* (some stops failed and are marked, above);
-    - *not refreshed*, with the reason: rate-limited, TfL unreachable, or no stops to fetch;
+    - *not refreshed*, with the reason: rate-limited, TfL unreachable, the user's API key rejected
+      (SPEC D7, named over the others since only clearing it on the phone mends it), or no stops
+      to fetch;
     - *debounced*: the current snapshot is recent enough, so no new fetch.
   - The watch briefly shows a failure ("Couldn't refresh: rate-limited") over the last
     snapshot, which stays stamped with its age. An all-failed refresh leaves the persisted

@@ -2269,7 +2269,8 @@ the watch app, asks the phone for one refresh of the widget's stops. The phone d
 location-free fetch as a widget refresh and sends the result the usual way. Why and how:
 
 - **Every request gets an answer** (principle 2). The phone answers with what happened:
-  refreshed, partly refreshed, rate-limited, TfL unreachable, no stops, or recent enough to skip.
+  refreshed, partly refreshed, rate-limited, TfL unreachable, the user's key rejected (D7; it's
+  cleared on the phone), no stops, or recent enough to skip.
   A failure shows briefly on the watch over the last snapshot, which keeps its own age stamp. No
   answer in time reads "Phone out of reach", never a blank screen or old times shown as live.
 - **Debounced on both ends** (battery and the shared rate budget): the watch asks at most every

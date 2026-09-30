@@ -18,6 +18,9 @@ enum class WatchRefreshOutcome {
     /** Nothing fetched: TfL couldn't be reached. */
     UNREACHABLE,
 
+    /** Nothing fetched: TfL refused the user's key, which only clearing it on the phone mends (SPEC D7). */
+    KEY_REJECTED,
+
     /** The phone has no stops to fetch. */
     NO_STOPS,
 
@@ -26,7 +29,7 @@ enum class WatchRefreshOutcome {
     ;
 
     /** Why one stop's fetch failed, as far as the outcome cares. */
-    enum class Failure { RATE_LIMITED, UNREACHABLE }
+    enum class Failure { RATE_LIMITED, UNREACHABLE, KEY_REJECTED }
 
     companion object {
         /**
@@ -36,15 +39,25 @@ enum class WatchRefreshOutcome {
          * fetched anything saved it, and the next request reuses those stops.
          */
         fun answersAgain(last: WatchRefreshOutcome, age: java.time.Duration, window: java.time.Duration): Boolean =
-            !age.isNegative && age < window && last in setOf(RATE_LIMITED, UNREACHABLE)
+            !age.isNegative && age < window && last in setOf(RATE_LIMITED, UNREACHABLE, KEY_REJECTED)
 
         /**
          * The outcome of a refresh of [stops] stops: [fetched] of them fetched fresh, [reused]
-         * skipped as recent, and [failures] for the rest. A rate limit on any stop names the
-         * all-failed case, since it's the one the user can wait out.
+         * skipped as recent, and [failures] for the rest. A refused key on any stop names the
+         * all-failed case, since it's the one the user has to act on (every request with the key
+         * fails alike); else a rate limit, the one they can wait out. With nothing fetched fresh, a
+         * line check refused the key ([statusKeyRejected]) says so too, even over arrivals all
+         * reused: the refresh learned the key is refused, and "recent enough" would hide it.
          */
-        fun of(stops: Int, fetched: Int, reused: Int, failures: List<Failure>): WatchRefreshOutcome = when {
+        fun of(
+            stops: Int,
+            fetched: Int,
+            reused: Int,
+            failures: List<Failure>,
+            statusKeyRejected: Boolean = false,
+        ): WatchRefreshOutcome = when {
             stops == 0 -> NO_STOPS
+            fetched == 0 && (statusKeyRejected || Failure.KEY_REJECTED in failures) -> KEY_REJECTED
             fetched == 0 && reused == stops -> DEBOUNCED
             fetched == 0 && Failure.RATE_LIMITED in failures -> RATE_LIMITED
             fetched == 0 -> UNREACHABLE

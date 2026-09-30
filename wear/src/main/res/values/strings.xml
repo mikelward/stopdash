@@ -23,6 +23,8 @@
     <string name="watch_refresh_rate_limited">Couldn\'t refresh: rate-limited</string>
     <!-- The phone couldn't reach TfL to refresh. -->
     <string name="watch_refresh_unreachable">Couldn\'t refresh: TfL unreachable</string>
+    <!-- TfL refused the user's API key; it's cleared on the phone, which says so too. -->
+    <string name="watch_refresh_key_rejected">Couldn\'t refresh: API key rejected</string>
     <!-- No phone answered the refresh request. -->
     <string name="watch_phone_out_of_reach">Phone out of reach</string>
     <!-- A stop with no departures to show. -->

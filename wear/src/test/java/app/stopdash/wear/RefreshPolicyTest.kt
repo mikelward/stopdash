@@ -30,6 +30,11 @@ class RefreshPolicyTest {
             RefreshNotice.Kind.UNREACHABLE,
             RefreshPolicy.notice(RefreshState.Answered(WatchRefreshOutcome.UNREACHABLE, t0), t0)?.kind,
         )
+        // A refused key says so, not "unreachable": it's cleared on the phone (SPEC D7).
+        assertEquals(
+            RefreshNotice.Kind.KEY_REJECTED,
+            RefreshPolicy.notice(RefreshState.Answered(WatchRefreshOutcome.KEY_REJECTED, t0), t0)?.kind,
+        )
         for (ok in listOf(WatchRefreshOutcome.REFRESHED, WatchRefreshOutcome.PARTLY_REFRESHED, WatchRefreshOutcome.DEBOUNCED)) {
             assertNull(RefreshPolicy.notice(RefreshState.Answered(ok, t0), t0))
         }
