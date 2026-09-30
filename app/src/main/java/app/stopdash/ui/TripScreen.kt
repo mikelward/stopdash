@@ -71,6 +71,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
+import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Countdown
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
@@ -249,26 +250,39 @@ internal fun leavesAlongLeg(train: Departure, leg: TripLeg, sequences: Map<Strin
 
 /**
  * Whether [leg]'s times aren't in yet: its boarding stop's arrivals not fetched, or, at a bus stop
- * pair, its route not loaded to say which side the bus uses, or its poles still being looked up.
+ * pair, its route not loaded to say which side the bus uses, or its poles still being looked up; at
+ * a bus station's stand, its route not loaded to say which stand the bus uses, or the one it says
+ * ([onPoles]) not yet fetched, the Planner's standing in meanwhile (Codex, #398).
  */
-internal fun legLoading(state: TripViewModel.State, leg: TripLeg, sequences: Map<String, LineSequence?>): Boolean =
-    state.live[leg.fromId] == null ||
-        (leg.fromArea.isNotEmpty() && (leg.lineId !in sequences || (state.refreshing && leg.fromArea !in state.areaPoles)))
+internal fun legLoading(state: TripViewModel.State, leg: TripLeg, sequences: Map<String, LineSequence?>): Boolean = when {
+    state.live[leg.fromId] == null -> true
+    leg.fromArea.isNotEmpty() -> leg.lineId !in sequences || (state.refreshing && leg.fromArea !in state.areaPoles)
+    isBus(leg) -> leg.lineId !in sequences || onPoles(leg, sequences).fromId.let { it != leg.fromId && state.live[it] == null }
+    else -> false
+}
 
 /**
  * Whether [route] can be started on the way: not while its origin is being found again
- * ([originUnconfirmed], the route may change with the new fix), nor while a bus leg boarding or
- * alighting at a stop pair isn't yet at the poles its bus uses: no route ([sequences]: loading, or
- * failed) to say which, or those poles not yet looked up and placed. A
- * started trip keeps the route as it was, so it's started only once that's settled.
+ * ([originUnconfirmed], the route may change with the new fix), nor while a bus leg isn't yet at
+ * the poles or stands its bus uses: no route ([sequences]: loading, or failed) to say which, or those
+ * poles or stands not yet looked up and placed. A started trip keeps the route as it was, so it's
+ * started only once that's settled: a bus station's stand the Planner named can be one the line
+ * doesn't use (Codex, #398).
  */
 internal fun canStart(route: TripRoute, sequences: Map<String, LineSequence?>, originUnconfirmed: Boolean): Boolean =
     !originUnconfirmed && route.legs.none { leg ->
         // The route's poles, boarding and alighting, must be those its line's route says the bus uses
         // ([onPoles]): until a pair's poles are looked up, the trip keeps the Planner's, which may be
         // the wrong side of the road.
-        !leg.isWalk && (leg.fromArea.isNotEmpty() || leg.toArea.isNotEmpty()) &&
-            (sequences[leg.lineId] == null || onPoles(leg, sequences).let { it.fromId != leg.fromId || it.toId != leg.toId })
+        fun unmoved() = onPoles(leg, sequences).let { it.fromId != leg.fromId || it.toId != leg.toId }
+        when {
+            leg.isWalk -> false
+            leg.fromArea.isNotEmpty() || leg.toArea.isNotEmpty() -> sequences[leg.lineId] == null || unmoved()
+            // A bus between stops in no pair (bus stations' stands) waits for its route too, then for
+            // the move to the route's own stand where the Planner named another.
+            isBus(leg) -> sequences[leg.lineId] == null || unmoved()
+            else -> false
+        }
     }
 
 /**
@@ -291,23 +305,52 @@ internal fun onPoles(state: TripViewModel.State, sequences: Map<String, LineSequ
  * ([TripLeg.fromArea], a road's two poles) and one pole of it, which can be the other side of the
  * road: its buses there run the other way. Of the pair's poles on the line's route ([sequences]),
  * the one the route leaves by way of the leg's next stop, and the first pole of the alighting pair
- * after it — or, where it gets off at a stop in no pair, the first stop of that name. Unchanged for
- * a leg named by no pair, before its route loads (or when it failed), or where the route gives no
- * single answer.
+ * after it — or, where it boards or gets off at a stop in no pair (a bus station's stand), the stop
+ * of that name. Unchanged for anything but a bus, before its route loads (or when it failed), or
+ * where the route gives no single answer.
  */
 internal fun onPoles(leg: TripLeg, sequences: Map<String, LineSequence?>): TripLeg {
-    if (leg.isWalk || (leg.fromArea.isEmpty() && leg.toArea.isEmpty())) return leg
-    val (from, to) = sequences[leg.lineId]?.let { polesOf(leg, it) } ?: return leg
-    return if (from == leg.fromId && to == leg.toId) leg else leg.copy(fromId = from, toId = to)
+    if (leg.isWalk || (leg.fromArea.isEmpty() && leg.toArea.isEmpty() && !isBus(leg))) return leg
+    val sequence = sequences[leg.lineId] ?: return leg
+    val (from, to) = polesOf(leg, sequence) ?: return leg
+    if (from == leg.fromId && to == leg.toId) return leg
+    // A moved end is the route's stop throughout: where it is, which the trip walks the rider to
+    // (the Planner's position where the route has none), and the Planner's stop it stands in for,
+    // which the leg's keys go by ([boardingKey]).
+    fun at(id: String, planned: Coordinates?) = sequence.stopPositions[id]?.let { (lat, lon) -> Coordinates(lat, lon) } ?: planned
+    return leg.copy(
+        fromId = from,
+        toId = to,
+        fromAt = if (from == leg.fromId) leg.fromAt else at(from, leg.fromAt),
+        toAt = if (to == leg.toId) leg.toAt else at(to, leg.toAt),
+        plannedFromId = if (from == leg.fromId) leg.plannedFromId else leg.plannedFromId.ifEmpty { leg.fromId },
+        plannedToId = if (to == leg.toId) leg.plannedToId else leg.plannedToId.ifEmpty { leg.toId },
+    )
 }
 
+/** A [lineId] bus boarding at the route's own stand [standId] in place of the Planner's [plannerId] ([placedStands]). */
+data class PlacedStand(val lineId: String, val plannerId: String, val standId: String)
+
 /**
- * Whether [leg]'s bus is known to board and get off at the poles [onPoles] gives it: a leg named by
- * no pair needs no placing, and one that is waits for its line's route to give a single answer.
- * Until then another pole of its pair may be the one its bus uses.
+ * The stands [routes]' buses board at in place of the one the Planner named ([onPoles]): a bus
+ * station's, in no pair, found on the line's route by its name. The trip fetches only the Planner's
+ * by itself, and [onPoles] moves a leg only to a stop it has fetched, so these are handed to it
+ * ([TripViewModel.boardAt]).
+ */
+internal fun placedStands(routes: List<TripRoute>, sequences: Map<String, LineSequence?>): Set<PlacedStand> =
+    routes.flatMap { it.rides }.filter { it.fromArea.isEmpty() }.mapNotNullTo(HashSet()) { leg ->
+        onPoles(leg, sequences).fromId.takeIf { it != leg.fromId }?.let { PlacedStand(leg.lineId, leg.fromId, it) }
+    }
+
+/**
+ * Whether [leg]'s bus is known to board and get off at the poles [onPoles] gives it: a train needs
+ * no placing, and a bus waits for its line's route to give a single answer, whether it's named by a
+ * stop pair or by a bus station's stand. Until then another pole of its pair, or another stand of
+ * its bus station (the Planner can name one the line doesn't use), may be the one its bus uses, so
+ * the route isn't vouched for there (Codex, #398).
  */
 internal fun placedOnPoles(leg: TripLeg, sequences: Map<String, LineSequence?>): Boolean =
-    leg.isWalk || (leg.fromArea.isEmpty() && leg.toArea.isEmpty()) ||
+    leg.isWalk || (leg.fromArea.isEmpty() && leg.toArea.isEmpty() && !isBus(leg)) ||
         sequences[leg.lineId]?.let { polesOf(leg, it) } != null
 
 /**
@@ -328,6 +371,10 @@ internal fun endPole(route: TripRoute, end: TripClosures.End, sequences: Map<Str
 // route gives no single answer.
 private fun polesOf(leg: TripLeg, sequence: LineSequence): Pair<String, String>? {
     fun boards(id: String) = id == leg.fromId || (leg.fromArea.isNotEmpty() && sequence.stopAreas[id] == leg.fromArea)
+    // A stand in no pair by its name, only where the route doesn't call at the stand itself: the
+    // Planner can name a bus station's stand the line doesn't use, as where it gets off (maintainer,
+    // 2026-09-30), and the route's own stand is the only tie between them.
+    fun boardsNamed(id: String) = leg.fromArea.isEmpty() && sequence.stopNames[id]?.equals(leg.fromName, ignoreCase = true) == true
     fun alights(id: String) = id == leg.toId || (leg.toArea.isNotEmpty() && sequence.stopAreas[id] == leg.toArea)
     // A stop in no pair (a bus station's stands, "Archway Station") by its name, only where the route
     // doesn't call at the stop itself: the Planner can name a stand the line doesn't use, and the
@@ -335,7 +382,9 @@ private fun polesOf(leg: TripLeg, sequence: LineSequence): Pair<String, String>?
     fun named(id: String) = leg.toArea.isEmpty() && sequence.stopNames[id]?.equals(leg.toName, ignoreCase = true) == true
     val next = leg.path.firstOrNull()
     val ends = sequence.routes.flatMap { route ->
-        route.stopIds.indices.filter { boards(route.stopIds[it]) }.flatMap { i ->
+        val boarding = route.stopIds.indices.filter { boards(route.stopIds[it]) }
+            .ifEmpty { route.stopIds.indices.filter { boardsNamed(route.stopIds[it]) } }
+        boarding.flatMap { i ->
             val on = route.stopIds.subList(i + 1, route.stopIds.size)
             // Every stop of the name, so two along the route are no single answer.
             val offs = listOfNotNull(on.indexOfFirst(::alights).takeIf { it >= 0 })
@@ -577,15 +626,14 @@ internal fun tripCards(estimates: List<TripTiming.Estimate>): List<List<TripTimi
         .map { group -> group.distinctBy { it.route.rides.firstOrNull()?.lineId } }
         .sortedBy { card -> estimates.indexOf(card.first()) }
 
-// Which card a route shares: its first ride's mode and ends (by stop pair for a bus, or by name at a
-// stop in no pair, as [onPoles] places it), and the lines after it with where each gets off, since
+// Which card a route shares: its first ride's mode and ends (by stop pair for a bus, or by the stop
+// the Planner named, as [onPoles] places it), and the lines after it with where each gets off, since
 // the card names those stops ([RideStops]) for every route on it; a route with no ride keeps its own.
 internal fun cardKey(route: TripRoute): String {
     val first = route.rides.firstOrNull() ?: return routeKey(route)
-    fun offAt(leg: TripLeg) = leg.toArea.ifEmpty { if (leg.fromArea.isNotEmpty()) leg.toName else leg.toId }
-    val to = offAt(first)
-    val after = route.rides.drop(1).joinToString("|") { "${it.mode}:${it.lineId}>${offAt(it)}" }
-    return "${first.mode}:${first.fromArea.ifEmpty { first.fromId }}>$to|$after"
+    val to = alightingKey(first)
+    val after = route.rides.drop(1).joinToString("|") { "${it.mode}:${it.lineId}>${alightingKey(it)}" }
+    return "${first.mode}:${boardingKey(first)}>$to|$after"
 }
 
 /**
@@ -624,12 +672,21 @@ internal fun openRouteGone(state: TripViewModel.State, hidden: Set<String>, open
 
 /** A route's identity across refreshes and re-ranking: its lines and stops in order. */
 internal fun routeKey(route: TripRoute): String =
-    // A bus leg by its stop pairs, so its key holds once its poles are worked out ([onPoles]); one
-    // getting off at a stop in no pair by that stop's name, which is how its stop is worked out.
-    route.legs.joinToString("|") { leg ->
-        val to = leg.toArea.ifEmpty { if (leg.fromArea.isNotEmpty()) leg.toName else leg.toId }
-        "${leg.mode}:${leg.lineId}:${leg.fromArea.ifEmpty { leg.fromId }}:$to"
-    }
+    // A bus leg by its stop pairs, or by the stop the Planner named, so its key holds once its poles
+    // or stands are worked out ([onPoles]).
+    route.legs.joinToString("|") { leg -> "${leg.mode}:${leg.lineId}:${boardingKey(leg)}:${alightingKey(leg)}" }
+
+/**
+ * Where [leg] boards, as a key that holds when [onPoles] moves it: its stop pair; else the stop the
+ * Planner named, which a bus station's stand moved to the route's own of that name remembers. Not the
+ * stop's name, which stands at one bus station, or two places, can share (Codex, #398).
+ */
+internal fun boardingKey(leg: TripLeg): String = leg.fromArea.ifEmpty { leg.plannedFromId.ifEmpty { leg.fromId } }
+
+/** Where [leg] gets off, as a key that holds when [onPoles] moves it: as [boardingKey], at its other end. */
+internal fun alightingKey(leg: TripLeg): String = leg.toArea.ifEmpty { leg.plannedToId.ifEmpty { leg.toId } }
+
+private fun isBus(leg: TripLeg) = leg.mode.equals("bus", ignoreCase = true)
 
 // How many of a first leg's trains its row times.
 private const val SHOWN_TRAINS = 3
@@ -712,6 +769,9 @@ internal fun TripScreen(
     // The stops the routes shown are judged at that only the screen can name ([shownStops]), for the
     // trip to check too ([TripViewModel.checkShownStops]).
     onShownStops: (Set<String>) -> Unit = {},
+    // The stands buses board at in place of the one the Planner named ([placedStands]), for the trip
+    // to fetch too ([TripViewModel.boardAt]).
+    onPlacedStands: (Set<PlacedStand>) -> Unit = {},
 ) {
     // Planned work whose day has come shows as under way, however long ago it was fetched (Codex,
     // PR #337): a kept status outlives the day it was sorted on.
@@ -733,6 +793,7 @@ internal fun TripScreen(
             pullRefreshing,
             onPullRefresh,
             onShownStops,
+            onPlacedStands,
         )
     }
 }
@@ -791,6 +852,7 @@ private fun TripContent(
     pullRefreshing: Boolean = false,
     onPullRefresh: (() -> Unit)? = null,
     onShownStops: (Set<String>) -> Unit = {},
+    onPlacedStands: (Set<PlacedStand>) -> Unit = {},
 ) {
     // The open route, kept twice: by the trip when it's given one ([openRoute]), which outlasts the
     // screen leaving composition (an overlay) and, saved by the trip, the process too; and saved with
@@ -821,6 +883,12 @@ private fun TripContent(
     // other side of the road); everything below reads the trip this way, with the routes a train
     // running through a change offers without it ([withThroughRoutes]).
     val poled = remember(planned, sequences) { onPoles(planned, sequences) }
+    // A bus station's stand a bus boards at in place of the Planner's is placed only once the trip
+    // has fetched it ([onPoles]), so it's handed to the trip to fetch ([placedStands]).
+    val stands = remember(planned, sequences, hiddenModes, openRef) {
+        placedStands(TripViewModel.bestOf(planned.shownRoutes(hiddenModes).orEmpty(), openRef?.keys.orEmpty()), sequences)
+    }
+    LaunchedEffect(stands) { onPlacedStands(stands) }
     // The open route as the plan offers it now ([OpenRoute.routeIn]): its walks at the current pace,
     // and a train through a change whether or not one is predicted. Null while no plan offers it.
     val opened = remember(poled, hiddenModes, openRef) { openRef?.routeIn(poled.shownRoutes(hiddenModes).orEmpty()) }
@@ -2246,24 +2314,25 @@ internal fun withDismissedMarked(row: DepartureRow, dismissed: Set<DismissedAler
 
 /**
  * The key a leg's [row] opens its page by: the main screen's, but a bus leg's by its stop pair rather
- * than its pole, so the page stays open when the trip works out which side of the road its bus uses
- * ([onPoles]) and the row moves to that pole.
+ * than its pole, or by the stand the Planner named where its stand has moved ([boardingKey]), so the
+ * page stays open when the trip works out which side of the road, or which stand, its bus uses
+ * ([onPoles]) and the row moves there.
  */
 internal fun tripDetailKey(leg: TripLeg, row: DepartureRow): String =
-    row.copy(stopId = leg.fromArea.ifEmpty { row.stopId }).detailKey()
+    row.copy(stopId = leg.fromArea.ifEmpty { leg.plannedFromId.ifEmpty { row.stopId } }).detailKey()
 
 /**
  * Which planned leg a line page belongs to, stable across refreshes and re-plans (never its times):
  * its line, where it boards and gets off, and its path. Two routes boarding the same line at the same
  * stop but getting off elsewhere are different legs, and a page shows the one tapped. Only what
  * [onPoles] never changes: a bus leg's poles can move to the other side of the road once its route
- * loads, so an end is its stop pair where it has one, and where it gets off is by name otherwise
- * (a bus station's stand can move to the route's own stand of that name).
+ * loads, so an end is its stop pair where it has one, and a moved stand the one the Planner named
+ * ([boardingKey], [alightingKey]).
  */
 internal fun tripLegKey(leg: TripLeg): String = listOf(
     leg.lineId,
-    leg.fromArea.ifEmpty { leg.fromId },
-    leg.toArea.ifEmpty { leg.toName },
+    boardingKey(leg),
+    alightingKey(leg),
     leg.path.joinToString(","),
 ).joinToString("|")
 

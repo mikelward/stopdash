@@ -2509,6 +2509,7 @@ class MainActivity : ComponentActivity() {
             onOpenTrip = LocalOnTheWay.current?.takeIf { it.active }?.open,
             onWithheld = trip::noteWithheld,
             onShownStops = trip::checkShownStops,
+            onPlacedStands = trip::boardAt,
             walkingSpeed = walkingSpeed,
             onWalkingSpeedChange = WalkingSpeedSetting::set,
             walkingSpeedWriteFailed = WalkingSpeedSetting.writeFailed.collectAsStateWithLifecycle().value,

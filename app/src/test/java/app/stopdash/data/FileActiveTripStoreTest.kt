@@ -60,6 +60,18 @@ class FileActiveTripStoreTest {
     }
 
     @Test
+    fun `a bus leg moved to its route's stand keeps the stand the Planner named across a reload`() {
+        val file = File(tmp.root, "active-trip.json")
+        val bus = TripLeg(
+            "bus", "1", "1", "STAND-A", "Bus Station", "STAND-C", "Town Centre", t0, t0.plusSeconds(600),
+            plannedFromId = "STAND-B", plannedToId = "STAND-D",
+        )
+        val moved = trip.copy(route = TripRoute(listOf(bus)))
+        FileActiveTripStore(file).save(moved)
+        assertEquals(moved, FileActiveTripStore(file).load())
+    }
+
+    @Test
     fun `an ended trip whose file can't be deleted doesn't come back`() {
         val file = File(tmp.root, "active-trip.json")
         val stuck = FileActiveTripStore(file, delete = { false })

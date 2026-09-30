@@ -1020,7 +1020,10 @@ space*). A bus stop the Planner names by its stop pair (a road's two poles) boar
 bus uses, worked out from the line's route: the pole the Planner names can be the other side of the
 road, where the buses run the other way. Both poles are fetched, and the times read "Loading" until
 the route says which. A bus station's stands are in no pair, and the Planner can name one the line
-doesn't use, so the ride gets off at the route's own stop of that name. A route that is all walking (two stops close
+doesn't use, so the ride gets off at the route's own stop of that name, and boards at it too, its
+times fetched there and reading "Loading" until the route says which stand and they arrive, as at a
+stop pair (maintainer, 2026-09-30): at a stand the line doesn't use none of its buses is ever
+predicted, and the route could never be placed and so never checked. A route that is all walking (two stops close
 together) shows "Walk" where the pills go and its minutes, with no live row and no arrivals request.
 
 **Routing from the near-me list** (maintainer, 2026-09-27): the saved places lead the near-me list
