@@ -21,19 +21,23 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data class TflJourneyResultsDto(val journeys: List<TflJourneyDto> = emptyList()) {
-    /** [now] places a London time the clocks' autumn rollback makes ambiguous ([londonTime]). */
-    fun toRoutes(now: Instant = Instant.now()): List<TripRoute> = journeys.mapNotNull { it.toRouteOrNull(now) }
+    /**
+     * [now] places a London time the clocks' autumn rollback makes ambiguous ([londonTime]);
+     * [stationOf] names the station a train's platform is at ([TflJourneyPointDto.stopId]).
+     */
+    fun toRoutes(now: Instant = Instant.now(), stationOf: (String) -> String? = { null }): List<TripRoute> =
+        journeys.mapNotNull { it.toRouteOrNull(now, stationOf) }
 }
 
 @Serializable
 data class TflJourneyDto(val legs: List<TflJourneyLegDto> = emptyList()) {
     /** Null for a journey with a leg that can't be read, so a half-understood route is never shown. */
-    fun toRouteOrNull(now: Instant = Instant.now()): TripRoute? {
+    fun toRouteOrNull(now: Instant = Instant.now(), stationOf: (String) -> String? = { null }): TripRoute? {
         // Each time is read after the one before it (and its change time), so a journey across the
         // autumn rollback runs forward rather than jump back an hour.
         var after: Instant? = null
         val legs = legs.map { dto ->
-            dto.toLegOrNull(now, after)?.also { after = it.arrival.plus(it.changeAfter) } ?: return null
+            dto.toLegOrNull(now, after, stationOf)?.also { after = it.arrival.plus(it.changeAfter) } ?: return null
         }
         return TripRoute(legs).takeIf { legs.isNotEmpty() }
     }
@@ -51,7 +55,7 @@ data class TflJourneyLegDto(
     val interChangeDuration: String? = null,
     val interChangePosition: String? = null,
 ) {
-    fun toLegOrNull(now: Instant = Instant.now(), after: Instant? = null): TripLeg? {
+    fun toLegOrNull(now: Instant = Instant.now(), after: Instant? = null, stationOf: (String) -> String? = { null }): TripLeg? {
         val modeId = mode.id.ifBlank { return null }
         val walk = modeId.equals(TripLeg.WALKING, ignoreCase = true)
         val departure = londonTime(departureTime, now, after) ?: return null
@@ -61,8 +65,10 @@ data class TflJourneyLegDto(
         val line = routeOptions.firstOrNull()?.lineIdentifier
         // A ride with no line to follow can't be timed from live trains or checked for status.
         if (!walk && line?.id.isNullOrBlank()) return null
+        val fromId = departurePoint.stopId(stationOf)
+        val toId = arrivalPoint.stopId(stationOf)
         // Nor one with an end the Planner didn't name: its trains can't be fetched or checked to call there.
-        if (!walk && (departurePoint.stopId() == null || arrivalPoint.stopId() == null)) return null
+        if (!walk && (fromId == null || toId == null)) return null
         val change = interChangeDuration?.trim()?.toLongOrNull()
             ?.takeIf { interChangePosition.equals("AFTER", ignoreCase = true) }
         return TripLeg(
@@ -70,9 +76,9 @@ data class TflJourneyLegDto(
             lineId = line?.id.orEmpty(),
             // Named as a rider knows it, so directions say what the pill does (SPEC *Line pill colors*).
             lineName = riderLineName(line?.name.orEmpty(), modeId),
-            fromId = departurePoint.stopId().orEmpty(),
+            fromId = fromId.orEmpty(),
             fromName = pointName(departurePoint.commonName),
-            toId = arrivalPoint.stopId().orEmpty(),
+            toId = toId.orEmpty(),
             toName = pointName(arrivalPoint.commonName),
             departure = departure,
             arrival = arrival,
@@ -121,19 +127,22 @@ data class TflJourneyPointDto(
     /** Where the Planner places the stop, when it does. */
     fun at(): Coordinates? = if (lat != null && lon != null) Coordinates(lat, lon) else null
 
+    /** The stop pair ("490G…") the Planner names a bus stop by, or empty for any other stop. */
+    fun stopPair(): String = naptanId?.takeIf { it.startsWith(STOP_PAIR_PREFIX) }.orEmpty()
+
     /**
      * The stop a leg boards or leaves at, as the live feed knows it. The Planner names a bus leg's
      * ends by their stop pair ("490G…", both of a road's poles), which TfL gives no arrivals for, and
      * sometimes by nothing; the pole the rider stands at is its [individualStopId]. Any other stop
-     * (a station) goes by its [naptanId]. Null when neither names one.
+     * (a station) goes by its [naptanId], or, where the Planner names a train's end by its platform
+     * alone ("9100LIVSTLL1", no [naptanId]), by the station [stationOf] places that platform at.
+     * Null when none names one.
      */
-    /** The stop pair ("490G…") the Planner names a bus stop by, or empty for any other stop. */
-    fun stopPair(): String = naptanId?.takeIf { it.startsWith(STOP_PAIR_PREFIX) }.orEmpty()
-
-    fun stopId(): String? {
+    fun stopId(stationOf: (String) -> String? = { null }): String? {
         val pole = individualStopId?.takeIf { it.startsWith(BUS_STOP_PREFIX) && !it.startsWith(STOP_PAIR_PREFIX) }
         val id = naptanId?.takeIf { it.isNotBlank() }
-        return if (pole != null && (id == null || id.startsWith(STOP_PAIR_PREFIX))) pole else id
+        if (pole != null && (id == null || id.startsWith(STOP_PAIR_PREFIX))) return pole
+        return id ?: individualStopId?.takeIf { it.isNotBlank() }?.let(stationOf)
     }
 
     private companion object {

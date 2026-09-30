@@ -19,6 +19,8 @@ data class IndexedStation(
     // National Rail service → the ends of the routes this station is on (station ids), where TfL
     // gave route data: one service runs to different places from different stations.
     val routeEnds: Map<String, List<String>> = emptyMap(),
+    // The platforms TfL lists under the station ("9100LIVSTLL1", "9400ZZLUKSX3"), for [StationIndex.stationOf].
+    val platforms: List<String> = emptyList(),
 )
 
 /**
@@ -107,6 +109,33 @@ class StationIndex(
 
     private val byId: Map<String, IndexedStation> by lazy { stations.associateBy { it.id } }
 
+    // Each listed platform's station. One listed under two stations says nothing about which a
+    // train leaves, so it's neither's.
+    private val platformStation: Map<String, String> by lazy {
+        val owners = HashMap<String, MutableSet<String>>()
+        stations.forEach { station -> station.platforms.forEach { owners.getOrPut(it) { HashSet() } += station.id } }
+        owners.mapNotNull { (platform, ids) -> ids.singleOrNull()?.let { platform to it } }.toMap()
+    }
+
+    /**
+     * The station a train leaves or reaches at [platform] (SPEC *Trips with a change*): the Journey
+     * Planner can name a rail leg's end by its platform alone ("9100LIVSTLL1", no station id), and
+     * the live feed and National Rail's boards know only the station. The one TfL lists it under
+     * ([IndexedStation.platforms]), whatever code it carries (St Pancras's "9100STPXBOX1" is under
+     * "910GSTPX"); else the listed station its id names, as NaPTAN names a station's own access area
+     * by the station's code ("9100STPXBOX" is at "910GSTPXBOX", "9400ZZLUKSX" at "940GZZLUKSX"),
+     * which TfL's listings leave out. Null for any other id, or a station the index doesn't hold.
+     */
+    fun stationOf(platform: String): String? {
+        platformStation[platform]?.let { return it }
+        val station = when {
+            platform.startsWith(RAIL_PLATFORM) -> RAIL_STATION + platform.removePrefix(RAIL_PLATFORM)
+            platform.startsWith(METRO_PLATFORM) -> METRO_STATION + platform.removePrefix(METRO_PLATFORM)
+            else -> return null
+        }
+        return station.takeIf { it in byId }
+    }
+
     /** The listed station with [id], as a match, or null for one the list doesn't hold. */
     fun station(id: String): StationMatch? = byId[id]?.let { StationMatch(it.id, it.name, it.modes) }
 
@@ -141,6 +170,12 @@ class StationIndex(
 
     companion object {
         const val DEFAULT_LIMIT = 20
+
+        // NaPTAN's prefixes: a rail access area and its station, a metro one and its station.
+        private const val RAIL_PLATFORM = "9100"
+        private const val RAIL_STATION = "910G"
+        private const val METRO_PLATFORM = "9400"
+        private const val METRO_STATION = "940G"
 
         /**
          * How near two same-named results must be to read as one place: a station and the bus stop

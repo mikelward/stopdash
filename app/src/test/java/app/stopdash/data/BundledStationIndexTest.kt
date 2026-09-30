@@ -22,4 +22,16 @@ class BundledStationIndexTest {
         }
         assertEquals("Charing Cross", index.search("cx").first().name)
     }
+
+    @Test
+    fun `a train's platform the Journey Planner names alone is at its station`() {
+        val index = StationIndexStore.parse(asset.readText())
+        // Listed under its station by TfL.
+        assertEquals("910GLIVSTLL", index.stationOf("9100LIVSTLL1"))
+        // St Pancras: one low-level platform listed under the main station, and the low-level
+        // station's own access area, which TfL's listing leaves out, at the station its code names.
+        assertEquals("910GSTPX", index.stationOf("9100STPXBOX1"))
+        assertEquals("910GSTPXBOX", index.stationOf("9100STPXBOX"))
+        assertEquals("940GZZLUKSX", index.stationOf("9400ZZLUKSX3"))
+    }
 }
