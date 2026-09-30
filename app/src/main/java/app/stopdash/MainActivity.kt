@@ -1266,16 +1266,15 @@ class MainActivity : ComponentActivity() {
             }
             val report = withContext(Dispatchers.IO) {
                 DebugReport.collect(StopdashDebugLog, sink) {
-                    BugReport.compose(
+                    // This run's log, pinned lines included, at DEVICE fidelity (not redacted) —
+                    // the report is consent-gated, so it is not the location-safe export. Its
+                    // newest lines are kept to fit the report's share (bugReportSection).
+                    bugReportSection(
                         header = bugReportHeader(),
                         location = request.location,
                         stops = request.stops.map {
                             BugReport.StopLine(it.name, it.id, request.distanceMeters[it.id])
                         },
-                        // This run's log, pinned lines included, rendered in full (DEVICE
-                        // fidelity) — the report is consent-gated, so it is not the redacted,
-                        // location-safe export.
-                        logLines = StopdashDebugLog.reportLines(),
                         recentPositions = recentPositions.recent(SystemClock.elapsedRealtime()),
                     )
                 }

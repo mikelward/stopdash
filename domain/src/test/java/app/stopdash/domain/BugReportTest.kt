@@ -47,7 +47,7 @@ class BugReportTest {
             --- recent positions (last 15 min, at most 20) ---
             (none)
 
-            --- log (this run) ---
+            --- log (this run, newest last; older lines are dropped to keep the report shareable) ---
             location: fix obtained
             departures: 429 for stop 940GZZLUOXC
             """.trimIndent(),

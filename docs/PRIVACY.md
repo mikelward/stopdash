@@ -289,8 +289,9 @@ deliberately carries what the on-device log never does — so it is gated by an 
 screen that names exactly what leaves, and nothing is assembled or sent until you pass it. The
 report carries:
 
-- the **diagnostic log** described above (in full, not redacted — the report already reveals
-  more than the log's stop/line ids would),
+- the **diagnostic log** described above (not redacted — the report already reveals more than
+  the log's stop/line ids would; a busy run's oldest lines are left out so the report stays small
+  enough to share),
 - a **screenshot of the screen you sent the report from** — the departures or error screen you
   are reporting, so the report shows what you saw; it is the app's own window, so the consent
   dialog itself is not in it,
