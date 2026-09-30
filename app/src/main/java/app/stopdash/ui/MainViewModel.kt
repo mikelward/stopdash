@@ -12,6 +12,7 @@ import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.Dismissed
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DismissedAlertsStore
+import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.HubInfo
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
@@ -40,6 +41,7 @@ import app.stopdash.domain.WidgetJourneysReport
 import app.stopdash.domain.WidgetRefresh
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -208,6 +210,9 @@ class MainViewModel(
     // value is ignored, and each later change refetches every stop at once, none carried over, so
     // adding or clearing the key shows without waiting for the next auto-refresh.
     departureSourceChanges: Flow<Any?> = emptyFlow(),
+    // The modes and lines the rider has hidden right now (SPEC *Finding stops → Hiding a mode*): with
+    // National Rail among them, a station's board isn't asked for where nothing shown runs on it.
+    private val hiddenModes: () -> Set<String> = { emptySet() },
 ) : ViewModel() {
     // The near-me tiers, updatable IN PLACE so a relocation that keeps the same nearby set can
     // reconcile them without rebuilding this ViewModel. The eager tier is fetched and shown; the
@@ -374,13 +379,20 @@ class MainViewModel(
             s.id in declaredBefore && !declaredBefore.getValue(s.id).containsAll(s.lines.map { it.id })
         }
         val shown = (_state.value as? DeparturesUiState.Loaded)?.stops?.mapTo(HashSet()) { it.stopId }.orEmpty()
+        // A station whose board was left out that a newly starred National Rail journey now needs it
+        // at, even one already declaring the journey's line: its trains show at once.
+        val hidden = hiddenModes()
+        val boardWanted = boardSkipped.any { HiddenModes.wantsRailBoard(hidden, starredLines(it)) }
         if (
-            refreshAwaitsJourneyStops || dropped || linesAdded || fetchJob?.isActive == true ||
+            refreshAwaitsJourneyStops || dropped || linesAdded || boardWanted || fetchJob?.isActive == true ||
             stops.any { it.id !in shown }
         ) {
             refresh()
         }
     }
+
+    // The lines the starred journeys take from [stopId]: hiding doesn't reach them.
+    private fun starredLines(stopId: String): List<LineRef> = journeyStops.filter { it.id == stopId }.flatMap { it.lines }
 
     // The far ends of the starred journeys as shown (SPEC *Journeys*): only their stop-level
     // disruptions (a closure, a moved stop) are checked, not their departures, so a journey card can
@@ -601,6 +613,11 @@ class MainViewModel(
     // disk is never in it, since the snapshot doesn't persist the closure check a carried-over stop
     // would need. In-memory only; main thread.
     private val arrivalsFetchedAt = mutableMapOf<String, Instant>()
+
+    // The National Rail stations whose last fetch left their board out, National Rail being hidden
+    // ([HiddenModes.wantsRailBoard]). One wanting it again ("Show all", a National Rail journey starred
+    // from it) isn't carried over, so its trains show at once. In-memory only; main thread.
+    private val boardSkipped = HashSet<String>()
 
     // Which closure lookup each stop shows ([StopClosureCache.Lookup.ask]): one asked after it that the
     // cache has since kept is newer, so the stop isn't carried over past it ([recentlyFetched]).
@@ -839,7 +856,13 @@ class MainViewModel(
         fun newerShared(stop: StopRef) = sharedFetch[stop.id]?.let { entry ->
             prior[stop.id]?.let { entry.fetchedAt.isAfter(it.fetchedAt) } ?: true
         } ?: false
-        fun reused(stop: StopRef) = stop.id in reuse && prior[stop.id] != null && !newerShared(stop)
+        val hidden = hiddenModes()
+        fun railBoard(stop: StopRef) = HiddenModes.wantsRailBoard(hidden, starredLines(stop.id))
+        fun reused(stop: StopRef) = stop.id in reuse && prior[stop.id] != null && !newerShared(stop) &&
+            !(stop.id in boardSkipped && railBoard(stop))
+        // The stations this batch fetched without their board (see [boardSkipped]); written off the
+        // main thread, where the client can tell a station from any other stop.
+        val skippedNow = ConcurrentHashMap.newKeySet<String>()
         // Which stops' closure results came from [disruptionCache] rather than this batch's request:
         // a cached result is knowledge but not NEWS, so it mustn't count toward [anyFreshData] — a
         // cycle whose every request failed would otherwise pass for a partial refresh and hide the
@@ -888,7 +911,18 @@ class MainViewModel(
                         shared[i] = recent
                         CompletableDeferred(Result.success(recent.departures))
                     }
-                    else -> async { runCatchingTfl { withContext(io) { client.arrivals(stop.id) } } }
+                    else -> {
+                        val board = railBoard(stop)
+                        async {
+                            runCatchingTfl {
+                                withContext(io) {
+                                    client.arrivals(stop.id, board).also {
+                                        if (!board && client.hasRailBoard(stop.id)) skippedNow += stop.id
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
             // Sent once there's something to show it for — a stop's arrivals back, or a stop shown
@@ -1091,6 +1125,7 @@ class MainViewModel(
             if (departures != null) {
                 freshArrivalStopIds += stop.id
                 arrivalsFetchedAt[stop.id] = fetchedAt
+                if (stop.id in skippedNow) boardSkipped += stop.id else boardSkipped -= stop.id
             }
             if (departures != null || (disruptions != null && !disruptionFromCache[i])) anyFreshData = true
             val hub =

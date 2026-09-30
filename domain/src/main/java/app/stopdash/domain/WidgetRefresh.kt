@@ -42,6 +42,24 @@ object WidgetRefresh {
     }
 
     /**
+     * Whether each of [snapshot]'s stops wants its station's National Rail board, with [hidden] hidden
+     * ([HiddenModes.wantsRailBoard]): not while National Rail is hidden, unless a pinned journey from
+     * the stop calls on a National Rail line there. A pin names its lines only by id ([JourneyCall]),
+     * so each takes its mode from the stop's declared lines or its last departures; a pin with no
+     * calls shows no trains, so it keeps no board either.
+     */
+    fun railBoards(snapshot: DeparturesSnapshot, hidden: Set<String>): Map<String, Boolean> {
+        val pinned = snapshot.journeys.groupBy({ it.originId }, { journey -> journey.calls.map { it.lineId.lowercase() } })
+            .mapValues { (_, ids) -> ids.flatten().toSet() }
+        return snapshot.stops.associate { stop ->
+            val ids = pinned[stop.stopId].orEmpty()
+            val starred = stop.lines.filter { it.id.lowercase() in ids } +
+                stop.departures.filter { it.lineId.lowercase() in ids }.map { LineRef(it.lineId, it.lineName, it.mode) }
+            stop.stopId to HiddenModes.wantsRailBoard(hidden, starred)
+        }
+    }
+
+    /**
      * One refresh of [prior]: its arrivals ([refreshedArrivals]), then its lines' statuses
      * ([refreshedLineStatuses]), each step deciding at [clock]'s time then. With fresh arrivals it's a
      * snapshot to save. Without any, the lines are checked anyway, against the arrivals stored: a

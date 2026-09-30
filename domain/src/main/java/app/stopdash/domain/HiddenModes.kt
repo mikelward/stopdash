@@ -67,6 +67,16 @@ object HiddenModes {
         }
     }
 
+    /**
+     * Whether a stop needs its station's National Rail board: not while National Rail is [hidden],
+     * since the board would only fill rows left out, unless one of the [starred] journeys' lines
+     * taken from the stop runs on it: hiding doesn't reach a starred journey, so it keeps its times.
+     * Decided by the hidden set itself, not by which lines a stop was picked with, so it holds from
+     * the moment National Rail is hidden, on every list.
+     */
+    fun wantsRailBoard(hidden: Set<String>, starred: List<LineRef> = emptyList()): Boolean =
+        !isHidden(NATIONAL_RAIL_MODE, hidden) || starred.any { it.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) }
+
     /** [rows] without a hidden mode's or line's departures and status rows; stop-closure rows always stay. */
     fun rows(rows: List<DepartureRow>, hidden: Set<String>): List<DepartureRow> {
         if (hidden.isEmpty()) return rows

@@ -132,6 +132,8 @@ class RailAwareTflClient(
     // With a key its stations' boards join TfL's arrivals; without one they don't ("No key").
     override fun arrivalsSource(): Any? = rail.available
 
+    override fun hasRailBoard(stopId: String): Boolean = rail.available && codes().crsFor(stopId) != null
+
     override suspend fun arrivals(stopId: String): List<Departure> {
         boardTimes.remove(stopId)
         val crs = codes().crsFor(stopId)
@@ -187,6 +189,18 @@ class RailAwareTflClient(
                 }
             }
         }
+    }
+
+    // Nothing shown at the stop runs on National Rail (the mode is hidden), so its station's board
+    // isn't asked for. A twin that still shows it (a starred journey's origin) takes it over at once,
+    // rather than wait out this stop's hold. With no board to leave out (no key, no station) it's the
+    // usual fetch, which asks for none and keeps a station's "No key" for when its rows show again.
+    override suspend fun arrivals(stopId: String, railBoard: Boolean): List<Departure> {
+        if (railBoard || !hasRailBoard(stopId)) return arrivals(stopId)
+        boardTimes.remove(stopId)
+        feeds.remove(stopId)
+        codes().crsFor(stopId)?.let { crs -> ownersLock.withLock { if (owners[crs]?.first == stopId) owners.remove(crs) } }
+        return tfl.arrivals(stopId)
     }
 
     /** [stopId]'s TfL arrivals with its station's board, asked for together. */

@@ -4142,6 +4142,17 @@ class MainViewModelTest {
 
         override fun fetchedAt(stopId: String): Instant? = partFetchedAt[stopId]
 
+        // Whether each fetch of a stop wanted its National Rail board, in order.
+        val railBoards = mutableMapOf<String, MutableList<Boolean>>()
+
+        override suspend fun arrivals(stopId: String, railBoard: Boolean): List<Departure> {
+            railBoards.getOrPut(stopId) { mutableListOf() } += railBoard
+            return arrivals(stopId)
+        }
+
+        // A National Rail station's arrivals can carry a board; no other stop's can.
+        override fun hasRailBoard(stopId: String): Boolean = stopId.startsWith("910G")
+
         override suspend fun arrivals(stopId: String): List<Departure> {
             arrivalCalls.merge(stopId, 1) { a, b -> a + b }
             arrivalsGate?.await()
@@ -4598,6 +4609,88 @@ class MainViewModelTest {
         vm.refresh(automatic = true)
         advanceUntilIdle()
         assertEquals(1, client.arrivalCalls[ksxId])
+    }
+
+    @Test
+    fun `hiding National Rail leaves a station's board out at once, and showing it brings it back at once`() = runTest(dispatcher) {
+        var hidden = emptySet<String>()
+        var current = now
+        val stationId = "910GEXAMPLE"
+        val busId = "490GEXAMPLE"
+        val client = ReuseCountingClient()
+        // As picked before National Rail was hidden: the station still declares its rail line.
+        val station = StopRef(
+            stationId, "Example",
+            lines = listOf(LineRef("victoria", "Victoria", "tube"), LineRef("thameslink", "Thameslink", "national-rail")),
+        )
+        val bus = StopRef(busId, "Example Road", lines = listOf(LineRef("1", "1", "bus")))
+        val vm = MainViewModel(
+            client, listOf(station, bus), clock = { current }, io = dispatcher,
+            arrivalsReuse = ARRIVALS_REUSE, disruptionReuse = DISRUPTION_REUSE,
+            hiddenModes = { hidden },
+        )
+        advanceUntilIdle()
+        assertEquals(listOf(true), client.railBoards[stationId])
+
+        // Hidden, with no re-locate: the next fetch leaves the board out all the same.
+        hidden = setOf("national-rail")
+        current = now.plusSeconds(60)
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf(true, false), client.railBoards[stationId])
+        assertEquals(2, client.arrivalCalls[busId])
+
+        // "Show all" moments later: the station is fetched again at once, board and all, while the
+        // bus stop, which never had a board to leave out, is carried over as usual.
+        hidden = emptySet()
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf(true, false, true), client.railBoards[stationId])
+        assertEquals(2, client.arrivalCalls[busId])
+    }
+
+    @Test
+    fun `a starred National Rail journey keeps its station's board with National Rail hidden`() = runTest(dispatcher) {
+        val stationId = "910GEXAMPLE"
+        val client = ReuseCountingClient()
+        val station = StopRef(stationId, "Example", lines = listOf(LineRef("victoria", "Victoria", "tube")))
+        val vm = MainViewModel(
+            client, listOf(station), clock = { now }, io = dispatcher,
+            arrivalsReuse = ARRIVALS_REUSE, disruptionReuse = DISRUPTION_REUSE,
+            hiddenModes = { setOf("national-rail") },
+        )
+        advanceUntilIdle()
+        assertEquals(listOf(false), client.railBoards[stationId])
+        // Moments later it's carried over as usual.
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(1, client.arrivalCalls[stationId])
+
+        // A National Rail journey starred from it: hiding doesn't reach it, so the stop is fetched
+        // again at once, board and all, rather than carried over without its trains.
+        vm.setJourneyStops(listOf(StopRef(stationId, "Example", lines = listOf(LineRef("thameslink", "Thameslink", "national-rail")))))
+        advanceUntilIdle()
+        assertEquals(listOf(false, true), client.railBoards[stationId])
+    }
+
+    @Test
+    fun `starring a National Rail journey at a station already declaring its line fetches the board at once`() = runTest(dispatcher) {
+        val stationId = "910GEXAMPLE"
+        val thameslink = LineRef("thameslink", "Thameslink", "national-rail")
+        val client = ReuseCountingClient()
+        // Picked before National Rail was hidden, so it still declares the line the journey takes.
+        val station = StopRef(stationId, "Example", lines = listOf(LineRef("victoria", "Victoria", "tube"), thameslink))
+        val vm = MainViewModel(
+            client, listOf(station), clock = { now }, io = dispatcher,
+            arrivalsReuse = ARRIVALS_REUSE, disruptionReuse = DISRUPTION_REUSE,
+            hiddenModes = { setOf("national-rail") },
+        )
+        advanceUntilIdle()
+        assertEquals(listOf(false), client.railBoards[stationId])
+
+        vm.setJourneyStops(listOf(StopRef(stationId, "Example", lines = listOf(thameslink))))
+        advanceUntilIdle()
+        assertEquals(listOf(false, true), client.railBoards[stationId])
     }
 
     @Test

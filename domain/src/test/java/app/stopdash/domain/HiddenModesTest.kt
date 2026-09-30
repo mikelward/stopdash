@@ -65,6 +65,19 @@ class HiddenModesTest {
     }
 
     @Test
+    fun `a stop wants its National Rail board unless National Rail is hidden and no starred journey rides it`() {
+        val tube = LineRef("victoria", "Victoria", "tube")
+        val rail = LineRef("thameslink", "Thameslink", "National-Rail")
+        val railHidden = setOf("national-rail")
+        assertTrue("nothing hidden", HiddenModes.wantsRailBoard(emptySet()))
+        assertTrue("another mode hidden", HiddenModes.wantsRailBoard(setOf("bus")))
+        assertFalse("National Rail hidden", HiddenModes.wantsRailBoard(railHidden))
+        assertFalse("a starred tube journey only", HiddenModes.wantsRailBoard(railHidden, listOf(tube)))
+        assertTrue("a starred National Rail journey", HiddenModes.wantsRailBoard(railHidden, listOf(tube, rail)))
+        assertTrue("a single rail line hidden isn't the mode", HiddenModes.wantsRailBoard(setOf(HiddenModes.lineKey("thameslink", "Thameslink"))))
+    }
+
+    @Test
     fun `a stop serving only hidden lines is dropped, as one serving only hidden modes is`() {
         val stops = listOf(stop("busOnly", "bus"), stop("mixed", "bus", "tram"))
         val hidden = setOf(HiddenModes.lineKey("bus-busOnly", "1"), HiddenModes.lineKey("bus-mixed", "2"))

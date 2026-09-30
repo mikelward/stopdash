@@ -689,9 +689,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         place's header, where a busy place would list dozens.
   - [ ] **A "Hidden" list in Settings** to unhide one item at a time, and an **Undo** snackbar
         right after hiding, once there's more than modes to hide.
-  - [ ] **Skip the National Rail board for a hidden National Rail mode** at a station that also
-        serves an unhidden mode (today only a rail-only station is skipped); keep a starred
-        journey's rail times.
+  - [x] **Skip the National Rail board for a hidden National Rail mode** at a station that also
+        serves an unhidden mode, in the near-me list, a farther station's card and the widget; a
+        starred journey's rail times are kept (`HiddenModes.wantsRailBoard`).
+    - [ ] **A trip's boards with National Rail hidden**: a trip drops routes riding a hidden line,
+          but its client still asks for the board at each National Rail station its shown routes
+          board at (an Overground or Elizabeth line ride), where nothing shown needs it.
 
 ## Phase 2 — Watched stops and settings
 
