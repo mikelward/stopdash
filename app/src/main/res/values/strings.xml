@@ -221,6 +221,11 @@
     <!-- Some of a station complex's stations couldn't be planned to: the routes shown may miss the best. -->
     <string name="trip_plan_incomplete">Couldn\'t plan to every station</string>
     <!-- A trip the Planner found no route for. -->
+    <!-- The bold header over a trip's routes: the one getting there soonest, the one riding fewest
+         (fewest changes), or one route that is both. -->
+    <string name="trip_label_fastest">Fastest</string>
+    <string name="trip_label_simplest">Simplest</string>
+    <string name="trip_label_fastest_simplest">Fastest · Simplest</string>
     <string name="trip_no_routes">No routes found</string>
     <!-- A route's door-to-door time and arrival, from live trains plus the Planner's run times, so
          "about" (~). %1$d is minutes, %2$s a clock time. -->
