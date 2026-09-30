@@ -396,6 +396,36 @@ class TripTimingTest {
     }
 
     @Test
+    fun `an estimate ranks above a live route only when it beats it even at its latest`() {
+        // A live first ride, then a frequent line boarded as the rider gets there, against a route
+        // live throughout (maintainer, 2026-09-30).
+        val timed = listOf(TripTiming.LegTiming(at(5), at(15), null, live = true), TripTiming.LegTiming(at(17), at(22), null, live = false))
+        fun estimated(arrival: Long, slack: Long?, legs: List<TripTiming.LegTiming> = timed) = TripTiming.Estimate(
+            twoLegs, TripTiming.Basis.ESTIMATED, at(arrival), legs, false, now, slack = slack?.let { Duration.ofMinutes(it) },
+        )
+        val live = TripTiming.Estimate(twoLegs, TripTiming.Basis.LIVE, at(35), emptyList(), false, now)
+        // Latest 32, before 35: first however the wait falls.
+        val faster = estimated(22, 10)
+        assertEquals(listOf(faster, live), TripTiming.rank(listOf(live, faster)))
+        // Latest 35 or 38: it could be no sooner, so the live route stays first.
+        assertEquals(listOf(live, estimated(25, 10)), TripTiming.rank(listOf(estimated(25, 10), live)))
+        assertEquals(listOf(live, estimated(28, 10)), TripTiming.rank(listOf(estimated(28, 10), live)))
+        // No latest to give (a longer wait could miss a connection): below, however early.
+        assertEquals(listOf(live, estimated(10, null)), TripTiming.rank(listOf(estimated(10, null), live)))
+        // Timed from the timetable alone, with no live train: below, however early.
+        val planned = estimated(10, 0, legs = timed.map { it.copy(live = false) })
+        assertEquals(listOf(live, planned), TripTiming.rank(listOf(planned, live)))
+        // Estimates keep their own order: one arriving later never passes an earlier one to get
+        // ahead, however sure its own latest.
+        val later = estimated(24, 0)
+        val earlier = estimated(20, 20)
+        assertEquals(listOf(live, earlier, later), TripTiming.rank(listOf(later, live, earlier)))
+        // And a route that can't be ridden stays last, whatever its timing.
+        val blocked = faster.copy(blocked = true)
+        assertEquals(listOf(live, blocked), TripTiming.rank(listOf(blocked, live)))
+    }
+
+    @Test
     fun `of two routes arriving together, the one with fewer changes ranks first`() {
         val direct = TripRoute(listOf(leg("blue", "A", "C", departs = 5, arrives = 30)))
         val changing = TripTiming.Estimate(twoLegs, TripTiming.Basis.LIVE, at(30), emptyList(), false, now)

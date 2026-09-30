@@ -965,8 +965,10 @@ rider's saved stops are read), and taps back to the rider's position; never amon
 or the near-me list's place chips, since a trip to where the rider already is goes nowhere. The *From…* row holds no saved places yet: what a place as a start should do is
 undecided (`TODO.md`). The trip opens on a **list of routes, best first**: ordered first by how far StopDash
 stands behind each route (tiers, below — usable before not, fully live before "est."), and within a
-tier by the earliest end-to-end arrival, worked out leg by leg from live trains (below). The first
-route is therefore the fastest one StopDash can vouch for, not an earlier estimate. A bold header says
+tier by the earliest end-to-end arrival, worked out leg by leg from live trains (below); an estimate
+goes ahead of a live route only when it is sooner even at the latest end of its range (below). The
+first route is therefore the fastest one StopDash can vouch for, never an estimate that could turn
+out later. A bold header says
 so over it, **Fastest**, and **Simplest** heads the card riding fewest times (fewest changes; the
 earliest shown on a tie), or **Fastest · Simplest** heads one card that is both (maintainer,
 2026-09-30), so the trade between them reads at a glance. Neither heads a lone card, Fastest never a
@@ -1021,7 +1023,8 @@ save width): from no wait up to the line's longer typical gap, the route timed a
 wait at its longest, so a wait that misses the next leg's train counts that too. Where that later
 route can't be timed at all (the connection missed, nothing else known), it reads as open-ended
 ("41+ min · est. 11:26+"). It counts waiting only, not a slow run, and ranking still goes by the earliest arrival (maintainer,
-2026-09-27). Under the top row, the **walk to where it starts** has a row of its own — a walker in the
+2026-09-27), except that an estimate is set against a live route by the latest end of its range
+(below). Under the top row, the **walk to where it starts** has a row of its own — a walker in the
 pills' room, so the stop starts where a ride's does beside its pill, then the first stop, and its minutes in the
 times column, in parentheses ("(3 min)", a duration, set against the first train's) — since it's why a train too soon to reach is grayed, and it reads as the
 route's first leg (maintainer, 2026-09-27, replacing "From ‹stop›" in the top row). A first stop
@@ -1205,8 +1208,13 @@ leg. Since the Planner's timetable does say when the next one leaves, a withheld
 least 5 minutes old plans the trip again at once rather than wait out the 15-minute reuse (maintainer,
 2026-09-27): once per plan, so it asks at most every 5 minutes, and each time the log says which leg
 withheld the arrival and why. Otherwise its arrival reads **"est."** instead of "about", and within
-its tier it sorts **after every route whose legs are all live**, so an estimate is never listed first
-while a live-confirmed route exists. Walks
+its tier it sorts **after every route whose legs are all live** — unless it is timed from at least one
+live train and gets there before that route **even at the latest end of its range** (maintainer,
+2026-09-30: a live ride then a frequent bus boarded on arrival sat below a slower live route even at
+its worst). So an estimate
+is listed first only when it beats the live-confirmed routes however its waits fall, never on its
+hopeful end; estimates keep their own order among themselves, so none passes an earlier one to get
+there. Walks
 between stations show as a dotted link with the Planner's minutes. **Every walk the Planner includes counts** toward which
 trains are reachable and toward the arrival: one before the first ride (from the stop sent to a
 better one), between stations, and after the last ride to the picked stop.
