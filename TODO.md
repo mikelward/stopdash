@@ -1842,6 +1842,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       it, so the maintainer picked it (2026-09-24) from the route-map legend in Wikipedia's *West
       Midlands Trains* article over an unsourced `#00BF6F`, after seeing both rendered. Matched
       by name prefix, like its pill code, since the rail feed's exact spelling is unconfirmed.
+      The rest of the operators then joined from the same Wikipedia templates: Eurostar, Caledonian
+      Sleeper, Lumo, Grand Central, Hull Trains, TransPennine Express, Northern, Transport for
+      Wales, ScotRail, Merseyrail, Island Line, and West Midlands Railway. Every operator in TfL's
+      national-rail line list now has a color except TfL's "West Midlands Trains", the parent of
+      two brands, which stays neutral.
 - [ ] (Later) **Revisit auto-locate-on-open and the location states.** StopDash
       resolves location once on open (a `LaunchedEffect` gated on `PermissionRequired`) and
       the nearby set never re-resolves afterward except via the temporary crosshair button.
