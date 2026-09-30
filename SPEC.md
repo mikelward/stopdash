@@ -931,7 +931,11 @@ or the near-me list's place chips, since a trip to where the rider already is go
 undecided (`TODO.md`). The trip opens on a **list of routes, best first**: ordered first by how far StopDash
 stands behind each route (tiers, below — usable before not, fully live before "est."), and within a
 tier by the earliest end-to-end arrival, worked out leg by leg from live trains (below). The first
-route is therefore the fastest one StopDash can vouch for, not an earlier estimate. Routes riding the
+route is therefore the fastest one StopDash can vouch for, not an earlier estimate. A bold header says
+so over it, **Fastest**, and **Simplest** heads the card riding fewest times (fewest changes; the
+earliest shown on a tie), or **Fastest · Simplest** heads one card that is both (maintainer,
+2026-09-30), so the trade between them reads at a glance. Neither heads a lone card, Fastest never a
+card whose arrival is withheld, and Simplest only when the cards don't all ride as often. Routes riding the
 same lines in turn but changing at a different stop are **cards of their own**, told apart by the
 stops their ride rows name (below) (maintainer, 2026-09-27). Routes whose first ride goes between the
 same two stops by the same mode and then ride the same lines — the 43 or the 134 to Highgate

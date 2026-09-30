@@ -22,7 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -61,6 +61,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -90,6 +91,7 @@ import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.RideLines
 import app.stopdash.domain.RouteFocus
+import app.stopdash.domain.RouteLabel
 import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.RouteStops
 import app.stopdash.domain.RouteStopsRepository
@@ -104,6 +106,7 @@ import app.stopdash.domain.TripClosures
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTiming
+import app.stopdash.domain.routeLabels
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.PlacedStand
 import app.stopdash.domain.alightingKey
@@ -1207,60 +1210,82 @@ private fun RouteList(
         if (cards.isEmpty()) {
             item(key = "none") { Text(stringResource(R.string.trip_no_routes), style = MaterialTheme.typography.bodyLarge) }
         }
+        // Which card gets there soonest and which rides fewest, over each (maintainer, 2026-09-30).
+        val labels = routeLabels(cards.map { it.first() })
         // Routes sharing every stop but differing in their first line are one card: one header, a
         // row per ride, and the first ride's times for every line together. The card is one choice
         // (maintainer, 2026-09-27): tapping it opens the best of its routes, and a long press
         // anywhere offers to hide each group any of its legs rides.
-        items(cards, key = { cardKey(it.first().route) }) { card ->
+        itemsIndexed(cards, key = { _, card -> cardKey(card.first().route) }) { index, card ->
             val modes = remember(card) { cardModes(card) }
             var menuOpen by remember { mutableStateOf(false) }
             val onLongPress = if (onHideMode != null && modes.isNotEmpty()) ({ menuOpen = true }) else null
             val moreLabel = stringResource(R.string.more_actions)
-            Box {
-                // Each row takes the card's tap and long press itself: a clickable card would merge
-                // its rows into one, and a screen reader would lose the rows' own times.
-                OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-                    // The header, then a row per ride saying where it gets off (maintainer,
-                    // 2026-09-27): one tap target, so a card changing at Highgate reads apart from
-                    // one changing at Archway.
-                    Column(
-                        modifier = Modifier
-                            .combinedClickable(
-                                onLongClickLabel = onLongPress?.let { moreLabel },
-                                onLongClick = onLongPress,
-                                onClick = { onOpen(card.first()) },
-                            )
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        // Each line's alerts for the way the card rides it, less those dismissed.
-                        val statuses = remember(card, state.statuses, state.live, now, sequences, rideLines, dismissed) {
-                            shownStatuses(cardStatuses(card, rideLines, state, now, sequences), dismissed)
-                        }
-                        val walk = remember(card, access) { walkToStart(card.first().route, access) }
-                        CardHeader(card, rideLines, statuses, walk)
-                        // Every route's on the card: another line's ride may use another pole of the pair.
-                        val routeStops = LocalRouteStops.current
-                        val closures = remember(card, state.closures, now, dismissed, sequences, rideLines, routeStops) {
-                            card.fold(emptyMap<String, DepartureRow>()) { found, estimate ->
-                                found + routeClosures(estimate.route, state, now, dismissed, sequences, rideLines) { routeStops?.hubOf(it) }
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                labels.getOrNull(index)?.let { RouteLabelHeader(it) }
+                Box {
+                    // Each row takes the card's tap and long press itself: a clickable card would merge
+                    // its rows into one, and a screen reader would lose the rows' own times.
+                    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                        // The header, then a row per ride saying where it gets off (maintainer,
+                        // 2026-09-27): one tap target, so a card changing at Highgate reads apart from
+                        // one changing at Archway.
+                        Column(
+                            modifier = Modifier
+                                .combinedClickable(
+                                    onLongClickLabel = onLongPress?.let { moreLabel },
+                                    onLongClick = onLongPress,
+                                    onClick = { onOpen(card.first()) },
+                                )
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            // Each line's alerts for the way the card rides it, less those dismissed.
+                            val statuses = remember(card, state.statuses, state.live, now, sequences, rideLines, dismissed) {
+                                shownStatuses(cardStatuses(card, rideLines, state, now, sequences), dismissed)
                             }
+                            val walk = remember(card, access) { walkToStart(card.first().route, access) }
+                            CardHeader(card, rideLines, statuses, walk)
+                            // Every route's on the card: another line's ride may use another pole of the pair.
+                            val routeStops = LocalRouteStops.current
+                            val closures = remember(card, state.closures, now, dismissed, sequences, rideLines, routeStops) {
+                                card.fold(emptyMap<String, DepartureRow>()) { found, estimate ->
+                                    found + routeClosures(estimate.route, state, now, dismissed, sequences, rideLines) { routeStops?.hubOf(it) }
+                                }
+                            }
+                            RideStops(card, rideLines, statuses, closures, remember(card, state, now, access, sequences, rideLines) { cardTimes(card, state, now, access, sequences, rideLines) }, now, walk)
                         }
-                        RideStops(card, rideLines, statuses, closures, remember(card, state, now, access, sequences, rideLines) { cardTimes(card, state, now, access, sequences, rideLines) }, now, walk)
                     }
-                }
-                if (onHideMode != null) {
-                    HideModeMenu(
-                        expanded = menuOpen,
-                        onDismiss = { menuOpen = false },
-                        modes = modes,
-                        onHideMode = onHideMode,
-                        lines = cardLines(card, rideLines),
-                    )
+                    if (onHideMode != null) {
+                        HideModeMenu(
+                            expanded = menuOpen,
+                            onDismiss = { menuOpen = false },
+                            modes = modes,
+                            onHideMode = onHideMode,
+                            lines = cardLines(card, rideLines),
+                        )
+                    }
                 }
             }
         }
     }
+}
+
+/** The bold header over a card: "Fastest", "Simplest", or both ([routeLabels]), read as a heading. */
+@Composable
+private fun RouteLabelHeader(label: RouteLabel) {
+    Text(
+        text = stringResource(
+            when (label) {
+                RouteLabel.FASTEST -> R.string.trip_label_fastest
+                RouteLabel.SIMPLEST -> R.string.trip_label_simplest
+                RouteLabel.FASTEST_AND_SIMPLEST -> R.string.trip_label_fastest_simplest
+            },
+        ),
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.semantics { heading() }.testTag("routeLabel"),
+    )
 }
 
 /**

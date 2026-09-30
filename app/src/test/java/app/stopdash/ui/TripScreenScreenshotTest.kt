@@ -21,6 +21,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
@@ -272,6 +273,21 @@ class TripScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
+    }
+
+    @Test
+    fun the_first_route_is_headed_fastest() {
+        // Every route here rides twice, so the first card is fastest and none is simplest.
+        show(planned)
+        composeRule.onAllNodesWithTag("routeLabel").assertCountEquals(1)
+        composeRule.onNodeWithTag("routeLabel").assertTextEquals("Fastest")
+        composeRule.onNodeWithTag("routeLabel").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+        composeRule.onAllNodesWithText("Simplest").assertCountEquals(0)
+        // Over the first card, the one arriving soonest.
+        val header = composeRule.onNodeWithTag("routeLabel").getUnclippedBoundsInRoot()
+        val first = composeRule.onNodeWithText("27 min · ~08:29").getUnclippedBoundsInRoot()
+        val second = composeRule.onNodeWithText("28 min · ~08:30").getUnclippedBoundsInRoot()
+        assertTrue(header.bottom <= first.top && first.top < second.top)
     }
 
     @Test

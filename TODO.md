@@ -959,6 +959,19 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             - a long press on a route offering "Avoid <line>" for each of its lines;
             - an avoided-lines chip at the top of the trip;
             - a setting listing lines to avoid.
+      - [x] **Fastest / Simplest headers** (maintainer, 2026-09-30): a bold header over the first
+            card ("Fastest") and over the one riding fewest ("Simplest"), or "Fastest · Simplest" on
+            one card that is both (`routeLabels`, `:domain`). The rules are autopilot's; see
+            *Decisions needing review*.
+      - [ ] **Step-free trips** (maintainer, 2026-09-30; after the intermediate work): a dropdown
+            atop a trip, **Step-free: Any / Station / Fully** (Station: step-free from the street to
+            the platform; Fully: to the train as well; the maintainer's names, 2026-09-30), planning
+            to it and remembered like the walking speed; an **"Accessible"** header over a route that
+            meets it, as Fastest / Simplest are; and wheelchair icons on step-free stations (the
+            step-free status item above). Check first what the Planner takes for this
+            (`accessibilityPreference`, and whether it has street-to-platform and street-to-train
+            values) and how TfL grades a station with some platforms step-free and some not. The
+            labels should tell a rider with a suitcase or a buggy that Station suits them too.
       - [x] **Move bus stop placement into `:domain`** (Codex, #398): which pole of a stop pair, or
             which stand of a bus station, a bus leg boards and gets off at is product logic, so
             `polesOf`, `onPoles`, `placedOnPoles`, `endPole`, `placedStands`, `PlacedStand`,
@@ -2620,6 +2633,14 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 ## Decisions needing review
 
+- [ ] **Which routes get a Fastest / Simplest header (autopilot, 2026-09-30).** Taken: Fastest over
+  the first card, which the list already ranks as the soonest arrival StopDash stands behind, and
+  none on a lone card or one whose arrival is withheld; Simplest over the card with the fewest
+  rides, the earliest shown on a tie, and none when every card rides as often; "Fastest ·
+  Simplest" when one card is both. *Alternatives:* Fastest by raw earliest arrival across tiers
+  (could crown an "est." route over a live one); a header on every card ("Other"); "Simplest" read
+  as fewest walking minutes. **Reversible:** `routeLabels` in `:domain` and `RouteLabelHeader`.
+  **To confirm:** on a device, that the headers read well over the cards.
 - [ ] **Where a glance surface says why a rail line has no times (autopilot, 2026-09-28).** Taken:
   a disrupted National Rail line with no times says "No key" or "No data" after its status, in
   the same text ("⚠ Part Suspended · No key"), on the widget, tile and watch app, so the
