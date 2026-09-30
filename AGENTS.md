@@ -257,6 +257,9 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
 - **One question at a time**, asked as a plain chat message — never `AskUserQuestion`
   (its multiple-choice prompt is broken in the Claude mobile app). After asking, stop and
   wait; acknowledge the answer before acting on it.
+- **Ask only a real product trade-off** (maintainer, 2026-09-30). A clear bug gets fixed, and
+  a feature fetches everything it needs through the same caches as everything else; don't
+  ask about either. Check a question's premise in the code before asking it.
 - **Answer a mid-turn message first**, before any further tool call (a merge cue is the
   exception — its hygiene runs first).
 - **Keep replies short**; lead with the single most important point. **Don't narrate
