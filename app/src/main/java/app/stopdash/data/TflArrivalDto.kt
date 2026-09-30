@@ -4,6 +4,7 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.VehicleCall
 import app.stopdash.domain.branchOf
 import app.stopdash.domain.cleanStopName
+import app.stopdash.domain.riderLineName
 import java.time.Instant
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -59,7 +60,8 @@ fun TflArrivalDto.toDeparture(): Departure {
         ?: ""
     return Departure(
         lineId = lineId,
-        lineName = lineName,
+        // Named as a rider knows it, here where TfL's name comes in (SPEC *Line pill colors*).
+        lineName = riderLineName(lineName, modeName),
         direction = direction?.trim().orEmpty(),
         destination = cleanStopName(terminus.substringBefore(",").trim()),
         platform = platformName?.ifBlank { null },

@@ -166,4 +166,19 @@ class TflStopPointDtoTest {
         assertNull(halfSet.lon)
         assertEquals(app.stopdash.domain.StationPlaces(), halfSet.placesOf("4900ZZLUEXA7"))
     }
+
+    @Test
+    fun `TfL's West Midlands Trains line comes in named as London Northwestern`() {
+        // TfL names the line after the parent company; its route is London Northwestern's.
+        val stop = TflStopPointDto(
+            id = "910GEXAMPLE",
+            commonName = "Example Rail Station",
+            lat = 51.5,
+            lon = -0.12,
+            modes = listOf("national-rail"),
+            lines = listOf(TflStopLineDto("west-midlands-trains", "West Midlands Trains")),
+            lineModeGroups = listOf(TflLineModeGroupDto("national-rail", listOf("west-midlands-trains"))),
+        ).toStopLocationOrNull()
+        assertEquals("London Northwestern Railway", stop?.lines?.single()?.name)
+    }
 }

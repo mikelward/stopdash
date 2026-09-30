@@ -37,6 +37,17 @@ class DarwinBoardDtoTest {
     }
 
     @Test
+    fun `a board's West Midlands Trains line comes in as London Northwestern`() {
+        // The board's "LNR & WMR" names both brands, and TfL's parent-company name neither; every
+        // train it runs from London is branded London Northwestern Railway, as its LNR pill reads.
+        val both = board().trainServices!!.first().copy(operator = "LNR & WMR", operatorCode = "LM")
+        val parent = both.copy(operator = "West Midlands Trains")
+        val departures = board().copy(trainServices = listOf(both, parent)).toDepartures()
+        assertEquals(listOf("London Northwestern Railway", "London Northwestern Railway"), departures.map { it.lineName })
+        assertEquals("west-midlands-trains", departures.first().lineId)
+    }
+
+    @Test
     fun `a London Underground train on a shared platform is left to TfL's feed`() {
         // Where tube trains share National Rail platforms (the District at Richmond), a board lists
         // them as "London Underground" under its operator code LT (London Transport). TfL's own feed

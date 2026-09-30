@@ -507,4 +507,17 @@ class JourneyPlannerTest {
         val fewest = warnings.single { it.startsWith("journey planner (fewest changes): ") }
         assertTrue(fewest, fewest.removePrefix("journey planner (fewest changes): ") !in setOf("", "null", "RateLimited"))
     }
+
+    @Test
+    fun `a West Midlands Trains leg comes in named as London Northwestern, so directions say LNR`() {
+        val leg = TflJourneyLegDto(
+            departureTime = "2026-09-30T10:00:00",
+            arrivalTime = "2026-09-30T10:40:00",
+            departurePoint = TflJourneyPointDto("A", "A"),
+            arrivalPoint = TflJourneyPointDto("B", "B"),
+            routeOptions = listOf(TflJourneyRouteOptionDto(TflJourneyIdentifierDto("west-midlands-trains", "West Midlands Trains"))),
+            mode = TflJourneyIdentifierDto("national-rail", "National Rail"),
+        ).toLegOrNull(Instant.parse("2026-09-30T08:00:00Z"))
+        assertEquals("London Northwestern Railway", leg?.lineName)
+    }
 }

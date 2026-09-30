@@ -308,4 +308,16 @@ class FileActiveTripStoreTest {
     fun `no file is no trip`() {
         assertNull(FileActiveTripStore(File(tmp.root, "none.json")).load())
     }
+
+    @Test
+    fun `a trip saved before the rename resumes naming its West Midlands Trains leg London Northwestern`() {
+        // Its directions ("Board London Northwestern Railway") then agree with the leg's LNR pill.
+        val file = File(tmp.root, "active-trip.json")
+        val rail = TripLeg(
+            "national-rail", "west-midlands-trains", "West Midlands Trains", "910GA", "Example A",
+            "910GB", "Example B", t0, t0.plusSeconds(1_800),
+        )
+        FileActiveTripStore(file).save(trip.copy(route = TripRoute(listOf(rail))))
+        assertEquals("London Northwestern Railway", FileActiveTripStore(file).load()?.route?.legs?.single()?.lineName)
+    }
 }

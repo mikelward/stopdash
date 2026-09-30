@@ -1862,7 +1862,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       pinned codes now match by name or, failing that, by the line id the operator's code maps to
       (maintainer, 2026-09-30), and West Midlands Trains' line reads as a green LNR under every
       name; West Midlands Railway named on its own keeps WMR orange. The rail feed's "Lumo
-      Stirling" wears Lumo's blue.
+      Stirling" wears Lumo's blue. The line is also named "London Northwestern Railway", the
+      brand its London trains carry, in place of TfL's "West Midlands Trains" and the feed's "LNR
+      & WMR", renamed where names come in from TfL, the rail feed or a saved copy (maintainer,
+      2026-09-30), so directions, spoken labels and titles match the LNR pill.
 - [ ] (Later) **Revisit auto-locate-on-open and the location states.** StopDash
       resolves location once on open (a `LaunchedEffect` gated on `PermissionRequired`) and
       the nearby set never re-resolves afterward except via the temporary crosshair button.

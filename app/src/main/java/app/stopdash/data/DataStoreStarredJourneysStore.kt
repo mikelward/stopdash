@@ -11,6 +11,7 @@ import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.Journeys
 import app.stopdash.domain.StarredJourney
 import app.stopdash.domain.StarredJourneysStore
+import app.stopdash.domain.riderLineName
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -117,7 +118,7 @@ internal fun PersistedStarredJourneys.toDomain(): List<StarredJourney>? {
     if (version != PersistedStarredJourneys.CURRENT_VERSION) return null
     // One journey per segment: a file from before journeys were line-free may hold the same two
     // stations starred on two lines; the first stands for both.
-    return journeys.map { StarredJourney(it.from.toDomain(), it.to.toDomain(), it.lineId, it.lineName, it.mode) }
+    return journeys.map { StarredJourney(it.from.toDomain(), it.to.toDomain(), it.lineId, riderLineName(it.lineName, it.mode), it.mode) }
         .distinctBy { it.key }
 }
 

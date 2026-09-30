@@ -5,6 +5,7 @@ import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.cleanStopName
 import app.stopdash.domain.pointName
+import app.stopdash.domain.riderLineName
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
@@ -67,7 +68,8 @@ data class TflJourneyLegDto(
         return TripLeg(
             mode = modeId,
             lineId = line?.id.orEmpty(),
-            lineName = line?.name.orEmpty(),
+            // Named as a rider knows it, so directions say what the pill does (SPEC *Line pill colors*).
+            lineName = riderLineName(line?.name.orEmpty(), modeId),
             fromId = departurePoint.stopId().orEmpty(),
             fromName = pointName(departurePoint.commonName),
             toId = arrivalPoint.stopId().orEmpty(),

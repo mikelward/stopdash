@@ -144,4 +144,16 @@ class CollapsedPlacesTest {
         )
         assertEquals(listOf("390"), picked.single().lines.map { it.id })
     }
+
+    @Test
+    fun `a farther station's West Midlands Trains line is named as London Northwestern`() {
+        // TfL's station list names the line after the parent company: the card's pill reads LNR.
+        val farther = FartherStations.Farther(
+            StationMatch("910GEXAMPLE", "Example", listOf("national-rail")),
+            800.0,
+            listOf(FartherStations.Line("national-rail", "west-midlands-trains")),
+        )
+        val place = CollapsedPlaces.of(farther, mapOf("west-midlands-trains" to "West Midlands Trains"))
+        assertEquals(listOf(LineRef("west-midlands-trains", "London Northwestern Railway", "national-rail")), place.lines)
+    }
 }

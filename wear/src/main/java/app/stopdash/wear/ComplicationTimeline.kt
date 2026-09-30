@@ -12,6 +12,7 @@ import app.stopdash.domain.Staleness
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.lineCode
+import app.stopdash.domain.riderLineName
 import java.time.Duration
 import java.time.Instant
 import kotlin.time.toJavaDuration
@@ -175,8 +176,10 @@ object ComplicationTimeline {
         // that isn't a TfL direction.
         val status = if (current != null) current.status
         else statuses[chosen.lineId]?.forDirection(chosen.directionKey)?.takeIf { it.disrupted }
-        val (lineName, mode) = current?.let { it.lineName to it.mode } ?: lineOf(stop, chosen)
-        val code = lineCode(lineName, mode, chosen.lineId)
+        val (tflName, mode) = current?.let { it.lineName to it.mode } ?: lineOf(stop, chosen)
+        val code = lineCode(tflName, mode, chosen.lineId)
+        // Said as the pill's code reads (LNR, not TfL's parent-company name).
+        val lineName = riderLineName(tflName, mode)
         val stale = ComplicationContent.Stale(code, lineName)
         if (now >= boundary) return marked(listOf(ComplicationEntry(now, null, stale)), envelope, chosen.lineId, status)
 

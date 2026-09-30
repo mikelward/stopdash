@@ -319,4 +319,30 @@ class PersistedSnapshotTest {
         assertEquals(emptyMap<String, LineStatus>(), back.status.byDirection)
         assertEquals(6, back.status.forDirection("inbound").severity)
     }
+
+    @Test
+    fun `restoring renames an older build's West Midlands Trains line as London Northwestern`() {
+        // A snapshot saved before the rename carries TfL's parent-company name; the list, widget and
+        // watch render from it until the next refresh, so it comes back as the pill names it.
+        val legacy = DeparturesSnapshot(
+            stops = listOf(
+                StopArrivals(
+                    stopId = "910GEXAMPLE",
+                    stopName = "Example",
+                    departures = listOf(
+                        Departure(
+                            "west-midlands-trains", "West Midlands Trains", "", "Crewe",
+                            null, now.plusSeconds(120), "national-rail",
+                        ),
+                    ),
+                    fetchedAt = now,
+                    lines = listOf(LineRef("west-midlands-trains", "West Midlands Trains", "national-rail")),
+                ),
+            ),
+            fetchedAt = now,
+        )
+        val restored = legacy.toPersisted().toDomain()!!.stops.single()
+        assertEquals("London Northwestern Railway", restored.departures.single().lineName)
+        assertEquals("London Northwestern Railway", restored.lines.single().name)
+    }
 }

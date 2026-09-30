@@ -14,6 +14,7 @@ import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.Terminating
 import app.stopdash.domain.WidgetJourney
 import app.stopdash.domain.normalizeBranch
+import app.stopdash.domain.riderLineName
 import java.time.Instant
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.serialization.Serializable
@@ -434,7 +435,8 @@ fun PersistedStop.toDomain(): StopArrivals =
         stopName = stopName,
         departures = departures.map { it.toDomain() },
         fetchedAt = Instant.ofEpochMilli(fetchedAtMillis),
-        lines = lines.map { LineRef(it.id, it.name, it.mode) },
+        // Names renamed on the way back in, as on the way in from TfL ([riderLineName]).
+        lines = lines.map { LineRef(it.id, riderLineName(it.name, it.mode), it.mode) },
         // No disruptions restored — the immediate refresh re-establishes any current one.
         arrivalsFresh = arrivalsFresh,
         clusterId = clusterId,
@@ -462,7 +464,7 @@ private fun Departure.toPersisted(): PersistedDeparture =
 internal fun PersistedDeparture.toDomain(): Departure =
     Departure(
         lineId = lineId,
-        lineName = lineName,
+        lineName = riderLineName(lineName, mode),
         direction = direction,
         destination = destination,
         platform = platform,

@@ -4,6 +4,7 @@ import app.stopdash.domain.LineRef
 import app.stopdash.domain.NearbyStopsCache
 import app.stopdash.domain.NearbyStopsStore
 import app.stopdash.domain.StopLocation
+import app.stopdash.domain.riderLineName
 import java.io.File
 import java.io.IOException
 import java.time.Instant
@@ -111,7 +112,7 @@ private fun PersistedNearbyEntry.toEntry() = NearbyStopsCache.Entry(
     latitude, longitude, radiusMeters, stopTypes, Instant.parse(at),
     stops.map { s ->
         StopLocation(
-            s.id, s.name, s.latitude, s.longitude, s.lines.map { LineRef(it.id, it.name, it.mode) },
+            s.id, s.name, s.latitude, s.longitude, s.lines.map { LineRef(it.id, riderLineName(it.name, it.mode), it.mode) },
             s.clusterId, s.hubId, s.stopLetter, s.bearing, s.towards,
         )
     },

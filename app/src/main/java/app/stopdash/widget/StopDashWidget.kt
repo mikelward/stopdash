@@ -63,6 +63,7 @@ import app.stopdash.domain.StopGroup
 import app.stopdash.domain.StopGrouping
 import app.stopdash.domain.abbreviateBranch
 import app.stopdash.domain.lineCode
+import app.stopdash.domain.riderLineName
 import app.stopdash.ui.hiddenGroupsLabel
 import app.stopdash.ui.BudgetedRow
 import app.stopdash.ui.BudgetedRows
@@ -829,7 +830,7 @@ private fun WidgetPill(row: DepartureRow, fontScale: Float) {
             .padding(horizontal = 8.dp, vertical = 4.dp)
             // The visible label is the short code; the accessible label is the full line
             // name, so TalkBack announces "Victoria", not "VIC" (SPEC parity with the app).
-            .semantics { contentDescription = row.lineName },
+            .semantics { contentDescription = riderLineName(row.lineName, row.mode) },
     ) {
         Text(
             text = lineCode(row.lineName, row.mode, row.lineId),

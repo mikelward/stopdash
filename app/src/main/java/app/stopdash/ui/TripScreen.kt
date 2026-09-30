@@ -106,6 +106,7 @@ import app.stopdash.domain.TripClosures
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTiming
+import app.stopdash.domain.riderLineName
 import app.stopdash.domain.routeLabels
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.MaxWalk
@@ -1428,7 +1429,7 @@ private fun RouteSummary(
             val lines = cardRideLines(card, index, rideLines)
             SharedLinePill(
                 lines.map { LineRef(it.lineId, it.lineName, it.mode) },
-                lines.map { it.lineName }.reduce { a, b -> stringResource(R.string.trip_lines_either, a, b) },
+                lines.map { riderLineName(it.lineName, it.mode) }.reduce { a, b -> stringResource(R.string.trip_lines_either, a, b) },
             )
         }
         // One ⚠ just before the arrival, where every screen puts it before the times (maintainer,
@@ -1616,7 +1617,7 @@ private fun RideStops(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SharedLinePill(
                     lines.map { LineRef(it.lineId, it.lineName, it.mode) },
-                    lines.map { it.lineName }.reduce { a, b -> stringResource(R.string.trip_lines_either, a, b) },
+                    lines.map { riderLineName(it.lineName, it.mode) }.reduce { a, b -> stringResource(R.string.trip_lines_either, a, b) },
                 )
                 // Shortened as the main screen's destinations are, before any "…" (SPEC destination-label).
                 ShortenedName(ride.toName, MaterialTheme.typography.bodyLarge, Modifier.weight(1f).padding(start = 8.dp))

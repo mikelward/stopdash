@@ -2,6 +2,7 @@ package app.stopdash.data
 
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.WatchedStop
+import app.stopdash.domain.riderLineName
 import kotlinx.serialization.Serializable
 
 /**
@@ -74,5 +75,5 @@ private fun PersistedWatchedStop.toDomain(): WatchedStop =
     WatchedStop(
         id = id,
         name = name,
-        lines = lines.map { LineRef(it.id, it.name, it.mode) },
+        lines = lines.map { LineRef(it.id, riderLineName(it.name, it.mode), it.mode) },
     )

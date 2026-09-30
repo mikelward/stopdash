@@ -68,6 +68,16 @@ class ComplicationTimelineTest {
     }
 
     @Test
+    fun `TfL's West Midlands Trains line is said as the LNR its pill reads`() {
+        val lnr = departure(120, line = "west-midlands-trains", mode = "national-rail").copy(lineName = "West Midlands Trains")
+        val entries = ComplicationTimeline.entries(envelope(stop("910GA", listOf(lnr), line = "west-midlands-trains")), fetched)
+        val first = entries.at(fetched) as ComplicationContent.Departure
+        assertEquals("LNR", first.code)
+        assertEquals("London Northwestern Railway", first.lineName)
+        assertEquals(ComplicationContent.Stale("LNR", "London Northwestern Railway"), entries.at(boundary))
+    }
+
+    @Test
     fun `a row that runs out shows its empty form until the boundary, then the stale form`() {
         val entries = ComplicationTimeline.entries(envelope(stop("940GA", listOf(departure(60)))), fetched)
         assertEquals(ComplicationContent.Empty("VIC", "Victoria", uncertain = false), entries.at(fetched.plusSeconds(60)))

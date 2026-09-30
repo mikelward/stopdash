@@ -4,6 +4,7 @@ import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
+import app.stopdash.domain.riderLineName
 import java.io.File
 import java.io.IOException
 import java.time.Duration
@@ -332,8 +333,10 @@ internal data class PersistedTripLeg(
     val plannedFromId: String = "",
     val plannedToId: String = "",
 ) {
+    // Renamed on the way back in, like a fresh leg ([riderLineName]), so a trip saved before the rename
+    // doesn't resume saying the old name beside the new pill.
     fun toLeg() = TripLeg(
-        mode, lineId, lineName, fromId, fromName, toId, toName, Instant.parse(departure), Instant.parse(arrival),
+        mode, lineId, riderLineName(lineName, mode), fromId, fromName, toId, toName, Instant.parse(departure), Instant.parse(arrival),
         path, pathNames, Duration.ofSeconds(changeAfterSeconds), headings, fromArea, toArea,
         fromAt = if (fromLat != null && fromLon != null) Coordinates(fromLat, fromLon) else null,
         toAt = if (toLat != null && toLon != null) Coordinates(toLat, toLon) else null,
