@@ -182,6 +182,15 @@ exercises the whole spine the widget later renders from.
           upload rides the last recorded consent; it would not survive our consent prefs being
           lost or corrupted on their own. The fix is manual Firebase init (drop the init
           provider) once the stored choice is read.
+    - [ ] **Lines logged before the stored opt-in loads never reach Crashlytics** (Codex on
+          #407). `CrashlyticsLogSink` drops a line while consent reads "not opted in", and the
+          sink isn't even registered until `installTelemetry`, so for an opted-in user the first
+          moments of every start (the settings warm-up's warnings, the process-exit record) are
+          missing from that run's crash-report breadcrumbs. DebugLog doesn't replay to a sink
+          added late. The fix belongs in the sink rather than per caller: hold what arrives before
+          the choice is known in a small bounded queue, then send it once the load says yes or
+          drop it on a no. Low stakes today: Crashlytics reads Android's exit records itself for
+          its own ANR reports, and the bug report and on-device log carry every line.
     - [ ] **A pending opt-in withdrawn while storage refuses every change** can come back on the
           next start: an opt-out that can't delete the pending marker, write "off", or delete the
           stored choice leaves the disk exactly as it was before the tap, so the next start reads
