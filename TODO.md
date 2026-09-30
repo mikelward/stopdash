@@ -740,7 +740,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       `NearbySelection`) with one-tap add-to-watched; stop search. Distance ranking lives
       here — for *finding* stops to watch — not in ordering the watched list, which stays
       location-free so the view works with location denied (D1). Stop **selection** (two-tier:
-      the nearest two clusters of each mode eager, plus a computed *more* tier) is implemented in
+      the nearest two clusters of each mode eager — the Tube, Overground, DLR and Elizabeth line
+      sharing one cap as one metro mode — plus a computed *more* tier) is implemented in
       `NearbySelection` (two-tier, 2026-09-21; per-mode crowd-out, PR #39), and the eager tier is
       what the near-me list shows. **Surfacing the *more* tier (a per-mode "More" reveal) is
       deferred to its own change** (see the "More" reveal item below); one-tap add-to-watched and
@@ -761,7 +762,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       per-mode cap bounds the eager fetch burst (below) and answers the count-cap question. The
       **"More" control that pages the rest is deferred** — the count cap ships, but reaching the
       farther clusters (principle 2's "one tap away") comes with the "More" reveal follow-up
-      below. See SPEC *Finding stops → Near me now*.
+      below. See SPEC *Finding stops → Near me now*. **The Tube, Overground, DLR and Elizabeth
+      line count as one mode for the cap (maintainer, 2026-09-30)**: counted apart, King's Cross
+      fetched Euston (800 m) every refresh as its nearest Overground, whole National Rail board
+      and all; a metro station in reach now stands for all four (an interchange's metro stations
+      counting as one place and loading together), and a metro line nothing loaded serves gets a
+      farther-station card instead.
     - **One canonical distance unit:** miles (the maintainer's numbers are in miles). The reach
       is **~1 mile (~1609 m)** — the TfL query's own radius, the hard bound for one lookup. The
       two-tier design dropped the ~0.2 mi inner ring and its expand-if-empty rule (there is no

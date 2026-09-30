@@ -55,6 +55,22 @@ object NearbySelection {
     private const val UNKNOWN_MODE = "\u0000unknown"
 
     /**
+     * The modes that pick as **one** here — London's metro rail (maintainer, 2026-09-30): the Tube,
+     * the Overground, the DLR and the Elizabeth line are all turn-up-and-go rail across the city, so
+     * a station of any of them within reach stands for all four. Picked apart, each needed its own
+     * station however far: at King's Cross, with the Tube a few hundred meters off, Euston (800 m)
+     * was fetched every refresh as the nearest Overground, for one line, bringing its whole National
+     * Rail board with it. A metro line no loaded stop serves still gets a farther card
+     * (*Farther stations*), which costs no request until tapped. Only picking folds them: a
+     * cluster's [NearbyCluster.modes] stay TfL's, and hiding a mode keeps its own groups
+     * ([ModeGroups]). Trams stay apart — a separate network, not an alternative to these.
+     */
+    internal val METRO_MODES = setOf("tube", "overground", "dlr", "elizabeth-line")
+
+    // The key a mode picks under: one shared key for every metro mode, else the mode itself.
+    private const val METRO = "\u0000metro"
+
+    /**
      * A cluster of nearby stops that share a [StopLocation.clusterId] — a station's platforms or
      * a junction's poles — ranked by its nearest member's distance. The unit the near-me list
      * expands and fetches as one place (SPEC *Finding stops → Near me now*, D8).
@@ -129,24 +145,35 @@ object NearbySelection {
         // Each mode's nearest [clustersPerMode] clusters within [eagerRadiusMeters] are eager; a mode
         // with none that close contributes just its single nearest cluster (out to the outer radius),
         // so a sparse mode keeps a representative without the eager set reaching a mile out. Their
-        // union is the eager set. A cluster serving two modes is eager if either mode picks it, so
-        // the nearest station of a sparse mode is never crowded out by a denser one. A cluster whose
-        // routes TfL gave no mode for buckets under [UNKNOWN_MODE], so a served stop with thin
+        // union is the eager set. The metro modes pick as one mode ([METRO_MODES]), and an
+        // interchange's metro stations as one place: Canary Wharf's Tube, DLR and Elizabeth line
+        // stations are separate clusters in one hub, which picked apart would crowd each other out of
+        // the shared cap — and the one left over gets no farther card either, since its interchange
+        // is already on the list. So a hub takes one of the cap's places and brings all its metro
+        // stations. A cluster serving two modes is eager if either mode picks it, so the nearest
+        // station of a sparse mode is never crowded out by a denser one. A cluster whose routes TfL
+        // gave no mode for buckets under [UNKNOWN_MODE], so a served stop with thin
         // metadata is still selected rather than vanishing. A **route-less** cluster — TfL lists no
         // routes at it, a disused or unserved stop — is never eager: it has no departures to show,
         // so auto-fetching it only spends the rate budget (two requests a pole) the stops that do
         // run need. It stays in the *more* tier, which only buses page through a button: a route-less
         // stop has no departures a tap could show.
         fun modesOf(cluster: NearbyCluster): Set<String> = when {
-            cluster.modes.isNotEmpty() -> cluster.modes
+            cluster.modes.isNotEmpty() -> cluster.modes.mapTo(HashSet()) { if (it.lowercase() in METRO_MODES) METRO else it }
             cluster.stops.any { it.lines.isNotEmpty() } -> setOf(UNKNOWN_MODE)
             else -> emptySet()
         }
         val eagerKeys = HashSet<String>()
+        // The place a cluster counts as toward its mode's cap: its interchange for a metro station in
+        // one, else the cluster itself. Places keep the nearest-first order of their nearest member.
+        fun placeOf(cluster: NearbyCluster, mode: String): String =
+            cluster.stops.firstNotNullOfOrNull { it.hubId.ifBlank { null } }
+                ?.takeIf { mode == METRO }?.let { "\u0000hub:$it" }
+                ?: cluster.key
         for (mode in clusters.flatMapTo(sortedSetOf()) { modesOf(it) }) {
-            val ofMode = clusters.filter { mode in modesOf(it) }
-            val walkable = ofMode.filter { it.distanceMeters <= eagerRadiusMeters }.take(clustersPerMode)
-            (walkable.ifEmpty { ofMode.take(1) }).forEach { eagerKeys += it.key }
+            val places = clusters.filter { mode in modesOf(it) }.groupBy { placeOf(it, mode) }.values
+            val walkable = places.filter { it.first().distanceMeters <= eagerRadiusMeters }.take(clustersPerMode)
+            (walkable.ifEmpty { places.take(1) }).forEach { place -> place.forEach { eagerKeys += it.key } }
         }
         // Both tiers keep the global nearest-first order.
         return Result(

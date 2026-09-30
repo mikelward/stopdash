@@ -133,7 +133,8 @@ The app finds stops two ways:
     bus route several times, one per adjacent stop, which reads as noise;
   - a **denser mode doesn't crowd out another** — the nearest station of a mode surfaces even
     when several stops of another mode are closer, as long as it's within reach (so the
-    nearest Tube shows even where bus stops dominate the immediate area);
+    nearest Tube shows even where bus stops dominate the immediate area; the metro modes count as
+    one, below);
   - it is **bounded to within reach** — on the order of a mile — so a far stop never appears
     just because nothing nearer shares its line. That reach is the TfL lookup's own radius; a
     London locate effectively always has a stop within a mile — if somehow none does, an honest
@@ -161,7 +162,19 @@ The app finds stops two ways:
   shown at once. A mode with nothing that close contributes just its **single nearest** cluster, out
   to the ~1 mile reach, so the nearest station of a sparse mode (a Tube up to a mile off) is always
   eager without the eager set reaching a mile out for every mode (maintainer, 2026-09-23: "the
-  nearest two of each mode" fetched a second Overground station 1.3 km from a big interchange). The
+  nearest two of each mode" fetched a second Overground station 1.3 km from a big interchange).
+  **The Tube, the Overground, the DLR and the Elizabeth line count as one mode here** — London's
+  metro rail (maintainer, 2026-09-30): turn-up-and-go rail across the city, so a station of any of
+  them in reach stands for all four, and they share one cap of two, **an interchange's metro stations
+  counting as one place** and loading together (Canary Wharf's Tube, DLR and Elizabeth line stations
+  are separate TfL stations; counted apart, the cap would drop one, and a station of an interchange
+  already on the list gets no farther card). Counted apart, each fetched its
+  own nearest station however far: at King's Cross, with the Tube a few hundred meters off, Euston
+  (800 m) was fetched on every refresh as the nearest Overground, bringing its whole National Rail
+  board with it — requests against the keyless rate budget for a station nobody there walks to. A
+  metro line no loaded stop serves still gets its farther card (*Farther stations*), which costs no
+  request until tapped. National Rail, trams, buses and the rest still pick apart, and only picking
+  folds the four: hiding a mode keeps its own groups (*Hiding a mode*). The
   stop lookup itself still covers the mile — one request for every stop's name and routes, no
   departures — so the fallback and the farther bus cards have the whole reach to draw on. A stop TfL lists **no routes** for (a disused or
   unserved stop) is **never eager**: it has no departures to show, and auto-fetching it spent two
