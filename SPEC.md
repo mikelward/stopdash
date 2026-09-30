@@ -423,8 +423,8 @@ The app finds stops two ways:
   A hidden mode's stops aren't picked for the near-me set, so they cost no request; a place that also
   serves other modes keeps them, with the hidden mode's rows left out, and the widget leaves them
   out too. With National Rail hidden, such a place's National Rail board isn't asked for either,
-  from the next refresh of the list, a farther station's card or the widget, since it would only
-  fill rows left out; a starred journey taking a National Rail line from the place still gets its
+  from the next refresh of the list, a farther station's card, a trip or the widget, since it
+  would only fill rows left out; a starred journey taking a National Rail line from the place still gets its
   times, and a place showing National Rail again ("Show all", or a journey starred from it) is
   fetched with its board at once. A searched station's page shows all its services, so it keeps its
   board. A closure still shows at a place that keeps an unhidden mode, so hiding one mode never

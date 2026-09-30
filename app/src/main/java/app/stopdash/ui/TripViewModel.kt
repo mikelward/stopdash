@@ -40,6 +40,7 @@ import app.stopdash.domain.withoutDetours
 import app.stopdash.domain.lineAlertKey
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -808,8 +809,15 @@ class TripViewModel(
     // latest. The pull is the wall clock's, a fetch the steady clock's ([SteadyClock.toWall]).
     private fun needsFetch(id: String, now: Instant): Boolean {
         val since = pulledAt
+        // A station fetched without its board, National Rail being hidden, once it's shown again.
+        if (id in boardSkipped && HiddenModes.wantsRailBoard(hiddenModes)) return true
         return _state.value.live[id]?.let { !recentEnough(it, now) || (since != null && SteadyClock.toWall(it.fetchedAt).isBefore(since)) } ?: true
     }
+
+    // The National Rail stations last fetched without their board ([HiddenModes.wantsRailBoard]): no
+    // route timed then rode National Rail, since those riding a hidden mode aren't timed. One is
+    // fetched again once National Rail shows, so a route boarding a train there gets its times.
+    private val boardSkipped: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
     // [live] with each of [routes]' boarding stops whose shared arrivals are newer than those held.
     // Fetched within [ArrivalsCache.TTL] of [now], and not failed: not asked for again. Dated after now
@@ -899,9 +907,12 @@ class TripViewModel(
             val at = SteadyClock.stamp(clock())
             val generation = arrivals.generation
             val source = client.arrivalsSource()
+            // With National Rail hidden no route timed rides it, so a station's board isn't asked for.
+            val board = HiddenModes.wantsRailBoard(hiddenModes)
             val (departures, shared) = withContext(io) {
                 val before = client.shareable(stopId)
-                client.arrivals(stopId).let { it to (before && client.shareable(stopId) && client.arrivalsSource() == source) }
+                client.arrivals(stopId, board).let { it to (before && client.shareable(stopId) && client.arrivalsSource() == source) }
+                    .also { if (!board && client.hasRailBoard(stopId)) boardSkipped += stopId else boardSkipped -= stopId }
             }
             // Dated by their oldest part: a National Rail board another screen fetched moments ago
             // keeps its age ([TflClient.fetchedAt]).

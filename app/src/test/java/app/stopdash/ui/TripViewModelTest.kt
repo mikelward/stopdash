@@ -1041,6 +1041,36 @@ class TripViewModelTest {
         assertEquals(asked, client.asked.size)
     }
 
+    // With National Rail hidden, only the Overground route from the station is timed, so its board
+    // isn't asked for; showing National Rail again brings back the train from the same station,
+    // which is fetched again at once, board and all, though its last fetch is still current.
+    @Test
+    fun `a station's board is left out while National Rail is hidden and fetched once it shows`() = runTest(dispatcher) {
+        val station = "910GEXAMPLE"
+        val overground = TripRoute(listOf(leg("mildmay", station, "C", 5, 20).copy(mode = "overground")))
+        val train = TripRoute(listOf(leg("thameslink", station, "C", 8, 18).copy(mode = "national-rail")))
+        val boards = mutableListOf<Boolean>()
+        val client = object : TflClient by FakeClient(mutableMapOf()) {
+            override suspend fun arrivals(stopId: String, railBoard: Boolean): List<Departure> {
+                if (stopId == station) boards += railBoard
+                return emptyList()
+            }
+            override fun hasRailBoard(stopId: String) = stopId == station
+        }
+        val trip = TripViewModel(
+            FakePlanner(listOf(overground, train)), client, "A", listOf(TripDestination.Stop("C")),
+            clock = { now }, plans = TripPlans(), io = dispatcher,
+        )
+        trip.hiddenModes = setOf("national-rail")
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf(false), boards)
+
+        trip.hiddenModes = emptySet()
+        advanceUntilIdle()
+        assertEquals(listOf(false, true), boards)
+    }
+
     // Six bus routes fill the routes timed; hiding buses lets the seventh, a tube, in, and its stop
     // is fetched at once, though it was in the plan (and shown) all along.
     @Test
