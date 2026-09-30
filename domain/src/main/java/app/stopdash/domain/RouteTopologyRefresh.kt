@@ -79,14 +79,19 @@ private fun runs(route: List<String>, path: List<String>): Boolean {
 }
 
 /**
- * [bundled] with each of its lines' current patterns over it where they still cover it
- * ([withLive]), read from [routes] — the route stops' own cache, kept up to a day, so this asks
- * TfL for a line's routes at most once a day and never twice for what a route page already
- * fetched. A line whose routes can't be fetched or read keeps the bundled patterns, and [warn]
- * says which (the line id and why only). Off every render and decision path: the caller runs it
- * in the background and puts the result in use when it's back (SPEC *Branch merging*).
+ * TfL's current patterns for each of [bundled]'s lines that still cover it ([covers]), read from
+ * [routes] — the route stops' own cache, kept up to a day, so this asks TfL for a line's routes at
+ * most once a day and never twice for what a route page already fetched. A line whose routes can't
+ * be fetched or read, or that no longer runs a bundled route, is left out, and [warn] says which
+ * (the line id and why only); the caller keeps what it had for it. Off every render and decision
+ * path: the caller runs it in the background and puts the result in use when it's back ([withLive],
+ * SPEC *Branch merging*).
  */
-suspend fun refreshTopology(bundled: RouteTopology, routes: RouteStopsRepository, warn: (String) -> Unit = {}): RouteTopology {
+suspend fun currentPatterns(
+    bundled: RouteTopology,
+    routes: RouteStopsRepository,
+    warn: (String) -> Unit = {},
+): Map<String, List<RoutePattern>> {
     val live = HashMap<String, List<RoutePattern>>()
     for (lineId in bundled.patternsByLine.keys) {
         val sequence = try {
@@ -94,16 +99,16 @@ suspend fun refreshTopology(bundled: RouteTopology, routes: RouteStopsRepository
         } catch (e: CancellationException) {
             throw e
         } catch (e: TflException) {
-            warn("line $lineId's routes not fetched (${e::class.simpleName}); keeping the bundled ones")
+            warn("line $lineId's routes not fetched (${e::class.simpleName}); keeping what's in use")
             continue
         }
         val patterns = routePatternsOf(sequence.routes)
         when {
-            patterns == null -> warn("line $lineId's routes unreadable; keeping the bundled ones")
+            patterns == null -> warn("line $lineId's routes unreadable; keeping what's in use")
             !covers(patterns, bundled.patternsByLine.getValue(lineId)) ->
-                warn("line $lineId's routes no longer run a bundled route; keeping the bundled ones")
+                warn("line $lineId's routes no longer run a bundled route; keeping what's in use")
             else -> live[lineId] = patterns
         }
     }
-    return bundled.withLive(live)
+    return live
 }

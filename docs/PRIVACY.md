@@ -174,7 +174,9 @@ journey's starting stop) are kept the same way, for up to a day, so reopening a 
 TfL again. They are TfL's public network data, but which ones are there says which routes you
 looked at, so they stay in the app's cache directory too: never backed up, logged, or sent
 anywhere, and an entry older than a day is deleted the next time the app starts or looks up a
-route or stop area.
+route or stop area. The branching lines' current routes, which the app fetches for everyone to label
+branches (the Northern, Central and Piccadilly lines), are kept there too, where they differ from the
+routes built into the app, until a later fetch replaces them; they say nothing about you.
 
 ## Crash reports and usage stats (opt-in)
 

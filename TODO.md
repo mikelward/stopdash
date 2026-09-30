@@ -300,11 +300,16 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       route, an extension past a terminus included (`withLive`); otherwise the bundled line stands. Validated against live TfL on
       2026-09-30: all 16 bundled patterns of the three lines come back identical. Cost £0; at most
       six requests a day (three lines, both ways), shared with the route pages' cache.
-- [ ] **The refreshed route topology on the widget-only process and the watch.** The refresh runs
-      in the app's process and puts its result in the shared `RouteTopologyStore`, so a widget
-      refreshed there uses it, but a widget-only process (the app not opened since a restart)
-      and the watch still read the bundled asset. The widget could derive it from the persisted
-      route stops cache without a request; the watch would need it sent in the envelope.
+- [x] **The refreshed route topology on the widget-only process.** `RouteTopologyStore.use`
+      keeps the lines TfL's current patterns stand in for (those differing from the asset) in the
+      cache directory, and `load` puts them back over the asset, checked with `withLive` again, so
+      a widget-only process (the app not opened since a restart) and the next start's first frame
+      group as the last refresh did, with no request. A line today's refresh can't read keeps what
+      the last one took, rather than dropping back to the asset.
+- [ ] **The refreshed route topology on the watch.** The watch still reads its own bundled asset.
+      Send the phone's differing lines in the envelope (usually none, so no cost), and put them
+      over the watch's asset with `withLive` wherever it reads the topology (home, tile,
+      complication).
 - [ ] **Branch truncation follow-up: a fuller branch form under pressure** (maintainer,
       2026-09-19). **Superseded design (2026-09-22):** the original ask below — abbreviate across
       both halves, keep one full word in each — was replaced, ultimately by the floor-and-ellipsis

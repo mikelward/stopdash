@@ -111,7 +111,7 @@ class RouteTopologyRefreshTest {
     private fun sequenceOf(vararg routes: LineRoute) = LineSequence(routes.toList(), emptyMap())
 
     @Test
-    fun `a refresh reads each bundled line's routes through the route cache`() = runTest {
+    fun `current patterns are read for each bundled line through the route cache`() = runTest {
         val asked = mutableListOf<String>()
         val extended = listOf(
             route("Edgware  &harr;  Morden  via Bank", "E", "C", "N", "B", "M"),
@@ -126,16 +126,17 @@ class RouteTopologyRefreshTest {
             },
         )
         val warnings = mutableListOf<String>()
-        val refreshed = refreshTopology(bundled, routes) { warnings += it }
-        assertEquals(listOf("E", "C", "N", "B", "M"), refreshed.patternsByLine.getValue("northern")[0].stops)
+        val current = currentPatterns(bundled, routes) { warnings += it }
+        assertEquals(setOf("northern"), current.keys)
+        assertEquals(listOf("E", "C", "N", "B", "M"), current.getValue("northern")[0].stops)
         assertEquals(emptyList<String>(), warnings)
         // Both ways, once each; a second refresh answers from the cache.
-        refreshTopology(bundled, routes)
+        currentPatterns(bundled, routes)
         assertEquals(listOf("northern/inbound", "northern/outbound"), asked.sorted())
     }
 
     @Test
-    fun `a line not fetched, unread, or missing a route keeps the bundled patterns, and says so`() = runTest {
+    fun `a line not fetched, unread, or missing a route is left out, and says so`() = runTest {
         fun repository(answer: () -> LineSequence) = RouteStopsRepository(
             source = object : RouteSequenceSource {
                 override suspend fun routeSequence(lineId: String, direction: String) = answer()
@@ -148,8 +149,7 @@ class RouteTopologyRefreshTest {
         )
         for ((routes, why) in cases) {
             val warnings = mutableListOf<String>()
-            val refreshed = refreshTopology(bundled, routes) { warnings += it }
-            assertEquals(why, listOf(bank, charingX), refreshed.patternsByLine["northern"])
+            assertEquals(why, emptyMap<String, List<RoutePattern>>(), currentPatterns(bundled, routes) { warnings += it })
             assertEquals(why, 1, warnings.size)
             assertTrue(warnings.single(), warnings.single().contains(why) && warnings.single().contains("northern"))
         }
