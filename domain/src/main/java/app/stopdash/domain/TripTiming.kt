@@ -56,6 +56,15 @@ object TripTiming {
 
         /** The latest the rider may arrive ([slack]), or null when the arrival is withheld or has no latest. */
         val latest: Instant? get() = slack?.let { arrival?.plus(it) }
+
+        /**
+         * Whether [rank] sets the route below every one checked and open: a check couldn't be made
+         * ([unchecked]) and no ride is timed from a live train. The Planner offered the route, so one
+         * with a live train to time it by is ranked on its arrival like a checked one, and the trip
+         * names what it couldn't check (maintainer, 2026-09-30): a faster route isn't buried under a
+         * slower one because a check failed.
+         */
+        val doubted: Boolean get() = unchecked && legs.none { it.live }
     }
 
     /** Why a leg withheld a route's arrival ([Withheld]). */
@@ -271,21 +280,26 @@ object TripTiming {
     }
 
     /**
-     * [estimates] best first: routes checked and open, then those that couldn't be checked, then
-     * those that can't be ridden; within each, fully live before estimated before withheld, then the
-     * earliest arrival, then the fewest changes.
+     * [estimates] best first: routes that can be ridden, then those that can't; among those that can,
+     * any that couldn't be checked with no live train to time them by ([Estimate.doubted]) last.
+     * Within each, fully live before estimated before withheld, then the earliest arrival, then one
+     * checked before one that couldn't be, then the fewest changes.
      */
     fun rank(estimates: List<Estimate>): List<Estimate> =
         estimates.sortedWith(
-            compareBy<Estimate>({ it.blocked }, { it.unchecked }, { it.basis }, { it.arrival ?: Instant.MAX }, { it.route.rides.size }),
+            compareBy<Estimate>(
+                { it.blocked }, { it.doubted }, { it.basis }, { it.arrival ?: Instant.MAX }, { it.unchecked }, { it.route.rides.size },
+            ),
         )
 
     /**
      * [estimates] without a route another beats on both counts (maintainer, 2026-09-28): one with
-     * fewer changes that gets there no later, and that StopDash stands behind at least as far, as
-     * [rank] tiers them (usable, then unchecked, then blocked; then live, estimated, withheld). A route with more changes is worth offering
-     * only when it's faster. A withheld arrival can't be compared, so it neither beats nor is beaten.
-     * In [estimates]' order.
+     * fewer changes that gets there no later, and that StopDash stands behind at least as far: usable,
+     * then unchecked, then blocked; then live, estimated, withheld. Stricter than [rank], which lifts
+     * an unchecked route with a live train among the checked: a route checked open is never left off
+     * for one that couldn't be checked. A route with more changes is worth offering only when it's
+     * faster. A withheld arrival can't be compared, so it neither beats nor is beaten. In
+     * [estimates]' order.
      */
     fun withoutSlowerChanges(estimates: List<Estimate>): List<Estimate> =
         estimates.filter { route ->
@@ -311,8 +325,8 @@ object TripTiming {
             }
         }
 
-    // How far StopDash stands behind a route, as [rank] orders it: checked and open, then unchecked,
-    // then blocked; within each, live before estimated before withheld.
+    // How far StopDash stands behind a route: checked and open, then unchecked, then blocked; within
+    // each, live before estimated before withheld.
     private val STANDING = compareBy<Estimate>({ it.blocked }, { it.unchecked }, { it.basis })
 
     /**
