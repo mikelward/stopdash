@@ -577,13 +577,13 @@ class ActiveTripTracker(
         val leg = trip.leg ?: return null
         // On board by the rider's word ([OnTheWay.atStep]): the train they're on is one at the platform
         // when they said so, maybe due a moment before.
-        val readyAt = if (trip.boarded) trip.legStartedAt.minus(ON_BOARD_GRACE) else maxOf(trip.legStartedAt, now)
+        val readyAt = if (trip.boarded) trip.legStartedAt.minus(OnTheWay.ON_BOARD_GRACE) else maxOf(trip.legStartedAt, now)
         // This refresh's read of the board ([fetchBoard]); its failure thrown for [step] to report.
         val departures = board?.getOrThrow()?.takeIf { it.ride == leg }?.departures ?: arrivals(leg.fromId)
         // On board by their word, only a train at the platform when they said so can be theirs: one due
         // minutes later isn't, so none is followed rather than that one (the step says it can't find it).
         val catchable = OnTheWay.candidates(departures, leg, readyAt)
-            .filter { !trip.boarded || !it.expectedArrival.isAfter(trip.legStartedAt.plus(ON_BOARD_GRACE)) }
+            .filter { !trip.boarded || !it.expectedArrival.isAfter(trip.legStartedAt.plus(OnTheWay.ON_BOARD_GRACE)) }
         // Only those the line's route doesn't send another way are asked after, a request each: at a
         // fork the first few can all turn off ([OnTheWay.mayTakeRide]). Without the route, their own
         // calls decide, as before.
@@ -700,9 +700,5 @@ class ActiveTripTracker(
 
         // Modes that board at a lettered pole in the street ([poleOf]); a station's board splits by platform.
         private val POLE_MODES = setOf("bus", "replacement-bus", "coach", "tram")
-
-        // How far from when the rider said they're on board the train they boarded can be due, either
-        // way: a train at the platform, due a moment ago or about to leave.
-        val ON_BOARD_GRACE: Duration = Duration.ofMinutes(1)
     }
 }

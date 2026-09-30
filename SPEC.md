@@ -1326,7 +1326,9 @@ them there:
   before they say they're off. At a boarding step, a walk's time runs from then and a ride's train is
   picked at once from then; at a getting-off step they're on board the train followed (the next they
   could catch, as the trip assumes, or with none yet one at the platform when they said so, due within
-  a minute of it; with none there it says it can't find their train rather than name a later one), counted from its
+  a minute of it; with none there it says it can't find their train rather than name a later one). A
+  train followed that is still more than a minute from the stop can't be theirs, so the one at the
+  platform is picked instead, the same way. The ride is counted from its train's
   calls with the boarding stop behind them, and never taken back as left behind: that check only
   second-guesses the trip's own assumption, not their word. A "get off soon" said for the leg left is
   taken back; Back, or a tap on an earlier step, goes back to it, so a mistaken tap can be undone.

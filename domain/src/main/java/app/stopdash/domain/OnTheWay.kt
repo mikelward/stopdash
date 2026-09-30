@@ -116,6 +116,12 @@ object OnTheWay {
     val GET_OFF_SOON_TIME: Duration = Duration.ofMinutes(2)
 
     /**
+     * How far from when the rider said they're on board ([atStep]) the train they boarded can be due,
+     * either way: a train at the platform, due a moment ago or about to leave.
+     */
+    val ON_BOARD_GRACE: Duration = Duration.ofMinutes(1)
+
+    /**
      * Whether [route] can be followed: each of its rides by a train its departures name. National
      * Rail's come from its own boards (SPEC *National Rail*), which name none.
      */
@@ -945,9 +951,11 @@ object OnTheWay {
      * [trip] at [step] at [now], because the rider said so: the start of its leg ([atLeg]), or on board
      * a ride (maintainer, 2026-09-29). On board, they're on the train followed, the next they could
      * catch as the trip assumes, or with none yet one at the platform about [now], which the leg then
-     * starts from ([ActiveTrip.legStartedAt]) for picking it. Their word is dated past the left-behind
-     * check ([seen]), which only second-guesses that assumption, so a train still standing at the
-     * platform can't have it taken back.
+     * starts from ([ActiveTrip.legStartedAt]) for picking it. A train followed that is still more than
+     * [ON_BOARD_GRACE] from the stop isn't the one they're on, so it's let go and one at the platform
+     * picked the same way. Their word is dated past the left-behind check ([seen]), which only
+     * second-guesses that assumption, so a train still standing at the platform can't have it taken
+     * back.
      */
     fun atStep(trip: ActiveTrip, step: Step, now: Instant): ActiveTrip {
         // Back to the ride Next just moved them past, on board: its train as it was, or none named if
@@ -959,7 +967,11 @@ object OnTheWay {
             atLeg(trip, step.leg, now)
         } else {
             val at = if (step.leg == trip.legIndex) trip else atLeg(trip, step.leg, now)
-            at.copy(boarded = true, boardedAt = now.minus(MISSED_WINDOW), legStartedAt = now, onBoardSeen = true)
+            // A train still minutes from the stop can't be the one they're on: more likely the one at
+            // the platform, which the tracker picks as with none followed.
+            val coming = at.vehicleId.isNotBlank() && at.boardsAt?.isAfter(now.plus(ON_BOARD_GRACE)) == true
+            val train = if (coming) at.copy(vehicleId = "", vehicleOffId = "", boardsAt = null, dueOffAt = null) else at
+            train.copy(boarded = true, boardedAt = now.minus(MISSED_WINDOW), legStartedAt = now, onBoardSeen = true)
         }
         // On board a ride and moved on by Next: kept, so Back can undo just that. Kept with no train
         // named too, so Back is on board as they said, not on one at the platform by then (Codex, PR #384).

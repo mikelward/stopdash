@@ -992,6 +992,23 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `a rider on board isn't on a train followed that is still minutes from the stop`() {
+        // 8 is followed, due at A at 9; at 4 the rider says they're on board: the train they're on
+        // is one at the platform, so 8 is let go for one due about now to be picked.
+        val onBoard = OnTheWay.atStep(OnTheWay.follow(placed, train("8", 9)), OnTheWay.Step(0, onBoard = true), at(4))
+        assertTrue(onBoard.boarded)
+        assertEquals("", onBoard.vehicleId)
+        assertNull(onBoard.boardsAt)
+        assertEquals(at(4), onBoard.legStartedAt)
+        // Due within a minute either way, at the platform or about to leave, it's still theirs.
+        for (due in listOf(3L, 5L)) {
+            assertEquals("8", OnTheWay.atStep(OnTheWay.follow(placed, train("8", due)), OnTheWay.Step(0, onBoard = true), at(4)).vehicleId)
+        }
+        // So is one due minutes ago: they may be saying so late.
+        assertEquals("8", OnTheWay.atStep(OnTheWay.follow(placed, train("8", 1)), OnTheWay.Step(0, onBoard = true), at(4)).vehicleId)
+    }
+
+    @Test
     fun `on a tight loop the next lap's boarding stop isn't taken for the one they boarded at`() {
         // Said on at 6 for a ride planned at ten minutes, run in eight; A comes round again two
         // minutes after C, inside the ride's planned time after they boarded.

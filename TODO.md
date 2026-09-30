@@ -990,10 +990,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         - [ ] Picking another train by hand ("I'm on this one"), until location can see it.
         - [x] **A ride is two steps, boarding it and getting off it** (maintainer, 2026-09-29): Next
               from boarding says the rider is on the train followed ("Get off at …" its own row).
-          - [ ] **On board by the rider's word, with the train followed still minutes away**: the
+          - [x] **On board by the rider's word, with the train followed still minutes away**: the
                 train they're on is more likely the one at the platform than the one followed, but
-                the trip keeps the one followed (the next it thought they could catch). Take the
-                soonest due within a minute or so of the tap instead, as it does with none followed.
+                the trip kept the one followed (the next it thought they could catch). A followed
+                train due more than a minute after the tap (`OnTheWay.ON_BOARD_GRACE`) is now let go,
+                and the soonest due within a minute of it picked, as with none followed.
           - [ ] **On board by the rider's word before the train reaches the stop, on a loop**:
                 the call at the boarding stop they boarded at is told by order, the first there with
                 none of the ride's stops due since they boarded before it. A train still calling at
