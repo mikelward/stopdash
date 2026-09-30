@@ -54,6 +54,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -128,9 +129,12 @@ class TripViewModelTest {
         val asked = mutableListOf<String>()
         var failStops = emptySet<String>()
         var failStatus = false
+        // A stop's next request waits here until the test releases it.
+        val gates = mutableMapOf<String, CompletableDeferred<Unit>>()
         override suspend fun arrivals(stopId: String): List<Departure> {
             asked += stopId
             if (stopId in failStops) throw TflException.Offline(null)
+            gates.remove(stopId)?.await()
             return arrivals[stopId].orEmpty()
         }
         var omitLines = emptySet<String>()
@@ -1912,6 +1916,238 @@ class TripViewModelTest {
         assertEquals(toStation.copy(toName = "E"), onPoles(toStation.copy(toName = "E"), mapOf("1" to station)))
     }
 
+    // The Planner boards the northbound bus at a bus station's stand As2, which the line doesn't use
+    // (its own stand there is As; neither is in a pair), and gets off at the pair CG.
+    private val atStation = road.copy(stopNames = road.stopNames + ("As2" to "A"))
+    private val fromStand = plannerBus.copy(fromId = "As2", fromName = "A", fromArea = "", path = listOf("BG", "XG", "CG"))
+
+    @Test
+    fun `a bus leg from a stand the line doesn't use boards at the route's stand of that name`() {
+        val placed = onPoles(fromStand, mapOf("1" to atStation))
+        assertEquals("As", placed.fromId)
+        assertEquals("Cn", placed.toId)
+        assertTrue(placedOnPoles(fromStand, mapOf("1" to atStation)))
+        assertEquals("As", endPole(TripRoute(listOf(fromStand)), TripClosures.End("As2", lineId = "1"), mapOf("1" to atStation)))
+        // Its keys hold as it moves, so an open route, card or line page stays open.
+        assertEquals(routeKey(TripRoute(listOf(fromStand))), routeKey(TripRoute(listOf(placed))))
+        assertEquals(cardKey(TripRoute(listOf(fromStand))), cardKey(TripRoute(listOf(placed))))
+        assertEquals(tripLegKey(fromStand), tripLegKey(placed))
+        // Handed to the trip to fetch; a pair's poles are looked up by the trip itself.
+        assertEquals(setOf(PlacedStand("1", "As2", "As")), placedStands(listOf(TripRoute(listOf(fromStand))), mapOf("1" to atStation)))
+        assertEquals(emptySet<PlacedStand>(), placedStands(listOf(TripRoute(listOf(plannerBus))), mapOf("1" to road)))
+        // A route calling at the Planner's own stand boards there.
+        val calls = atStation.copy(routes = listOf(LineRoute("North", listOf("As2", "As", "Bn", "Xn", "Cn"))))
+        assertEquals("As2", onPoles(fromStand, mapOf("1" to calls)).fromId)
+        assertEquals(emptySet<PlacedStand>(), placedStands(listOf(TripRoute(listOf(fromStand))), mapOf("1" to calls)))
+        // Two stands of the name, neither the Planner's: no single answer, so not placed.
+        val two = atStation.copy(
+            routes = listOf(LineRoute("North", listOf("As", "Bn", "Xn", "Cn")), LineRoute("Short", listOf("As3", "Bn", "Xn", "Cn"))),
+            stopNames = atStation.stopNames + ("As3" to "A"),
+        )
+        assertEquals(fromStand, onPoles(fromStand, mapOf("1" to two)))
+        assertFalse(placedOnPoles(fromStand, mapOf("1" to two)))
+        // A stand of another name is no match.
+        assertFalse(placedOnPoles(fromStand.copy(fromName = "E"), mapOf("1" to atStation)))
+    }
+
+    private val atRouteStand = PlacedStand("1", "As2", "As")
+
+    @Test
+    fun `different stops sharing a name keep different keys`() {
+        // Two stands of one bus station share its name: a route from each is its own route, and two
+        // lines from them are two cards, as they board at different places.
+        val other = fromStand.copy(fromId = "As3")
+        assertNotEquals(routeKey(TripRoute(listOf(fromStand))), routeKey(TripRoute(listOf(other))))
+        assertNotEquals(cardKey(TripRoute(listOf(fromStand))), cardKey(TripRoute(listOf(other.copy(lineId = "2")))))
+        assertNotEquals(tripLegKey(fromStand), tripLegKey(other))
+        // Getting off too: the same boarding, alighting at two stops of one name.
+        val offAt = fromStand.copy(toArea = "", toId = "Cs", toName = "C")
+        assertNotEquals(tripLegKey(offAt), tripLegKey(offAt.copy(toId = "Cx")))
+        // Nor do two stops whose names are blank run together.
+        val blank = fromStand.copy(fromName = "")
+        assertNotEquals(routeKey(TripRoute(listOf(blank))), routeKey(TripRoute(listOf(blank.copy(fromId = "As3")))))
+        // A moved leg keeps the stand the Planner named, however often it's placed, so its keys hold.
+        val placed = onPoles(fromStand, mapOf("1" to atStation))
+        assertEquals("As2", placed.plannedFromId)
+        assertEquals(placed, onPoles(placed, mapOf("1" to atStation)))
+        assertEquals(routeKey(TripRoute(listOf(fromStand))), routeKey(TripRoute(listOf(placed))))
+    }
+
+    @Test
+    fun `a stand the screen boards a bus at is fetched, and the leg moves there once it is`() = runTest(dispatcher) {
+        val north = train("1", "C", 4).copy(mode = "bus")
+        val client = FakeClient(mutableMapOf("As" to listOf(north)))
+        var t = now
+        val logged = mutableListOf<String>()
+        val trip = TripViewModel(
+            FakePlanner(listOf(TripRoute(listOf(fromStand)))), client, "A", listOf(TripDestination.Stop("C")), clock = { t },
+            plans = TripPlans(), io = dispatcher, poles = { listOf("Cn", "Cs") }, warn = { logged += it },
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        // The trip fetches the Planner's stand by itself, never the route's.
+        assertTrue("As2" in client.asked)
+        assertFalse("As" in client.asked)
+        // Not fetched, the screen keeps the Planner's stand.
+        assertEquals("As2", onPoles(trip.state.value, mapOf("1" to atStation)).routes.orEmpty().single().legs.single().fromId)
+        trip.boardAt(setOf(atRouteStand))
+        advanceUntilIdle()
+        assertEquals(listOf(north), trip.state.value.live["As"]?.departures)
+        // Logged once, by stop and line ids, for a bug report to show whether the move was made.
+        assertEquals(listOf("trip bus 1 boards at the route's stand As, not the Planner's As2"), logged.filter { "route's stand" in it })
+        // Fetched, the leg boards there and its bus times it.
+        val moved = onPoles(trip.state.value, mapOf("1" to atStation)).routes.orEmpty().single().legs.single()
+        assertEquals("As", moved.fromId)
+        // Handed over again (the screen does on each change to what it shows), or dropped and handed
+        // back (its route ranked out of the shown few and in again), it asks for nothing: no
+        // refresh, so no loop of them, and no second log line.
+        val asks = client.asked.size
+        val checks = client.statusChecks
+        trip.boardAt(setOf(atRouteStand))
+        trip.boardAt(emptySet())
+        trip.boardAt(setOf(atRouteStand))
+        advanceUntilIdle()
+        assertEquals(asks, client.asked.size)
+        assertEquals(checks, client.statusChecks)
+        assertEquals(1, logged.count { "route's stand" in it })
+        // A later refresh fetches it with the rest.
+        t = now.plus(Duration.ofMinutes(2))
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(2, client.asked.count { it == "As" })
+        // Back once its arrivals are no longer current (a replan's refresh may have run without it),
+        // it's fetched again at once, and logged no more.
+        trip.boardAt(emptySet())
+        t = now.plus(Duration.ofMinutes(4))
+        trip.boardAt(setOf(atRouteStand))
+        advanceUntilIdle()
+        assertEquals(3, client.asked.count { it == "As" })
+        assertEquals(1, logged.count { "route's stand" in it })
+    }
+
+    @Test
+    fun `a bus station leg reads Loading until the stand its bus uses is fetched`() {
+        val bus = listOf(train("1", "C", 4).copy(mode = "bus"))
+        // The Planner's stand fetched, and empty: its line's route still loading to say which stand.
+        val planners = TripViewModel.State(live = mapOf("As2" to TripViewModel.StopLive(emptyList(), now)))
+        assertTrue(legLoading(planners, fromStand, emptyMap()))
+        // The route says another stand, not yet fetched: still loading, not "–".
+        assertTrue(legLoading(planners, fromStand, mapOf("1" to atStation)))
+        // Fetched, the leg moves there ([onPoles]) and its times are in.
+        val both = planners.copy(live = planners.live + ("As" to TripViewModel.StopLive(bus, now)))
+        assertFalse(legLoading(both, onPoles(fromStand, mapOf("1" to atStation)), mapOf("1" to atStation)))
+        // The route keeps the Planner's stand: its times are in.
+        val calls = atStation.copy(routes = listOf(LineRoute("North", listOf("As2", "As", "Bn", "Xn", "Cn"))))
+        assertFalse(legLoading(planners, fromStand, mapOf("1" to calls)))
+        // The route failed: the Planner's stand's times stand, as at a stop pair.
+        assertFalse(legLoading(planners, fromStand, mapOf("1" to null)))
+    }
+
+    @Test
+    fun `a moved stand is where the route says it is`() {
+        val placed = onPoles(fromStand.copy(fromAt = Coordinates(51.5, -0.1)), mapOf("1" to atStation.copy(stopPositions = mapOf("As" to (51.6 to -0.2)))))
+        assertEquals("As", placed.fromId)
+        // The trip walks the rider to the stand the bus uses, not the one the Planner named.
+        assertEquals(Coordinates(51.6, -0.2), placed.fromAt)
+        // Where the route gives no position, the Planner's stands in.
+        assertEquals(Coordinates(51.5, -0.1), onPoles(fromStand.copy(fromAt = Coordinates(51.5, -0.1)), mapOf("1" to atStation)).fromAt)
+    }
+
+    @Test
+    fun `a stand handed over during a refresh is fetched once that refresh ends`() = runTest(dispatcher) {
+        val north = train("1", "C", 4).copy(mode = "bus")
+        val client = FakeClient(mutableMapOf("As" to listOf(north)))
+        val trip = TripViewModel(
+            FakePlanner(listOf(TripRoute(listOf(fromStand)))), client, "A", listOf(TripDestination.Stop("C")), clock = { now },
+            plans = TripPlans(), io = dispatcher, poles = { listOf("Cn", "Cs") },
+        )
+        // The first refresh waits on the Planner's stand.
+        val slow = CompletableDeferred<Unit>()
+        client.gates["As2"] = slow
+        trip.refresh()
+        runCurrent()
+        trip.boardAt(setOf(atRouteStand))
+        runCurrent()
+        // Not asked on its own while that refresh is out: one refresh writes at a time.
+        assertFalse("As" in client.asked)
+        slow.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(listOf(north), trip.state.value.live["As"]?.departures)
+    }
+
+    @Test
+    fun `a refresh that fails after a stand is asked for has the last word`() = runTest(dispatcher) {
+        val client = FakeClient(mutableMapOf("As" to listOf(train("1", "C", 4).copy(mode = "bus"))))
+        var t = now
+        val trip = TripViewModel(
+            FakePlanner(listOf(TripRoute(listOf(fromStand)))), client, "A", listOf(TripDestination.Stop("C")), clock = { t },
+            plans = TripPlans(), io = dispatcher, poles = { listOf("Cn", "Cs") },
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        // The screen hands the stand over; its fetch is slow.
+        val slow = CompletableDeferred<Unit>()
+        client.gates["As"] = slow
+        trip.boardAt(setOf(atRouteStand))
+        runCurrent()
+        // A refresh asks for it too, later, and fails.
+        client.failStops = setOf("As")
+        t = now.plus(Duration.ofMinutes(2))
+        trip.refresh()
+        // The earlier request's answer lands first; the later refresh's failure is what stands.
+        slow.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(2, client.asked.count { it == "As" })
+        assertEquals(true, trip.state.value.live["As"]?.failed)
+    }
+
+    @Test
+    fun `a bus between two bus stations boards at the route's stand too`() {
+        // The Planner names stand As2 at one bus station and Cs at the other; neither is in a pair.
+        val stands = fromStand.copy(toArea = "", path = listOf("BG", "XG", "Cn"))
+        val placed = onPoles(stands, mapOf("1" to atStation))
+        assertEquals("As", placed.fromId)
+        assertEquals("Cn", placed.toId)
+        // Not vouched for at the Planner's stands until its route says where it stands, as at a stop
+        // pair: the Planner can name a stand the line doesn't use.
+        assertFalse(placedOnPoles(stands, emptyMap()))
+        assertFalse(placedOnPoles(stands, mapOf("1" to null)))
+        assertTrue(placedOnPoles(stands, mapOf("1" to atStation)))
+        // A train's stations are never placed by name, so they need no route.
+        assertTrue(placedOnPoles(stands.copy(mode = "tube"), emptyMap()))
+        assertEquals(setOf(PlacedStand("1", "As2", "As")), placedStands(listOf(TripRoute(listOf(stands))), mapOf("1" to atStation)))
+        assertEquals(routeKey(TripRoute(listOf(stands))), routeKey(TripRoute(listOf(placed))))
+        assertEquals(cardKey(TripRoute(listOf(stands))), cardKey(TripRoute(listOf(placed))))
+        assertEquals(tripLegKey(stands), tripLegKey(placed))
+        // It can be started once it's moved, not while its route says it's elsewhere.
+        assertFalse(canStart(TripRoute(listOf(stands)), mapOf("1" to atStation), originUnconfirmed = false))
+        assertTrue(canStart(TripRoute(listOf(placed)), mapOf("1" to atStation), originUnconfirmed = false))
+        // Nor before its route says where its bus stands (loading, or failed): the Planner's stand may
+        // be one the line doesn't use, and a started trip keeps it.
+        assertFalse(canStart(TripRoute(listOf(stands)), emptyMap(), originUnconfirmed = false))
+        assertFalse(canStart(TripRoute(listOf(stands)), mapOf("1" to null), originUnconfirmed = false))
+        // A route that doesn't place it (no single stand of its name) leaves it where the Planner put it.
+        assertTrue(canStart(TripRoute(listOf(stands.copy(fromName = "E"))), mapOf("1" to atStation), originUnconfirmed = false))
+        // Only a bus: a train's stations are never moved by name.
+        val train = stands.copy(mode = "tube")
+        assertEquals(train, onPoles(train, mapOf("1" to atStation)))
+    }
+
+    @Test
+    fun `a stand whose fetch failed reads as failed, not loading`() = runTest(dispatcher) {
+        val client = FakeClient(mutableMapOf())
+        client.failStops = setOf("As")
+        val trip = TripViewModel(
+            FakePlanner(listOf(TripRoute(listOf(fromStand)))), client, "A", listOf(TripDestination.Stop("C")), clock = { now },
+            plans = TripPlans(), io = dispatcher, poles = { listOf("Cn", "Cs") },
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        trip.boardAt(setOf(atRouteStand))
+        advanceUntilIdle()
+        assertEquals(true, trip.state.value.live["As"]?.failed)
+    }
+
     @Test
     fun `a bus stop pair's buses wait for the route to say which side the bus uses`() {
         val state = TripViewModel.State(live = mapOf("Bs" to TripViewModel.StopLive(listOf(train("1", "A", 2).copy(mode = "bus")), now)))
@@ -3143,12 +3379,17 @@ class TripViewModelTest {
 
     @Test
     fun `the stops only the screen can name are where rides are placed and other lines' poles`() {
-        // The 43 is placed where the Planner named it; the 134, found at P2, runs to the same stop.
+        // The 43 is placed where the Planner named it, its route calling there; the 134, found at P2,
+        // runs to the same stop.
         val ride = leg("43", "P1", "Q1", 5, 15).copy(mode = "bus")
         val other = leg("134", "P2", "Q1", 6, 16).copy(mode = "bus")
         val route = TripRoute(listOf(ride))
-        assertEquals(setOf("P1", "Q1"), shownStops(route, emptyMap(), emptyMap()))
-        assertEquals(setOf("P1", "P2", "Q1"), shownStops(route, emptyMap(), mapOf(ride to RideLines(listOf(ride, other), listOf(ride)))))
+        val calls = mapOf("43" to LineSequence(routes = listOf(LineRoute("P ↔ Q", listOf("P1", "Q1"))), stopNames = mapOf("P1" to "P", "Q1" to "Q")))
+        assertEquals(setOf("P1", "Q1"), shownStops(route, calls, emptyMap()))
+        assertEquals(setOf("P1", "P2", "Q1"), shownStops(route, calls, mapOf(ride to RideLines(listOf(ride, other), listOf(ride)))))
+        // Not yet placed, a bus at a bus station's stands names nothing, as at a pair: the Planner's
+        // may be a stand the line doesn't use, and the trip already asks about the Planner's stops.
+        assertEquals(emptySet<String>(), shownStops(route, emptyMap(), emptyMap()))
         // A bus at a pair not yet placed names nothing at either end: the trip already asks about
         // its pair's poles and the Planner's stops.
         val paired = ride.copy(fromArea = "490GP")

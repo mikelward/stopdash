@@ -621,12 +621,7 @@ class TripViewModel(
             val now = clock()
             // A departure source changed while this refresh's arrivals are out: they're from the old one.
             val source = sourceGeneration
-            // A stop not fetched since the last pull is fetched, however recent: the rider asked for the
-            // latest. The pull is the wall clock's, a fetch the steady clock's ([SteadyClock.toWall]).
-            val since = pulledAt
-            val stops = stopsOf(routes).filter { id ->
-                _state.value.live[id]?.let { !recentEnough(it, now) || (since != null && SteadyClock.toWall(it.fetchedAt).isBefore(since)) } ?: true
-            }
+            val stops = stopsOf(routes).filter { needsFetch(it, now) }
             // And the other lines at the rides' boarding stops ([rideLineIds]), in the same request: one
             // of them times a ride only once it's checked as running ([rideTrains]). Only the plan's own
             // lines count toward the trip's "couldn't check" note.
@@ -690,6 +685,14 @@ class TripViewModel(
         }
     }
 
+    // Whether stop [id]'s arrivals are to be asked for: none held, failed, or past [ArrivalsCache.TTL]
+    // ([recentEnough]); or not fetched since the last pull, however recent, as the rider asked for the
+    // latest. The pull is the wall clock's, a fetch the steady clock's ([SteadyClock.toWall]).
+    private fun needsFetch(id: String, now: Instant): Boolean {
+        val since = pulledAt
+        return _state.value.live[id]?.let { !recentEnough(it, now) || (since != null && SteadyClock.toWall(it.fetchedAt).isBefore(since)) } ?: true
+    }
+
     // [live] with each of [routes]' boarding stops whose shared arrivals are newer than those held.
     // Fetched within [ArrivalsCache.TTL] of [now], and not failed: not asked for again. Dated after now
     // (the clock set back) is an age that can't be told, so asked for again.
@@ -723,9 +726,41 @@ class TripViewModel(
         _state.update { it.copy(areaPoles = areaPoles.toMap()) }
     }
 
-    // The stops [routes] board at: each ride's own, and every pole of a bus stop pair it boards at.
+    // The stops [routes] board at: each ride's own, every pole of a bus stop pair it boards at, and
+    // each stand the screen boards a bus at in place of the Planner's ([boardAt]).
     private fun stopsOf(routes: List<TripRoute>): List<String> =
-        (boardingStops(routes) + routes.flatMap { route -> route.rides.flatMap { areaPoles[it.fromArea].orEmpty() } }).distinct()
+        (boardingStops(routes) + routes.flatMap { route -> route.rides.flatMap { areaPoles[it.fromArea].orEmpty() } } + placedStands).distinct()
+
+    // The stands the screen boards buses at in place of the one the Planner named ([boardAt]).
+    private var placed: Set<PlacedStand> = emptySet()
+    private val placedStands: Set<String> get() = placed.mapTo(HashSet()) { it.standId }
+
+    // Every placing the screen has handed over to this trip, still shown or not ([boardAt]).
+    private val placedEver = HashSet<PlacedStand>()
+
+    /**
+     * The bus stations' stands the screen boards buses at in place of the one the Planner named
+     * ([PlacedStand]: it can name a stand the line doesn't use, so no bus of the line is ever
+     * predicted there). Fetched with the routes' own boarding stops on every refresh ([stopsOf]); the
+     * screen moves the leg to a stand only once it has been fetched ([onPoles]).
+     *
+     * A stand the screen starts boarding at (new, or back after its route left the shown few) is
+     * fetched by a refresh of its own when its arrivals aren't current ([needsFetch], as a refresh
+     * judges every stop), so every write to the live times comes from one refresh at a time and the
+     * last one asked has the last word (Codex, #398): a refresh under way runs once more when it
+     * ends. A stand already current, or handed over again unchanged, asks for nothing, so the screen
+     * handing them over on each change to what it shows can't loop refreshes: at most one per stand
+     * each time its arrivals go stale. Each placing is logged once (stop and line ids only), and a
+     * failed fetch of its stand by [fetchStop].
+     */
+    fun boardAt(stands: Set<PlacedStand>) {
+        val active = placedStands
+        placed = stands
+        stands.filter { placedEver.add(it) }
+            .forEach { warn("trip bus ${it.lineId} boards at the route's stand ${it.standId}, not the Planner's ${it.plannerId}") }
+        val now = clock()
+        if (stands.any { it.standId !in active && needsFetch(it.standId, now) }) refresh()
+    }
 
     private fun cached(routes: List<TripRoute>, live: Map<String, StopLive>): Map<String, StopLive> {
         val now = clock()

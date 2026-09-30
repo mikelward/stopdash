@@ -328,12 +328,17 @@ internal data class PersistedTripLeg(
     // And where it gets off, likewise public.
     val toLat: Double? = null,
     val toLon: Double? = null,
+    // The stops the Planner named, where an end was moved to the one its bus uses.
+    val plannedFromId: String = "",
+    val plannedToId: String = "",
 ) {
     fun toLeg() = TripLeg(
         mode, lineId, lineName, fromId, fromName, toId, toName, Instant.parse(departure), Instant.parse(arrival),
         path, pathNames, Duration.ofSeconds(changeAfterSeconds), headings, fromArea, toArea,
         fromAt = if (fromLat != null && fromLon != null) Coordinates(fromLat, fromLon) else null,
         toAt = if (toLat != null && toLon != null) Coordinates(toLat, toLon) else null,
+        plannedFromId = plannedFromId,
+        plannedToId = plannedToId,
     )
 
     companion object {
@@ -341,6 +346,7 @@ internal data class PersistedTripLeg(
             leg.mode, leg.lineId, leg.lineName, leg.fromId, leg.fromName, leg.toId, leg.toName,
             leg.departure.toString(), leg.arrival.toString(), leg.path, leg.pathNames, leg.changeAfter.seconds, leg.headings,
             leg.fromArea, leg.toArea, leg.fromAt?.latitude, leg.fromAt?.longitude, leg.toAt?.latitude, leg.toAt?.longitude,
+            leg.plannedFromId, leg.plannedToId,
         )
     }
 }
