@@ -32,14 +32,22 @@ class WatchHomeActivity : ComponentActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             store.load()
             WatchRefresh.resume(this@WatchHomeActivity)
-            val topology = RouteTopologyStore.load(this@WatchHomeActivity)
+            // The watch's own asset, read once here off the main thread; each envelope's route lines
+            // go over it below.
+            RouteTopologyStore.bundled(this@WatchHomeActivity)
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 // Each envelope that arrives restarts the ticker from it; leaving the foreground
                 // cancels it and clears the frame, so coming back never shows the last live
                 // countdowns before the ticker has recomputed them from now.
                 launch {
                     try {
-                        store.state.collectLatest { WatchAppFrames.tick(it, topology, Instant::now, { r -> store.current() ?: r.envelope }) { f -> frame.value = f } }
+                        store.state.collectLatest { received ->
+                            val topology = RouteTopologyStore.over(
+                                this@WatchHomeActivity,
+                                (received as? WatchReceived.Received)?.envelope?.routePatterns().orEmpty(),
+                            )
+                            WatchAppFrames.tick(received, topology, Instant::now, { r -> store.current() ?: r.envelope }) { f -> frame.value = f }
+                        }
                     } finally {
                         frame.value = null
                     }

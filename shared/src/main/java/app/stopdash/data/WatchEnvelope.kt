@@ -4,6 +4,7 @@ import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.RoutePattern
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.SteadyClock
@@ -48,7 +49,16 @@ data class WatchEnvelope(
      *  service as the widget does and withholds the mark at the same threshold. Additive: an older
      *  watch app ignores it and shows what it did before. */
     val lineStatuses: List<PersistedLineStatus> = emptyList(),
+    /** TfL's current route patterns for the branching lines where a refresh on the phone took them
+     *  over its bundled ones ([RouteTopologyStore.refreshedLines]); usually none. The watch puts them
+     *  over its own asset where they still cover it ([RouteTopologyStore.over]), so it groups and
+     *  labels branching rows as the widget does. TfL's public data, nothing about the user. Additive:
+     *  an older watch app ignores it and groups by its own asset. */
+    val routeLines: Map<String, List<PersistedRoutePattern>> = emptyMap(),
 ) {
+    /** [routeLines] as the topology reads them, a line with a pattern that doesn't read left out. */
+    fun routePatterns(): Map<String, List<RoutePattern>> = routeLines.toPatterns()
+
     /** The disruptions to mark at [now], as [DeparturesSnapshot.liveLineStatuses] judges them. */
     fun liveLineStatuses(now: Instant): Map<String, LineStatus> =
         lineStatuses.map { it.toDomain() }
@@ -183,6 +193,8 @@ object WatchEnvelopes {
         starred: Set<StarredRow>,
         selected: Set<StarredRow> = emptySet(),
         hiddenModes: Set<String> = emptySet(),
+        // The phone's refreshed route lines ([RouteTopologyStore.refreshedLines]).
+        routeLines: Map<String, List<RoutePattern>> = emptyMap(),
         threshold: Duration = Staleness.THRESHOLD,
         perGroupCap: Int = PER_GROUP_CAP,
         dataItemBudget: Int = DATA_ITEM_BUDGET_BYTES,
@@ -235,12 +247,15 @@ object WatchEnvelopes {
             val lines = linesOfPersisted(kept)
             return allStatuses.filter { it.lineId in lines }
         }
+        // Kept whatever stops go: a few KB at most, and only while TfL's routes differ from the asset.
+        val lines = routeLines.toSortedMap().mapValues { (_, patterns) -> patterns.map(PersistedRoutePattern::of) }
         var envelope = WatchEnvelope(
             stops = stops,
             starred = keysFor(stops),
             missingStopIds = missing,
             hiddenModes = hidden,
             lineStatuses = statusesFor(stops),
+            routeLines = lines,
         )
         var bytes = encode(envelope)
         if (bytes.size <= dataItemBudget) return WatchPayload(envelope, bytes, asAsset = false)
@@ -264,6 +279,7 @@ object WatchEnvelopes {
                 missingStopIds = missingFlag,
                 hiddenModes = hidden,
                 lineStatuses = statusesFor(kept),
+                routeLines = lines,
             )
             bytes = encode(envelope)
         }

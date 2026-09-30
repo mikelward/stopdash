@@ -9,6 +9,7 @@ import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.data.WatchComplicationRows
 import app.stopdash.data.DataStoreStarredRowsStore
 import app.stopdash.data.HiddenModesSetting
+import app.stopdash.data.RouteTopologyStore
 import app.stopdash.data.WatchPayload
 import app.stopdash.data.WatchSyncContract
 import app.stopdash.domain.DeparturesSnapshot
@@ -40,6 +41,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 
 /** The Wearable Data Layer as a [WatchChannel]. */
 class DataLayerWatchChannel(context: Context, private val generations: WriteGenerations) : WatchChannel {
@@ -267,6 +269,9 @@ object WatchSync {
                 StopdashDebugLog.warning("watch: stored state unreadable: %s", e::class.simpleName)
                 return@withLock WatchPublisher.Outcome.Failed
             }
+            // The branching lines a refresh took over the asset (usually none), which the widget
+            // groups by here: the watch groups by them too. A file read on this process's first call.
+            val routeLines = withContext(Dispatchers.IO) { RouteTopologyStore.refreshedLines(appContext) }
             // The same in-process setting the widget reads, so the watch leaves out what it does;
             // and the rows the watch's complications are set to, kept in the envelope after stars.
             publisher(appContext).publish(
@@ -274,6 +279,7 @@ object WatchSync {
                 stars,
                 HiddenModesSetting.loaded(),
                 selected = ComplicationRowsStore.load(appContext),
+                routeLines = routeLines,
                 force = force,
                 emptyIfNone = emptyIfNone,
             )
@@ -332,7 +338,13 @@ object WatchSync {
             // keeps its last envelope meanwhile, which ages to stale on its own clock.
             WatchPublisher.keepCollecting(log = { StopdashDebugLog.warning("watch: %s", it) }) {
                 // Each settled change is a cue; the publish itself reads the latest stored state.
-                WatchPublisher.requests(snapshots(appContext), starred(appContext), HiddenModesSetting.changes, dismissedChanges(appContext)).collect {
+                WatchPublisher.requests(
+                    snapshots(appContext),
+                    starred(appContext),
+                    HiddenModesSetting.changes,
+                    dismissedChanges(appContext),
+                    RouteTopologyStore.refreshedChanges,
+                ).collect {
                     if (publishCurrent(appContext, force = false) == WatchPublisher.Outcome.Failed) {
                         WatchPublishWorker.enqueue(appContext, force = false)
                     }

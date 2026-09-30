@@ -66,7 +66,9 @@ class StopDashTileService : TileService() {
                     val device = requestParams.deviceConfiguration
                     val screen = TileScreen(device.screenHeightDp, device.fontScale).takeIf { it.heightDp > 0 }
                     val now = Instant.now()
-                    val schedule = TileTimeline.schedule(envelope, now, RouteTopologyStore.load(this), screen)
+                    // The watch's asset with the phone's refreshed route lines over it.
+                    val topology = RouteTopologyStore.over(this, envelope?.routePatterns().orEmpty())
+                    val schedule = TileTimeline.schedule(envelope, now, topology, screen)
                     val notices = RefreshPolicy.notices(WatchRefresh.state.value, now)
                     val timeline = TimelineBuilders.Timeline.Builder()
                     for (entry in TileTimeline.withNotice(schedule.entries, notices)) {

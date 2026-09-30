@@ -306,10 +306,21 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       a widget-only process (the app not opened since a restart) and the next start's first frame
       group as the last refresh did, with no request. A line today's refresh can't read keeps what
       the last one took, rather than dropping back to the asset.
-- [ ] **The refreshed route topology on the watch.** The watch still reads its own bundled asset.
-      Send the phone's differing lines in the envelope (usually none, so no cost), and put them
-      over the watch's asset with `withLive` wherever it reads the topology (home, tile,
-      complication).
+- [x] **The refreshed route topology on the watch.** The envelope carries the phone's
+      refreshed lines (`routeLines`, those differing from the asset: usually none, so no cost),
+      and the watch puts them over its own asset with `withLive` (`RouteTopologyStore.over`)
+      wherever it reads the topology (home, tile, complication). Additive: an older watch app
+      ignores the field and groups by its own asset.
+- [ ] **The watch's route topology when the phone and watch ship different assets** (Codex on
+      #433; a design change, so the maintainer's call). The envelope carries only the lines where
+      the phone's topology differs from the *phone's* asset, so a watch on another build whose asset
+      differs keeps its own for the lines the phone's matches, and groups them unlike the widget.
+      Rare — it needs a regenerated asset and the two apps on different versions — and older than the
+      refresh, which only narrowed it. Proposed: the phone's whole topology in use (~9 KB) as its own
+      Data Layer item, put on each publish but synced only when it changes (unchanged bytes don't
+      sync), kept by the watch and grouped by as the widget's; a topology change would then be a
+      sync of its own rather than an envelope cue. The other option, the whole topology in every
+      envelope, costs ~9 KB on each publish (every refresh while the app is open).
 - [ ] **Branch truncation follow-up: a fuller branch form under pressure** (maintainer,
       2026-09-19). **Superseded design (2026-09-22):** the original ask below — abbreviate across
       both halves, keep one full word in each — was replaced, ultimately by the floor-and-ellipsis

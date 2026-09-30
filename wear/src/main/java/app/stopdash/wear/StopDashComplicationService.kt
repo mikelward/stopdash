@@ -52,7 +52,9 @@ class StopDashComplicationService : SuspendingTimelineComplicationDataSourceServ
                 ComplicationSelections.clearIfGone(context, id, envelope)
                 // Cheap when unchanged, and heals a sync that failed.
                 ComplicationSelections.sync(context)
-                Triple(envelope, RouteTopologyStore.load(context), ComplicationSelections.get(context, id))
+                // The watch's asset with the phone's refreshed route lines over it.
+                val topology = RouteTopologyStore.over(context, envelope?.routePatterns().orEmpty())
+                Triple(envelope, topology, ComplicationSelections.get(context, id))
             }
         } catch (e: CancellationException) {
             throw e

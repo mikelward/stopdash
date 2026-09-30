@@ -168,4 +168,43 @@ class RouteTopologyStoreCacheTest {
         assertEquals(bundled.patternsByLine, RouteTopologyStore.load(context).patternsByLine)
         assertFalse(liveFile.exists())
     }
+
+    @Test
+    fun `the refreshed lines are the ones that differ from the asset, and each change is announced`() {
+        val bundled = RouteTopologyStore.bundled(context)
+        assertEquals(emptyMap<String, List<RoutePattern>>(), RouteTopologyStore.refreshedLines(context))
+        val northern = extendedNorthern(bundled)
+        RouteTopologyStore.use(context, mapOf("northern" to northern, "central" to bundled.patternsByLine.getValue("central")))
+        assertEquals(mapOf("northern" to northern), RouteTopologyStore.refreshedLines(context))
+        assertEquals(mapOf("northern" to northern), RouteTopologyStore.refreshedChanges.value)
+        // Back to the asset's routes: announced as none.
+        RouteTopologyStore.use(context, mapOf("northern" to bundled.patternsByLine.getValue("northern")))
+        assertEquals(emptyMap<String, List<RoutePattern>>(), RouteTopologyStore.refreshedChanges.value)
+    }
+
+    @Test
+    fun `a new process announces what it loaded`() {
+        val bundled = RouteTopologyStore.bundled(context)
+        val northern = extendedNorthern(bundled)
+        RouteTopologyStore.use(context, mapOf("northern" to northern))
+        RouteTopologyStore.forget()
+        assertEquals(emptyMap<String, List<RoutePattern>>(), RouteTopologyStore.refreshedChanges.value)
+        RouteTopologyStore.load(context)
+        assertEquals(mapOf("northern" to northern), RouteTopologyStore.refreshedChanges.value)
+    }
+
+    @Test
+    fun `the watch puts the phone's lines over its asset where they still cover it`() {
+        val bundled = RouteTopologyStore.bundled(context)
+        assertSame(bundled, RouteTopologyStore.over(context, emptyMap()))
+        val northern = extendedNorthern(bundled)
+        val over = RouteTopologyStore.over(context, mapOf("northern" to northern))
+        assertEquals(northern, over.patternsByLine["northern"])
+        assertEquals(bundled.patternsByLine["central"], over.patternsByLine["central"])
+        // The same lines again: the one already built.
+        assertSame(over, RouteTopologyStore.over(context, mapOf("northern" to northern)))
+        // Lines that don't run the watch's own routes (a phone on another build): its asset stands.
+        val short = mapOf("northern" to bundled.patternsByLine.getValue("northern").drop(1))
+        assertEquals(bundled.patternsByLine, RouteTopologyStore.over(context, short).patternsByLine)
+    }
 }

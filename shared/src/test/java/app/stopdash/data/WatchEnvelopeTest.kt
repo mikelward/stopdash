@@ -8,6 +8,7 @@ import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.NoTimes
 import app.stopdash.domain.RailFeed
+import app.stopdash.domain.RoutePattern
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopArrivals
@@ -382,6 +383,54 @@ class WatchEnvelopeTest {
         val snapshot = DeparturesSnapshot(listOf(stop("940GEXAMPLE1", listOf(departure(2)))), now)
         val payload = WatchEnvelopes.build(snapshot, emptySet(), hiddenModes = setOf("tube", "bus"), now = now)
         assertEquals(listOf("bus", "tube"), decoded(payload).hiddenModes)
+    }
+
+    private val bank = RoutePattern("Bank", listOf("940GA", "940GB", "940GC"), "Edgware", "Morden")
+    private val charingX = RoutePattern("Charing X", listOf("940GA", "940GX", "940GC"), "Edgware", "Morden")
+
+    @Test
+    fun `the phone's refreshed route lines travel with it, and read back as patterns`() {
+        val snapshot = DeparturesSnapshot(listOf(stop("940GEXAMPLE1", listOf(departure(2)))), now)
+        val envelope = decoded(WatchEnvelopes.build(snapshot, emptySet(), routeLines = mapOf("northern" to listOf(bank, charingX)), now = now))
+        assertEquals(mapOf("northern" to listOf(bank, charingX)), envelope.routePatterns())
+        // None by default, as when TfL's routes match the asset: nothing extra on the wire.
+        assertEquals(emptyMap<String, List<RoutePattern>>(), decoded(WatchEnvelopes.build(snapshot, emptySet(), now = now)).routeLines)
+    }
+
+    @Test
+    fun `the route lines encode the same whatever order they came in, so an unchanged set isn't republished`() {
+        val snapshot = DeparturesSnapshot(listOf(stop("940GEXAMPLE1", listOf(departure(2)))), now)
+        val central = listOf(RoutePattern(null, listOf("940GD", "940GE"), "Ealing Broadway", "Epping"))
+        val one = linkedMapOf("northern" to listOf(bank), "central" to central)
+        val other = linkedMapOf("central" to central, "northern" to listOf(bank))
+        assertEquals(
+            WatchEnvelopes.build(snapshot, emptySet(), routeLines = one, now = now).bytes.decodeToString(),
+            WatchEnvelopes.build(snapshot, emptySet(), routeLines = other, now = now).bytes.decodeToString(),
+        )
+    }
+
+    @Test
+    fun `the route lines stay when stops are dropped past the ceiling`() {
+        val stops = listOf(stop("940GONE", listOf(departure(1))), stop("940GTWO", listOf(departure(5))))
+        val snapshot = DeparturesSnapshot(stops, now)
+        val lines = mapOf("northern" to listOf(bank, charingX))
+        val full = WatchEnvelopes.build(snapshot, emptySet(), routeLines = lines, now = now).bytes.size
+        val envelope = decoded(WatchEnvelopes.build(snapshot, emptySet(), routeLines = lines, dataItemBudget = 10, transferCeiling = full - 1, now = now))
+        assertEquals(1, envelope.omittedStops)
+        assertEquals(lines, envelope.routePatterns())
+    }
+
+    @Test
+    fun `a route line with a pattern that doesn't read is left out, and an older envelope has none`() {
+        val envelope = WatchEnvelope(
+            routeLines = mapOf(
+                "northern" to listOf(PersistedRoutePattern.of(bank), PersistedRoutePattern("Bank", listOf("940GA"), "Edgware", "Morden")),
+                "central" to listOf(PersistedRoutePattern(null, listOf("940GD", "940GE"), "Ealing Broadway", "Epping")),
+            ),
+        )
+        assertEquals(setOf("central"), envelope.routePatterns().keys)
+        val older = """{"version":${WatchEnvelope.CURRENT_VERSION},"stops":[]}""".encodeToByteArray()
+        assertEquals(emptyMap<String, List<RoutePattern>>(), (WatchEnvelopes.decode(older) as WatchDecode.Ok).envelope.routePatterns())
     }
 
     @Test
