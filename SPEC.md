@@ -628,7 +628,9 @@ or cutting back a route keeps the bundled line, since a missing route could make
 look single-path. The refresh adds no line the bundled data doesn't model. The lines it took are
 kept on the device (the cache directory, public route data only), so the widget's process and the
 next start group the same way without asking TfL, checked against the bundled data again in case a
-newer build ships different routes; a line a refresh can't read keeps what the last one took. Until
+newer build ships different routes; a line a refresh can't read keeps what the last one took. The
+phone sends the watch the lines that differ from its bundled data (usually none), and the watch puts
+them over its own the same way, so it groups as the widget does. Until
 a refresh has taken a line, or wherever it can't be had, the bundled data stands. Incomplete or
 stale data degrades to "show what TfL said", never to a confident wrong merge.
 

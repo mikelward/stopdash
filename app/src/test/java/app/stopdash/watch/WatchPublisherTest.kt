@@ -8,6 +8,7 @@ import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.Dismissals
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.RoutePattern
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
 import java.io.IOException
@@ -86,6 +87,17 @@ class WatchPublisherTest {
         val publisher = WatchPublisher(channel, FakeMarker(), logged::add) { now }
         publisher.publish(snapshot(), emptySet())
         assertEquals(WatchPublisher.Outcome.Published, publisher.publish(snapshot(), emptySet(), hiddenModes = setOf("bus")))
+    }
+
+    @Test
+    fun `a change to the refreshed route lines is a change, and they reach the watch`() = runTest {
+        val channel = FakeChannel()
+        val publisher = WatchPublisher(channel, FakeMarker(), logged::add) { now }
+        publisher.publish(snapshot(), emptySet())
+        val lines = mapOf("northern" to listOf(RoutePattern("Bank", listOf("940GA", "940GB"), "Edgware", "Morden")))
+        assertEquals(WatchPublisher.Outcome.Published, publisher.publish(snapshot(), emptySet(), routeLines = lines))
+        assertEquals(lines, (WatchEnvelopes.decode(channel.sent.last().bytes) as WatchDecode.Ok).envelope.routePatterns())
+        assertEquals(WatchPublisher.Outcome.Unchanged, publisher.publish(snapshot(), emptySet(), routeLines = lines))
     }
 
     @Test
@@ -182,6 +194,25 @@ class WatchPublisherTest {
         dismissed.value = Dismissals(setOf(DismissedAlert.ofLineStatus(LineStatus("victoria", 6, "Severe Delays"))))
         advanceTimeBy(2_001)
         assertEquals(2, requests.size)
+        job.cancel()
+    }
+
+    @Test
+    fun `a refresh that changes the route lines is a request, with nothing else moving`() = runTest {
+        val snapshots = MutableStateFlow<DeparturesSnapshot?>(snapshot(minutes = 1))
+        val stars = MutableStateFlow<Set<StarredRow>>(emptySet())
+        val routeLines = MutableStateFlow<Map<String, List<RoutePattern>>>(emptyMap())
+        val requests = mutableListOf<Pair<DeparturesSnapshot?, Set<StarredRow>>>()
+        val job = launch { WatchPublisher.requests(snapshots, stars, routeLines = routeLines, window = 2.seconds).collect { requests += it } }
+        advanceTimeBy(2_001)
+        assertEquals(1, requests.size)
+        routeLines.value = mapOf("northern" to listOf(RoutePattern("Bank", listOf("940GA", "940GB"), "Edgware", "Morden")))
+        advanceTimeBy(2_001)
+        assertEquals(2, requests.size)
+        // Cleared back to the asset: a cue too, so the watch drops them.
+        routeLines.value = emptyMap()
+        advanceTimeBy(2_001)
+        assertEquals(3, requests.size)
         job.cancel()
     }
 

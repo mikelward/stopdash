@@ -4,6 +4,7 @@ import app.stopdash.data.WatchEnvelopes
 import app.stopdash.data.WatchPayload
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.Dismissals
+import app.stopdash.domain.RoutePattern
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.SteadyClock
 import java.security.MessageDigest
@@ -73,6 +74,8 @@ class WatchPublisher(
         starred: Set<StarredRow>,
         hiddenModes: Set<String> = emptySet(),
         selected: Set<StarredRow> = emptySet(),
+        // The route lines a refresh took over the asset, for the watch to group by as the widget does.
+        routeLines: Map<String, List<RoutePattern>> = emptyMap(),
         force: Boolean = false,
         emptyIfNone: Boolean = false,
     ): Outcome {
@@ -80,7 +83,7 @@ class WatchPublisher(
         return try {
             // Asked first, so a phone with no watch app never builds or hashes an envelope.
             if (!channel.watchInstalled()) return Outcome.NoWatch
-            val payload = WatchEnvelopes.build(snapshot, starred, selected = selected, hiddenModes = hiddenModes, now = now())
+            val payload = WatchEnvelopes.build(snapshot, starred, selected = selected, hiddenModes = hiddenModes, routeLines = routeLines, now = now())
             val hash = sha256(payload.bytes)
             if (!force && hash == marker.get()) return Outcome.Unchanged
             channel.put(payload)
@@ -126,9 +129,10 @@ class WatchPublisher(
             MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
         /**
-         * One publish request per settled change to the stored [snapshots], the [starred] rows or
-         * the [hiddenModes]: every write, from any writer, with bursts coalesced to the latest inside
-         * [window]. The first value is the state at start, which the durable marker compares against.
+         * One publish request per settled change to the stored [snapshots], the [starred] rows, the
+         * [hiddenModes], the [dismissed] alerts or the refreshed [routeLines]: every write, from any
+         * writer, with bursts coalesced to the latest inside [window]. The first value is the state
+         * at start, which the durable marker compares against.
          */
         @OptIn(FlowPreview::class)
         fun requests(
@@ -138,8 +142,11 @@ class WatchPublisher(
             // The alerts the user dismissed: a change is a cue too, since the envelope is built with
             // them applied ([DeparturesSnapshot.withDismissals]).
             dismissed: Flow<Dismissals> = flowOf(Dismissals.NONE),
+            // The route lines a refresh took over the asset: the envelope carries them, so a refresh
+            // that changes them is a cue even when nothing else moves.
+            routeLines: Flow<Map<String, List<RoutePattern>>> = flowOf(emptyMap()),
             window: Duration = COALESCE,
         ): Flow<Pair<DeparturesSnapshot?, Set<StarredRow>>> =
-            combine(snapshots, starred, hiddenModes, dismissed) { snapshot, stars, _, _ -> snapshot to stars }.debounce(window)
+            combine(snapshots, starred, hiddenModes, dismissed, routeLines) { snapshot, stars, _, _, _ -> snapshot to stars }.debounce(window)
     }
 }

@@ -148,6 +148,13 @@ the watch app ships would break pairing between old and new installs.
     no journey card to show them twice.
   - It adds the starred-row keys (below) and its own format version, so an older watch app can
     refuse a newer phone's snapshot rather than misread it.
+  - And the phone's **refreshed route lines** (`routeLines`): the branching lines where a refresh
+    took TfL's current routes over the bundled topology (SPEC *Branch merging*), usually none. The
+    watch puts them over its own bundled asset with the same `withLive` check
+    (`RouteTopologyStore.over`), so a line extended since the build is grouped on the watch as the
+    widget groups it, and a phone on a different build than the watch can't hand it routes its own
+    asset doesn't agree with. They're kept whatever stops are dropped past the ceiling (a few KB at
+    most), and sorted so an unchanged set encodes the same and doesn't republish.
 - **Scope:** a **bounded superset** of the widget's stops and their rows, not just the handful
   the tile shows at first. It's enough for every watch surface:
   - the watch app's scrolling list,

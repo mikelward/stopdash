@@ -8,6 +8,9 @@ import app.stopdash.domain.withLive
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -51,6 +54,18 @@ object RouteTopologyStore {
 
     private val fileLock = Any()
 
+    private val refreshed = MutableStateFlow<Map<String, List<RoutePattern>>>(emptyMap())
+
+    /**
+     * [refreshedLines] as they change in this process: set by [load] and each [use], so the phone's
+     * watch sync can republish when a refresh changes what the watch should group by.
+     */
+    val refreshedChanges: StateFlow<Map<String, List<RoutePattern>>> = refreshed.asStateFlow()
+
+    // The last topology [over] built, and the lines it was built from.
+    @Volatile
+    private var lastOver: Pair<Map<String, List<RoutePattern>>, RouteTopology>? = null
+
     /**
      * The topology if it is **already parsed and cached**, else [RouteTopology.EMPTY] — a
      * synchronous, IO-free peek. Once the process has loaded the asset (via [load]) this returns
@@ -69,9 +84,13 @@ object RouteTopologyStore {
      */
     fun load(context: Context): RouteTopology {
         cached?.let { return it }
-        val topology = bundled(context).withLive(stored(context))
+        val bundled = bundled(context)
+        val topology = bundled.withLive(stored(context))
         // A refresh that landed while the files were read stays in place.
-        return cached ?: topology.also { cached = it }
+        return cached ?: topology.also {
+            cached = it
+            refreshed.value = differing(it, bundled)
+        }
     }
 
     /**
@@ -105,11 +124,34 @@ object RouteTopologyStore {
         val bundled = bundled(context)
         val before = stored(context)
         val topology = bundled.withLive(before + current)
-        val differing = topology.patternsByLine.filter { (lineId, patterns) -> patterns != bundled.patternsByLine[lineId] }
+        val differing = differing(topology, bundled)
         if (differing != before) save(context, differing)
         cached = topology
+        refreshed.value = differing
         topology
     }
+
+    /**
+     * The lines of the topology in use that differ from the asset: TfL's current patterns where a
+     * refresh took them. Usually none. What the phone sends the watch ([WatchEnvelope.routeLines]).
+     * Blocking file IO on a process's first read: call off the main thread.
+     */
+    fun refreshedLines(context: Context): Map<String, List<RoutePattern>> = differing(load(context), bundled(context))
+
+    /**
+     * The asset with [lines] over it where they still cover it ([withLive]): what the watch groups
+     * by, from the lines the phone sent ([refreshedLines]), checked against the watch's own asset.
+     * The last one built is kept, so each render of the same envelope doesn't build it again.
+     */
+    fun over(context: Context, lines: Map<String, List<RoutePattern>>): RouteTopology {
+        val bundled = bundled(context)
+        if (lines.isEmpty()) return bundled
+        lastOver?.let { (built, topology) -> if (built == lines) return topology }
+        return bundled.withLive(lines).also { lastOver = lines to it }
+    }
+
+    private fun differing(topology: RouteTopology, bundled: RouteTopology): Map<String, List<RoutePattern>> =
+        topology.patternsByLine.filter { (lineId, patterns) -> patterns != bundled.patternsByLine[lineId] }
 
     // What [LIVE_FILE] holds, read once; empty when there's none or it can't be read.
     private fun stored(context: Context): Map<String, List<RoutePattern>> {
@@ -149,7 +191,7 @@ object RouteTopologyStore {
             if (lines.isEmpty()) {
                 if (!file.exists() || file.delete()) stored = lines else Log.w("StopDash.Topology", "refreshed route topology not cleared")
             } else {
-                tmp.writeText(json.encodeToString(TopologyFile(CURRENT_VERSION, lines.mapValues { (_, patterns) -> patterns.map(PatternDto::of) })))
+                tmp.writeText(json.encodeToString(TopologyFile(CURRENT_VERSION, lines.mapValues { (_, patterns) -> patterns.map(PersistedRoutePattern::of) })))
                 // Replace in one step, so a reader never sees a half-written file.
                 if (tmp.renameTo(file)) stored = lines else Log.w("StopDash.Topology", "refreshed route topology not saved: rename failed")
             }
@@ -164,6 +206,8 @@ object RouteTopologyStore {
     internal fun forget() {
         cached = null
         stored = null
+        lastOver = null
+        refreshed.value = emptyMap()
     }
 
     /**
@@ -199,23 +243,35 @@ object RouteTopologyStore {
     @Serializable
     private data class TopologyFile(
         val version: Int = 0,
-        val lines: Map<String, List<PatternDto>> = emptyMap(),
+        val lines: Map<String, List<PersistedRoutePattern>> = emptyMap(),
     )
+}
 
-    @Serializable
-    private data class PatternDto(
-        val branch: String? = null,
-        val stops: List<String> = emptyList(),
-        val endA: String = "",
-        val endB: String = "",
-    ) {
-        fun toPattern(): RoutePattern? {
-            if (stops.size < 2 || endA.isBlank() || endB.isBlank()) return null
-            return RoutePattern(branch = branch?.ifBlank { null }, stops = stops, endA = endA, endB = endB)
-        }
+/**
+ * A [RoutePattern] as the route topology asset, the refresh the app keeps, and the watch envelope
+ * write it. [toPattern] is null for one too short or missing an end, which the reader then treats
+ * as the whole line unknown ([RouteTopologyStore.parse]).
+ */
+@Serializable
+data class PersistedRoutePattern(
+    val branch: String? = null,
+    val stops: List<String> = emptyList(),
+    val endA: String = "",
+    val endB: String = "",
+) {
+    fun toPattern(): RoutePattern? {
+        if (stops.size < 2 || endA.isBlank() || endB.isBlank()) return null
+        return RoutePattern(branch = branch?.ifBlank { null }, stops = stops, endA = endA, endB = endB)
+    }
 
-        companion object {
-            fun of(pattern: RoutePattern) = PatternDto(pattern.branch, pattern.stops, pattern.endA, pattern.endB)
-        }
+    companion object {
+        fun of(pattern: RoutePattern) = PersistedRoutePattern(pattern.branch, pattern.stops, pattern.endA, pattern.endB)
     }
 }
+
+/** Each line whose patterns all read ([PersistedRoutePattern.toPattern]); a line with one that doesn't is left out. */
+fun Map<String, List<PersistedRoutePattern>>.toPatterns(): Map<String, List<RoutePattern>> =
+    mapNotNull { (lineId, persisted) ->
+        val patterns = persisted.map { it.toPattern() }
+        if (patterns.any { it == null }) null else lineId to patterns.filterNotNull()
+    }.toMap()
