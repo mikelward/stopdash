@@ -481,6 +481,150 @@ class MainViewModelTest {
         assertFalse((vm.state.value as DeparturesUiState.Loaded).statusPending)
     }
 
+    // Stations whose lines the nearby lookup declares, as near-me stops carry them.
+    private val lined = listOf(
+        StopRef("940GZZLUOXC", "Oxford Circus", listOf(LineRef("victoria", "Victoria", "tube"))),
+        StopRef("940GZZLUKSX", "King's Cross St. Pancras", listOf(LineRef("circle", "Circle", "tube"))),
+    )
+
+    /** A client whose [slowStop]'s arrivals wait on [gate], recording each line-status request. */
+    private inner class LinedClient(
+        val slowStop: String,
+        val gate: CompletableDeferred<Unit>,
+        // Each stop's predicted lines; victoria alone when unlisted.
+        val predicted: Map<String, List<String>> = emptyMap(),
+        val statusOf: (String) -> LineStatus = { status(it, LineStatus.GOOD_SERVICE, "Good Service") },
+        val closureFails: Set<String> = emptySet(),
+        val arrivalsFail: Boolean = false,
+        val statusFails: Boolean = false,
+    ) : TflClient {
+        val asked = mutableListOf<Set<String>>()
+
+        override suspend fun arrivals(stopId: String): List<Departure> {
+            if (arrivalsFail) throw TflException.Offline(null)
+            if (stopId == slowStop) gate.await()
+            return predicted[stopId].orEmpty().ifEmpty { listOf("victoria") }.map { departure(it, it, 120) }
+        }
+
+        override suspend fun lineStatuses(lineIds: Collection<String>): List<LineStatus> {
+            asked += lineIds.toSet()
+            if (statusFails) throw TflException.Unreachable("boom", null)
+            return lineIds.map(statusOf)
+        }
+
+        override suspend fun stopDisruptions(stopId: String): List<StopDisruption> {
+            if (stopId in closureFails) throw TflException.Unreachable("boom", null)
+            return emptyList()
+        }
+    }
+
+    @Test
+    fun `a cold load vouches for the declared lines while a stop is still out`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val client = LinedClient(lined[1].id, gate)
+        val vm = MainViewModel(client, lined, clock = { now }, io = dispatcher)
+        advanceUntilIdle()
+
+        val partial = vm.state.value as DeparturesUiState.Loaded
+        assertEquals(listOf(lined[1].id), partial.pendingStops.map { it.id })
+        assertTrue(partial.statusPending)
+        // Every line the stops declare was checked alongside the arrivals, so nothing reads unchecked.
+        assertEquals(listOf(setOf("victoria", "circle")), client.asked)
+        assertFalse(partial.disruptionUnknown)
+        assertFalse(partial.checkFailed)
+        assertEquals(setOf("victoria", "circle"), partial.determinedLineIds)
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+        val done = vm.state.value as DeparturesUiState.Loaded
+        assertFalse(done.disruptionUnknown)
+        assertFalse(done.statusPending)
+        // Not asked again once every stop is in: the same one request, only sooner.
+        assertEquals(1, client.asked.size)
+    }
+
+    @Test
+    fun `a disrupted line shows mid-load`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val client = LinedClient(lined[1].id, gate, statusOf = {
+            if (it == "victoria") status(it, 6, "Severe Delays") else status(it, LineStatus.GOOD_SERVICE, "Good Service")
+        })
+        val vm = MainViewModel(client, lined, clock = { now }, io = dispatcher)
+        advanceUntilIdle()
+
+        val partial = vm.state.value as DeparturesUiState.Loaded
+        assertEquals(setOf("victoria"), partial.lineStatuses.keys)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(setOf("victoria"), (vm.state.value as DeparturesUiState.Loaded).lineStatuses.keys)
+    }
+
+    @Test
+    fun `a line only a prediction names is checked once every stop is in`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val client = LinedClient(lined[1].id, gate, predicted = mapOf(lined[0].id to listOf("victoria", "northern")))
+        val vm = MainViewModel(client, lined, clock = { now }, io = dispatcher)
+        advanceUntilIdle()
+
+        // The declared lines are vouched for, but the predicted-only one isn't asked about yet.
+        val partial = vm.state.value as DeparturesUiState.Loaded
+        assertEquals(listOf(setOf("victoria", "circle")), client.asked)
+        assertTrue(partial.disruptionUnknown)
+        assertTrue(partial.statusPending)
+        // Not asked yet, so still being checked rather than failed.
+        assertFalse(partial.checkFailed)
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(listOf(setOf("victoria", "circle"), setOf("northern")), client.asked)
+        assertFalse((vm.state.value as DeparturesUiState.Loaded).disruptionUnknown)
+    }
+
+    @Test
+    fun `a line check that failed mid-load says it couldn't check`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val client = LinedClient(lined[1].id, gate, statusFails = true)
+        val vm = MainViewModel(client, lined, clock = { now }, io = dispatcher)
+        advanceUntilIdle()
+
+        // The request is back, failed, while a stop is still out: not asked again this load.
+        val partial = vm.state.value as DeparturesUiState.Loaded
+        assertTrue(partial.statusPending)
+        assertTrue(partial.disruptionUnknown)
+        assertTrue(partial.checkFailed)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(1, client.asked.size)
+        assertTrue((vm.state.value as DeparturesUiState.Loaded).disruptionUnknown)
+    }
+
+    @Test
+    fun `a stop whose closure check failed still reads unchecked mid-load`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val client = LinedClient(lined[1].id, gate, closureFails = setOf(lined[0].id))
+        val vm = MainViewModel(client, lined, clock = { now }, io = dispatcher)
+        advanceUntilIdle()
+
+        val partial = vm.state.value as DeparturesUiState.Loaded
+        assertTrue(partial.disruptionUnknown)
+        assertEquals(setOf(lined[0].id), partial.stopsDisruptionUnknown)
+        // That check is back and won't be asked again this load: it couldn't check, not checking.
+        assertTrue(partial.checkFailed)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(setOf(lined[0].id), (vm.state.value as DeparturesUiState.Loaded).stopsDisruptionUnknown)
+    }
+
+    @Test
+    fun `a cold load whose every stop fails asks nothing about line status`() = runTest(dispatcher) {
+        val client = LinedClient(lined[1].id, CompletableDeferred(Unit), arrivalsFail = true)
+        val vm = MainViewModel(client, lined, clock = { now }, io = dispatcher)
+        advanceUntilIdle()
+
+        assertEquals(DeparturesUiState.Error(DeparturesUiState.Error.Kind.OFFLINE), vm.state.value)
+        assertTrue(client.asked.isEmpty())
+    }
+
     @Test
     fun `a cold load shows each stop as it lands and saves only once all are in`() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
@@ -491,7 +635,7 @@ class MainViewModelTest {
         val partial = vm.state.value as DeparturesUiState.Loaded
         assertEquals(listOf(seeds[0].id), partial.stops.map { it.stopId })
         assertEquals(listOf(seeds[1].id), partial.pendingStops.map { it.id })
-        // Line status waits for every stop, so it isn't vouched for yet.
+        // These stops declare no lines, so their status waits for every stop and isn't vouched for yet.
         assertTrue(partial.disruptionUnknown)
         assertFalse(partial.partialRefresh)
         assertTrue(store.saves.isEmpty())
@@ -3074,6 +3218,53 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `an opened card still loading whose lines are checked doesn't say it's checking`() {
+        val list = DeparturesUiState.Loaded(stops = listOf(StopArrivals("E", "E", emptyList(), now)), fetchedAt = now)
+        val loading = DeparturesUiState.Loaded(
+            stops = listOf(StopArrivals("MA", "Farther", emptyList(), now)),
+            fetchedAt = now,
+            pendingStops = listOf(StopRef("MB", "Farther")),
+            disruptionUnknown = false,
+            statusPending = true,
+        )
+        val shown = withOpenedFarther(list, listOf(setOf("MA", "MB") to loading))
+        assertTrue(shown.statusPending)
+        assertFalse(shown.disruptionUnknown)
+    }
+
+    @Test
+    fun `an opened card still loading whose check failed says it couldn't check`() {
+        val list = DeparturesUiState.Loaded(stops = listOf(StopArrivals("E", "E", emptyList(), now)), fetchedAt = now)
+        val loading = DeparturesUiState.Loaded(
+            stops = listOf(StopArrivals("MA", "Farther", emptyList(), now)),
+            fetchedAt = now,
+            pendingStops = listOf(StopRef("MB", "Farther")),
+            disruptionUnknown = true,
+            statusPending = true,
+            checkFailed = true,
+        )
+        val shown = withOpenedFarther(list, listOf(setOf("MA", "MB") to loading))
+        assertTrue(shown.statusPending)
+        assertTrue(shown.checkFailed)
+        assertFalse(withOpenedFarther(list, listOf(setOf("MA", "MB") to loading.copy(checkFailed = false))).checkFailed)
+    }
+
+    @Test
+    fun `the list's finished couldn't-check stays that while a card loads`() {
+        val list = DeparturesUiState.Loaded(stops = listOf(StopArrivals("E", "E", emptyList(), now)), fetchedAt = now, disruptionUnknown = true)
+        val loading = DeparturesUiState.Loaded(
+            stops = listOf(StopArrivals("MA", "Farther", emptyList(), now)),
+            fetchedAt = now,
+            pendingStops = listOf(StopRef("MB", "Farther")),
+            disruptionUnknown = true,
+            statusPending = true,
+        )
+        val shown = withOpenedFarther(list, listOf(setOf("MA", "MB") to loading))
+        assertTrue(shown.statusPending)
+        assertTrue(shown.checkFailed)
+    }
+
+    @Test
     fun `an opened card still loading keeps every one of its stops loading`() {
         val list = DeparturesUiState.Loaded(stops = listOf(StopArrivals("E", "E", emptyList(), now)), fetchedAt = now)
         // One of the card's stops is back with nothing running; the other is still out.
@@ -4551,11 +4742,12 @@ class MainViewModelTest {
         val client = ReuseCountingClient()
         val vm = MainViewModel(client, listOf(seeds.first()), clock = { now }, io = dispatcher)
         advanceUntilIdle()
+        val asked = client.statusCalls.size
         vm.setJourneyStops(
             listOf(StopRef(ksxId, "King's Cross St. Pancras", lines = listOf(LineRef("northern", "Northern", "tube")))),
         )
         advanceUntilIdle()
-        assertTrue("northern" in client.statusCalls.last())
+        assertTrue(client.statusCalls.drop(asked).any { "northern" in it })
     }
 
     @Test
@@ -4565,6 +4757,7 @@ class MainViewModelTest {
         advanceUntilIdle()
         vm.setJourneyStops(listOf(StopRef(ksxId, "King's Cross St. Pancras", lines = listOf(LineRef("northern", "Northern", "tube")))))
         advanceUntilIdle()
+        val asked = client.statusCalls.size
         vm.setJourneyStops(
             listOf(
                 StopRef(
@@ -4575,7 +4768,7 @@ class MainViewModelTest {
             ),
         )
         advanceUntilIdle()
-        assertTrue("piccadilly" in client.statusCalls.last())
+        assertTrue(client.statusCalls.drop(asked).any { "piccadilly" in it })
     }
 
     @Test
@@ -4583,9 +4776,10 @@ class MainViewModelTest {
         val client = ReuseCountingClient()
         val vm = MainViewModel(client, listOf(seeds.first()), clock = { now }, io = dispatcher)
         advanceUntilIdle()
+        val asked = client.statusCalls.size
         vm.setJourneyStops(listOf(StopRef(oxcId, "Oxford Circus", lines = listOf(LineRef("central", "Central", "tube")))))
         advanceUntilIdle()
-        assertTrue("central" in client.statusCalls.last())
+        assertTrue(client.statusCalls.drop(asked).any { "central" in it })
     }
 
     @Test
@@ -4598,6 +4792,7 @@ class MainViewModelTest {
         advanceUntilIdle()
         vm.setJourneyStops(listOf(StopRef(ksxId, "King's Cross St. Pancras", lines = listOf(LineRef("northern", "Northern", "tube")))))
         advanceUntilIdle()
+        val asked = client.statusCalls.size
         vm.setJourneyStops(
             listOf(
                 StopRef(
@@ -4609,7 +4804,7 @@ class MainViewModelTest {
         )
         advanceUntilIdle()
         assertEquals(1, client.arrivalCalls[ksxId])
-        assertTrue("piccadilly" in client.statusCalls.last())
+        assertTrue(client.statusCalls.drop(asked).any { "piccadilly" in it })
     }
 
     @Test

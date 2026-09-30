@@ -1534,7 +1534,7 @@ private fun LoadedContent(
             // rather than let the times read as verified-clean (SPEC *Disruptions*).
             // While a cold load is still out, not yet checked rather than couldn't.
             if (state.disruptionUnknown) {
-                Banner(stringResource(if (state.statusPending) R.string.disruptions_checking else R.string.disruptions_unknown))
+                Banner(stringResource(if (state.statusPending && !state.checkFailed) R.string.disruptions_checking else R.string.disruptions_unknown))
             }
             // Starred journeys still show when nothing nearby has departures: their origins can be
             // farther away, and hiding them behind "No departures" would drop live trains.

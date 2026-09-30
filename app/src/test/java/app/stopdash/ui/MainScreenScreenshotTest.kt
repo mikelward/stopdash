@@ -3703,6 +3703,30 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `a load still out whose check failed says it couldn't check`() {
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(
+                            listOf(oneStarrableStop()),
+                            now.minusSeconds(60),
+                            disruptionUnknown = true,
+                            statusPending = true,
+                            checkFailed = true,
+                            pendingStops = listOf(StopRef("940GZZLUESQ", "Euston Square")),
+                        ),
+                        now,
+                        {},
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("Couldn't check for disruptions").assertExists()
+        composeRule.onNodeWithText("Checking for disruptions").assertDoesNotExist()
+    }
+
+    @Test
     fun `the freshness stamp says only how long ago`() {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {

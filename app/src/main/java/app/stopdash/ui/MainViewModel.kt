@@ -699,6 +699,39 @@ class MainViewModel(
     }
 
     /**
+     * One line-status check's outcome ([checkLines]): the verdicts in hand for the lines [asked]
+     * about, whether from the cache or TfL.
+     */
+    private data class LineCheck(
+        // Every line this check was for, whether answered, cached, left out or failed: a later check
+        // in the same batch asks only about the rest.
+        val asked: Set<String>,
+        // The determined statuses (good or disrupted) among [asked].
+        val statuses: List<LineStatus>,
+        // Whether TfL answered a request, even with nothing for any line ([FetchBatch.statusAnswered]).
+        val answered: Boolean,
+        // The requests it sent, for the per-fetch log line.
+        val requests: Int,
+    ) {
+        val determined: Set<String> get() = statuses.mapTo(HashSet()) { it.lineId }
+        val disrupted: Map<String, LineStatus> get() = statuses.filter { it.hasAlerts }.associateBy { it.lineId }
+    }
+
+    /** A cold load so far, as [fetchBatch] reports it to its onProgress while stops are still out. */
+    private data class BatchProgress(
+        // The stops landed (arrivals and closure check both back), or shown from before.
+        val shown: List<StopArrivals>,
+        // The stops still out.
+        val waiting: Set<String>,
+        // Each stop whose arrivals failed, and how, so the screen names it at once.
+        val failed: Map<String, DeparturesUiState.Error.Kind>,
+        // The stops whose own closure check failed, which stay "couldn't check" whatever their lines.
+        val closureUnknown: Set<String>,
+        // The check of the lines the stops declare, once it's back; null while it's out or unsent.
+        val lines: LineCheck?,
+    )
+
+    /**
      * The result of fetching a set of stops: the merged [StopArrivals] and the disruption/freshness
      * flags [refresh] needs to build state and decide whether to persist.
      */
@@ -750,13 +783,11 @@ class MainViewModel(
         // ago (see [recentlyFetched]). Each keeps its own fetchedAt and arrivalsFresh, so its age and
         // "No departures" claim stay honest (SPEC D4); only the line status is re-checked for it.
         reuse: Set<String> = emptySet(),
-        // Called as each stop lands while the rest are still out: the stops so far (arrivals and
-        // closure check both back, merged as below but before the line-status check) and the ids
-        // still waiting, so a cold load shows each stop as it arrives rather than holding the
-        // spinner for the slowest (SPEC *Freshness → Cold load*). Null skips it.
-        // [failed] is each stop whose arrivals have failed so far, and how, so the screen names it
-        // at once rather than leaving it "Loading".
-        onProgress: ((shown: List<StopArrivals>, waiting: Set<String>, failed: Map<String, DeparturesUiState.Error.Kind>) -> Unit)? = null,
+        // Called as each stop lands while the rest are still out, and when the check of the lines
+        // the stops declare comes back ([BatchProgress]), so a cold load shows each stop as it
+        // arrives rather than holding the spinner for the slowest (SPEC *Freshness → Cold load*).
+        // Null skips it.
+        onProgress: ((BatchProgress) -> Unit)? = null,
         // Whether a stop another screen fetched within [ArrivalsCache.TTL] is taken from
         // [sharedArrivals] rather than asked for; false on a pull-to-refresh, which asks afresh.
         useShared: Boolean = true,
@@ -841,7 +872,11 @@ class MainViewModel(
         // Each stop's arrivals taken from [sharedArrivals] (another screen's fetch within the TTL):
         // merged at their own fetch time, not this batch's, so they're never passed off as newer.
         val shared = arrayOfNulls<ArrivalsCache.Entry>(stops.size)
-        val (arrivalResults, disruptionResults) = coroutineScope {
+        // The lines the stops declare, checked alongside their arrivals rather than once the slowest
+        // is back, so a cold load can vouch for them while a stop is still out (SPEC *Freshness →
+        // Cold load*). A line only a prediction names is checked after the merge, below.
+        val declaredLineIds = stops.flatMap { it.lines }.map { it.id }.filterTo(HashSet()) { it.isNotBlank() }
+        val (arrivalResults, disruptionResults, earlyLines) = coroutineScope {
             val arrivals = stops.mapIndexed { i, stop ->
                 val recent = if (!reused(stop)) sharedFetch[stop.id] else null
                 when {
@@ -851,6 +886,19 @@ class MainViewModel(
                         CompletableDeferred(Result.success(recent.departures))
                     }
                     else -> async { runCatchingTfl { withContext(io) { client.arrivals(stop.id) } } }
+                }
+            }
+            // Sent once there's something to show it for — a stop's arrivals back, or a stop shown
+            // from before — and not at all when every stop fails, which shows no line (the same
+            // requests as checking after the merge, only sooner). After the arrivals are launched,
+            // so the departures still tend to go out first.
+            val linesGo = CompletableDeferred<Boolean>()
+            val earlyCheck = async { if (linesGo.await()) checkLines(declaredLineIds, now) else null }
+            when {
+                declaredLineIds.isEmpty() -> linesGo.complete(false)
+                stops.any { prior[it.id] != null } -> linesGo.complete(true)
+                else -> arrivals.filterNotNull().forEach { arrival ->
+                    launch { if (arrival.await().isSuccess) linesGo.complete(true) }
                 }
             }
             // Fetch each stop's disruption independently of its arrivals (a closure, a moved stop),
@@ -921,26 +969,42 @@ class MainViewModel(
                 val landed = arrayOfNulls<StopArrivals>(stops.size)
                 val waiting = HashSet<String>()
                 val failed = LinkedHashMap<String, DeparturesUiState.Error.Kind>()
+                val closureUnknown = HashSet<String>()
+                var lines: LineCheck? = null
+                fun report() = onProgress(BatchProgress(landed.filterNotNull(), waiting.toSet(), failed.toMap(), closureUnknown.toSet(), lines))
                 stops.forEachIndexed { i, stop ->
                     landed[i] = prior[stop.id]
                     if (landed[i] == null) waiting += stop.id
                 }
                 // What's already in hand shows at once, marked still checking — including a batch
                 // that reuses every stop and so has no answer to wait for before its line status.
-                if (landed.any { it != null }) onProgress(landed.filterNotNull(), waiting.toSet(), failed.toMap())
+                if (landed.any { it != null }) report()
+                // The declared lines' verdicts as soon as they're back, so the stops shown stop
+                // reading "checking" without waiting for another to land.
+                launch {
+                    lines = earlyCheck.await() ?: return@launch
+                    report()
+                }
                 stops.forEachIndexed { i, stop ->
                     val arrival = arrivals[i] ?: return@forEachIndexed
                     launch {
                         val departures = arrival.await().getOrElse { e ->
                             waiting -= stop.id
                             failed[stop.id] = kindOf(e)
-                            onProgress(landed.filterNotNull(), waiting.toSet(), failed.toMap())
+                            report()
                             null
                         }
-                        val stopDisruptions = disruptions[i]?.await()?.getOrNull()?.notices
+                        val closure = disruptions[i]?.await()
+                        // Its closure unchecked, the stop can't read as clear of one, as the final pass
+                        // says (SPEC principle 1).
+                        if (closure?.isFailure == true) closureUnknown += stop.id
+                        val stopDisruptions = closure?.getOrNull()?.notices
                         // A stop whose arrivals failed still shows a closure as soon as it's known,
                         // as the final pass does (SPEC *Disruptions*); with none, it stays named failed.
-                        if (departures == null && stopDisruptions.isNullOrEmpty()) return@launch
+                        if (departures == null && stopDisruptions.isNullOrEmpty()) {
+                            if (closure?.isFailure == true) report()
+                            return@launch
+                        }
                         // A disrupted interchange titles its alert by the hub, as the final pass does
                         // (one lookup per hub per batch — [hubOf] — so that pass doesn't ask again).
                         val hub = if (stop.hubId.isNotBlank() && !stopDisruptions.isNullOrEmpty()) hubOf(stop.hubId) else HubInfo()
@@ -963,11 +1027,14 @@ class MainViewModel(
                             freshRailFeed = railFeedOf(stop.id, departures, shared[i]),
                         )
                         waiting -= stop.id
-                        onProgress(landed.filterNotNull(), waiting.toSet(), failed.toMap())
+                        report()
                     }
                 }
             }
-            arrivals.map { it?.await() } to disruptions.map { it?.await() }
+            val arrivalResults = arrivals.map { it?.await() }
+            // No stop's arrivals came back (and none was shown from before): the check isn't sent.
+            linesGo.complete(arrivalResults.any { it?.isSuccess == true })
+            Triple(arrivalResults, disruptions.map { it?.await() }, earlyCheck.await())
         }
 
         // Resolve each interchange once, in parallel, only for a hub with a stop that has a fresh
@@ -1048,21 +1115,21 @@ class MainViewModel(
 
         // Check the status of every line we're about to show, so a disrupted line is
         // marked rather than its countdowns shown as trustworthy (SPEC *Disruptions* /
-        // D3). One batched request, off the arrivals path. The set is the stops'
-        // declared lines PLUS every predicted line: the declared lines cover a
-        // suspended line that returned no predictions (so it can surface as a status
-        // row), and the predicted set catches anything a stop didn't declare. A lookup
-        // that fails leaves the arrivals shown but flags them "status unknown" rather
-        // than passing them off as verified-clean.
+        // D3). The set is the stops' declared lines PLUS every predicted line: the
+        // declared lines cover a suspended line that returned no predictions (so it can
+        // surface as a status row), and the predicted set catches anything a stop didn't
+        // declare. The declared ones were checked alongside the arrivals ([earlyLines]);
+        // only a line a prediction alone names is asked about here. A lookup that fails
+        // leaves the arrivals shown but flags them "status unknown" rather than passing
+        // them off as verified-clean.
         var lineStatuses = emptyMap<String, LineStatus>()
         // The lines TfL returned a status for (good or disrupted).
         var determinedLineIds = emptySet<String>()
-        var statusAnswered = false
-        var lineStatusRequests = 0
+        var lateLines: LineCheck? = null
         if (merged.isNotEmpty()) {
             val predictedLineIds = merged.flatMap { it.departures }.map { it.lineId }
-            val declaredLineIds = merged.flatMap { it.lines }.map { it.id }
-            val lineIds = (predictedLineIds + declaredLineIds)
+            val shownDeclared = merged.flatMap { it.lines }.map { it.id }
+            val lineIds = (predictedLineIds + shownDeclared)
                 .filterTo(mutableSetOf()) { it.isNotBlank() }
             // A departure whose line TfL didn't identify (blank id) can't have its
             // status checked, so its presence alone leaves the disruption state
@@ -1075,91 +1142,15 @@ class MainViewModel(
                 // disruptions" is diagnosable — a count of unidentifiable predictions, no user data.
                 warn("disruption status unknown: $blankLineIdCount prediction(s) had no line id to check")
             }
-            // Lines checked within [lineStatusReuse] keep that verdict; only the rest are asked for.
-            val cachedStatuses = lineIds.mapNotNull { id ->
-                // Not one still waiting on its alerts' directions: asked again, it splits by direction.
-                lineStatusCache[id]?.takeIf { (at, status) -> isWithin(at, now, lineStatusReuse) && !status.awaitingDirections }?.second
-            }
-            // A line TfL left out within the same window isn't asked about again either: it still
-            // reads as unchecked, but asking every cycle would spend the rate budget and the radio
-            // on an answer that just came back empty.
-            val recentlyOmitted = lineIds.filterTo(HashSet()) { id ->
-                lineStatusOmitted[id]?.let { at -> isWithin(at, now, lineStatusReuse) } == true
-            }
-            val toQuery = lineIds - cachedStatuses.mapTo(HashSet()) { it.lineId } - unknownLineIds - recentlyOmitted
-            lineStatusRequests = 0
-            // With nothing left to ask, the cached verdicts stand on their own.
-            if (lineIds.isNotEmpty() && toQuery.isEmpty()) {
-                lineStatuses = cachedStatuses.filter { it.hasAlerts }.associateBy { it.lineId }
-                determinedLineIds = cachedStatuses.mapTo(mutableSetOf()) { it.lineId }
-            }
-            if (toQuery.isNotEmpty()) {
-                try {
-                    // One call per request TfL accepts, each with its own outcome (LineStatusBatch), so
-                    // the stats count only what was sent and one part failing or unknown doesn't
-                    // discard the verdicts the others returned.
-                    val results = LineStatusBatch.request(toQuery) { chunk -> withContext(io) { client.lineStatuses(chunk) } }
-                    lineStatusRequests = results.requests
-                    val fetched = results.answers.flatMap { it.value }
-                    val unknown = results.unknown
-                    val failed = results.failed
-                    // Nothing answered at all: the whole lookup failed, as before it was split.
-                    if (!results.anyAnswered) throw checkNotNull(results.failure)
-                    statusAnswered = true
-                    if (failed.isNotEmpty()) {
-                        // Not answered, so not an omission: those lines read unchecked and are asked
-                        // again next refresh, while the verdicts the other requests returned stand.
-                        warn("line status fetch failed for ${failed.joinToString(",")}: ${results.failure?.let(::reason)}")
-                    }
-                    if (unknown.isNotEmpty()) {
-                        // TfL knows none of these lines: remembered, so a refresh doesn't ask again,
-                        // and marked omitted below like any line asked and left out.
-                        unknownLineIds += unknown
-                        warn("line status: TfL doesn't know line(s) ${unknown.joinToString(",")}; not asked again")
-                    }
-                    // Stamped when TfL answered, not when this batch began: a slow batch neither loses
-                    // the store's newest-wins merge to a check made meanwhile nor saves an answer
-                    // already near its expiry (SPEC D3/D4). By the steady clock, as a fetch is
-                    // ([SteadyClock]).
-                    val answeredAt = SteadyClock.stamp(clock())
-                    // The latest answer for a line replaces the other kind outright, so a clock moved
-                    // back can't leave a future-dated entry outranking it ([widgetLineChecks]).
-                    fetched.forEach {
-                        lineStatusCache[it.lineId] = answeredAt to it
-                        lineStatusOmitted.remove(it.lineId)
-                    }
-                    val statuses = cachedStatuses + fetched
-                    lineStatuses = statuses.filter { it.hasAlerts }.associateBy { it.lineId }
-                    // A line TfL returned no determinable status for is unknown, not
-                    // clean — flag it so those rows aren't shown as verified-clean
-                    // (the client drops such lines, so they're absent here).
-                    val determined = statuses.mapTo(mutableSetOf()) { it.lineId }
-                    determinedLineIds = determined
-                    // Asked and left out: remembered, so the widget's copy of an older verdict for it
-                    // is replaced by "no verdict" rather than kept ([widgetLineChecks]).
-                    toQuery.filterNot { it in determined || it in failed }.forEach {
-                        lineStatusOmitted[it] = answeredAt
-                        lineStatusCache.remove(it)
-                    }
-                    // This refresh's unknown and failed lines were just named above.
-                    val undetermined = lineIds.filterNot { it in determined || it in unknown || it in failed }
-                    if (undetermined.isNotEmpty()) {
-                        // Name the specific lines so a persistent "couldn't check for disruptions" is
-                        // diagnosable — a line id is a canned identifier, not user data (SPEC
-                        // *Privacy*: line ids are allowed in the log).
-                        warn("disruption status unknown: TfL returned no status for line(s) ${undetermined.joinToString(",")}")
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    // Only the cached verdicts are determined, so every line this request was for
-                    // reads undetermined — the flag the callers derive is set (SPEC principle 1).
-                    lineStatuses = cachedStatuses.filter { it.hasAlerts }.associateBy { it.lineId }
-                    determinedLineIds = cachedStatuses.mapTo(mutableSetOf()) { it.lineId }
-                    warn("line status fetch failed for ${toQuery.joinToString(",")}: ${reason(e)}")
-                }
-            }
+            val rest = lineIds - earlyLines?.asked.orEmpty()
+            if (rest.isNotEmpty()) lateLines = checkLines(rest, now)
+            // Only the lines shown: the early check can have covered a stop that then showed nothing.
+            val statuses = listOfNotNull(earlyLines, lateLines).flatMap { it.statuses }.filter { it.lineId in lineIds }
+            lineStatuses = statuses.filter { it.hasAlerts }.associateBy { it.lineId }
+            determinedLineIds = statuses.mapTo(mutableSetOf()) { it.lineId }
         }
+        val statusAnswered = listOfNotNull(earlyLines, lateLines).any { it.answered }
+        val lineStatusRequests = listOfNotNull(earlyLines, lateLines).sumOf { it.requests }
 
         logStats(
             LoadStats.describe(
@@ -1189,6 +1180,90 @@ class MainViewModel(
             firstError = firstError,
             arrivalsErrors = arrivalsErrors,
         )
+    }
+
+    /**
+     * Check the status of [lineIds] at [now]: lines checked within [lineStatusReuse] keep that
+     * verdict, and only the rest are asked for, in as many requests as TfL accepts
+     * ([LineStatusBatch]). Updates the caches as the answers come back. A request that fails leaves
+     * its lines undetermined, so they read unchecked rather than clean (SPEC principle 1).
+     */
+    private suspend fun checkLines(lineIds: Set<String>, now: Instant): LineCheck {
+        // Not one still waiting on its alerts' directions: asked again, it splits by direction.
+        val cachedStatuses = lineIds.mapNotNull { id ->
+            lineStatusCache[id]?.takeIf { (at, status) -> isWithin(at, now, lineStatusReuse) && !status.awaitingDirections }?.second
+        }
+        // A line TfL left out within the same window isn't asked about again either: it still
+        // reads as unchecked, but asking every cycle would spend the rate budget and the radio
+        // on an answer that just came back empty.
+        val recentlyOmitted = lineIds.filterTo(HashSet()) { id ->
+            lineStatusOmitted[id]?.let { at -> isWithin(at, now, lineStatusReuse) } == true
+        }
+        val toQuery = lineIds - cachedStatuses.mapTo(HashSet()) { it.lineId } - unknownLineIds - recentlyOmitted
+        // With nothing left to ask, the cached verdicts stand on their own.
+        if (toQuery.isEmpty()) return LineCheck(lineIds, cachedStatuses, answered = false, requests = 0)
+        var requests = 0
+        return try {
+            // One call per request TfL accepts, each with its own outcome (LineStatusBatch), so
+            // the stats count only what was sent and one part failing or unknown doesn't
+            // discard the verdicts the others returned.
+            val results = LineStatusBatch.request(toQuery) { chunk -> withContext(io) { client.lineStatuses(chunk) } }
+            requests = results.requests
+            val fetched = results.answers.flatMap { it.value }
+            val unknown = results.unknown
+            val failed = results.failed
+            // Nothing answered at all: the whole lookup failed, as before it was split.
+            if (!results.anyAnswered) throw checkNotNull(results.failure)
+            if (failed.isNotEmpty()) {
+                // Not answered, so not an omission: those lines read unchecked and are asked
+                // again next refresh, while the verdicts the other requests returned stand.
+                warn("line status fetch failed for ${failed.joinToString(",")}: ${results.failure?.let(::reason)}")
+            }
+            if (unknown.isNotEmpty()) {
+                // TfL knows none of these lines: remembered, so a refresh doesn't ask again,
+                // and marked omitted below like any line asked and left out.
+                unknownLineIds += unknown
+                warn("line status: TfL doesn't know line(s) ${unknown.joinToString(",")}; not asked again")
+            }
+            // Stamped when TfL answered, not when this batch began: a slow batch neither loses
+            // the store's newest-wins merge to a check made meanwhile nor saves an answer
+            // already near its expiry (SPEC D3/D4). By the steady clock, as a fetch is
+            // ([SteadyClock]).
+            val answeredAt = SteadyClock.stamp(clock())
+            // The latest answer for a line replaces the other kind outright, so a clock moved
+            // back can't leave a future-dated entry outranking it ([widgetLineChecks]).
+            fetched.forEach {
+                lineStatusCache[it.lineId] = answeredAt to it
+                lineStatusOmitted.remove(it.lineId)
+            }
+            // A line TfL returned no determinable status for is unknown, not clean — flag it so
+            // those rows aren't shown as verified-clean (the client drops such lines, so they're
+            // absent here).
+            val statuses = cachedStatuses + fetched
+            val determined = statuses.mapTo(mutableSetOf()) { it.lineId }
+            // Asked and left out: remembered, so the widget's copy of an older verdict for it
+            // is replaced by "no verdict" rather than kept ([widgetLineChecks]).
+            toQuery.filterNot { it in determined || it in failed }.forEach {
+                lineStatusOmitted[it] = answeredAt
+                lineStatusCache.remove(it)
+            }
+            // This check's unknown and failed lines were just named above.
+            val undetermined = lineIds.filterNot { it in determined || it in unknown || it in failed }
+            if (undetermined.isNotEmpty()) {
+                // Name the specific lines so a persistent "couldn't check for disruptions" is
+                // diagnosable — a line id is a canned identifier, not user data (SPEC
+                // *Privacy*: line ids are allowed in the log).
+                warn("disruption status unknown: TfL returned no status for line(s) ${undetermined.joinToString(",")}")
+            }
+            LineCheck(lineIds, statuses, answered = true, requests = requests)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Only the cached verdicts are determined, so every line this request was for
+            // reads undetermined — the flag the callers derive is set (SPEC principle 1).
+            warn("line status fetch failed for ${toQuery.joinToString(",")}: ${reason(e)}")
+            LineCheck(lineIds, cachedStatuses, answered = false, requests = requests)
+        }
     }
 
     /**
@@ -1254,6 +1329,24 @@ class MainViewModel(
                     (s.departures.map { it.lineId } + s.lines.map { it.id })
                         .any { it.isNotBlank() && it !in determinedLineIds }
             }
+
+    /**
+     * Whether a check already back left something in [progress]'s shown stops unchecked for good this
+     * load: a stop's closure check failed, a departure has no line to check, or a line the early check
+     * asked about came back undetermined (a failed request, or TfL gave it no status). None of these
+     * is asked again before the load finishes, so the banner says it couldn't check, not that it's
+     * checking ([DeparturesUiState.Loaded.checkFailed]). A line not asked about yet is still pending.
+     */
+    private fun checkFailedOf(shown: List<StopArrivals>, progress: BatchProgress): Boolean {
+        val lines = progress.lines
+        return progress.closureUnknown.isNotEmpty() ||
+            shown.any { stop ->
+                stop.departures.any { it.lineId.isBlank() } ||
+                    (lines != null &&
+                        (stop.departures.map { it.lineId } + stop.lines.map { it.id })
+                            .any { it in lines.asked && it !in lines.determined })
+            }
+    }
 
     // Set by [forceNextFetch]: the next [refresh] asks for every stop afresh.
     private var forceNext = false
@@ -1358,7 +1451,8 @@ class MainViewModel(
                     coldLoadUnfinished = true
                 }
             }
-            val batch = fetchBatch(toFetch, prior, now, reuse, useShared = !force, onProgress = if (!coldAtStart) null else { shown, waiting, failed ->
+            val batch = fetchBatch(toFetch, prior, now, reuse, useShared = !force, onProgress = if (!coldAtStart) null else { progress ->
+                val (shown, waiting, failed) = progress
                 val current = _state.value
                 val coldLoad = current is DeparturesUiState.Loading ||
                     (current is DeparturesUiState.Loaded && (current.statusPending || coldLoadUnfinished)) ||
@@ -1378,8 +1472,14 @@ class MainViewModel(
                     val partial = DeparturesUiState.Loaded(
                         stops = shown,
                         fetchedAt = shown.maxOfOrNull { it.fetchedAt } ?: SteadyClock.stamp(now),
-                        // Line status is checked once every stop is in; until then it's unchecked.
-                        disruptionUnknown = true,
+                        // The lines the stops declare are vouched for once their check is back; until
+                        // then, and for a line only a prediction names (checked once every stop is
+                        // in), they're unchecked, as is a stop whose own closure check failed.
+                        lineStatuses = progress.lines?.disrupted.orEmpty(),
+                        determinedLineIds = progress.lines?.determined.orEmpty(),
+                        disruptionUnknown = progress.lines?.let { disruptionUnknownOf(shown, it.determined, progress.closureUnknown) } ?: true,
+                        stopsDisruptionUnknown = progress.closureUnknown,
+                        checkFailed = checkFailedOf(shown, progress),
                         pendingStops = toFetch.filter { it.id in waiting },
                         statusPending = true,
                         // A stop that already failed is named now, with its reason (SPEC principle 2).

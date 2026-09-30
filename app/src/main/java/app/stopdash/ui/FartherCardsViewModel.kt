@@ -192,9 +192,12 @@ internal fun withOpenedFarther(
     val unavailable = list.unavailableStopIds.toHashSet()
     // The stop ids of each card whose last refresh failed or came back incomplete.
     val failedCards = ArrayList<Set<String>>()
-    // A card part-shown by its own cold load, its line status not checked yet: the list says it's
-    // still checking, as it would for its own (SPEC *Freshness → Cold load*).
+    // A card part-shown by its own cold load. With its line status not all checked yet, the list says
+    // it's still checking, as it would for its own (SPEC *Freshness → Cold load*).
     var cardStatusPending = false
+    var cardStillChecking = false
+    // A card still loading whose check already failed: the banner says it couldn't check.
+    var cardCheckFailed = false
     val openedLoading = HashSet<String>()
     // Stops of the list's that a card shows fresh, so the banner stops naming them as failed.
     val freshFromCards = HashSet<String>()
@@ -212,6 +215,8 @@ internal fun withOpenedFarther(
                 if (state.partialRefresh || state.refreshFailure != null) failedCards += cardIds
                 if (state.statusPending) {
                     cardStatusPending = true
+                    if (state.disruptionUnknown) cardStillChecking = true
+                    if (state.checkFailed) cardCheckFailed = true
                     openedLoading += cardIds
                 }
             }
@@ -238,8 +243,10 @@ internal fun withOpenedFarther(
         determinedLineIds = determined,
         stopsDisruptionUnknown = disruptionUnknown,
         unavailableStopIds = unavailable,
-        disruptionUnknown = list.disruptionUnknown || cardStatusPending,
+        disruptionUnknown = list.disruptionUnknown || cardStillChecking,
         statusPending = list.statusPending || cardStatusPending,
+        // The list's own finished "couldn't check" stays that, not "checking", while a card loads.
+        checkFailed = list.checkFailed || cardCheckFailed || (list.disruptionUnknown && !list.statusPending),
         openedLoadingStopIds = openedLoading,
     )
 }
