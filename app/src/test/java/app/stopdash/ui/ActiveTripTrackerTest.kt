@@ -562,6 +562,26 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `on board by the rider's word, a train followed still minutes away gives way to the one at the platform`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        now = at(4)
+        // Only 3 is listed when the trip starts, due at 8, so it's the one followed.
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 16))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals("3", tracker.trip.value?.vehicleId)
+        // 2 turns up and stands at A; the rider gets on it with 3 still three minutes off.
+        departures["A"] = listOf(train("2", 5), train("3", 8))
+        trains["2"] = listOf(call("A", 5), call("B", 7), call("C", 11))
+        now = at(5)
+        tracker.goTo(Step(0), Step(0, onBoard = true))
+        assertEquals("2", tracker.trip.value?.vehicleId)
+        assertTrue(tracker.trip.value?.boarded == true)
+        assertEquals("B", (tracker.progress.value as TripProgress.Riding).nextStop)
+    }
+
+    @Test
     fun `on board by the rider's word with no train followed, the one at the platform is theirs`() = runTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10))
