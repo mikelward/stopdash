@@ -5,6 +5,7 @@ import app.stopdash.domain.NATIONAL_RAIL_MODE
 import app.stopdash.domain.TFL_RUN_OPERATORS
 import app.stopdash.domain.cleanStopName
 import app.stopdash.domain.railLineId
+import app.stopdash.domain.riderLineName
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalTime
@@ -90,7 +91,8 @@ fun DarwinBoardDto.toDepartures(warn: (String) -> Unit = {}): List<Departure> {
         val destination = service.destination.orEmpty().mapNotNull { it.locationName?.trim()?.ifBlank { null } }
         Departure(
             lineId = railLineId(operator, service.operatorCode),
-            lineName = operator,
+            // Named as a rider knows it, here where the feed's name comes in (SPEC *Line pill colors*).
+            lineName = riderLineName(operator, NATIONAL_RAIL_MODE),
             direction = "",
             destination = cleanStopName(destination.joinToString(" & ")),
             platform = service.platform?.trim()?.ifBlank { null }?.let { "Platform $it" },

@@ -4,6 +4,7 @@ import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.cleanStopName
+import app.stopdash.domain.riderLineName
 import kotlinx.serialization.Serializable
 
 /**
@@ -84,7 +85,8 @@ data class TflMatchedStopDto(
 ) {
     fun lineRefs(): List<LineRef> {
         val mode = modes.singleOrNull().orEmpty()
-        return lines.filter { it.id.isNotBlank() }.map { LineRef(it.id, it.name.ifBlank { it.id }, mode) }
+        // Named as a rider knows it, here where TfL's name comes in (SPEC *Line pill colors*).
+        return lines.filter { it.id.isNotBlank() }.map { LineRef(it.id, riderLineName(it.name.ifBlank { it.id }, mode), mode) }
     }
 }
 

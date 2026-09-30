@@ -33,6 +33,7 @@ import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import app.stopdash.domain.NoTimes
+import app.stopdash.domain.riderLineName
 import app.stopdash.ui.PillColors
 import app.stopdash.ui.pillColors
 
@@ -217,7 +218,7 @@ private fun Pill(row: TileRow) {
             .background(fill, shape)
             .border(1.dp, border, shape)
             .padding(horizontal = 4.dp, vertical = 4.dp)
-            .semantics { contentDescription = row.lineName },
+            .semantics { contentDescription = riderLineName(row.lineName, row.mode) },
     ) {
         Text(text = row.code, color = label, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
     }

@@ -5,6 +5,7 @@ import app.stopdash.domain.LineRef
 import app.stopdash.domain.StationPlaces
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.cleanStopName
+import app.stopdash.domain.riderLineName
 import java.util.Locale
 import kotlinx.serialization.Serializable
 
@@ -156,7 +157,11 @@ fun TflStopPointDto.toStopLocationOrNull(): StopLocation? {
         longitude = lon ?: 0.0,
         lines = lines
             .filter { it.id.isNotBlank() }
-            .map { LineRef(id = it.id, name = it.name, mode = modeByLineId[it.id] ?: primaryMode) },
+            .map {
+                val mode = modeByLineId[it.id] ?: primaryMode
+                // Named as a rider knows it, here where TfL's name comes in (SPEC *Line pill colors*).
+                LineRef(id = it.id, name = riderLineName(it.name, mode), mode = mode)
+            },
         // Cluster by TfL's StopArea/parent where it gives one, else by the cleaned name so a
         // station's same-named poles still merge (SPEC *Finding stops*). Keying on the id when TfL
         // provides it is what keeps a station whose name it spells several ways together.

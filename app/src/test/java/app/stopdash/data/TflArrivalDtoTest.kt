@@ -97,4 +97,17 @@ class TflArrivalDtoTest {
         assertEquals("940GZZLUBXN", withId.toDeparture().destinationId)
         assertEquals("", dto(destinationName = "Brixton").toDeparture().destinationId)
     }
+
+    @Test
+    fun `TfL's West Midlands Trains line comes in named as London Northwestern`() {
+        val departure = TflArrivalDto(
+            lineId = "west-midlands-trains",
+            lineName = "West Midlands Trains",
+            modeName = "national-rail",
+            expectedArrival = "2026-09-18T08:03:00Z",
+        ).toDeparture()
+        assertEquals("London Northwestern Railway", departure.lineName)
+        // Every other line keeps TfL's name.
+        assertEquals("Victoria", dto().toDeparture().lineName)
+    }
 }

@@ -1,5 +1,6 @@
 package app.stopdash.data
 
+import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.RouteStops
 import io.ktor.client.HttpClient
@@ -188,5 +189,30 @@ class RouteSequenceTest {
         const val KENNINGTON = "940GZZLUKNG"
         const val CAMDEN_TOWN = "940GZZLUCTN"
         const val BATTERSEA = "940GZZBPSUST"
+    }
+
+    @Test
+    fun `an interchange's West Midlands Trains line is named London Northwestern, and still isn't a connection`() {
+        // The recorded Euston hub lists its lines under four modes, so each comes in with no mode of
+        // its own: renamed all the same, and left out of the connections as a national-rail
+        // operator at an interchange always is (never guessed at: Connections).
+        val euston = northern.stopLines.getValue("940GZZLUEUS")
+        assertEquals(
+            LineRef("west-midlands-trains", "London Northwestern Railway", ""),
+            euston.single { it.id == "west-midlands-trains" },
+        )
+        val stops = RouteStops.ahead(northern, KENNINGTON, "Edgware", "Charing X", lineId = "northern")!!
+        assertEquals(listOf("victoria", "lioness"), stops.first { it.name == "Euston" }.connections.map { it.id })
+    }
+
+    @Test
+    fun `a stop's West Midlands Trains line comes in named as London Northwestern`() {
+        // A route page's connection pill for the line then reads LNR, as its departures do.
+        val stop = TflMatchedStopDto(
+            id = "910GEXAMPLE",
+            modes = listOf("national-rail"),
+            lines = listOf(TflLineIdentifierDto("west-midlands-trains", "West Midlands Trains")),
+        )
+        assertEquals("London Northwestern Railway", stop.lineRefs().single().name)
     }
 }

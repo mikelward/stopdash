@@ -72,4 +72,12 @@ class HiddenModesTest {
         assertEquals(listOf("mixed"), kept.map { it.id })
         assertEquals(listOf("tram"), kept.single().lines.map { it.mode })
     }
+
+    @Test
+    fun `a West Midlands Trains line hidden before the rename is named London Northwestern`() {
+        // Its entry was saved with TfL's parent-company name; the banner names it as its pill reads.
+        val hidden = setOf(HiddenModes.lineKey("west-midlands-trains", "West Midlands Trains"))
+        assertEquals(listOf("London Northwestern Railway"), HiddenModes.hiddenLineLabels(hidden))
+        assertEquals(true, HiddenModes.isLineHidden("west-midlands-trains", hidden))
+    }
 }

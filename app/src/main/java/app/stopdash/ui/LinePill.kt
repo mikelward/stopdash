@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.lineCode
+import app.stopdash.domain.riderLineName
 
 /**
  * The line's short [lineCode] (VIC, BAK, …) in its line's color. Three shapes:
@@ -108,7 +109,7 @@ fun LinePill(lineName: String, lineId: String, mode: String, modifier: Modifier 
             modifier = Modifier
                 .padding(horizontal = 8.dp, vertical = 4.dp)
                 .width(labelWidth)
-                .semantics { contentDescription = lineName },
+                .semantics { contentDescription = riderLineName(lineName, mode) },
         )
     }
 }

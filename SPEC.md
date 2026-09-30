@@ -833,6 +833,12 @@ route-map legend rather than their templates' (LNR's picked from the two rendere
 2026-09-24; WMR's to match, 2026-09-30). The rail feed doesn't tell the brands apart, so the line
 wears LNR's green under the feed's name, TfL's, and its code — every train it runs from London is
 LNR (2026-09-30) — and only a service named for West Midlands Railway alone wears the orange. The
+line is also *named* for that brand, "London Northwestern Railway" — the brand its London trains
+carry — in place of TfL's parent-company "West Midlands Trains" and the feed's "LNR & WMR" for both
+brands (maintainer, 2026-09-30). The rename happens where names come into the app — from TfL, from the rail feed, and from a
+saved copy read back, a hidden line's banner label included — not where each screen shows one (the maintainer's call, 2026-09-30), so a
+trip's directions and warnings, a spoken label and a route page's title agree with the pill, which
+keeps its short code, LNR. The
 operator code
 (EMR, AWC, c2c) already reads distinct from any tube code, so the rare color collision with a tube
 line (a rail red near Central) can't be mistaken for it — the identity is text, not color. An

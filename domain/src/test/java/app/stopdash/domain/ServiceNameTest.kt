@@ -17,6 +17,22 @@ class ServiceNameTest {
     }
 
     @Test
+    fun `TfL's West Midlands Trains line is named as the brand that runs it`() {
+        // The parent company's name, on TfL's line lists; its line is London Northwestern's.
+        assertEquals("London Northwestern Railway", riderLineName("West Midlands Trains", "national-rail"))
+        assertEquals("London Northwestern Railway", serviceName("West Midlands Trains", "national-rail"))
+        assertEquals("London Northwestern Railway", lineLabel("West Midlands Trains", "national-rail"))
+        // Its brands, and every other name, are left as they are; and it is National Rail's alone.
+        assertEquals("West Midlands Railway", riderLineName("West Midlands Railway", "national-rail"))
+        assertEquals("Victoria", riderLineName("Victoria", "tube"))
+        assertEquals("West Midlands Trains", riderLineName("West Midlands Trains", "bus"))
+        // The rail feed's one name for both brands too: its London trains are branded LNR.
+        assertEquals("London Northwestern Railway", riderLineName("LNR & WMR", "national-rail"))
+        // An interchange lists its lines without a mode; the name is still the rail line's.
+        assertEquals("London Northwestern Railway", riderLineName("West Midlands Trains", ""))
+    }
+
+    @Test
     fun `a trailing bracketed alias is dropped, so it can't contradict the pill`() {
         assertEquals(
             "London Northwestern Railway",
@@ -25,8 +41,12 @@ class ServiceNameTest {
     }
 
     @Test
-    fun `West Midlands Trains' line spells out both brands above its LNR pill`() {
-        assertEquals("LNR & WMR", serviceName("LNR & WMR", "national-rail", "west-midlands-trains"))
+    fun `West Midlands Trains' line is titled London Northwestern Railway above its LNR pill`() {
+        // The rail feed's "LNR & WMR" names both brands; its London trains are branded LNR.
+        assertEquals(
+            "London Northwestern Railway",
+            serviceName("LNR & WMR", "national-rail", "west-midlands-trains"),
+        )
     }
 
     @Test

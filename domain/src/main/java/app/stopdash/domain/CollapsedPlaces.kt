@@ -26,8 +26,9 @@ object CollapsedPlaces {
 
     /**
      * A farther station ([FartherStations.pick]) as a collapsed place, its lines named from
-     * [lineNames] (the station list's names as TfL spells them). A line the list has no name for
-     * (an older list) is named by its id, which TfL keeps close to the name.
+     * [lineNames] (the station list's names as TfL spells them, and as a rider knows them where the
+     * two differ: [riderLineName]). A line the list has no name for (an older list) is named by its
+     * id, which TfL keeps close to the name.
      */
     fun of(farther: FartherStations.Farther, lineNames: Map<String, String> = emptyMap()): Place =
         Place(
@@ -35,7 +36,7 @@ object CollapsedPlaces {
             stationId = farther.station.id,
             name = farther.station.name,
             meters = farther.meters,
-            lines = farther.lines.map { LineRef(it.id, lineNames[it.id] ?: it.id, it.mode) },
+            lines = farther.lines.map { LineRef(it.id, riderLineName(lineNames[it.id] ?: it.id, it.mode), it.mode) },
         )
 
     /** A farther bus place ([FartherBuses.pick]) as a collapsed place, named by its nearest pole. */

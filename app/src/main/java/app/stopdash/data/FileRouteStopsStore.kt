@@ -5,6 +5,7 @@ import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.RouteStopsStore
 import app.stopdash.domain.StopLocation
+import app.stopdash.domain.riderLineName
 import java.io.File
 import java.io.IOException
 import java.time.Instant
@@ -132,7 +133,7 @@ private data class RouteCacheStop(
 
 private fun LineRef.toPersisted() = RouteCacheLine(id, name, mode)
 
-private fun RouteCacheLine.toLine() = LineRef(id, name, mode)
+private fun RouteCacheLine.toLine() = LineRef(id, riderLineName(name, mode), mode)
 
 private fun LineSequence.toPersisted(key: String, at: Instant) = RouteCacheSequence(
     key,

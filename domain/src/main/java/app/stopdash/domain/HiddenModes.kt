@@ -27,9 +27,13 @@ object HiddenModes {
     /** Whether [entry] hides a line rather than a mode. */
     fun isLineKey(entry: String): Boolean = entry.startsWith(LINE_PREFIX)
 
-    /** The hidden lines' labels, in the order they were hidden. */
+    /**
+     * The hidden lines' labels, in the order they were hidden. Renamed on the way back in, like any
+     * saved name ([riderLineName]; the entry keeps no mode), so a line hidden before a rename isn't
+     * named the old way in the banner.
+     */
     fun hiddenLineLabels(hidden: Set<String>): List<String> =
-        hidden.filter(::isLineKey).map { it.substringAfter('=', it.removePrefix(LINE_PREFIX)) }
+        hidden.filter(::isLineKey).map { riderLineName(it.substringAfter('=', it.removePrefix(LINE_PREFIX)), mode = "") }
 
     /** Whether [mode] is one of [hidden]. */
     fun isHidden(mode: String, hidden: Set<String>): Boolean = hidden.any { it.equals(mode, ignoreCase = true) }

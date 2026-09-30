@@ -32,6 +32,7 @@ import androidx.wear.tiles.TileBuilders
 import androidx.wear.tiles.TileService
 import app.stopdash.data.RouteTopologyStore
 import app.stopdash.domain.NoTimes
+import app.stopdash.domain.riderLineName
 import app.stopdash.ui.PillColors
 import app.stopdash.ui.pillColors
 import com.google.common.util.concurrent.ListenableFuture
@@ -336,7 +337,7 @@ internal object TileLayout {
                     .setBorder(Border.Builder().setWidth(dp(1f)).setColor(argb(border)).build())
                     .setPadding(Padding.Builder().setTop(dp(4f)).setBottom(dp(4f)).build())
                     // A screen reader says the line's name, not its short code (SPEC *Line pill colors*).
-                    .setSemantics(semantics(row.lineName))
+                    .setSemantics(semantics(riderLineName(row.lineName, row.mode)))
                     .build(),
             )
             .addContent(text(row.code, 11f, label, bold = true))

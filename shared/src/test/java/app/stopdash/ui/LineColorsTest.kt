@@ -159,6 +159,8 @@ class LineColorsTest {
         assertEquals(green, railOperatorColor("national-rail", "London Northwestern Railway"))
         assertEquals(green, railOperatorColor("national-rail", "London North Western Railway"))
         assertEquals(green, railOperatorColor("national-rail", "London Northwestern Railway (LNR)"))
+        // TfL's name for the line, whose route London Northwestern runs (a farther station's card).
+        assertEquals(green, railOperatorColor("national-rail", "West Midlands Trains"))
         // Rail only, like every operator color.
         assertNull(railOperatorColor("bus", "London Northwestern Railway"))
         // A white label, like most rail pills.
