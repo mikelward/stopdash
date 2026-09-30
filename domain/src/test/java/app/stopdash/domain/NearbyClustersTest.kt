@@ -226,6 +226,113 @@ class NearbyClustersTest {
     }
 
     @Test
+    fun `a metro station in reach stands for every metro mode`() {
+        // The Tube within walking reach covers the Overground too: the nearest Overground, a mile
+        // off, isn't fetched just to represent its mode (the farther cards offer its line instead).
+        val result = select(
+            listOf(
+                stop("tube", 360.0, "tube", "940G1"),
+                stop("og", 810.0, "overground", "910G1"),
+                stop("dlr", 1200.0, "dlr", "940G2"),
+                stop("el", 1300.0, "elizabeth-line", "910G2"),
+            ),
+        )
+        assertEquals(listOf(listOf("tube")), result.eager.ids())
+        assertEquals(listOf(listOf("og"), listOf("dlr"), listOf("el")), result.more.ids())
+    }
+
+    @Test
+    fun `the metro modes share one cap of two in reach`() {
+        // Two Tube stations and an Overground one all in reach: the nearest two of them, whatever
+        // their mode, not two of each.
+        val result = select(
+            listOf(
+                stop("og", 150.0, "overground", "910G1"),
+                stop("t1", 250.0, "tube", "940G1"),
+                stop("t2", 400.0, "tube", "940G2"),
+            ),
+        )
+        assertEquals(listOf(listOf("og"), listOf("t1")), result.eager.ids())
+        assertEquals(listOf(listOf("t2")), result.more.ids())
+    }
+
+    @Test
+    fun `with no metro in reach only the nearest metro station of any kind is fetched`() {
+        val result = select(
+            listOf(
+                stop("bus", 80.0, "bus", "490G0B"),
+                stop("dlr", 700.0, "dlr", "940G1"),
+                stop("tube", 900.0, "tube", "940G2"),
+            ),
+        )
+        assertEquals(listOf(listOf("bus"), listOf("dlr")), result.eager.ids())
+        assertEquals(listOf(listOf("tube")), result.more.ids())
+    }
+
+    @Test
+    fun `an interchange's metro stations count as one place and load together`() {
+        // Canary Wharf's shape: Tube, DLR and Elizabeth line stations in one hub but separate
+        // clusters. Counted apart, the shared cap of two would drop one, and its farther card is
+        // withheld because the interchange is already shown — so the hub takes one place and brings
+        // all three, leaving the cap's second place for the next metro station.
+        fun hubStop(id: String, meters: Double, mode: String) =
+            stop(id, meters, mode, "940G$id").copy(hubId = "HUBCAW")
+        val result = select(
+            listOf(
+                hubStop("tube", 150.0, "tube"),
+                hubStop("dlr", 200.0, "dlr"),
+                hubStop("el", 250.0, "elizabeth-line"),
+                stop("other", 300.0, "dlr", "940GOTHER"),
+                stop("third", 400.0, "dlr", "940GTHIRD"),
+            ),
+        )
+        assertEquals(
+            listOf(listOf("tube"), listOf("dlr"), listOf("el"), listOf("other")),
+            result.eager.ids(),
+        )
+        assertEquals(listOf(listOf("third")), result.more.ids())
+    }
+
+    @Test
+    fun `an interchange doesn't group stations outside the metro`() {
+        // National Rail keeps picking station by station, hub or not.
+        fun hubRail(id: String, meters: Double) =
+            stop(id, meters, "national-rail", "910G$id").copy(hubId = "HUB1")
+        val result = select(listOf(hubRail("a", 100.0), hubRail("b", 150.0), hubRail("c", 300.0)))
+        assertEquals(listOf(listOf("a"), listOf("b")), result.eager.ids())
+        assertEquals(listOf(listOf("c")), result.more.ids())
+    }
+
+    @Test
+    fun `national rail and trams still pick apart from the metro`() {
+        // A Tube in reach doesn't stand for a train or a tram: each keeps its own nearest station.
+        val result = select(
+            listOf(
+                stop("tube", 200.0, "tube", "940G1"),
+                stop("rail", 800.0, "national-rail", "910G1"),
+                stop("tram", 1000.0, "tram", "940G2"),
+            ),
+        )
+        assertEquals(listOf(listOf("tube"), listOf("rail"), listOf("tram")), result.eager.ids())
+        assertTrue(result.more.isEmpty())
+    }
+
+    @Test
+    fun `a far station is fetched for a mode it serves beside the metro`() {
+        // A station serving National Rail and the Overground is still its train mode's nearest:
+        // folding the metro modes drops only the Overground's own claim on it.
+        val station = StopLocation(
+            id = "far", name = "far", latitude = 800.0 / 111_320.0, longitude = 0.0,
+            lines = listOf(LineRef("lioness", "Lioness", "overground"), LineRef("avanti", "Avanti", "national-rail")),
+            clusterId = "910G1",
+        )
+        val result = select(listOf(stop("tube", 300.0, "tube", "940G1"), station))
+        assertEquals(listOf(listOf("tube"), listOf("far")), result.eager.ids())
+        // The cluster still reports TfL's own modes.
+        assertEquals(setOf("overground", "national-rail"), result.eager.last().modes)
+    }
+
+    @Test
     fun `a tighter per-mode cap pushes more clusters behind More`() {
         val result = select(
             listOf(
