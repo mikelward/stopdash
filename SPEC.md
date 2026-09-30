@@ -1788,7 +1788,12 @@ been set, so none keeps showing what it judged before.
   watched list, whose stops don't carry their lines yet. While any shown line is still to be
   checked, the stamp reads **"Checking…"** in place of the age rather than a banner, so the list
   doesn't move (maintainer, 2026-09-30); a check that comes back failed shows the "Couldn't check
-  for disruptions" banner at once, since it won't be asked again before the load finishes. A
+  for disruptions" banner at once, since it won't be asked again before the load finishes. A line
+  TfL says it doesn't recognise (Eurostar at St Pancras International, asked about on its own)
+  raises no banner: no check could have succeeded, so the banner would sit on every list near that
+  station and hide one that did fail. Its own row still says its disruptions weren't checked. Asked
+  about with lines TfL does know, TfL answers for those and leaves it out, which can't be told from
+  a known line with no status, so there it still reads as unchecked and the banner stays. A
   part-loaded list is never saved for the widget or the next launch; only the whole batch is. A
   load cut short (a relocation) names the stops it never got, like any other failed stop. With
   a saved snapshot on screen, a refresh keeps it whole until the batch is done.

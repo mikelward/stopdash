@@ -588,9 +588,11 @@ class MainViewModel(
     // When each line was last asked about and TfL gave no status for it (a no-verdict check for the
     // widget). In-memory, main thread, like the cache.
     private val lineStatusOmitted = mutableMapOf<String, Instant>()
-    // Lines TfL answered 404 for ("not recognised": a National Rail service it has no line for).
-    // Not asked about again this session — the answer won't change — and never determined, so their
-    // rows still read as unchecked rather than clean (SPEC principle 1).
+    // Lines TfL answered 404 for ("not recognised": a National Rail service it has no line for, such
+    // as Eurostar). Not asked about again this session — the answer won't change — and never
+    // determined, so their rows still read as unchecked rather than clean (SPEC principle 1). They
+    // don't raise the screen-wide banner, though: nothing could check them, so it would sit on every
+    // list near such a station and say nothing about a check that did fail ([disruptionUnknownOf]).
     private val unknownLineIds = HashSet<String>()
 
     // When each stop's arrivals last came back from a fetch by THIS ViewModel (the cycle's start
@@ -1316,7 +1318,8 @@ class MainViewModel(
      * merged set and its provenance: true when any shown stop's own closure check failed
      * ([stopsDisruptionUnknown]), any shown prediction has no line id to check, or any shown line TfL
      * returned no status for (not in [determinedLineIds]) — never show an unverified line as clean
-     * (SPEC principle 1).
+     * (SPEC principle 1). A line TfL doesn't know ([unknownLineIds]) isn't counted: TfL has no
+     * status for it to give, so no check failed; its own row still reads as unchecked.
      */
     private fun disruptionUnknownOf(
         stops: List<StopArrivals>,
@@ -1327,7 +1330,7 @@ class MainViewModel(
             stops.any { s ->
                 s.departures.any { it.lineId.isBlank() } ||
                     (s.departures.map { it.lineId } + s.lines.map { it.id })
-                        .any { it.isNotBlank() && it !in determinedLineIds }
+                        .any { it.isNotBlank() && it !in determinedLineIds && it !in unknownLineIds }
             }
 
     /**
@@ -1335,7 +1338,8 @@ class MainViewModel(
      * load: a stop's closure check failed, a departure has no line to check, or a line the early check
      * asked about came back undetermined (a failed request, or TfL gave it no status). None of these
      * is asked again before the load finishes, so the banner says it couldn't check, not that it's
-     * checking ([DeparturesUiState.Loaded.checkFailed]). A line not asked about yet is still pending.
+     * checking ([DeparturesUiState.Loaded.checkFailed]). A line not asked about yet is still pending,
+     * and one TfL doesn't know ([unknownLineIds]) failed no check.
      */
     private fun checkFailedOf(shown: List<StopArrivals>, progress: BatchProgress): Boolean {
         val lines = progress.lines
@@ -1344,7 +1348,7 @@ class MainViewModel(
                 stop.departures.any { it.lineId.isBlank() } ||
                     (lines != null &&
                         (stop.departures.map { it.lineId } + stop.lines.map { it.id })
-                            .any { it in lines.asked && it !in lines.determined })
+                            .any { it in lines.asked && it !in lines.determined && it !in unknownLineIds })
             }
     }
 
