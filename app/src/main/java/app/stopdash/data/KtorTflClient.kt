@@ -115,20 +115,8 @@ class KtorTflClient(
         stepFree: StepFree,
         modes: TripModes,
     ): List<TripRoute> {
-        // From here, the rider's own coordinate ("lat,lon"): TfL walks from it to the stop that
-        // serves the trip best, the same position the nearby lookup already sends (SPEC *Trips
-        // with a change*). Never logged, as neither end is.
-        val fromParam = when (from) {
-            is TripOrigin.Stop -> from.id
-            is TripOrigin.Here -> "${from.coordinate.latitude},${from.coordinate.longitude}"
-        }
-        // A stop goes by id; a place goes by its coordinate ("lat,lon"), which TfL routes to with a
-        // final walk leg (SPEC D9). The coordinate is the rider's chosen destination, so — like the
-        // trip's ends — it isn't logged (SPEC *Privacy*).
-        val toParam = when (to) {
-            is TripDestination.Stop -> to.id
-            is TripDestination.Place -> "${to.coordinate.latitude},${to.coordinate.longitude}"
-        }
+        val fromParam = from.plannerParam()
+        val toParam = to.plannerParam()
         // The Planner offers three routes, often one route at three departures, so it's asked twice
         // at once: for the quickest (its default) and for the fewest changes, which finds a walk to a
         // station, or one bus the whole way, that the quickest three passed over (SPEC *Trips with a
@@ -155,10 +143,44 @@ class KtorTflClient(
                 throw checkNotNull(quickest.exceptionOrNull())
             }
         }
-        // TfL names a coordinate arrival by whatever (if anything) sits there, not the favorite the
-        // rider picked, so the final walk leg reads with the name they know it by (SPEC D9). The
-        // last leg of every route to a place is that walk.
-        val named = if (to is TripDestination.Place) routes.map { it.namedTo(to.name) } else routes
+        return routes.between(from, to)
+    }
+
+    // One request, for the fewest changes via one stop ([FinalStop]): its failure is the caller's to handle.
+    override suspend fun fewestChangesVia(
+        from: TripOrigin,
+        to: TripDestination,
+        via: String,
+        speed: WalkingSpeed,
+        maxWalk: MaxWalk,
+        stepFree: StepFree,
+        modes: TripModes,
+    ): List<TripRoute> =
+        plan(from.plannerParam(), to.plannerParam(), speed, maxWalk, stepFree, modes, preference = LEAST_INTERCHANGE, via = via)
+            .between(from, to)
+
+    // From here, the rider's own coordinate ("lat,lon"): TfL walks from it to the stop that serves the
+    // trip best, the same position the nearby lookup already sends (SPEC *Trips with a change*). Never
+    // logged, as neither end is.
+    private fun TripOrigin.plannerParam(): String = when (this) {
+        is TripOrigin.Stop -> id
+        is TripOrigin.Here -> "${coordinate.latitude},${coordinate.longitude}"
+    }
+
+    // A stop goes by id; a place goes by its coordinate ("lat,lon"), which TfL routes to with a final
+    // walk leg (SPEC D9). The coordinate is the rider's chosen destination, so — like the trip's ends —
+    // it isn't logged (SPEC *Privacy*).
+    private fun TripDestination.plannerParam(): String = when (this) {
+        is TripDestination.Stop -> id
+        is TripDestination.Place -> "${coordinate.latitude},${coordinate.longitude}"
+    }
+
+    // The Planner's routes read as a trip [from] to [to]. TfL names a coordinate arrival by whatever (if
+    // anything) sits there, not the favorite the rider picked, so the final walk leg reads with the
+    // name they know it by (SPEC D9); the last leg of every route to a place is that walk. A start at
+    // the rider's position is left unnamed ([fromHere]).
+    private fun List<TripRoute>.between(from: TripOrigin, to: TripDestination): List<TripRoute> {
+        val named = if (to is TripDestination.Place) map { it.namedTo(to.name) } else this
         return if (from is TripOrigin.Here) named.map { it.fromHere() } else named
     }
 
@@ -183,8 +205,14 @@ class KtorTflClient(
         stepFree: StepFree,
         modes: TripModes,
         preference: String?,
+        // A stop every route passes ([FinalStop]); none for the plan's own two requests.
+        via: String? = null,
     ): List<TripRoute> {
-        val source = if (preference == null) "journey planner" else "journey planner (fewest changes)"
+        val source = when {
+            via != null -> "journey planner (fewest changes via a stop)"
+            preference == null -> "journey planner"
+            else -> "journey planner (fewest changes)"
+        }
         return tflRequest { key ->
             val dto = try {
                 httpClient.get("$baseUrl/Journey/JourneyResults/$fromParam/to/$toParam") {
@@ -198,6 +226,7 @@ class KtorTflClient(
                     // average whatever the speed ([TripModes.PLANNER_MODES]). Less any the rider turned off.
                     parameter("mode", modes.plannerModes)
                     preference?.let { parameter("journeyPreference", it) }
+                    via?.let { parameter("via", it) }
                     // Only routes as step-free as the rider chose ([StepFree]); none sent for any.
                     stepFree.plannerValue?.let { parameter("accessibilityPreference", it) }
                     applyAppKey(key)

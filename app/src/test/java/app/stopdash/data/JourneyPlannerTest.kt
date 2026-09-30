@@ -1,6 +1,7 @@
 package app.stopdash.data
 
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.FinalStop
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.StepFree
@@ -433,6 +434,60 @@ class JourneyPlannerTest {
             assertEquals("/Journey/JourneyResults/910GHGHI/to/940GZZLUCYF", request.url.encodedPath)
             assertEquals("60", request.url.parameters["maxWalkingMinutes"])
             assertEquals("Fast", request.url.parameters["walkingSpeed"])
+        }
+    }
+
+    @Test
+    fun `plans once more via the recorded fastest route's last bus stop, as the Planner answers`() = runTest {
+        // Recorded, trimmed: Euston to St Paul's, hub stations and a landmark (no one's place; SPEC
+        // *Privacy*), from the station's position to the cathedral's. The quickest rides the
+        // Hammersmith & City line and then the 4 to a stop pair by the cathedral; asked for the
+        // fewest changes via that pair, the Planner offers the 46 the whole way from King's Cross.
+        fun recorded(which: String) =
+            checkNotNull(javaClass.getResource("/fixtures/journey_results_euston_to_st_pauls_$which.json")).readText()
+        val vias = mutableListOf<String>()
+        val client = clientBy { request ->
+            val via = request.url.parameters["via"]
+            val body = when {
+                via != null -> recorded("via").also { synchronized(vias) { vias += via } }
+                request.fewestChanges() -> recorded("fewest")
+                else -> recorded("quickest")
+            }
+            body to HttpStatusCode.OK
+        }
+        val from = TripOrigin.Here(Coordinates(51.5282, -0.1337))
+        val to = TripDestination.Place(Coordinates(51.5138, -0.0984), "St Paul's")
+        // The Planner names the 4's end by its stop pair: the stop to route via.
+        val stop = checkNotNull(FinalStop.of(client.journeys(from, to)))
+        assertEquals("490G000672", stop.stopId)
+        val fewer = stop.fewerRides(client.fewestChangesVia(from, to, stop.stopId))
+        assertEquals(listOf("490G000672"), vias)
+        val route = fewer.single()
+        val ride = route.rides.single()
+        assertEquals("46", ride.lineId)
+        // Boarding at King's Cross by its pole, as the live feed knows it.
+        assertEquals("490000129D", ride.fromId)
+        // Read as the plan's own routes are: the start unnamed, the walk on named for the place.
+        assertEquals("", route.legs.first().fromName)
+        assertEquals("St Paul's", route.legs.last().toName)
+    }
+
+    @Test
+    fun `the plan's own requests pass no stop`() = runTest {
+        val requests = mutableListOf<HttpRequestData>()
+        client(fixture, capture = { synchronized(requests) { requests += it } })
+            .journeys(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"))
+        assertEquals(2, requests.size)
+        assertTrue(requests.none { "via" in it.url.parameters.names() })
+    }
+
+    @Test
+    fun `asking for the fewest changes via a stop fails as the one request does`() {
+        assertThrows(TflException.RateLimited::class.java) {
+            kotlinx.coroutines.runBlocking {
+                clientBy { "{}" to HttpStatusCode.TooManyRequests }
+                    .fewestChangesVia(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"), "940GZZLUEUS")
+            }
         }
     }
 

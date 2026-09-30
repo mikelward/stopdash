@@ -21,6 +21,7 @@ import app.stopdash.domain.StopClosureCache
 import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.StopDisruptionBatch
 import app.stopdash.domain.TflClient
+import app.stopdash.domain.FinalStop
 import app.stopdash.domain.TflException
 import app.stopdash.domain.NearestStops
 import app.stopdash.domain.PlacedStand
@@ -33,6 +34,7 @@ import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripModes
 import app.stopdash.domain.TripTiming
+import app.stopdash.domain.mergedRoutes
 import app.stopdash.domain.withoutDetours
 import app.stopdash.domain.lineAlertKey
 import java.time.Duration
@@ -628,6 +630,19 @@ class TripViewModel(
         val modes = tripModes
         // Whether the rider has changed an option since this plan started: its routes are for the old ones.
         fun optionsChangedSince() = speed != walkingSpeed || limit != maxWalk || access != stepFree || modes != tripModes
+        // What has landed so far, shown on a first plan.
+        fun showGathered() {
+            // Nothing yet from any stop keeps "Planning…" (or the last plan) rather than
+            // say there's no route while others are still answering.
+            // A plan for a walk the rider has since changed from isn't shown.
+            if (!progressive || gathered.isEmpty() || optionsChangedSince()) return
+            // Every route stays in the plan; a detour another stop's answer beats is
+            // left out where it's shown ([State.shownRoutes]).
+            val shown = gathered.toList()
+            // A first answer after a failed plan clears its error: the routes it brings stand,
+            // timed at once from any boarding stop's arrivals another screen just fetched.
+            _state.update { it.copy(routes = shown, planError = null, statusUnknown = unknownLines(shown, it), closuresUnknown = unknownClosures(shown, it), live = cached(shown, it.live)) }
+        }
         try {
             coroutineScope {
                 for (destination in destinations) {
@@ -643,16 +658,24 @@ class TripViewModel(
                         }
                         answered++
                         gathered += routes
-                        // Nothing yet from any stop keeps "Planning…" (or the last plan) rather than
-                        // say there's no route while others are still answering.
-                        // A plan for a walk the rider has since changed from isn't shown.
-                        if (!progressive || gathered.isEmpty() || optionsChangedSince()) return@launch
-                        // Every route stays in the plan; a detour another stop's answer beats is
-                        // left out where it's shown ([State.shownRoutes]).
-                        val shown = gathered.toList()
-                        // A first answer after a failed plan clears its error: the routes it brings stand,
-                        // timed at once from any boarding stop's arrivals another screen just fetched.
-                        _state.update { it.copy(routes = shown, planError = null, statusUnknown = unknownLines(shown, it), closuresUnknown = unknownClosures(shown, it), live = cached(shown, it.live)) }
+                        showGathered()
+                        // To a place, asked once more for the fewest changes via where the fastest
+                        // route gets off its last ride ([FinalStop]): the one bus the whole way,
+                        // which the Planner can pass over for a long walk.
+                        val finalStop = (if (destination is TripDestination.Place) FinalStop.of(routes) else null) ?: return@launch
+                        val answer = try {
+                            withContext(io) { planner.fewestChangesVia(from, destination, finalStop.stopId, speed, limit, access, modes) }
+                        } catch (e: TflException) {
+                            // The plan stands without it, as it does without either of its own two
+                            // requests. The stop isn't logged: it's a way to the rider's place.
+                            warn("trip plan via the fastest route's last stop failed: ${e::class.simpleName}")
+                            return@launch
+                        }
+                        val fewer = finalStop.fewerRides(answer)
+                        warn("trip plan via the fastest route's last stop: ${fewer.size} of ${answer.size} routes ride fewer times")
+                        // A route already planned (the same legs at the same times) stays once.
+                        gathered += mergedRoutes(gathered.toList(), fewer).drop(gathered.size)
+                        showGathered()
                     }
                 }
             }

@@ -1303,6 +1303,20 @@ offer (the same lines between the same stops at the same times) appears once; th
 them as always (tiers, then arrival). Either answer alone still plans the trip, and says which
 request failed in the debug log; only both failing fails the plan.
 
+**One ride to the fastest route's last stop.** To a **place** at a coordinate — a saved favorite, or
+a place or postcode picked in the *To…* search — the fewest changes can trade the one bus the whole way for a train and a long walk from the station, since a walk
+counts as no change, while the quickest routes change on to that same bus — so neither request offers
+the bus a short walk from the rider (maintainer's report, 2026-09-30). So when the route to a place
+arriving soonest by the Planner's times rides more than once, the Planner is asked a **third** time,
+for the fewest changes to the place **via** the stop that route gets off its last ride at; each
+route it offers riding fewer times joins the list as its own card, ranked like any other. The
+Planner builds the whole route, its walk on to the place included, so StopDash joins nothing: an
+earlier design planned to the stop and added the fastest route's walk on, and each thing the join
+had to carry (which pole, the change time, a bus later moved to its line's pole) turned up in review
+one at a time (maintainer, 2026-09-30). It waits on the quickest answer, so its card lands a moment
+after the rest; failing, it leaves the plan as it was and says so in the debug log. A trip to a stop
+never asks: its fewest changes are already planned there.
+
 **One stop per end, every station of a complex.** The Planner takes a single stop or station id for
 each end, not an interchange's or a folded search result's several stands, and it leans toward the
 end's own mode: aimed at King's Cross St. Pancras's Underground station it offered a change onto the
@@ -1329,7 +1343,9 @@ folded into the result is reached on foot rather than lost.
 its start (maintainer, 2026-09-28): the fix the near-me list was found from, usually one the nearby
 lookup has just sent TfL, though when a recent lookup of the same spot was reused from the device
 the trip is what sends it; the destination goes as a stop id, or — routing to a saved favorite place (D9) — as
-its stored **coordinate**. All of it is the **Location** type already declared, sent only to TfL, no
+its stored **coordinate**. To any place at a coordinate (a favorite, or a place or postcode picked in
+*To…*), the id of the stop the fastest route there gets off at goes too, as a stop to route via
+(*One ride to the fastest route's last stop*), which says no more than the coordinate already does. All of it is the **Location** type already declared, sent only to TfL, no
 new Data Safety type. An earlier design sent the nearest stop's id in place of the position; that
 narrowing cost the routes the rider most wanted (the walk to a station rather than a bus to it) and
 protected nothing TfL didn't already have, so it is not to be reinstated as a privacy measure. It is free and keyless
@@ -1337,7 +1353,8 @@ protected nothing TfL didn't already have, so it is not to be reinstated as a pr
 minutes old (the plan is held in memory only, so a trip reopened after process death re-plans), again
 every 15 minutes while the screen stays visible, on a re-locate to a new nearest stop or 150 m on from where it was planned, and once
 per tap of Retry or pull on the routes: about four plans an hour for a trip left open, plus one per re-locate, Retry or pull the
-rider makes, each **two** Planner calls (quickest and fewest changes, above), so about eight calls an hour.
+rider makes, each **two** Planner calls (quickest and fewest changes, above), so about eight calls an hour;
+a trip to a place whose fastest route changes adds a **third** each time (above), about twelve.
 To a station complex each plan is that pair per station plus one pair for its bus stops
 (about six at King's Cross, two or three at a typical interchange): about 48 calls an hour at King's Cross. Ranking needs every listed route's live trains, so each refresh fetches arrivals
 at every stop where any listed route boards a ride (its first stop and each change), once per
