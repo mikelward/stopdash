@@ -61,7 +61,7 @@ object ComplicationChoices {
             .map { row ->
                 ComplicationChoice(
                     row = StarredRow.of(row),
-                    code = lineCode(row.lineName, row.mode),
+                    code = lineCode(row.lineName, row.mode, row.lineId),
                     destination = DepartureLabels.destinationLabel(row.destination, row.directionKey) ?: "—",
                     stopName = row.stopName,
                 )
@@ -73,7 +73,7 @@ object ComplicationChoices {
             ?: stop.departures.first { it.lineId == current.lineId }.let { it.lineName to it.mode }
         val quiet = ComplicationChoice(
             row = current,
-            code = lineCode(name, mode),
+            code = lineCode(name, mode, current.lineId),
             destination = DepartureLabels.destinationLabel("", current.directionKey) ?: "—",
             stopName = stop.stopName,
         )

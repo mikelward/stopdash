@@ -787,8 +787,10 @@ both → SOU) — so a rail operator shows its initials (the capitals in a multi
 Midlands Railway → EMR, Greater Anglia → GA), which is also the initialism a rider sees on the
 train and beats the cryptic legacy TOC codes; the few single-word operators that would still
 collide are pinned by hand to their official TOC code (Southern SN, Southeastern SE), and
-London Northwestern Railway is pinned to LNR, the short name the operator itself uses, since the
-rail feed's spelling of it yields a code too long for the pill. **Every
+West Midlands Trains' line reads LNR, the short name of the brand that runs all its London trains
+(the rail feed calls it "LNR & WMR", whose capitals overflow the pill). A code pinned to a line
+holds by its line id as well as its name, since a rail board's line id comes from the operator's
+code, which the feed sends reliably, while names differ between the feed and TfL. **Every
 pill shares one fixed width**, sized to the widest code shown (a four-character bus route),
 so the codes form a tidy left column the eye runs straight down a card list, rather than a
 ragged edge that steps in and out as each code's length changes; a shorter code centers in
@@ -821,13 +823,17 @@ tube, the way Google Maps shows them. These are operator brand hexes, not TfL's 
 authorized departure from "a confirmed TfL hex only" — so each is a confirmed brand value (the
 color Wikipedia's UK-railways templates carry, or the operator's own site where that value is a
 route-diagram color rather than the brand, as for Great Northern's purple). Where a template
-varies by route (Northern, ScotRail), the operator takes its default, not one route's. One
-exception, by the maintainer's choice: West Midlands Trains runs London Northwestern Railway (LNR,
-green) and West Midlands Railway (WMR, orange) as two brands under one operator code and one TfL
-line, and both wear the colors from Wikipedia's *West Midlands Trains* route-map legend rather than
-their templates' (LNR's picked from the two rendered side by side, 2026-09-24; WMR's to match,
-2026-09-30). Each brand wears its own color, and TfL's parent name for the line, which no rider sees
-on a train, stays neutral. The operator code
+varies by route (Northern, ScotRail), the operator takes its default, not one route's. An operator
+matches by its name or, failing that, by its code: the rail feed spells some names its own way
+("LNER", "LNR & WMR"), so the line id the operator's code maps to catches a spelling nobody listed
+(maintainer, 2026-09-30). One exception, by the maintainer's choice: West Midlands Trains runs
+London Northwestern Railway (LNR, green) and West Midlands Railway (WMR, orange) as two brands under
+one operator code and one TfL line, and both wear the colors from Wikipedia's *West Midlands Trains*
+route-map legend rather than their templates' (LNR's picked from the two rendered side by side,
+2026-09-24; WMR's to match, 2026-09-30). The rail feed doesn't tell the brands apart, so the line
+wears LNR's green under the feed's name, TfL's, and its code — every train it runs from London is
+LNR (2026-09-30) — and only a service named for West Midlands Railway alone wears the orange. The
+operator code
 (EMR, AWC, c2c) already reads distinct from any tube code, so the rare color collision with a tube
 line (a rail red near Central) can't be mistaken for it — the identity is text, not color. An
 operator without a confirmed brand hex still falls back to a neutral pill rather than an invented

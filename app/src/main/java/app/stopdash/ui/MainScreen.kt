@@ -4211,7 +4211,7 @@ internal fun RouteDetailScreen(
             val headingMode = row.mode
                 .ifBlank { row.upcoming.firstOrNull { it.mode.isNotBlank() }?.mode.orEmpty() }
                 .ifBlank { Connections.knownMode(row.lineId).orEmpty() }
-            val service = serviceName(row.lineName, headingMode)
+            val service = serviceName(row.lineName, headingMode, row.lineId)
             if (service != null) {
                 Text(
                     text = if (takesLineSuffix(row.lineName, headingMode)) {

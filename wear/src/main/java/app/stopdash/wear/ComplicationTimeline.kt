@@ -176,7 +176,7 @@ object ComplicationTimeline {
         val status = if (current != null) current.status
         else statuses[chosen.lineId]?.forDirection(chosen.directionKey)?.takeIf { it.disrupted }
         val (lineName, mode) = current?.let { it.lineName to it.mode } ?: lineOf(stop, chosen)
-        val code = lineCode(lineName, mode)
+        val code = lineCode(lineName, mode, chosen.lineId)
         val stale = ComplicationContent.Stale(code, lineName)
         if (now >= boundary) return marked(listOf(ComplicationEntry(now, null, stale)), envelope, chosen.lineId, status)
 

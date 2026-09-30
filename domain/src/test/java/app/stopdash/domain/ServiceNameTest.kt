@@ -25,12 +25,19 @@ class ServiceNameTest {
     }
 
     @Test
+    fun `West Midlands Trains' line spells out both brands above its LNR pill`() {
+        assertEquals("LNR & WMR", serviceName("LNR & WMR", "national-rail", "west-midlands-trains"))
+    }
+
+    @Test
     fun `a code that already is the name is not repeated`() {
         assertNull(serviceName("91", "bus"))
         assertNull(serviceName("N73", "bus"))
         assertNull(serviceName("DLR", "dlr"))
         assertNull(serviceName("RB1", "river-bus"))
         assertNull(serviceName("c2c", "national-rail"))
+        // The rail feed names LNER by its brand alone, which is also its pill code.
+        assertNull(serviceName("LNER", "national-rail", "london-north-eastern-railway"))
         assertNull(serviceName("  ", "tube"))
     }
 

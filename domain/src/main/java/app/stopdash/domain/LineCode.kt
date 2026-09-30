@@ -20,12 +20,12 @@ package app.stopdash.domain
  * Pure domain logic (no Android, no Compose) so every surface — the in-app pill now, the
  * Glance widget later — derives a service's displayed identity one way.
  */
-fun lineCode(lineName: String, mode: String): String {
+fun lineCode(lineName: String, mode: String, lineId: String = ""): String {
     if (mode.equals("bus", ignoreCase = true) || lineName.any { it.isDigit() }) {
         return lineName.trim()
     }
     if (mode.equals("national-rail", ignoreCase = true)) {
-        railOperatorCode(lineName)?.let { return it }
+        railOperatorCode(lineName, lineId)?.let { return it }
     }
     val letters = lineName.filter { it.isLetter() }
     return if (letters.isEmpty()) lineName.trim() else letters.take(3).uppercase()
@@ -33,14 +33,18 @@ fun lineCode(lineName: String, mode: String): String {
 
 /**
  * The National Rail pill code for [operator], or `null` to let [lineCode] fall back to the
- * first-three-letters rule. Two steps, in order:
+ * first-three-letters rule. Three steps, in order:
  *
- * 1. A **hand-pinned exception** ([railOperatorExceptions]) wins. This is where the
- *    single-word operators that would otherwise collide take their official two-letter TOC
- *    (train operating company) code — Southern SN, Southeastern SE (both are "SOU" under
- *    first-three-letters) — and where any operator whose auto-initials read wrong can be
- *    corrected by hand.
- * 2. Otherwise, an operator whose name carries **more than one capital letter** — i.e. a
+ * 1. A **hand-pinned exception** ([railOperatorExceptions], [railOperatorPrefixes]) for the name
+ *    wins. This is where the single-word operators that would otherwise collide take their
+ *    official two-letter TOC (train operating company) code — Southern SN, Southeastern SE (both
+ *    are "SOU" under first-three-letters) — and where any operator whose auto-initials read wrong
+ *    can be corrected by hand.
+ * 2. Otherwise a code pinned to the **line** ([railLineCodes]), by [lineId]. A rail board's line
+ *    id comes from the operator's code, which the feed sends reliably, while its name is spelled
+ *    however the feed spells it; TfL's own name for the same line can differ again. So a line
+ *    that must read one way from every source is pinned here rather than by each name.
+ * 3. Otherwise, an operator whose name carries **more than one capital letter** — i.e. a
  *    multi-word brand — is those capitals: East Midlands Railway → EMR, Great Western Railway
  *    → GWR, London North Eastern Railway → LNER (four chars, the widest the pill holds),
  *    Greater Anglia → GA, Avanti West Coast → AWC, Great Northern → GN. This is the initialism
@@ -54,10 +58,11 @@ fun lineCode(lineName: String, mode: String): String {
  * London Overground are their own modes, not national-rail; even were one tagged national-rail
  * it is unpinned and single-capital, so it falls back to ELI / LON.
  */
-private fun railOperatorCode(operator: String): String? {
+private fun railOperatorCode(operator: String, lineId: String): String? {
     val key = normalizeOperator(operator)
     railOperatorExceptions[key]?.let { return it }
     railOperatorPrefixes.firstOrNull { (prefix, _) -> key.startsWith(prefix) }?.let { return it.second }
+    railLineCodes[lineId.lowercase()]?.let { return it }
     val initials = operator.filter { it.isUpperCase() }
     return if (initials.length > 1) initials else null
 }
@@ -74,6 +79,10 @@ private fun railOperatorCode(operator: String): String? {
  * - the Express services take the "…X" TOC code (Gatwick GX, Heathrow HX) — nicer than the plain
  *   initials GE/HE;
  * - CrossCountry takes its TOC code XC rather than the heuristic's "CC", to stay clear of c2c.
+ * - the rail feed names West Midlands Trains' line "LNR & WMR", whose capitals (LNRWMR) overflow the
+ *   pill, so it takes LNR (maintainer, 2026-09-30): every train it runs from London is LNR. The
+ *   same line under any other name takes LNR from [railLineCodes]; West Midlands Railway, named
+ *   on its own, keeps its brand's WMR.
  * - London Northwestern Railway (LNR) is in [railOperatorPrefixes] instead: matched by prefix, since
  *   the capitals read differently depending on how the feed spells the name.
  */
@@ -84,6 +93,17 @@ private val railOperatorExceptions: Map<String, String> = mapOf(
     "gatwickexpress" to "GX",
     "heathrowexpress" to "HX",
     "crosscountry" to "XC",
+    "lnrwmr" to "LNR",
+    "westmidlandsrailway" to "WMR",
+)
+
+/**
+ * Codes pinned to a TfL rail line id, for a line whose names don't all yield the code it should
+ * read: West Midlands Trains' line is "LNR & WMR" on a rail board and "West Midlands Trains" in
+ * TfL's line list, and reads LNR under both.
+ */
+private val railLineCodes: Map<String, String> = mapOf(
+    "west-midlands-trains" to "LNR",
 )
 
 /**

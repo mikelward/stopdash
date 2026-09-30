@@ -816,7 +816,7 @@ private fun widgetPillWidth(fontScale: Float) =
 private fun WidgetPill(row: DepartureRow, fontScale: Float) {
     // A national-rail service takes its operator's brand color; every other line/mode resolves
     // by id/mode. Both render solid here — the widget has no hollow (Overground) treatment.
-    val fill = railOperatorColor(row.mode, row.lineName) ?: lineFillColor(row.lineId, row.mode)
+    val fill = railOperatorColor(row.mode, row.lineName, row.lineId) ?: lineFillColor(row.lineId, row.mode)
     // The label and its fixed-width slot grow together with the system [fontScale], up to
     // WIDGET_PILL_MAX_SCALE; past that both hold (the sp size is divided back down), so the widest
     // code always fits the slot whole and a very large font can't grow the pill until it crowds out
@@ -832,7 +832,7 @@ private fun WidgetPill(row: DepartureRow, fontScale: Float) {
             .semantics { contentDescription = row.lineName },
     ) {
         Text(
-            text = lineCode(row.lineName, row.mode),
+            text = lineCode(row.lineName, row.mode, row.lineId),
             maxLines = 1,
             modifier = GlanceModifier.width(WIDGET_PILL_LABEL_WIDTH * pillScale),
             style = TextStyle(

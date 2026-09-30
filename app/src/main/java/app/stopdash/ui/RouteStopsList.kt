@@ -447,7 +447,7 @@ internal fun railColorFor(row: DepartureRow): Color {
 /** The color a line is drawn in, in the pill's own lookup order, or null when it has none. */
 internal fun lineAccentColor(lineId: String, mode: String, lineName: String): Color? =
     lineFillColor(lineId, mode)
-        ?: railOperatorColor(mode, lineName)
+        ?: railOperatorColor(mode, lineName, lineId)
         ?: overgroundAccentColor(lineId)
 
 /** The boarding stop's "you are here" dot — the familiar map-location blue, the same in both themes. */

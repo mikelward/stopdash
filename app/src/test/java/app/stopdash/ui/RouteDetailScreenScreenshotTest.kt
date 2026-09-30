@@ -412,13 +412,14 @@ class RouteDetailScreenScreenshotTest {
 
     @Test
     fun aRailOperator_isNamedInFullAtTheTop() {
-        // The pill only says "LNR"; the page spells out whose train it is.
+        // The pill only says "LNR"; the page spells out whose train it is, as the rail feed names
+        // West Midlands Trains' line.
         val stop = StopArrivals(
             stopId = "910GEUSTON",
             stopName = "London Euston",
             departures = listOf(
                 Departure(
-                    "london-northwestern-railway", "London Northwestern Railway", "", "Crewe",
+                    "west-midlands-trains", "LNR & WMR", "", "Crewe",
                     "Platform 10", now.plusSeconds(360), "national-rail",
                 ),
             ),
@@ -443,8 +444,8 @@ class RouteDetailScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("London Northwestern Railway").assertIsDisplayed()
-        composeRule.onNodeWithText("London Northwestern Railway")
+        composeRule.onNodeWithText("LNR & WMR").assertIsDisplayed()
+        composeRule.onNodeWithText("LNR & WMR")
             .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
         composeRule.onNodeWithText("LNR").assertIsDisplayed()
         captureSnapshot("route-detail-rail-operator.png")

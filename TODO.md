@@ -1855,9 +1855,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       Sleeper, Lumo, Grand Central, Hull Trains, TransPennine Express, Northern, Transport for
       Wales, ScotRail, Merseyrail, Island Line, and West Midlands Railway (WMR, whose orange
       `#F27B15` comes from the same legend as LNR's green, the maintainer's call on 2026-09-30,
-      over its template's `#FF8300`). Every operator in TfL's
-      national-rail line list now has a color except TfL's "West Midlands Trains", the parent of
-      two brands, which stays neutral.
+      over its template's `#FF8300`).
+      On a device none of LNER, LNR or WMT took its color: the rail feed names LNER "LNER" and
+      West Midlands Trains' line "LNR & WMR" (one name for both brands, so the LNWR/LNR name pin
+      never matched either), and TfL's "West Midlands Trains" had been left neutral. Colors and
+      pinned codes now match by name or, failing that, by the line id the operator's code maps to
+      (maintainer, 2026-09-30), and West Midlands Trains' line reads as a green LNR under every
+      name; West Midlands Railway named on its own keeps WMR orange. The rail feed's "Lumo
+      Stirling" wears Lumo's blue.
 - [ ] (Later) **Revisit auto-locate-on-open and the location states.** StopDash
       resolves location once on open (a `LaunchedEffect` gated on `PermissionRequired`) and
       the nearby set never re-resolves afterward except via the temporary crosshair button.
