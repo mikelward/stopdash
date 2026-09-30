@@ -1017,8 +1017,9 @@ An arrival that is withheld is never compared, and a route already open stays op
 Tapping the card opens its best route. **Every route looks alike** — no
 route is expanded — as a card whose top row is its **duration · arrival** ("22 min · 08:24"); the
 duration is from now to that arrival, so it takes in the same walks, waits and legs. Where waiting
-for a frequent line past its predictions (below) could make it later, by three minutes or more, both
-show as a **range** ("41–49 min · est. 11:26–34", the end's hour dropped within the same hour to
+for a frequent line past its predictions (below) could make it later, by a minute or more, both
+show as a **range** (maintainer, 2026-09-30: once a route can rank above a live one on its latest, a
+single estimated time hid why it sorted where it did) ("41–49 min · est. 11:26–34", the end's hour dropped within the same hour to
 save width): from no wait up to the line's longer typical gap, the route timed again with each such
 wait at its longest, so a wait that misses the next leg's train counts that too. Where that later
 route can't be timed at all (the connection missed, nothing else known), it reads as open-ended
