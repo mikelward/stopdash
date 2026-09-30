@@ -40,7 +40,7 @@ sealed interface RefreshState {
 
 /** A short line the watch shows about a refresh, until [until]. */
 data class RefreshNotice(val kind: Kind, val until: Instant) {
-    enum class Kind { REFRESHING, RATE_LIMITED, UNREACHABLE, PHONE_OUT_OF_REACH }
+    enum class Kind { REFRESHING, RATE_LIMITED, UNREACHABLE, KEY_REJECTED, PHONE_OUT_OF_REACH }
 }
 
 /** The Refresh line's label for [notice]: "Refresh" with none, else what the notice says. */
@@ -49,6 +49,7 @@ fun refreshLabel(notice: RefreshNotice.Kind?): Int = when (notice) {
     RefreshNotice.Kind.REFRESHING -> R.string.watch_refreshing
     RefreshNotice.Kind.RATE_LIMITED -> R.string.watch_refresh_rate_limited
     RefreshNotice.Kind.UNREACHABLE -> R.string.watch_refresh_unreachable
+    RefreshNotice.Kind.KEY_REJECTED -> R.string.watch_refresh_key_rejected
     RefreshNotice.Kind.PHONE_OUT_OF_REACH -> R.string.watch_phone_out_of_reach
 }
 
@@ -103,6 +104,7 @@ object RefreshPolicy {
                 when (state.outcome) {
                     WatchRefreshOutcome.RATE_LIMITED -> RefreshNotice(RefreshNotice.Kind.RATE_LIMITED, state.at.plus(NOTICE_FOR))
                     WatchRefreshOutcome.UNREACHABLE -> RefreshNotice(RefreshNotice.Kind.UNREACHABLE, state.at.plus(NOTICE_FOR))
+                    WatchRefreshOutcome.KEY_REJECTED -> RefreshNotice(RefreshNotice.Kind.KEY_REJECTED, state.at.plus(NOTICE_FOR))
                     else -> null
                 },
             )

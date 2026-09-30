@@ -36,6 +36,17 @@ class WidgetLineStatusesTest {
     }
 
     @Test
+    fun `a refused key is no answer, and says so to the caller`() = runTest {
+        var told = 0
+        val client = StatusClient { throw TflException.KeyRejected(null) }
+        assertNull(widgetLineStatuses(client, setOf("victoria"), onKeyRejected = { told++ }))
+        assertEquals(1, told)
+        // Any other failure doesn't.
+        assertNull(widgetLineStatuses(StatusClient { throw RuntimeException("offline") }, setOf("victoria"), onKeyRejected = { told++ }))
+        assertEquals(1, told)
+    }
+
+    @Test
     fun `an answer passes through`() = runTest {
         val good = LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service")
         assertEquals(listOf(good), widgetLineStatuses(StatusClient { listOf(good) }, setOf("victoria")))

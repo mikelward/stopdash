@@ -42,6 +42,7 @@ import app.stopdash.ui.LINE_STATUS_REUSE
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.supervisorScope
@@ -246,12 +247,27 @@ class WidgetRefreshWorker(appContext: Context, params: WorkerParameters) :
  * refresh that saved nothing (every stop failed) leaves nothing to reuse, so its outcome answers
  * the next caller for a short while instead, as long as the stored arrivals are still the ones it
  * started from ([sameArrivals]): newer ones (the app refreshed, or the stops changed) are refreshed
- * on their own terms, while a line check stored since changes nothing the outcome answers for.
+ * on their own terms, while a line check stored since changes nothing the outcome answers for. Nor
+ * once the TfL key has changed: a key cleared or pasted since is TfL's to answer (SPEC D7).
  */
 internal object StoredSnapshotRefresh {
     val lock = Mutex()
 
-    private class Failed(val at: Instant, val outcome: WatchRefreshOutcome, val input: DeparturesSnapshot)
+    /**
+     * A refresh of [input] that saved nothing, ended [at] with [outcome], sent with [tflKey]. Holds
+     * the key only in memory, to compare; never logged, so deliberately not a data class.
+     */
+    internal class Failed(val at: Instant, val outcome: WatchRefreshOutcome, val input: DeparturesSnapshot, val tflKey: String?) {
+        /**
+         * Whether this answers a refresh of [prior] sent with [tflKey] at [now]: the same arrivals,
+         * within the reuse window, and the same key. A key changed since (a rejected one cleared, a
+         * key pasted over a rate limit) is asked of TfL, not answered from the old key's failure.
+         */
+        fun answers(prior: DeparturesSnapshot, tflKey: String?, now: Instant): Boolean =
+            tflKey == this.tflKey &&
+                sameArrivals(input, prior) &&
+                WatchRefreshOutcome.answersAgain(outcome, Duration.between(at, now), ARRIVALS_REUSE)
+    }
 
     /** The last refresh, if it saved nothing; guarded by [lock]. */
     private var lastFailed: Failed? = null
@@ -265,8 +281,7 @@ internal object StoredSnapshotRefresh {
      */
     suspend fun refresh(context: Context, prior: DeparturesSnapshot, keys: RefreshKeys?): Result {
         lastFailed?.let { last ->
-            val age = Duration.between(last.at, Instant.now())
-            if (sameArrivals(last.input, prior) && WatchRefreshOutcome.answersAgain(last.outcome, age, ARRIVALS_REUSE)) {
+            if (last.answers(prior, keys?.tfl, Instant.now())) {
                 // Still re-render, as a refresh with nothing fresh does, so the widget ages honestly.
                 try {
                     StopDashWidget().updateAll(context)
@@ -279,7 +294,7 @@ internal object StoredSnapshotRefresh {
             }
         }
         val report = refreshStoredSnapshot(context, prior, keys)
-        lastFailed = if (report.savedNothing) Failed(Instant.now(), report.outcome, prior) else null
+        lastFailed = if (report.savedNothing) Failed(Instant.now(), report.outcome, prior, keys?.tfl) else null
         return Result(report.outcome, report.saved)
     }
 
@@ -320,7 +335,8 @@ internal suspend fun readRefreshKeys(
 
 /** What one refresh of the stored snapshot did: [fetched] stops fetched fresh, [reused] skipped as
  *  recent, and a [failures] entry for each of the rest; [savedNothing] when it didn't try to save,
- *  and [saved] when a save went through (so the store changed, and its watchers publish). */
+ *  and [saved] when a save went through (so the store changed, and its watchers publish);
+ *  [statusKeyRejected] when a line check was refused the user's key. */
 internal data class SnapshotRefreshReport(
     val stops: Int,
     val fetched: Int,
@@ -328,8 +344,9 @@ internal data class SnapshotRefreshReport(
     val failures: List<WatchRefreshOutcome.Failure>,
     val savedNothing: Boolean = false,
     val saved: Boolean = false,
+    val statusKeyRejected: Boolean = false,
 ) {
-    val outcome: WatchRefreshOutcome get() = WatchRefreshOutcome.of(stops, fetched, reused, failures)
+    val outcome: WatchRefreshOutcome get() = WatchRefreshOutcome.of(stops, fetched, reused, failures, statusKeyRejected)
 }
 
 /**
@@ -349,6 +366,8 @@ internal suspend fun refreshStoredSnapshot(
     val attempted = AtomicInteger()
     val succeeded = AtomicInteger()
     val failures = java.util.Collections.synchronizedList(mutableListOf<WatchRefreshOutcome.Failure>())
+    // A line check TfL refused the key for: with every stop's arrivals reused, the only sign of it.
+    val statusKeyRejected = AtomicBoolean(false)
     var ran = false
     // Set while the fetched result is being saved: a save that throws leaves the watch and widget on
     // the old snapshot, so the refresh failed however many stops were fetched.
@@ -419,7 +438,8 @@ internal suspend fun refreshStoredSnapshot(
                     fetchedAt = client::fetchedAt,
                     fetchStatuses = { lineIds ->
                         // Called once per request TfL accepts: every answered one's statuses count.
-                        widgetLineStatuses(client, lineIds)?.also { answered = answered.orEmpty() + it }
+                        widgetLineStatuses(client, lineIds, onKeyRejected = { statusKeyRejected.set(true) })
+                            ?.also { answered = answered.orEmpty() + it }
                     },
                 ) { stopId ->
                     attempted.incrementAndGet()
@@ -431,11 +451,7 @@ internal suspend fun refreshStoredSnapshot(
                         // Sanitized: a stop id is a canned identifier, not user data, but the message
                         // stays a bare fact (SPEC *Privacy* / *Error handling*).
                         logWidgetSnapshotWarning("widget refresh arrivals failed for stop $stopId: ${e::class.simpleName}")
-                        failures += if (e is TflException.RateLimited) {
-                            WatchRefreshOutcome.Failure.RATE_LIMITED
-                        } else {
-                            WatchRefreshOutcome.Failure.UNREACHABLE
-                        }
+                        failures += watchFailureOf(e)
                         null
                     }
                 }
@@ -487,7 +503,19 @@ internal suspend fun refreshStoredSnapshot(
         )
     }
     val tried = attempted.get()
-    return SnapshotRefreshReport(prior.stops.size, succeeded.get(), prior.stops.size - tried, failures.toList(), savedNothing, saved)
+    return SnapshotRefreshReport(
+        prior.stops.size, succeeded.get(), prior.stops.size - tried, failures.toList(), savedNothing, saved, statusKeyRejected.get(),
+    )
+}
+
+/**
+ * Why a stop's fetch failed, as a watch's refresh reports it: a rate limit the user can wait out, a
+ * key TfL refused that only clearing it on the phone mends (SPEC D7), else unreachable.
+ */
+internal fun watchFailureOf(e: Throwable): WatchRefreshOutcome.Failure = when (e) {
+    is TflException.RateLimited -> WatchRefreshOutcome.Failure.RATE_LIMITED
+    is TflException.KeyRejected -> WatchRefreshOutcome.Failure.KEY_REJECTED
+    else -> WatchRefreshOutcome.Failure.UNREACHABLE
 }
 
 /**
@@ -519,7 +547,12 @@ internal suspend fun reconcileWidgetDismissals(store: DismissedAlertsStore, answ
  * no-verdict check and isn't asked about again until that check is past the reuse window, as the
  * app remembers the lines TfL doesn't know.
  */
-internal suspend fun widgetLineStatuses(client: TflClient, lineIds: Set<String>): List<LineStatus>? =
+internal suspend fun widgetLineStatuses(
+    client: TflClient,
+    lineIds: Set<String>,
+    // Told when TfL refused the user's key, so a refresh whose arrivals were all reused still says so.
+    onKeyRejected: () -> Unit = {},
+): List<LineStatus>? =
     try {
         client.lineStatuses(lineIds)
     } catch (e: CancellationException) {
@@ -527,6 +560,10 @@ internal suspend fun widgetLineStatuses(client: TflClient, lineIds: Set<String>)
     } catch (e: TflException.NotFound) {
         logWidgetSnapshotWarning("widget refresh: TfL doesn't know ${lineIds.size} line(s); recorded as no verdict")
         emptyList()
+    } catch (e: TflException.KeyRejected) {
+        logWidgetSnapshotWarning("widget refresh line status failed for ${lineIds.size} line(s): key rejected")
+        onKeyRejected()
+        null
     } catch (e: Exception) {
         logWidgetSnapshotWarning("widget refresh line status failed for ${lineIds.size} line(s): ${e::class.simpleName}")
         null

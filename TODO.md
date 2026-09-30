@@ -1765,10 +1765,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       (`RejectedApiKey`) so one bar atop every screen says "TfL rejected your API key" with a
       one-tap **Clear key**; screens that name their failure say it too. Chosen over
       validate-on-save: no extra TfL round-trip, and it also catches a key revoked later.
-- [ ] **Say a rejected key on the watch too.** A watch refresh whose every stop failed reports
-      `WatchRefreshOutcome.Failure.RATE_LIMITED` or `UNREACHABLE`, so a rejected key reads there as
-      "can't reach TfL". A third value crosses the phone–watch boundary, so it needs the version-skew
-      handling an older watch app reading it would need; the phone app already says it precisely.
+- [x] **Say a rejected key on the watch too.** A watch refresh whose every stop failed on a key
+      TfL refused answers `KEY_REJECTED`, and the watch says "Couldn't refresh: API key rejected".
+      No version skew to handle: the Wear app isn't released, so no older watch reads the new
+      value (and one that did would read an unknown outcome as none, and time out).
 - [ ] Extend the persisted snapshot (from Phase 1) to cover the watched-stop set,
       filters, and the **stop-set key it's keyed by** (not the TfL `app_key`, which persists
       separately in settings). **This is what re-enables persistence for the location view**: the

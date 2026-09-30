@@ -8,11 +8,13 @@ import androidx.work.WorkManager
 import androidx.work.testing.TestListenableWorkerBuilder
 import androidx.work.testing.WorkManagerTestInitHelper
 import app.stopdash.data.DataStoreAppSettings
+import app.stopdash.data.WatchRefreshOutcome
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.StopArrivals
+import app.stopdash.ui.ARRIVALS_REUSE
 import java.time.Instant
 import app.stopdash.domain.FontSizeSettings
 import kotlinx.coroutines.awaitCancellation
@@ -159,5 +161,23 @@ class WidgetRefreshWorkerTest {
         assertTrue(StoredSnapshotRefresh.sameArrivals(before, checked))
         val refetched = before.copy(stops = listOf(stop.copy(fetchedAt = Instant.EPOCH.plusSeconds(60))))
         assertFalse(StoredSnapshotRefresh.sameArrivals(before, refetched))
+    }
+
+    @Test
+    fun `a failed refresh answers the next only with the same TfL key`() {
+        val prior = DeparturesSnapshot(listOf(StopArrivals("A", "Stop A", emptyList(), Instant.EPOCH)), Instant.EPOCH)
+        val at = Instant.parse("2026-09-18T08:00:00Z")
+        val soon = at.plusSeconds(10)
+        val rejected = StoredSnapshotRefresh.Failed(at, WatchRefreshOutcome.KEY_REJECTED, prior, "EXAMPLE")
+        assertTrue(rejected.answers(prior, "EXAMPLE", soon))
+        // The refused key cleared, or another pasted: TfL is asked again, not answered from the old failure (SPEC D7).
+        assertFalse(rejected.answers(prior, null, soon))
+        assertFalse(rejected.answers(prior, "OTHER", soon))
+        // A key pasted over a keyless rate limit lifts the budget, so it's asked again too.
+        val limited = StoredSnapshotRefresh.Failed(at, WatchRefreshOutcome.RATE_LIMITED, prior, null)
+        assertTrue(limited.answers(prior, null, soon))
+        assertFalse(limited.answers(prior, "EXAMPLE", soon))
+        // Past the reuse window, a new request fetches whatever the key.
+        assertFalse(rejected.answers(prior, "EXAMPLE", at.plus(ARRIVALS_REUSE)))
     }
 }
