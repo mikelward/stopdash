@@ -1150,7 +1150,11 @@ they end within about a quarter of an hour all day, which withheld routes changi
 leg is boarded on arrival the same way when its own predictions show it frequent now: TfL predicts a
 bus only about half an hour ahead, so two buses, the second soon after the first, are enough, and
 the arrival's range allows the longest wait a frequent line has (maintainer, 2026-09-27: a bus past
-its two predictions withheld its route). Otherwise the Planner's train is missed and nothing says when the next one
+its two predictions withheld its route). Such a frequent leg is boarded on arrival even while the
+Planner's train can still be made, when that train leaves more than the line's longer typical gap
+after the rider gets there: the Planner planned the trip leaving later, and an earlier train is the
+one the rider would take (maintainer, 2026-09-30: a bus caught sooner than planned waited nine
+minutes at the change for the Planner's train). Otherwise the Planner's train is missed and nothing says when the next one
 leaves (a National Rail or tram leg, a bus seen only once or far apart, a line with no trains, or arrivals that failed), so StopDash
 **withholds that route's arrival** rather than guess a wait: the route shows "arrival unknown" in place of duration · arrival, and
 sorts after every route in its tier that has an arrival, until a refresh brings live trains for the
