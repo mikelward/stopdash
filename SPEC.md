@@ -968,8 +968,10 @@ it replaces belong to other trains. Once opened it stays, as below, its arrival 
 is predicted. A walk between the
 rides is a change of station, so those stay as planned. **A route with more changes is listed only
 when it gets there sooner** (maintainer, 2026-09-28): one that another route with fewer changes
-beats or ties, while StopDash stands behind that route at least as far (its tier as the list ranks
-them: usable, then unchecked, then not running; then live, estimated, withheld), is left off the list, and of two arriving together the one with fewer changes comes first.
+beats or ties, while StopDash stands behind that route at least as far (usable, then unchecked, then
+not running; then live, estimated, withheld — stricter than the list's order, which ranks an
+unchecked route a live train times among the checked, so a route checked open is never left off for
+one that couldn't be checked), is left off the list, and of two arriving together the one with fewer changes comes first.
 An arrival that is withheld is never compared, and a route already open stays open.
 Tapping the card opens its best route. **Every route looks alike** — no
 route is expanded — as a card whose top row is its **duration · arrival** ("22 min · 08:24"); the
@@ -1093,9 +1095,12 @@ notice and claims nothing new. Routes sort
 in tiers: a route with a suspended or closed leg, or a stop it boards or gets off at that TfL says is
 closed (a moved stop doesn't count), sorts below every usable one, whether live or
 estimated (below), so a route that can't be ridden is never listed first while one that can exists.
-A route whose line status or closure check failed with nothing known yet sits between the two: below
-every route checked and open, above those known not to run, and says it couldn't check for
-disruptions, until a check succeeds. A ride goes by any of its lines: one whose Planner line is
+A route whose line status or closure check failed with nothing known yet ranks on its arrival like a
+checked one while a live train times any of its rides: the Planner offered it, and the train shows it
+running (maintainer, 2026-09-30: a faster route isn't buried under a slower one because a check
+failed). With none, it sits between the two: below every route checked and open, above those known
+not to run. Either way it says it couldn't check for disruptions, until a check succeeds, and of two
+arriving together the one checked comes first. A ride goes by any of its lines: one whose Planner line is
 suspended or unchecked still counts as usable while another line riding the same stretch, checked
 as running from stops checked open, can take it, since that line's trains time it too. The Planner's
 line then answers to its status like any other: suspended or unchecked, its trains neither time the

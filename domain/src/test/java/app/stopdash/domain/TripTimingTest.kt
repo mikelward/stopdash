@@ -329,6 +329,35 @@ class TripTimingTest {
     }
 
     @Test
+    fun `an unchecked route a live train times ranks on its arrival, one with none below the checked`() {
+        // The Planner's other way, checked and open but slower, timed from its timetable.
+        val slower = TripTiming.estimate(TripRoute(listOf(leg("blue", "A", "C", departs = 5, arrives = 50))), now, Duration.ZERO, { null })
+        assertEquals(TripTiming.Basis.ESTIMATED, slower.basis)
+        // A stop along the way couldn't be checked, but a live red train times the first ride.
+        val seen = TripTiming.estimate(
+            twoLegs, now, Duration.ZERO, { if (it == 0) listOf(train("red", 6)) else null }, stops = TripClosures.Standing.UNCHECKED,
+        )
+        assertTrue(seen.unchecked)
+        assertFalse(seen.doubted)
+        assertEquals(TripTiming.Basis.ESTIMATED, seen.basis)
+        assertEquals(at(30), seen.arrival)
+        assertEquals(listOf(seen, slower), TripTiming.rank(listOf(slower, seen)))
+        // With no live train to time it by, it stays below every route checked and open.
+        val blind = TripTiming.estimate(twoLegs, now, Duration.ZERO, { null }, stops = TripClosures.Standing.UNCHECKED)
+        assertTrue(blind.doubted)
+        assertEquals(listOf(slower, blind), TripTiming.rank(listOf(blind, slower)))
+        // So does a line whose status couldn't be checked, the same way.
+        val lineSeen = TripTiming.estimate(twoLegs, now, Duration.ZERO, { if (it == 0) listOf(train("red", 6)) else null }, unknown = setOf("blue"))
+        assertEquals(listOf(lineSeen, slower), TripTiming.rank(listOf(slower, lineSeen)))
+        // Arriving together, the one checked comes first.
+        val checked = TripTiming.estimate(twoLegs, now, Duration.ZERO, { if (it == 0) listOf(train("red", 6)) else null })
+        assertEquals(listOf(checked, seen), TripTiming.rank(listOf(seen, checked)))
+        // Still never blocked-tier, and a route that can't be ridden stays last.
+        val closed = TripTiming.estimate(twoLegs, now, Duration.ZERO, { if (it == 0) listOf(train("red", 6)) else null }, stops = TripClosures.Standing.CLOSED)
+        assertEquals(listOf(seen, slower, blind, closed), TripTiming.rank(listOf(closed, blind, slower, seen)))
+    }
+
+    @Test
     fun `of two routes arriving together, the one with fewer changes ranks first`() {
         val direct = TripRoute(listOf(leg("blue", "A", "C", departs = 5, arrives = 30)))
         val changing = TripTiming.Estimate(twoLegs, TripTiming.Basis.LIVE, at(30), emptyList(), false, now)
@@ -361,6 +390,13 @@ class TripTimingTest {
         assertEquals(listOf(uncheckedDirect), TripTiming.withoutSlowerChanges(listOf(estimate(twoLegs, 35, blocked = true), uncheckedDirect)))
         val estimatedDirect = estimate(direct, 30, TripTiming.Basis.ESTIMATED)
         assertEquals(listOf(estimatedDirect), TripTiming.withoutSlowerChanges(listOf(estimate(twoLegs, 35, unchecked = true), estimatedDirect)))
+        // Stricter than the ranking: an unchecked route a live train times, ranked among the checked,
+        // still never leaves off a route checked open.
+        val seenDirect = TripTiming.Estimate(
+            direct, TripTiming.Basis.LIVE, at(30), listOf(TripTiming.LegTiming(at(5), at(30), null, true)), false, now, unchecked = true,
+        )
+        assertFalse(seenDirect.doubted)
+        assertEquals(2, TripTiming.withoutSlowerChanges(listOf(estimate(twoLegs, 35), seenDirect)).size)
     }
 
     @Test
