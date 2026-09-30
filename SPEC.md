@@ -1215,8 +1215,16 @@ trip if one is held, never a blank. Retry is disabled while its call is in fligh
 and falls back the same way; it is retried on the next refresh. Nothing retries in a loop:
 Planner and arrivals requests go through the same rate limiter as every TfL request.
 
-**Walking** is capped at 15 minutes per walk (the Planner's `maxWalkingMinutes`), the walk from where
-the rider is included, so it never offers a long walk beside the rides; configurable later. Every
+**Walking** is capped per walk at the rider's **max walk** (the Planner's `maxWalkingMinutes`), the
+walk from where the rider is included, so it never offers a longer walk than they chose beside the
+rides: 10, 15, 20, 30, 45 or 60 minutes, **30 by default** (maintainer, 2026-09-30). It was a fixed
+15, timed like every walk at the rider's pace, so a walk to a station that beat every ride (21 minutes
+at the average pace) was never offered (maintainer's report, 2026-09-30). It is one setting, chosen in Settings (under the walking speed) or from a dropdown under the walking
+speed atop a trip's routes (maintainer, 2026-09-30), and a change plans the trip again at once, as a
+speed change does; plans are kept per limit. Every plan, whatever asks for it, waits for the walking
+speed and max walk to be read from storage, and the trip's dropdowns open nothing until then, so no
+route is planned under the defaults in place of the rider's own choice; a read that never lands delays
+a plan by two seconds at most, then it plans with the defaults and plans again once the read lands. Every
 walk is timed at the rider's **walking speed** — Slow, Medium or Fast (the Planner's `walkingSpeed`;
 Medium is its average and the default) — so a brisk walker isn't shown a ten-minute walk they do in
 six, nor told a train is out of reach that isn't (maintainer, 2026-09-28). It is one setting, chosen
@@ -1227,6 +1235,14 @@ The request names the Planner's modes (its own default set, walking among them):
 defaults, the Planner accepts `walkingSpeed` but times every walk in a route that rides at its
 average, so the setting changed nothing (2026-09-28). Named, the pace times each walk and so which
 connections it offers, while the routes stay those it offers by default.
+
+**Two requests per plan.** The Planner answers with about three routes, often one route at three
+departures, so each plan asks it twice at once: for the quickest routes (its default) and for the
+**fewest changes**, which finds the walk to a station or the one bus the whole way that the quickest
+three passed over (maintainer, 2026-09-30). The answers merge, the quickest's first, and a route both
+offer (the same lines between the same stops at the same times) appears once; the list then orders
+them as always (tiers, then arrival). Either answer alone still plans the trip, and says which
+request failed in the debug log; only both failing fails the plan.
 
 **One stop per end, every station of a complex.** The Planner takes a single stop or station id for
 each end, not an interchange's or a folded search result's several stands, and it leans toward the
@@ -1261,9 +1277,10 @@ protected nothing TfL didn't already have, so it is not to be reinstated as a pr
 (within TfL's anonymous budget). The Planner is called when a trip opens without a plan under 15
 minutes old (the plan is held in memory only, so a trip reopened after process death re-plans), again
 every 15 minutes while the screen stays visible, on a re-locate to a new nearest stop or 150 m on from where it was planned, and once
-per tap of Retry or pull on the routes: about four calls an hour for a trip left open, plus one per re-locate, Retry or pull the
-rider makes. To a station complex each of those is one call per station plus one for its bus stops
-(about six at King's Cross, two or three at a typical interchange): about 24 an hour at King's Cross. Ranking needs every listed route's live trains, so each refresh fetches arrivals
+per tap of Retry or pull on the routes: about four plans an hour for a trip left open, plus one per re-locate, Retry or pull the
+rider makes, each **two** Planner calls (quickest and fewest changes, above), so about eight calls an hour.
+To a station complex each plan is that pair per station plus one pair for its bus stops
+(about six at King's Cross, two or three at a typical interchange): about 48 calls an hour at King's Cross. Ranking needs every listed route's live trains, so each refresh fetches arrivals
 at every stop where any listed route boards a ride (its first stop and each change), once per
 stop however many routes share it: the Planner offers a handful of routes, so a few requests,
 under ten in practice, plus one line-status call for all their lines. Closure checks at the stops

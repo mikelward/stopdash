@@ -2,6 +2,7 @@ package app.stopdash.data
 
 import androidx.datastore.core.DataStore
 import app.stopdash.domain.DistanceUnits
+import app.stopdash.domain.MaxWalk
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -47,6 +48,20 @@ class DataStoreAppSettingsTest {
     fun `a distance unit this build doesn't know reads as automatic`() = runTest {
         val store = DataStoreAppSettings(FakeDataStore(PersistedSettings(distanceUnits = "NAUTICAL")))
         assertEquals(DistanceUnits.AUTOMATIC, store.distanceUnits().first())
+    }
+
+    @Test
+    fun `max walk is 30 minutes by default and persists a change`() = runTest {
+        val store = DataStoreAppSettings(FakeDataStore(null))
+        assertEquals(MaxWalk.THIRTY, store.maxWalk().first())
+        store.setMaxWalk(MaxWalk.SIXTY)
+        assertEquals(MaxWalk.SIXTY, store.maxWalk().first())
+    }
+
+    @Test
+    fun `a max walk this build doesn't know reads as the default`() = runTest {
+        val store = DataStoreAppSettings(FakeDataStore(PersistedSettings(maxWalk = "NINETY")))
+        assertEquals(MaxWalk.DEFAULT, store.maxWalk().first())
     }
 
     @Test

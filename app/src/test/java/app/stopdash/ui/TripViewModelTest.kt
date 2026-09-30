@@ -35,6 +35,7 @@ import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
+import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.onPoles
 import app.stopdash.domain.TripTiming
@@ -111,10 +112,13 @@ class TripViewModelTest {
         val origins = mutableListOf<TripOrigin>()
         // The walking speed each call was timed at, in order.
         val speeds = mutableListOf<WalkingSpeed>()
-        override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed): List<TripRoute> {
+        // The max walk each call asked for, in order.
+        val maxWalks = mutableListOf<MaxWalk>()
+        override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk): List<TripRoute> {
             calls++
             origins += from
             speeds += speed
+            maxWalks += maxWalk
             // Keyed by the stop id (or a place's name), matching how these tests plan by destination.
             val key = when (to) {
                 is TripDestination.Stop -> to.id
@@ -586,6 +590,130 @@ class TripViewModelTest {
         assertNull(trip.state.value.planError)
         advanceUntilIdle()
         assertEquals(calls, planner.calls)
+    }
+
+    @Test
+    fun `plans under the rider's max walk, and again at once when it changes`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        val plans = TripPlans()
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+            clock = { now }, plans = plans, io = dispatcher, maxWalk = MaxWalk.TWENTY,
+        )
+        trip.refreshFor(1)
+        advanceUntilIdle()
+        assertEquals(listOf(MaxWalk.TWENTY), planner.maxWalks)
+        // The same limit again changes nothing.
+        trip.maxWalk = MaxWalk.TWENTY
+        advanceUntilIdle()
+        assertEquals(1, planner.calls)
+        trip.maxWalk = MaxWalk.SIXTY
+        advanceUntilIdle()
+        assertEquals(listOf(MaxWalk.TWENTY, MaxWalk.SIXTY), planner.maxWalks)
+        // At the rider's pace throughout.
+        assertEquals(listOf(WalkingSpeed.AVERAGE, WalkingSpeed.AVERAGE), planner.speeds)
+        // Each limit's plan is kept apart: a trip reopened under another isn't shown the other's.
+        val destinations = listOf(TripDestination.Stop("C"))
+        assertNotNull(plans.get("A", destinations, maxWalk = MaxWalk.TWENTY))
+        assertNotNull(plans.get("A", destinations, maxWalk = MaxWalk.SIXTY))
+        assertNull(plans.get("A", destinations, maxWalk = MaxWalk.DEFAULT))
+        // Back to a limit a plan was kept for: shown at once, without planning again.
+        trip.maxWalk = MaxWalk.TWENTY
+        assertEquals(listOf(route), trip.state.value.routes)
+        advanceUntilIdle()
+        assertEquals(2, planner.calls)
+    }
+
+    @Test
+    fun `every plan waits for the walk options to be read, a pull included`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+            clock = { now }, plans = TripPlans(), io = dispatcher, optionsLoaded = false,
+        )
+        trip.refreshFor(1)
+        trip.pullRefresh()
+        advanceTimeBy(1_000)
+        runCurrent()
+        // Nothing planned under the defaults, and "Planning…" meanwhile.
+        assertEquals(0, planner.calls)
+        assertTrue(trip.state.value.planning)
+        // The read lands: the options, then the flag, as the screen sets them.
+        trip.maxWalk = MaxWalk.SIXTY
+        trip.optionsLoaded = true
+        advanceUntilIdle()
+        // One plan under the rider's own limit serves the first showing and the pull; the change
+        // while it waited needed no plan of its own.
+        assertEquals(listOf(MaxWalk.SIXTY), planner.maxWalks.distinct())
+        assertEquals(listOf(route), trip.state.value.routes)
+        assertEquals(planner.maxWalks.size, planner.calls)
+        assertTrue(planner.calls <= 2)
+    }
+
+    @Test
+    fun `a read that never lands delays the plan, then it plans with the defaults and again once read`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route))
+        val warnings = mutableListOf<String>()
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+            clock = { now }, plans = TripPlans(), io = dispatcher, optionsLoaded = false, warn = { warnings += it },
+        )
+        trip.refreshFor(1)
+        advanceTimeBy(TripViewModel.OPTIONS_WAIT.toMillis() + 1)
+        runCurrent()
+        assertEquals(listOf(MaxWalk.DEFAULT), planner.maxWalks)
+        assertTrue(warnings.any { it.startsWith("trip options not read") })
+        // The read lands late: the trip plans again under the rider's own limit.
+        trip.maxWalk = MaxWalk.SIXTY
+        trip.optionsLoaded = true
+        advanceUntilIdle()
+        assertEquals(listOf(MaxWalk.DEFAULT, MaxWalk.SIXTY), planner.maxWalks)
+    }
+
+    @Test
+    fun `a walk change before the trip starts opens it on the plan kept for the new walk`() = runTest(dispatcher) {
+        // The model is made before the walk settings are read: it opens on the defaults' kept plan
+        // until they land, then on the rider's own, without planning before it's started.
+        val destinations = listOf(TripDestination.Stop("C"))
+        val plans = TripPlans()
+        val atDefault = TripRoute(listOf(leg("red", "A", "C", 5, 15)))
+        plans.put("A", destinations, listOf(atDefault), now)
+        plans.put("A", destinations, listOf(route), now, maxWalk = MaxWalk.SIXTY)
+        val planner = FakePlanner(listOf(route))
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", destinations,
+            clock = { now }, plans = plans, io = dispatcher,
+        )
+        assertEquals(listOf(atDefault), trip.state.value.routes)
+        trip.maxWalk = MaxWalk.SIXTY
+        assertEquals(listOf(route), trip.state.value.routes)
+        advanceUntilIdle()
+        assertEquals(0, planner.calls)
+    }
+
+    @Test
+    fun `a plan still running when the max walk changes isn't shown under the new one`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(route)).apply { delays = mapOf("C" to 1_000L) }
+        val plans = TripPlans()
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+            clock = { now }, plans = plans, io = dispatcher,
+        )
+        trip.refreshFor(1)
+        advanceTimeBy(500)
+        runCurrent()
+        trip.maxWalk = MaxWalk.SIXTY
+        // The first plan answers under the old limit: nothing of it shows.
+        advanceTimeBy(1_000)
+        runCurrent()
+        assertNull(trip.state.value.routes)
+        // It's still kept for that limit, and the new one is planned next.
+        val destinations = listOf(TripDestination.Stop("C"))
+        assertNotNull(plans.get("A", destinations, maxWalk = MaxWalk.DEFAULT))
+        advanceUntilIdle()
+        assertEquals(listOf(MaxWalk.DEFAULT, MaxWalk.SIXTY), planner.maxWalks)
+        assertEquals(listOf(route), trip.state.value.routes)
+        assertNotNull(plans.get("A", destinations, maxWalk = MaxWalk.SIXTY))
     }
 
     @Test
@@ -1108,7 +1236,7 @@ class TripViewModelTest {
         val fromD = TripRoute(listOf(leg("green", "D", "C", 5, 15)))
         var calls = 0
         val planner = object : JourneyPlanner {
-            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed): List<TripRoute> =
+            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk): List<TripRoute> =
                 if (calls++ == 0) listOf(route) else listOf(fromD)
         }
         val cache = ArrivalsCache()
@@ -1136,7 +1264,7 @@ class TripViewModelTest {
         // The re-plan from that fix answers when the test says, so its indicator can be seen.
         val replanned = CompletableDeferred<Unit>()
         val planner = object : JourneyPlanner {
-            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed): List<TripRoute> =
+            override suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed, maxWalk: MaxWalk): List<TripRoute> =
                 if (calls++ < 2) listOf(route) else listOf(fromD).also { replanned.await() }
         }
         val cache = ArrivalsCache()

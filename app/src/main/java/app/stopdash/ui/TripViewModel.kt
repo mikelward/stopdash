@@ -29,6 +29,7 @@ import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.WalkingSpeed
+import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.TripTiming
 import app.stopdash.domain.withoutDetours
 import app.stopdash.domain.lineAlertKey
@@ -48,9 +49,11 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * A trip with a change (SPEC *Trips with a change*): TfL's Journey Planner's routes from [origin] to
@@ -112,6 +115,11 @@ class TripViewModel(
     origin: () -> TripOrigin = { TripOrigin.Stop(fromId) },
     // How fast the rider walks when the trip opens (their setting); [walkingSpeed] follows a change.
     walkingSpeed: WalkingSpeed = WalkingSpeed.AVERAGE,
+    // The longest walk the rider will take when the trip opens (their setting); [maxWalk] follows a change.
+    maxWalk: MaxWalk = MaxWalk.DEFAULT,
+    // Whether the walking speed and max walk have been read from storage when the trip opens;
+    // [optionsLoaded] follows. Every plan waits for it ([plan]).
+    optionsLoaded: Boolean = true,
     // Each stop's last closure lookup, shared with the list (the app passes [StopClosureCache.SHARED]):
     // a stop the list or another trip checked within [closureReuse] isn't asked about again.
     private val closureCache: StopClosureCache = StopClosureCache(),
@@ -129,26 +137,63 @@ class TripViewModel(
         set(value) {
             if (value == field) return
             field = value
-            // Before the trip is first shown there's nothing to replace: the first plan takes the speed.
-            if (job == null) return
-            // Routes timed at the old speed aren't shown under the new one, even while the new plan
-            // runs or if it fails: the plan kept for this speed stands in, or none ("Planning…").
-            val here = origin() is TripOrigin.Here
-            val kept = plans.get(fromId, destinations, here, value)
-            plannedFrom = plans.origin(fromId, destinations, here, value)
-            _state.update {
-                it.copy(
-                    routes = kept?.first,
-                    plannedAt = kept?.second,
-                    planError = null,
-                    planIncomplete = false,
-                    statusUnknown = kept?.let { (routes, _) -> unknownLines(routes, it) } ?: emptySet(),
-                    closuresUnknown = kept?.let { (routes, _) -> unknownClosures(routes, it) } ?: emptySet(),
-                    live = kept?.let { (routes, _) -> cached(routes, it.live) } ?: it.live,
-                )
-            }
-            start(replan = kept == null)
+            walkChanged()
         }
+
+    /**
+     * The longest walk the Planner may offer ([MaxWalk]), timed at [walkingSpeed]. Set by the screen
+     * from the setting; a change once a plan is held plans again at once, since it changes which
+     * routes the Planner offers.
+     */
+    var maxWalk: MaxWalk = maxWalk
+        set(value) {
+            if (value == field) return
+            field = value
+            walkChanged()
+        }
+
+    /**
+     * Whether the walking speed and max walk have been read from storage. Set by the screen after
+     * them, on every composition. Every plan waits for it, whatever asked for the plan (the first
+     * showing, the tick, a pull, Retry), so no route is planned under the defaults in place of the
+     * rider's own choice; a read that never lands delays a plan by [OPTIONS_WAIT] at most, then it
+     * plans with what it has and plans again once the read lands.
+     */
+    var optionsLoaded: Boolean
+        get() = _optionsLoaded.value
+        set(value) {
+            _optionsLoaded.value = value
+        }
+    private val _optionsLoaded = MutableStateFlow(optionsLoaded)
+
+    // While a plan waits for [optionsLoaded]: it snapshots the options once they land, so a change
+    // meanwhile needs no plan of its own.
+    private var awaitingOptions = false
+
+    // The walking speed or the walk limit changed: the plan shown was made for the old ones.
+    private fun walkChanged() {
+        // Routes planned for the old walk aren't shown under the new one, even while the new plan
+        // runs or if it fails: the plan kept for this walk stands in, or none ("Planning…"). Before
+        // the trip starts too, since the walk settings are read from storage after the model is made:
+        // it opens on the plan kept for the rider's own walk, not the defaults'.
+        val here = origin() is TripOrigin.Here
+        val kept = plans.get(fromId, destinations, here, walkingSpeed, maxWalk)
+        plannedFrom = plans.origin(fromId, destinations, here, walkingSpeed, maxWalk)
+        _state.update {
+            it.copy(
+                routes = kept?.first,
+                plannedAt = kept?.second,
+                planError = null,
+                planIncomplete = false,
+                statusUnknown = kept?.let { (routes, _) -> unknownLines(routes, it) } ?: emptySet(),
+                closuresUnknown = kept?.let { (routes, _) -> unknownClosures(routes, it) } ?: emptySet(),
+                live = kept?.let { (routes, _) -> cached(routes, it.live) } ?: it.live,
+            )
+        }
+        // Before the trip is first started there's no plan running to replace: the first takes them,
+        // as does one still waiting for them to be read.
+        if (job != null && !awaitingOptions) start(replan = kept == null)
+    }
 
     /** One boarding stop's last arrivals and when they were fetched; [failed] when the last fetch failed. */
     data class StopLive(val departures: List<Departure>, val fetchedAt: Instant, val failed: Boolean = false)
@@ -210,7 +255,7 @@ class TripViewModel(
     }
 
     private val _state = MutableStateFlow(
-        (plans.get(fromId, destinations, origin() is TripOrigin.Here, walkingSpeed)?.let { (routes, at) -> State(routes = routes, plannedAt = at, statusUnknown = linesOf(routes), closuresUnknown = unknownClosures(routes, State())) } ?: State())
+        (plans.get(fromId, destinations, origin() is TripOrigin.Here, walkingSpeed, maxWalk)?.let { (routes, at) -> State(routes = routes, plannedAt = at, statusUnknown = linesOf(routes), closuresUnknown = unknownClosures(routes, State())) } ?: State())
             .copy(destinationStops = stopIds(destinations).associateWith { it } + destinationIds),
     )
     val state: StateFlow<State> = _state.asStateFlow()
@@ -325,7 +370,7 @@ class TripViewModel(
     }
 
     // Where the plan shown was planned from; null until one is (a reused plan carries its own).
-    private var plannedFrom: TripOrigin? = plans.origin(fromId, destinations, origin() is TripOrigin.Here, walkingSpeed)
+    private var plannedFrom: TripOrigin? = plans.origin(fromId, destinations, origin() is TripOrigin.Here, walkingSpeed, maxWalk)
 
     private fun movedFromPlan(): Boolean {
         val from = (plannedFrom as? TripOrigin.Here)?.coordinate ?: return false
@@ -532,15 +577,29 @@ class TripViewModel(
         val gathered = mutableListOf<TripRoute>()
         var answered = 0
         var failure: TflException? = null
+        // The rider's own options, not the defaults, once read: "Planning…" meanwhile.
+        if (!optionsLoaded) {
+            awaitingOptions = true
+            try {
+                if (withTimeoutOrNull(OPTIONS_WAIT.toMillis()) { _optionsLoaded.first { it } } == null) {
+                    warn("trip options not read in ${OPTIONS_WAIT.seconds} s: planning with defaults")
+                }
+            } finally {
+                awaitingOptions = false
+            }
+        }
         // One origin for every destination's request, so the answers merge as one plan from one place.
         val from = origin()
         val speed = walkingSpeed
+        val limit = maxWalk
+        // Whether the rider has changed the walk since this plan started: its routes are for the old one.
+        fun walkChangedSince() = speed != walkingSpeed || limit != maxWalk
         try {
             coroutineScope {
                 for (destination in destinations) {
                     launch {
                         val routes = try {
-                            withContext(io) { planner.journeys(from, destination, speed) }
+                            withContext(io) { planner.journeys(from, destination, speed, limit) }
                         } catch (e: TflException) {
                             // Neither end is logged: together they're a trip the rider chose (a
                             // destination coordinate least of all, SPEC *Privacy*).
@@ -552,8 +611,8 @@ class TripViewModel(
                         gathered += routes
                         // Nothing yet from any stop keeps "Planning…" (or the last plan) rather than
                         // say there's no route while others are still answering.
-                        // A plan at a speed the rider has since changed from isn't shown.
-                        if (!progressive || gathered.isEmpty() || speed != walkingSpeed) return@launch
+                        // A plan for a walk the rider has since changed from isn't shown.
+                        if (!progressive || gathered.isEmpty() || walkChangedSince()) return@launch
                         // Every route stays in the plan; a detour another stop's answer beats is
                         // left out where it's shown ([State.shownRoutes]).
                         val shown = gathered.toList()
@@ -568,10 +627,10 @@ class TripViewModel(
             throw e
         }
         val failed = failure
-        if (speed != walkingSpeed) {
-            // The rider changed speed while this ran: its routes are for the old one. A whole plan
-            // is still kept for that speed; the new one is planned next ([start]'s loop).
-            if (failed == null) plans.put(fromId, destinations, gathered.toList(), clock(), from, speed)
+        if (walkChangedSince()) {
+            // The rider changed the walk while this ran: its routes are for the old one. A whole plan
+            // is still kept for that walk; the new one is planned next ([start]'s loop).
+            if (failed == null) plans.put(fromId, destinations, gathered.toList(), clock(), from, speed, limit)
             _state.update { it.copy(planning = false) }
             return
         }
@@ -588,7 +647,7 @@ class TripViewModel(
         if (shown > visible.size) warn("journey planner: ${shown - visible.size} of $shown routes pass the destination")
         val at = clock()
         // Only a whole plan is kept for reuse: a partial one is planned again on the next open.
-        if (failed == null) plans.put(fromId, destinations, routes, at, from, speed)
+        if (failed == null) plans.put(fromId, destinations, routes, at, from, speed, limit)
         plannedFrom = from
         // A new plan's lines are unchecked until their status arrives: none passes as running
         // normally meanwhile (its last known status, if held, stands).
@@ -1038,6 +1097,10 @@ class TripViewModel(
         /** How long a plan is reused before the Planner is asked again. */
         val PLAN_REUSE: Duration = Duration.ofMinutes(15)
 
+        // The longest a plan waits for the walk options to be read ([optionsLoaded]): the settings
+        // holder's own bound on a slow read, so a stuck read delays a plan but never blocks it.
+        val OPTIONS_WAIT: Duration = Duration.ofSeconds(2)
+
         /**
          * How far the rider moves from where a trip from here was planned before it plans again: its
          * first walk is from there (SPEC *Trips with a change*). A block or so, well past a fix's wander.
@@ -1064,14 +1127,16 @@ class TripPlans {
     // [here]: whether the plan starts from the rider's position rather than the stop [fromId]. The two
     // are kept apart, since the same nearest stop can be a From… station's own stop, and a plan from
     // here opens with a walk from the rider that one from the stop doesn't have.
-    // [speed]: the walking speed the plan was timed at; a plan at another pace is another plan.
+    // [speed] and [maxWalk]: the walking speed the plan was timed at and the walk limit it was planned
+    // under; a plan at another pace or limit is another plan.
     @Synchronized
     fun get(
         fromId: String,
         destinations: List<TripDestination>,
         here: Boolean = false,
         speed: WalkingSpeed = WalkingSpeed.AVERAGE,
-    ): Pair<List<TripRoute>, Instant>? = plans[key(fromId, destinations, here, speed)]?.let { it.routes to it.at }
+        maxWalk: MaxWalk = MaxWalk.DEFAULT,
+    ): Pair<List<TripRoute>, Instant>? = plans[key(fromId, destinations, here, speed, maxWalk)]?.let { it.routes to it.at }
 
     /** Where the plan [get] returns was planned from: from here, the rider's position then. */
     @Synchronized
@@ -1080,7 +1145,8 @@ class TripPlans {
         destinations: List<TripDestination>,
         here: Boolean = false,
         speed: WalkingSpeed = WalkingSpeed.AVERAGE,
-    ): TripOrigin? = plans[key(fromId, destinations, here, speed)]?.from
+        maxWalk: MaxWalk = MaxWalk.DEFAULT,
+    ): TripOrigin? = plans[key(fromId, destinations, here, speed, maxWalk)]?.from
 
     @Synchronized
     fun put(
@@ -1090,8 +1156,9 @@ class TripPlans {
         at: Instant,
         from: TripOrigin? = null,
         speed: WalkingSpeed = WalkingSpeed.AVERAGE,
+        maxWalk: MaxWalk = MaxWalk.DEFAULT,
     ) {
-        val key = key(fromId, destinations, from is TripOrigin.Here, speed)
+        val key = key(fromId, destinations, from is TripOrigin.Here, speed, maxWalk)
         plans.remove(key)
         plans[key] = Held(routes, at, from)
         while (plans.size > MAX) plans.remove(plans.keys.first())
@@ -1101,8 +1168,8 @@ class TripPlans {
     // the reuse window finds its plan — but a place renamed (same spot) doesn't, since its cached
     // route's final walk leg carries the old name (KtorTflClient stamps it in), and a stale label
     // beats no reuse only when it's right.
-    private fun key(fromId: String, destinations: List<TripDestination>, here: Boolean, speed: WalkingSpeed) =
-        "${if (here) "here@" else ""}$fromId>${destinations.joinToString(",") { destKey(it) }}~${speed.name}"
+    private fun key(fromId: String, destinations: List<TripDestination>, here: Boolean, speed: WalkingSpeed, maxWalk: MaxWalk) =
+        "${if (here) "here@" else ""}$fromId>${destinations.joinToString(",") { destKey(it) }}~${speed.name}~${maxWalk.name}"
 
     private fun destKey(destination: TripDestination) = when (destination) {
         is TripDestination.Stop -> destination.id

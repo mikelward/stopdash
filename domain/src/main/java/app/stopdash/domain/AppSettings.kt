@@ -111,6 +111,12 @@ interface AppSettings {
     /** Stores the walking-speed choice. */
     suspend fun setWalkingSpeed(speed: WalkingSpeed) {}
 
+    /** The longest walk a trip may ask of the rider ([MaxWalk]); [MaxWalk.DEFAULT] until chosen. */
+    fun maxWalk(): Flow<MaxWalk> = flowOf(MaxWalk.DEFAULT)
+
+    /** Stores the max-walk choice. */
+    suspend fun setMaxWalk(maxWalk: MaxWalk) {}
+
     companion object {
         /** A store that persists nothing and always reads the defaults — the default for tests
          *  and a build with no wired DataStore, so the app runs identically minus persistence. */

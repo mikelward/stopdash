@@ -420,6 +420,10 @@
     <string name="walking_speed_average">Medium</string>
     <string name="walking_speed_fast">Fast</string>
     <string name="settings_walking_speed_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
+    <!-- The longest walk a trip's routes may take: the dropdown atop a trip's routes. -->
+    <string name="max_walk_title">Max walk</string>
+    <string name="max_walk_minutes">%1$d min</string>
+    <string name="max_walk_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
 
     <!-- Optional user TfL app_key (SPEC D7). StopDash works keyless; a user's own free key raises
          the request budget. The key is a credential, kept on-device and never logged. -->

@@ -175,8 +175,27 @@ sealed interface TripOrigin {
  * order; throws a [TflException] on a transport or decode failure, as [TflClient] does.
  */
 interface JourneyPlanner {
-    /** Every walk in the routes is timed at [speed] ([WalkingSpeed], the rider's setting). */
-    suspend fun journeys(from: TripOrigin, to: TripDestination, speed: WalkingSpeed = WalkingSpeed.AVERAGE): List<TripRoute>
+    /**
+     * Every walk in the routes is timed at [speed] ([WalkingSpeed], the rider's setting), and none is
+     * longer than [maxWalk] ([MaxWalk], also theirs).
+     */
+    suspend fun journeys(
+        from: TripOrigin,
+        to: TripDestination,
+        speed: WalkingSpeed = WalkingSpeed.AVERAGE,
+        maxWalk: MaxWalk = MaxWalk.DEFAULT,
+    ): List<TripRoute>
+}
+
+/**
+ * [first]'s routes, then [second]'s that aren't among them: a route both offer (the same lines, ends
+ * and times, leg by leg) is kept once, where [first] has it. The same route at another departure is
+ * another route, as the Planner offers it.
+ */
+fun mergedRoutes(first: List<TripRoute>, second: List<TripRoute>): List<TripRoute> {
+    fun key(route: TripRoute) = route.legs.map { listOf(it.mode, it.lineId, it.fromId, it.toId, it.departure, it.arrival) }
+    val seen = first.mapTo(HashSet()) { key(it) }
+    return first + second.filter { seen.add(key(it)) }
 }
 
 /** [JourneyPlanner.journeys] from the stop [fromId]. */

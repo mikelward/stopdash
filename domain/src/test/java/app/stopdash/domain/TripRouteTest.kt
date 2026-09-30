@@ -187,4 +187,18 @@ class TripRouteTest {
         val offAtC = TripRoute(listOf(ride("blue", "A", "C", listOf("C"), 20), walk("C", "E").copy(arrival = t.plusSeconds(45 * 60))))
         assertEquals(listOf(offAtC), withoutDetours(listOf(detour, offAtC), destination))
     }
+
+    @Test
+    fun `merged routes keep the first answer's order and add only the second's new routes`() {
+        val quick = TripRoute(listOf(ride("red", "A", "C", listOf("B", "C"))))
+        val change = TripRoute(listOf(ride("red", "A", "B"), ride("blue", "B", "C")))
+        val oneBus = TripRoute(listOf(ride("bus", "A", "C")))
+        assertEquals(listOf(quick, change, oneBus), mergedRoutes(listOf(quick, change), listOf(oneBus, quick)))
+        // The same lines between the same stops at another time are another route.
+        val later = TripRoute(listOf(ride("red", "A", "C", listOf("B", "C")).copy(departure = t.plusSeconds(300), arrival = t.plusSeconds(900))))
+        assertEquals(listOf(quick, later), mergedRoutes(listOf(quick), listOf(later)))
+        // Either answer alone is kept whole.
+        assertEquals(listOf(oneBus), mergedRoutes(emptyList(), listOf(oneBus)))
+        assertEquals(listOf(quick), mergedRoutes(listOf(quick), emptyList()))
+    }
 }
