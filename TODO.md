@@ -191,11 +191,14 @@ exercises the whole spine the widget later renders from.
           Crashlytics off) so a withdrawal also changes a third, SDK-managed file.
     - [ ] **Invite the opt-in once on the home screen**, as simmo does, since stopdash has no
           onboarding to ask it in: a dismissible card; off stays the default.
-  - [ ] **Log recent process-exit reasons at startup** into the shared log
+  - [x] **Log recent process-exit reasons at startup** into the shared log
         (`ActivityManager.getHistoricalProcessExitReasons`), as the siblings do
         (`ProcessExitReasons`), so a silent kill or native crash leaves a coarse cause in the
         next run's diagnostics. Coarse reason / importance / status only — never the platform's
-        free-text description.
+        free-text description. *Done through androidlog's shared `ProcessExits` (2.3.72), off the
+        main thread at startup: the last five exits and the package's install/update times, as
+        pinned lines. The bug report reads the log with `boundedSnapshot`, so pinned lines a busy
+        run pushed out of the ring still reach it, ahead of the ring.*
 - [x] **Persist the last-good snapshot; show a stamped placeholder at once and fill it
       in when the async read completes** (SPEC snapshot-render — never block the first
       frame on the DataStore read; the intro says the first deliverable exercises
@@ -2440,7 +2443,7 @@ and these carry the rest as their own PRs:
       `DebugReport.deliver(screenshot = …)` argument, and 2.2 added the capture itself as the
       shared `ReportScreenshot.capture(activity, dir, log)` — a PixelCopy of the Activity's own
       window (which excludes the consent dialog's separate window), the off-main buffer, the
-      age-based prune, and the recycle. stopdash pins `2.2.69` and calls it off the main thread,
+      age-based prune, and the recycle. stopdash took it at `2.2.69` and calls it off the main thread,
       minting the `FileProvider` URI from the returned file and handing it to `deliver`. A failed
       capture is a text-only report, never a dropped share. The `FileProvider` +
       `res/xml/file_paths.xml` (cache path) stay app-side, and the screenshot is named on the

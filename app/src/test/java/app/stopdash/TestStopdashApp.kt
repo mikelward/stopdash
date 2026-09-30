@@ -15,6 +15,11 @@ class TestStopdashApp : StopdashApp() {
         // work to do here, by design.
     }
 
+    override fun logProcessExits() {
+        // Intentionally empty — the startup query would write lines into the shared log that no
+        // test wrote; ProcessExitReasonsTest drives the collection against its own log.
+    }
+
     override fun warmSharedState() {
         // Intentionally empty — a unit test needs no real DataStore-backed app_key holder or its
         // background collector. Tests that exercise the holder drive it directly.

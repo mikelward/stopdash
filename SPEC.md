@@ -2277,7 +2277,10 @@ Mirrors the sibling fleet:
   silently*). It stays on the device and carries coarse diagnostics only (see *Data source, cost,
   and reliability*); its one off-device sink is Crashlytics, only while the user has opted in, and
   only its redacted off-device rendering (see *Privacy*). The implementation is the shared
-  `mikelward/androidlog` buffer, resolved as a published dependency.
+  `mikelward/androidlog` buffer, resolved as a published dependency. At startup it also records
+  why the app's last few processes ended — the platform's reason (a crash, an ANR, a low-memory
+  or standby kill), never its free-text description — pinned so a busy run can't push that out of
+  a bug report, since a silent kill otherwise leaves the next run's log looking like a clean start.
 - **A bug report leaves the device only under explicit consent.** The overflow's *Send bug
   report* composes the log plus the **exact location**, per-stop distances, and a **screenshot of
   the reporting screen** and hands it to the platform share sheet — user-initiated, £0, no service
