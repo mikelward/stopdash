@@ -625,9 +625,12 @@ pages' own day-long cache, so at most a daily fetch) replaces the bundled patter
 it still runs every route the bundled data has (on the same branch, calling at all its stops in
 order) — a new station or an extension, even one past a terminus, is taken, while an answer missing
 or cutting back a route keeps the bundled line, since a missing route could make a branching leg
-look single-path. The refresh adds no line the bundled data doesn't model, and until it's back, or
-wherever it can't be had, the bundled data stands. Incomplete or stale data degrades to "show what
-TfL said", never to a confident wrong merge.
+look single-path. The refresh adds no line the bundled data doesn't model. The lines it took are
+kept on the device (the cache directory, public route data only), so the widget's process and the
+next start group the same way without asking TfL, checked against the bundled data again in case a
+newer build ships different routes; a line a refresh can't read keeps what the last one took. Until
+a refresh has taken a line, or wherever it can't be had, the bundled data stands. Incomplete or
+stale data degrades to "show what TfL said", never to a confident wrong merge.
 
 The one exception to that raw fallback is a **single-branch stop** — one every serving pattern
 reaches on the same trunk. There the branch names which trunk the train came up behind this

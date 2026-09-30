@@ -132,7 +132,7 @@ import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripTiming
 import app.stopdash.domain.YourStops
-import app.stopdash.domain.refreshTopology
+import app.stopdash.domain.currentPatterns
 import app.stopdash.domain.stopPlace
 import app.stopdash.telemetry.TelemetryConsent
 import app.stopdash.ui.ARRIVALS_REUSE
@@ -388,15 +388,14 @@ class MainActivity : ComponentActivity() {
             routeTopology.value = withContext(Dispatchers.IO) { RouteTopologyStore.load(applicationContext) }
             // Then TfL's current routes over the bundled ones where they still cover them, so a line
             // extended since this build is grouped as it runs now (SPEC *Branch merging*). Through
-            // the route stops' cache, so TfL is asked at most daily; the bundled topology stays in
-            // use until this is back, and for any line it can't be had for.
+            // the route stops' cache, so TfL is asked at most daily; what the last refresh left
+            // stays in use until this is back, and for any line it can't be had for. The store keeps
+            // the result for the widget's process and the next start.
             val bundled = withContext(Dispatchers.IO) { RouteTopologyStore.bundled(applicationContext) }
-            val refreshed = refreshTopology(bundled, routeStops(applicationContext), ::logTopologyWarning)
+            val current = currentPatterns(bundled, routeStops(applicationContext), ::logTopologyWarning)
+            val refreshed = withContext(Dispatchers.IO) { RouteTopologyStore.use(applicationContext, current) }
             // Unchanged (the usual case) puts nothing new in place, so nothing re-renders for it.
-            if (refreshed.patternsByLine != routeTopology.value.patternsByLine) {
-                RouteTopologyStore.use(refreshed)
-                routeTopology.value = refreshed
-            }
+            if (refreshed.patternsByLine != routeTopology.value.patternsByLine) routeTopology.value = refreshed
         }
         setContent {
             // TfL refused the key in force: one bar atop every screen says so and clears it (SPEC D7).

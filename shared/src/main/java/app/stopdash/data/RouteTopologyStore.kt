@@ -4,8 +4,13 @@ import android.content.Context
 import android.util.Log
 import app.stopdash.domain.RoutePattern
 import app.stopdash.domain.RouteTopology
+import app.stopdash.domain.withLive
+import java.io.File
+import java.io.IOException
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /**
@@ -14,7 +19,8 @@ import kotlinx.serialization.json.Json
  * process** and cached — both the app and the widget worker share the one instance, and it is
  * warmed off the render path (the activity's `onCreate`, the widget's coroutine). The app then
  * puts TfL's current patterns over it where they still cover it ([use]), so a line extended since
- * the build is grouped as it runs now.
+ * the build is grouped as it runs now, and keeps those lines in the cache directory, so a process
+ * the app didn't start (the widget's) and the next one it does group the same way.
  *
  * Fails safe to [RouteTopology.EMPTY]: a missing or corrupt asset, or a version this build
  * doesn't understand, degrades to "show TfL's branch as-is, merge nothing" rather than
@@ -25,6 +31,10 @@ object RouteTopologyStore {
     private const val ASSET = "route_topology.json"
     private const val CURRENT_VERSION = 1
 
+    // TfL's current patterns for the lines where they differ from the asset, in the asset's own
+    // format, in the cache directory: never backed up, and cleared only back to the asset.
+    private const val LIVE_FILE = "route-topology-live.json"
+
     private val json = Json { ignoreUnknownKeys = true }
 
     // The topology in use: the bundled one, or TfL's current patterns over it ([use]).
@@ -34,6 +44,12 @@ object RouteTopologyStore {
     // The bundled asset as parsed, kept apart from [cached] so a refresh always starts from it.
     @Volatile
     private var bundled: RouteTopology? = null
+
+    // The lines [LIVE_FILE] holds, once read.
+    @Volatile
+    private var stored: Map<String, List<RoutePattern>>? = null
+
+    private val fileLock = Any()
 
     /**
      * The topology if it is **already parsed and cached**, else [RouteTopology.EMPTY] — a
@@ -47,13 +63,14 @@ object RouteTopologyStore {
     fun cached(): RouteTopology = cached ?: RouteTopology.EMPTY
 
     /**
-     * The topology in use: the bundled one, parsed once and cached, or the refreshed one once [use]
-     * has put it in place. Safe to call from any thread.
+     * The topology in use: the bundled one with the lines an earlier refresh kept over it, where
+     * they still cover it (a build with a newer asset checks them again), or what [use] has put in
+     * place since. Read once per process and cached. Blocking file IO: call off the main thread.
      */
     fun load(context: Context): RouteTopology {
         cached?.let { return it }
-        val topology = bundled(context)
-        // A refresh that landed while the asset was read stays in place.
+        val topology = bundled(context).withLive(stored(context))
+        // A refresh that landed while the files were read stays in place.
         return cached ?: topology.also { cached = it }
     }
 
@@ -78,11 +95,75 @@ object RouteTopologyStore {
     }
 
     /**
-     * Puts [topology] in use for the rest of the process: the bundled one with TfL's current
-     * patterns over it, which [load] and [cached] then return (SPEC *Branch merging*).
+     * Puts TfL's [current] patterns in use over the bundled ones where they still cover them
+     * ([withLive]), keeping what an earlier refresh left for a line this one didn't read, and returns
+     * the topology now in use, which [load] and [cached] then return (SPEC *Branch merging*). The
+     * lines that differ from the asset are saved for the next process; nothing is written when they
+     * haven't changed. Blocking file IO: call off the main thread.
      */
-    fun use(topology: RouteTopology) {
+    fun use(context: Context, current: Map<String, List<RoutePattern>>): RouteTopology = synchronized(fileLock) {
+        val bundled = bundled(context)
+        val before = stored(context)
+        val topology = bundled.withLive(before + current)
+        val differing = topology.patternsByLine.filter { (lineId, patterns) -> patterns != bundled.patternsByLine[lineId] }
+        if (differing != before) save(context, differing)
         cached = topology
+        topology
+    }
+
+    // What [LIVE_FILE] holds, read once; empty when there's none or it can't be read.
+    private fun stored(context: Context): Map<String, List<RoutePattern>> {
+        stored?.let { return it }
+        return synchronized(fileLock) {
+            stored ?: readStored(context).also { stored = it }
+        }
+    }
+
+    private fun readStored(context: Context): Map<String, List<RoutePattern>> {
+        val file = File(context.cacheDir, LIVE_FILE)
+        if (!file.exists()) return emptyMap()
+        return try {
+            parse(file.readText()) { Log.w("StopDash.Topology", "refreshed $it") }.patternsByLine
+        } catch (e: IOException) {
+            discard(file, "unreadable", e)
+        } catch (e: SerializationException) {
+            discard(file, "unparseable", e)
+        } catch (e: IllegalArgumentException) {
+            discard(file, "invalid", e)
+        }
+    }
+
+    // A file that can't be read is deleted, so the bundled topology stands until the next refresh.
+    private fun discard(file: File, why: String, e: Exception): Map<String, List<RoutePattern>> {
+        val deleted = file.delete()
+        Log.w("StopDash.Topology", "refreshed route topology $why (${e::class.simpleName}), ${if (deleted) "deleted" else "not deleted"}")
+        return emptyMap()
+    }
+
+    private fun save(context: Context, lines: Map<String, List<RoutePattern>>) {
+        val file = File(context.cacheDir, LIVE_FILE)
+        val tmp = File(file.path + ".tmp")
+        // Recorded as kept only once it's on disk, so a failed save is tried again by the next
+        // refresh in this process; until then the topology is in use here either way.
+        try {
+            if (lines.isEmpty()) {
+                if (!file.exists() || file.delete()) stored = lines else Log.w("StopDash.Topology", "refreshed route topology not cleared")
+            } else {
+                tmp.writeText(json.encodeToString(TopologyFile(CURRENT_VERSION, lines.mapValues { (_, patterns) -> patterns.map(PatternDto::of) })))
+                // Replace in one step, so a reader never sees a half-written file.
+                if (tmp.renameTo(file)) stored = lines else Log.w("StopDash.Topology", "refreshed route topology not saved: rename failed")
+            }
+        } catch (e: IOException) {
+            Log.w("StopDash.Topology", "refreshed route topology not saved: ${e::class.simpleName}")
+        } finally {
+            if (tmp.exists()) tmp.delete()
+        }
+    }
+
+    /** Back to the state of a process that hasn't read anything yet, as a new one would start. */
+    internal fun forget() {
+        cached = null
+        stored = null
     }
 
     /**
@@ -131,6 +212,10 @@ object RouteTopologyStore {
         fun toPattern(): RoutePattern? {
             if (stops.size < 2 || endA.isBlank() || endB.isBlank()) return null
             return RoutePattern(branch = branch?.ifBlank { null }, stops = stops, endA = endA, endB = endB)
+        }
+
+        companion object {
+            fun of(pattern: RoutePattern) = PatternDto(pattern.branch, pattern.stops, pattern.endA, pattern.endB)
         }
     }
 }
