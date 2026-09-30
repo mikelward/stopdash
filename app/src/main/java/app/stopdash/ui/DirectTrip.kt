@@ -19,9 +19,22 @@ import kotlinx.coroutines.launch
  * repository let expire is refetched while the page stays up; the old copy shows meanwhile.
  */
 @Composable
-internal fun rememberLineSequences(lineIds: List<String>, now: Instant): Map<String, LineSequence?> {
+internal fun rememberLineSequences(lineIds: List<String>, now: Instant): Map<String, LineSequence?> =
+    rememberLineLoads(lineIds, now).sequences
+
+/**
+ * [rememberLineSequences]' routes ([sequences]), with the lines whose load is under way ([loading]):
+ * a first load, absent from [sequences] meanwhile, and a retry of one that failed, held there as null
+ * meanwhile. A retry is a check running again, not one that failed.
+ */
+internal class LineLoads(val sequences: Map<String, LineSequence?>, val loading: Set<String>)
+
+/** [rememberLineSequences], saying which lines' loads are under way ([LineLoads]). */
+@Composable
+internal fun rememberLineLoads(lineIds: List<String>, now: Instant): LineLoads {
     val repository = LocalRouteStops.current
     val loaded = remember { mutableStateMapOf<String, LineSequence?>() }
+    val loading = remember { mutableStateMapOf<String, Unit>() }
     val recheck = now.epochSecond / 3600
     LaunchedEffect(repository, lineIds, recheck) {
         val routes = repository ?: return@LaunchedEffect
@@ -32,20 +45,25 @@ internal fun rememberLineSequences(lineIds: List<String>, now: Instant): Map<Str
                 val held = loaded[lineId]
                 if (held != null && routes.cached(lineId, "") != null) continue
                 launch {
-                    loaded[lineId] = routes.cached(lineId, "") ?: try {
-                        routes.load(lineId, "")
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: TflException) {
-                        // Logged (sanitized) by the repository. A day-old copy beats none; with none,
-                        // null marks the failure so the page says some routes couldn't be checked.
-                        held
+                    loading[lineId] = Unit
+                    try {
+                        loaded[lineId] = routes.cached(lineId, "") ?: try {
+                            routes.load(lineId, "")
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: TflException) {
+                            // Logged (sanitized) by the repository. A day-old copy beats none; with none,
+                            // null marks the failure so the page says some routes couldn't be checked.
+                            held
+                        }
+                    } finally {
+                        loading.remove(lineId)
                     }
                 }
             }
         }
     }
-    return lineIds.filter { it in loaded }.associateWith { loaded[it] }
+    return LineLoads(lineIds.filter { it in loaded }.associateWith { loaded[it] }, lineIds.filterTo(HashSet()) { it in loading })
 }
 
 /**

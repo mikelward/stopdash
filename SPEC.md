@@ -1102,9 +1102,13 @@ failed). With none, it sits between the two: below every route checked and open,
 not to run. Either way it says what it couldn't check, until a check succeeds — "Couldn't check for
 disruptions: ‹names›", each line whose status isn't known or whose check failed, then each stop with
 no current check (its bus not yet placed on a pole there included), by the names the cards show
-(maintainer, 2026-09-30) — and of two arriving together the one checked comes first. A ride goes by any of its lines: one whose Planner line is
-suspended or unchecked still counts as usable while another line riding the same stretch, checked
-as running from stops checked open, can take it, since that line's trains time it too. The Planner's
+(maintainer, 2026-09-30) — and of two arriving together the one checked comes first. A stop whose
+bus waits on its line's route to be placed on a pole is still being checked, not one that couldn't
+be: the trip reads as checking until the route loads, or while one that failed is loaded again,
+and names the stop only once a load has failed with none under way. A
+ride goes by any of its lines: one whose Planner line is suspended or unchecked still counts as
+usable while another line riding the same stretch, checked as running from stops checked open, can
+take it, since that line's trains time it too. The Planner's
 line then answers to its status like any other: suspended or unchecked, its trains neither time the
 route nor show as catchable, and its timetable gives no time either, so the arrival waits for a
 train that can take the ride. A line whose latest status check failed stands in for none: the status
