@@ -955,6 +955,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         - [ ] **Remember a picked place in *Recent***: a chosen geocoded place isn't recorded (no stop
               id); *To…*'s *Recent* keeps only stops. Consider a device-local recent-places list.
         - [x] **Extend geocoded places to the From-station To… picker**: its search offers places too.
+      - [ ] **Read a rail leg TfL names only by its platform** (found 2026-09-30 recording #420's
+            fixtures): the Planner can name a rail leg's end by `individualStopId` alone
+            (`9100STPXBOX`, no `naptanId`), and `TflJourneyPointDto.stopId` takes a bare id only for a
+            bus pole, so the whole route is dropped as unreadable ("N of M routes unreadable"):
+            Thameslink from St Pancras and the Elizabeth line from Liverpool Street went missing that
+            way. Name the leg by the station the live feed knows, checked against a recorded answer.
       - [x] **Delete the unreachable direct-trips page path**: `LookDepartures` is now only a
             station page with nowhere to stand; the direct-trips filter page, a trip from here
             through it, and a To… destination's widening to the stops around it are gone, with
