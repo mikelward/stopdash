@@ -2448,7 +2448,7 @@ class MainActivity : ComponentActivity() {
             factory = viewModelFactory {
                 initializer {
                     TripViewModel(
-                        journeyPlanner, departuresClient(appContext), fromStop.id,
+                        journeyPlanner(appContext), departuresClient(appContext), fromStop.id,
                         destinations, warn = ::logDepartureWarning,
                         arrivals = ArrivalsCache.SHARED, departureSourceChanges = RailApiKeySetting.changes,
                         closureCache = StopClosureCache.SHARED,
@@ -2778,15 +2778,21 @@ class MainActivity : ComponentActivity() {
         }
 
         // A trip with a change's planner (SPEC *Trips with a change*): on demand while a trip is on
-        // screen, never on the refresh path of the list.
-        private val journeyPlanner by lazy {
-            KtorTflClient(
+        // screen, never on the refresh path of the list. One per process.
+        private val journeyPlannerLock = Any()
+        private var journeyPlannerInstance: KtorTflClient? = null
+
+        private fun journeyPlanner(context: Context): KtorTflClient = synchronized(journeyPlannerLock) {
+            journeyPlannerInstance ?: KtorTflClient(
                 httpClient,
                 appKey = { UserApiKeySetting.current },
                 rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
                 requestPool = SharedTflRequestPool.pool,
                 warn = ::logDepartureWarning,
-            )
+                // A train the Planner names by its platform alone leaves from the station the
+                // bundled index lists that platform under.
+                stationOf = { StationIndexStore.load(context.applicationContext).stationOf(it) },
+            ).also { journeyPlannerInstance = it }
         }
 
         // The trip on the way (SPEC *On the way*): process-wide, so its screen and the main view share
@@ -2797,16 +2803,17 @@ class MainActivity : ComponentActivity() {
 
         internal fun activeTrip(context: Context): ActiveTripTracker = synchronized(activeTripLock) {
             activeTripInstance ?: run {
+                val planner = journeyPlanner(context)
                 val store = FileActiveTripStore(File(context.applicationContext.noBackupFilesDir, "active-trip.json"), ::logDepartureWarning)
                 ActiveTripTracker(
                     load = store::load,
                     save = store::save,
                     // TfL alone: a followed leg is never National Rail, so a Darwin board would only spend the rail key's quota.
-                    arrivals = journeyPlanner::arrivals,
-                    vehicles = journeyPlanner,
-                    stationPlaces = journeyPlanner::stationPlaces,
+                    arrivals = planner::arrivals,
+                    vehicles = planner,
+                    stationPlaces = planner::stationPlaces,
                     // A bus ride's boarding pole, for its letter on the trip's board: one request per stop.
-                    stopPoles = journeyPlanner::stopAreaPoles,
+                    stopPoles = planner::stopAreaPoles,
                     // The same routes, held a day, the trip's cards place its rides with.
                     lineSequence = { lineId -> routeStops(context.applicationContext).let { it.cached(lineId, "") ?: it.load(lineId, "") } },
                     warn = ::logDepartureWarning,

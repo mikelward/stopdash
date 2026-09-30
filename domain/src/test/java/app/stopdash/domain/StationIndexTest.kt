@@ -1,6 +1,7 @@
 package app.stopdash.domain
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -169,5 +170,46 @@ class StationIndexTest {
         val near = StationMatch("B", "Example", latitude = 51.5020, longitude = -0.12) // ~222 m: folds
         val beyond = StationMatch("C", "Example", latitude = 51.5027, longitude = -0.12) // ~300 m: stays
         assertEquals(listOf("A", "C"), StationIndex.foldNeighbors(listOf(kept, near, beyond)).map { it.id })
+    }
+
+    @Test
+    fun `a platform is at the station TfL lists it under, whatever code it carries`() {
+        val index = StationIndex(
+            listOf(
+                IndexedStation("910GEXAMPLE", "Example", platforms = listOf("9100EXAMPLE1", "9100EXAMPLELL2")),
+                IndexedStation("910GEXAMPLELL", "Example Low Level", platforms = listOf("9100EXAMPLELL1")),
+                IndexedStation("940GZZEXA", "Example Underground", platforms = listOf("9400ZZEXA3")),
+            ),
+        )
+        assertEquals("910GEXAMPLE", index.stationOf("9100EXAMPLE1"))
+        // Listed under the main station, not the one its code names.
+        assertEquals("910GEXAMPLE", index.stationOf("9100EXAMPLELL2"))
+        assertEquals("910GEXAMPLELL", index.stationOf("9100EXAMPLELL1"))
+        assertEquals("940GZZEXA", index.stationOf("9400ZZEXA3"))
+    }
+
+    @Test
+    fun `an unlisted access area is at the listed station its code names`() {
+        val index = StationIndex(listOf(IndexedStation("910GEXAMPLELL", "Example"), IndexedStation("940GZZEXA", "Example")))
+        assertEquals("910GEXAMPLELL", index.stationOf("9100EXAMPLELL"))
+        assertEquals("940GZZEXA", index.stationOf("9400ZZEXA"))
+        // A platform's own digit names no station; nor does a stop that isn't a train's.
+        assertNull(index.stationOf("9100EXAMPLELL1"))
+        assertNull(index.stationOf("9100UNLISTED"))
+        assertNull(index.stationOf("490000001A"))
+        assertNull(index.stationOf("910GEXAMPLELL"))
+        assertNull(StationIndex.EMPTY.stationOf("9100EXAMPLELL"))
+    }
+
+    @Test
+    fun `a platform listed under two stations is placed only by its code`() {
+        val index = StationIndex(
+            listOf(
+                IndexedStation("910GFIRST", "First", platforms = listOf("9100SHARED1", "9100SECOND")),
+                IndexedStation("910GSECOND", "Second", platforms = listOf("9100SHARED1", "9100SECOND")),
+            ),
+        )
+        assertNull(index.stationOf("9100SHARED1"))
+        assertEquals("910GSECOND", index.stationOf("9100SECOND"))
     }
 }

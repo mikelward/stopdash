@@ -21,6 +21,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.utils.io.ByteReadChannel
+import java.io.File
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.test.runTest
@@ -470,6 +471,42 @@ class JourneyPlannerTest {
         // Read as the plan's own routes are: the start unnamed, the walk on named for the place.
         assertEquals("", route.legs.first().fromName)
         assertEquals("St Paul's", route.legs.last().toName)
+    }
+
+    @Test
+    fun `a train the Planner names by its platform alone leaves from that platform's station`() = runTest {
+        // The same recorded answer: besides the 46, Thameslink from St Pancras's low-level
+        // platforms, which the Planner names by an access area alone ("9100STPXBOX", no station).
+        val via = checkNotNull(javaClass.getResource("/fixtures/journey_results_euston_to_st_pauls_via.json")).readText()
+        val index = StationIndexStore.parse(File("src/main/assets/stations/station_index.json").readText())
+        val warnings = mutableListOf<String>()
+        fun planner(stationOf: (String) -> String?): KtorTflClient {
+            val engine = MockEngine { respond(ByteReadChannel(via), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json")) }
+            val http = HttpClient(engine) {
+                expectSuccess = true
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            }
+            return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", warn = { warnings += it }, stationOf = stationOf)
+        }
+        val from = TripOrigin.Here(Coordinates(51.5282, -0.1337))
+        val to = TripDestination.Place(Coordinates(51.5138, -0.0984), "St Paul's")
+        val routes = planner(index::stationOf).fewestChangesVia(from, to, "490G000672")
+        assertEquals(3, routes.size)
+        assertEquals(emptyList<String>(), warnings)
+        val thameslink = routes.filter { route -> route.rides.single().lineId == "thameslink" }
+        assertEquals(2, thameslink.size)
+        thameslink.forEach { route ->
+            val (walk, ride) = route.legs
+            // Boarding at the station whose trains the live feed and National Rail's boards list,
+            // and walked to there.
+            assertEquals("910GSTPXBOX", ride.fromId)
+            assertEquals("910GSTPXBOX", walk.toId)
+            assertEquals("910GCTMSLNK", ride.toId)
+        }
+        // With no index to place the platform, those routes can't be read, as before.
+        warnings.clear()
+        assertEquals(listOf("46"), planner { null }.fewestChangesVia(from, to, "490G000672").map { it.rides.single().lineId })
+        assertEquals(listOf("journey planner (fewest changes via a stop): 2 of 3 routes unreadable"), warnings)
     }
 
     @Test

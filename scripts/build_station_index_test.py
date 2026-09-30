@@ -121,6 +121,41 @@ class BuildIndexTest(unittest.TestCase):
         self.assertEqual({"thameslink": ["910GNORTHA", "910GSOUTH"]}, entry["routeEnds"],
                          "a service without route data is left to count by line")
 
+    def test_stations_carry_the_platforms_tfl_lists_under_them(self):
+        rail = dict(stop("910GEXAMPLE", "Example Rail Station", ["national-rail"], "NaptanRailStation"), children=[
+            {"naptanId": "9100EXAMPLE1"},
+            {"naptanId": "9100OTHER2", "stopType": "NaptanRailAccessArea"},
+            {"naptanId": "4900EXAMPLE1", "stopType": "NaptanRailEntrance"},
+            {"naptanId": "490000001A", "stopType": "NaptanPublicBusCoachTram"},
+        ])
+        tube = dict(stop("940GZZLUEXA", "Example", ["tube"]), children=[
+            stop("9400ZZLUEXA2", "Platform", ["tube"], "NaptanMetroPlatform"),
+            stop("9400ZZLUEXA1", "Platform", ["tube"], "NaptanMetroPlatform"),
+        ])
+        bare = stop("910GBARE", "Bare Rail Station", ["national-rail"], "NaptanRailStation")
+        by_id = {s["id"]: s for s in build_index([rail, tube, bare], [])["stations"]}
+        # Whatever code it carries: only TfL's listing says which station a platform is under.
+        self.assertEqual(["9100EXAMPLE1", "9100OTHER2"], by_id["910GEXAMPLE"]["platforms"], "entrances and bus stops left out")
+        self.assertEqual(["9400ZZLUEXA1", "9400ZZLUEXA2"], by_id["940GZZLUEXA"]["platforms"])
+        self.assertNotIn("platforms", by_id["910GBARE"])
+
+    def test_a_station_listed_under_several_modes_keeps_every_listing_s_platforms(self):
+        from_rail = dict(stop("910GEXAMPLE", "Example", ["national-rail"], "NaptanRailStation"),
+                         children=[{"naptanId": "9100EXAMPLE0"}])
+        from_elizabeth = dict(stop("910GEXAMPLE", "Example", ["elizabeth-line"], "NaptanRailStation"),
+                              children=[{"naptanId": "9100EXAMPLE1"}, {"naptanId": "9100EXAMPLE0"}])
+        entry = build_index(station_points([from_rail, from_elizabeth]), [])["stations"][0]
+        self.assertEqual(["9100EXAMPLE0", "9100EXAMPLE1"], entry["platforms"])
+
+    def test_a_platform_listed_under_two_stations_is_neither_s(self):
+        first = dict(stop("910GFIRST", "First", ["national-rail"], "NaptanRailStation"),
+                     children=[{"naptanId": "9100SHARED1"}, {"naptanId": "9100FIRST1"}])
+        second = dict(stop("910GSECOND", "Second", ["national-rail"], "NaptanRailStation"),
+                      children=[{"naptanId": "9100SHARED1"}])
+        by_id = {s["id"]: s for s in build_index([first, second], [])["stations"]}
+        self.assertEqual(["9100FIRST1"], by_id["910GFIRST"]["platforms"])
+        self.assertNotIn("platforms", by_id["910GSECOND"])
+
     def test_far_away_platform_and_modeless_stops_are_left_out(self):
         index = build_index(
             [

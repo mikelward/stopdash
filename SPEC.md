@@ -1062,7 +1062,11 @@ the route says which. A bus station's stands are in no pair, and the Planner can
 doesn't use, so the ride gets off at the route's own stop of that name, and boards at it too, its
 times fetched there and reading "Loading" until the route says which stand and they arrive, as at a
 stop pair (maintainer, 2026-09-30): at a stand the line doesn't use none of its buses is ever
-predicted, and the route could never be placed and so never checked. A route that is all walking (two stops close
+predicted, and the route could never be placed and so never checked. A train the Planner names by
+its platform alone, with no station (Thameslink from St Pancras's low-level platforms, the Elizabeth
+line from Liverpool Street), boards at the station TfL lists that platform under, from the bundled
+station list, since only the station has live trains and a National Rail board; such a route was
+once dropped as unreadable, so the trip lost it (found 2026-09-30). A route that is all walking (two stops close
 together) shows "Walk" where the pills go and its minutes, with no live row and no arrivals request.
 
 **Routing from the near-me list** (maintainer, 2026-09-27): the saved places lead the near-me list

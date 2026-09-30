@@ -6,7 +6,9 @@ Overground, Elizabeth line, tram, National Rail and pier station in and around L
 the interchanges ("hubs") that group them, each with its TfL id, name as TfL spells it (the
 app cleans it), modes, and hub; a station also carries its position and its lines by mode (tube
 lines, National Rail services, Overground lines, …), so the near-me list can name the nearest
-station of a line it doesn't reach ("From …"). A National Rail station also carries, per service,
+station of a line it doesn't reach ("From …"), and the platforms TfL lists under it
+("platforms"), so a planned trip's train from a platform the Journey Planner names alone is
+read as leaving that station. A National Rail station also carries, per service,
 the ends of the routes it's on ("routeEnds"), since one service runs to different places from
 different stations — Thameslink to Bedford from one, to Cambridge from another. Bus stops are left to TfL's live search: there are ~20,000.
 
@@ -110,17 +112,20 @@ def station_points(points):
 
 
 def merged(first, other):
-    """[first] with [other]'s modes and line groups added: two listings of one station."""
+    """[first] with [other]'s modes, line groups and platforms added: two listings of one station."""
     groups = {}
     for group in (first.get("lineModeGroups") or []) + (other.get("lineModeGroups") or []):
         mode = group.get("modeName")
         groups.setdefault(mode, set()).update(group.get("lineIdentifier") or [])
     lines = {line.get("id"): line for line in (first.get("lines") or []) + (other.get("lines") or []) if line.get("id")}
+    # Each listing can nest a different set of the station's platforms, so all of them are kept.
+    children = {stop_id(c): c for c in (first.get("children") or []) + (other.get("children") or []) if stop_id(c)}
     return {
         **first,
         "modes": sorted(set(first.get("modes") or []) | set(other.get("modes") or [])),
         "lineModeGroups": [{"modeName": m, "lineIdentifier": sorted(ids)} for m, ids in sorted(groups.items())],
         "lines": [lines[k] for k in sorted(lines)],
+        "children": [children[k] for k in sorted(children)],
     }
 
 
@@ -150,12 +155,14 @@ def build_index(stops, hubs):
             continue
         hub = stop.get("hubNaptanCode") or ""
         lines = lines_by_mode(stop)
+        platforms = platform_ids(stop)
         stations[sid] = {
             "id": sid, "name": name, "modes": modes, **({"hub": hub} if hub else {}),
             # Five decimals is about a meter: plenty to measure how far a station is.
             "lat": round(stop["lat"], 5), "lon": round(stop["lon"], 5),
             # "modeLines", not "lines": an earlier build wrote "lines" as a tube-only list.
             **({"modeLines": lines} if lines else {}),
+            **({"platforms": platforms} if platforms else {}),
         }
         if hub:
             hub_modes.setdefault(hub, set()).update(modes)
@@ -164,6 +171,18 @@ def build_index(stops, hubs):
             name = (line.get("name") or "").strip()
             if line.get("id") in indexed and name:
                 line_names[line["id"]] = name
+    # A platform TfL lists under two stations says nothing about which one a train leaves: neither
+    # keeps it, so the trip is read no worse than before the index had platforms.
+    owners = {}
+    for station in stations.values():
+        for platform in station.get("platforms", []):
+            owners[platform] = owners.get(platform, 0) + 1
+    for station in stations.values():
+        kept = [p for p in station.get("platforms", []) if owners[p] == 1]
+        if kept:
+            station["platforms"] = kept
+        else:
+            station.pop("platforms", None)
     for hub in hubs:
         hid = stop_id(hub)
         name = (hub.get("commonName") or "").strip()
@@ -175,6 +194,20 @@ def build_index(stops, hubs):
         "stations": [stations[k] for k in sorted(stations)],
         "lineNames": {k: line_names[k] for k in sorted(line_names)},
     }
+
+
+# The stops TfL nests under a station that the Journey Planner can name a train's end by alone,
+# with no station id ("9100LIVSTLL1"): a rail access area, a tube platform. Its entrances ("4900…")
+# and the bus stops around it ("490…") are never a train's end.
+PLATFORM_PREFIXES = ("9100", "9400")
+
+
+def platform_ids(stop):
+    """The ids of [stop]'s own platforms, as TfL lists them under it, sorted. Only TfL's hierarchy
+    says which station one belongs to: its id needn't share the station's code (St Pancras's
+    "9100STPXBOX1" is under "910GSTPX", not "910GSTPXBOX")."""
+    ids = {stop_id(child) for child in stop.get("children") or []}
+    return sorted(i for i in ids if i.startswith(PLATFORM_PREFIXES))
 
 
 def lines_by_mode(stop):

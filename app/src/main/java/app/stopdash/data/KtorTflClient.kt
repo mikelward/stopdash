@@ -106,6 +106,10 @@ class KtorTflClient(
     // The time a line alert's start is judged against ([AlertStart]): work starting on a later
     // day is planned, not a disruption. Injected so a test can pin it.
     private val clock: () -> Instant = Instant::now,
+    // The station a train's platform is at ([StationIndex.stationOf]), for a planned route's rail leg
+    // the Planner names by its platform alone; it reads the bundled index, so the planner calls it off
+    // the main thread. None by default (tests, the other clients): such a route is dropped as unreadable.
+    private val stationOf: (String) -> String? = { null },
 ) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, JourneyPlanner, PostcodeResolver, PlaceSearch, VehicleSource {
     override suspend fun journeys(
         from: TripOrigin,
@@ -240,7 +244,7 @@ class KtorTflClient(
                 warn("$source: HTTP ${e.response.status.value}")
                 return@tflRequest emptyList()
             }
-            val routes = dto.toRoutes()
+            val routes = dto.toRoutes(stationOf = stationOf)
             // Journeys offered but none readable: a decode failure, not "no routes" (which would be
             // reused as a real answer for the plan's lifetime).
             if (routes.isEmpty() && dto.journeys.isNotEmpty()) {

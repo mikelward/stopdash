@@ -955,12 +955,17 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         - [ ] **Remember a picked place in *Recent***: a chosen geocoded place isn't recorded (no stop
               id); *To…*'s *Recent* keeps only stops. Consider a device-local recent-places list.
         - [x] **Extend geocoded places to the From-station To… picker**: its search offers places too.
-      - [ ] **Read a rail leg TfL names only by its platform** (found 2026-09-30 recording #420's
+      - [x] **Read a rail leg TfL names only by its platform** (found 2026-09-30 recording #420's
             fixtures): the Planner can name a rail leg's end by `individualStopId` alone
-            (`9100STPXBOX`, no `naptanId`), and `TflJourneyPointDto.stopId` takes a bare id only for a
-            bus pole, so the whole route is dropped as unreadable ("N of M routes unreadable"):
-            Thameslink from St Pancras and the Elizabeth line from Liverpool Street went missing that
-            way. Name the leg by the station the live feed knows, checked against a recorded answer.
+            (`9100STPXBOX`, no `naptanId`), and the whole route was dropped as unreadable: Thameslink
+            from St Pancras and the Elizabeth line from Liverpool Street went missing that way. The
+            bundled station list now carries the platforms TfL lists under each station, and the leg
+            is read as leaving that station (`StationIndex.stationOf`).
+      - [ ] **Time a Thameslink leg from St Pancras low level**: such a leg now shows, boarding at
+            `910GSTPXBOX`, but with no live time. The station codes leave out its CRS (SPL), whose
+            board the departure service refuses, and its trains come on St Pancras's own board
+            (STP) instead. Time it from STP's board, with the twin-stop owner logic in
+            `RailAwareTflClient` keeping the trains from showing twice.
       - [x] **Delete the unreachable direct-trips page path**: `LookDepartures` is now only a
             station page with nowhere to stand; the direct-trips filter page, a trip from here
             through it, and a To… destination's widening to the stops around it are gone, with

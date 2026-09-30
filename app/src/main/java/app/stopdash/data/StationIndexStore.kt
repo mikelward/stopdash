@@ -72,6 +72,7 @@ object StationIndexStore {
                         longitude = it.lon,
                         lines = it.modeLines,
                         routeEnds = it.routeEnds,
+                        platforms = it.platforms,
                     )
                 },
             lineNames = file.lineNames,
@@ -99,5 +100,7 @@ object StationIndexStore {
         // ignores (ignoreUnknownKeys) rather than failing the whole index on.
         val modeLines: Map<String, List<String>> = emptyMap(),
         val routeEnds: Map<String, List<String>> = emptyMap(),
+        // Absent from an older index, whose trips then drop a train named by its platform alone.
+        val platforms: List<String> = emptyList(),
     )
 }
