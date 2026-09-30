@@ -96,13 +96,16 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   stops a user watches, a home/work stop, and the user's TfL `app_key`** — together they
   reveal where someone lives and travels. Use stock stand-ins for the user's own values
   (`app_key=EXAMPLE`, a synthetic position like `(51.5, -0.12)` for "where the rider is").
-- **Never include anyone's location without asking** (maintainer, 2026-09-27). Hub and
-  interchange locations, and other public TfL data about them, are always fine. Check with
-  the maintainer before adding a bus stop or anything else neighborhood-level. Never add data
-  that points to where the maintainer or a user lives: nothing from anyone's device,
-  location, starred stops, bug reports or screenshots (paraphrase a bug report, don't quote
-  it), and no examples that keep returning to one area. This governs new work; existing data
-  isn't rewritten to fit it. When unsure, ask in chat, never on GitHub.
+- **Never include anyone's location without asking** (maintainer, 2026-09-27). Big stations
+  and interchanges — King's Cross, Euston, Victoria, Waterloo, Tottenham Court Road and the
+  like — are always fine to name, with their public TfL data and the distances between them,
+  **even when a bug report came from one** (maintainer, 2026-09-30): crowds pass through them,
+  nobody lives there. Check with the maintainer before adding a bus stop or anything else
+  neighborhood-level. Never add data that points to where the maintainer or a user lives:
+  nothing else from anyone's device, location, starred stops, bug reports or screenshots
+  (paraphrase a bug report, don't quote it; never a coordinate), and no examples that keep
+  returning to one neighborhood. This governs new work; existing data isn't rewritten to fit
+  it. When unsure, ask in chat, never on GitHub.
 - **The on-device debug log is one exception, and narrow**: coarse diagnostics only —
   a stop ID, a line id, an HTTP status — never a raw coordinate or the API key. `docs/
   PRIVACY.md` must describe what the log carries before it ships.
