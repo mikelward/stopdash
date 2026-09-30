@@ -1,5 +1,8 @@
 package app.stopdash.telemetry
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -112,5 +115,22 @@ class TelemetrySetupTest {
         val b = Sdk()
         val (first, second) = acquireBoth({ a }, { it.on = false }, { b }, { it.on = false })
         assertTrue(first === a && second === b && a.on && b.on)
+    }
+
+    @Test
+    fun `the sink settles as soon as the stored choice loads, without waiting for another line`() {
+        val sent = mutableListOf<String>()
+        val consent = MutableStateFlow<Boolean?>(null)
+        val sink = CrashlyticsLogSink({ consent.value }, { sent += it }, {}, { it.run() })
+        val scope = TestScope(StandardTestDispatcher())
+        settleWhenConsentLoads(sink, consent, scope)
+
+        sink.log("held at startup")
+        scope.testScheduler.advanceUntilIdle()
+        assertTrue(sent.isEmpty())
+
+        consent.value = true
+        scope.testScheduler.advanceUntilIdle()
+        assertEquals(listOf("held at startup"), sent)
     }
 }

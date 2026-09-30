@@ -1,6 +1,11 @@
 package app.stopdash.telemetry
 
 import app.stopdash.StopdashDebugLog
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 /**
  * Stands telemetry up at process start, failing closed: if creating the backend, registering the
@@ -66,4 +71,17 @@ internal fun <A, B> acquireBoth(
         throw e
     }
     return a to b
+}
+
+/**
+ * Settles [sink] as soon as [consent] has loaded, whichever way it went (a load, a fail-closed
+ * load, or the user answering first), so the lines it held don't wait for the next log line.
+ */
+internal fun settleWhenConsentLoads(
+    sink: CrashlyticsLogSink,
+    consent: StateFlow<Boolean?>,
+    scope: CoroutineScope,
+): Job = scope.launch {
+    consent.first { it != null }
+    sink.settle()
 }
