@@ -107,6 +107,7 @@ open class StopdashApp : Application() {
         // file keeps the full crash, Crashlytics gets the redacted copy.
         installCrashRedaction()
         installDiagnosticLog()
+        logProcessExits()
         // Before anything fetches, so every fetch is stamped by it.
         installSteadyClock()
         warmSharedState()
@@ -122,6 +123,15 @@ open class StopdashApp : Application() {
      */
     protected open fun installSteadyClock() {
         DeviceSteadyClock.install(this)
+    }
+
+    /**
+     * Records why the previous processes ended ([logRecentProcessExits]), off the main thread and
+     * after [installDiagnosticLog], so the file sink keeps the lines. `open` so the test
+     * [Application] skips it: the singleton log would otherwise carry lines no test wrote.
+     */
+    protected open fun logProcessExits() {
+        logRecentProcessExitsInBackground(applicationScope) { logRecentProcessExits(this) }
     }
 
     /**

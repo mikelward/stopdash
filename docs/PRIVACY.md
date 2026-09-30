@@ -248,6 +248,11 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
 - a **favorite-place storage failure**: that reading, saving, or deleting a saved place, or
   searching for one, failed — by the caught exception's class name (e.g. `IOException`) —
   never the place's label, its coordinate, or the typed search text.
+- **why the app's previous processes ended**, read once at startup from Android's own record:
+  for the last five, the reason (e.g. `crash`, `anr`, `lowMemory`), how important Android
+  counted the app at the time, the exit status and when it happened, plus when the app was
+  installed and last updated — **never** Android's free-text description of an exit, which can
+  name another app.
 
 The log **never** carries:
 

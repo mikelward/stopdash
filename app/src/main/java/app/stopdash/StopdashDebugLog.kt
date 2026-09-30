@@ -21,3 +21,14 @@ import com.mikelward.androidlog.DebugLog
  * not its text, decides whether it could ever leave the device.
  */
 internal object StopdashDebugLog : DebugLog()
+
+/**
+ * This run's log for the consent-gated bug report: the whole ring, preceded by any pinned lines
+ * the ring has since evicted, such as why the previous processes ended ([logRecentProcessExits]).
+ * [DebugLog.snapshot] reads the ring only, so a busy run would push those out of the report.
+ *
+ * Neither section is trimmed, because the report carries the whole ring and has no size cap of
+ * its own. A cap would reserve at least `ProcessExits.maxBatchChars()` for the pinned section.
+ */
+internal fun DebugLog.reportLines(): List<String> =
+    boundedSnapshot(pinnedBudgetChars = Int.MAX_VALUE, recentBudgetChars = Int.MAX_VALUE)
