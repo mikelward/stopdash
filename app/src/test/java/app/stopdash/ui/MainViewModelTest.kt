@@ -616,6 +616,33 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `a declared line TfL doesn't know doesn't say the check failed mid-load`() = runTest(dispatcher) {
+        // A station whose one line TfL has no status for (Eurostar), and another stop still out.
+        val stops = listOf(
+            StopRef("910GSTPX", "St Pancras International", listOf(LineRef("eurostar", "Eurostar", "national-rail"))),
+            lined[1],
+        )
+        val gate = CompletableDeferred<Unit>()
+        val client = LinedClient(
+            lined[1].id,
+            gate,
+            predicted = mapOf("910GSTPX" to listOf("eurostar")),
+            statusOf = { if (it == "eurostar") throw TflException.NotFound(null) else status(it, LineStatus.GOOD_SERVICE, "Good Service") },
+        )
+        val vm = MainViewModel(client, stops, clock = { now }, io = dispatcher)
+        advanceUntilIdle()
+
+        val partial = vm.state.value as DeparturesUiState.Loaded
+        assertEquals(listOf("910GSTPX"), partial.stops.map { it.stopId })
+        assertFalse("eurostar" in partial.determinedLineIds)
+        assertFalse(partial.checkFailed)
+        assertFalse(partial.disruptionUnknown)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertFalse((vm.state.value as DeparturesUiState.Loaded).disruptionUnknown)
+    }
+
+    @Test
     fun `a cold load whose every stop fails asks nothing about line status`() = runTest(dispatcher) {
         val client = LinedClient(lined[1].id, CompletableDeferred(Unit), arrivalsFail = true)
         val vm = MainViewModel(client, lined, clock = { now }, io = dispatcher)
@@ -662,13 +689,41 @@ class MainViewModelTest {
         val vm = viewModel(client)
         advanceUntilIdle()
         assertEquals(1, statusCalls)
-        assertTrue((vm.state.value as DeparturesUiState.Loaded).disruptionUnknown)
+        val loaded = vm.state.value as DeparturesUiState.Loaded
+        // Never determined, so its row reads as unchecked, not clean...
+        assertFalse("caledonian-sleeper" in loaded.determinedLineIds)
+        // ...but TfL has no status for it to give, so no check failed and no banner says one did.
+        assertFalse(loaded.disruptionUnknown)
 
         // TfL's answer won't change: a refresh doesn't ask again, and the line still isn't clean.
         vm.refresh()
         advanceUntilIdle()
         assertEquals(1, statusCalls)
-        assertTrue((vm.state.value as DeparturesUiState.Loaded).disruptionUnknown)
+        assertFalse("caledonian-sleeper" in (vm.state.value as DeparturesUiState.Loaded).determinedLineIds)
+    }
+
+    @Test
+    fun `beside a line TfL doesn't know, a line whose check fails still raises the banner`() = runTest(dispatcher) {
+        // Eurostar at St Pancras International: TfL has no line for it. Thameslink it does, but its
+        // check fails.
+        var lines = listOf("eurostar")
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = lines.map { departure(it, it, 300) }
+            override suspend fun lineStatuses(lineIds: Collection<String>): List<LineStatus> =
+                if (lineIds.all { it == "eurostar" }) throw TflException.NotFound(null) else throw TflException.Offline(null)
+            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
+        }
+        val vm = viewModel(client)
+        advanceUntilIdle()
+        assertFalse((vm.state.value as DeparturesUiState.Loaded).disruptionUnknown)
+
+        lines = listOf("eurostar", "thameslink")
+        vm.forceNextFetch()
+        vm.refresh()
+        advanceUntilIdle()
+        val loaded = vm.state.value as DeparturesUiState.Loaded
+        assertEquals(setOf("eurostar", "thameslink"), loaded.stops.flatMap { it.departures }.mapTo(HashSet()) { it.lineId })
+        assertTrue(loaded.disruptionUnknown)
     }
 
     @Test
@@ -3688,8 +3743,12 @@ class MainViewModelTest {
         client.statusCalls.forEach { assertTrue(it.joinToString(",").length <= LineStatusBatch.MAX_SEGMENT_LENGTH) }
         assertEquals(hubLines.toSet(), client.statusCalls.flatten().toSet())
         assertTrue(logged.toString(), logged.single().contains(", 2 line status,"))
-        // The unknown part leaves the stop unchecked, but isn't asked about again.
-        assertTrue((vm.state.value as DeparturesUiState.Loaded).disruptionUnknown)
+        // The unknown part is never determined, so its rows read unchecked, but TfL had no status for
+        // it to give: no check failed, so no banner says one did. It isn't asked about again.
+        val loaded = vm.state.value as DeparturesUiState.Loaded
+        assertFalse("214" in loaded.determinedLineIds)
+        assertTrue("lioness" in loaded.determinedLineIds)
+        assertFalse(loaded.disruptionUnknown)
         vm.refresh()
         advanceUntilIdle()
         assertFalse(client.statusCalls.drop(2).flatten().any { it == "214" })
