@@ -815,7 +815,8 @@ private fun TripContent(
         (sequenceLineIds(planned, hiddenModes, settledLines[0], openRef?.keys.orEmpty()) + listOfNotNull(openRef?.ride?.lineId))
             .distinct().also { settledLines[0] = it }
     }
-    val sequences = rememberLineSequences(lineIds, now)
+    val loads = rememberLineLoads(lineIds, now)
+    val sequences = loads.sequences
     // Each bus leg at the poles its bus uses, once its route says which (the Planner's may be the
     // other side of the road); everything below reads the trip this way, with the routes a train
     // running through a change offers without it ([withThroughRoutes]).
@@ -1078,13 +1079,14 @@ private fun TripContent(
             Box(Modifier.fillMaxSize()) {
                 when {
                     cards == null -> TripPlaceholder(state, onRetry)
-                    open != null -> RouteLegs(open, rideLines, state, now, access, sequences, onRetry, alerts.dismissed, alerts.onDismiss, onHideMode, ::openDetail)
+                    open != null -> RouteLegs(open, rideLines, state, now, access, sequences, onRetry, alerts.dismissed, alerts.onDismiss, onHideMode, ::openDetail, loads.loading)
                     else -> {
                         val routes = @Composable {
                             RouteList(
                                 cards, rideLines, state, now, access, sequences, onRetry, alerts.dismissed,
                                 onOpen = { setOpen(openRouteOf(it.route, poled, sequences, hiddenModes)) },
                                 onHideMode = onHideMode,
+                                loading = loads.loading,
                             )
                         }
                         // Pulled down, the routes are planned again and every stop fetched afresh, from
@@ -1213,6 +1215,8 @@ private fun RouteList(
     dismissed: Set<DismissedAlert>,
     onOpen: (TripTiming.Estimate) -> Unit,
     onHideMode: ((String) -> Unit)?,
+    // The lines whose route data is loading ([LineLoads.loading]), a retry included.
+    loading: Set<String> = emptySet(),
 ) {
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -1248,6 +1252,7 @@ private fun RouteList(
                 cards.any { card -> card.any { it.unchecked || otherLineStopsUnchecked(it.route, state, rideLines) } },
             cards.any { card -> card.any { routeClosuresFailed(it.route, state, sequences, rideLines) } },
             cards.any { card -> card.any { routeStatusFailed(it.route, rideLines, state) } },
+            awaitingRoutes(cards.flatten(), sequences, loading),
         )?.let { checking ->
             val names = if (checking) emptyList() else uncheckedNames(cards.flatten(), state, now, sequences, rideLines)
             item(key = "status") { StatusUnknown(checking, names) }
@@ -1768,6 +1773,8 @@ private fun RouteLegs(
     onHideMode: ((String) -> Unit)?,
     // A leg's row tapped: opens its line's page.
     onOpenDetail: (TripLeg, DepartureRow, RouteFocus?) -> Unit,
+    // The lines whose route data is loading ([LineLoads.loading]), a retry included.
+    loading: Set<String> = emptySet(),
 ) {
     val routeStops = LocalRouteStops.current
     val closures = remember(estimate.route, state.closures, now, dismissed, sequences, rideLines, routeStops) {
@@ -1790,6 +1797,7 @@ private fun RouteLegs(
             estimate.unchecked || plannerUnchecked || otherLines.isNotEmpty() || otherLineStopsUnchecked(estimate.route, state, rideLines),
             routeClosuresFailed(estimate.route, state, sequences, rideLines),
             routeStatusFailed(estimate.route, rideLines, state),
+            awaitingRoutes(listOf(estimate), sequences, loading),
         )?.let { checking ->
             val names = if (checking) emptyList() else uncheckedNames(listOf(estimate), state, now, sequences, rideLines)
             item(key = "status") { StatusUnknown(checking, names) }
@@ -1841,17 +1849,19 @@ private fun RouteLegs(
  * failed or left them unchecked, null when every line was checked. [closuresFailed]: a closure check failed for a stop
  * the routes shown use (by default any failed stop; the screens pass their routes' own, [routeClosuresFailed]).
  * [statusFailed]: a status request failed for a line the routes shown ride (by default any; the
- * screens pass their routes' own, [routeStatusFailed]).
+ * screens pass their routes' own, [routeStatusFailed]). [loading]: a ride's stops wait on its line's
+ * route to place its bus ([awaitingRoutes]), so they're still being checked, not failing to be.
  */
 internal fun statusNote(
     state: TripViewModel.State,
     unchecked: Boolean,
     closuresFailed: Boolean = state.closuresFailed.isNotEmpty(),
     statusFailed: Boolean = state.statusFailed,
+    loading: Boolean = false,
 ): Boolean? = when {
     // A plan still landing checks its lines when it settles: checking, not failed. So is a check that
     // failed and is being asked again: its last answer can't be vouched for until the retry lands.
-    state.refreshing || state.planning -> if (unchecked || statusFailed || closuresFailed) true else null
+    state.refreshing || state.planning || loading -> if (unchecked || statusFailed || closuresFailed) true else null
     // A closure check that failed keeps its last notices, but can't vouch for them as current.
     statusFailed || closuresFailed || unchecked -> false
     else -> null
@@ -1907,6 +1917,21 @@ internal fun shownStops(route: TripRoute, sequences: Map<String, LineSequence?>,
 /** Whether a pole another line [route]'s rides show uses has no check held yet ([otherLineStops]). */
 internal fun otherLineStopsUnchecked(route: TripRoute, state: TripViewModel.State, rideLines: Map<TripLeg, RideLines>): Boolean =
     otherLineStops(route, rideLines).any { it !in state.closures }
+
+/**
+ * Whether a ride of [estimates]' routes waits on its line's route to be placed on its poles
+ * ([placedOnPoles]): not loaded yet ([sequences]), or failed and being loaded again ([loading]).
+ * Until it is, its stops can't be judged, so the trip is still checking them. One whose route failed
+ * to load, and isn't being loaded again, can't be placed, and says so ([uncheckedNames]).
+ */
+internal fun awaitingRoutes(
+    estimates: List<TripTiming.Estimate>,
+    sequences: Map<String, LineSequence?>,
+    loading: Set<String> = emptySet(),
+): Boolean =
+    estimates.any { estimate ->
+        estimate.route.rides.any { (it.lineId !in sequences || it.lineId in loading) && !placedOnPoles(it, sequences) }
+    }
 
 /**
  * What the "couldn't check" note names for [estimates]' routes ([statusNote]), as their cards name

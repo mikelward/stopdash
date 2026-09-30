@@ -1605,6 +1605,9 @@ class TripViewModelTest {
         assertEquals(true, statusNote(TripViewModel.State(refreshing = true, statusFailed = true), unchecked = false))
         assertEquals(true, statusNote(TripViewModel.State(refreshing = true, closuresFailed = setOf("A")), unchecked = false))
         assertEquals(true, statusNote(TripViewModel.State(planning = true), unchecked = false, closuresFailed = true))
+        // A bus whose line's route is still loading can't be placed yet: its stops are being checked.
+        assertEquals(true, statusNote(TripViewModel.State(), unchecked = true, loading = true))
+        assertNull(statusNote(TripViewModel.State(), unchecked = false, closuresFailed = false, statusFailed = false, loading = true))
         // A route whose own checks all answered says nothing while another's retry runs.
         assertNull(statusNote(TripViewModel.State(refreshing = true, closuresFailed = setOf("A")), unchecked = false, closuresFailed = false, statusFailed = false))
     }
@@ -1642,6 +1645,16 @@ class TripViewModelTest {
         assertEquals(listOf("Papa"), names(checked.copy(closuresUnknown = setOf("P1"))))
         // The bus not placed on a pole of its pair (its route failed to load): both its stops, once each.
         assertEquals(listOf("Bravo", "Papa"), names(checked, seqs = mapOf("1" to null)))
+        // Still loading, it's being checked, not failing to be; failed or placed, it isn't awaited.
+        assertTrue(awaitingRoutes(estimates, emptyMap()))
+        assertFalse(awaitingRoutes(estimates, mapOf("1" to null)))
+        // A failed route being loaded again is being checked again.
+        assertTrue(awaitingRoutes(estimates, mapOf("1" to null), loading = setOf("1")))
+        // An older copy held while it reloads still places it.
+        assertFalse(awaitingRoutes(estimates, sequences, loading = setOf("1")))
+        assertFalse(awaitingRoutes(estimates, sequences))
+        // A ride named by no stop pair needs no placing, loaded or not.
+        assertFalse(awaitingRoutes(listOf(TripTiming.Estimate(TripRoute(listOf(red)), TripTiming.Basis.LIVE, at(20), emptyList(), false, now)), emptyMap()))
         // Another line a ride shows, never checked, and a pole of its own with no check held.
         val two = bus.copy(lineId = "2", lineName = "Route 2", toId = "P2", toName = "Papa (other side)")
         val lines = mapOf(bus to RideLines(listOf(bus, two), listOf(bus, two)))
