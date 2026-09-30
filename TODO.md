@@ -692,9 +692,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
   - [x] **Skip the National Rail board for a hidden National Rail mode** at a station that also
         serves an unhidden mode, in the near-me list, a farther station's card and the widget; a
         starred journey's rail times are kept (`HiddenModes.wantsRailBoard`).
-    - [ ] **A trip's boards with National Rail hidden**: a trip drops routes riding a hidden line,
-          but its client still asks for the board at each National Rail station its shown routes
-          board at (an Overground or Elizabeth line ride), where nothing shown needs it.
+    - [x] **A trip's boards with National Rail hidden**: a trip drops routes riding a hidden line,
+          so none it times rides National Rail then, and it asks for no board; a station fetched
+          without one is fetched again once National Rail shows.
 
 ## Phase 2 — Watched stops and settings
 

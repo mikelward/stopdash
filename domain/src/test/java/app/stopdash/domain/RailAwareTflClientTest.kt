@@ -53,7 +53,8 @@ class RailAwareTflClientTest {
     @Test
     fun `a stop not wanting the board asks TfL alone and has no National Rail feed`() = runTest {
         val board = Board()
-        val client = CachingTflClient(RailAwareTflClient(tfl, board, { codes }), ArrivalsCache())
+        val kept = ArrivalsCache()
+        val client = CachingTflClient(RailAwareTflClient(tfl, board, { codes }), kept)
         assertTrue(client.hasRailBoard("910GEXAMPLE"))
         assertFalse("not a station with a board", client.hasRailBoard("940GZZLUEXA"))
         board.key = false
@@ -65,6 +66,9 @@ class RailAwareTflClientTest {
         assertEquals("the board asked once, for the first fetch only", listOf("EXA"), board.asked)
         assertEquals(null, client.railFeed("910GEXAMPLE"))
         assertEquals(null, client.fetchedAt("910GEXAMPLE"))
+        // Never kept for another screen: a station a board could join isn't shareable, with or
+        // without the board, so no other list or trip takes these for its full arrivals.
+        assertEquals(null, kept.get("910GEXAMPLE", Instant.now(), client.arrivalsSource()))
         // Wanting it again asks again.
         assertEquals(2, client.arrivals("910GEXAMPLE", railBoard = true).size)
         assertEquals(listOf("EXA", "EXA"), board.asked)
