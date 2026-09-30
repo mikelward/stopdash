@@ -333,6 +333,20 @@ object OnTheWay {
     fun takesRide(ride: TripLeg, departures: List<Departure>, sequences: Map<String, LineSequence?>): List<Departure> =
         routed(ride, departures, Instant.EPOCH, sequences).stops.firstOrNull()?.departures.orEmpty()
 
+    /**
+     * Of [trains] at [ride]'s boarding stop, in order, those its line's route ([sequences], by line)
+     * doesn't rule out: the ones it takes where the rider gets off ([takesRide]), and any it can't
+     * say of (the route loading or failed, or the train's way not placed on it), whose own calls
+     * then decide ([runsAlong]). A train the route sends another way, or to another branch, is left
+     * out, so the few a pick asks after ([candidates]) are ones that may be the rider's: at a fork
+     * the first few can all turn off.
+     */
+    fun mayTakeRide(ride: TripLeg, trains: List<Departure>, sequences: Map<String, LineSequence?>): List<Departure> =
+        trains.filter { train ->
+            val result = routed(ride, listOf(train), Instant.EPOCH, sequences)
+            result.pending || result.unresolved || result.stops.firstOrNull()?.departures.orEmpty().isNotEmpty()
+        }
+
     private fun routed(ride: TripLeg, departures: List<Departure>, fetchedAt: Instant, sequences: Map<String, LineSequence?>) =
         DirectTrips.filter(listOf(StopArrivals(ride.fromId, ride.fromName, departures, fetchedAt)), ends(ride, sequences), sequences)
 

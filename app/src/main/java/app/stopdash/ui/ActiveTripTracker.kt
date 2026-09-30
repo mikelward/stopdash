@@ -514,14 +514,7 @@ class ActiveTripTracker(
     // [rider]'s age holds at [seenAt] ([elapsed]).
     private suspend fun boardedAlong(trip: ActiveTrip, rider: LocationFix, seenAt: Long, now: Instant): Pair<ActiveTrip, List<VehicleCall>?>? {
         val leg = OnTheWay.waitingToBoard(trip, now) ?: return null
-        val sequence = try {
-            lineSequence(leg.lineId)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: TflException) {
-            warn("on the way: route lookup failed for line ${leg.lineId}: ${e::class.simpleName}")
-            null
-        } ?: return null
+        val sequence = routeOf(leg.lineId) ?: return null
         // Aged by the board's and the route's reads: after a slow TfL, a fix fresh when the step began
         // may be where the rider was, not where they are, and no proof they boarded (Codex, PR #383).
         val seen = aged(rider, Duration.ofMillis(elapsed() - seenAt)) ?: return null
@@ -566,6 +559,18 @@ class ActiveTripTracker(
         return null
     }
 
+    // [lineId]'s route ([lineSequence]), or null when it can't be had: a failure said coarsely, by
+    // the line and the kind of error.
+    private suspend fun routeOf(lineId: String): LineSequence? =
+        try {
+            lineSequence(lineId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: TflException) {
+            warn("on the way: route lookup failed for line $lineId: ${e::class.simpleName}")
+            null
+        }
+
     // The soonest train the rider can catch on the trip's leg that runs where they're going, with
     // its calls; null when none of the first few does (or none is due).
     private suspend fun pick(trip: ActiveTrip, now: Instant, board: Result<NextBoard>?): Pair<Departure, List<VehicleCall>>? {
@@ -577,9 +582,14 @@ class ActiveTripTracker(
         val departures = board?.getOrThrow()?.takeIf { it.ride == leg }?.departures ?: arrivals(leg.fromId)
         // On board by their word, only a train at the platform when they said so can be theirs: one due
         // minutes later isn't, so none is followed rather than that one (the step says it can't find it).
-        val candidates = OnTheWay.candidates(departures, leg, readyAt)
+        val catchable = OnTheWay.candidates(departures, leg, readyAt)
             .filter { !trip.boarded || !it.expectedArrival.isAfter(trip.legStartedAt.plus(ON_BOARD_GRACE)) }
-            .take(PICK_TRIES)
+        // Only those the line's route doesn't send another way are asked after, a request each: at a
+        // fork the first few can all turn off ([OnTheWay.mayTakeRide]). Without the route, their own
+        // calls decide, as before.
+        val candidates = if (catchable.isEmpty()) catchable else {
+            OnTheWay.mayTakeRide(leg, catchable, mapOf(leg.lineId to routeOf(leg.lineId)))
+        }.take(PICK_TRIES)
         for (train in candidates) {
             val calls = try {
                 vehicles.vehicleCalls(train.vehicleId, leg.lineId)
