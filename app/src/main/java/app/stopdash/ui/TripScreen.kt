@@ -1446,7 +1446,7 @@ private fun RouteSummary(
             if (warning != null) {
                 DisruptionWarningGlyph(warning, Modifier.padding(end = 8.dp))
             } else {
-                // Work still to come on one of its lines: the muted ⓘ, as on the main screen's rows.
+                // Work still to come on one of its lines: the muted calendar, as on the main screen's rows.
                 linesPlanned(rides.indices.flatMap { cardRideLines(card, it, rideLines) }, statuses)
                     ?.let { PlannedAlertGlyph(it, Modifier.padding(end = 8.dp)) }
             }
@@ -1628,11 +1628,11 @@ private fun RideStops(
                     stringResource(R.string.trip_line_status, closure.hubName.ifBlank { closure.stopName }, notice)
                 }
                 val warning = (listOfNotNull(linesWarning(lines, statuses)) + stopNotices).takeIf { it.isNotEmpty() }?.joinToString("; ")
-                // Work still to come, when nothing is disrupted now: the muted ⓘ in the ⚠'s place.
+                // Work still to come, when nothing is disrupted now: the muted calendar in the ⚠'s place.
                 val planned = if (warning == null) linesPlanned(lines, statuses) else null
                 warning?.let { DisruptionWarningGlyph(it, Modifier.padding(start = 12.dp)) }
                 planned?.let { PlannedAlertGlyph(it, Modifier.padding(start = 12.dp)) }
-                // 8dp after a ⚠ or ⓘ, as the main screen spaces it from the times; else the usual 12dp.
+                // 8dp after a ⚠ or calendar, as the main screen spaces it from the times; else the usual 12dp.
                 val timesGap = if (warning != null || planned != null) 8.dp else 12.dp
                 if (index > 0) {
                     times.headways.getOrNull(index - 1)?.let { headway -> HeadwayLabel(headway, Modifier.padding(start = timesGap)) }
@@ -1683,7 +1683,7 @@ internal fun HeadwayLabel(headway: Headway.Range, modifier: Modifier = Modifier)
     )
 }
 
-/** The soonest work still to come on any of [lines] ([LineStatus.planned]), for a card's ⓘ; null when none. */
+/** The soonest work still to come on any of [lines] ([LineStatus.planned]), for a card's calendar; null when none. */
 internal fun linesPlanned(lines: List<TripLeg>, statuses: Map<String, LineStatus>): PlannedAlert? =
     lines.flatMap { statuses[it.lineId]?.planned.orEmpty() }.minByOrNull { it.startsOn }
 

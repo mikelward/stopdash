@@ -69,6 +69,7 @@ import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.RailFeed
 import app.stopdash.domain.RoutePattern
 import app.stopdash.domain.RouteSequenceSource
@@ -86,6 +87,7 @@ import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -245,6 +247,26 @@ class MainScreenScreenshotTest {
         // D8): the Underground and Overground stops share the place name and split by platform.
         composeRule.onNodeWithText("– Platform 1", substring = true).assertExists()
         composeRule.onNodeWithText("– Platform 6", substring = true).assertExists()
+    }
+
+    @Test
+    fun `work still to come marks its rows with a calendar, not the warning`() {
+        // The Hammersmith & City runs a good service now, with a part closure from a later day: its
+        // rows keep their countdowns and carry the muted calendar where the District's carry the ⚠.
+        val closure = PlannedAlert("Part Closure", "No service on Saturday 3 October.", LocalDate.of(2026, 10, 3))
+        val statuses = statuses() + (
+            "hammersmith-city" to
+                LineStatus("hammersmith-city", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(closure))
+            )
+        capture("main-planned-work.png") {
+            MainScreen(
+                DeparturesUiState.Loaded(stops(now.minusSeconds(120)), now.minusSeconds(120), lineStatuses = statuses),
+                now,
+                {},
+            )
+        }
+        composeRule.onAllNodesWithContentDescription("Planned Part Closure from 3 Oct").onFirst().assertExists()
+        composeRule.onNodeWithText("ⓘ").assertDoesNotExist()
     }
 
     // Stock stand-in places on synthetic coordinates, never a real person's (SPEC *Privacy*).
