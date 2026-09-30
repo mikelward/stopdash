@@ -120,7 +120,9 @@ that station's stop id. The destination goes as the stop you picked. When you pi
 such as King's Cross St. Pancras, the Planner is asked once for each of its stations and once for
 its bus stops, each request carrying the same start. A trip **to a saved favorite** sends its stored
 **coordinate** as the destination — the Planner walks the last leg to it — while the favorite's name
-and id stay on your device. Your location and a favorite's coordinate are the same **Location** data
+and id stay on your device. To a favorite, or a place or postcode picked in *To…*, when the fastest
+route there changes, the Planner is asked once more between the same ends, via the stop that route
+gets off at, to find one ride the whole way. Your location and a favorite's coordinate are the same **Location** data
 the app already shares with TfL, so they add no Play Data Safety category. The Planner is asked when a trip opens, again when you've moved on from where it was planned, about every 15 minutes while it stays on screen (every 5 while a route's arrival can't be told without a fresh plan), and
 when you tap *Try again*; while a trip is on screen, the departures at each stop where a route
 boards are fetched from TfL like any other stop's, along with its lines' status. The plan is held

@@ -188,6 +188,20 @@ interface JourneyPlanner {
         stepFree: StepFree = StepFree.DEFAULT,
         modes: TripModes = TripModes.DEFAULT,
     ): List<TripRoute>
+
+    /**
+     * Only the fewest-changes routes of [journeys], each passing the stop [via], for a trip asked
+     * about once more ([FinalStop]). A planner that can't route via a stop has nothing to add.
+     */
+    suspend fun fewestChangesVia(
+        from: TripOrigin,
+        to: TripDestination,
+        via: String,
+        speed: WalkingSpeed = WalkingSpeed.AVERAGE,
+        maxWalk: MaxWalk = MaxWalk.DEFAULT,
+        stepFree: StepFree = StepFree.DEFAULT,
+        modes: TripModes = TripModes.DEFAULT,
+    ): List<TripRoute> = emptyList()
 }
 
 /**

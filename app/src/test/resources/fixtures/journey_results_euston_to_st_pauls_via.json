@@ -1,0 +1,307 @@
+{
+  "journeys": [
+    {
+      "legs": [
+        {
+          "departureTime": "2026-09-30T17:53:00",
+          "arrivalTime": "2026-09-30T18:17:00",
+          "departurePoint": {
+            "commonName": "Euston Railway Station, LONDON",
+            "lat": 51.528175600000004,
+            "lon": -0.1336769
+          },
+          "arrivalPoint": {
+            "individualStopId": "9100STPXBOX",
+            "commonName": "London St Pancras International Rail Station",
+            "lat": 51.532458161136,
+            "lon": -0.127604706977
+          },
+          "routeOptions": [
+            {
+              "name": "",
+              "directions": [
+                ""
+              ]
+            }
+          ],
+          "mode": {
+            "id": "walking",
+            "name": "walking"
+          },
+          "path": {
+            "stopPoints": []
+          }
+        },
+        {
+          "departureTime": "2026-09-30T18:17:00",
+          "arrivalTime": "2026-09-30T18:23:00",
+          "departurePoint": {
+            "individualStopId": "9100STPXBOX",
+            "commonName": "London St Pancras International Rail Station",
+            "lat": 51.532458161136,
+            "lon": -0.127604706977
+          },
+          "arrivalPoint": {
+            "naptanId": "910GCTMSLNK",
+            "individualStopId": "9100CTMSLNK0",
+            "commonName": "City Thameslink Rail Station",
+            "lat": 51.513956833913,
+            "lon": -0.103862547107
+          },
+          "routeOptions": [
+            {
+              "name": "Thameslink",
+              "directions": [
+                "Orpington Rail Station"
+              ],
+              "lineIdentifier": {
+                "id": "thameslink",
+                "name": "Thameslink"
+              }
+            }
+          ],
+          "mode": {
+            "id": "national-rail",
+            "name": "national-rail"
+          },
+          "path": {
+            "stopPoints": []
+          }
+        },
+        {
+          "departureTime": "2026-09-30T18:23:00",
+          "arrivalTime": "2026-09-30T18:36:00",
+          "departurePoint": {
+            "naptanId": "910GCTMSLNK",
+            "individualStopId": "9100CTMSLNK0",
+            "commonName": "City Thameslink Rail Station",
+            "lat": 51.513956833913,
+            "lon": -0.103862547107
+          },
+          "arrivalPoint": {
+            "commonName": "70 ST PAUL'S CHURCHYARD, LONDON",
+            "lat": 51.514061399999996,
+            "lon": -0.0986553
+          },
+          "routeOptions": [
+            {
+              "name": "",
+              "directions": [
+                ""
+              ]
+            }
+          ],
+          "mode": {
+            "id": "walking",
+            "name": "walking"
+          },
+          "path": {
+            "stopPoints": []
+          }
+        }
+      ]
+    },
+    {
+      "legs": [
+        {
+          "departureTime": "2026-09-30T17:56:00",
+          "arrivalTime": "2026-09-30T18:20:00",
+          "departurePoint": {
+            "commonName": "Euston Railway Station, LONDON",
+            "lat": 51.528175600000004,
+            "lon": -0.1336769
+          },
+          "arrivalPoint": {
+            "individualStopId": "9100STPXBOX",
+            "commonName": "London St Pancras International Rail Station",
+            "lat": 51.532458161136,
+            "lon": -0.127604706977
+          },
+          "routeOptions": [
+            {
+              "name": "",
+              "directions": [
+                ""
+              ]
+            }
+          ],
+          "mode": {
+            "id": "walking",
+            "name": "walking"
+          },
+          "path": {
+            "stopPoints": []
+          }
+        },
+        {
+          "departureTime": "2026-09-30T18:20:00",
+          "arrivalTime": "2026-09-30T18:26:00",
+          "departurePoint": {
+            "individualStopId": "9100STPXBOX",
+            "commonName": "London St Pancras International Rail Station",
+            "lat": 51.532458161136,
+            "lon": -0.127604706977
+          },
+          "arrivalPoint": {
+            "naptanId": "910GCTMSLNK",
+            "individualStopId": "9100CTMSLNK0",
+            "commonName": "City Thameslink Rail Station",
+            "lat": 51.513956833913,
+            "lon": -0.103862547107
+          },
+          "routeOptions": [
+            {
+              "name": "Thameslink",
+              "directions": [
+                "Brighton Rail Station"
+              ],
+              "lineIdentifier": {
+                "id": "thameslink",
+                "name": "Thameslink"
+              }
+            }
+          ],
+          "mode": {
+            "id": "national-rail",
+            "name": "national-rail"
+          },
+          "path": {
+            "stopPoints": []
+          }
+        },
+        {
+          "departureTime": "2026-09-30T18:26:00",
+          "arrivalTime": "2026-09-30T18:39:00",
+          "departurePoint": {
+            "naptanId": "910GCTMSLNK",
+            "individualStopId": "9100CTMSLNK0",
+            "commonName": "City Thameslink Rail Station",
+            "lat": 51.513956833913,
+            "lon": -0.103862547107
+          },
+          "arrivalPoint": {
+            "commonName": "70 ST PAUL'S CHURCHYARD, LONDON",
+            "lat": 51.514061399999996,
+            "lon": -0.0986553
+          },
+          "routeOptions": [
+            {
+              "name": "",
+              "directions": [
+                ""
+              ]
+            }
+          ],
+          "mode": {
+            "id": "walking",
+            "name": "walking"
+          },
+          "path": {
+            "stopPoints": []
+          }
+        }
+      ]
+    },
+    {
+      "legs": [
+        {
+          "departureTime": "2026-09-30T17:57:00",
+          "arrivalTime": "2026-09-30T18:16:00",
+          "departurePoint": {
+            "commonName": "Euston Railway Station, LONDON",
+            "lat": 51.528175600000004,
+            "lon": -0.1336769
+          },
+          "arrivalPoint": {
+            "naptanId": "490000129D",
+            "individualStopId": "900098314",
+            "commonName": "King's Cross Station",
+            "lat": 51.530446599619005,
+            "lon": -0.123275488114
+          },
+          "routeOptions": [
+            {
+              "name": "",
+              "directions": [
+                ""
+              ]
+            }
+          ],
+          "mode": {
+            "id": "walking",
+            "name": "walking"
+          },
+          "path": {
+            "stopPoints": []
+          }
+        },
+        {
+          "departureTime": "2026-09-30T18:16:00",
+          "arrivalTime": "2026-09-30T18:29:00",
+          "departurePoint": {
+            "naptanId": "490000129D",
+            "individualStopId": "900098314",
+            "commonName": "King's Cross Station",
+            "lat": 51.530446599619005,
+            "lon": -0.123275488114
+          },
+          "arrivalPoint": {
+            "individualStopId": "490001067N",
+            "commonName": "City Thameslink Station",
+            "lat": 51.516886204096,
+            "lon": -0.103726477971
+          },
+          "routeOptions": [
+            {
+              "name": "46",
+              "directions": [
+                "St. Bartholomews Hospital"
+              ],
+              "lineIdentifier": {
+                "id": "46",
+                "name": "46"
+              }
+            }
+          ],
+          "mode": {
+            "id": "bus",
+            "name": "bus"
+          },
+          "path": {
+            "stopPoints": []
+          }
+        },
+        {
+          "departureTime": "2026-09-30T18:29:00",
+          "arrivalTime": "2026-09-30T18:40:00",
+          "departurePoint": {
+            "individualStopId": "490001067N",
+            "commonName": "City Thameslink Station",
+            "lat": 51.516886204096,
+            "lon": -0.103726477971
+          },
+          "arrivalPoint": {
+            "commonName": "70 ST PAUL'S CHURCHYARD, LONDON",
+            "lat": 51.514061399999996,
+            "lon": -0.0986553
+          },
+          "routeOptions": [
+            {
+              "name": "",
+              "directions": [
+                ""
+              ]
+            }
+          ],
+          "mode": {
+            "id": "walking",
+            "name": "walking"
+          },
+          "path": {
+            "stopPoints": []
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -138,6 +138,16 @@ class TripViewModelTest {
             if (key in failFor) throw TflException.Offline(null)
             return byDestination[key] ?: routes
         }
+        // Each fewest-changes-via request: where it planned to and the stop it passed, in order.
+        val viaAsked = mutableListOf<Pair<TripDestination, String>>()
+        // Its answer per via stop; one in [failFor] fails.
+        var byVia: Map<String, List<TripRoute>> = emptyMap()
+        override suspend fun fewestChangesVia(from: TripOrigin, to: TripDestination, via: String, speed: WalkingSpeed, maxWalk: MaxWalk, stepFree: StepFree, modes: TripModes): List<TripRoute> {
+            calls++
+            viaAsked += to to via
+            if (via in failFor) throw TflException.Offline(null)
+            return byVia[via].orEmpty()
+        }
     }
 
     private class FakeClient(val arrivals: MutableMap<String, List<Departure>>) : TflClient {
@@ -830,6 +840,76 @@ class TripViewModelTest {
         assertEquals(listOf(toPlace), trip.state.value.routes)
         // Only the ridden boarding stop is asked; the destination coordinate has no stop to fetch (SPEC D9).
         assertEquals(listOf("A"), client.asked)
+    }
+
+    // A route that rides A to B, then B to S, then walks on to the place (a blank stop id).
+    private val changingToPlace = TripRoute(
+        listOf(
+            leg("red", "A", "B", 5, 15),
+            leg("blue", "B", "S", 20, 30),
+            TripLeg(mode = TripLeg.WALKING, lineId = "", lineName = "", fromId = "S", fromName = "S", toId = "", toName = "Home", departure = at(30), arrival = at(36)),
+        ),
+    )
+
+    @Test
+    fun `a trip to a place asks once more for one ride via where its fastest route gets off`() = runTest(dispatcher) {
+        // The Planner's routes to the place change at B; via S, one line runs the whole way, and
+        // the Planner walks on to the place itself.
+        val walkOn = changingToPlace.legs.last().copy(departure = at(28), arrival = at(34))
+        val direct = TripRoute(listOf(leg("green", "A", "S", 6, 28), walkOn))
+        val home = TripDestination.Place(Coordinates(51.5, -0.12), "Home")
+        val planner = FakePlanner(emptyList()).apply {
+            byDestination = mapOf("Home" to listOf(changingToPlace))
+            // Riding as often as the fastest adds nothing.
+            byVia = mapOf("S" to listOf(direct, changingToPlace.copy(legs = changingToPlace.legs.map { it.copy(lineName = "again") })))
+        }
+        val warnings = mutableListOf<String>()
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Place(Coordinates(51.5, -0.12), "Home")),
+            clock = { now }, plans = TripPlans(), io = dispatcher, warn = { warnings += it },
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf<Pair<TripDestination, String>>(home to "S"), planner.viaAsked)
+        assertEquals(2, planner.calls)
+        // The one ride as the Planner gave it, final walk and all.
+        assertEquals(listOf(changingToPlace, direct), trip.state.value.routes)
+        assertTrue(warnings.contains("trip plan via the fastest route's last stop: 1 of 2 routes ride fewer times"))
+    }
+
+    @Test
+    fun `a trip to a place stands when asking once more fails, and says so`() = runTest(dispatcher) {
+        val planner = FakePlanner(listOf(changingToPlace)).apply { failFor = setOf("S") }
+        val warnings = mutableListOf<String>()
+        val trip = TripViewModel(
+            planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Place(Coordinates(51.5, -0.12), "Home")),
+            clock = { now }, plans = TripPlans(), io = dispatcher, warn = { warnings += it },
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf(changingToPlace), trip.state.value.routes)
+        assertNull(trip.state.value.planError)
+        assertFalse(trip.state.value.planIncomplete)
+        assertTrue(warnings.contains("trip plan via the fastest route's last stop failed: Offline"))
+    }
+
+    @Test
+    fun `a trip to a stop, or whose fastest route rides once, asks nothing more`() = runTest(dispatcher) {
+        // To a stop the Planner's own fewest changes already plans there.
+        val toStop = FakePlanner(listOf(route))
+        model(toStop, FakeClient(mutableMapOf())).apply { refresh() }
+        advanceUntilIdle()
+        assertTrue(toStop.viaAsked.isEmpty())
+        // To a place, the fastest riding once: nothing rides fewer times.
+        val once = TripRoute(listOf(leg("red", "A", "B", 5, 15), changingToPlace.legs.last().copy(fromId = "B", departure = at(15), arrival = at(20))))
+        val toPlace = FakePlanner(listOf(changingToPlace, once))
+        TripViewModel(
+            toPlace, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Place(Coordinates(51.5, -0.12), "Home")),
+            clock = { now }, plans = TripPlans(), io = dispatcher,
+        ).refresh()
+        advanceUntilIdle()
+        assertTrue(toPlace.viaAsked.isEmpty())
+        assertEquals(1, toPlace.calls)
     }
 
     @Test

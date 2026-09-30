@@ -1,0 +1,491 @@
+{
+  "journeys": [
+    {
+      "legs": [
+        {
+          "departureTime": "2026-09-30T17:54:00",
+          "arrivalTime": "2026-09-30T18:04:00",
+          "departurePoint": {
+            "commonName": "Euston Railway Station, LONDON",
+            "lat": 51.528175600000004,
+            "lon": -0.1336769
+          },
+          "arrivalPoint": {
+            "naptanId": "940GZZLUESQ",
+            "individualStopId": "9400ZZLUESQ1",
+            "commonName": "Euston Square Underground Station",
+            "lat": 51.525766318467994,
+            "lon": -0.135418812675
+          },
+          "routeOptions": [
+            {
+              "name": "",
+              "directions": [
+                ""
+              ]
+            }
+          ],
+          "mode": {
+            "id": "walking",
+            "name": "walking"
+          },
+          "path": {
+            "stopPoints": []
+          }
+        },
+        {
+          "departureTime": "2026-09-30T18:04:00",
+          "arrivalTime": "2026-09-30T18:11:00",
+          "departurePoint": {
+            "naptanId": "940GZZLUESQ",
+            "individualStopId": "9400ZZLUESQ1",
+            "commonName": "Euston Square Underground Station",
+            "lat": 51.525766318467994,
+            "lon": -0.135418812675
+          },
+          "arrivalPoint": {
+            "naptanId": "940GZZLUBBN",
+            "individualStopId": "9400ZZLUBBN1",
+            "commonName": "Barbican Underground Station",
+            "lat": 51.520272550651,
+            "lon": -0.09793540010499999
+          },
+          "routeOptions": [
+            {
+              "name": "Hammersmith & City",
+              "directions": [
+                "Barking Underground Station"
+              ],
+              "lineIdentifier": {
+                "id": "hammersmith-city",
+                "name": "Hammersmith & City"
+              }
+            }
+          ],
+          "mode": {
+            "id": "tube",
+            "name": "tube"
+          },
+          "path": {
+            "stopPoints": []
+          },
+          "interChangeDuration": "4",
+          "interChangePosition": "AFTER"
+        },
+        {
+          "departureTime": "2026-09-30T18:15:00",
+          "arrivalTime": "2026-09-30T18:18:00",
+          "departurePoint": {
+            "individualStopId": "490000014A",
+            "commonName": "Barbican Station",
+            "lat": 51.520901946048994,
+            "lon": -0.097375837751
+          },
+          "arrivalPoint": {
+            "naptanId": "490G000672",
+            "individualStopId": "490010199D",
+            "commonName": "New Change / Cannon Street",
+            "lat": 51.513510133654,
+            "lon": -0.09627145793200001
+          },
+          "routeOptions": [
+            {
+              "name": "4",
+              "directions": [
+                "Blackfriars Station"
+              ],
+              "lineIdentifier": {
+                "id": "4",
+                "name": "4"
+              }
+            }
+          ],
+          "mode": {
+            "id": "bus",
+            "name": "bus"
+          },
+          "path": {
+            "stopPoints": []
+          }
+        },
+        {
+          "departureTime": "2026-09-30T18:18:00",
+          "arrivalTime": "2026-09-30T18:22:00",
+          "departurePoint": {
+            "naptanId": "490G000672",
+            "individualStopId": "490010199D",
+            "commonName": "New Change / Cannon Street",
+            "lat": 51.513510133654,
+            "lon": -0.09627145793200001
+          },
+          "arrivalPoint": {
+            "commonName": "70 ST PAUL'S CHURCHYARD, LONDON",
+            "lat": 51.514061399999996,
+            "lon": -0.0986553
+          },
+          "routeOptions": [
+            {
+              "name": "",
+              "directions": [
+                ""
+              ]
+            }
+          ],
+          "mode": {
+            "id": "walking",
+            "name": "walking"
+          },
+          "path": {
+            "stopPoints": []
+          }
+        }
+      ]
+    },
+    {
+      "legs": [
+        {
+          "departureTime": "2026-09-30T17:56:00",
+          "arrivalTime": "2026-09-30T18:06:00",
+          "departurePoint": {
+            "commonName": "Euston Railway Station, LONDON",
+            "lat": 51.528175600000004,
+            "lon": -0.1336769
+          },
+          "arrivalPoint": {
+            "naptanId": "940GZZLUESQ",
+            "individualStopId": "9400ZZLUESQ1",
+            "commonName": "Euston Square Underground Station",
+            "lat": 51.525766318467994,
+            "lon": -0.135418812675
+          },
+          "routeOptions": [
+            {
+              "name": "",
+              "directions": [
+                ""
+              ]
+            }
+          ],
+          "mode": {
+            "id": "walking",
+            "name": "walking"
+          },
+          "path": {
+            "stopPoints": []
+          }
+        },
+        {
+          "departureTime": "2026-09-30T18:06:00",
+          "arrivalTime": "2026-09-30T18:11:00",
+          "departurePoint": {
+            "naptanId": "940GZZLUESQ",
+            "individualStopId": "9400ZZLUESQ1",
+            "commonName": "Euston Square Underground Station",
+            "lat": 51.525766318467994,
+            "lon": -0.135418812675
+          },
+          "arrivalPoint": {
+            "naptanId": "940GZZLUFCN",
+            "individualStopId": "9400ZZLUFCN1",
+            "commonName": "Farringdon Underground Station",
+            "lat": 51.520639583544,
+            "lon": -0.10505525707999999
+          },
+          "routeOptions": [
+            {
+              "name": "Metropolitan",
+              "directions": [
+                "Aldgate Underground Station"
+              ],
+              "lineIdentifier": {
+                "id": "metropolitan",
+                "name": "Metropolitan"
+              }
+            }
+          ],
+          "mode": {
+            "id": "tube",
+            "name": "tube"
+          },
+          "path": {
+            "stopPoints": []
+          }
+        },
+        {
+          "departureTime": "2026-09-30T18:11:00",
+          "arrivalTime": "2026-09-30T18:16:00",
+          "departurePoint": {
+            "naptanId": "940GZZLUFCN",
+            "individualStopId": "9400ZZLUFCN1",
+            "commonName": "Farringdon Underground Station",
+            "lat": 51.520639583544,
+            "lon": -0.10505525707999999
+          },
+          "arrivalPoint": {
+            "individualStopId": "490000014A",
+            "commonName": "Barbican Station",
+            "lat": 51.520901946048994,
+            "lon": -0.097375837751
+          },
+          "routeOptions": [
+            {
+              "name": "",
+              "directions": [
+                ""
+              ]
+            }
+          ],
+          "mode": {
+            "id": "walking",
+            "name": "walking"
+          },
+          "path": {
+            "stopPoints": []
+          },
+          "interChangeDuration": "5",
+          "interChangePosition": "IDEST"
+        },
+        {
+          "departureTime": "2026-09-30T18:16:00",
+          "arrivalTime": "2026-09-30T18:20:00",
+          "departurePoint": {
+            "individualStopId": "490000014A",
+            "commonName": "Barbican Station",
+            "lat": 51.520901946048994,
+            "lon": -0.097375837751
+          },
+          "arrivalPoint": {
+            "naptanId": "490000225T",
+            "individualStopId": "490000225T",
+            "commonName": "St Paul's Station",
+            "lat": 51.515514156730006,
+            "lon": -0.09951726564300001
+          },
+          "routeOptions": [
+            {
+              "name": "56",
+              "directions": [
+                "St. Bartholomews Hospital"
+              ],
+              "lineIdentifier": {
+                "id": "56",
+                "name": "56"
+              }
+            }
+          ],
+          "mode": {
+            "id": "bus",
+            "name": "bus"
+          },
+          "path": {
+            "stopPoints": []
+          }
+        },
+        {
+          "departureTime": "2026-09-30T18:20:00",
+          "arrivalTime": "2026-09-30T18:23:00",
+          "departurePoint": {
+            "naptanId": "490000225T",
+            "individualStopId": "490000225T",
+            "commonName": "St Paul's Station",
+            "lat": 51.515514156730006,
+            "lon": -0.09951726564300001
+          },
+          "arrivalPoint": {
+            "commonName": "70 ST PAUL'S CHURCHYARD, LONDON",
+            "lat": 51.514061399999996,
+            "lon": -0.0986553
+          },
+          "routeOptions": [
+            {
+              "name": "",
+              "directions": [
+                ""
+              ]
+            }
+          ],
+          "mode": {
+            "id": "walking",
+            "name": "walking"
+          },
+          "path": {
+            "stopPoints": []
+          }
+        }
+      ]
+    },
+    {
+      "legs": [
+        {
+          "departureTime": "2026-09-30T18:01:00",
+          "arrivalTime": "2026-09-30T18:11:00",
+          "departurePoint": {
+            "commonName": "Euston Railway Station, LONDON",
+            "lat": 51.528175600000004,
+            "lon": -0.1336769
+          },
+          "arrivalPoint": {
+            "naptanId": "940GZZLUESQ",
+            "individualStopId": "9400ZZLUESQ1",
+            "commonName": "Euston Square Underground Station",
+            "lat": 51.525766318467994,
+            "lon": -0.135418812675
+          },
+          "routeOptions": [
+            {
+              "name": "",
+              "directions": [
+                ""
+              ]
+            }
+          ],
+          "mode": {
+            "id": "walking",
+            "name": "walking"
+          },
+          "path": {
+            "stopPoints": []
+          }
+        },
+        {
+          "departureTime": "2026-09-30T18:11:00",
+          "arrivalTime": "2026-09-30T18:16:00",
+          "departurePoint": {
+            "naptanId": "940GZZLUESQ",
+            "individualStopId": "9400ZZLUESQ1",
+            "commonName": "Euston Square Underground Station",
+            "lat": 51.525766318467994,
+            "lon": -0.135418812675
+          },
+          "arrivalPoint": {
+            "naptanId": "940GZZLUFCN",
+            "individualStopId": "9400ZZLUFCN1",
+            "commonName": "Farringdon Underground Station",
+            "lat": 51.520639583544,
+            "lon": -0.10505525707999999
+          },
+          "routeOptions": [
+            {
+              "name": "Circle",
+              "directions": [
+                "Edgware Road (Circle Line) Underground Station"
+              ],
+              "lineIdentifier": {
+                "id": "circle",
+                "name": "Circle"
+              }
+            }
+          ],
+          "mode": {
+            "id": "tube",
+            "name": "tube"
+          },
+          "path": {
+            "stopPoints": []
+          }
+        },
+        {
+          "departureTime": "2026-09-30T18:17:00",
+          "arrivalTime": "2026-09-30T18:22:00",
+          "departurePoint": {
+            "naptanId": "940GZZLUFCN",
+            "individualStopId": "9400ZZLUFCN1",
+            "commonName": "Farringdon Underground Station",
+            "lat": 51.520639583544,
+            "lon": -0.10505525707999999
+          },
+          "arrivalPoint": {
+            "individualStopId": "490000014A",
+            "commonName": "Barbican Station",
+            "lat": 51.520901946048994,
+            "lon": -0.097375837751
+          },
+          "routeOptions": [
+            {
+              "name": "",
+              "directions": [
+                ""
+              ]
+            }
+          ],
+          "mode": {
+            "id": "walking",
+            "name": "walking"
+          },
+          "path": {
+            "stopPoints": []
+          },
+          "interChangeDuration": "5",
+          "interChangePosition": "IDEST"
+        },
+        {
+          "departureTime": "2026-09-30T18:22:00",
+          "arrivalTime": "2026-09-30T18:26:00",
+          "departurePoint": {
+            "individualStopId": "490000014A",
+            "commonName": "Barbican Station",
+            "lat": 51.520901946048994,
+            "lon": -0.097375837751
+          },
+          "arrivalPoint": {
+            "naptanId": "490000225T",
+            "individualStopId": "490000225T",
+            "commonName": "St Paul's Station",
+            "lat": 51.515514156730006,
+            "lon": -0.09951726564300001
+          },
+          "routeOptions": [
+            {
+              "name": "56",
+              "directions": [
+                "St. Bartholomews Hospital"
+              ],
+              "lineIdentifier": {
+                "id": "56",
+                "name": "56"
+              }
+            }
+          ],
+          "mode": {
+            "id": "bus",
+            "name": "bus"
+          },
+          "path": {
+            "stopPoints": []
+          }
+        },
+        {
+          "departureTime": "2026-09-30T18:26:00",
+          "arrivalTime": "2026-09-30T18:29:00",
+          "departurePoint": {
+            "naptanId": "490000225T",
+            "individualStopId": "490000225T",
+            "commonName": "St Paul's Station",
+            "lat": 51.515514156730006,
+            "lon": -0.09951726564300001
+          },
+          "arrivalPoint": {
+            "commonName": "70 ST PAUL'S CHURCHYARD, LONDON",
+            "lat": 51.514061399999996,
+            "lon": -0.0986553
+          },
+          "routeOptions": [
+            {
+              "name": "",
+              "directions": [
+                ""
+              ]
+            }
+          ],
+          "mode": {
+            "id": "walking",
+            "name": "walking"
+          },
+          "path": {
+            "stopPoints": []
+          }
+        }
+      ]
+    }
+  ]
+}
