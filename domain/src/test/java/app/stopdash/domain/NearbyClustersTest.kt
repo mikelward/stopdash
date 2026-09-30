@@ -294,11 +294,32 @@ class NearbyClustersTest {
     }
 
     @Test
-    fun `an interchange doesn't group stations outside the metro`() {
-        // National Rail keeps picking station by station, hub or not.
+    fun `an interchange's National Rail stations load together`() {
+        // King's Cross's shape: two St Pancras stations nearest and King's Cross mainline a little
+        // farther, all in one hub. Counted apart, the cap of two left King's Cross mainline out —
+        // and with its interchange already shown it got no farther card, so its trains (LNER, Great
+        // Northern) silently vanished while St Pancras's showed. As one place they all load, and
+        // the cap's second place still goes to the next station outside the hub.
         fun hubRail(id: String, meters: Double) =
             stop(id, meters, "national-rail", "910G$id").copy(hubId = "HUB1")
-        val result = select(listOf(hubRail("a", 100.0), hubRail("b", 150.0), hubRail("c", 300.0)))
+        val result = select(
+            listOf(
+                hubRail("a", 100.0),
+                hubRail("b", 150.0),
+                hubRail("c", 350.0),
+                stop("other", 400.0, "national-rail", "910GOTHER"),
+                stop("third", 450.0, "national-rail", "910GTHIRD"),
+            ),
+        )
+        assertEquals(listOf(listOf("a"), listOf("b"), listOf("c"), listOf("other")), result.eager.ids())
+        assertEquals(listOf(listOf("third")), result.more.ids())
+    }
+
+    @Test
+    fun `an interchange doesn't group its bus stops`() {
+        // Bus poles around an interchange are stops of their own, each a request: two of them, not all.
+        fun hubBus(id: String, meters: Double) = stop(id, meters, "bus", "490G$id").copy(hubId = "HUB1")
+        val result = select(listOf(hubBus("a", 100.0), hubBus("b", 150.0), hubBus("c", 300.0)))
         assertEquals(listOf(listOf("a"), listOf("b")), result.eager.ids())
         assertEquals(listOf(listOf("c")), result.more.ids())
     }

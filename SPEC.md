@@ -165,16 +165,22 @@ The app finds stops two ways:
   nearest two of each mode" fetched a second Overground station 1.3 km from a big interchange).
   **The Tube, the Overground, the DLR and the Elizabeth line count as one mode here** — London's
   metro rail (maintainer, 2026-09-30): turn-up-and-go rail across the city, so a station of any of
-  them in reach stands for all four, and they share one cap of two, **an interchange's metro stations
-  counting as one place** and loading together (Canary Wharf's Tube, DLR and Elizabeth line stations
-  are separate TfL stations; counted apart, the cap would drop one, and a station of an interchange
-  already on the list gets no farther card). Counted apart, each fetched its
+  them in reach stands for all four, and they share one cap of two. Counted apart, each fetched its
   own nearest station however far: at King's Cross, with the Tube a few hundred meters off, Euston
   (800 m) was fetched on every refresh as the nearest Overground, bringing its whole National Rail
   board with it — requests against the keyless rate budget for a station nobody there walks to. A
   metro line no loaded stop serves still gets its farther card (*Farther stations*), which costs no
   request until tapped. National Rail, trams, buses and the rest still pick apart, and only picking
-  folds the four: hiding a mode keeps its own groups (*Hiding a mode*). The
+  folds the four: hiding a mode keeps its own groups (*Hiding a mode*).
+  **An interchange's rail stations count as one place** toward their mode's cap, and load together
+  (maintainer, 2026-09-30): King's Cross and St Pancras are separate TfL stations in one
+  interchange, as are Canary Wharf's Tube, DLR and Elizabeth line stations. Counted apart, the cap
+  took the two St Pancras stations and left King's Cross mainline out, and since its interchange was
+  already on the list it got no farther card either — so the list showed St Pancras's trains and
+  silently none of King's Cross's LNER or Great Northern ones, reading as the whole interchange when
+  it wasn't (principle 2). The cost is the interchange's other stations' requests: two more per
+  refresh at King's Cross. Bus poles around an interchange still count one by one — each is a stop
+  and a request of its own. The
   stop lookup itself still covers the mile — one request for every stop's name and routes, no
   departures — so the fallback and the farther bus cards have the whole reach to draw on. A stop TfL lists **no routes** for (a disused or
   unserved stop) is **never eager**: it has no departures to show, and auto-fetching it spent two
