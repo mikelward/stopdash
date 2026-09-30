@@ -4204,7 +4204,7 @@ internal fun RouteDetailScreen(
             // it, so with the list shown the label is repeated noise, but a status row (no train to
             // follow) or a loading, failed, or withheld list would otherwise leave the page not saying
             // which stop it's about — ambiguous when one line is watched at two stops (Codex).
-            // The service's full name first, so the pill's short code (LNWR, AWC, HAM) is never
+            // The service's full name first, so the pill's short code (LNR, AWC, HAM) is never
             // a puzzle; left out where the pill already says it all (a bus number, DLR).
             // TfL can leave the soonest departure's mode off: take it from another departure, else
             // from the line id, so a tube line still reads "Victoria line".

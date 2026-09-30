@@ -75,10 +75,15 @@ class LineCodeTest {
     }
 
     @Test
-    fun `London Northwestern is LNWR however the feed spells it`() {
-        assertEquals("LNWR", lineCode("London Northwestern Railway", "national-rail"))
-        assertEquals("LNWR", lineCode("London North Western Railway", "national-rail"))
-        assertEquals("LNWR", lineCode("London NorthWestern Railway", "national-rail"))
-        assertEquals("LNWR", lineCode("London Northwestern Railway (LNR)", "national-rail"))
+    fun `London Northwestern is LNR however the feed spells it`() {
+        assertEquals("LNR", lineCode("London Northwestern Railway", "national-rail"))
+        assertEquals("LNR", lineCode("London North Western Railway", "national-rail"))
+        assertEquals("LNR", lineCode("London NorthWestern Railway", "national-rail"))
+        assertEquals("LNR", lineCode("London Northwestern Railway (LNR)", "national-rail"))
+    }
+
+    @Test
+    fun `West Midlands Railway is WMR`() {
+        assertEquals("WMR", lineCode("West Midlands Railway", "national-rail"))
     }
 }
