@@ -765,9 +765,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       below. See SPEC *Finding stops → Near me now*. **The Tube, Overground, DLR and Elizabeth
       line count as one mode for the cap (maintainer, 2026-09-30)**: counted apart, King's Cross
       fetched Euston (800 m) every refresh as its nearest Overground, whole National Rail board
-      and all; a metro station in reach now stands for all four (an interchange's metro stations
-      counting as one place and loading together), and a metro line nothing loaded serves gets a
-      farther-station card instead.
+      and all; a metro station in reach now stands for all four, and a metro line nothing loaded
+      serves gets a farther-station card instead. **An interchange's rail stations count as one
+      place and load together (maintainer, 2026-09-30)**: counted apart, King's Cross mainline
+      (LNER, Great Northern) was left out behind two St Pancras stations, with no farther card.
     - **One canonical distance unit:** miles (the maintainer's numbers are in miles). The reach
       is **~1 mile (~1609 m)** — the TfL query's own radius, the hard bound for one lookup. The
       two-tier design dropped the ~0.2 mi inner ring and its expand-if-empty rule (there is no

@@ -70,6 +70,11 @@ object NearbySelection {
     // The key a mode picks under: one shared key for every metro mode, else the mode itself.
     private const val METRO = "\u0000metro"
 
+    // The modes whose stations in one interchange count as one place toward the cap, and load
+    // together: rail, where an interchange's stations are one station to a rider. Not buses, whose
+    // poles around an interchange are many separate requests and each a stop of its own.
+    private val HUB_PLACE_MODES = setOf(METRO, "national-rail", "tram")
+
     /**
      * A cluster of nearby stops that share a [StopLocation.clusterId] — a station's platforms or
      * a junction's poles — ranked by its nearest member's distance. The unit the near-me list
@@ -146,14 +151,16 @@ object NearbySelection {
         // with none that close contributes just its single nearest cluster (out to the outer radius),
         // so a sparse mode keeps a representative without the eager set reaching a mile out. Their
         // union is the eager set. The metro modes pick as one mode ([METRO_MODES]), and an
-        // interchange's metro stations as one place: Canary Wharf's Tube, DLR and Elizabeth line
-        // stations are separate clusters in one hub, which picked apart would crowd each other out of
-        // the shared cap — and the one left over gets no farther card either, since its interchange
-        // is already on the list. So a hub takes one of the cap's places and brings all its metro
-        // stations. A cluster serving two modes is eager if either mode picks it, so the nearest
-        // station of a sparse mode is never crowded out by a denser one. A cluster whose routes TfL
-        // gave no mode for buckets under [UNKNOWN_MODE], so a served stop with thin
-        // metadata is still selected rather than vanishing. A **route-less** cluster — TfL lists no
+        // interchange's rail stations of a mode as one place ([HUB_PLACE_MODES]): Canary Wharf's
+        // Tube, DLR and Elizabeth line stations, or King's Cross's and St Pancras's National Rail
+        // ones, are separate clusters in one hub, which picked apart would crowd each other out of
+        // the cap — and the one left over gets no farther card either, since its interchange is
+        // already on the list, so the list would show some of the interchange's services as if they
+        // were all of them (maintainer, 2026-09-30). So a hub takes one of the cap's places and
+        // brings all its stations of that mode. A cluster serving two modes is eager if either mode
+        // picks it, so the nearest station of a sparse mode is never crowded out by a denser one. A
+        // cluster whose routes TfL gave no mode for buckets under [UNKNOWN_MODE], so a served stop
+        // with thin metadata is still selected rather than vanishing. A **route-less** cluster — TfL lists no
         // routes at it, a disused or unserved stop — is never eager: it has no departures to show,
         // so auto-fetching it only spends the rate budget (two requests a pole) the stops that do
         // run need. It stays in the *more* tier, which only buses page through a button: a route-less
@@ -164,11 +171,11 @@ object NearbySelection {
             else -> emptySet()
         }
         val eagerKeys = HashSet<String>()
-        // The place a cluster counts as toward its mode's cap: its interchange for a metro station in
+        // The place a cluster counts as toward its mode's cap: its interchange for a rail station in
         // one, else the cluster itself. Places keep the nearest-first order of their nearest member.
         fun placeOf(cluster: NearbyCluster, mode: String): String =
             cluster.stops.firstNotNullOfOrNull { it.hubId.ifBlank { null } }
-                ?.takeIf { mode == METRO }?.let { "\u0000hub:$it" }
+                ?.takeIf { mode in HUB_PLACE_MODES }?.let { "\u0000hub:$it" }
                 ?: cluster.key
         for (mode in clusters.flatMapTo(sortedSetOf()) { modesOf(it) }) {
             val places = clusters.filter { mode in modesOf(it) }.groupBy { placeOf(it, mode) }.values
