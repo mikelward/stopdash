@@ -15,7 +15,10 @@ import kotlin.math.ceil
  * ([FREQUENT_MODES], its predictions showing it: [runsFrequently]) whose live trains all leave before
  * the rider reaches it — its predictions end short of them — is boarded as they arrive
  * ([Basis.ESTIMATED]), and the wait it assumes away is kept as the arrival's [Estimate.slack]; anything else, nothing says when the
- * next train leaves, so the arrival is withheld ([Basis.UNKNOWN]) rather than guessed.
+ * next train leaves, so the arrival is withheld ([Basis.UNKNOWN]) rather than guessed. Such a line is
+ * boarded as they arrive, too, when the Planner's train leaves more than a gap between trains after
+ * the rider gets there: the Planner planned the trip leaving later, and an earlier train is the one
+ * they'd take.
  */
 object TripTiming {
     /** How far StopDash stands behind a route's arrival, best first. */
@@ -168,33 +171,44 @@ object TripTiming {
         var basis = Basis.LIVE
         var waits = false
         var withheld: Withheld? = null
+        // The longest a frequent leg [index] may keep the rider waiting: its line's longer typical gap
+        // between trains ([Headway]), or the longest a frequent line has when its trains can't say.
+        fun longestGap(index: Int): Duration =
+            Headway.of(refreshed(index).map { it.expectedArrival })?.let { Duration.ofMinutes(it.max.toLong()) } ?: FREQUENT_MAX_GAP
         // A leg's timing from when the rider is [ready] for it, and whether it boards a frequent line
-        // as the rider arrives, assuming away the wait for it ([waits]).
-        fun time(index: Int, leg: TripLeg, ready: Instant): Pair<LegTiming, Basis> {
-            if (leg.isWalk) return LegTiming(ready, ready.plus(leg.run), null, false) to Basis.LIVE
+        // as the rider arrives ([Timed.onArrival]), assuming away the wait for it ([waits]).
+        fun time(index: Int, leg: TripLeg, ready: Instant): Timed {
+            if (leg.isWalk) return Timed(LegTiming(ready, ready.plus(leg.run), null, false), Basis.LIVE)
             val trains = live(index)
             val train = trains?.filter { !it.expectedArrival.isBefore(ready) }?.minByOrNull { it.expectedArrival }
-            fun unknown(): Pair<LegTiming, Basis> {
+            fun unknown(): Timed {
                 // A Planner line another line stands in for ([otherLine]) isn't why: the ride no longer
                 // waits on it, so the reason is the one its other lines' trains give.
                 if (withheld == null) withheld = withheldAt(index, leg, ready, trains, leg.lineId in notRunning && !otherLine(index), current(index), predicted(index))
-                return LegTiming(null, null, null, false) to Basis.UNKNOWN
+                return Timed(LegTiming(null, null, null, false), Basis.UNKNOWN)
             }
+            // Its live trains vouched for and running, just not predicted as far ahead as the rider
+            // gets there: on a line every few minutes, the next one is about then. Not on a line with
+            // no trains (done for the night), one not running (its last predictions may outlive it),
+            // nor one whose arrivals failed, even with its last ones held. And only where its
+            // predictions show it running every few minutes now: how far ahead they reach says
+            // nothing, since TfL predicts only trains already running, so near a line's start they
+            // end within 15 minutes all day. Judged on trains from stops that refreshed
+            // ([refreshed]), not ones held from a stop that failed.
+            fun frequent() = leg.lineId !in notRunning && current(index) && frequentAt(leg.mode, refreshed(index))
             return when {
-                train != null -> LegTiming(train.expectedArrival, train.expectedArrival.plus(leg.run), train, true) to Basis.LIVE
+                train != null -> Timed(LegTiming(train.expectedArrival, train.expectedArrival.plus(leg.run), train, true), Basis.LIVE)
                 !timetabled(index) -> unknown()
-                !leg.departure.isBefore(ready) -> LegTiming(leg.departure, leg.arrival, null, false) to Basis.ESTIMATED
-                // Its live trains vouched for and running, just not predicted as far ahead as the
-                // rider gets there: on a line every few minutes, the next one is about then. Not on a
-                // line with no trains (done for the night), one not running (its last predictions
-                // may outlive it), nor one whose arrivals failed, even with its last ones held.
-                // And only where its predictions show it running every few minutes now: how far
-                // ahead they reach says nothing, since TfL predicts only trains already running,
-                // so near a line's start they end within 15 minutes all day. Judged on trains from
-                // stops that refreshed ([refreshed]), not ones held from a stop that failed.
-                leg.lineId !in notRunning && current(index) && frequentAt(leg.mode, refreshed(index)) -> {
+                // The Planner's own train while the rider can make it, unless the line runs every few
+                // minutes and that train leaves more than a gap after the rider gets there: the
+                // Planner planned the trip leaving later, and an earlier train is the one they'd take
+                // (maintainer's report, 2026-09-30: a bus caught sooner than planned waited nine
+                // minutes at the change for the Planner's train on a line every few minutes).
+                !leg.departure.isBefore(ready) && !(frequent() && leg.departure.isAfter(ready.plus(longestGap(index)))) ->
+                    Timed(LegTiming(leg.departure, leg.arrival, null, false), Basis.ESTIMATED)
+                frequent() -> {
                     waits = true
-                    LegTiming(ready, ready.plus(leg.run), null, false) to Basis.ESTIMATED
+                    Timed(LegTiming(ready, ready.plus(leg.run), null, false), Basis.ESTIMATED, onArrival = true)
                 }
                 else -> unknown()
             }
@@ -202,10 +216,10 @@ object TripTiming {
         var at: Instant? = now.plus(access)
         val legs = route.legs.mapIndexed { index, leg ->
             val ready = at ?: return@mapIndexed LegTiming(null, null, null, false)
-            val (timing, legBasis) = time(index, leg, ready)
-            if (legBasis > basis) basis = legBasis
-            at = timing.arrive?.plus(leg.changeAfter)
-            timing
+            val timed = time(index, leg, ready)
+            if (timed.basis > basis) basis = timed.basis
+            at = timed.timing.arrive?.plus(leg.changeAfter)
+            timed.timing
         }
         val arrival = if (basis == Basis.UNKNOWN) null else legs.lastOrNull()?.arrive
         // A frequent line boarded as the rider arrives may keep them up to a full gap between trains
@@ -218,20 +232,19 @@ object TripTiming {
             var late: Instant? = now.plus(access)
             route.legs.forEachIndexed { index, leg ->
                 val ready = late ?: return@forEachIndexed
-                val (timing, _) = time(index, leg, ready)
-                val boardsOnArrival = timing.train == null && !leg.isWalk && timing.board == ready && leg.departure.isBefore(ready)
-                val gap = if (boardsOnArrival) {
-                    Headway.of(refreshed(index).map { it.expectedArrival })?.let { Duration.ofMinutes(it.max.toLong()) } ?: FREQUENT_MAX_GAP
-                } else {
-                    Duration.ZERO
-                }
-                late = timing.arrive?.plus(gap)?.plus(leg.changeAfter)
+                val timed = time(index, leg, ready)
+                val gap = if (timed.onArrival) longestGap(index) else Duration.ZERO
+                late = timed.timing.arrive?.plus(gap)?.plus(leg.changeAfter)
             }
             // The last leg's change time isn't part of the arrival.
             late?.minus(route.legs.lastOrNull()?.changeAfter ?: Duration.ZERO)?.let { Duration.between(arrival, it).coerceAtLeast(Duration.ZERO) }
         }
         return Estimate(route, basis, arrival, legs, blocked, now, unchecked, slack, withheld.takeIf { basis == Basis.UNKNOWN })
     }
+
+    // One leg timed by [estimate]: its [timing], the [basis] behind it, and whether it boards a
+    // frequent line as the rider arrives ([onArrival]), the wait assumed away.
+    private data class Timed(val timing: LegTiming, val basis: Basis, val onArrival: Boolean = false)
 
     /**
      * When the rider is ready to board leg [index] of [estimate]'s route, as [estimate] timed it: at
