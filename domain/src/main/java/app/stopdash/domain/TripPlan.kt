@@ -39,12 +39,15 @@ data class TripLeg(
     val fromAt: Coordinates? = null,
     // Where the leg gets off: a public stop position, like [fromAt].
     val toAt: Coordinates? = null,
-    // The stops the Planner named, once an end has been moved to the stop its bus really uses (the
-    // app's onPoles): empty while it hasn't. What the leg is known by, so a move keeps its identity.
+    // The stops the Planner named, once an end has been moved to the stop its bus really uses
+    // ([onPoles]): empty while it hasn't. What the leg is known by, so a move keeps its identity.
     val plannedFromId: String = "",
     val plannedToId: String = "",
 ) {
     val isWalk: Boolean get() = mode.equals(WALKING, ignoreCase = true)
+
+    /** A bus ride, whose stop the Planner can name on the wrong pole or stand ([onPoles]). */
+    val isBus: Boolean get() = mode.equals("bus", ignoreCase = true)
 
     /** The Planner's time on board (or on foot). */
     val run: Duration get() = Duration.between(departure, arrival).coerceAtLeast(Duration.ZERO)

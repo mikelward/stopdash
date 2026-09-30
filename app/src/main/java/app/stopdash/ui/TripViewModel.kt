@@ -23,6 +23,7 @@ import app.stopdash.domain.StopDisruptionBatch
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.TflException
 import app.stopdash.domain.NearestStops
+import app.stopdash.domain.PlacedStand
 import app.stopdash.domain.TripClosures
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripOrigin
