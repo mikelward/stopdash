@@ -1329,6 +1329,17 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             location or without. Following one needs that line's route to check and place its
             train, and its line kept to look it up on, since TfL answers for a train on one line
             only (Codex on #383).
+      - [ ] (Consider, maintainer 2026-10-01) **A train held short of the stop reads "0" for
+            minutes.** TfL keeps re-predicting a train held between two stations as about to
+            arrive, so a trip's "Due in 0 min", its board and the departures list all read "0" until
+            it moves; in one report a tube train held under minor delays stayed at "0" for over
+            three minutes while the platform sign gave 3 min. TfL's feed doesn't say a train is
+            held, so it would be inferred: the same train still due within the minute across
+            refreshes a couple of minutes apart. It would stay where it is in the list (it is the
+            next train) and only its number would change, to wording the maintainer approves.
+            Mind that TfL sometimes serves an answer a minute old, so a train pulling in normally
+            mustn't flash as held. Waiting on more reports to see how often it happens and what
+            threshold fits, before deciding to build it.
       - [x] **Rank a route by any of a ride's lines** (Codex on #309). A ride whose Planner line is
             closed or unchecked no longer sinks its route while another line that times it, checked
             as running from stops checked open (`RideLines.othersTime`), can take it; the Planner's
