@@ -1302,12 +1302,26 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   (`OnTheWay.listedFor`), for the pick, the trains seen leave, the change's "no train
                   predicted" and the trip's board, which heads each pole by its letter. A pole, or the
                   pair, that can't be read is said (`NextBoard.partial`), never taken for no bus there.
-            - [ ] **Two trains between the same two stops**: the train the rider is on is the
+            - [x] **Two trains between the same two stops**: the train the rider is on is the
                   newest that left the boarding stop and isn't behind them, judged by the stop each
                   calls at next. A later train that has caught up to between the same two stops calls
-                  there next too, and would be taken for theirs. Timing would tell them apart: the
-                  rider's train left the boarding stop after the last fix still there and before the
-                  first clear of it, and fixes while waiting could keep those two times.
+                  there next too, and would be taken for theirs. Done, the honest half: seen between
+                  stops, the newest train past them is theirs only once each older one of its line
+                  that left after the rider could be at the stop is looked up (a request each, up to
+                  three) and shown ahead of them (`OnTheWay.twinOf`), as trains of a line overtake:
+                  past where they get off, or calling next further on where every way the line runs
+                  there calls first at the newer's next stop (`OnTheWay.passes`; a fast train skipping it
+                  may still be short of it). Otherwise, or with its lookup failed (said), neither is
+                  named, the rider on board by where they were seen, on those trains' line, until a fix
+                  at a stop tells. A train of another of the ride's lines isn't compared: its path's stops
+                  aren't the line's to match by position.
+              - [ ] **Timing would tell them apart**: the rider's train left the boarding stop after
+                    the last fix still there and before the first clear of it, and fixes while
+                    waiting could keep those two times. Not done, for what a station does to "clear":
+                    the Planner can place a big station 200 m from where a rider waits, so a rider
+                    still on the platform can read as clear of it, and their own train, due later,
+                    would be ruled out. Safe where the stop is a point (a bus pole), or once clear is
+                    judged against the station's entrances too (`StationPlaces`).
           - [x] **On board by position on another of the ride's lines** (Codex, PR #449): seen along
                 another offered line's own way (#451) with none of its trains told as theirs, the trip
                 still waited as it was, as before #449; only a sighting on the Planner's line put them
