@@ -375,7 +375,7 @@ private fun NextStep(progress: TripProgress?, now: Instant, current: Boolean) {
 /** The next step's card colors: "get off soon" stands out, the one step with a deadline a stop away. */
 @Composable
 internal fun nextStepColors(progress: TripProgress?, current: Boolean = true): CardColors =
-    if (progress is TripProgress.Riding && progress.getOffSoon && current) {
+    if (progress is TripProgress.Riding && progress.getOffSoon && (current || !fromTfl(progress))) {
         CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer)
     } else {
         CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
@@ -392,8 +392,7 @@ internal fun nextStepText(progress: TripProgress?, now: Instant, current: Boolea
 internal fun nextStepText(resources: Resources, progress: TripProgress?, now: Instant, current: Boolean = true): Pair<String, String> {
     // A train's time or stops from an answer too old to stand behind ([current]): the step stays,
     // its details wait for the next answer.
-    val live = progress is TripProgress.Riding || (progress is TripProgress.Waiting && progress.due != null)
-    if (live && !current) return nextStepText(resources, progress, now).first to resources.getString(R.string.on_the_way_updating)
+    if (fromTfl(progress) && !current) return nextStepText(resources, progress, now).first to resources.getString(R.string.on_the_way_updating)
     return when (progress) {
         // The line of the train followed, which can be another of the ride's lines than the Planner's.
         is TripProgress.Waiting -> resources.getString(R.string.on_the_way_board, progress.lineName, progress.leg.fromName) to
@@ -409,11 +408,10 @@ internal fun nextStepText(resources: Resources, progress: TripProgress?, now: In
             // The time left on the ride, where the stop is predicted (maintainer, 2026-09-29): counted as
             // the boards count, never estimated from the plan beyond TfL's predictions.
             when (val left = progress.stopsLeft) {
-                null -> resources.getString(R.string.on_the_way_next_is, progress.nextStop)
+                null -> progress.nextStop?.let { resources.getString(R.string.on_the_way_next_is, it) } ?: ""
                 0, 1 -> progress.getOffAt?.let { resources.getString(R.string.on_the_way_next_stop_timed, Countdown.minutes(it, now).toInt()) }
                     ?: resources.getString(R.string.on_the_way_next_stop)
-                else -> progress.getOffAt?.let { resources.getQuantityString(R.plurals.on_the_way_stops_timed, left, left, progress.nextStop, Countdown.minutes(it, now).toInt()) }
-                    ?: resources.getQuantityString(R.plurals.on_the_way_stops, left, left, progress.nextStop)
+                else -> stopsText(resources, left, progress.nextStop, progress.getOffAt?.let { Countdown.minutes(it, now).toInt() })
             }
         is TripProgress.Changing -> resources.getString(R.string.on_the_way_change, progress.leg.lineName, progress.leg.fromName) to
             resources.getString(R.string.on_the_way_change_time, minutesUntil(now, progress.until))
@@ -533,3 +531,22 @@ internal fun minutesUntil(now: Instant, at: Instant): Int {
     val seconds = Duration.between(now, at).seconds.coerceAtLeast(0)
     return ((seconds + 59) / 60).toInt()
 }
+
+/**
+ * [left] stops to where the rider gets off, [minutes] from it when its time is predicted, and the
+ * [next] stop when its name is known; one not named is left out rather than guessed (Codex, PR #449).
+ */
+internal fun stopsText(resources: Resources, left: Int, next: String?, minutes: Int?): String = when {
+    next != null && minutes != null -> resources.getQuantityString(R.plurals.on_the_way_stops_timed, left, left, next, minutes)
+    next != null -> resources.getQuantityString(R.plurals.on_the_way_stops, left, left, next)
+    minutes != null -> resources.getQuantityString(R.plurals.on_the_way_stops_left_timed, left, left, minutes)
+    else -> resources.getQuantityString(R.plurals.on_the_way_stops_left, left, left)
+}
+
+/**
+ * Whether [progress]'s details stand on an answer of TfL's (a train's time or calls), so they wait while
+ * that answer is too old to stand behind. Stops counted from where the rider was seen don't: they show
+ * from the first frame after a restart, as they were (Codex, PR #449).
+ */
+internal fun fromTfl(progress: TripProgress?): Boolean =
+    (progress is TripProgress.Riding && !progress.byPosition) || (progress is TripProgress.Waiting && progress.due != null)

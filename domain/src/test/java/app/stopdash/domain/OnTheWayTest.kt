@@ -723,6 +723,60 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `seen along the ride with no train of theirs found, the rider is on board by where they were seen`() {
+        val named = ride.copy(pathNames = listOf("Bee", "Cee"))
+        val waiting = OnTheWay.follow(trip.copy(route = TripRoute(listOf(named, walk, second))), train("9", 8))
+        // Seen at B (maintainer, 2026-10-01): on board, the train followed (still to come) let go.
+        val on = OnTheWay.onBoardAlong(waiting, OnTheWay.Along(0, atStop = true), at(7))
+        assertEquals("", on.vehicleId)
+        assertTrue(on.boarded && on.onBoardSeen)
+        assertEquals(at(7), on.boardedAt)
+        assertEquals(1, on.seenAlongStop)
+        assertTrue(OnTheWay.ridingUnmatched(on))
+        // At B, C is next and where they get off: one stop, and "get off soon"; no time claimed.
+        assertEquals(TripProgress.Riding(named, "Cee", 1, null, true, byPosition = true), OnTheWay.advance(on, null, at(8)).second)
+        // Short of B: B is next, two stops left.
+        val short = OnTheWay.onBoardAlong(waiting, OnTheWay.Along(0, atStop = false), at(7))
+        assertEquals(TripProgress.Riding(named, "Bee", 2, null, false, byPosition = true), OnTheWay.advance(short, null, at(8)).second)
+        // The next stop not named: left unnamed, not called by where they get off (Codex, PR #449)...
+        val unnamed = ride.copy(pathNames = listOf("", ""))
+        val shortUnnamed = OnTheWay.onBoardAlong(OnTheWay.follow(trip.copy(route = TripRoute(listOf(unnamed, walk, second))), train("9", 8)), OnTheWay.Along(0, atStop = false), at(7))
+        assertEquals(TripProgress.Riding(unnamed, null, 2, null, false, byPosition = true), OnTheWay.advance(shortUnnamed, null, at(8)).second)
+        // ...unless it is that stop.
+        val atUnnamed = OnTheWay.onBoardAlong(shortUnnamed, OnTheWay.Along(0, atStop = true), at(8))
+        assertEquals(TripProgress.Riding(unnamed, "C", 1, null, true, byPosition = true), OnTheWay.advance(atUnnamed, null, at(9)).second)
+        // Placed by later fixes as well, moving on, never back.
+        assertEquals(OnTheWay.Along(0, atStop = true), OnTheWay.seenAlong(short, fix(atB, 20f), along, at(8)))
+        assertEquals(1, OnTheWay.onBoardAlong(short, OnTheWay.Along(0, atStop = true), at(8)).seenAlongStop)
+        assertEquals(1, OnTheWay.onBoardAlong(on, OnTheWay.Along(0, atStop = false), at(8)).seenAlongStop)
+        // Fixes for the ride's planned time from then and a slow train's more, then none (battery).
+        assertTrue(OnTheWay.wantsFix(on, at(12)))
+        assertFalse(OnTheWay.wantsFix(on, at(23)))
+        // As sure as the fix that put them there will do (Codex, PR #449).
+        assertTrue(OnTheWay.sureEnoughFor(on, at(13))(fix(atB, 90f)))
+        // Just after they were seen on too, with the boarding stop placed: not taken to be left behind, so
+        // not held to its 50 m (Codex, PR #449).
+        val placed = on.copy(route = TripRoute(listOf(named.copy(fromAt = Coordinates(51.5, -0.12)), walk, second)))
+        assertTrue(OnTheWay.sureEnoughFor(placed, at(8))(fix(atB, 90f)))
+        // Its train since told, within those five minutes: still seen on board, so no left-behind fixes
+        // are asked for (Codex, PR #449); only taken to be on it, they are.
+        val told = placed.copy(vehicleId = "9", seenAlongStop = -1)
+        assertFalse(OnTheWay.wantsFix(told, at(8)))
+        assertTrue(OnTheWay.wantsFix(told.copy(onBoardSeen = false), at(8)))
+        // A clock set back to before they were seen on ends the fixes (Codex, PR #449).
+        assertFalse(OnTheWay.wantsFix(on, at(5)))
+        // Its train told later: on it, no longer counted by where they were seen.
+        val found = OnTheWay.boardedOn(on, train("7", 6), listOf(call("C", 10)), on.seenAlongStop, at(8))
+        assertEquals("7", found?.first?.vehicleId)
+        assertEquals(-1, found?.first?.seenAlongStop)
+        assertFalse(OnTheWay.ridingUnmatched(found!!.first))
+        // A train still to come is no train of theirs: on board, the trip isn't waiting for it.
+        assertNull(OnTheWay.waitingToBoard(on, at(8)))
+        // Off the ride, the next leg isn't on board by where the last was seen.
+        assertEquals(-1, OnTheWay.rideDone(on, at(9)).seenAlongStop)
+    }
+
+    @Test
     fun `waiting for a ride's train, a fix is wanted and one sure to 100 m will do`() {
         val waiting = OnTheWay.follow(trip, train("9", 8))
         assertTrue(OnTheWay.wantsFix(waiting, at(6)))

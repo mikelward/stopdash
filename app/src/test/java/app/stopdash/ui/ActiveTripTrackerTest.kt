@@ -51,6 +51,10 @@ class ActiveTripTrackerTest {
     private val departures = mutableMapOf<String, List<Departure>>()
     private val trains = mutableMapOf<String, List<VehicleCall>>()
     private var failing = false
+    // The boarding stop's board alone failing to load.
+    private var boardFails = false
+    // The line's route alone failing to load.
+    private var routeFails = false
     private val unknownStops = mutableSetOf<String>()
     private val gone = mutableSetOf<String>()
     private val asked = mutableListOf<String>()
@@ -138,6 +142,7 @@ class ActiveTripTrackerTest {
             boardStops += stop
             // TfL (or the request pool) taking its time: the clock moves on during the read.
             now = now.plus(boardTakes)
+            if (boardFails) throw TflException.Offline(null)
             if (stop in unknownStops) throw TflException.NotFound(null) else departures[stop].orEmpty()
         },
         vehicles = object : VehicleSource {
@@ -161,6 +166,7 @@ class ActiveTripTrackerTest {
         },
         lineSequence = { lineId ->
             ticks += sequenceTakesFor[lineId] ?: sequenceTakes
+            if (routeFails) throw TflException.Offline(null)
             sequences[lineId]
         },
         // As the cards find them: another line only where the departures given list a train of it.
@@ -1041,11 +1047,12 @@ class ActiveTripTrackerTest {
         assertEquals("9", tracker.trip.value?.vehicleId)
         departures["A"] = listOf(train("9", 8))
         now = at(7)
-        // Seen at B: neither is theirs, so the trip waits as it was, claiming nothing.
+        // Seen at B: neither is theirs, so they're on board by where they were seen, on no train named
+        // (maintainer, 2026-10-01).
         tracker.refresh(fixAt(51.51))
-        assertEquals("9", tracker.trip.value?.vehicleId)
-        assertEquals(TripProgress.Waiting(ride, at(8)), tracker.progress.value)
-        assertEquals(listOf("9", "9"), asked)
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(TripProgress.Riding(ride, "C", 1, null, true, byPosition = true), tracker.progress.value)
+        assertEquals(listOf("9"), asked)
     }
 
     @Test
@@ -1187,7 +1194,160 @@ class ActiveTripTrackerTest {
     }
 
     @Test
-    fun `seen along the ride with no train that left to be found, the trip waits as it was`() = runTest {
+    fun `seen along the ride with no train that left to be found, the rider is on board by where they were seen`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(6)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        now = at(7)
+        // Seen at the next stop (maintainer, 2026-10-01): on board, though 9, still to come, isn't theirs.
+        tracker.refresh(fixAt(51.51))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(true, tracker.trip.value?.onBoardSeen)
+        assertEquals(TripProgress.Riding(ride, "C", 1, null, true, byPosition = true), tracker.progress.value)
+        // Said, coarsely: the line, never where.
+        assertTrue(logged.any { it.startsWith("on the way: seen along the ride") && "red" in it })
+        // A refresh with no fix keeps them on board, counted from where they were seen, never on 9.
+        departures["A"] = listOf(train("9", 8))
+        tracker.refresh()
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(TripProgress.Riding(ride, "C", 1, null, true, byPosition = true), tracker.progress.value)
+        // No train is matched against where they were last seen, only a fresh fix (maintainer, 2026-10-01):
+        // with none, nothing is asked after.
+        val before = asked.size
+        now = at(9)
+        tracker.refresh()
+        assertEquals(before, asked.size)
+        // TfL down while the train that took them is looked for with a fresh fix further on: said, not
+        // passed off as current (Codex, PR #449); the ride stands as it was. 9 is due by now, so it's asked after.
+        failing = true
+        tracker.refresh(fixAt(51.515))
+        assertTrue(tracker.failed.value)
+        assertEquals(TripProgress.Riding(ride, "C", 1, null, true, byPosition = true), tracker.progress.value)
+        failing = false
+        tracker.refresh(fixAt(51.515))
+        assertFalse(tracker.failed.value)
+        // Kept so, a restart says the same before any answer, not that their train is still to find
+        // (Codex, PR #449).
+        val restarted = tracker(StandardTestDispatcher(testScheduler), load = { kept })
+        restarted.restore()
+        assertEquals(TripProgress.Riding(ride, "C", 1, null, true, byPosition = true), restarted.progress.value)
+    }
+
+    @Test
+    fun `seen along the ride while TfL is down, they're on board by where they were seen and it says so`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("7", 5), train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        departures["A"] = listOf(train("9", 8))
+        now = at(7)
+        // 7, which left, can't be asked after: on board all the same, the refresh failed (Codex, PR #449).
+        failing = true
+        tracker.refresh(fixAt(51.51))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(true, tracker.trip.value?.onBoardSeen)
+        assertTrue(tracker.failed.value)
+        assertEquals(TripProgress.Riding(ride, "C", 1, null, true, byPosition = true), tracker.progress.value)
+    }
+
+    @Test
+    fun `seen along the ride as the boarding stop's board fails, on board by where they were seen and it says so`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("7", 5), train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        now = at(7)
+        // No train found theirs, and the board that might have listed it failed: said (Codex, PR #449).
+        boardFails = true
+        tracker.refresh(fixAt(51.51))
+        assertEquals(true, tracker.trip.value?.onBoardSeen)
+        assertEquals(TripProgress.Riding(ride, "C", 1, null, true, byPosition = true), tracker.progress.value)
+        assertTrue(tracker.failed.value)
+    }
+
+    @Test
+    fun `on board by where they were seen, a fix further on moves them on though TfL is down`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("7", 5), train("9", 8))
+        trains["7"] = listOf(call("A", 5), call("B", 8), call("C", 12))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        departures["A"] = listOf(train("9", 8))
+        now = at(6)
+        // Short of B: on board by where they were seen, two stops left (this plan names no stops on the way).
+        tracker.refresh(fixAt(51.505))
+        assertEquals(2, (tracker.progress.value as TripProgress.Riding).stopsLeft)
+        assertFalse(tracker.failed.value)
+        // At B with TfL down: moved on from location all the same, "get off soon" said, the failure too
+        // (Codex, PR #449).
+        failing = true
+        now = at(8)
+        tracker.refresh(fixAt(51.51))
+        assertEquals(TripProgress.Riding(ride, "C", 1, null, true, byPosition = true), tracker.progress.value)
+        assertTrue(tracker.failed.value)
+        assertTrue(warned.isNotEmpty())
+    }
+
+    @Test
+    fun `on board by where they were seen, a fix where they get off takes back get off soon`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "D", "D", at(15), at(30))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(6)
+        tracker.start(TripRoute(listOf(ride, walkOn)), "D", readyAt = now)
+        tracker.refresh()
+        now = at(7)
+        // At B, a stop from C: "get off soon" said.
+        tracker.refresh(fixAt(51.51))
+        assertEquals("said C", alerts.last())
+        val said = alerts.size
+        // Seen at C: off, and the alert taken back (Codex, PR #449).
+        now = at(9)
+        tracker.refresh(fixAt(51.52))
+        assertEquals(1, tracker.trip.value?.legIndex)
+        assertEquals(listOf("done"), alerts.drop(said))
+    }
+
+    @Test
+    fun `on board by where they were seen, later trains not yet due don't crowd theirs out`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("7", 5), train("8", 9), train("9", 10), train("10", 11))
+        trains["8"] = listOf(call("A", 9), call("B", 11), call("C", 15))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        departures["A"] = listOf(train("8", 9), train("9", 10), train("10", 11))
+        // 7's calls not yet past A: not told as theirs, so they're on board by where they were seen.
+        trains["7"] = listOf(call("A", 5), call("B", 7), call("C", 11))
+        now = at(7)
+        tracker.refresh(fixAt(51.51))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        // Its calls moved on, and a fresh fix further on: told as theirs, though three later trains were
+        // seen at A too (Codex, PR #449).
+        trains["7"] = listOf(call("C", 11))
+        now = at(8)
+        tracker.refresh(fixAt(51.515))
+        assertEquals("7", tracker.trip.value?.vehicleId)
+    }
+
+    @Test
+    fun `on board by where they were seen, a route that can't be read with a fresh fix is said`() = runTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         sequences["red"] = redLine
         departures["A"] = listOf(train("9", 8))
@@ -1197,14 +1357,76 @@ class ActiveTripTrackerTest {
         tracker.refresh()
         now = at(7)
         tracker.refresh(fixAt(51.51))
-        assertEquals("9", tracker.trip.value?.vehicleId)
-        assertEquals(TripProgress.Waiting(ride, at(8)), tracker.progress.value)
-        // Said, coarsely: the line, never where.
-        assertTrue(logged.any { it.startsWith("on the way: seen along the ride") && "red" in it })
-        // With no route to place the ride's stops, a fix says nothing.
-        sequences.clear()
-        departures["A"] = listOf(train("9", 8))
+        assertEquals(TripProgress.Riding(ride, "C", 1, null, true, byPosition = true), tracker.progress.value)
+        assertFalse(tracker.failed.value)
+        // The route that places them can't be read: their position stands, and the refresh says it
+        // couldn't update (Codex, PR #449).
+        routeFails = true
+        tracker.refresh(fixAt(51.515))
+        assertEquals(TripProgress.Riding(ride, "C", 1, null, true, byPosition = true), tracker.progress.value)
+        assertTrue(tracker.failed.value)
+    }
+
+    @Test
+    fun `on board by where they were seen, a train behind them isn't taken for theirs as it moves on`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("9", 6))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        departures["A"] = emptyList()
+        // Seen at B with 9 still minutes from it: behind them, so on board by where they were seen.
+        trains["9"] = listOf(call("B", 10), call("C", 14))
+        now = at(7)
         tracker.refresh(fixAt(51.51))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        // 9 moves on past B: with no fresh fix it isn't asked after, nor taken for theirs (maintainer,
+        // 2026-10-01): where they were last seen says where, not when (Codex, PR #449).
+        trains["9"] = listOf(call("C", 14))
+        now = at(11)
+        tracker.refresh()
+        assertEquals("", tracker.trip.value?.vehicleId)
+        // A fix again at B, no further on than they were, matches nothing either.
+        tracker.refresh(fixAt(51.51))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(TripProgress.Riding(ride, "C", 1, null, true, byPosition = true), tracker.progress.value)
+    }
+
+    @Test
+    fun `on board by where they were seen, a fix further back doesn't take a train behind them for theirs`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        // 7 left A and is pulling in at B; 9 is still to come.
+        departures["A"] = listOf(train("7", 5), train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        trains["7"] = listOf(call("B", 7), call("C", 11))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        departures["A"] = listOf(train("9", 8))
+        now = at(7)
+        // Seen past B, toward C: 7, still due at B, is behind them, so they're on by where they were seen.
+        tracker.refresh(fixAt(51.515))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(TripProgress.Riding(ride, "C", 1, null, true, byPosition = true), tracker.progress.value)
+        // A vaguer fix back at B doesn't make 7, due there now, theirs (Codex, PR #449).
+        tracker.refresh(fixAt(51.51))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(TripProgress.Riding(ride, "C", 1, null, true, byPosition = true), tracker.progress.value)
+    }
+
+    @Test
+    fun `with no route to place the ride's stops, a fix says nothing of a rider waiting`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(6)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        now = at(7)
+        tracker.refresh(fixAt(51.51))
+        assertEquals("9", tracker.trip.value?.vehicleId)
         assertEquals(TripProgress.Waiting(ride, at(8)), tracker.progress.value)
     }
 

@@ -1279,7 +1279,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             - [ ] **A train the board never listed**: the trains asked after are those the boarding
                   stop's board listed while the trip was shown, in memory only, so after a restart,
                   or for a train that came and went between refreshes, the rider seen along the ride
-                  is left waiting. Asking the board at the stop ahead of them would find it, for one
+                  is on board by where they were seen with no train named: the stops are counted on
+                  the plan and no time is claimed (maintainer, 2026-10-01). Asking the board at the stop ahead of them would find it, for one
                   more request. So is a bus using the other pole of the boarding stop pair from the
                   one the Planner named: the board read is that pole's alone, for picking a train
                   too, so another of the ride's bus routes that stops only at the pair's other pole
