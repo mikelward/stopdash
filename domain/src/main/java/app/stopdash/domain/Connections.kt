@@ -10,7 +10,9 @@ package app.stopdash.domain
  * the list (maintainer, 2026-09-22 — "buses would swamp it"). A line's mode comes from its stop's
  * own mode when TfL gives that stop exactly one; an interchange mixes modes and names its lines
  * without saying which is which, so there a line counts only when its id is a known rail-type line
- * ([KNOWN_MODES]) — a national-rail operator or a bus in an interchange is never guessed at.
+ * ([KNOWN_MODES]): the tube, Overground, DLR, Elizabeth line and tram lines, and the National Rail
+ * operators TfL has a line for ([NATIONAL_RAIL_LINE_IDS]). Anything else there — a bus, an operator
+ * not on that list — is never guessed at.
  */
 object Connections {
     /** [lines] at a stop, reduced to the connections other than [ridingLineId], each with a mode. */
@@ -46,5 +48,6 @@ object Connections {
         ).associateWith { "tube" } +
             listOf("lioness", "mildmay", "windrush", "weaver", "suffragette", "liberty", "london-overground")
                 .associateWith { "overground" } +
-            mapOf("dlr" to "dlr", "elizabeth" to "elizabeth-line", "tram" to "tram")
+            mapOf("dlr" to "dlr", "elizabeth" to "elizabeth-line", "tram" to "tram") +
+            NATIONAL_RAIL_LINE_IDS.associateWith { "national-rail" }
 }

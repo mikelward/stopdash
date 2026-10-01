@@ -322,6 +322,13 @@ private val TFL_RAIL_LINE_IDS = mapOf(
 )
 
 /**
+ * TfL's line ids for the National Rail operators ([TFL_RAIL_LINE_IDS]'s values), so an interchange,
+ * which names its lines without saying which run trains, can tell an operator from a bus route by id
+ * ([Connections]). An operator TfL lists that isn't here is left out there, never guessed at.
+ */
+val NATIONAL_RAIL_LINE_IDS: Set<String> = TFL_RAIL_LINE_IDS.values.toSet()
+
+/**
  * A National Rail operator's TfL line id, so its departures and TfL's status and route for the
  * line share one row: TfL's own id for a known [operatorCode], else the operator's name as a slug
  * ("Great Northern" → `great-northern`) — which, for an operator TfL has no line for (the

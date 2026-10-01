@@ -2019,9 +2019,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         and its interchange's (TfL `topMostParentId` hub), read from the same Route/Sequence response
         (no new request). Buses are left out (they would swamp it), and so is national rail named only
         at a mixed-mode interchange, since TfL doesn't say which of a hub's lines are trains.
-    - [ ] **National-rail connections at interchanges** — a hub lists operators and buses together
+    - [x] **National-rail connections at interchanges** — a hub lists operators and buses together
           with no per-line mode; identifying the operators (from the member rail station, one more
-          lookup, or a known-operator list) would add them without guessing.
+          lookup, or a known-operator list) would add them without guessing. *Done with the
+          known-operator list: TfL's line id for each operator the app already maps National Rail
+          boards by (`NATIONAL_RAIL_LINE_IDS`) counts as national-rail; no new request.*
   - [x] **Open the route the user tapped, not the row's soonest train** (maintainer, 2026-09-22). A
         card shows one route row per destination of a line+direction, but every one of them opened the
         same detail, whose app bar and stop list followed the row's *soonest* departure — so tapping
