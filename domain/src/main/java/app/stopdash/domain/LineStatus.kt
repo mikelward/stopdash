@@ -125,6 +125,11 @@ data class LineStatus(
  * A line alert for work that hasn't started ([AlertStart]): its chip [label] ("Diversion"), TfL's
  * [fullText], the day it [startsOn] in London, and its [severity] on TfL's scale and [isFallback], for
  * ranking it when that day comes ([LineStatus.asOf]).
+ *
+ * [fingerprint] is its full dismissal identity ([plannedAlertFingerprint]) where [fullText] isn't
+ * carried: a check the widget stores drops TfL's prose, as it does a status's, so the identity a
+ * dismissal is matched against is kept instead. Null for one read from TfL, whose identity is
+ * worked out from the alert itself.
  */
 data class PlannedAlert(
     val label: String,
@@ -134,6 +139,7 @@ data class PlannedAlert(
     // Resolved only to the generic fallback label ([ResolvedDisruption.isFallback]): ranks last
     // when it starts, as it would in a fresh parse (Codex, PR #337).
     val isFallback: Boolean = false,
+    val fingerprint: String? = null,
 ) {
     companion object {
         /** TfL's severity for a part closure: planned work's usual grade. */

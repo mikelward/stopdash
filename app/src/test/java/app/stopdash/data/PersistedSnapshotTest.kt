@@ -2,13 +2,17 @@ package app.stopdash.data
 
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DeparturesSnapshot
+import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCheck
+import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.RailFeed
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopDisruption
+import app.stopdash.domain.plannedAlertFingerprint
 import java.time.Instant
+import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -311,6 +315,50 @@ class PersistedSnapshotTest {
         assertEquals(true, back.status.awaitingDirections)
         // Dismissals are judged where the snapshot is read, never stored.
         assertEquals(emptySet<String>(), back.dismissedDirections)
+    }
+
+    @Test
+    fun `work still to come survives the round trip, its identity kept in place of its prose`() {
+        val closure = PlannedAlert("Part Closure", "No service between Stop A and Stop B.", LocalDate.of(2026, 9, 27), 3, isFallback = true)
+        val diversion = PlannedAlert("Diversion", "Buses diverted.", LocalDate.of(2026, 10, 4))
+        val split = LineStatus(
+            "victoria", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(closure, diversion),
+            byDirection = mapOf(
+                "inbound" to LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(closure)),
+                "outbound" to LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(diversion)),
+            ),
+        )
+        val check = LineStatusCheck(split, now, dismissedPlanned = setOf(plannedAlertFingerprint(closure)))
+        val stored = DeparturesSnapshot(emptyList(), now, lineStatuses = mapOf("victoria" to check)).toPersisted()
+        // Dismissals are judged where the snapshot is read, never stored.
+        assertEquals(false, stored.lineStatuses.single().planned.any { it.dismissed })
+        val back = stored.toDomain()!!.lineStatuses.getValue("victoria")
+        val read = back.status.planned.first()
+        assertEquals(listOf("Part Closure", "Diversion"), back.status.planned.map { it.label })
+        assertEquals(LocalDate.of(2026, 9, 27), read.startsOn)
+        assertEquals(3, read.severity)
+        assertEquals(true, read.isFallback)
+        assertEquals("", read.fullText)
+        assertEquals(listOf("Diversion"), back.status.forDirection("outbound").planned.map { it.label })
+        // A dismissal made against TfL's prose still matches what was stored, and the next save keeps it.
+        assertEquals(plannedAlertFingerprint(closure), plannedAlertFingerprint(read))
+        assertEquals(
+            setOf(plannedAlertFingerprint(closure)),
+            back.plannedDismissedBy(setOf(DismissedAlert.ofPlanned("victoria", closure))),
+        )
+        assertEquals(stored, back.let { DeparturesSnapshot(emptyList(), now, lineStatuses = mapOf("victoria" to it)) }.toPersisted())
+        assertEquals(emptySet<String>(), back.dismissedPlanned)
+        // The line-check itself (what the watch envelope carries) keeps the dismissal.
+        assertEquals(check.dismissedPlanned, check.toPersisted().toDomain().dismissedPlanned)
+    }
+
+    @Test
+    fun `a planned alert stored with a day that doesn't read is left out`() {
+        val stored = PersistedLineStatus(
+            "victoria", LineStatus.GOOD_SERVICE, "Good Service", now.toEpochMilli(),
+            planned = listOf(PersistedPlannedAlert("Part Closure", "soon", fingerprint = "abc1234")),
+        )
+        assertEquals(emptyList<PlannedAlert>(), stored.toDomain().status.planned)
     }
 
     @Test

@@ -6,6 +6,8 @@ import app.stopdash.domain.JourneyCall
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCheck
+import app.stopdash.domain.PlannedAlert
+import app.stopdash.domain.plannedAlertFingerprint
 import app.stopdash.domain.lineAlertFingerprint
 import app.stopdash.domain.RailFeed
 import app.stopdash.domain.Staleness
@@ -16,6 +18,8 @@ import app.stopdash.domain.WidgetJourney
 import app.stopdash.domain.normalizeBranch
 import app.stopdash.domain.riderLineName
 import java.time.Instant
+import java.time.LocalDate
+import java.time.format.DateTimeParseException
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.serialization.Serializable
 
@@ -121,7 +125,8 @@ data class PersistedStop(
 /**
  * One line's status check. TfL's public status, not user data; the chip label only, since no
  * surface that reads the snapshot shows the full reason ([app.stopdash.domain.LineStatus.fullText]
- * is left out, keeping the snapshot and the watch envelope small).
+ * is left out, keeping the snapshot and the watch envelope small), with the line's work still to
+ * come ([planned]) the same way.
  */
 @Serializable
 data class PersistedLineStatus(
@@ -148,6 +153,11 @@ data class PersistedLineStatus(
     // True while a lookup of which way an alert applies was still running when this was checked
     // ([LineStatus.awaitingDirections]), so the widget's refresh asks again rather than reuse it.
     val awaitingDirections: Boolean = false,
+    // The line's work still to come ([LineStatus.planned]), so the widget and the watch show its
+    // calendar, and its ⚠ once its day comes, as the app does. Empty in a check written before this
+    // field: the line then shows no calendar until the next check. Defaulted, and ignored by an
+    // older build.
+    val planned: List<PersistedPlannedAlert> = emptyList(),
 )
 
 /** One direction's status within a [PersistedLineStatus]: the chip label, as for the line's. */
@@ -161,30 +171,81 @@ data class PersistedDirectionStatus(
     val fingerprint: String? = null,
     // As [PersistedLineStatus.dismissed], for this direction's status. Only in the watch envelope.
     val dismissed: Boolean = false,
+    // As [PersistedLineStatus.planned], for this direction's status.
+    val planned: List<PersistedPlannedAlert> = emptyList(),
 )
+
+/**
+ * One alert for work still to come ([PlannedAlert]): its chip label, the day it starts, and its rank
+ * for when that day comes. TfL's public status, as the rest of a check is, and like a status its
+ * prose is left out: its dismissal identity is kept instead.
+ */
+@Serializable
+data class PersistedPlannedAlert(
+    val label: String,
+    // The day it starts in London, as ISO `yyyy-MM-dd` ([LocalDate.toString]).
+    val startsOn: String,
+    val severity: Int = PlannedAlert.PART_CLOSURE,
+    val isFallback: Boolean = false,
+    // Its full dismissal identity ([plannedAlertFingerprint]), TfL's prose included. Kept in the watch
+    // envelope too: it is what [dismissed] stands for there.
+    val fingerprint: String,
+    // As [PersistedLineStatus.dismissed], for this alert. Only in the watch envelope.
+    val dismissed: Boolean = false,
+)
+
+private fun PlannedAlert.toPersisted(dismissed: Set<String>): PersistedPlannedAlert {
+    val identity = plannedAlertFingerprint(this)
+    return PersistedPlannedAlert(label, startsOn.toString(), severity, isFallback, identity, identity in dismissed)
+}
+
+// Null for a day that doesn't read: the alert is left out rather than guessed at (it can only come
+// from a store this build didn't write).
+private fun PersistedPlannedAlert.toDomain(): PlannedAlert? =
+    try {
+        PlannedAlert(label, fullText = "", LocalDate.parse(startsOn), severity, isFallback, fingerprint)
+    } catch (_: DateTimeParseException) {
+        null
+    }
 
 fun LineStatusCheck.toPersisted(): PersistedLineStatus =
     PersistedLineStatus(
         status.lineId, status.severity, status.description, checkedAt.toEpochMilli(), known, dismissed, fingerprint,
         directions = status.byDirection.entries.sortedBy { it.key }.map { (direction, it) ->
-            PersistedDirectionStatus(direction, it.severity, it.description, directionFingerprints[direction], direction in dismissedDirections)
+            PersistedDirectionStatus(
+                direction, it.severity, it.description, directionFingerprints[direction], direction in dismissedDirections,
+                planned = it.planned.map { alert -> alert.toPersisted(dismissedPlanned) },
+            )
         },
         awaitingDirections = status.awaitingDirections,
+        planned = status.planned.map { it.toPersisted(dismissedPlanned) },
     )
 
 fun PersistedLineStatus.toDomain(): LineStatusCheck {
-    val byDirection = directions.associate { it.direction to LineStatus(lineId, it.severity, it.description) }
-    val status = LineStatus(lineId, severity, description, byDirection = byDirection, awaitingDirections = awaitingDirections)
+    val byDirection = directions.associate {
+        it.direction to LineStatus(lineId, it.severity, it.description, planned = it.planned.mapNotNull { alert -> alert.toDomain() })
+    }
+    val status = LineStatus(
+        lineId, severity, description, byDirection = byDirection, awaitingDirections = awaitingDirections,
+        planned = planned.mapNotNull { it.toDomain() },
+    )
     return LineStatusCheck(
         status, Instant.ofEpochMilli(checkedAtMillis), known, dismissed, fingerprint ?: lineAlertFingerprint(status),
         dismissedDirections = directions.filter { it.dismissed }.mapTo(HashSet()) { it.direction },
         directionFingerprints = directions.associate { it.direction to (it.fingerprint ?: lineAlertFingerprint(byDirection.getValue(it.direction))) },
+        dismissedPlanned = (planned + directions.flatMap { it.planned }).filter { it.dismissed }.mapTo(HashSet()) { it.fingerprint },
     )
 }
 
-/** This line status with no dismissal marked, on the line or any direction. */
-private fun PersistedLineStatus.undismissed(): PersistedLineStatus =
-    copy(dismissed = false, directions = directions.map { it.copy(dismissed = false) })
+/** This line status with no dismissal marked, on the line, any direction, or any planned alert. */
+private fun PersistedLineStatus.undismissed(): PersistedLineStatus {
+    fun List<PersistedPlannedAlert>.undismissed() = map { it.copy(dismissed = false) }
+    return copy(
+        dismissed = false,
+        directions = directions.map { it.copy(dismissed = false, planned = it.planned.undismissed()) },
+        planned = planned.undismissed(),
+    )
+}
 
 /** The persisted form of [DeparturesSnapshot.lineStatuses], in a stable (line id) order. */
 fun Map<String, LineStatusCheck>.toPersistedStatuses(): List<PersistedLineStatus> =

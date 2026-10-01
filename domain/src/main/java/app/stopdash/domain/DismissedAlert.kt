@@ -115,6 +115,12 @@ data class Dismissals(
             ended.filter { (_, endedAt) -> !check.checkedAt.isAfter(endedAt) }.keys
                 .flatMapTo(mutableSetOf()) { check.directionsDismissedBy(setOf(it)) }
 
+    /** The planned alerts of [check] this hides, by [plannedAlertFingerprint], as [hide] judges the status. */
+    fun hiddenPlanned(check: LineStatusCheck): Set<String> =
+        check.plannedDismissedBy(active) +
+            ended.filter { (_, endedAt) -> !check.checkedAt.isAfter(endedAt) }.keys
+                .flatMapTo(mutableSetOf()) { check.plannedDismissedBy(setOf(it)) }
+
     companion object {
         val NONE = Dismissals(emptySet())
     }
@@ -238,6 +244,14 @@ fun stopPlaceKey(hubId: String, clusterId: String, stopName: String, stopId: Str
  * dismissed. Not a secret: it only has to differ when the alert does.
  */
 fun lineAlertFingerprint(status: LineStatus): String = fingerprint(DismissedAlert.ofLineStatus(status).contentSignature)
+
+/**
+ * [alert]'s full dismissal identity ([DismissedAlert.ofPlanned]), the one it was stored with where its
+ * prose was left out ([PlannedAlert.fingerprint]). It doesn't depend on the line, so a line's
+ * planned work and each direction's copy of it share one.
+ */
+fun plannedAlertFingerprint(alert: PlannedAlert): String =
+    alert.fingerprint ?: fingerprint(DismissedAlert.ofPlanned("", alert).contentSignature)
 
 /** Whether [alerts] holds a dismissal of the line alert whose fingerprint is [fingerprint]. */
 fun dismissedLine(alerts: Set<DismissedAlert>, lineId: String, fingerprint: String): Boolean =

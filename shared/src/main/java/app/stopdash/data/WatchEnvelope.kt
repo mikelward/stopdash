@@ -1,5 +1,6 @@
 package app.stopdash.data
 
+import app.stopdash.domain.AlertStart
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.HiddenModes
@@ -59,12 +60,14 @@ data class WatchEnvelope(
     /** [routeLines] as the topology reads them, a line with a pattern that doesn't read left out. */
     fun routePatterns(): Map<String, List<RoutePattern>> = routeLines.toPatterns()
 
-    /** The disruptions to mark at [now], as [DeparturesSnapshot.liveLineStatuses] judges them. */
-    fun liveLineStatuses(now: Instant): Map<String, LineStatus> =
-        lineStatuses.map { it.toDomain() }
+    /** The alerts to mark at [now], as [DeparturesSnapshot.liveLineStatuses] judges them. */
+    fun liveLineStatuses(now: Instant): Map<String, LineStatus> {
+        val today = now.atZone(AlertStart.ZONE).toLocalDate()
+        return lineStatuses.map { it.toDomain() }
             .filter { it.isLive(now) }
-            .mapNotNull { it.shown() }
+            .mapNotNull { it.shown(today) }
             .associateBy { it.lineId }
+    }
 
     /** Whether [lineId] has a live check at [now], as [DeparturesSnapshot.statusKnown] judges it. */
     fun statusKnown(lineId: String, now: Instant): Boolean =
@@ -78,6 +81,21 @@ data class WatchEnvelope(
             // nothing, and would stretch a timeline toward it.
             .filterNot { it.isAfter(now) }
             .map { it.plus(Staleness.THRESHOLD.toJavaDuration()) }
+
+    /**
+     * When planned work a line check carries starts (London midnight of its day), soonest first,
+     * where that falls after [now] and while the check is still live: a frame changes there, the
+     * work's calendar becoming its ⚠, as [DeparturesSnapshot.nextBoundary] judges it.
+     */
+    fun plannedStarts(now: Instant): List<Instant> =
+        lineStatuses.map { it.toDomain() }
+            .filterNot { it.checkedAt.isAfter(now) }
+            .flatMap { check ->
+                val expiry = check.checkedAt.plus(Staleness.THRESHOLD.toJavaDuration())
+                check.plannedStarts.filter { it.isAfter(now) && it.isBefore(expiry) }
+            }
+            .distinct()
+            .sorted()
 
     /**
      * This envelope with every stamp in it (each stop's fetch, each line check) moved by [by]: as the
@@ -233,7 +251,8 @@ object WatchEnvelopes {
         val hidden = hiddenModes.sorted()
         // The line checks for the lines the kept stops show, so a dropped stop's lines go with it.
         // Less the alert fingerprint: only the phone matches a dismissal against it, and the
-        // watch reads the dismissed flag the phone already set.
+        // watch reads the dismissed flag the phone already set. A planned alert keeps its own, which
+        // is how the watch tells which one its flag marks.
         // Sent as the wall clock reads each check now, as a fetch is: the watch ages it by its own clock.
         val allStatuses = snapshot.lineStatuses.toPersistedStatuses()
             .map { status ->

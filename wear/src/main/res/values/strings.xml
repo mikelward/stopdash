@@ -48,6 +48,8 @@
     <!-- A disrupted line with no times because its board couldn't be fetched. -->
     <string name="watch_no_data">No data</string>
     <!-- A shown line's service status couldn't be checked, so its countdowns aren't vouched for. -->
+    <!-- What a screen reader says for the calendar beside a row's countdown: "Planned Part Closure from 13 Oct". -->
+    <string name="planned_alert_description">Planned %1$s from %2$s</string>
     <string name="watch_disruptions_unknown">Couldn\'t check for disruptions</string>
     <!-- A disrupted line's name in the long complication: "Victoria (Severe Delays)". -->
     <string name="complication_line_disrupted">%1$s (%2$s)</string>

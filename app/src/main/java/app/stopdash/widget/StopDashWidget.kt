@@ -7,8 +7,11 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
+import androidx.glance.ColorFilter
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
+import androidx.glance.Image
+import androidx.glance.ImageProvider
 import androidx.glance.LocalContext
 import androidx.glance.LocalSize
 import androidx.glance.action.actionStartActivity
@@ -29,6 +32,7 @@ import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
+import androidx.glance.layout.size
 import androidx.glance.layout.width
 import androidx.glance.semantics.contentDescription
 import androidx.glance.semantics.semantics
@@ -39,6 +43,7 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import app.stopdash.MainActivity
 import app.stopdash.R
+import app.stopdash.shared.R as SharedR
 import app.stopdash.StopdashDebugLog
 import app.stopdash.data.HiddenModesSetting
 import app.stopdash.data.DataStoreDismissedAlertsStore
@@ -55,6 +60,7 @@ import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.DestinationGroup
 import app.stopdash.domain.JourneyCall
 import app.stopdash.domain.NoTimes
+import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.isStatusOnly
 import app.stopdash.domain.RelativeTime
 import app.stopdash.domain.RouteTopology
@@ -73,6 +79,7 @@ import app.stopdash.ui.groupHeaderTitle
 import app.stopdash.ui.PillColors
 import app.stopdash.ui.pillColors
 import java.time.Instant
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 
@@ -700,11 +707,16 @@ private fun WidgetRow(rowModel: WidgetRowModel, now: Instant, fontScale: Float, 
             }
             return@Column
         }
+        // Work still to come on the line, when nothing is under way: the app row's calendar, before
+        // the first countdown, in place of the ⚠ line a disruption gets (SPEC *Disruptions*). The
+        // soonest, as the app marks it; it takes no line of the budget.
+        val planned = row.plannedAlerts.firstOrNull()?.takeIf { row.status == null }
         rowModel.groups.forEachIndexed { index, group ->
             if (index > 0) Spacer(GlanceModifier.height(4.dp))
             val label = widgetLineLabel(row, group)
             val spoken = widgetLineSpoken(row, group)
             val countdown = if (stale) "?" else Countdown.mergedLabel(group.times, now)
+            val calendar = planned?.takeIf { index == 0 }
             if (stacked) {
                 // Too narrow at this font for all three on one line: pill and countdown, then the
                 // destination below, so none of the three is squeezed out (see widgetRowsStacked).
@@ -714,6 +726,7 @@ private fun WidgetRow(rowModel: WidgetRowModel, now: Instant, fontScale: Float, 
                 ) {
                     WidgetPill(row, fontScale)
                     Spacer(GlanceModifier.defaultWeight())
+                    calendar?.let { WidgetPlanned(it) }
                     WidgetCountdown(countdown, stale)
                 }
                 Spacer(GlanceModifier.height(WIDGET_STACK_GAP))
@@ -727,6 +740,7 @@ private fun WidgetRow(rowModel: WidgetRowModel, now: Instant, fontScale: Float, 
                     Spacer(GlanceModifier.width(8.dp))
                     WidgetDestination(label, spoken, GlanceModifier.defaultWeight())
                     Spacer(GlanceModifier.width(8.dp))
+                    calendar?.let { WidgetPlanned(it) }
                     WidgetCountdown(countdown, stale)
                 }
             }
@@ -779,6 +793,27 @@ private fun WidgetDisruption(description: String, modifier: GlanceModifier, deta
         style = TextStyle(color = GlanceTheme.colors.error, fontWeight = FontWeight.Medium, fontSize = 12.sp),
     )
 }
+
+/**
+ * Planned work still to come on a row's line: the app row's muted calendar, the countdown's height,
+ * then the gap the app leaves before the times; TalkBack hears what's planned and from when, as in
+ * the app ("Planned Part Closure from 13 Oct").
+ */
+@androidx.compose.runtime.Composable
+private fun WidgetPlanned(alert: PlannedAlert) {
+    val context = LocalContext.current
+    val date = alert.startsOn.format(DateTimeFormatter.ofPattern("d MMM", context.resources.configuration.locales[0]))
+    Image(
+        provider = ImageProvider(SharedR.drawable.ic_calendar),
+        contentDescription = context.getString(R.string.planned_alert_description, alert.label, date),
+        modifier = GlanceModifier.size(WIDGET_PLANNED_SIZE),
+        colorFilter = ColorFilter.tint(GlanceTheme.colors.onSurfaceVariant),
+    )
+    Spacer(GlanceModifier.width(8.dp))
+}
+
+/** The calendar's size: the 13sp countdown's line height, on the 4dp grid. */
+private val WIDGET_PLANNED_SIZE = 16.dp
 
 /**
  * A departure line's destination (and via-branch) label, one line; [spoken], when given, is what a
