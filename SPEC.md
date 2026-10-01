@@ -1655,9 +1655,14 @@ list is withheld — loads the line's stations just to **name** the ones the ale
 chip, and lists none: which direction or branch to list would
 be a guess on a line with nothing running. A name counts as a place only where it isn't a line, a branch or a holiday of the same name
 ("Victoria line", "Bank branch", "Bank Holiday"), and only as a capitalized whole phrase; the guess
-errs toward marking, since it only adds a marker and never hides or reorders anything. Filling in
-the stations between two named ends ("between Oxford Circus and Euston"), and the compact chip, are
-follow-ups (`TODO.md` Phase 3).
+errs toward marking, since it only adds a marker and never hides or reorders anything. **Where the
+alert gives a stretch** — "between Oxford Circus and Euston", "Oxford Circus to Euston" — the
+stations between the two named ends on the train's stop list carry a ⚠ too (2026-10-01), while the
+names beside the chip stay the ones the alert gives. Every stretch the alert gives is marked, even
+one a sentence says still runs ("Trains are running between Morden and Kennington only"): telling
+the two apart from TfL's prose is open-ended, and one marked too many costs a glance (maintainer,
+2026-10-01). Not where an end isn't on the page, since what lies between off it isn't known. The
+compact chip is a follow-up (`TODO.md` Phase 3).
 **Work that hasn't started yet is noted, not flagged** (maintainer, 2026-09-28): a closure next
 month says nothing about today's buses, and a ⚠ for it trains the rider to ignore the ⚠. Neither of
 TfL's fields can tell: `isNow` reads `false` even for planned closures in effect (it marks

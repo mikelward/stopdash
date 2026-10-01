@@ -667,7 +667,7 @@ class RouteDetailScreenScreenshotTest {
     }
 
     @Test
-    fun stationsTheAlertNames_carryAWarning() {
+    fun stationsTheAlertNames_andTheStretchBetween_carryAWarning() {
         // Synthetic alert wording over public station names: it names two stations on this list, the
         // line itself (not a station) and a station off the list.
         val alert = "Victoria line: no service between Oxford Circus and Euston while we fix a signal " +
@@ -701,12 +701,15 @@ class RouteDetailScreenScreenshotTest {
         }
         composeRule.waitForIdle()
 
-        val inAlert = SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Named in the service alert")
+        val inAlert = SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "In the service alert")
         composeRule.onNodeWithText("Oxford Circus \u26A0", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithText("Euston \u26A0", useUnmergedTree = true).assertExists()
-        composeRule.onNodeWithText("Warren Street", useUnmergedTree = true).assertExists()
-        assertEquals(2, composeRule.onAllNodes(inAlert).fetchSemanticsNodes().size)
-        // And beside the chip, in route order, so where it is reads next to what it is.
+        // Between the two ends the alert gives, so in its stretch though it isn't named.
+        composeRule.onNodeWithText("Warren Street \u26A0", useUnmergedTree = true).assertExists()
+        // Outside the stretch: King's Cross is past Euston, and Tottenham Court Road isn't on this line.
+        composeRule.onNodeWithText("Green Park", useUnmergedTree = true).assertExists()
+        assertEquals(3, composeRule.onAllNodes(inAlert).fetchSemanticsNodes().size)
+        // Beside the chip, the stations it names, in route order, so where it is reads next to what it is.
         composeRule.onNodeWithText("Oxford Circus, Euston").assertIsDisplayed()
         // The boarding stop isn't named (only its line is), so it stays "Your stop" alone.
         composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop")).assertExists()
@@ -1103,7 +1106,7 @@ class RouteDetailScreenScreenshotTest {
         // Each name once, in the first direction's order.
         composeRule.onNodeWithText("Green Park, Oxford Circus").assertIsDisplayed()
         // Named, not listed: no station rows appear on a page with no train to follow.
-        composeRule.onAllNodes(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Named in the service alert"))
+        composeRule.onAllNodes(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "In the service alert"))
             .assertCountEquals(0)
     }
 

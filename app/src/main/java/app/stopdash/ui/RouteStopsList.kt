@@ -282,7 +282,8 @@ private fun StopOnRail(
     last: Boolean,
     // A starred journey ends here: the name carries a star, and the row says so to a screen reader.
     starred: Boolean = false,
-    // The line's service alert names this station: the name carries a ⚠, and the row says so too.
+    // The line's service alert names this station, or a stretch it's in: the name carries a ⚠, and
+    // the row says so too.
     inAlert: Boolean = false,
     // Stars or unstars the journey to this station; null leaves the row inert.
     onClick: (() -> Unit)? = null,

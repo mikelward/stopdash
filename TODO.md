@@ -2080,9 +2080,12 @@ Builds on Phase 1's minimal line-status marking.
         path. Extend the inferred vocabulary as new catch-all cases turn up.
       - Stretch: also pull the **affected stretch** from the text — "Diversion Moorgate to
         Monument" — where the text gives a clean from→to. **First step landed** (2026-09-26): each
-        station the alert names gets a ⚠ on the line's page (`AlertStops`). **Next:** mark the
-        stations *between* two named ends where the text says "between X and Y" / "X to Y", and use
-        the marked stations to judge relevance to the rider's own journey. A status-only line page (a
+        station the alert names gets a ⚠ on the line's page (`AlertStops`). **Second step landed**
+        (2026-10-01): the stations *between* two named ends where the text says "between X and Y" /
+        "X to Y" get one too, on the train's stop list (`AlertStops.affected`), every stretch the
+        alert gives, even one it says still runs (maintainer, 2026-10-01: telling them apart from
+        prose was open-ended). **Next:** use the marked stations to judge relevance to the rider's
+        own journey. A status-only line page (a
         suspension, no predictions) names the alert's stations beside the chip too — see *Decisions
         needing review*.
       - [x] **Only on rows going the affected way** (maintainer, 2026-09-28): an alert TfL

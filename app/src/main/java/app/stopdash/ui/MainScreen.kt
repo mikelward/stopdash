@@ -4124,6 +4124,13 @@ internal fun RouteDetailScreen(
         val ids = AlertStops.mentioned(row.status?.fullText, listed)
         listed.filter { it.id in ids }
     }
+    // The train's stops the alert touches, for their ⚠s: those it names and, on the train's own list
+    // (in route order), the ones between two named ends of a stretch it gives ("between Moorgate and
+    // Monument"). Beside the chip it stays the stations the alert names, as the alert names them.
+    val alertStretchIds = remember(row.status?.fullText, stops, alertStops) {
+        (stops as? RouteStopsUi.Loaded)?.let { AlertStops.affected(row.status?.fullText, it.stops) }
+            ?: alertStops.mapTo(HashSet()) { it.id }
+    }
     // Every upcoming train on the followed route, not the card's first few — TfL predicts ~30 min
     // ahead, and the page has the room (SPEC *Route detail*).
     val topology = LocalRouteTopology.current
@@ -4410,7 +4417,7 @@ internal fun RouteDetailScreen(
                 // between two shared stops are one journey, and so is its way back from the poles
                 // across the road — so any of those pages shows (and toggles) the same star.
                 starredStopIds = journeysHere.values.flatMapTo(mutableSetOf()) { it },
-                alertStopIds = remember(alertStops) { alertStops.mapTo(HashSet()) { it.id } },
+                alertStopIds = alertStretchIds,
                 onDismissJourneyTip = onDismissJourneyTip,
                 onToggleJourneyTo = onToggleJourney
                     ?.takeIf { row.lineId.isNotBlank() && (Connections.isRail(rowMode, row.lineId) || rowMode.equals("bus", ignoreCase = true)) }
