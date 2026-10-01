@@ -35,10 +35,12 @@ import app.stopdash.domain.StopDisruptionBatch
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.stopPlaceKey
 import app.stopdash.domain.TflException
+import app.stopdash.domain.UsageEvent
 import app.stopdash.domain.WidgetJourneyCheck
 import app.stopdash.domain.WidgetJourneys
 import app.stopdash.domain.WidgetJourneysReport
 import app.stopdash.domain.WidgetRefresh
+import app.stopdash.telemetry.UsageEvents
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -213,6 +215,9 @@ class MainViewModel(
     // The modes and lines the rider has hidden right now (SPEC *Finding stops → Hiding a mode*): with
     // National Rail among them, a station's board isn't asked for where nothing shown runs on it.
     private val hiddenModes: () -> Set<String> = { emptySet() },
+    // Usage events, categories only (UsageEvent): a star or unstar, never which row. Sent only while
+    // the rider has opted in.
+    private val usage: (UsageEvent) -> Unit = UsageEvents::log,
 ) : ViewModel() {
     // The near-me tiers, updatable IN PLACE so a relocation that keeps the same nearby set can
     // reconcile them without rebuilding this ViewModel. The eager tier is fetched and shown; the
@@ -1836,6 +1841,7 @@ class MainViewModel(
      * and the set is unchanged (a preserved [StarredRowSet.Unavailable] is a no-op in the store).
      */
     fun toggleStar(row: DepartureRow) {
+        usage(UsageEvent.Tapped(if (StarredRow.of(row) in _starred.value) UsageEvent.Tap.UNSTAR else UsageEvent.Tap.STAR))
         viewModelScope.launch {
             // NonCancellable for the whole action: the tap is the user's decision, and it must land
             // — and reach the widget — even if this model is cleared the next moment (a searched

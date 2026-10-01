@@ -24,6 +24,7 @@ import app.stopdash.telemetry.NoPendingMarker
 import app.stopdash.telemetry.PrefsConsentStore
 import app.stopdash.telemetry.TelemetryConsent
 import app.stopdash.telemetry.TelemetryGate
+import app.stopdash.telemetry.UsageEvents
 import app.stopdash.telemetry.settleWhenConsentLoads
 import app.stopdash.telemetry.startTelemetry
 import app.stopdash.watch.WatchSync
@@ -194,8 +195,9 @@ open class StopdashApp : Application() {
     }
 
     protected open fun installTelemetry() {
+        var firebase: FirebaseTelemetryBackend? = null
         startTelemetry(
-            createBackend = { FirebaseTelemetryBackend.orNull(this) },
+            createBackend = { FirebaseTelemetryBackend.orNull(this)?.also { firebase = it } },
             registerSink = {
                 // Fails closed through startTelemetry: without redaction, the SDKs are switched off.
                 check(crashRedacted) { "crash redaction not installed" }
@@ -203,6 +205,8 @@ open class StopdashApp : Application() {
                 StopdashDebugLog.addSink(sink, DebugLog.Destination.OFF_DEVICE)
                 crashlyticsSink = sink
                 settleWhenConsentLoads(sink, TelemetryConsent.state, applicationScope)
+                // Usage events (categories and buckets only) go to Analytics while opted in.
+                firebase?.let { backend -> UsageEvents.install(backend::logEvent) }
             },
             startLoad = { backend ->
                 // The stored choice is a small prefs read, but still disk I/O: off the main thread.

@@ -169,12 +169,14 @@ exercises the whole spine the widget later renders from.
           rename, a Firebase project with the final application ID registered, its
           `google-services.json` as the `GOOGLE_SERVICES_JSON` secret in the `production`
           environment, and the Play Data Safety answers updated.
-    - [ ] **Usage analytics events** (maintainer, 2026-09-24): custom events carrying categories
+    - [x] **Usage analytics events** (maintainer, 2026-09-24): custom events carrying categories
           and bucketed counts only, never a stop, line, journey or coordinate — each tap by kind
           (journey card, stop row, change card, swap, star/unstar, search, settings), the "More
           stops" (by mode) and "Faraway favorites" reveals, location permission (precise /
           approximate / denied), fix outcome (fresh / last-known / failed), fix accuracy and
-          time-to-fix in bands, and nearby stops per mode bucketed (0 / 1 / 2–3 / 4+).
+          time-to-fix in bands, and nearby stops per mode bucketed (0 / 1 / 2–3 / 4+). *Done
+          (`UsageEvent`, `UsageEvents`): "More stops" is now opening a farther place, by mode
+          group; search is opening From… or To… (it runs as you type, with no submit).*
     - [ ] **Check the stored opt-in before Firebase starts**, not after: Firebase's init provider
           starts the SDKs from their own persisted flags before `Application.onCreate`, while our
           consent load runs afterwards, off the main thread. Today that's safe by ordering (an SDK

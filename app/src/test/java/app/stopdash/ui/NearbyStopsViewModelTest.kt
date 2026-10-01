@@ -8,6 +8,7 @@ import app.stopdash.domain.LocationProvider
 import app.stopdash.domain.StopFinder
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.TflException
+import app.stopdash.domain.UsageEvent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -94,6 +95,56 @@ class NearbyStopsViewModelTest {
         longitude = 0.0,
         lines = listOf(LineRef("$mode-$id", id, mode)),
     )
+
+    @Test
+    fun `a lookup reports how its fix went and how many stops of each mode are near, nothing more`() = runTest {
+        val events = mutableListOf<UsageEvent>()
+        var clock = 1_000L
+        val location = object : LocationProvider {
+            override suspend fun current(forceFresh: Boolean): LocationFix {
+                clock += 2_400 // the fix takes 2.4 s
+                return LocationFix(origin, isFallback = false, accuracyMeters = 18f)
+            }
+        }
+        val model = NearbyStopsViewModel(
+            location = location,
+            finder = FakeFinder { listOf(stop("t1", 100.0, "tube"), stop("b1", 80.0, "bus"), stop("b2", 90.0, "bus")) },
+            io = dispatcher,
+            // Hidden buses are still counted: what's near, not what's shown.
+            hiddenModes = { setOf("bus") },
+            usage = { events += it },
+            elapsedMillis = { clock },
+        )
+        model.locate()
+        advanceUntilIdle()
+        assertEquals(listOf("location_fix", "nearby_stops"), events.map { it.name })
+        assertEquals(mapOf("outcome" to "fresh", "accuracy" to "10-25m", "time_to_fix" to "1-3s"), events[0].params)
+        assertEquals(
+            mapOf("tube" to "1", "train" to "0", "bus" to "2-3", "tram" to "0", "boat" to "0", "coach" to "0"),
+            events[1].params,
+        )
+    }
+
+    @Test
+    fun `a fix that fails or falls back to the last known is reported as such, with no stops counted for none`() = runTest {
+        val events = mutableListOf<UsageEvent>()
+        val location = MutableLocation(fix = origin, isFallback = true)
+        val model = NearbyStopsViewModel(
+            location = location,
+            finder = FakeFinder { emptyList() },
+            io = dispatcher,
+            usage = { events += it },
+        )
+        model.locate()
+        advanceUntilIdle()
+        assertEquals("last_known", events.first().params["outcome"])
+        events.clear()
+        location.fix = null
+        model.relocate()
+        advanceUntilIdle()
+        assertEquals(listOf("location_fix"), events.map { it.name })
+        assertEquals(mapOf("outcome" to "failed", "accuracy" to "unknown"), events.single().params - "time_to_fix")
+    }
 
     @Test
     fun `a station's own stops are where the rider stands, 0 m away`() = runTest {

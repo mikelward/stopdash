@@ -212,6 +212,13 @@ What it sends:
   your IP address, under a **random app-instance ID** Firebase generates on the device and replaces
   whenever you turn this off. Crash reports carry Crashlytics' own random installation ID, which
   isn't replaced. Neither is your name, your account or your advertising ID.
+- **Which features you use**, counted by kind and in ranges only: the kind of thing you tapped (a
+  journey card, a stop row, a change card, swapping a journey, starring or unstarring, opening
+  search or Settings), opening a farther place (as "bus", "tube" and so on) or your faraway
+  favorites, the location permission you chose (precise, approximate or none), how getting your
+  location went (a fresh fix, the last known one, or none, with its accuracy and how long it took
+  in ranges like "10–25 m" and "1–3 s"), and how many stops of each kind were near you, in ranges
+  (0, 1, 2–3, 4 or more). Never which stop, line, journey or place, nor what you searched for.
 
 What it never sends: your location (coordinates), the stops or stations near you, your starred
 rows or journeys, what you searched for, or your TfL API key. stopdash strips the advertising-ID

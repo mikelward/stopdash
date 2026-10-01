@@ -13,6 +13,8 @@ import app.stopdash.domain.NearestStops
 import app.stopdash.domain.StopFinder
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.TflException
+import app.stopdash.domain.UsageEvent
+import java.time.Duration
 import kotlin.math.roundToLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -74,6 +76,11 @@ class NearbyStopsViewModel(
     // A searched station's own stops, when this set stands at that station (From…): they are where
     // the rider is taken to be, so they're 0 m away rather than their distance from its middle.
     private val anchorStopIds: Set<String> = emptySet(),
+    // Usage events, categories and counts only (UsageEvent): how a fix went, how many stops of each
+    // mode were found. Near me only; a searched station's area reports none.
+    private val usage: (UsageEvent) -> Unit = {},
+    // A monotonic clock in milliseconds, timing a fix for [usage].
+    private val elapsedMillis: () -> Long = { System.nanoTime() / 1_000_000 },
 ) : ViewModel() {
     sealed interface State {
         /** The location permission isn't held yet — the screen asks for it. */
@@ -587,8 +594,9 @@ class NearbyStopsViewModel(
      * (never a coordinate, SPEC *Privacy*). Shared by [locate] and [relocate], which then decide
      * what a fallback fix means (label vs. don't-jump).
      */
-    private suspend fun currentFix(forceFresh: Boolean): LocationFix? =
-        try {
+    private suspend fun currentFix(forceFresh: Boolean): LocationFix? {
+        val started = elapsedMillis()
+        val fix = try {
             withContext(io) { location.current(forceFresh) }
         } catch (e: CancellationException) {
             throw e
@@ -597,6 +605,14 @@ class NearbyStopsViewModel(
             warn("location fix failed: ${e::class.simpleName}")
             null
         }
+        val outcome = when {
+            fix == null -> UsageEvent.FixOutcome.FAILED
+            fix.isFallback -> UsageEvent.FixOutcome.LAST_KNOWN
+            else -> UsageEvent.FixOutcome.FRESH
+        }
+        usage(UsageEvent.LocationFix(outcome, fix?.accuracyMeters, Duration.ofMillis(elapsedMillis() - started)))
+        return fix
+    }
 
     /**
      * Resolve a known coordinate [fix] to the nearby set, as one of the terminal [State]s
@@ -614,6 +630,8 @@ class NearbyStopsViewModel(
             warn("nearby stops lookup failed: ${(e as? TflException)?.message ?: e::class.simpleName}")
             return State.Failed(kindOf(e), location = fix)
         }
+        // How many of each mode are near, hidden ones included: what's around, not what's shown.
+        usage(UsageEvent.NearbyStops(found))
         // A hidden mode's stops aren't picked, so they cost no request — unless that would leave
         // nothing at all: then the full set is picked and the list, filtered by mode, says what's
         // hidden rather than claiming nothing runs nearby (SPEC principle 2).

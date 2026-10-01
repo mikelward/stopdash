@@ -175,6 +175,8 @@ import app.stopdash.domain.JourneySegment
 import app.stopdash.domain.JourneyTrains
 import app.stopdash.domain.WidgetJourneys
 import app.stopdash.domain.TflException
+import app.stopdash.domain.UsageEvent
+import app.stopdash.telemetry.UsageEvents
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -941,6 +943,14 @@ fun MainScreen(
     // RouteFocus, so it survives rotation with no custom Saver; null destination = no focus.
     var detailDestination by rememberSaveable { mutableStateOf<String?>(null) }
     var detailBranch by rememberSaveable { mutableStateOf<String?>(null) }
+    // Opens a row's route page, counted as a tap on [tap]'s kind (UsageEvent; opted in only): a
+    // row on a journey's change card is a change card, any other a stop row.
+    fun openDetail(tap: UsageEvent.Tap): (DepartureRow, RouteFocus?) -> Unit = { row, focus ->
+        UsageEvents.log(UsageEvent.Tapped(tap))
+        detailKey = row.detailKey()
+        detailDestination = focus?.destination
+        detailBranch = focus?.branch
+    }
     // A journey card's train opens too: its farther origin isn't in the near-me rows, so the key is
     // also looked up among the journey cards' rows (shown only on the full list, as the cards are).
     val journeyRows = if (platformRows != null) emptyList() else journeyCards.flatMap {
@@ -1242,11 +1252,8 @@ fun MainScreen(
                         starred = starred,
                         onToggleStar = onToggleStar,
                         starringAvailable = starringAvailable,
-                        onOpenDetail = { row, focus ->
-                            detailKey = row.detailKey()
-                            detailDestination = focus?.destination
-                            detailBranch = focus?.branch
-                        },
+                        onOpenDetail = openDetail(UsageEvent.Tap.STOP_ROW),
+                        onOpenChangeDetail = openDetail(UsageEvent.Tap.CHANGE_CARD),
                         onOpenSettings = onOpenSettings,
                         dismissed = dismissed,
                         onDismissAlert = onDismissAlert,
@@ -1267,7 +1274,10 @@ fun MainScreen(
                         farJourneyCards = if (platformRows != null || !farRevealed) emptyList() else journeyCards.filter { it.journey.key in farJourneyMeters },
                         farJourneyMeters = farJourneyMeters,
                         onRevealFar = if (platformRows == null && !farRevealed && farJourneyMeters.isNotEmpty()) {
-                            { farReveal.reveal() }
+                            {
+                                UsageEvents.log(UsageEvent.FarawayFavorites)
+                                farReveal.reveal()
+                            }
                         } else {
                             null
                         },
@@ -1291,11 +1301,8 @@ fun MainScreen(
                         holdLanded = platformRows == null,
                         pendingTracker = pendingTracker,
                         onOpenFarther = onOpenFarther,
-                        onOpenDetail = { row, focus ->
-                            detailKey = row.detailKey()
-                            detailDestination = focus?.destination
-                            detailBranch = focus?.branch
-                        },
+                        onOpenDetail = openDetail(UsageEvent.Tap.STOP_ROW),
+                        onOpenChangeDetail = openDetail(UsageEvent.Tap.CHANGE_CARD),
                         onOpenSettings = onOpenSettings,
                         dismissed = dismissed,
                         onDismissAlert = onDismissAlert,
@@ -1338,7 +1345,10 @@ fun MainScreen(
                         // the "your location is low-confidence" banner doesn't apply there.
                         locationBanner = if (platformRows != null) null else locationBanner,
                         // A journey heading opens the journey's own view (from the full list only).
-                        onOpenJourney = { journey -> journeyViewKey = journey.key },
+                        onOpenJourney = { journey ->
+                            UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.JOURNEY_CARD))
+                            journeyViewKey = journey.key
+                        },
                         // The full near-me list only: not a platform or station drill-down, nor a
                         // searched station's page, each of which is about one place.
                         favoritePlaces = if (platformRows != null || stationTitle != null) emptyList() else favoritePlaces,
@@ -1454,6 +1464,8 @@ private fun LoadedContent(
     onOpenFarther: (CollapsedPlaces.Place) -> Unit = {},
     // Open the full-screen route detail for a tapped card; the caller holds the open-route state.
     onOpenDetail: (DepartureRow, RouteFocus?) -> Unit = { _, _ -> },
+    // The same for a row on a journey's change card, counted apart (UsageEvent).
+    onOpenChangeDetail: (DepartureRow, RouteFocus?) -> Unit = onOpenDetail,
     // Opens Settings from a National Rail line's "No key".
     onOpenSettings: () -> Unit = {},
     dismissed: Set<DismissedAlert> = emptySet(),
@@ -1631,6 +1643,7 @@ private fun LoadedContent(
                     onHideMode = onHideMode,
                     modesByPlace = modesByPlace,
                     onOpenDetail = onOpenDetail,
+                    onOpenChangeDetail = onOpenChangeDetail,
                     onDismissAlert = onDismissAlert,
                     dismissedClosures = dismissedClosures,
                     sharedNotices = sharedNotices,
@@ -1778,6 +1791,7 @@ private fun DepartureList(
     starringAvailable: Boolean,
     stopDistanceMeters: Map<String, Double>,
     onOpenDetail: (DepartureRow, RouteFocus?) -> Unit,
+    onOpenChangeDetail: (DepartureRow, RouteFocus?) -> Unit = onOpenDetail,
     listState: LazyListState,
     farther: List<FartherCard> = emptyList(),
     onOpenFarther: (CollapsedPlaces.Place) -> Unit = {},
@@ -2000,7 +2014,7 @@ private fun DepartureList(
                                 )
                             }
                         }
-                        journeyChanges(card, state, now, starred, onToggleStar, starringAvailable, onOpenDetail, onOpenSettings)
+                        journeyChanges(card, state, now, starred, onToggleStar, starringAvailable, onOpenChangeDetail, onOpenSettings)
                         if (state.incomplete) {
                             item(key = "journey-note|${card.journey.key}") {
                                 JourneyNote(
@@ -2047,7 +2061,7 @@ private fun DepartureList(
                                 JourneyNote(stringResource(R.string.journey_none_direct, card.journey.to.name))
                             }
                         }
-                        journeyChanges(card, state, now, starred, onToggleStar, starringAvailable, onOpenDetail, onOpenSettings)
+                        journeyChanges(card, state, now, starred, onToggleStar, starringAvailable, onOpenChangeDetail, onOpenSettings)
                         if (state.incomplete) {
                             item(key = "journey-note|${card.journey.key}") {
                                 JourneyNote(

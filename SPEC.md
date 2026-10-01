@@ -2459,7 +2459,15 @@ before it leaves, and exceptions travel without their messages — a fatal crash
 handler placed in front of Crashlytics' own. Lines logged at startup, before the stored choice has
 loaded, are held in memory and follow that choice: sent on a yes, dropped on a no. Usage stats carry Firebase's
 automatic events and its IP-derived region, under a random app-instance ID (reset on opt-out;
-Crashlytics keeps its own installation ID); the advertising ID is not collected. Turning the setting
+Crashlytics keeps its own installation ID); the advertising ID is not collected. stopdash adds its
+own events in **categories and ranges only**, never a stop, line, journey, search text or coordinate
+(maintainer, 2026-09-24): each tap by kind (a journey card, a stop row, a change card, swapping a
+journey, starring or unstarring, opening search or Settings), opening a farther place (by mode) or
+the faraway favorites, the location permission left after asking (precise, approximate or denied),
+how a near-me fix went (fresh, last known or failed) with its accuracy and time in ranges, and how
+many stops of each mode a near-me lookup found (0, 1, 2–3, 4+). Every value comes from a fixed list,
+so nothing a screen holds can be passed through, and an event is dropped, never held, until the
+stored choice reads yes. Turning the setting
 on never releases a crash captured before consent: collection starts at once only if the crash SDK
 found none waiting, otherwise the crash is discarded and collection starts on a later launch that
 finds none; turning it off stops collection and discards what's unsent, so no report crosses the

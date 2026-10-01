@@ -41,7 +41,10 @@ line id, coordinate, search text or the API key in `safe(...)`; `CrashlyticsLogS
 redaction. A fatal crash goes through the same redaction: `RedactingCrashHandler` sits directly in
 front of Crashlytics' own uncaught-exception handler (installed first in `StopdashApp.onCreate`, so
 the on-device file sink still records the original), and telemetry stays off if it couldn't be
-installed. `RedactingCrashHandlerTest` pins it. Custom analytics events (`TODO.md`) carry categories and bucketed counts only.
+installed. `RedactingCrashHandlerTest` pins it. Custom analytics events carry categories and bucketed counts only: every value comes from
+`UsageEvent`'s closed vocabulary (`UsageEventTest` pins it), sent through `UsageEvents`, which
+drops an event unless the stored choice reads yes. Never pass a stop, line, journey, search text or
+coordinate into one; add a new category to the vocabulary instead.
 
 Cost: £0 (Firebase's free tier covers Crashlytics and Analytics). Battery: SDK-batched uploads, no
 extra wakeups or location requests.
