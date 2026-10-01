@@ -164,8 +164,7 @@ class WidgetContentTest {
                     hasData = true,
                     stale = false, uncertain = false,
                     stamp = "Updated just now",
-                    rows = listOf(rowModel(row("victoria", 120, now.minusSeconds(30)))),
-                    stacked = true,
+                    rows = listOf(rowModel(row("victoria", 120, now.minusSeconds(30))).copy(stackedLines = listOf(true))),
                 ),
                 now,
             )

@@ -1,5 +1,6 @@
 package app.stopdash.widget
 
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRows
@@ -240,23 +241,104 @@ class WidgetModelTest {
         assertEquals("its lines are capped to the budget", 6, model.rows.first().groups.size)
     }
 
+    // How many departure lines of one kind fit a widget [height] tall: its rows' height over one line's.
+    private fun lines(
+        height: Dp,
+        fontScale: Float = 1f,
+        withNote: Boolean = false,
+        compact: Boolean = false,
+        stacked: Boolean = false,
+    ) = widgetRowsHeight(height, fontScale, withNote, compact) / widgetLineHeight(fontScale, stacked)
+
     @Test
     fun `the line budget grows with the widget's height`() {
-        assertEquals("the minimum size still shows the next departure", 1, widgetLineBudget(110.dp))
-        assertEquals(4, widgetLineBudget(180.dp))
-        assertEquals(6, widgetLineBudget(250.dp))
-        assertEquals("no line fits under the full header", 0, widgetLineBudget(110.dp, fontScale = 2f))
+        assertEquals("the minimum size still shows the next departure", 1, lines(110.dp))
+        assertEquals(4, lines(180.dp))
+        assertEquals(6, lines(250.dp))
+        assertEquals("no line fits under the full header", 0, lines(110.dp, fontScale = 2f))
     }
 
     @Test
-    fun `a narrow widget at a large font stacks its rows and budgets for them`() {
-        assertTrue(widgetRowsStacked(180.dp, 2f))
-        assertTrue(widgetRowsStacked(180.dp, 1.3f))
-        assertFalse("below the stacking scale", widgetRowsStacked(180.dp, 1.2f))
-        assertFalse("wide enough for one line", widgetRowsStacked(240.dp, 2f))
-        assertEquals(1, widgetLineBudget(180.dp, 2f, stacked = true))
-        assertEquals("the minimum size fits no stacked departure", 0, widgetLineBudget(110.dp, 2f, compact = true, stacked = true))
-        assertEquals("but fits one at 1.3x", 1, widgetLineBudget(110.dp, 1.3f, compact = true, stacked = true))
+    fun `a row stacks when its countdown leaves too little width for its destination`() {
+        val one = listOf("3 min")
+        val three = listOf("3 · 6 · 9 min")
+        assertFalse("the minimum width fits one time at the default font", widgetRowStacked(one, false, 180.dp))
+        assertTrue("but not three", widgetRowStacked(three, false, 180.dp))
+        assertFalse("the default width fits three", widgetRowStacked(three, false, 240.dp))
+        // Codex on #155: the wide bucket at a large font squeezed three times' destination out.
+        assertTrue(widgetRowStacked(three, false, 220.dp, 1.3f))
+        assertFalse("one time still fits there", widgetRowStacked(one, false, 220.dp, 1.3f))
+        assertFalse("and three fit the wider bucket", widgetRowStacked(three, false, 300.dp, 1.3f))
+        assertTrue(widgetRowStacked(one, false, 180.dp, 1.3f))
+        assertTrue(widgetRowStacked(one, false, 240.dp, 2f))
+        // The planned-work calendar before the countdown takes its width too.
+        assertFalse(widgetRowStacked(listOf("12 min"), false, 180.dp))
+        assertTrue(widgetRowStacked(listOf("12 min"), true, 180.dp))
+        // The widest of a branching row's countdowns decides it.
+        assertTrue(widgetRowStacked(one + three, false, 180.dp))
+    }
+
+    @Test
+    fun `a status fits beside the pill only when all of it does`() {
+        // Codex on #457: judged on a destination's few characters, "Part Suspended" was cut at the
+        // minimum width at 1.3x.
+        assertFalse(widgetStatusFits("Part Suspended", null, 180.dp, 1.3f))
+        assertTrue("the wide bucket has room", widgetStatusFits("Part Suspended", null, 300.dp, 1.3f))
+        assertTrue(widgetStatusFits("Part Suspended", null, 220.dp))
+        // The reason for no times after it takes its width too.
+        assertFalse(widgetStatusFits("Part Suspended", "No data", 220.dp))
+        // A short status fits the minimum width at the default font.
+        assertTrue(widgetStatusFits("Suspended", null, 180.dp))
+    }
+
+    @Test
+    fun `a stacked line costs its two lines' height`() {
+        assertEquals(1, lines(180.dp, 2f, stacked = true))
+        assertEquals("the minimum size fits no stacked departure", 0, lines(110.dp, 2f, compact = true, stacked = true))
+        assertEquals("but fits one at 1.3x", 1, lines(110.dp, 1.3f, compact = true, stacked = true))
+    }
+
+    @Test
+    fun `only the rows whose countdowns need it stack, and the budget counts each as it draws`() {
+        // At the minimum width and the default font: a row with three times stacks, one with a
+        // single time doesn't.
+        val busy = listOf(departure("busy", 60L), departure("busy", 360L), departure("busy", 540L))
+        val quiet = (1..4).map { departure("quiet$it", 120L + it) }
+        // Every line checked, so no note takes a line.
+        val checks = (listOf("busy") + (1..4).map { "quiet$it" })
+            .associateWith { LineStatusCheck(LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service"), now) }
+        val snapshot = DeparturesSnapshot(listOf(stop("490000001A", busy + quiet, now)), now, lineStatuses = checks)
+        // 180dp tall: 128dp for rows, an unstacked line 32dp and a stacked one 53dp.
+        val model = widgetModel(snapshot, now, geometry = WidgetGeometry(180.dp, 180.dp))
+        assertEquals(listOf("busy", "quiet1", "quiet2"), model.rows.map { it.row.lineId })
+        assertEquals(listOf(listOf(true), listOf(false), listOf(false)), model.rows.map { it.stackedLines })
+        // Wider, nothing stacks, and four unstacked lines fit.
+        val wide = widgetModel(snapshot, now, geometry = WidgetGeometry(240.dp, 180.dp))
+        assertEquals(4, wide.rows.size)
+        assertTrue(wide.rows.none { true in it.stackedLines })
+        // Without a cell (the line budgets), nothing stacks.
+        assertTrue(widgetModel(snapshot, now, maxLines = 4).rows.none { true in it.stackedLines })
+    }
+
+    @Test
+    fun `a branching row's lines stack on their own countdowns, so a dropped one can't stack the rest`() {
+        // One time to Morden first, then three to Kennington: at 220dp and 1.3x the first fits one
+        // line and the second needs two (Codex on #457).
+        val northern = listOf(
+            departure("northern", 60L).copy(destination = "Morden"),
+            departure("northern", 120L).copy(destination = "Kennington"),
+            departure("northern", 360L).copy(destination = "Kennington"),
+            departure("northern", 540L).copy(destination = "Kennington"),
+        )
+        val checks = mapOf("northern" to LineStatusCheck(LineStatus("northern", LineStatus.GOOD_SERVICE, "Good Service"), now))
+        val snapshot = DeparturesSnapshot(listOf(stop("490000001A", northern, now)), now, lineStatuses = checks)
+        val roomy = widgetModel(snapshot, now, geometry = WidgetGeometry(220.dp, 250.dp, 1.3f)).rows.single()
+        assertEquals(listOf(false, true), roomy.stackedLines)
+        // 110dp tall leaves 52dp: only the first line fits, on one line, under the full header.
+        val tight = widgetModel(snapshot, now, geometry = WidgetGeometry(220.dp, 110.dp, 1.3f))
+        assertFalse(tight.compact)
+        assertEquals(listOf("Morden"), tight.rows.single().groups.map { it.destination })
+        assertEquals(listOf(false), tight.rows.single().stackedLines)
     }
 
     @Test
@@ -288,15 +370,15 @@ class WidgetModelTest {
 
     @Test
     fun `a larger system font leaves room for fewer lines`() {
-        assertEquals(4, widgetLineBudget(180.dp, fontScale = 1f))
-        assertEquals(3, widgetLineBudget(180.dp, fontScale = 1.3f))
-        assertEquals(2, widgetLineBudget(180.dp, fontScale = 2f))
+        assertEquals(4, lines(180.dp, fontScale = 1f))
+        assertEquals(3, lines(180.dp, fontScale = 1.3f))
+        assertEquals(2, lines(180.dp, fontScale = 2f))
     }
 
     @Test
     fun `the stale note takes a line from the budget`() {
-        assertEquals(3, widgetLineBudget(180.dp, withNote = true))
-        assertEquals(1, widgetLineBudget(110.dp, withNote = true))
+        assertEquals(3, lines(180.dp, withNote = true))
+        assertEquals(1, lines(110.dp, withNote = true))
         // A stale snapshot spends the note's budget; a fresh one keeps the full budget.
         val departures = (1..6).map { departure("line$it", it * 60L) }
         val stale = DeparturesSnapshot(listOf(stop("490000001A", departures, now.minusSeconds(900))), now.minusSeconds(900))
@@ -599,6 +681,37 @@ class WidgetModelTest {
         // With room for all three, both rows show, only Victoria marked.
         val roomy = widgetModel(snapshot, now, maxLines = 3)
         assertEquals(listOf(severe, null), roomy.rows.map { it.row.status })
+    }
+
+    @Test
+    fun `a disrupted departure too tall for the full layout goes compact, not "no departures"`() {
+        // Codex on #457: at 220x110dp and 1.3x, one countdown fits the full layout's 52dp, but not
+        // with the status it draws under it, nor the status stacked alone.
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(stop("490A", listOf(departure("victoria", 120)), now)),
+            fetchedAt = now,
+            lineStatuses = mapOf("victoria" to LineStatusCheck(severe, now)),
+        )
+        val model = widgetModel(snapshot, now, geometry = WidgetGeometry(220.dp, 110.dp, 1.3f))
+        assertTrue(model.compact)
+        assertFalse(model.tooSmall)
+        assertEquals(severe, model.rows.single().row.status)
+    }
+
+    @Test
+    fun `a status under a row's countdown starts under the pill when it doesn't fit beside it`() {
+        // Codex on #457: lined up with an unstacked destination, the status has only the
+        // destination's width, and "Severe Delays" was cut at the compact width at 1.3x.
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(stop("490A", listOf(departure("victoria", 120)), now)),
+            fetchedAt = now,
+            lineStatuses = mapOf("victoria" to LineStatusCheck(severe, now)),
+        )
+        val narrow = widgetModel(snapshot, now, geometry = WidgetGeometry(220.dp, 250.dp, 1.3f)).rows.single()
+        assertEquals("one time fits beside its destination", listOf(false), narrow.stackedLines)
+        assertFalse(narrow.statusBeside)
+        val wide = widgetModel(snapshot, now, geometry = WidgetGeometry(300.dp, 250.dp, 1.3f)).rows.single()
+        assertTrue(wide.statusBeside)
     }
 
     @Test

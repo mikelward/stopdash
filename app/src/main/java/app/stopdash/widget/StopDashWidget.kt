@@ -75,6 +75,7 @@ import app.stopdash.domain.riderLineName
 import app.stopdash.ui.hiddenGroupsLabel
 import app.stopdash.ui.BudgetedRow
 import app.stopdash.ui.BudgetedRows
+import app.stopdash.ui.LineCosts
 import app.stopdash.ui.groupHeaderTitle
 import app.stopdash.ui.PillColors
 import app.stopdash.ui.pillColors
@@ -98,7 +99,7 @@ import kotlinx.coroutines.flow.first
 class StopDashWidget : GlanceAppWidget() {
     // Size buckets, so the layout fits the cell it's given: two widths (a narrow widget shortens its
     // stamp rather than clip it, see WIDGET_COMPACT_WIDTH) by a ladder of heights (the line budget
-    // grows with the height, see widgetLineBudget). The host picks the largest bucket that fits.
+    // grows with the height, see widgetRowsHeight). The host picks the largest bucket that fits.
     override val sizeMode = SizeMode.Responsive(
         WIDGET_BUCKET_WIDTHS.flatMap { w -> WIDGET_BUCKET_HEIGHTS.map { h -> DpSize(w, h) } }.toSet(),
     )
@@ -181,15 +182,11 @@ class StopDashWidget : GlanceAppWidget() {
             // never run past the cell's bottom edge. widgetModel is pure and cheap — no I/O on the render path.
             val size = LocalSize.current
             val fontScale = LocalContext.current.resources.configuration.fontScale
-            val stacked = widgetRowsStacked(size.width, fontScale)
             val model = widgetModel(
                 shown,
                 now,
                 starred,
-                maxLines = widgetLineBudget(size.height, fontScale, stacked = stacked),
-                maxLinesWithNote = widgetLineBudget(size.height, fontScale, withNote = true, stacked = stacked),
-                maxLinesCompact = widgetLineBudget(size.height, fontScale, compact = true, stacked = stacked),
-                stacked = stacked,
+                geometry = WidgetGeometry(size.width, size.height, fontScale),
                 topology = topology,
                 hiddenModes = hiddenModes,
             )
@@ -235,9 +232,6 @@ internal data class WidgetModel(
     // WidgetContent drops the title row for a single status line, so the next departure still fits
     // with its freshness said, rather than clipping one or the other.
     val compact: Boolean = false,
-    // Each departure on two lines — pill and countdown, then the destination — because the cell is
-    // too narrow at this font for all three on one line (see widgetRowsStacked).
-    val stacked: Boolean = false,
     // Not even one departure fits, compact or not (the minimum size at a very large font):
     // WidgetContent says so rather than show a departure missing its line or its destination.
     val tooSmall: Boolean = false,
@@ -266,7 +260,24 @@ internal data class WidgetRowModel(
     // A status-only row's reason for no times ("No key", "No data"), where its countdown would be;
     // null otherwise, or once it isn't vouched for (see [widgetNoTimes]).
     val noTimes: NoTimes? = null,
+    // For each of [groups], whether it's drawn on two lines — pill and countdown, then the
+    // destination — because its countdown leaves too little of the cell's width for its destination
+    // (see widgetRowStacked). Missing entries are one line.
+    val stackedLines: List<Boolean> = emptyList(),
+    // Drawn as its status alone (no [groups]): whether the pill and its reason for no times take a
+    // line of their own above the status, because the status doesn't fit beside the pill (see
+    // widgetStatusFits).
+    val statusStacked: Boolean = false,
+    // Drawn under the row's countdowns: whether its status fits beside the pill's column, lined up
+    // with an unstacked destination; if not, it starts under the pill, at full width.
+    val statusBeside: Boolean = true,
 )
+
+/**
+ * The cell the widget is drawn in: the host's size bucket and the system font scale, from which
+ * [widgetModel] works out each row's layout (see [widgetRowStacked]) and how many fit.
+ */
+internal data class WidgetGeometry(val width: Dp, val height: Dp, val fontScale: Float = 1f)
 
 /**
  * A stop header above a group of widget rows — the same place name and qualifier the in-app list
@@ -285,8 +296,9 @@ internal fun widgetModel(
     maxLinesWithNote: Int = maxLines,
     // The budget in the compact layout (no title row), used when the full layout fits no line.
     maxLinesCompact: Int = 1,
-    // Whether rows are stacked on two lines (see WidgetModel.stacked); the budgets already count it.
-    stacked: Boolean = false,
+    // The cell, when known (the widget always passes it): the budgets are then its height in dp, and
+    // each row costs what it takes, stacked or not, in place of the line budgets above.
+    geometry: WidgetGeometry? = null,
     topology: RouteTopology = RouteTopology.EMPTY,
     // Modes hidden from the near-me list: left out here too, except on a journey's own rows.
     hiddenModes: Set<String> = emptySet(),
@@ -374,16 +386,62 @@ internal fun widgetModel(
         c.groups.isNotEmpty() && !Staleness.isStale(c.row.fetchedAt, now) &&
             !snapshot.statusKnown(c.row.lineId, now)
     }
+    // A stop's reason for no times is vouched for only while its last fetch is current.
+    val currentStops = shownStops.filter {
+        it.arrivalsFresh && !Staleness.isStale(it.fetchedAt, now)
+    }.mapTo(HashSet()) { it.stopId }
+    // Each destination line's layout, decided from its own countdown and the cell's width (see
+    // widgetRowStacked), so the lines a tight budget drops can't change the ones it keeps; without a
+    // geometry nothing stacks. The planned-work calendar sits before the first line's countdown.
+    fun stacked(row: DepartureRow, line: DestinationGroup): Boolean {
+        if (geometry == null) return false
+        val countdown = if (Staleness.isStale(row.fetchedAt, now)) "?" else Countdown.mergedLabel(line.times, now)
+        val calendar = row.status == null && row.plannedAlerts.isNotEmpty() &&
+            DepartureRows.destinationLines(row, WIDGET_MAX_TIMES, topology).firstOrNull() == line
+        return widgetRowStacked(listOf(countdown), calendar, geometry.width, geometry.fontScale)
+    }
+    // Whether a row's status, and the reason for no times it shows after it ("No key", see
+    // widgetNoTimes), fits beside the pill's column; without a geometry it's taken to.
+    fun statusFits(row: DepartureRow, reason: Boolean): Boolean {
+        val status = row.status ?: return true
+        if (geometry == null) return true
+        val detail = if (reason) widgetNoTimes(row, current = row.stopId in currentStops)?.let { WIDGET_NO_TIMES_ESTIMATE } else null
+        return widgetStatusFits(status.description, detail, geometry.width, geometry.fontScale)
+    }
+    // Drawn as its status alone, the status is all the row says, so it stacks rather than be cut:
+    // the pill and the reason (where a countdown would sit), then the status at full width.
+    val statusStackedRows = java.util.IdentityHashMap<DepartureRow, Boolean>()
+    fun statusStacked(row: DepartureRow): Boolean = statusStackedRows.getOrPut(row) { !statusFits(row, reason = true) }
+    // A row's cost in the budget's units: lines, or dp when the cell is known. A status under a row's
+    // countdowns is a line of its own; drawn alone, it takes the pill's line too, two if stacked.
+    val costs = geometry?.let { g ->
+        val line = widgetLineHeight(g.fontScale, stacked = false)
+        val stackedLine = widgetLineHeight(g.fontScale, stacked = true)
+        LineCosts(
+            header = line,
+            line = { row, group -> if (stacked(row, group)) stackedLine else line },
+            status = { row, alone -> if (alone && statusStacked(row)) stackedLine else line },
+        )
+    } ?: LineCosts.UNIT
+    // The least one departure costs: less room than this shows none. Its least is what
+    // BudgetedRows.select would have to draw: its first destination line with its status under it,
+    // or its status alone.
+    val oneLine = pinned.mapNotNull { BudgetedRows.least(it, WIDGET_MAX_TIMES, topology, costs) }.minOrNull() ?: 1
     fun layout(withNote: Boolean): Triple<Boolean, Int, List<BudgetedRow>> {
         // The same condition WidgetContent draws the note under (a stamp is always set here).
-        val fullBudget = if (withNote) maxLinesWithNote else maxLines
+        val fullBudget = geometry?.let { widgetRowsHeight(it.height, it.fontScale, withNote = withNote) }
+            ?: if (withNote) maxLinesWithNote else maxLines
         // No room for a line under the full header: the compact layout (no title row) makes more
         // room; if even that fits none, the widget is too small to show a whole departure.
-        val compact = fullBudget < 1
-        val budget = if (compact) maxLinesCompact else fullBudget
-        // The line-budgeted rows and their stop headers, chosen the way every glanceable surface
-        // chooses them (the watch tile too): see [BudgetedRows.select].
-        return Triple(compact, budget, BudgetedRows.select(pinned, budget, WIDGET_MAX_TIMES, topology, ::grouped))
+        val compact = fullBudget < oneLine
+        val budget = if (compact) {
+            geometry?.let { widgetRowsHeight(it.height, it.fontScale, compact = true) } ?: maxLinesCompact
+        } else {
+            fullBudget
+        }
+        // The budgeted rows and their stop headers, chosen the way every glanceable surface chooses
+        // them (the watch tile too): see [BudgetedRows.select].
+        return Triple(compact, budget, BudgetedRows.select(pinned, budget, WIDGET_MAX_TIMES, topology, ::grouped, costs))
     }
     var (compact, budget, chosen) = layout(withNote = stale || uncertain)
     // The unchecked note is judged on the rows that fit, not every candidate, so it never speaks for
@@ -400,17 +458,16 @@ internal fun widgetModel(
     }
     // Only when there's a departure to fit: with none, the empty states ("No upcoming departures",
     // "may be out of date") are the honest message and fit any size.
-    val tooSmall = budget < 1 && pinned.isNotEmpty()
-    // A stop's reason for no times is vouched for only while its last fetch is current.
-    val currentStops = shownStops.filter {
-        it.arrivalsFresh && !Staleness.isStale(it.fetchedAt, now)
-    }.mapTo(HashSet()) { it.stopId }
+    val tooSmall = budget < oneLine && pinned.isNotEmpty()
     val rows = chosen.map {
         WidgetRowModel(
             it.row,
             it.groups,
             it.header?.let { header -> WidgetHeader(header.text, header.spoken) },
             noTimes = if (it.groups.isEmpty()) widgetNoTimes(it.row, current = it.row.stopId in currentStops) else null,
+            stackedLines = it.groups.map { group -> stacked(it.row, group) },
+            statusStacked = it.groups.isEmpty() && statusStacked(it.row),
+            statusBeside = it.groups.isEmpty() || statusFits(it.row, reason = false),
         )
     }
     return WidgetModel(
@@ -421,7 +478,6 @@ internal fun widgetModel(
         stamp = "Updated ${RelativeTime.formatAge(age)}",
         rows = rows,
         compact = compact,
-        stacked = stacked,
         tooSmall = tooSmall,
         onlyHidden = onlyHidden,
     )
@@ -554,7 +610,7 @@ internal fun WidgetContent(
                             WidgetStopHeader(header)
                             Spacer(GlanceModifier.height(4.dp))
                         }
-                        WidgetRow(rowModel, now, fontScale, stacked = model.stacked)
+                        WidgetRow(rowModel, now, fontScale)
                         Spacer(GlanceModifier.height(8.dp))
                     }
             }
@@ -659,7 +715,7 @@ internal fun widgetLineSpoken(row: DepartureRow, group: DestinationGroup): Strin
 }
 
 @androidx.compose.runtime.Composable
-private fun WidgetRow(rowModel: WidgetRowModel, now: Instant, fontScale: Float, stacked: Boolean = false) {
+private fun WidgetRow(rowModel: WidgetRowModel, now: Instant, fontScale: Float) {
     val row = rowModel.row
     // Withhold this row's countdown once ITS stop is stale (per-row, from the row's own fetch
     // age — a fresh stop beside a stale one stays live), so old predictions aren't shown as
@@ -680,7 +736,7 @@ private fun WidgetRow(rowModel: WidgetRowModel, now: Instant, fontScale: Float, 
                 // follows the status in the same text, "⚠ Part Suspended · No key", so the
                 // disruption always leads and a tight line cuts the reason, never the alert.
                 val detail = rowModel.noTimes?.let { widgetNoTimesText(it) }
-                if (stacked) {
+                if (rowModel.statusStacked) {
                     // Too narrow for the pill and the status on one line: the pill and the reason
                     // (where a countdown would sit), then the status below at full width, as a
                     // stacked departure puts its destination (the budget counts both lines).
@@ -717,9 +773,9 @@ private fun WidgetRow(rowModel: WidgetRowModel, now: Instant, fontScale: Float, 
             val spoken = widgetLineSpoken(row, group)
             val countdown = if (stale) "?" else Countdown.mergedLabel(group.times, now)
             val calendar = planned?.takeIf { index == 0 }
-            if (stacked) {
+            if (rowModel.stackedLines.getOrElse(index) { false }) {
                 // Too narrow at this font for all three on one line: pill and countdown, then the
-                // destination below, so none of the three is squeezed out (see widgetRowsStacked).
+                // destination below, so none of the three is squeezed out (see widgetRowStacked).
                 Row(
                     modifier = GlanceModifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -747,13 +803,17 @@ private fun WidgetRow(rowModel: WidgetRowModel, now: Instant, fontScale: Float, 
         }
         // The line's disruption under its countdowns, so they aren't read as a normal service
         // (SPEC D3). Its line was counted in the budget ([BudgetedRows.select]).
-        // Stacked rows put the destination under the pill, so the status lines up with it there;
+        // A stacked line puts its destination under the pill, so the status lines up with it there;
         // otherwise it's indented to the destination column (the pill's width plus the 8dp gap),
-        // so it reads as part of this service rather than a row of its own.
+        // so it reads as part of this service rather than a row of its own — unless it doesn't fit
+        // there, when it starts under the pill rather than be cut (see widgetStatusFits).
         row.status?.let { status ->
             Spacer(GlanceModifier.height(4.dp))
             Row(modifier = GlanceModifier.fillMaxWidth()) {
-                if (!stacked) Spacer(GlanceModifier.width(widgetPillWidth(fontScale) + 8.dp))
+                // Lined up with the destination of the line above it.
+                if (rowModel.statusBeside && !rowModel.stackedLines.getOrElse(rowModel.groups.lastIndex) { false }) {
+                    Spacer(GlanceModifier.width(widgetPillWidth(fontScale) + 8.dp))
+                }
                 WidgetDisruption(status.description, GlanceModifier.defaultWeight())
             }
         }
@@ -992,23 +1052,20 @@ private val WIDGET_MIN_WIDTH = 180.dp
 private val WIDGET_MIN_HEIGHT = 110.dp
 
 /**
- * How many departure lines fit a widget [height] tall at the system [fontScale]. Everything that
- * isn't a departure line is the chrome (padding, the title row, the space under it, and the
- * stale/partial note line when [withNote]); each line is
- * its pill plus the widest gap below it. The text-driven parts — the title row and the pill's label
- * — grow with [fontScale], the fixed padding and gaps don't. Costed at the widest case, so the
- * estimate errs toward one line fewer rather than a line clipped off the bottom. Zero when not even
- * one line fits under the full header; [widgetModel] then switches to the compact layout
- * (see [WidgetModel.compact]), whose budget is this with [compact] set.
+ * The height in dp left for departures in a widget [height] tall at the system [fontScale]: all of
+ * it but the chrome (padding, the title row, the space under it, and the stale/partial note line
+ * when [withNote]). The title row grows with [fontScale], the fixed padding and gaps don't. Rounded
+ * down, so the rows err toward one fewer rather than one clipped off the bottom; [widgetModel] fills
+ * it with rows at what each takes ([widgetLineHeight]), and when not even one fits under the full
+ * header it switches to the compact layout (see [WidgetModel.compact]), whose room this is with
+ * [compact] set.
  */
-internal fun widgetLineBudget(
+internal fun widgetRowsHeight(
     height: Dp,
     fontScale: Float = 1f,
     withNote: Boolean = false,
     // The compact layout's chrome: no title row, just the one status line.
     compact: Boolean = false,
-    // Stacked rows (see widgetRowsStacked): each line also carries the destination line below it.
-    stacked: Boolean = false,
 ): Int {
     val chrome = if (compact) {
         WIDGET_COMPACT_CHROME + WIDGET_NOTE_TEXT_HEIGHT * fontScale
@@ -1016,6 +1073,17 @@ internal fun widgetLineBudget(
         WIDGET_FIXED_CHROME +
             (WIDGET_TITLE_TEXT_HEIGHT + (if (withNote) WIDGET_NOTE_TEXT_HEIGHT else 0.dp)) * fontScale
     }
+    return (height - chrome).value.toInt().coerceAtLeast(0)
+}
+
+/**
+ * What one departure line takes, in dp rounded up, at the system [fontScale]: its pill plus the
+ * widest gap below it; a [stacked] line also carries its destination line below the pill (see
+ * [widgetRowStacked]). The pill's label grows with [fontScale] up to [WIDGET_PILL_MAX_SCALE], the
+ * text keeps growing. Costed at the widest case. A stop header and a status line cost the same as
+ * an unstacked line.
+ */
+internal fun widgetLineHeight(fontScale: Float = 1f, stacked: Boolean = false): Int {
     // A line is as tall as its tallest part: the pill (its label stops growing at
     // WIDGET_PILL_MAX_SCALE) or the countdown/destination text (which keeps growing).
     val pill = WIDGET_PILL_PADDING + WIDGET_PILL_TEXT_HEIGHT * fontScale.coerceAtMost(WIDGET_PILL_MAX_SCALE)
@@ -1026,21 +1094,68 @@ internal fun widgetLineBudget(
     } else {
         core + WIDGET_LINE_GAP
     }
-    return ((height - chrome) / line).toInt().coerceAtLeast(0)
+    return kotlin.math.ceil(line.value).toInt()
 }
 
 /**
- * Whether departures stack on two lines (pill and countdown, then the destination): when the cell
- * is narrow (the compact width bucket) and the font is at least [WIDGET_STACK_SCALE], the pill, a
- * readable destination and the countdown no longer fit one line. Stacking keeps all three — the
- * line code as text (never color alone), the destination, the countdown whole — at the cost of
- * height, which the line budget counts.
+ * Whether a departure line stacks on two (pill and countdown, then the destination): when the widest
+ * of [countdowns] (with the planned-work [calendar] before it) leaves too little of a cell [width]
+ * wide, at [fontScale], for a readable destination beside the pill. Each destination line of a row
+ * is judged on its own countdown; a row drawn as its status alone, on its status ([widgetStatusFits]).
+ * Stacking keeps all three — the line code as text (never color alone), the destination, the
+ * countdown whole — at the cost of height, which the budget counts per line. Glance can't measure text, so the widths are estimates
+ * from the character counts, at the widest the host's bucket allows; judged on a device.
  */
-internal fun widgetRowsStacked(width: Dp, fontScale: Float): Boolean =
-    width < WIDGET_COMPACT_WIDTH && fontScale >= WIDGET_STACK_SCALE
+internal fun widgetRowStacked(countdowns: List<String>, calendar: Boolean, width: Dp, fontScale: Float = 1f): Boolean {
+    val countdown = WIDGET_COUNTDOWN_EM * ((countdowns.maxOfOrNull { widgetTextEms(it) } ?: 0f) * fontScale)
+    val minDestination = WIDGET_MIN_DESTINATION_WIDTH * fontScale
+    val needed = widgetPillWidth(fontScale) + 16.dp + minDestination + countdown +
+        (if (calendar) WIDGET_PLANNED_SIZE + 8.dp else 0.dp)
+    return needed > width - WIDGET_HORIZONTAL_PADDING
+}
 
-/** The font scale from which a narrow widget stacks its rows (see [widgetRowsStacked]). */
-private const val WIDGET_STACK_SCALE = 1.3f
+/**
+ * Whether a line's status, "⚠ [description]" with its [detail] (the reason for no times) after it,
+ * fits on one line beside the pill's column of a cell [width] wide at [fontScale]. Unlike a
+ * destination, a status isn't cut to a few characters: on a row drawn as its status alone it's all
+ * the row says (SPEC D3), so that row stacks instead, and a status under a row's countdowns starts
+ * under the pill. Estimated as [widgetRowStacked] estimates a countdown.
+ */
+internal fun widgetStatusFits(description: String, detail: String?, width: Dp, fontScale: Float = 1f): Boolean {
+    val text = if (detail == null) "⚠ $description" else "⚠ $description · $detail"
+    val needed = widgetPillWidth(fontScale) + 8.dp + WIDGET_DISRUPTION_EM * (widgetTextEms(text) * fontScale)
+    return needed <= width - WIDGET_HORIZONTAL_PADDING
+}
+
+/** The widget's padding either side of its rows (12dp each side). */
+private val WIDGET_HORIZONTAL_PADDING = 24.dp
+
+/**
+ * How wide [text] draws, in ems of its bold or medium text, by the kind of each character: Roboto's
+ * digits and letters (~0.56em, bold a little wider), its spaces (~0.25em), the middle dot (~0.27em)
+ * between times, and the warning sign (a symbol font's, about an em), each rounded up so a text is
+ * never costed narrower than it draws.
+ */
+internal fun widgetTextEms(text: String): Float = text.sumOf { c ->
+    when (c) {
+        ' ' -> 0.26
+        '·' -> 0.3
+        '⚠' -> 1.0
+        else -> 0.6
+    }
+}.toFloat()
+
+/** The countdown's em at font scale 1: its 13sp. */
+private val WIDGET_COUNTDOWN_EM = 13.dp
+
+/** A status line's em at font scale 1: its 12sp. */
+private val WIDGET_DISRUPTION_EM = 12.dp
+
+/** The least of a destination worth showing beside the pill: about five characters of its 13sp. */
+private val WIDGET_MIN_DESTINATION_WIDTH = 32.dp
+
+/** What a status-only row's reason for no times ("No key", "No data") is costed at. */
+private const val WIDGET_NO_TIMES_ESTIMATE = "No data"
 
 /** The chrome's fixed part: 24dp of padding and the 8dp under the title row. */
 private val WIDGET_FIXED_CHROME = 32.dp
@@ -1075,9 +1190,14 @@ private val WIDGET_PILL_TEXT_HEIGHT = 16.dp
  */
 internal val WIDGET_COMPACT_WIDTH = 220.dp
 
-/** The [StopDashWidget.sizeMode] buckets: the minimum and compact widths, and a ladder of heights
- *  from the minimum up (each rung about two more departure lines). */
-private val WIDGET_BUCKET_WIDTHS = listOf(WIDGET_MIN_WIDTH, WIDGET_COMPACT_WIDTH)
+/** The wide bucket's width: wide enough for three times beside a destination at a large font. */
+private val WIDGET_WIDE_WIDTH = 300.dp
+
+/** The [StopDashWidget.sizeMode] buckets: the minimum and compact widths and a wider one (a row is
+ *  costed at its bucket's width, so more widths stack fewer rows that would fit), by a ladder of
+ *  heights from the minimum up (each rung about two more departure lines). Three by five: a host
+ *  takes at most sixteen sizes. */
+private val WIDGET_BUCKET_WIDTHS by lazy { listOf(WIDGET_MIN_WIDTH, WIDGET_COMPACT_WIDTH, WIDGET_WIDE_WIDTH) }
 private val WIDGET_BUCKET_HEIGHTS = listOf(WIDGET_MIN_HEIGHT, 180.dp, 250.dp, 320.dp, 400.dp)
 
 /**
