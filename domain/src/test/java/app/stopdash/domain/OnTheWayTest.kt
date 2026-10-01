@@ -910,6 +910,70 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `a stop's trains come through the boarding stop only where no route starts or joins there`() {
+        // A, B, C both ways: every train reaching B or C the ride's way has called at A.
+        val trunk = LineSequence(listOf(LineRoute("A-C", listOf("A", "B", "C")), LineRoute("C-A", listOf("C", "B", "A"))), emptyMap())
+        assertTrue(OnTheWay.comesThroughBoarding(ride, 0, trunk))
+        assertTrue(OnTheWay.comesThroughBoarding(ride, 1, trunk))
+        // Trains starting at B, or joining there from a branch by X: B's board can't be told for theirs,
+        // nor C's, which lists those trains too (Codex, PR #462).
+        val starts = trunk.copy(routes = trunk.routes + LineRoute("B-C", listOf("B", "C")))
+        assertFalse(OnTheWay.comesThroughBoarding(ride, 0, starts))
+        assertFalse(OnTheWay.comesThroughBoarding(ride, 1, starts))
+        val joins = trunk.copy(routes = trunk.routes + LineRoute("X-C", listOf("X", "B", "C")))
+        assertFalse(OnTheWay.comesThroughBoarding(ride, 0, joins))
+        // The line parting after A and meeting again at C, by X: a train by X reaches C too, after A,
+        // but not along their way (Codex, PR #462). Nor one calling somewhere between B and C.
+        assertFalse(OnTheWay.comesThroughBoarding(ride, 1, trunk.copy(routes = trunk.routes + LineRoute("A-X-C", listOf("A", "X", "C")))))
+        assertFalse(OnTheWay.comesThroughBoarding(ride, 1, trunk.copy(routes = trunk.routes + LineRoute("A-B-Y-C", listOf("A", "B", "Y", "C")))))
+        // Nor one joining at B from a branch by X, then running on to C.
+        assertFalse(OnTheWay.comesThroughBoarding(ride, 1, trunk.copy(routes = trunk.routes + LineRoute("X-B-C", listOf("X", "B", "C")))))
+        // A branch leaving after C is no matter; the way back to A is passed over.
+        assertTrue(OnTheWay.comesThroughBoarding(ride, 1, trunk.copy(routes = trunk.routes + LineRoute("A-Y", listOf("A", "B", "C", "Y")))))
+        // A route from X through B, round to A and through B again: its first pass reaches B from X, not A,
+        // whatever it calls at after (Codex, PR #462).
+        assertFalse(OnTheWay.comesThroughBoarding(ride, 0, trunk.copy(routes = trunk.routes + LineRoute("X-loop", listOf("X", "B", "C", "A", "B", "C")))))
+        // A loop calling at B twice, round by X between: the second way to B isn't theirs (Codex, PR #462).
+        assertFalse(OnTheWay.comesThroughBoarding(ride, 0, LineSequence(listOf(LineRoute("loop", listOf("A", "B", "X", "B", "C"))), emptyMap())))
+        // The route naming A by a sibling id at the same interchange: the same station, so the same way
+        // (Codex, PR #462).
+        val sibling = LineSequence(
+            listOf(LineRoute("A-C", listOf("A2", "B", "C"))),
+            mapOf("A" to "A", "A2" to "A", "B" to "B", "C" to "C"),
+            stopHubs = mapOf("A" to "HUBA", "A2" to "HUBA"),
+        )
+        assertTrue(OnTheWay.comesThroughBoarding(ride, 0, sibling))
+        // One route calling at B by the ride's own id, another joining from X by a sibling id: still a
+        // join at B, seen route by route (Codex, PR #462).
+        val siblingJoin = LineSequence(
+            listOf(LineRoute("A-C", listOf("A", "B", "C")), LineRoute("X-C", listOf("X", "B2", "C"))),
+            mapOf("A" to "A", "B" to "B", "B2" to "B", "C" to "C", "X" to "X"),
+            stopHubs = mapOf("B" to "HUBB", "B2" to "HUBB"),
+        )
+        assertFalse(OnTheWay.comesThroughBoarding(ride, 0, siblingJoin))
+        // No routes known, or none reaching the stop: nothing to go on.
+        assertFalse(OnTheWay.comesThroughBoarding(ride, 0, null))
+        assertFalse(OnTheWay.comesThroughBoarding(ride, 0, trunk.copy(routes = listOf(LineRoute("X-Y", listOf("X", "Y"))))))
+    }
+
+    @Test
+    fun `a train is behind the rider only when its calls show it`() {
+        val waiting = OnTheWay.follow(trip, train("9", 8))
+        // Still to call at A; seen at C, still to reach B; seen at B, due there in three minutes: behind.
+        assertTrue(OnTheWay.behind(waiting, listOf(call("A", 8), call("B", 10), call("C", 14)), 0, at(6)))
+        assertTrue(OnTheWay.behind(waiting, listOf(call("B", 7), call("C", 12)), 1, at(6)))
+        assertTrue(OnTheWay.behind(waiting, listOf(call("B", 9), call("C", 14)), 0, at(6), atStop = true))
+        // At or past them: not behind, as boardedOn takes it.
+        assertFalse(OnTheWay.behind(waiting, listOf(call("B", 6), call("C", 12)), 0, at(6), atStop = true))
+        assertFalse(OnTheWay.behind(waiting, listOf(call("C", 12)), 1, at(6)))
+        // Not placed: no calls (a race with TfL's predictions), or none on the ride. Not behind, nor known
+        // not to be (Codex, PR #462).
+        assertFalse(OnTheWay.behind(waiting, emptyList(), 0, at(6)))
+        assertNull(OnTheWay.boardedOn(waiting, train("7", 5), emptyList(), 0, at(6)))
+        assertFalse(OnTheWay.behind(waiting, listOf(call("X", 7), call("Y", 12)), 0, at(6)))
+    }
+
+    @Test
     fun `seen along a bus ride, a bus is taken only once its calls reach where the rider gets off`() {
         val bus = ride.copy(mode = "bus", path = listOf("490GB", "C"))
         val waiting = OnTheWay.follow(trip.copy(route = TripRoute(listOf(bus, walk, second))), train("9", 8))

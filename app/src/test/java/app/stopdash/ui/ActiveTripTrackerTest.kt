@@ -1086,6 +1086,29 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `a train that left with no calls to place it may be theirs, so none on the board ahead is named`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("7", 5), train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // 7 has left A, its calls empty in a race with TfL's predictions; B's board, in the same race,
+        // lists only 8, a later train that came and went between refreshes. 7 may be theirs, so 8, a
+        // lone match, isn't taken for it (Codex, PR #462).
+        departures["A"] = listOf(train("9", 8))
+        trains["7"] = emptyList()
+        departures["B"] = listOf(train("8", 9))
+        trains["8"] = listOf(call("B", 9), call("C", 13))
+        now = at(7)
+        tracker.refresh(fixAt(51.505))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(true, tracker.trip.value?.boarded)
+        assertFalse(tracker.failed.value)
+    }
+
+    @Test
     fun `seen between stops, a later train still short of the last stop they passed isn't theirs`() = runTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         sequences["red"] = redLine
@@ -1365,6 +1388,353 @@ class ActiveTripTrackerTest {
         assertFalse(tracker.failed.value)
         assertEquals(orangeRide, tracker.trip.value?.vehicleLeg)
         assertEquals(TripProgress.Riding(ride, "C", 1, null, true, byPosition = true), tracker.progress.value)
+    }
+
+    @Test
+    fun `a train the boarding stop's board never listed is named from the board at the stop ahead`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals("9", tracker.trip.value?.vehicleId)
+        // 5 came and went between refreshes, never on A's board. The rider is seen short of B: B, the stop
+        // ahead, lists 5 arriving, and 9 behind it, still to call at A.
+        departures["B"] = listOf(train("5", 8), train("9", 10))
+        trains["5"] = listOf(call("B", 8), call("C", 12))
+        now = at(7)
+        boardStops.clear()
+        tracker.refresh(fixAt(51.505))
+        // Read once, and 5 is theirs: 9, behind them, isn't (TODO, *A train the board never listed*).
+        assertEquals(1, boardStops.count { it == "B" })
+        assertEquals("5", tracker.trip.value?.vehicleId)
+        assertEquals(true, tracker.trip.value?.boarded)
+        assertFalse(tracker.failed.value)
+        assertTrue(tracker.progress.value is TripProgress.Riding)
+    }
+
+    @Test
+    fun `a train named from the board ahead doesn't take that stop's time for when it was at theirs`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // Named from B's board, due there at 8: not when it was at A, which isn't known.
+        departures["B"] = listOf(train("5", 8), train("9", 10))
+        trains["5"] = listOf(call("B", 8), call("C", 11), call("A", 12), call("B", 14))
+        now = at(7)
+        tracker.refresh(fixAt(51.505))
+        assertEquals("5", tracker.trip.value?.vehicleId)
+        assertEquals(null, tracker.trip.value?.boardsAt)
+        // A loop: due at C at 11, then round to A at 12. Past C, the call at A is its next lap, not the
+        // one they boarded at, so they've got off (Codex, PR #462).
+        trains["5"] = listOf(call("C", 11), call("A", 12), call("B", 14), call("C", 17))
+        now = at(10)
+        tracker.refresh()
+        trains["5"] = listOf(call("A", 12), call("B", 14), call("C", 17))
+        now = at(12)
+        tracker.refresh()
+        assertEquals(TripProgress.Arrived, tracker.progress.value)
+    }
+
+    @Test
+    fun `on the board ahead, a train that doesn't take the ride isn't theirs, and theirs is found past a full board`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // Seen short of B, whose board lists a train ending there first, then theirs (Codex, PR #462).
+        departures["B"] = listOf(train("4", 8).copy(destination = "B"), train("5", 9))
+        trains["4"] = listOf(call("B", 8))
+        trains["5"] = listOf(call("B", 9), call("C", 13))
+        now = at(7)
+        tracker.refresh(fixAt(51.505))
+        assertEquals("5", tracker.trip.value?.vehicleId)
+    }
+
+    @Test
+    fun `on the board ahead, theirs is the soonest however many come behind it`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // B lists theirs, then more trains behind it than are tried, each still to call at A (Codex, PR
+        // #462).
+        departures["B"] = listOf(train("5", 8), train("9", 10), train("10", 12), train("11", 14))
+        trains["5"] = listOf(call("B", 8), call("C", 12))
+        trains["10"] = listOf(call("A", 10), call("B", 12), call("C", 16))
+        trains["11"] = listOf(call("A", 12), call("B", 14), call("C", 18))
+        now = at(7)
+        tracker.refresh(fixAt(51.505))
+        assertEquals("5", tracker.trip.value?.vehicleId)
+    }
+
+    @Test
+    fun `on the board ahead, seen at a stop theirs is the latest past them, and between stops only a lone one`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // Seen short of B, whose board lists a train between them and B, then theirs: both left A and
+        // call next at B, so neither is told for theirs, and they're on board by where they were seen.
+        departures["B"] = listOf(train("4", 8), train("5", 9))
+        trains["4"] = listOf(call("B", 8), call("C", 12))
+        trains["5"] = listOf(call("B", 9), call("C", 13))
+        now = at(7)
+        tracker.refresh(fixAt(51.505))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(true, tracker.trip.value?.boarded)
+        assertFalse(tracker.failed.value)
+        // Seen at B, C's board lists the train ahead first, theirs at B now, and one behind still due at B:
+        // theirs is the latest of those past them.
+        departures["C"] = listOf(train("4", 9), train("5", 11), train("6", 14))
+        trains["4"] = listOf(call("C", 9))
+        trains["5"] = listOf(call("B", 8), call("C", 11))
+        trains["6"] = listOf(call("B", 11), call("C", 14))
+        now = at(8)
+        tracker.refresh(fixAt(51.51))
+        assertEquals("5", tracker.trip.value?.vehicleId)
+        assertEquals(at(7), tracker.trip.value?.boardedAt)
+    }
+
+    @Test
+    fun `on the board ahead, a train TfL no longer knows leaves the trains either side of it unnamed`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // Seen at B, C's board lists a train ahead of them, then theirs, gone from TfL's view by the time
+        // it's looked up: the one ahead isn't taken for theirs (Codex, PR #462).
+        departures["C"] = listOf(train("4", 9), train("5", 11))
+        trains["4"] = listOf(call("C", 9))
+        gone += "5"
+        now = at(8)
+        tracker.refresh(fixAt(51.51))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(true, tracker.trip.value?.boarded)
+        assertFalse(tracker.failed.value)
+    }
+
+    @Test
+    fun `on the board ahead, a lone train after one TfL no longer knows isn't taken for theirs`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // Seen short of B, whose board lists theirs, gone from TfL's view by the time it's looked up, then
+        // one behind them that has left A: it calls next at B as theirs would, so it isn't taken for theirs.
+        departures["B"] = listOf(train("5", 8), train("6", 10))
+        gone += "5"
+        trains["6"] = listOf(call("B", 10), call("C", 14))
+        now = at(7)
+        tracker.refresh(fixAt(51.505))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(true, tracker.trip.value?.boarded)
+    }
+
+    @Test
+    fun `on the board ahead, a train its calls don't place leaves the trains either side of it unnamed`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // Seen at B, C's board lists a train ahead of them, then theirs, its calls empty in a race with
+        // TfL's predictions: no proof it's behind them, so the one ahead isn't named (Codex, PR #462).
+        departures["C"] = listOf(train("4", 9), train("5", 11))
+        trains["4"] = listOf(call("C", 9))
+        trains["5"] = emptyList()
+        now = at(8)
+        tracker.refresh(fixAt(51.51))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(true, tracker.trip.value?.boarded)
+        assertFalse(tracker.failed.value)
+    }
+
+    @Test
+    fun `on the board ahead, a lone train after one its calls don't place isn't taken for theirs`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // Seen short of B, whose board lists theirs with no calls, then one behind them that has left A.
+        departures["B"] = listOf(train("5", 8), train("6", 10))
+        trains["5"] = emptyList()
+        trains["6"] = listOf(call("B", 10), call("C", 14))
+        now = at(7)
+        tracker.refresh(fixAt(51.505))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(true, tracker.trip.value?.boarded)
+    }
+
+    @Test
+    fun `where trains join the line at the stop ahead, its board isn't read for theirs`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        // Red trains also join at B from a branch by X.
+        sequences["red"] = redLine.copy(routes = redLine.routes + app.stopdash.domain.LineRoute("X ↔ C", listOf("X", "B", "C")))
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // Seen short of B, whose board lists a lone train that may have come from X: not taken for theirs,
+        // and the board isn't asked (Codex, PR #462).
+        departures["B"] = listOf(train("6", 8))
+        trains["6"] = listOf(call("B", 8), call("C", 12))
+        boardStops.clear()
+        now = at(7)
+        tracker.refresh(fixAt(51.505))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(true, tracker.trip.value?.boarded)
+        assertFalse("B" in boardStops)
+    }
+
+    @Test
+    fun `on the board ahead, a train its route can't place leaves the trains before it unnamed`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        // Red parts after B, for C or for E.
+        sequences["red"] = redLine.copy(routes = redLine.routes + app.stopdash.domain.LineRoute("A ↔ E", listOf("A", "B", "E")))
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // Seen short of B, whose board lists one for C, then one with no destination, which may go either
+        // way after B: it may be theirs, so the one for C isn't taken for a lone match (Codex, PR #462).
+        departures["B"] = listOf(train("4", 8), train("5", 9).copy(destination = ""))
+        trains["4"] = listOf(call("B", 8), call("C", 12))
+        trains["5"] = listOf(call("B", 9), call("C", 13))
+        now = at(7)
+        tracker.refresh(fixAt(51.505))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(true, tracker.trip.value?.boarded)
+        // Behind the lone train for C, it's never reached: that one is named.
+        departures["B"] = listOf(train("4", 8), train("9", 10), train("5", 12).copy(destination = ""))
+        trains["5"] = listOf(call("B", 12), call("C", 16))
+        now = at(8)
+        tracker.refresh(fixAt(51.506))
+        assertEquals("4", tracker.trip.value?.vehicleId)
+    }
+
+    @Test
+    fun `a train that left that its route can't place may be theirs, so none on the board ahead is named`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        // Red parts after B, for C or for E.
+        sequences["red"] = redLine.copy(routes = redLine.routes + app.stopdash.domain.LineRoute("A ↔ E", listOf("A", "B", "E")))
+        departures["A"] = listOf(train("7", 5).copy(destination = ""), train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // 7, with no destination, has left A; B's board lists only 8, a later train for C. 7 may be
+        // theirs, so 8, a lone match, isn't taken for it (Codex, PR #462).
+        departures["A"] = listOf(train("9", 8))
+        trains["7"] = listOf(call("B", 7), call("C", 11))
+        departures["B"] = listOf(train("8", 9))
+        trains["8"] = listOf(call("B", 9), call("C", 13))
+        now = at(7)
+        tracker.refresh(fixAt(51.505))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(true, tracker.trip.value?.boarded)
+    }
+
+    @Test
+    fun `on the board ahead, a train with no id to look up leaves the trains before it unnamed`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // Seen at B, C's board lists a train ahead of them, then one TfL gives no id: it may be theirs, so
+        // the one ahead isn't named (Codex, PR #462).
+        departures["C"] = listOf(train("4", 9), train("", 11))
+        trains["4"] = listOf(call("C", 9))
+        now = at(8)
+        tracker.refresh(fixAt(51.51))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(true, tracker.trip.value?.boarded)
+    }
+
+    @Test
+    fun `on the board ahead, trains ahead of them filling the lookups name none`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // Seen at B, C's board lists three trains ahead of them before theirs: no train behind them is
+        // reached to show where theirs ends, so none is named, not the third ahead (Codex, PR #462).
+        departures["C"] = listOf(train("2", 8), train("3", 9), train("4", 10), train("5", 11))
+        listOf("2" to 8L, "3" to 9L, "4" to 10L).forEach { (id, at) -> trains[id] = listOf(call("C", at)) }
+        trains["5"] = listOf(call("B", 8), call("C", 11))
+        now = at(8)
+        tracker.refresh(fixAt(51.51))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(true, tracker.trip.value?.boarded)
+        assertFalse(tracker.failed.value)
+        // Only as many lookups as ever: theirs, past them, isn't asked after.
+        assertTrue(asked.containsAll(listOf("2", "3", "4")))
+        assertFalse("5" in asked)
+    }
+
+    @Test
+    fun `on board by position, a train found on the board ahead keeps when they boarded, and a failed read is said`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(6)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // Seen short of B, with nothing on B's board yet: on board by where they were seen.
+        now = at(7)
+        tracker.refresh(fixAt(51.505))
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(at(7), tracker.trip.value?.boardedAt)
+        // A fix further on, B's board can't be read: their place stands, and the refresh says it failed.
+        unknownStops += "B"
+        now = at(8)
+        tracker.refresh(fixAt(51.508))
+        assertTrue(tracker.failed.value)
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertTrue(logged.any { it == "on the way: board ahead lookup failed for line red: NotFound" })
+        // Read, it lists theirs: named, their ride's time still from when they were first seen on board.
+        unknownStops -= "B"
+        departures["B"] = listOf(train("5", 9))
+        trains["5"] = listOf(call("B", 9), call("C", 13))
+        tracker.refresh(fixAt(51.509))
+        assertFalse(tracker.failed.value)
+        assertEquals("5", tracker.trip.value?.vehicleId)
+        assertEquals(at(7), tracker.trip.value?.boardedAt)
     }
 
     @Test
