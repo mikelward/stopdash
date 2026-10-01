@@ -18,6 +18,7 @@ import app.stopdash.data.UserApiKeySetting
 import app.stopdash.data.logAppSettingsWarning
 import app.stopdash.domain.SteadyClock
 import app.stopdash.telemetry.CrashlyticsLogSink
+import app.stopdash.telemetry.FileConsentMark
 import app.stopdash.telemetry.FilePendingMarker
 import app.stopdash.telemetry.FirebaseTelemetryBackend
 import app.stopdash.telemetry.NoPendingMarker
@@ -216,7 +217,7 @@ open class StopdashApp : Application() {
                     try {
                         val store = PrefsConsentStore(this@StopdashApp)
                         gate = backend?.let { TelemetryGate(it, FilePendingMarker(this@StopdashApp)) }
-                        TelemetryConsent.load(store, gate)
+                        TelemetryConsent.load(store, gate, FileConsentMark.optOut(this@StopdashApp), FileConsentMark.optIn(this@StopdashApp))
                     } catch (e: Exception) {
                         // Fail closed: SDKs off and the switch shown off, so an earlier opt-in can't
                         // keep collecting with the switch stuck disabled.

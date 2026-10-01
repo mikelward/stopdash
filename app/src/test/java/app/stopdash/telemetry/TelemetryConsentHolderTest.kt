@@ -42,6 +42,29 @@ class TelemetryConsentHolderTest {
         }
     }
 
+    private class FakeMark(
+        var value: Boolean? = false,
+        var failWrites: Boolean = false,
+        var unreadable: Boolean = false,
+        var failMoves: Boolean = false,
+    ) : ConsentMark {
+        override fun read(): Boolean? {
+            if (unreadable) throw IllegalStateException("mark")
+            return value
+        }
+        override fun save(set: Boolean): Boolean {
+            if (failWrites) return false
+            value = set
+            return true
+        }
+        override fun takeOver(other: ConsentMark): Boolean {
+            if (failMoves || other !is FakeMark || other.value != true) return false
+            value = true
+            other.value = false
+            return true
+        }
+    }
+
     @Test
     fun `the choice is unknown until loaded, and a fresh install loads as off`() {
         val holder = TelemetryConsentHolder()
@@ -182,6 +205,260 @@ class TelemetryConsentHolderTest {
         val again = TelemetryConsentHolder().apply { load(stuck, TelemetryGate(FakeBackend(collecting = false), FakePending())) }
         assertTrue(again.unanswered.value)
         assertEquals(false, stuck.stored)
+    }
+
+    @Test
+    fun `a yes whose stored choice is lost on its own is read back from its mark, and kept`() {
+        val store = FakeStore(stored = null)
+        val optIn = FakeMark()
+        val backend = FakeBackend(collecting = false)
+        TelemetryConsentHolder().apply { load(store, TelemetryGate(backend, FakePending()), FakeMark(), optIn) }.set(true)
+        assertEquals(true, optIn.value)
+        // Its prefs lost or corrupted while the rest stood: read back from the mark, not asked again.
+        store.stored = null
+        val next = TelemetryConsentHolder().apply { load(store, TelemetryGate(backend, FakePending()), FakeMark(), optIn) }
+        assertEquals(true, next.state.value)
+        assertFalse(next.unanswered.value)
+        assertTrue(backend.collecting)
+        assertEquals(true, store.stored)
+        // With nothing marked, it's never answered, as before: off, and asked.
+        val fresh = TelemetryConsentHolder().apply { load(FakeStore(stored = null), TelemetryGate(FakeBackend(collecting = false), FakePending()), FakeMark(), FakeMark()) }
+        assertEquals(false, fresh.state.value)
+        assertTrue(fresh.unanswered.value)
+    }
+
+    @Test
+    fun `SDKs left on or a stale pending opt-in never vouch for a lost choice`() {
+        // Before the marks, a withdrawal that couldn't clear the pending opt-in or store its no
+        // deleted the stored choice instead, leaving SDKs or a pending opt-in that could read as a
+        // yes (Codex, PR #454). An install upgraded in that state has no mark of either answer.
+        val pending = TelemetryConsentHolder().apply {
+            load(FakeStore(stored = null), TelemetryGate(FakeBackend(collecting = false), FakePending(value = true)), FakeMark(), FakeMark())
+        }
+        assertEquals(false, pending.state.value)
+        assertTrue(pending.unanswered.value)
+        val backend = FakeBackend(collecting = true)
+        val on = TelemetryConsentHolder().apply { load(FakeStore(stored = null), TelemetryGate(backend, FakePending()), FakeMark(), FakeMark()) }
+        assertEquals(false, on.state.value)
+        assertTrue(on.unanswered.value)
+        assertFalse(backend.collecting)
+    }
+
+    @Test
+    fun `a no whose stored choice is lost on its own stays a no, and isn't asked again`() {
+        val store = FakeStore(stored = true)
+        val backend = FakeBackend(collecting = true)
+        val optOut = FakeMark()
+        val optIn = FakeMark(value = true)
+        TelemetryConsentHolder().apply { load(store, TelemetryGate(backend, FakePending()), optOut, optIn) }.set(false)
+        assertEquals(true, optOut.value)
+        assertEquals(false, optIn.value)
+        store.stored = null
+        val next = TelemetryConsentHolder().apply { load(store, TelemetryGate(backend, FakePending()), optOut, optIn) }
+        assertEquals(false, next.state.value)
+        assertFalse(next.unanswered.value)
+        assertFalse(backend.collecting)
+        assertEquals(false, store.stored)
+    }
+
+    @Test
+    fun `a no whose yes mark couldn't be cleared is still a no once its stored choice is lost`() {
+        val store = FakeStore(stored = true)
+        val optOut = FakeMark()
+        val optIn = FakeMark(value = true)
+        TelemetryConsentHolder().apply { load(store, TelemetryGate(FakeBackend(collecting = true), FakePending()), optOut, optIn) }.run {
+            optIn.failWrites = true
+            set(false)
+        }
+        assertEquals(true, optIn.value)
+        store.stored = null
+        val next = TelemetryConsentHolder().apply { load(store, TelemetryGate(FakeBackend(collecting = false), FakePending()), optOut, optIn) }
+        assertEquals(false, next.state.value)
+        assertFalse(next.unanswered.value)
+    }
+
+    @Test
+    fun `a mark that can't be read fails closed, over a stored yes, as a store that can't be read does`() {
+        // A withdrawal cut short after marking leaves the old yes stored and the SDKs on; a mark that
+        // can't then be read can't say it was withdrawn, so the yes isn't trusted (Codex, PR #454).
+        val store = FakeStore(stored = true)
+        val backend = FakeBackend(collecting = true)
+        val holder = TelemetryConsentHolder().apply { load(store, TelemetryGate(backend, FakePending()), FakeMark(unreadable = true), FakeMark()) }
+        assertEquals(false, holder.state.value)
+        assertFalse(backend.collecting)
+        // Nothing is rewritten on a guess, and the question isn't put: the answer may be there yet.
+        assertEquals(true, store.stored)
+        assertFalse(holder.unanswered.value)
+        // So does a yes mark that can't be read where it's the one to say.
+        val lost = FakeStore(stored = null)
+        val unread = TelemetryConsentHolder().apply { load(lost, TelemetryGate(FakeBackend(collecting = true), FakePending()), FakeMark(), FakeMark(unreadable = true)) }
+        assertEquals(false, unread.state.value)
+        assertFalse(unread.unanswered.value)
+        assertNull(lost.stored)
+    }
+
+    @Test
+    fun `an opt-out is marked before the SDKs are touched, and an opt-in clears it before they start`() {
+        val optOut = FakeMark()
+        val optIn = FakeMark()
+        val marksAtSwitch = mutableListOf<Triple<Boolean, Boolean?, Boolean?>>()
+        val storedAtSwitch = mutableListOf<Boolean?>()
+        val store = FakeStore(stored = true)
+        // What was stored when the gate cleared a pending opt-in: its first step in switching off.
+        val storedAtUnpend = mutableListOf<Boolean?>()
+        val yesMarkAtUnpend = mutableListOf<Boolean?>()
+        val pending = object : PendingMarker {
+            var value = false
+            override fun read() = value
+            override fun save(pending: Boolean): Boolean {
+                if (!pending) {
+                    storedAtUnpend += store.stored
+                    yesMarkAtUnpend += optIn.value
+                }
+                value = pending
+                return true
+            }
+        }
+        val backend = object : TelemetryBackend {
+            override var collecting = true
+            override fun switchCollection(enabled: Boolean) {
+                marksAtSwitch += Triple(enabled, optOut.value, optIn.value)
+                storedAtSwitch += store.stored
+                collecting = enabled
+            }
+            override fun checkUnsent(result: (Boolean?) -> Unit) = result(false)
+            override fun discardUnsent() {}
+        }
+        val holder = TelemetryConsentHolder().apply { load(store, TelemetryGate(backend, pending), optOut, optIn) }
+        marksAtSwitch.clear()
+        storedAtSwitch.clear()
+        holder.set(false)
+        holder.set(true)
+        // The SDKs go off straight after the no is marked, before the yes mark or the stored choice
+        // is touched.
+        assertEquals(listOf(Triple(false, true, true), Triple(true, false, true)), marksAtSwitch)
+        assertEquals(listOf<Boolean?>(true, true), storedAtSwitch)
+        assertEquals(true, optIn.value)
+        // Where the no mark can't be created, the no is kept another way before anything reaches the
+        // gate, so a kill partway through switching the SDKs off (the pending opt-in cleared first)
+        // still reads as the no, or at worst as never answered. Each is one step.
+        val atUnpend = mutableListOf<Triple<Boolean?, Boolean?, Boolean?>>()
+        fun withdrawSeeing(): List<Triple<Boolean?, Boolean?, Boolean?>> {
+            pending.value = true
+            storedAtUnpend.clear()
+            yesMarkAtUnpend.clear()
+            holder.set(false)
+            storedAtUnpend.indices.mapTo(atUnpend.apply { clear() }) { Triple(storedAtUnpend[it], optOut.value, yesMarkAtUnpend[it]) }
+            assertFalse(pending.value)
+            assertEquals(false, holder.state.value)
+            return atUnpend.toList()
+        }
+        fun optInAgain() {
+            optOut.failWrites = false
+            store.failWrites = false
+            holder.set(true)
+            assertEquals(true, store.stored)
+            assertEquals(true, optIn.value)
+            assertEquals(false, optOut.value)
+        }
+        // 1. The yes mark moved onto the no mark: one rename.
+        optOut.failWrites = true
+        assertEquals(listOf(Triple<Boolean?, Boolean?, Boolean?>(true, true, false)), withdrawSeeing())
+        assertEquals(false, store.stored)
+        // 2. Where that can't be moved either, the no stored.
+        optInAgain()
+        optOut.failWrites = true
+        optOut.failMoves = true
+        assertEquals(listOf(Triple<Boolean?, Boolean?, Boolean?>(false, false, true)), withdrawSeeing())
+        assertEquals(false, store.stored)
+        assertEquals(false, optIn.value)
+        // 3. Where that can't be stored either, and no yes mark is set (its own write failed), the
+        // stored yes deleted: never answered.
+        optInAgain()
+        optIn.value = false
+        optOut.failWrites = true
+        store.failWrites = true
+        assertEquals(listOf(Triple<Boolean?, Boolean?, Boolean?>(null, false, false)), withdrawSeeing())
+        assertNull(store.stored)
+        // With a yes mark set and nothing else landing, it isn't cleared ahead of the delete, which
+        // would read back as the yes in between; both wait for the SDKs, and still happen.
+        store.stored = true
+        optIn.value = true
+        assertEquals(listOf(Triple<Boolean?, Boolean?, Boolean?>(true, false, true)), withdrawSeeing())
+        assertNull(store.stored)
+        assertEquals(false, optIn.value)
+    }
+
+    @Test
+    fun `a withdrawal cut short after its mark still reads as a no`() {
+        // Killed after marking the no, before the SDKs were switched off or the no stored.
+        val store = FakeStore(stored = true)
+        val backend = FakeBackend(collecting = true)
+        val optIn = FakeMark(value = true)
+        val holder = TelemetryConsentHolder().apply { load(store, TelemetryGate(backend, FakePending()), FakeMark(value = true), optIn) }
+        assertEquals(false, holder.state.value)
+        assertFalse(holder.unanswered.value)
+        assertFalse(backend.collecting)
+        assertEquals(false, store.stored)
+        assertEquals(false, optIn.value)
+    }
+
+    @Test
+    fun `an answer stored before the marks existed is marked, and kept if the stored choice is lost`() {
+        val no = FakeStore(stored = false)
+        val noOut = FakeMark()
+        val backend = FakeBackend(collecting = false)
+        TelemetryConsentHolder().load(no, TelemetryGate(backend, FakePending()), noOut, FakeMark())
+        assertEquals(true, noOut.value)
+        no.stored = null
+        val afterNo = TelemetryConsentHolder().apply { load(no, TelemetryGate(backend, FakePending()), noOut, FakeMark()) }
+        assertEquals(false, afterNo.state.value)
+        assertFalse(afterNo.unanswered.value)
+        val yes = FakeStore(stored = true)
+        val yesIn = FakeMark()
+        val on = FakeBackend(collecting = true)
+        TelemetryConsentHolder().load(yes, TelemetryGate(on, FakePending()), FakeMark(), yesIn)
+        assertEquals(true, yesIn.value)
+        yes.stored = null
+        assertEquals(true, TelemetryConsentHolder().apply { load(yes, TelemetryGate(on, FakePending()), FakeMark(), yesIn) }.state.value)
+    }
+
+    @Test
+    fun `a yes the SDKs never took up is asked again, its mark cleared with it`() {
+        val store = FakeStore(stored = true)
+        val optIn = FakeMark(value = true)
+        val holder = TelemetryConsentHolder().apply { load(store, TelemetryGate(FakeBackend(collecting = false), FakePending()), FakeMark(), optIn) }
+        assertEquals(false, holder.state.value)
+        assertTrue(holder.unanswered.value)
+        assertNull(store.stored)
+        assertEquals(false, optIn.value)
+        // Where its mark can't be cleared, off is stored rather than the choice deleted to read back.
+        val stuck = FakeStore(stored = true)
+        TelemetryConsentHolder().load(stuck, TelemetryGate(FakeBackend(collecting = false), FakePending()), FakeMark(), FakeMark(value = true, failWrites = true))
+        assertEquals(false, stuck.stored)
+    }
+
+    @Test
+    fun `an opt-in whose old no can't be cleared is not applied`() {
+        // Left set, the mark would read this yes back as a no next start.
+        val store = FakeStore(stored = false)
+        val backend = FakeBackend(collecting = false)
+        val holder = TelemetryConsentHolder().apply { load(store, TelemetryGate(backend, FakePending()), FakeMark(value = true, failWrites = true), FakeMark()) }
+        holder.set(true)
+        assertEquals(false, holder.state.value)
+        assertFalse(backend.collecting)
+        assertEquals(false, store.stored)
+    }
+
+    @Test
+    fun `an opt-out whose mark can't be set still withdraws`() {
+        val store = FakeStore(stored = true)
+        val backend = FakeBackend(collecting = true)
+        val holder = TelemetryConsentHolder().apply { load(store, TelemetryGate(backend, FakePending()), FakeMark(failWrites = true), FakeMark()) }
+        holder.set(false)
+        assertEquals(false, holder.state.value)
+        assertFalse(backend.collecting)
+        assertEquals(false, store.stored)
     }
 
     @Test
@@ -380,6 +657,23 @@ class TelemetryConsentHolderTest {
         next.load(store, TelemetryGate(FakeBackend(collecting = false), stuck))
         assertEquals(false, next.state.value)
         assertFalse(backend.collecting)
+        // Nor with the marks: the missing stored choice reads back as the marked no, not as the opt-in
+        // the leftover marker says is waiting.
+        val optOut = FakeMark()
+        val optIn = FakeMark()
+        val marked = FakeStore(stored = false)
+        TelemetryConsentHolder().run {
+            load(marked, TelemetryGate(FakeBackend(collecting = false, waiting = true), stuck), optOut, optIn)
+            set(true)
+            marked.failWrites = true
+            set(false)
+        }
+        assertNull(marked.stored)
+        assertTrue(stuck.read())
+        marked.failWrites = false
+        val after = TelemetryConsentHolder().apply { load(marked, TelemetryGate(FakeBackend(collecting = false), stuck), optOut, optIn) }
+        assertEquals(false, after.state.value)
+        assertFalse(after.unanswered.value)
     }
 
     @Test

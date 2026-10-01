@@ -177,13 +177,19 @@ exercises the whole spine the widget later renders from.
           time-to-fix in bands, and nearby stops per mode bucketed (0 / 1 / 2–3 / 4+). *Done
           (`UsageEvent`, `UsageEvents`): "More stops" is now opening a farther place, by mode
           group; search is opening From… or To… (it runs as you type, with no submit).*
-    - [ ] **Check the stored opt-in before Firebase starts**, not after: Firebase's init provider
+    - [x] **Check the stored opt-in before Firebase starts**, not after: Firebase's init provider
           starts the SDKs from their own persisted flags before `Application.onCreate`, while our
           consent load runs afterwards, off the main thread. Today that's safe by ordering (an SDK
           flag is switched on only after a stored yes, and off before a stored no), so an early
           upload rides the last recorded consent; it would not survive our consent prefs being
-          lost or corrupted on their own. The fix is manual Firebase init (drop the init
-          provider) once the stored choice is read.
+          lost or corrupted on their own. *Done without moving Firebase's start (maintainer,
+          2026-10-01: an opted-in start reports its crashes, at no cost to startup): the SDKs keep
+          starting from their own flag, and a stored choice lost on its own is read back from two marks
+          kept apart from it (`FileConsentMark`: a no, set first on a withdrawal and outranking it; a
+          yes, set once an opt-in is stored), never from the SDKs' own flags. Left as it was: a no
+          whose SDK switch-off threw or was cut short still collects at the next start until the load
+          switches it off, as before; and one whose no mark can't be created or moved onto, and whose no can't
+          be stored, is kept only once the SDKs are off: a kill before then keeps the yes it withdrew.*
     - [x] **Lines logged before the stored opt-in loads never reach Crashlytics** (Codex on
           #407). `CrashlyticsLogSink` drops a line while consent reads "not opted in", and the
           sink isn't even registered until `installTelemetry`, so for an opted-in user the first
