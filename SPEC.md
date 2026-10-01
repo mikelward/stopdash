@@ -1495,7 +1495,7 @@ them there:
   rider says so (maintainer, 2026-09-28): **Next** (with **Back** beside it, End trip set apart at
   the other end), or a tap on any step in the list, puts them at that step now, as if they'd just
   got there. A walk is one step and a ride two (maintainer, 2026-09-29): boarding it (its line's row)
-  and **getting off it** ("Get off at …", a row of its own under it), so the rider can say they're on
+  and **getting off it** ("Ride to …", a row of its own under it, said as a continuous action, as "Walk to …" is; maintainer, 2026-10-01), so the rider can say they're on
   before they say they're off. At a boarding step, a walk's time runs from then and a ride's train is
   picked at once from then; at a getting-off step they're on board the train followed (the next they
   could catch, as the trip assumes, or with none yet one at the platform when they said so, due within
@@ -1551,9 +1551,9 @@ them there:
   the platform underground looks the same, so until they're **seen on board** — by location (at a
   later stop of the ride, or well on along it, as *sees a rider already on their way* below; the
   checks carry on after the train leaves, within the same ten minutes of the wait) or by their word
-  (Next, or a tap on "Get off at …") — the step stays the ride's: **"Take the train to …"** (by its
+  (Next, or a tap on "Ride to …") — the step stays the ride's: **"Take the train to …"** (by its
   mode, as "Finding your bus…" is), its board of departures still under it. Seen on board, the step
-  becomes "Get off at …" with the stops left and the board goes. "Get off soon" is still said on the
+  becomes "Ride to …" with the stops left and the board goes. "Get off soon" is still said on the
   train followed, and a stop or two out the step says so, seen or not: a rider underground the whole
   way would otherwise never be told. TfL predicts only about half an hour ahead, so a stop further on is
   **not yet predicted, not passed**: while the train keeps to the leg's planned stops, the stops
@@ -1586,7 +1586,10 @@ them there:
 - **Time left on the ride** beside its stops (maintainer, 2026-09-29): "6 stops (~6 min) · next …",
   counted to when the train followed is due where they get off, as the boards count a time; none while
   that stop is beyond TfL's predictions, as no time is claimed there.
-- **Get off soon**, from **one stop, or two minutes, out**, said once per leg.
+- **Get off soon**, from **one stop, or two minutes, out**, said once per leg, titled "Get off at …": once the stop is
+  next, the next step on the trip's card, the main view's card and the ongoing notification says so too,
+  while the step's own row keeps "Ride to …" (maintainer, 2026-10-01). An answer too old to stand
+  behind goes back to "Ride to …": the stop being next is no longer known.
 - **Time to board** (maintainer, 2026-09-27), from **two minutes before the train followed is due**
   at the boarding stop, while the rider waits for it: heard once for each train, so the next one is said
   for in its time when they're left behind by the first. It names the ride ("Board Jubilee at Bond
@@ -1726,7 +1729,7 @@ they get off, they've done the ride, whichever train took them: the trip moves o
 as when a rider on a train is seen at their station. A train of a line the cards don't offer
 (another mode's, one not running, one the rider avoids) isn't followed. With none found they're
 **on board all the same** (maintainer, 2026-10-01: seen at the next stop, they're on): the step
-becomes "Get off at …", the stops left counted on the plan's path from where they were seen, and no
+becomes "Ride to …", the stops left counted on the plan's path from where they were seen, and no
 time claimed. Later fixes move that on, never back: each refresh takes one precise fix for the ride's
 planned time from then and five minutes more for a slow train, then none (battery). A train is only
 ever matched against a fresh fix, never against where they were last seen (maintainer, 2026-10-01): that

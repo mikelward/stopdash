@@ -430,7 +430,14 @@ internal fun nextStepText(progress: TripProgress?, now: Instant, current: Boolea
 internal fun nextStepText(resources: Resources, progress: TripProgress?, now: Instant, current: Boolean = true): Pair<String, String> {
     // A train's time or stops from an answer too old to stand behind ([current]): the step stays,
     // its details wait for the next answer.
-    if (fromTfl(progress) && !current) return nextStepText(resources, progress, now).first to resources.getString(R.string.on_the_way_updating)
+    // Nor "Get off at": the stop being next is what that answer said, and it no longer stands, so the
+    // step is the ride until the next one says (Codex, PR #456).
+    // Seen on board or not: once told to get off, it doesn't go back to boarding.
+    if (fromTfl(progress) && !current) {
+        val title = (progress as? TripProgress.Riding)?.takeIf { it.getOffSoon }?.let { resources.getString(R.string.on_the_way_ride_to, it.leg.toName) }
+            ?: nextStepText(resources, progress, now).first
+        return title to resources.getString(R.string.on_the_way_updating)
+    }
     return when (progress) {
         // The line of the train followed, which can be another of the ride's lines than the Planner's.
         is TripProgress.Waiting -> resources.getString(R.string.on_the_way_board, progress.lineName, progress.leg.fromName) to
@@ -442,7 +449,9 @@ internal fun nextStepText(resources: Resources, progress: TripProgress?, now: In
         // location or their word says they're on. A stop or two from getting off, it says so all the same.
         is TripProgress.Riding if !progress.seen && !progress.getOffSoon ->
             resources.getString(Vehicle.of(progress.leg).take, progress.leg.toName) to ""
-        is TripProgress.Riding -> resources.getString(R.string.on_the_way_get_off, progress.leg.toName) to
+        // "Ride to" for the ride, "Get off at" once the stop is next, a moment to act on, as the
+        // get-off-soon alert says; the step's own row stays "Ride to" (maintainer, 2026-10-01).
+        is TripProgress.Riding -> resources.getString(if (progress.getOffSoon) R.string.get_off_soon_title else R.string.on_the_way_ride_to, progress.leg.toName) to
             // The time left on the ride, where the stop is predicted (maintainer, 2026-09-29): counted as
             // the boards count, never estimated from the plan beyond TfL's predictions.
             when (val left = progress.stopsLeft) {
@@ -570,7 +579,7 @@ private fun DisruptionCard(signal: RouteDisruption.Signal, leg: TripLeg?) {
 private fun GetOffLine(leg: TripLeg, rides: List<TripLeg>, current: Boolean, done: Boolean, onTap: (() -> Unit)? = null) {
     StepLine(
         slot = { Box { rides.forEach { LinePill(it.lineName, it.lineId, it.mode, Modifier.alpha(0f).clearAndSetSemantics {}) } } },
-        text = stringResource(R.string.on_the_way_get_off, leg.toName),
+        text = stringResource(R.string.on_the_way_ride_to, leg.toName),
         current = current,
         color = stepColor(done),
         onTap = onTap,

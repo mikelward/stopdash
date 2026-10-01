@@ -1090,7 +1090,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               followed while the app is in the foreground.
         - [ ] Picking another train by hand ("I'm on this one"), until location can see it.
         - [x] **A ride is two steps, boarding it and getting off it** (maintainer, 2026-09-29): Next
-              from boarding says the rider is on the train followed ("Get off at …" its own row).
+              from boarding says the rider is on the train followed ("Ride to …" its own row).
           - [x] **On board by the rider's word, with the train followed still minutes away**: the
                 train they're on is more likely the one at the platform than the one followed, but
                 the trip kept the one followed (the next it thought they could catch). A followed
