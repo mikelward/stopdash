@@ -257,5 +257,60 @@ class AlertStopsTest {
         assertEquals(emptySet<String>(), mentioned(null, "Bank"))
         assertEquals(emptySet<String>(), mentioned("  ", "Bank"))
         assertEquals(emptySet<String>(), AlertStops.mentioned("Bank", emptyList()))
+        assertEquals(emptySet<String>(), AlertStops.affected(null, stops("Bank", "Monument")))
+    }
+
+    // The stations [affected] marks on a stop list in route order, by name, in that order.
+    private fun affected(text: String?, vararg names: String) =
+        AlertStops.affected(text, stops(*names)).map { id -> names[id.removePrefix("S").toInt()] }
+
+    private val northbound = arrayOf("Borough", "London Bridge", "Bank", "Moorgate", "Old Street", "Angel")
+
+    @Test
+    fun `a stretch between two named stations marks the stations between them too`() {
+        val text = "Diverted between London Bridge and Old Street due to roadworks."
+        assertEquals(listOf("London Bridge", "Bank", "Moorgate", "Old Street"), affected(text, *northbound))
+        // The names alone are still what the alert names, for beside its chip.
+        assertEquals(setOf("London Bridge", "Old Street"), mentioned(text, *northbound))
+        // Either way round, and written "X to Y".
+        assertEquals(
+            listOf("London Bridge", "Bank", "Moorgate", "Old Street"),
+            affected("No service between Old Street and London Bridge.", *northbound),
+        )
+        assertEquals(listOf("Bank", "Moorgate", "Old Street"), affected("Diversion Old Street to Bank", *northbound))
+    }
+
+    @Test
+    fun `every stretch the alert gives is marked, whatever the sentence says of it`() {
+        val stretch = listOf("London Bridge", "Bank", "Moorgate", "Old Street")
+        // Not told apart from prose (maintainer, 2026-10-01): a reason, a negation, a status after a
+        // colon or in the same sentence, all mark the stretch alike (Codex on #437).
+        assertEquals(stretch, affected("No service between London Bridge and Old Street due to an operational issue.", *northbound))
+        assertEquals(stretch, affected("Trains are not running between London Bridge and Old Street.", *northbound))
+        assertEquals(stretch, affected("Trains are not expected to run between London Bridge and Old Street.", *northbound))
+        assertEquals(stretch, affected("London Bridge to Old Street: good service", *northbound))
+        assertEquals(
+            stretch,
+            affected("No service between London Bridge and Old Street, good service on the rest of the line.", *northbound),
+        )
+        // Both stretches of a sentence, the one running too.
+        assertEquals(
+            northbound.toList(),
+            affected("Good service between Borough and Bank but no service between Bank and Angel.", *northbound),
+        )
+        assertEquals(
+            listOf("Borough", "London Bridge", "Bank", "Moorgate", "Old Street", "Angel"),
+            affected("No service between Borough and Moorgate. Trains are running between Moorgate and Angel only.", *northbound),
+        )
+    }
+
+    @Test
+    fun `named stations with no stretch between them, or an end off the page, stay as named`() {
+        assertEquals(
+            listOf("London Bridge", "Old Street"),
+            affected("Lifts out of order at London Bridge and Old Street.", *northbound),
+        )
+        // Euston isn't on this train's list, so what lies between it and Bank isn't known.
+        assertEquals(listOf("Bank"), affected("No service between Euston and Bank.", *northbound))
     }
 }

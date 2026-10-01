@@ -39,6 +39,44 @@ object AlertStops {
         }.mapTo(LinkedHashSet(), RouteStop::id)
     }
 
+    /**
+     * [mentioned], and every station between two of them where the alert gives the stretch it
+     * touches — "between Moorgate and Monument", "Moorgate to Monument" — with [stops] in route order,
+     * as a train's stop list is: a station between the named ends is in the stretch too, though the
+     * alert doesn't name it. Every stretch the alert gives, whatever the sentence says of it
+     * (maintainer, 2026-10-01): telling a stretch that still runs from one that doesn't is open-ended
+     * prose, and marking one too many costs a glance, as the naming does. Ends that aren't both on
+     * the page give no stretch, since what lies between them off the page isn't known.
+     */
+    fun affected(text: String?, stops: List<RouteStop>): Set<String> {
+        val named = mentioned(text, stops)
+        if (text == null || named.size < 2) return named
+        val haystack = normalize(text).replace(CITY_LINES, "CITYLINE")
+        val ends = stops.withIndex().filter { (_, stop) -> stop.id in named }
+        val marked = HashSet(named)
+        for ((i, from) in ends) {
+            for ((j, to) in ends) {
+                if (j > i && stretch(haystack, names(from.name), names(to.name))) {
+                    stops.subList(i, j + 1).mapTo(marked) { it.id }
+                }
+            }
+        }
+        return stops.mapNotNullTo(LinkedHashSet()) { stop -> stop.id.takeIf { it in marked } }
+    }
+
+    // Whether [haystack] gives a stretch from one of [a]'s names to one of [b]'s, either way round.
+    private fun stretch(haystack: String, a: Set<String>, b: Set<String>): Boolean {
+        val first = a.joinToString("|") { place(it).pattern }
+        val second = b.joinToString("|") { place(it).pattern }
+        val patterns = listOf(first to second, second to first).flatMap { (x, y) ->
+            listOf(
+                Regex("""\bbetween\s+(?:$x)\s+and\s+(?:$y)""", RegexOption.IGNORE_CASE),
+                Regex("""(?:$x)\s+to\s+(?:$y)""", RegexOption.IGNORE_CASE),
+            )
+        }
+        return patterns.any { it.containsMatchIn(haystack) }
+    }
+
     // The name as listed and as a rider would write it (no "Underground Station", no line
     // parenthetical), each folded the same way as the alert text. A bus stop is listed with its cross
     // street ("Camomile Street / Bishopsgate") where an alert names only the stop's own part, so the
@@ -124,6 +162,7 @@ object AlertStops {
     }
 
     private val CLAUSE_ENDS = charArrayOf('.', '?', '!', ':', ';')
+
     private val AND = Regex("""\band\b""")
 
     // A word straight after a name that makes it a line, a branch or a holiday rather than a place.
