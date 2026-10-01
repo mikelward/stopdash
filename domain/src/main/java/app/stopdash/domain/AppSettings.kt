@@ -129,6 +129,12 @@ interface AppSettings {
     /** Stores the trip-modes choice. */
     suspend fun setTripModes(modes: TripModes) {}
 
+    /** The lines a trip avoids ([AvoidedLines]), none until the rider avoids one. */
+    fun avoidedLines(): Flow<Set<String>> = flowOf(emptySet())
+
+    /** Stores the avoided lines. */
+    suspend fun setAvoidedLines(lines: Set<String>) {}
+
     companion object {
         /** A store that persists nothing and always reads the defaults — the default for tests
          *  and a build with no wired DataStore, so the app runs identically minus persistence. */

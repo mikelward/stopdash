@@ -48,6 +48,7 @@ import app.stopdash.R
 import app.stopdash.domain.DEFAULT_FONT_SCALE
 import app.stopdash.domain.DistanceUnits
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.WalkingSpeed
@@ -132,6 +133,13 @@ fun SettingsScreen(
     // list says so here, as the other settings do, until dismissed.
     hiddenWriteFailed: Boolean = false,
     onDismissHiddenError: () -> Unit = {},
+    // The lines trips avoid ([AvoidedLines]; SPEC *Trips with a change → Avoiding a line*), listed
+    // while any are, each with a Remove that stops avoiding just that one ([onStopAvoiding]). A
+    // Remove that didn't save is said here until dismissed, as a Show is.
+    avoidedLines: Set<String> = emptySet(),
+    onStopAvoiding: (String) -> Unit = {},
+    avoidedWriteFailed: Boolean = false,
+    onDismissAvoidedError: () -> Unit = {},
 ) {
     // Counts the overflow's openings: each re-masks both keys ([ApiKeyRow]) before "Send bug report"
     // can be picked, since the report's screenshot is of this screen and a revealed key would be
@@ -190,6 +198,15 @@ fun SettingsScreen(
                     SettingErrorRow(
                         text = stringResource(R.string.hidden_modes_write_failed),
                         onDismiss = onDismissHiddenError,
+                    )
+                }
+                // The lines trips avoid, under what's hidden: like it, only while there are any.
+                val avoided = remember(avoidedLines) { AvoidedLines.labeled(avoidedLines) }
+                if (avoided.isNotEmpty()) AvoidedRow(avoided, onStopAvoiding)
+                if (avoidedWriteFailed) {
+                    SettingErrorRow(
+                        text = stringResource(R.string.hidden_modes_write_failed),
+                        onDismiss = onDismissAvoidedError,
                     )
                 }
                 val fontSize = LocalFontSizeState.current
@@ -498,6 +515,34 @@ private fun HiddenRow(items: List<ModeGroups.Group>, onShow: (ModeGroups.Group) 
                     onClick = { onShow(item) },
                     modifier = Modifier.semantics { contentDescription = showDescription },
                 ) { Text(stringResource(R.string.settings_hidden_show)) }
+            }
+        }
+    }
+}
+
+/**
+ * The Avoided lines list (SPEC *Trips with a change → Avoiding a line*): a title and what avoiding does,
+ * over one row per line ([lines], each its entry and label, from [AvoidedLines.labeled]) with a Remove
+ * that stops avoiding just that one ([onRemove]), as its chip atop a trip does.
+ */
+@Composable
+private fun AvoidedRow(lines: List<Pair<String, String>>, onRemove: (String) -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).testTag("avoidedList")) {
+        Text(text = stringResource(R.string.settings_avoided_title), style = MaterialTheme.typography.bodyLarge)
+        Text(
+            text = stringResource(R.string.settings_avoided_summary),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        for ((entry, label) in lines) {
+            val removeDescription = stringResource(R.string.trip_stop_avoiding, label)
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(text = label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Spacer(modifier = Modifier.width(16.dp))
+                TextButton(
+                    onClick = { onRemove(entry) },
+                    modifier = Modifier.semantics { contentDescription = removeDescription },
+                ) { Text(stringResource(R.string.settings_avoided_remove)) }
             }
         }
     }

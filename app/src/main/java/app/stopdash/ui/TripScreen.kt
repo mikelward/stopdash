@@ -86,6 +86,7 @@ import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.AlertStart
+import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.OnTheWay
@@ -679,6 +680,15 @@ internal fun TripScreen(
     // The stands buses board at in place of the one the Planner named ([placedStands]), for the trip
     // to fetch too ([TripViewModel.boardAt]).
     onPlacedStands: (Set<PlacedStand>) -> Unit = {},
+    // The lines the rider avoids ([AvoidedLines]; SPEC *Trips with a change → Avoiding a line*): routes
+    // riding one are left out, each a chip atop the routes that a tap stops avoiding
+    // ([onStopAvoiding]); a card's long press offers to avoid each line it rides ([onAvoidLine]).
+    // Null offers neither. A change that didn't save is said once, then acknowledged.
+    avoidedLines: Set<String> = emptySet(),
+    onAvoidLine: ((String) -> Unit)? = null,
+    onStopAvoiding: ((String) -> Unit)? = null,
+    avoidedLinesWriteFailed: Boolean = false,
+    onAvoidedLinesWriteFailureShown: () -> Unit = {},
 ) {
     // Planned work whose day has come shows as under way, however long ago it was fetched (Codex,
     // PR #337): a kept status outlives the day it was sorted on.
@@ -714,6 +724,7 @@ internal fun TripScreen(
             onPullRefresh,
             onShownStops,
             onPlacedStands,
+            avoided = TripAvoided(avoidedLines, onAvoidLine, onStopAvoiding, avoidedLinesWriteFailed, onAvoidedLinesWriteFailureShown),
         )
     }
 }
@@ -728,6 +739,15 @@ internal class TripEnds(
     val toName: String,
     val onChangeFrom: () -> Unit,
     val onChangeTo: () -> Unit,
+)
+
+/** The lines a trip avoids, and what a long press or a chip does with them (see [TripScreen]). */
+private class TripAvoided(
+    val lines: Set<String> = emptySet(),
+    val onAvoid: ((String) -> Unit)? = null,
+    val onStopAvoiding: ((String) -> Unit)? = null,
+    val writeFailed: Boolean = false,
+    val onWriteFailureShown: () -> Unit = {},
 )
 
 /** The shared alert dismissals a trip's line page works with (see [TripScreen]). */
@@ -787,7 +807,11 @@ private fun TripContent(
     onPullRefresh: (() -> Unit)? = null,
     onShownStops: (Set<String>) -> Unit = {},
     onPlacedStands: (Set<PlacedStand>) -> Unit = {},
+    avoided: TripAvoided = TripAvoided(),
 ) {
+    // What the routes leave out: the hidden modes and lines, and the lines avoided ([AvoidedLines]).
+    // Only the hidden ones are the "hidden" banner's: an avoided line is said by its own chip.
+    val excluded = remember(hiddenModes, avoided.lines) { AvoidedLines.excluded(hiddenModes, avoided.lines) }
     // The open route, kept twice: by the trip when it's given one ([openRoute]), which outlasts the
     // screen leaving composition (an overlay) and, saved by the trip, the process too; and saved with
     // the screen, for a trip that holds none. Read from the trip first; set in both.
@@ -807,8 +831,8 @@ private fun TripContent(
     // the last settled plan's lines stand, so a passing top six never starts loads a later answer
     // would make pointless.
     val settledLines = remember { arrayOf(emptyList<String>()) }
-    val lineIds = remember(planned.routes, hiddenModes, planned.planning, planned.live, planned.areaPoles, openRef) {
-        (sequenceLineIds(planned, hiddenModes, settledLines[0], openRef?.keys.orEmpty()) + listOfNotNull(openRef?.ride?.lineId))
+    val lineIds = remember(planned.routes, excluded, planned.planning, planned.live, planned.areaPoles, openRef) {
+        (sequenceLineIds(planned, excluded, settledLines[0], openRef?.keys.orEmpty()) + listOfNotNull(openRef?.ride?.lineId))
             .distinct().also { settledLines[0] = it }
     }
     val loads = rememberLineLoads(lineIds, now)
@@ -819,15 +843,15 @@ private fun TripContent(
     val poled = remember(planned, sequences) { onPoles(planned, sequences) }
     // A bus station's stand a bus boards at in place of the Planner's is placed only once the trip
     // has fetched it ([onPoles]), so it's handed to the trip to fetch ([placedStands]).
-    val stands = remember(planned, sequences, hiddenModes, openRef) {
-        placedStands(TripViewModel.bestOf(planned.shownRoutes(hiddenModes).orEmpty(), openRef?.keys.orEmpty()), sequences)
+    val stands = remember(planned, sequences, excluded, openRef) {
+        placedStands(TripViewModel.bestOf(planned.shownRoutes(excluded).orEmpty(), openRef?.keys.orEmpty()), sequences)
     }
     LaunchedEffect(stands) { onPlacedStands(stands) }
     // The open route as the plan offers it now ([OpenRoute.routeIn]): its walks at the current pace,
     // and a train through a change whether or not one is predicted. Null while no plan offers it.
-    val opened = remember(poled, hiddenModes, openRef) { openRef?.routeIn(poled.shownRoutes(hiddenModes).orEmpty()) }
+    val opened = remember(poled, excluded, openRef) { openRef?.routeIn(poled.shownRoutes(excluded).orEmpty()) }
     val openKey = opened?.let(::routeKey)
-    val state = remember(poled, sequences, hiddenModes, opened) { withThroughRoutes(poled, sequences, hiddenModes, opened) }
+    val state = remember(poled, sequences, excluded, opened) { withThroughRoutes(poled, sequences, excluded, opened) }
     // Every leg the Planner planned: a leg it didn't (a train through a change) needs a live train.
     val plannedLegs = remember(poled) { poled.routes.orEmpty().flatMapTo(HashSet()) { it.legs } }
     val originUnconfirmed = relocating || locationBanner != null
@@ -842,9 +866,9 @@ private fun TripContent(
         )
     }
     // Each ride's lines ([rideLines]): worked out once per refresh and route load, not on every tick.
-    val rideLines = remember(state, sequences, hiddenModes) { rideLines(state.routes.orEmpty(), state, sequences, hiddenModes) }
-    val estimates = remember(state, now, access, sequences, hiddenModes, originUnconfirmed, rideLines, plannedLegs, openKey) {
-        tripEstimates(state, now, access, sequences, hiddenModes, originUnconfirmed, rideLines, keep = openKey, planned = plannedLegs)
+    val rideLines = remember(state, sequences, excluded) { rideLines(state.routes.orEmpty(), state, sequences, excluded) }
+    val estimates = remember(state, now, access, sequences, excluded, originUnconfirmed, rideLines, plannedLegs, openKey) {
+        tripEstimates(state, now, access, sequences, excluded, originUnconfirmed, rideLines, keep = openKey, planned = plannedLegs)
             // The open route stays, its arrival withheld while its train through a change isn't predicted.
             ?.filter { routeKey(it.route) == openKey || TripTiming.withoutUnvouchedLegs(listOf(it), plannedLegs).isNotEmpty() }
     }
@@ -868,8 +892,8 @@ private fun TripContent(
     // speed, a re-plan), or its mode hidden — it's closed for good, so it never reopens unbidden
     // should it come back. A plan still landing ([TripViewModel.State.planning],
     // or no routes yet) keeps it, since the route may be in the part still to come.
-    LaunchedEffect(openRef, poled.routes, poled.planning, hiddenModes) {
-        if (openRef != null && poled.routes != null && !poled.planning && openRouteGone(poled, hiddenModes, openRef)) setOpen(null)
+    LaunchedEffect(openRef, poled.routes, poled.planning, excluded) {
+        if (openRef != null && poled.routes != null && !poled.planning && openRouteGone(poled, excluded, openRef)) setOpen(null)
     }
     BackHandler { if (open != null) setOpen(null) else onBack() }
     // A leg's row tapped on an open route: its line's page, as a row on the main screen opens it,
@@ -1006,6 +1030,14 @@ private fun TripContent(
             snackbarHostState.showSnackbar(stepFreeWriteFailedMessage)
         }
     }
+    // A line avoided here, or no longer, that didn't save, likewise.
+    val avoidedWriteFailedMessage = stringResource(R.string.hidden_modes_write_failed)
+    LaunchedEffect(avoided.writeFailed) {
+        if (avoided.writeFailed) {
+            avoided.onWriteFailureShown()
+            snackbarHostState.showSnackbar(avoidedWriteFailedMessage)
+        }
+    }
     // A mode turned on or off here that didn't save, likewise.
     val tripModesWriteFailedMessage = stringResource(R.string.trip_modes_write_failed)
     LaunchedEffect(tripModesWriteFailed) {
@@ -1115,6 +1147,8 @@ private fun TripContent(
             if (onTripModesChange != null) {
                 TripModeChips(tripModes, onTripModesChange, enabled = planOptionsLoaded)
             }
+            // The lines avoided, under the modes: each a chip a tap stops avoiding.
+            avoided.onStopAvoiding?.let { AvoidedLineChips(avoided.lines, it) }
             TripBanners(shown, rideLines, state, check, locationBanner, onRelocate, hiddenModes, onShowAllModes)
             Box(Modifier.fillMaxSize()) {
                 when {
@@ -1124,8 +1158,9 @@ private fun TripContent(
                         val routes = @Composable {
                             RouteList(
                                 cards, rideLines, state, now, access, sequences, onRetry, alerts.dismissed,
-                                onOpen = { setOpen(openRouteOf(it.route, poled, sequences, hiddenModes)) },
+                                onOpen = { setOpen(openRouteOf(it.route, poled, sequences, excluded)) },
                                 onHideMode = hideMode,
+                                onAvoidLine = avoided.onAvoid,
                                 loading = loads.loading,
                             )
                         }
@@ -1257,6 +1292,8 @@ private fun RouteList(
     onHideMode: ((String) -> Unit)?,
     // The lines whose route data is loading ([LineLoads.loading]), a retry included.
     loading: Set<String> = emptySet(),
+    // A card's long press also offers to avoid each line it rides ([AvoidedLines]); null offers not.
+    onAvoidLine: ((String) -> Unit)? = null,
 ) {
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -1355,6 +1392,7 @@ private fun RouteList(
                             modes = modes,
                             onHideMode = onHideMode,
                             lines = cardLines(card, rideLines),
+                            onAvoidLine = onAvoidLine,
                         )
                     }
                 }

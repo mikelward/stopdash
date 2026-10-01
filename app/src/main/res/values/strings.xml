@@ -116,6 +116,10 @@
          (maintainer, 2026-09-27). The argument names the line as it reads alone ("Northern line",
          "134"). -->
     <string name="hide_line">Hide %1$s</string>
+    <!-- A trip route card's long-press item leaving this line out of every trip until the rider
+         stops avoiding it (maintainer, 2026-10-01). The argument names the line as it reads alone
+         ("Northern line", "134"). -->
+    <string name="avoid_line">Avoid %1$s</string>
     <!-- Screen-reader label for the long press that opens that menu. -->
     <string name="more_actions">Options</string>
     <!-- One-line banner over the near-me list while modes are hidden; the argument lists them
@@ -239,6 +243,10 @@
     <string name="trip_label_fastest_simplest">Fastest · Simplest</string>
     <string name="trip_label_other">Other</string>
     <string name="trip_no_routes">No routes found</string>
+    <!-- Atop a trip's routes, before a chip per line the rider avoids (maintainer, 2026-10-01). -->
+    <string name="trip_avoiding">Avoiding</string>
+    <!-- Screen-reader label for one of those chips, which a tap stops avoiding; the argument names the line. -->
+    <string name="trip_stop_avoiding">Stop avoiding %1$s</string>
     <!-- A route's door-to-door time and arrival, from live trains plus the Planner's run times, so
          "about" (~). %1$d is minutes, %2$s a clock time. -->
     <string name="trip_duration_arrival">%1$d min · ~%2$s</string>
@@ -330,6 +338,11 @@
     <string name="settings_hidden_show">Show</string>
     <!-- Screen-reader label for one item's Show action ("Show Northern line"). -->
     <string name="settings_hidden_show_description">Show %1$s</string>
+    <!-- Settings' list of the lines trips avoid (maintainer, 2026-10-01), shown while any are: its
+         title, what avoiding does, and each line's button that stops avoiding it. -->
+    <string name="settings_avoided_title">Avoided lines</string>
+    <string name="settings_avoided_summary">Left out of trips</string>
+    <string name="settings_avoided_remove">Remove</string>
     <!-- The favorite-places editor screen (SPEC D9): a list of saved places with add/edit/delete. -->
     <string name="favorite_places_title">Favorite places</string>
     <!-- Shown briefly while the saved places are read from storage. -->

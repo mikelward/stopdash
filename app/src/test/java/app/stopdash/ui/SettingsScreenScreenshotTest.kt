@@ -23,6 +23,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import app.stopdash.domain.DistanceUnits
+import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.ModeGroups
@@ -762,6 +763,65 @@ class SettingsScreenScreenshotTest {
         composeRule.waitForIdle()
         val message = composeRule.activity.getString(app.stopdash.R.string.hidden_modes_write_failed)
         composeRule.onNodeWithText(message).assertIsDisplayed()
+        composeRule.onNodeWithText("Dismiss").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(message).assertDoesNotExist()
+    }
+
+    @Test
+    fun settings_avoided_lines() {
+        val northern = AvoidedLines.key("northern", "Northern line")
+        val central = AvoidedLines.key("central", "Central line")
+        var avoided by mutableStateOf(linkedSetOf(northern, central) as Set<String>)
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(
+                    liveWidgetRefresh = false,
+                    onLiveWidgetRefreshChange = {},
+                    onBack = {},
+                    avoidedLines = avoided,
+                    onStopAvoiding = { avoided = avoided - it },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        // Each line trips avoid, in the order avoided, with its own Remove.
+        composeRule.onNodeWithText("Avoided lines").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Left out of trips").assertIsDisplayed()
+        composeRule.onNodeWithText("Northern line").assertIsDisplayed()
+        composeRule.onNodeWithText("Central line").assertIsDisplayed()
+        captureSnapshot("settings-avoided.png")
+
+        // Remove stops avoiding just that one.
+        composeRule.onNodeWithContentDescription("Stop avoiding Northern line").performClick()
+        composeRule.waitForIdle()
+        assertEquals(setOf(central), avoided)
+        composeRule.onNodeWithText("Northern line").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Stop avoiding Central line").performClick()
+        composeRule.waitForIdle()
+        // None avoided: no list at all.
+        composeRule.onNodeWithTag("avoidedList").assertDoesNotExist()
+    }
+
+    @Test
+    fun aRemoveThatDidNotSave_isSaidInSettings_evenWithTheListGone() {
+        var failed by mutableStateOf(true)
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(
+                    liveWidgetRefresh = false,
+                    onLiveWidgetRefreshChange = {},
+                    onBack = {},
+                    avoidedLines = emptySet(),
+                    avoidedWriteFailed = failed,
+                    onDismissAvoidedError = { failed = false },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        val message = composeRule.activity.getString(app.stopdash.R.string.hidden_modes_write_failed)
+        composeRule.onNodeWithText(message).performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Dismiss").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText(message).assertDoesNotExist()

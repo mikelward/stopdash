@@ -1010,8 +1010,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             nearest stop: from a bus stop the Planner only offered a bus to the Tube, never the walk to
             it. Re-plans 150 m on from where it was planned. Needs a device check that the walk-to-station
             route now appears and its first walk reads right on the card and on the way.
-      - [ ] **From chip on the To… picker and ahead of the favorite chips** (maintainer, 2026-09-28),
-            labeled "Here" by default: next PR.
+      - [x] **From chip on the To… picker and ahead of the favorite chips** (maintainer, 2026-09-28),
+            labeled "Here" by default: built and replaced the same day by the From-over-To bar (SPEC
+            *Where a trip starts*); "Here" is the first chip of the *From…* search instead.
       - [x] **Walking speed** (maintainer, 2026-09-28): Slow / Medium / Fast, in Settings and atop a
             trip's routes or an opened route, sent as the Planner's `walkingSpeed`. The device check found every walk
             unchanged: the Planner ignores the speed unless the request names its modes, which it now
@@ -1023,12 +1024,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [x] **Mode toggles** at the top of a trip, remembered across trips (the Planner's `mode=`):
             chips under the step-free dropdown, one per mode group the list hides by (SPEC *Modes*);
             the design is autopilot's, see *Decisions needing review*.
-      - [ ] **Avoid a line**: request `includeAlternativeRoutes` and drop routes using it, since
-            the Planner has no line exclusion (each returned route names its lines, so filtering
-            on the phone is enough). UI to settle; the maintainer leans to the first:
-            - a long press on a route offering "Avoid <line>" for each of its lines;
-            - an avoided-lines chip at the top of the trip;
-            - a setting listing lines to avoid.
+      - [x] **Avoid a line** (maintainer, 2026-10-01: sticky, a chip atop the trip and in Settings): a
+            route card's long press offers "Avoid ‹line›" for each line it rides; avoided lines are kept
+            across trips (`AvoidedLinesSetting`), each a chip atop the trip that a tap clears and a row in
+            Settings with Remove, and a route riding one is dropped on the phone as a hidden line's is
+            (`AvoidedLines.excluded`). `includeAlternativeRoutes` returned the same routes in testing, so
+            it isn't asked for.
       - [x] **Fastest / Simplest headers** (maintainer, 2026-09-30): a bold header over the first
             card ("Fastest") and over the one riding fewest ("Simplest"), or "Fastest · Simplest" on
             one card that is both (`routeLabels`, `:domain`). The rules are autopilot's; see

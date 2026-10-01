@@ -1,6 +1,7 @@
 package app.stopdash.data
 
 import app.stopdash.domain.AppSettings
+import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.DistanceUnits
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.StepFree
@@ -441,6 +442,40 @@ object TripModesSetting {
     val writeFailed: StateFlow<Boolean> get() = holder.writeFailed
 
     /** The screen has told the user a choice didn't save. */
+    fun writeFailureShown() = holder.writeFailureShown()
+}
+
+/**
+ * The lines a trip avoids ([AvoidedLines]; SPEC *Trips with a change → Avoiding a line*), held in memory
+ * for a trip to read before its first plan and persisted in order. Starts with none; a trip waits for
+ * [isLoaded] before planning, so a route on a line the rider avoids isn't shown first.
+ */
+object AvoidedLinesSetting {
+    private val holder = StoredSettingHolder(
+        CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        initial = emptySet<String>(),
+        read = AppSettings::avoidedLines,
+        write = { settings, lines -> settings.setAvoidedLines(lines) },
+        label = "avoided lines",
+    )
+
+    /** The avoided lines as a flow, for a trip's routes, its chips and Settings. */
+    val changes: StateFlow<Set<String>> get() = holder.changes
+
+    /** Begins reading the stored lines. Idempotent. */
+    fun warm(appSettings: AppSettings) = holder.warm(appSettings)
+
+    /** Whether the stored lines have been read, so a trip can hold until then. */
+    val isLoaded: StateFlow<Boolean> get() = holder.isLoaded
+
+    /** Avoid the line [entry] ([AvoidedLines.key]), or stop avoiding it: applied at once, persisted in order. */
+    fun setAvoided(entry: String, avoided: Boolean) =
+        holder.set(if (avoided) holder.current + entry else holder.current - entry)
+
+    /** True while the latest change failed to save (a later successful save clears it); the screen says so. */
+    val writeFailed: StateFlow<Boolean> get() = holder.writeFailed
+
+    /** The screen has told the user a change didn't save. */
     fun writeFailureShown() = holder.writeFailureShown()
 }
 

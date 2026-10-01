@@ -9,6 +9,7 @@ import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.dataStoreFile
 import app.stopdash.StopdashDebugLog
 import app.stopdash.domain.AppSettings
+import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.DEFAULT_FONT_SCALE
 import app.stopdash.domain.DistanceUnits
 import app.stopdash.domain.MaxWalk
@@ -152,6 +153,13 @@ class DataStoreAppSettings internal constructor(
         dataStore.updateData { (it ?: PersistedSettings()).copy(tripModesOff = modes.off) }
     }
 
+    override fun avoidedLines(): Flow<Set<String>> =
+        persisted().map { AvoidedLines.fromStored(it?.avoidedLines.orEmpty()) }
+
+    override suspend fun setAvoidedLines(lines: Set<String>) {
+        dataStore.updateData { (it ?: PersistedSettings()).copy(avoidedLines = lines) }
+    }
+
     // The shared read flow: DataStore's `data`, with a transient I/O read failure retried rather
     // than collapsed to a terminal default. A `catch`-and-emit would end the flow, leaving a
     // long-lived collector stuck at the default after storage recovered (Codex P2 on #56).
@@ -268,6 +276,8 @@ data class PersistedSettings(
     // The mode groups a trip doesn't ride, by [ModeGroups.Group.key]; empty rides everything, so a
     // group added later rides until turned off.
     val tripModesOff: Set<String> = emptySet(),
+    // The lines a trip avoids, each as [AvoidedLines.key]. Defaulted, so an older file avoids none.
+    val avoidedLines: Set<String> = emptySet(),
 )
 
 /**

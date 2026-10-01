@@ -7,12 +7,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -30,6 +34,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
+import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.StepFree
@@ -144,6 +149,48 @@ internal fun StepFreePicker(
         modifier = modifier,
         enabled = enabled,
     )
+}
+
+/**
+ * The lines a trip avoids, atop its routes (SPEC *Trips with a change → Avoiding a line*; maintainer,
+ * 2026-10-01): "Avoiding", then a chip per line by the name its long press offered it under, which a
+ * tap stops avoiding ([onStopAvoiding], the line's [AvoidedLines.key]). Sticky across trips, so the
+ * row says on every trip what's left out. Nothing shows while no line is avoided; the row scrolls
+ * sideways when the chips don't fit.
+ */
+@Composable
+internal fun AvoidedLineChips(
+    avoided: Set<String>,
+    onStopAvoiding: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val lines = remember(avoided) { AvoidedLines.labeled(avoided) }
+    if (lines.isEmpty()) return
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("avoidedLines")
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            stringResource(R.string.trip_avoiding),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        lines.forEach { (entry, label) ->
+            val description = stringResource(R.string.trip_stop_avoiding, label)
+            InputChip(
+                selected = false,
+                onClick = { onStopAvoiding(entry) },
+                label = { Text(label, maxLines = 1) },
+                trailingIcon = { Icon(Icons.Filled.Close, contentDescription = null, Modifier.size(InputChipDefaults.IconSize)) },
+                modifier = Modifier.semantics { contentDescription = description }.testTag("avoided-$entry"),
+            )
+        }
+    }
 }
 
 /**
