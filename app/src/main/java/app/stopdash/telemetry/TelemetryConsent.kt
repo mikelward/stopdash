@@ -90,6 +90,9 @@ object TelemetryConsent {
     /** Null until the stored choice is loaded, then the user's answer. */
     val state: StateFlow<Boolean?> get() = holder.state
 
+    /** Whether to put the question to the user: loaded, and never answered on this install. */
+    val unanswered: StateFlow<Boolean> get() = holder.unanswered
+
     /** Loads the stored choice and applies it to [gate] (null in a build without Firebase). Blocking. */
     fun load(store: ConsentStore, gate: TelemetryGate?) = holder.load(store, gate)
 
@@ -110,8 +113,9 @@ object TelemetryConsent {
  *   leaves the stored value and the SDKs' own persisted flag disagreeing, with the SDKs off.
  * - [load] trusts the stored choice only when the SDKs agree with it (or it's a pending opt-in).
  *   Any disagreement (a failed save, a kill between the two steps, a backup restored onto a fresh
- *   install) resolves to **off** and is stored as off: the user asks again, and nothing is
- *   collected they didn't agree to in this install.
+ *   install) resolves to **off**, and the stored yes is deleted: the user is asked again, and
+ *   nothing is collected they didn't agree to in this install. So is a yes the SDKs fail to take
+ *   up after a tap.
  */
 class TelemetryConsentHolder {
     private var store: ConsentStore? = null
@@ -121,6 +125,12 @@ class TelemetryConsentHolder {
     private val _state = MutableStateFlow<Boolean?>(null)
     val state: StateFlow<Boolean?> = _state.asStateFlow()
 
+    // True only once a load has read no stored choice at all, until the user gives one (either way):
+    // the home screen's invite (SPEC *Privacy*). False while loading, and after a load that couldn't
+    // read the store, where an answer couldn't be kept either.
+    private val _unanswered = MutableStateFlow(false)
+    val unanswered: StateFlow<Boolean> = _unanswered.asStateFlow()
+
     fun load(store: ConsentStore, gate: TelemetryGate?) {
         synchronized(lock) {
             this.store = store
@@ -128,14 +138,25 @@ class TelemetryConsentHolder {
             gate?.onOptInLost = ::optInLost
             // Fails closed: an unreadable store or a throwing SDK leaves collection off and the
             // switch usable (showing off), never collecting with no way to withdraw.
+            var neverAnswered = false
             val choice = try {
-                val stored = store.read() ?: false
+                val read = store.read()
+                neverAnswered = read == null
+                val stored = read ?: false
                 // A pending opt-in is a yes whose collection waits on a clean launch (TelemetryGate),
                 // so the SDKs being off then is agreement, not a half-done switch.
                 val consistent = gate == null || gate.collecting == stored || (stored && gate.pendingOptIn)
                 (stored && consistent).also { choice ->
-                    if (choice != stored && !store.save(choice)) {
-                        StopdashDebugLog.warning("telemetry: could not store the reset opt-in")
+                    if (choice != stored) {
+                        // A yes the SDKs never took up (a kill mid-change, a failed opt-out, a restore)
+                        // is reset to off, and the user asked again (SPEC *Privacy*): the stored choice
+                        // is deleted, so this install reads as never answered until they do answer,
+                        // and the invite puts the question (Codex, PR #447). Where it can't be deleted,
+                        // off is stored instead: still off, though the question then isn't put again.
+                        neverAnswered = true
+                        if (!store.forget() && !store.save(false)) {
+                            StopdashDebugLog.warning("telemetry: could not store the reset opt-in")
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -147,13 +168,14 @@ class TelemetryConsentHolder {
             } catch (e: Exception) {
                 StopdashDebugLog.warning("telemetry: applying consent failed: %s", e::class.simpleName)
                 if (choice) {
-                    // The full withdrawal, not just a switch-off: each failing step is logged, and the
-                    // stored yes is replaced (or deleted), so the next start can't read it back as on.
-                    withdraw()
+                    // The full rollback, not just a switch-off: each failing step is logged, and the
+                    // stored yes is deleted (or replaced), so the next start can't read it back as on.
+                    rollBackOptIn()
                     return
                 }
             }
             _state.value = choice
+            _unanswered.value = neverAnswered
         }
     }
 
@@ -171,17 +193,31 @@ class TelemetryConsentHolder {
     }
 
     // The gate couldn't record a pending opt-in, so the next start would read it as half-done:
-    // withdraw it now, visibly, rather than show a yes that isn't collecting and will be reset.
+    // roll it back now, visibly, rather than show a yes that isn't collecting and will be reset.
     private fun optInLost() {
         synchronized(lock) {
             StopdashDebugLog.warning("telemetry: pending opt-in could not be saved; switched off")
-            withdraw()
+            rollBackOptIn()
         }
+    }
+
+    /**
+     * Undoes a yes the SDKs couldn't take up, at a start or after a tap, and puts the question again
+     * (SPEC *Privacy*): the stored choice is deleted rather than kept as a no nobody gave, so the
+     * next start asks too (Codex, PR #447). Where it can't be deleted, off is stored: still off,
+     * though then only this run asks.
+     */
+    private fun rollBackOptIn() {
+        withdraw(keepAsNo = false)
+        _unanswered.value = true
     }
 
     fun set(enabled: Boolean) {
         synchronized(lock) {
             if (!enabled) {
+                // A no is an answer even where it can't be stored: not asked again this run, though
+                // one that wasn't stored reads as never answered next start.
+                _unanswered.value = false
                 withdraw()
                 return
             }
@@ -196,18 +232,19 @@ class TelemetryConsentHolder {
             }
             if (!saved) {
                 // Not durable, so not applied: the switch stays off rather than collect on a choice
-                // the next start can't see.
+                // the next start can't see, and a question it answered stays up, since it wasn't kept.
                 StopdashDebugLog.warning("telemetry: opt-in write failed; left off")
                 _state.value = false
                 return
             }
             // Published before applying, so a lost opt-in reported during apply has the last word.
             _state.value = true
+            _unanswered.value = false
             try {
                 gate?.apply(true)
             } catch (e: Exception) {
                 StopdashDebugLog.warning("telemetry: applying the opt-in failed: %s", e::class.simpleName)
-                withdraw()
+                rollBackOptIn()
             }
         }
     }
@@ -217,14 +254,18 @@ class TelemetryConsentHolder {
      * sink, which reads it at delivery, stops before the SDKs' reports are cleared and nothing
      * queued lands after the cleanup — then the SDKs, then the stored choice. A step that throws is
      * logged and the rest still run; an SDK left on is caught at the next start as a mismatch.
+     *
+     * With [keepAsNo] false (a yes rolled back, not a no given), the stored choice is deleted first,
+     * and off is stored only where it can't be.
      */
-    private fun withdraw() {
+    private fun withdraw(keepAsNo: Boolean = true) {
         _state.value = false
         try {
             gate?.apply(false)
         } catch (e: Exception) {
             StopdashDebugLog.warning("telemetry: switching the SDKs off failed: %s", e::class.simpleName)
         }
+        if (!keepAsNo && forgetChoice()) return
         val saved = try {
             store?.save(false) != false
         } catch (e: Exception) {
@@ -234,16 +275,18 @@ class TelemetryConsentHolder {
         if (saved) return
         // The stored yes must not outlive this: with a pending marker that also failed to clear,
         // the pair would read as an opt-in waiting to start. Deleting the choice leaves nothing to
-        // read but off.
-        val forgotten = try {
-            store?.forget() == true
-        } catch (e: Exception) {
-            StopdashDebugLog.warning("telemetry: forgetting the opt-in threw: %s", e::class.simpleName)
-            false
-        }
+        // read but off. (A rollback already tried that first.)
+        val forgotten = keepAsNo && forgetChoice()
         StopdashDebugLog.warning(
             if (forgotten) "telemetry: opt-out write failed; stored choice deleted instead"
             else "telemetry: opt-out write and delete failed; the SDKs are off",
         )
+    }
+
+    private fun forgetChoice(): Boolean = try {
+        store?.forget() == true
+    } catch (e: Exception) {
+        StopdashDebugLog.warning("telemetry: forgetting the opt-in threw: %s", e::class.simpleName)
+        false
     }
 }

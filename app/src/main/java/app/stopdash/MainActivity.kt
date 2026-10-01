@@ -1668,6 +1668,10 @@ class MainActivity : ComponentActivity() {
             // one is logged, and the tip returns next launch). Held for the process, not this
             // composition, which Settings or Licenses replaces.
             val journeyTipDismissed = journeyTipStored || JourneyTipSession.closed
+            // The telemetry question atop the near-me list, while this install has never answered it
+            // (SPEC *Privacy*): false until the stored choice is read, so it never flashes at someone
+            // who already did, and false again the moment either button is tapped.
+            val telemetryUnanswered by TelemetryConsent.unanswered.collectAsStateWithLifecycle()
             val starringAvailable by viewModel.starringAvailable.collectAsStateWithLifecycle()
             val starWriteFailed by viewModel.starWriteFailed.collectAsStateWithLifecycle()
             val dismissed by viewModel.dismissed.collectAsStateWithLifecycle()
@@ -1965,6 +1969,8 @@ class MainActivity : ComponentActivity() {
                     favoritePlaces = shownPlaces,
                     onRouteToPlace = onRouteToPlace,
                     onEditFavoritePlaces = onEditFavoritePlaces,
+                    // Stored as the Settings switch stores it, so the two never disagree.
+                    onTelemetryInviteAnswer = if (telemetryUnanswered) TelemetryConsent::set else null,
                     // Hiding filters the list at once; the hidden mode's stops stop being fetched
                     // from the next re-locate. Showing them again re-picks the set from the same
                     // fix, so they come back now (SPEC *Finding stops → Hiding a mode*).

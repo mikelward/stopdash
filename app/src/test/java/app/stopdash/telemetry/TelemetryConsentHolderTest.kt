@@ -53,6 +53,80 @@ class TelemetryConsentHolderTest {
     }
 
     @Test
+    fun `the question is put only to an install that never answered, until it does`() {
+        val holder = TelemetryConsentHolder()
+        // Not while loading: an install that answered mustn't be shown it while the store is read.
+        assertFalse(holder.unanswered.value)
+        val store = FakeStore(stored = null)
+        holder.load(store, TelemetryGate(FakeBackend(collecting = false), FakePending()))
+        assertTrue(holder.unanswered.value)
+        // Either answer settles it, and is kept, so the next start doesn't ask again.
+        holder.set(false)
+        assertFalse(holder.unanswered.value)
+        assertEquals(false, store.stored)
+        val next = TelemetryConsentHolder().apply { load(store, TelemetryGate(FakeBackend(collecting = false), FakePending())) }
+        assertFalse(next.unanswered.value)
+        val yes = TelemetryConsentHolder().apply { load(FakeStore(stored = null), gate = null) }
+        assertTrue(yes.unanswered.value)
+        yes.set(true)
+        assertFalse(yes.unanswered.value)
+        assertEquals(true, yes.state.value)
+    }
+
+    @Test
+    fun `a yes that couldn't be stored leaves the question up, and a no is asked again next start`() {
+        val store = FakeStore(stored = null, failWrites = true)
+        val holder = TelemetryConsentHolder().apply { load(store, gate = null) }
+        // Not kept, so not taken as an answer: still asked, and still off.
+        holder.set(true)
+        assertTrue(holder.unanswered.value)
+        assertEquals(false, holder.state.value)
+        // A no is an answer this run even unstored, but the next start asks again.
+        holder.set(false)
+        assertFalse(holder.unanswered.value)
+        assertTrue(TelemetryConsentHolder().apply { load(store, gate = null) }.unanswered.value)
+    }
+
+    @Test
+    fun `a yes the SDKs lose after the tap is asked again, now and next start, not kept as a no`() {
+        val store = FakeStore(stored = null)
+        val backend = FakeBackend(collecting = false, waiting = true)
+        val lost = object : PendingMarker {
+            override fun read() = false
+            override fun save(pending: Boolean) = !pending // saving "pending" fails
+        }
+        val holder = TelemetryConsentHolder().apply { load(store, TelemetryGate(backend, lost)) }
+        assertTrue(holder.unanswered.value)
+        holder.set(true)
+        assertEquals(false, holder.state.value)
+        assertFalse(backend.collecting)
+        assertTrue(holder.unanswered.value)
+        assertNull(store.stored)
+        val next = TelemetryConsentHolder().apply { load(store, TelemetryGate(FakeBackend(collecting = false), FakePending())) }
+        assertTrue(next.unanswered.value)
+        assertEquals(false, next.state.value)
+        // Where the choice can't be deleted, off is stored: still asked this run, not the next.
+        val stuck = FakeStore(stored = null, failDeletes = true)
+        val again = TelemetryConsentHolder().apply { load(stuck, TelemetryGate(FakeBackend(collecting = false, waiting = true), lost)) }
+        again.set(true)
+        assertTrue(again.unanswered.value)
+        assertEquals(false, stuck.stored)
+    }
+
+    @Test
+    fun `a store that can't be read, or a load that can't run, puts no question`() {
+        val broken = object : ConsentStore {
+            override fun read(): Boolean? = throw IllegalStateException("prefs")
+            override fun save(optedIn: Boolean) = true
+        }
+        assertFalse(TelemetryConsentHolder().apply { load(broken, gate = null) }.unanswered.value)
+        assertFalse(TelemetryConsentHolder().apply { loadFailed(gate = null) }.unanswered.value)
+        // An answered install, opted in or out, isn't asked.
+        assertFalse(TelemetryConsentHolder().apply { load(FakeStore(stored = false), gate = null) }.unanswered.value)
+        assertFalse(TelemetryConsentHolder().apply { load(FakeStore(stored = true), gate = null) }.unanswered.value)
+    }
+
+    @Test
     fun `an opted-in install reloads as opted in`() {
         val holder = TelemetryConsentHolder()
         val backend = FakeBackend(collecting = true)
@@ -99,6 +173,15 @@ class TelemetryConsentHolderTest {
         holder.load(store, TelemetryGate(backend, FakePending()))
         assertEquals(false, holder.state.value)
         assertFalse(backend.collecting)
+        // Asked again, now and on every start until answered: the reset yes is deleted, not kept as a no.
+        assertTrue(holder.unanswered.value)
+        assertNull(store.stored)
+        assertTrue(TelemetryConsentHolder().apply { load(store, TelemetryGate(backend, FakePending())) }.unanswered.value)
+        // Where it can't be deleted, it's stored off, and still asked this time.
+        val stuck = FakeStore(stored = true, failDeletes = true)
+        val again = TelemetryConsentHolder().apply { load(stuck, TelemetryGate(FakeBackend(collecting = false), FakePending())) }
+        assertTrue(again.unanswered.value)
+        assertEquals(false, stuck.stored)
     }
 
     @Test
@@ -174,7 +257,9 @@ class TelemetryConsentHolderTest {
         holder.load(store, TelemetryGate(backend, pending))
         holder.set(true)
         assertEquals(false, holder.state.value)
-        assertEquals(false, store.stored)
+        // Deleted, not stored as a no: the question is put again.
+        assertNull(store.stored)
+        assertTrue(holder.unanswered.value)
         assertFalse(backend.collecting)
     }
 
@@ -261,9 +346,11 @@ class TelemetryConsentHolderTest {
         holder.load(store, TelemetryGate(backend, FakePending()))
         holder.set(true)
         assertEquals(true, holder.state.value)
+        assertFalse(holder.unanswered.value)
         answer!!(false)
         assertEquals(false, holder.state.value)
-        assertEquals(false, store.stored)
+        assertNull(store.stored)
+        assertTrue(holder.unanswered.value)
         assertFalse(analytics)
     }
 
@@ -296,18 +383,23 @@ class TelemetryConsentHolderTest {
     }
 
     @Test
-    fun `an opted-in start whose SDKs throw both ways stores off, so the next start reads off`() {
-        val store = FakeStore(stored = true)
+    fun `an opted-in start whose SDKs throw both ways deletes the yes, so the next start reads off and asks`() {
         val backend = object : TelemetryBackend {
             override val collecting = true
             override fun switchCollection(enabled: Boolean) = throw IllegalStateException("sdk")
             override fun checkUnsent(result: (Boolean?) -> Unit) = result(false)
             override fun discardUnsent() {}
         }
+        val store = FakeStore(stored = true)
         val holder = TelemetryConsentHolder()
         holder.load(store, TelemetryGate(backend, FakePending()))
         assertEquals(false, holder.state.value)
-        assertEquals(false, store.stored)
+        assertTrue(holder.unanswered.value)
+        assertNull(store.stored)
+        // Where it can't be deleted, off is stored instead.
+        val stuck = FakeStore(stored = true, failDeletes = true)
+        TelemetryConsentHolder().load(stuck, TelemetryGate(backend, FakePending()))
+        assertEquals(false, stuck.stored)
     }
 
     @Test

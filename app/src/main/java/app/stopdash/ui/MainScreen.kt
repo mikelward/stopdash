@@ -358,6 +358,9 @@ fun MainScreen(
     onRouteToPlace: (TripDestination.Place) -> Unit = {},
     // A long press on a chip opens the places' own screen, to edit them; null offers no long press.
     onEditFavoritePlaces: (() -> Unit)? = null,
+    // Answers the "Help make StopDash better" question from its card atop the near-me list
+    // ([TelemetryInviteCard]); null (answered, or still loading) shows no card.
+    onTelemetryInviteAnswer: ((Boolean) -> Unit)? = null,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     // A long press's hide offers Undo for a moment, which shows that one item again as ticking its
@@ -1341,6 +1344,7 @@ fun MainScreen(
                         favoritePlaces = if (platformRows != null || stationTitle != null) emptyList() else favoritePlaces,
                         onRouteToPlace = onRouteToPlace,
                         onEditFavoritePlaces = onEditFavoritePlaces,
+                        onTelemetryInviteAnswer = onTelemetryInviteAnswer.takeIf { platformRows == null && stationTitle == null },
                     )
                 }
 
@@ -1479,6 +1483,8 @@ private fun LoadedContent(
     favoritePlaces: List<FavoritePlace> = emptyList(),
     onRouteToPlace: (TripDestination.Place) -> Unit = {},
     onEditFavoritePlaces: (() -> Unit)? = null,
+    // The telemetry question's answer (see [MainScreen]); null shows no card.
+    onTelemetryInviteAnswer: ((Boolean) -> Unit)? = null,
 ) {
     // Hiding a mode applies to the loading cards too, as to the loaded rows.
     val shownPending = remember(pending, hiddenModes) { visiblePending(pending, hiddenModes) }
@@ -1562,6 +1568,11 @@ private fun LoadedContent(
                         .scrollEdgeCue(scrollState, scrollCueColors(MaterialTheme.colorScheme.background))
                         .verticalScroll(scrollState),
                 ) {
+                    // The telemetry question still leads where there's no list to lead (Codex, PR #447):
+                    // a first run with nothing near has it asked all the same.
+                    onTelemetryInviteAnswer.takeIf { !journeyView }?.let { answer ->
+                        TelemetryInviteCard(onAnswer = answer, modifier = Modifier.padding(bottom = 16.dp))
+                    }
                     // No list to lead, so the place chips head the empty state, inside its scroller so
                     // they move with it (Codex): nothing near has departures, just when a route
                     // elsewhere is wanted. Centered like the rest, and inset already by [Centered].
@@ -1649,6 +1660,8 @@ private fun LoadedContent(
                     favoritePlaces = favoritePlaces,
                     onRouteToPlace = onRouteToPlace,
                     onEditFavoritePlaces = onEditFavoritePlaces,
+                    // Not in a journey's own view, which is about that journey.
+                    onTelemetryInviteAnswer = onTelemetryInviteAnswer.takeIf { !journeyView },
                     nearbyEmptyNote = if (rows.isEmpty() && !journeyView && !nearbyShownAbove && shownPending.isEmpty() && dismissedClosures.isEmpty()) {
                         // With modes hidden, say so rather than "no departures": they may be running.
                         if (hiddenModes.isNotEmpty()) {
@@ -1824,6 +1837,8 @@ private fun DepartureList(
     favoritePlaces: List<FavoritePlace> = emptyList(),
     onRouteToPlace: (TripDestination.Place) -> Unit = {},
     onEditFavoritePlaces: (() -> Unit)? = null,
+    // Answers the telemetry question from its card, first in the list; null shows no card.
+    onTelemetryInviteAnswer: ((Boolean) -> Unit)? = null,
     modifier: Modifier,
 ) {
     // The units near-me distances are written in: the Settings choice, resolved against the locale;
@@ -2071,6 +2086,11 @@ private fun DepartureList(
         // The saved places to route to, first of all (SPEC D9 → *Routing from the near-me list*): an
         // item of the list, so it scrolls away with it rather than taking a pinned row's space. No
         // padding of its own — the list's 16dp inset already lines it up with the cards.
+        // The telemetry question, put once to an install that never answered it (SPEC *Privacy*):
+        // first, as the one card that asks something of the rider, and gone once answered.
+        onTelemetryInviteAnswer?.let { answer ->
+            item(key = "telemetry-invite") { TelemetryInviteCard(onAnswer = answer) }
+        }
         if (favoritePlaces.isNotEmpty()) {
             item(key = "favorite-chips") { FavoriteChips(favoritePlaces, onRouteToPlace, contentPadding = PaddingValues(0.dp), onEditPlaces = onEditFavoritePlaces) }
         }
