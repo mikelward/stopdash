@@ -131,10 +131,12 @@ import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripTiming
+import app.stopdash.domain.UsageEvent
 import app.stopdash.domain.YourStops
 import app.stopdash.domain.currentPatterns
 import app.stopdash.domain.stopPlace
 import app.stopdash.telemetry.TelemetryConsent
+import app.stopdash.telemetry.UsageEvents
 import app.stopdash.ui.ARRIVALS_REUSE
 import app.stopdash.ui.ActiveTripTracker
 import app.stopdash.ui.AppMenuActions
@@ -343,6 +345,7 @@ class MainActivity : ComponentActivity() {
                     // Waits for the stored set on a cold start, so the first pick already leaves out
                     // what the user hid rather than fetching it until the next re-locate.
                     hiddenModes = { HiddenModesSetting.loaded() },
+                    usage = UsageEvents::log,
                 )
             }
         }
@@ -432,6 +435,14 @@ class MainActivity : ComponentActivity() {
                     // The precise request has now been shown, whichever way it was answered —
                     // so an upgraded coarse-only user isn't prompted again on every open.
                     markPrecisePrompted()
+                    UsageEvents.log(
+                        UsageEvent.LocationPermission(
+                            UsageEvent.Grant.of(
+                                fine = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true,
+                                coarse = grants.values.any { it },
+                            ),
+                        ),
+                    )
                     // Request both so the runtime dialog offers the precise/approximate choice;
                     // either grant finds stops (precise preferred — see AndroidLocationProvider).
                     if (grants.values.any { it }) {
@@ -1076,6 +1087,7 @@ class MainActivity : ComponentActivity() {
                                     // finds it as it was; a station picked replaces it with that
                                     // station's, to the same destination.
                                     onChangeFrom = {
+                                        UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
                                         val kept = OriginChange.kept(hereTo())
                                         originChange = OriginChange.NearMe(kept)
                                         stationTo = kept
@@ -1153,9 +1165,16 @@ class MainActivity : ComponentActivity() {
                                         refinement = nearbyViewModel.refinement,
                                         applyRefinement = nearbyViewModel::applyRefinement,
                                         onOpenLicenses = openLicenses,
-                                        onOpenSettings = { settingsOpen = true },
-                                        onFindStation = { stationSearchOpen = true },
+                                        onOpenSettings = {
+                                            UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SETTINGS))
+                                            settingsOpen = true
+                                        },
+                                        onFindStation = {
+                                            UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
+                                            stationSearchOpen = true
+                                        },
                                         onPlanTo = {
+                                            UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
                                             listStores.clearAll()
                                             hereTripOpen = true
                                             herePicking = true
@@ -1244,7 +1263,10 @@ class MainActivity : ComponentActivity() {
                                         onOpenAppListing = ::openPlayListing,
                                         // The station search needs no location, so it's offered here too:
                                         // most useful to exactly the users who can't use near me.
-                                        onFindStation = { stationSearchOpen = true },
+                                        onFindStation = {
+                                            UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
+                                            stationSearchOpen = true
+                                        },
                                         places = gatePlaces,
                                         onRouteToPlace = routeToPlace,
                                         // A long press on a chip edits the places, as on the list.
@@ -1888,6 +1910,11 @@ class MainActivity : ComponentActivity() {
                         null
                     } else {
                         { journey ->
+                            UsageEvents.log(
+                                UsageEvent.Tapped(
+                                    if (savedJourneys.any { it.key == journey.key }) UsageEvent.Tap.UNSTAR else UsageEvent.Tap.STAR,
+                                ),
+                            )
                             journeyScope.launch {
                                 try {
                                     journeyStore.toggle(journey)
@@ -1920,6 +1947,7 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     onFlipJourney = { journey ->
+                        UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SWAP))
                         flippedJourneys = if (journey.key in flippedJourneys) flippedJourneys - journey.key else flippedJourneys + journey.key
                     },
                     // A tap on a header's distance shows that stop in the maps app. The stop comes
@@ -1963,7 +1991,13 @@ class MainActivity : ComponentActivity() {
                     farther = fartherCards,
                     // Ignored while a relocation's fresh fix is in flight, so a tap can't open a card
                     // picked from the pre-fix set.
-                    onOpenFarther = { place -> if (!relocatingNow) fartherModels.open(place, ready.location) },
+                    onOpenFarther = { place ->
+                        if (!relocatingNow) {
+                            // A first open is a reveal (by mode group); a retap retries or refreshes.
+                            if (fartherLoads[place.key] == null) UsageEvents.log(UsageEvent.FartherPlace(place.lines.map { it.mode }))
+                            fartherModels.open(place, ready.location)
+                        }
+                    },
                     onSendBugReport = onSendBugReport,
                     locationBanner = locationBannerNow,
                     favoritePlaces = shownPlaces,

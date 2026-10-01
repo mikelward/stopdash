@@ -1,7 +1,9 @@
 package app.stopdash.telemetry
 
 import android.content.Context
+import android.os.Bundle
 import android.util.Log
+import app.stopdash.domain.UsageEvent
 import com.google.firebase.FirebaseApp
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.crashlytics.FirebaseCrashlytics
@@ -41,6 +43,15 @@ class FirebaseTelemetryBackend private constructor(
         crashlytics.checkForUnsentReports().addOnCompleteListener { check ->
             result(if (check.isSuccessful) check.result == true else null)
         }
+    }
+
+    /**
+     * Sends [event] as an Analytics event, each parameter a string ([UsageEvent] holds only
+     * categories and buckets). The SDK queues it on its own worker, and drops it while collection is
+     * off; [UsageEvents] sends only while the rider has opted in anyway.
+     */
+    fun logEvent(event: UsageEvent) {
+        analytics.logEvent(event.name, usageEventBundle(event))
     }
 
     override fun discardUnsent() {
@@ -87,6 +98,10 @@ class FirebaseTelemetryBackend private constructor(
         }
     }
 }
+
+/** [event]'s parameters as the [Bundle] Analytics takes, every value a string. */
+internal fun usageEventBundle(event: UsageEvent): Bundle =
+    Bundle().apply { event.params.forEach { (key, value) -> putString(key, value) } }
 
 /**
  * Mirrors the diagnostic log's **off-device** lines into Crashlytics, so an uploaded crash report
