@@ -19,6 +19,7 @@ import kotlin.time.toKotlinDuration
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -84,7 +85,19 @@ internal class RouteDisruptionChecks(
         reconcileDismissals(cleared, lineCheck.first + stopCheck.first, lineCheck.second + stopCheck.second, dismissedStore, io, warn, "on the way") {
             cleared = it
         }
-        val signals = RouteDisruption.signals(trip, progress, statuses?.statuses.orEmpty(), directions, current, places, cleared, at)
+        // The routes of the coming bus lines whose alert could be left out for naming only stops off
+        // the ride ([RouteDisruption.offRide]), read exactly as [RouteDisruption.signals] reads them —
+        // the same day, direction and dismissals — so one that can't change the answer costs no route;
+        // each asked for once, from the shared cache (Codex, PR #455).
+        val alerted = RouteDisruption.routesWanted(trip, statuses?.statuses.orEmpty(), directions, cleared, at)
+        // At once, not in turn: the check waits on all of them, and the route repository already caps
+        // its own concurrent fetches (Codex, PR #455).
+        val sequences = coroutineScope { alerted.map { line -> async { lookUp(line)?.let { line to it } } }.awaitAll() }
+            .filterNotNull().toMap()
+        var leftOff = 0
+        val signals = RouteDisruption.signals(trip, progress, statuses?.statuses.orEmpty(), directions, current, places, cleared, at, sequences) { leftOff++ }
+        // Said, never quietly dropped (principle 1): which stops it named stays out of the log.
+        if (leftOff > 0) warn("on the way: $leftOff line alert(s) left out, naming only stops off the ride")
         if (signals.isEmpty()) return RouteDisruption.Found.NONE
         // Stale no later than the oldest check behind a signal.
         val stamps = signals.mapNotNull { signal ->

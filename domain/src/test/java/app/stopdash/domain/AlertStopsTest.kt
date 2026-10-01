@@ -19,6 +19,301 @@ class AlertStopsTest {
     }
 
     @Test
+    fun `a stop the alert quotes is named, an apostrophe inside a word isn't a break`() {
+        // Bus alerts quote their stops ('Moorgate Station'), slash and all (maintainer, 2026-10-01).
+        assertEquals(
+            setOf("Bank Station / King William Street", "Moorgate Station"),
+            mentioned(
+                "Buses are not serving stops between 'Bank Station/King William Street' and 'Moorgate Station'.",
+                "Bank Station / King William Street", "Moorgate Station", "Old Street Station",
+            ),
+        )
+        // The stops between quoted ends are in the stretch, a cross street written without spaces too.
+        assertEquals(
+            listOf("S0", "S1", "S2"),
+            AlertStops.affected(
+                "Not serving stops between 'Bank Station/King William Street' and 'Moorgate Station'.",
+                stops("Bank Station / King William Street", "Middle Road", "Moorgate Station", "Old Street Station"),
+            ).toList(),
+        )
+        // A stretch placed only in the words TfL's bus alerts use for stops not served (maintainer,
+        // 2026-10-01); anything else places nothing (Codex, PR #455).
+        val line = stops("Bank Station", "Middle Road", "Moorgate Station", "Old Street Station")
+        assertEquals(setOf("S0", "S1", "S2"), AlertStops.stretched("Buses are not serving stops between 'Bank Station' and 'Moorgate Station'.", line))
+        assertEquals(setOf("S0", "S1", "S2"), AlertStops.stretched("Buses will not serve stops between Bank Station and Moorgate Station.", line))
+        // The other form, with a direction and a stop letter (made-up stops, TfL's wording).
+        val road = stops("Alpha Road", "Beta Road", "Gamma Road / Delta Road", "North End")
+        assertEquals(
+            setOf("S0", "S1", "S2"),
+            AlertStops.stretched("Towards North End, the stops from 'Alpha Road' (E) to 'Gamma Road / Delta Road' will not be served. Please allow extra time for your journey.", road),
+        )
+        assertEquals(setOf("S0", "S1", "S2"), AlertStops.affected("Towards North End, the stops from 'Alpha Road' (E) to 'Gamma Road / Delta Road' will not be served.", road))
+        assertEquals(
+            setOf("S0", "S1", "S2"),
+            AlertStops.stretched(
+                "Buses towards North End are diverted via Example Street, Other Lane, and Last Terrace. Stops between " +
+                    "'Alpha Road' (H) and 'Gamma Road / Delta Road' (CL) will not be served. Please allow extra time for your journeys.",
+                road,
+            ),
+        )
+        // A single stop missed.
+        assertEquals(
+            setOf("S1"),
+            AlertStops.stretched(
+                "Buses will divert via Example Street and Other Lane, missing the stop 'St Paul's Station' (SP). Please allow extra time for your journey",
+                stops("Bank Station", "St Paul's Station", "Moorgate Station"),
+            ),
+        )
+        assertEquals(
+            setOf("S1"),
+            AlertStops.stretched(
+                "Road will be closed southbound for water works from 22:00 6 October until 05:00 7 October. Buses towards North End and South End will miss stop Millbank.",
+                stops("Westminster Station", "Millbank", "Vauxhall Station"),
+            ),
+        )
+        // Stops named one by one, a stop pair with its cross street among them (made-up stops).
+        val listed = stops("Alpha Road", "Beta Lane Station", "Gamma Road / Delta Road", "North End")
+        assertEquals(setOf("S1", "S2"), AlertStops.stretched("Buses will not serve stops 'Beta Lane Station' (F) and 'Gamma Road/Delta Road' (W).", listed))
+        // "Are not being served", and a name with "&" in it, written in another case.
+        val school = stops("Alpha Road", "Example Academy-Primary", "Middle Road", "Example East & Example Academy Secondary", "North End")
+        assertEquals(
+            setOf("S1", "S2", "S3"),
+            AlertStops.stretched("Stops from 'Example Academy-Primary' to 'Example east & Example Academy Secondary' are not being served. Please allow extra time for your journey.", school),
+        )
+        assertEquals(
+            setOf("S0", "S1", "S2"),
+            AlertStops.stretched(
+                "EXAMPLE ROAD, E1: ROUTES 98 99 are on diversion towards North End. Buses are diverting via Example Street and Other Lane. " +
+                    "Bus stops from 'Alpha Road' to 'Gamma Road / Delta Road' (PR) will be missed. Please allow extra time for\nyour journey.",
+                road,
+            ),
+        )
+        assertEquals(
+            setOf("S0", "S1", "S2"),
+            AlertStops.stretched(
+                "EXAMPLE R0AD, E1: ROUTES 98 99 southbound are on diversion via Example Street. Buses are missing Alpha Road 'E' to " +
+                    "Gamma Road/Delta Road (T). Routes 97 and 96 also follows the same diversion but does not miss any stops.",
+                road,
+            ),
+        )
+        // Unquoted names, each with its letter quoted.
+        assertEquals(setOf("S0", "S1", "S2"), AlertStops.stretched("Buses are missing stops from Alpha Road 'F' to Gamma Road / Delta Road 'T'.", road))
+        // A curtailment leaves out the stops after where buses terminate and before where they start
+        // (made-up stops, TfL's wording).
+        val cut = stops("South End", "Alpha Road", "Beta Road", "Gamma Road", "North End")
+        assertEquals(
+            setOf("S3", "S4"),
+            AlertStops.stretched(
+                "EXAMPLE ROAD, E1: Route 99 is curtailed to Beta Road 'J' due to water works until 22:00 on Monday 30 November. " +
+                    "Buses towards North End are terminating at the stop Beta Road 'V' after stop Beta Road 'J'.",
+                cut,
+            ),
+        )
+        assertEquals(
+            setOf("S0", "S4"),
+            AlertStops.stretched(
+                "Buses towards North End will terminate at 'Gamma Road' (D) and buses towards South End will start from stop at 'Alpha Road' (C). Please allow more time for your journey.",
+                cut,
+            ),
+        )
+        assertEquals(setOf("S0"), AlertStops.stretched("Starting services towards North End from stop Alpha Road 'G'.", cut))
+        // One it can't place leaves where the alert applies unknown, beside a stretch it can (Codex, PR #455).
+        assertEquals(emptySet<String>(), AlertStops.stretched("Route 99 is cutting short of its normal route. Buses are not serving stops between 'Alpha Road' and 'Beta Road'.", cut))
+        assertEquals(emptySet<String>(), AlertStops.stretched("Buses will start from stop at Example Lane. Buses are not serving stops between 'Alpha Road' and 'Beta Road'.", cut))
+        // Nor beside another curtailment it can place, unless it's said of the whole route (Codex, PR #455).
+        assertEquals(
+            emptySet<String>(),
+            AlertStops.stretched("Buses will terminate at Beta Road. Some journeys are cutting short of their normal route.", cut),
+        )
+        // Placed alone, the same terminus does place it: the guard above is what keeps it on.
+        assertEquals(setOf("S3", "S4"), AlertStops.stretched("Buses will terminate at Beta Road.", cut))
+        assertEquals(
+            emptySet<String>(),
+            AlertStops.stretched("Buses towards North End will terminate at Beta Road. Buses towards South End are cutting short of their normal route.", cut),
+        )
+        // Placed by where buses terminate and start, the same words are read.
+        assertEquals(
+            setOf("S0", "S4"),
+            AlertStops.stretched(
+                "EXAMPLE BUS STATION, E1: Route 99 is cutting short of it's normal route due to ongoing Bus Station works. Buses towards " +
+                    "North End will terminate at 'Gamma Road' (D) and buses towards South End will start from stop at 'Alpha Road' (C).",
+                cut,
+            ),
+        )
+        // Negated, it says where buses don't stop short (Codex, PR #455).
+        assertEquals(emptySet<String>(), AlertStops.stretched("Route 99 is curtailed due to roadworks; buses will not terminate at Beta Road.", cut))
+        assertEquals(emptySet<String>(), AlertStops.stretched("Buses won't start from stop Beta Road.", cut))
+        assertEquals(emptySet<String>(), AlertStops.stretched("Route 99 is curtailed; buses are not expected to terminate at Beta Road.", cut))
+        // So for every wording: a negation anywhere earlier in its clause.
+        assertEquals(emptySet<String>(), AlertStops.stretched("It is not yet known whether buses are missing the stop 'Beta Road' (SP).", cut))
+        assertEquals(emptySet<String>(), AlertStops.stretched("Buses are no longer expected to be missing stops from Alpha Road to Gamma Road.", cut))
+        assertEquals(emptySet<String>(), AlertStops.stretched("Route 99 is diverted via Example Street. No stops between Alpha Road and Gamma Road will be missed.", cut))
+        // Stations and well-known places, as TfL wrote them (maintainer, 2026-10-01).
+        assertEquals(
+            setOf("S1"),
+            AlertStops.stretched(
+                "NEWGATE STREET, EC4: From 14:00 Sunday 06 September until 18:00 Sunday 29 November, ROUTE 76 will be on diversion towards " +
+                    "Tottenham Hale due to urban realm works. Buses will divert via St Martin's Le Grand and Angel Street, missing the stop " +
+                    "'St Paul's Station' (SP). Please allow extra time for your journey.",
+                stops("Bank Station", "St Paul's Station", "Holborn Station"),
+            ),
+        )
+        assertEquals(
+            setOf("S1", "S2"),
+            AlertStops.stretched(
+                "Road will be closed to facilitate UKPN works from 13 Oct 07:00 until 31 Oct 18:00. Buses will be diverted in both " +
+                    "directions and will miss stops Monument Station and Fenchurch Street.",
+                stops("London Bridge Station", "Monument Station", "Fenchurch Street", "Aldgate Station"),
+            ),
+        )
+        assertEquals(
+            setOf("S1"),
+            AlertStops.stretched(
+                "BELMONT ROAD, UB8: Until approximately 23:00 on Tuesday 06 October, ROUTES 427 U7 and N207 towards Southall, Hayes and " +
+                    "Holborn are not serving stop 'Uxbridge Station' (O) due to Cadent Gas works.",
+                stops("Hillingdon Station", "Uxbridge Station", "North End"),
+            ),
+        )
+        assertEquals(
+            setOf("S0", "S1", "S2"),
+            AlertStops.stretched(
+                "EXAMPLE AVENUE, E1: ROUTE 99 is on diversion towards North End only until 18:00 Friday 16 October. " +
+                    "The 'Hail & Ride' section from Alpha Road to Gamma Road / Delta Road are not being served. Please allow extra time for your journey.",
+                road,
+            ),
+        )
+        assertEquals(
+            setOf("S1", "S2"),
+            AlertStops.stretched(
+                "WATERLOO ROAD, Southwark: ROUTES 1 68 172 176 188 SL6 BL1 southbound are on diversion in via York Way and Westminster " +
+                    "Bridge Road. Buses are missing Waterloo Station /Waterloo Road 'E' to St George's Circus (T). Routes BL1 and SL6 also " +
+                    "follows the same diversion but does not miss any stops.",
+                stops("County Hall", "Waterloo Station / Waterloo Road", "St George's Circus", "Elephant & Castle"),
+            ),
+        )
+        assertEquals(
+            setOf("S1"),
+            AlertStops.stretched(
+                "EXAMPLE ROAD, E1: ROUTES 98 99 towards North End are on diversion due to water works. Bus stop 'Example Town / Alpha " +
+                    "Road' (R) will not be served. Please allow\n\nextra time for your journey.",
+                stops("Middle Road", "Example Town / Alpha Road", "North End"),
+            ),
+        )
+        assertEquals(
+            setOf("S0", "S1", "S2", "S3"),
+            AlertStops.stretched(
+                "EXAMPLE ROAD, E1: Route 99 is on diversion in both directions due to gas works. Buses are missing stops from Alpha " +
+                    "Road to Gamma Road towards North End and stops from Gamma Road to Delta Road / Example Road towards South End.",
+                stops("Alpha Road", "Beta Road", "Gamma Road", "Delta Road / Example Road", "North End"),
+            ),
+        )
+        // An alert naming no stops places none, so it stays on.
+        assertEquals(
+            emptySet<String>(),
+            AlertStops.stretched("EXAMPLE ROAD, E1 ROUTES 98,99,R1 are on diversion due to an emergency servces incident. Please allow extra time for your journey.", road),
+        )
+        // A stretch one way, and stops one by one the other (made-up stops).
+        assertEquals(
+            setOf("S0", "S1", "S2", "S3"),
+            AlertStops.stretched(
+                "EXAMPLE ROAD, E1: Route 99 will be on diversion in both directions due to borough roadworks. Buses will divert via " +
+                    "Example Street. Towards North End, the stops from 'Alpha Road' (L) to 'Gamma Road' will not be served. Towards " +
+                    "South End, the stops 'Gamma Road' (U) and 'Delta Road' (H) will not be served. Please allow\n\nextra time for your journey",
+                stops("Alpha Road", "Beta Road", "Gamma Road", "Delta Road", "North End"),
+            ),
+        )
+        assertEquals(
+            setOf("S0", "S1", "S2", "S3"),
+            AlertStops.stretched(
+                "EXAMPLE PARK ROAD, E1: Routes 98 and 99 are on diversion in both directions. Towards North End, the stops from 'Alpha " +
+                    "Road' (J) to 'Gamma Road' (A) will not be served. Towards South End, the stops from 'Gamma Road' (B) to 'Delta " +
+                    "Road' (M) will not be served. Please allow extra time for your journey.",
+                stops("Alpha Road", "Beta Road", "Gamma Road", "Delta Road", "North End"),
+            ),
+        )
+        // Both poles' letters (made-up stops).
+        assertEquals(
+            setOf("S0", "S1", "S2"),
+            AlertStops.stretched(
+                "EXAMPLE HILL, E1: Route 99 is on diversion in both directions until 23:59 on Thursday 01 October due to emergency gas " +
+                    "works. Buses are missing stops between Alpha Road (BN and BP) and Gamma Road / Delta Road (M and P).",
+                road,
+            ),
+        )
+        // One stretch told once for each direction, in one run-on list (made-up stops).
+        assertEquals(
+            setOf("S1", "S2", "S4", "S5"),
+            AlertStops.stretched(
+                "EXAMPLE LANE, E1: Routes 98 99 are on diversion in both directions. Buses are diverted via Example Street, missing the " +
+                    "stops from Beta Road 'CA' to Gamma Road 'T' northbound, and from Delta Road 'U' to Epsilon Road / Other Road 'CB' southbound.",
+                stops("Alpha Road", "Beta Road", "Gamma Road", "Middle Road", "Delta Road", "Epsilon Road / Other Road", "North End"),
+            ),
+        )
+        assertEquals(
+            setOf("S1"),
+            AlertStops.stretched(
+                "EXAMPLE ROAD, E1: Due to water works Example Road will be closed until 22:00 Monday 30 November. ROUTES 98 W1 and 675 " +
+                    "will be diverted and will miss stop 'Example Walk'.",
+                stops("Alpha Road", "Example Walk", "North End"),
+            ),
+        )
+        assertEquals(
+            setOf("S1"),
+            AlertStops.stretched(
+                "NEW BRIDGE STREET, EC4: ROUTES 40, 63, N63 and N89 towards Clerkenwell / Kings Cross / Charing Cross are on diversion via " +
+                    "Queen Victoria Street and Cannon Street / Ludgate Hill, due to emergency gas works until Wednesday 07 October 2026 at " +
+                    "20:00. Buses are missing the stop 'Blackfriars Station / North Entrance' (J).",
+                stops("Ludgate Circus", "Blackfriars Station / North Entrance", "Blackfriars Bridge"),
+            ),
+        )
+        // One stretch for each direction, and a stop served on the way (made-up stops).
+        assertEquals(
+            setOf("S1", "S2", "S4", "S5"),
+            AlertStops.stretched(
+                "Towards North End, buses are diverted via Example Street. Stops between 'Beta Road' (CN) and 'Gamma Road' (EL) will " +
+                    "not be served. Buses towards South End are diverted via Other Lane (serving Bus Stop J - Example Market). Stops " +
+                    "between 'Delta Road' (H) and 'Epsilon Road' (CL) will not be served. Please allow extra time for your journeys.",
+                stops("Alpha Road", "Beta Road", "Gamma Road", "Middle Road", "Delta Road", "Epsilon Road", "North End"),
+            ),
+        )
+        assertEquals(
+            setOf("S1", "S2"),
+            AlertStops.stretched(
+                "Route 99 is on diversion via Example Street (serving Bus Stop J - Example Market) due to maintenance works. " +
+                    "Buses will not serve stops 'Beta Lane Station' (F) and 'Gamma Road/Delta Road' (W).",
+                listed,
+            ),
+        )
+        // Other wording, affected or not, places nothing.
+        for (text in listOf(
+            "Good service between Bank Station and Moorgate Station. Route diverted via Example Road.",
+            "Buses run between Bank Station and Moorgate Station.",
+            "Buses diverted between Bank Station and Moorgate Station.",
+            "Buses are diverted from Bank Station to Moorgate Station.",
+            "Route diverted via Example Road; buses will not be diverted between Bank Station and Moorgate Station.",
+            "No buses are diverted between Bank Station and Moorgate Station.",
+            "Buses are diverted except between Bank Station and Moorgate Station.",
+            "Buses are not serving stops except between Bank Station and Moorgate Station.",
+            "The stops from Bank Station to Moorgate Station will be served.",
+        )) {
+            assertEquals(text, emptySet<String>(), AlertStops.stretched(text, line))
+        }
+        // Stops missed in other words too may be the ride's (Codex, PR #455).
+        val four = stops("Bank Station", "Moorgate Station", "Victoria Station", "Waterloo Station")
+        assertEquals(emptySet<String>(), AlertStops.stretched("Buses are not serving stops between 'Bank Station' and 'Moorgate Station' and are not serving Victoria Station.", four))
+        assertEquals(emptySet<String>(), AlertStops.stretched("Buses are not serving stops between 'Bank Station' and 'Moorgate Station'. Buses will also miss Victoria Station.", four))
+        for (more in listOf("Buses are not expected to serve Victoria Station.", "Buses cannot serve Victoria Station.", "Buses are unable to call at Victoria Station.", "Buses will skip Victoria Station.", "Buses never stop at Victoria Station.")) {
+            assertEquals(more, emptySet<String>(), AlertStops.stretched("Buses are not serving stops between 'Bank Station' and 'Moorgate Station'. $more", four))
+        }
+        // A stretch it can't confirm leaves where the alert applies unknown (Codex, PR #455).
+        assertEquals(emptySet<String>(), AlertStops.stretched("Buses are not serving stops between Bank Station and Example Street and between Moorgate Station and Old Street Station.", stops("Bank Station", "Example Street", "Moorgate Station", "Old Street Station")))
+        // Only a stretch places it: a stop merely named is none.
+        assertEquals(emptySet<String>(), AlertStops.stretched("Roadworks near Moorgate Station.", stops("Moorgate Station", "Old Street Station")))
+        // "Earl's Court" doesn't mark a stop called "S Court".
+        assertEquals(emptySet<String>(), mentioned("Trains stop at Earl's Court.", "S Court"))
+    }
+
+    @Test
     fun `matches a station listed under its full TfL name`() {
         assertEquals(
             setOf("Charing Cross Underground Station"),
@@ -312,5 +607,62 @@ class AlertStopsTest {
         )
         // Euston isn't on this train's list, so what lies between it and Bank isn't known.
         assertEquals(listOf("Bank"), affected("No service between Euston and Bank.", *northbound))
+    }
+
+    @Test
+    fun `a stretch names its ends by the station after a stop's slash and with its own cross street`() {
+        // Route 43 lists "Finsbury Square / Moorgate" and "Monument"; TfL's alert calls them "Moorgate
+        // Station (L)" and "King William Street / Monument Station (G)" (maintainer, 2026-10-01).
+        val alert = "KING WILLIAM STREET, City of London: Routes 21 43 and 141 are on diversion southbound only until " +
+            "19:00 on 1 February 2027 due to major roadworks. Buses are diverted via South Place, Eldon Street, Blomfield " +
+            "Street, London Wall, Bishopsgate and Gracechurch Street, missing stops from Moorgate Station (L) to King " +
+            "William Street / Monument Station (G)."
+        val listed = listOf("Epworth Street", "Finsbury Square / Moorgate", "All Hallows Church", "Camomile Street", "Fenchurch Street", "Monument", "London Bridge")
+        for (route in listOf(listed, listed.map { it.replace("Moorgate", "Moorgate Station").replace("Monument", "Monument Station") })) {
+            assertEquals(setOf("S1", "S2", "S3", "S4", "S5"), AlertStops.stretched(alert, stops(*route.toTypedArray())))
+        }
+        // A cross street's name with no letter after it is the road, not the stop.
+        assertEquals(
+            emptySet<String>(),
+            AlertStops.mentioned("Buses are diverted via Moorgate.", stops("Finsbury Square / Moorgate", "Monument")),
+        )
+    }
+
+    @Test
+    fun `a clause naming more stops than it reads places nothing`() {
+        // C and D are listed with A and B as not served, though no verb repeats for them (Codex, PR #455).
+        val route = stops("Alpha Road", "Beta Road", "Gamma Road", "Delta Road", "Echo Road")
+        assertEquals(
+            emptySet<String>(),
+            AlertStops.stretched("Buses are not serving stops between Alpha Road and Beta Road and stops Gamma Road and Delta Road.", route),
+        )
+        // A stop named in another sentence is an aside, and the stretch still stands.
+        assertEquals(
+            setOf("S0", "S1"),
+            AlertStops.stretched("Buses are not serving stops between Alpha Road and Beta Road. Allow extra time at Delta Road.", route),
+        )
+    }
+
+    @Test
+    fun `the page marks every stop a trip reads as not served`() {
+        // A curtailment's left-out stops, which the alert doesn't name (maintainer, 2026-10-01).
+        val route = stops("South End", "Alpha Road", "Beta Road", "Gamma Road", "North End")
+        assertEquals(setOf("S1", "S2", "S3", "S4"), AlertStops.affected("Route 99 is curtailed to Alpha Road 'J'.", route))
+        // TfL's bus stretch, its ends named as the alert writes them.
+        val line = stops("Old Street", "Finsbury Square / Moorgate", "All Hallows Church", "Monument", "London Bridge")
+        assertEquals(
+            setOf("S1", "S2", "S3"),
+            AlertStops.affected("Buses are missing stops from Moorgate Station (L) to King William Street / Monument Station (G).", line),
+        )
+    }
+
+    @Test
+    fun `marked stops are named as runs by their ends`() {
+        val route = stops("Alpha Road", "Beta Road", "Gamma Road", "Delta Road", "Echo Road", "Beta Road")
+        val name: (RouteStop) -> String = { it.name }
+        assertEquals(listOf("Alpha Road to Gamma Road", "Echo Road"), AlertStops.runs(setOf("S0", "S1", "S2", "S4"), route, name))
+        // A stop alone, or a run whose ends share a name, is that name once; a label isn't repeated.
+        assertEquals(listOf("Beta Road"), AlertStops.runs(setOf("S1", "S5"), route, name))
+        assertEquals(emptyList<String>(), AlertStops.runs(emptySet(), route, name))
     }
 }

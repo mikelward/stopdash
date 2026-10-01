@@ -709,8 +709,8 @@ class RouteDetailScreenScreenshotTest {
         // Outside the stretch: King's Cross is past Euston, and Tottenham Court Road isn't on this line.
         composeRule.onNodeWithText("Green Park", useUnmergedTree = true).assertExists()
         assertEquals(3, composeRule.onAllNodes(inAlert).fetchSemanticsNodes().size)
-        // Beside the chip, the stations it names, in route order, so where it is reads next to what it is.
-        composeRule.onNodeWithText("Oxford Circus, Euston").assertIsDisplayed()
+        // Beside the chip, the stretch it marks by its ends, so where it is reads next to what it is.
+        composeRule.onNodeWithText("Oxford Circus to Euston").assertIsDisplayed()
         // The boarding stop isn't named (only its line is), so it stays "Your stop" alone.
         composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop")).assertExists()
 

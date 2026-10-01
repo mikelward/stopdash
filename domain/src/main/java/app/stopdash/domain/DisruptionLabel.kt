@@ -67,11 +67,31 @@ fun resolveDisruption(
     // named it is a true fallback — flagged so it sorts below every informative status.
     val text = reason.lowercase()
     return DISRUPTION_KEYWORDS
-        .filter { keyword -> keyword.needles.any { it in text } }
+        .filter { keyword ->
+            keyword.needles.any { saidOutright(text, Regex.escape(it)) } ||
+                // In the reason as written: a pattern's place is told from a time by its capital (Codex, PR #455).
+                keyword.patterns.any { saidOutright(text, it, cased = reason) }
+        }
         .minByOrNull { it.severity }
         ?.let { ResolvedDisruption(it.label, it.severity, fullText = reason.trim(), inferred = true) }
         ?: ResolvedDisruption(SERVICE_ALERT_LABEL, SERVICE_ALERT_SEVERITY, isFallback = true, fullText = reason.trim(), inferred = true)
 }
+
+// Whether [needle] appears in [text] (lowercased) without a negation governing it: one earlier in the
+// same run of words, with no punctuation, "and" or "but" between ("no" included: "no buses are
+// diverted between …"; Codex, PR #455). An "or" carries the negation on: "not diverted or curtailed"
+// denies both (Codex, PR #455). "Buses aren't terminating at …"
+// and "the service is not expected to be cut short" name no curtailment, however many words lie
+// between (Codex, PR #455). A negation of something else doesn't reach it: missing a real diversion
+// downgrades it to a generic alert that never sounds, so "buses are not serving stops A and B and are
+// diverted via X" still names one (Codex, PR #455).
+// [pattern] is a regex, matched in [cased] where given: [text] before it was lowercased, the same
+// length for every alphabet TfL writes in, so a match there is negated or not as in [text].
+private fun saidOutright(text: String, pattern: String, cased: String = text): Boolean =
+    Regex(pattern).findAll(cased).any { !NEGATED_JUST_BEFORE.containsMatchIn(text.substring(0, minOf(it.range.first, text.length))) }
+
+private val NEGATED_JUST_BEFORE =
+    Regex("""$NEGATION(?:\s+(?!(?:and|but)\b)[\w'’]+)*\s*$""")
 
 /**
  * Picks the disruption to show from several coexisting ones. A true fallback
@@ -102,12 +122,42 @@ fun mostSevereDisruption(disruptions: List<ResolvedDisruption>): ResolvedDisrupt
  * so inferring them from free text only invited mislabeling a section outage as a whole-route
  * one. A reason that names none of these resolves to "Service Alert".
  */
-private data class DisruptionKeyword(val label: String, val severity: Int, val needles: List<String>)
+// [needles] are literal words; [patterns] are regexes, for wording a literal can't pin down.
+private data class DisruptionKeyword(val label: String, val severity: Int, val needles: List<String>, val patterns: List<String> = emptyList())
 
 private val DISRUPTION_KEYWORDS = listOf(
     DisruptionKeyword("Diversion", 5, listOf("diverted", "diversion")),
-    DisruptionKeyword("Curtailed", 5, listOf("curtailed", "curtailment")),
+    // TfL's own words for one, as seen in the wild (maintainer, 2026-10-01).
+    DisruptionKeyword(
+        "Curtailed",
+        5,
+        listOf("curtailed", "curtailment", "cutting short", "cut short"),
+        // Buses turning back at a place, or starting partway along from a stop: the stops past it are
+        // missed as surely. Only with a place, since "will terminate at 22:00" and "will start from
+        // Monday" are times (Codex, PR #455).
+        patterns = listOf(TERMINATE_AT_PLACE, START_FROM_STOP),
+    ),
 )
+
+// A place's start: a quote, or a capital, as TfL writes a stop's name; a time ("10:00", "midnight")
+// has neither (Codex, PR #455). Case-sensitive, so matched in the reason as written. An all-caps alert
+// capitalizes its times too, so a time word is ruled out by name ("AT MIDNIGHT"; Codex, PR #455).
+private const val PLACE = """(?!(?i:midnight|midday|noon|the\s+end|end\s+of)\b)['"‘’“”]?\p{Lu}"""
+
+/**
+ * Buses starting from a stop partway along: "will start from stop at B", "starting services towards X
+ * from stop A". A place must follow, not a time ("will start from the stop at 10:00"; Codex, PR #455).
+ */
+internal const val START_FROM_STOP =
+    """(?i:\bstart(?:s|ing)?\s+(?:services\s+)?(?:towards\s+[^,.;]*?\s+)?from\s+(?:the\s+)?stop\s+(?:at\s+)?)$PLACE"""
+
+/**
+ * Buses turning back at a place partway along: "will terminate at 'Beta Road' (D)", "terminating at
+ * the stop Beta Road 'V'". A place must follow, not a time ("will terminate at 22:00"; Codex, PR #455).
+ */
+internal const val TERMINATE_AT_PLACE =
+    """(?i:\bterminat(?:e|es|ing)\s+at\s+(?:the\s+)?(?:stop\s+)?(?:at\s+)?)$PLACE"""
+
 
 /**
  * The fallback for a status with no informative wording — clearer than TfL's "Special
