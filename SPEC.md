@@ -1663,9 +1663,10 @@ them there:
   dismissed, which comes back as it does there. The leg's direction is learned only from the train
   the trip takes for it, and stands for the rest of that ride, through the train being dropped or
   boarded; never from the other trains on the stop's board, which lists the line both ways. A ride
-  followed on another of its lines (*Which train*) is checked as that line, the one the rider is
-  boarding or on, its direction then not known, and its stops as that line's own (a bus's other pole
-  of the pair), a part closure placed on that line's own stretch. **Only a fresh, successful
+  followed on another of its lines (*Which train*), or ridden on one by where the rider was seen, is
+  checked as that line, the one the rider is boarding or on, its direction then not known, and its
+  stops as that line's own (a bus's other pole of the pair), a part closure placed on that line's own
+  stretch. **Only a fresh, successful
   answer is evidence**: a check that failed or has gone stale is unknown, never a signal, so a TfL
   outage can't read as a line suspended. **One notification for the trip**, on its own channel,
   updated in place as what's known changes: something not heard before on this trip (an escalation,
@@ -1734,9 +1735,15 @@ as when a rider on a train is seen at their station. A train of a line the cards
 (another mode's, one not running, one the rider avoids) isn't followed. With none found they're
 **on board all the same** (maintainer, 2026-10-01: seen at the next stop, they're on): the step
 becomes "Ride to …", the stops left counted on the plan's path from where they were seen, and no
-time claimed. Later fixes move that on, never back: each refresh takes one precise fix for the ride's
-planned time from then and five minutes more for a slow train, then none (battery). A train is only
-ever matched against a fresh fix, never against where they were last seen (maintainer, 2026-10-01): that
+time claimed. Seen along another of the ride's lines instead (its own way, by other stops between),
+they're on board on that line, its stops counted on its own path, as a train told on it would be.
+Which lines those are comes from the boarding stop's board, as on the cards; on board, it's read for
+its lines whenever a fix isn't along the line they're counted on, never an earlier read (kept in
+memory, or lost to a restart), since a board lists only the lines with a train predicted then; a read
+that fails leaves them where they were counted and says it couldn't update. Later fixes move that
+on, never back: each refresh takes one precise fix for the ride's planned time from then and five
+minutes more for a slow train, then none (battery). A train is only ever matched against a fresh
+fix, never against where they were last seen (maintainer, 2026-10-01): that
 says where they were but not when, so a train that was behind them could match later just by moving
 on. Each fresh fix looks again for the train that took them, at or past the furthest they were seen;
 a fix behind that keeps where they are and matches nothing. A lookup that fails is said ("Couldn't

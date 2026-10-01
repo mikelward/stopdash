@@ -257,18 +257,27 @@ object OnTheWay {
         train.lineId.takeIf { it.isNotBlank() }?.let { id -> lines.firstOrNull { it.lineId == id } }
 
     /**
-     * The ride as [trip]'s followed train's line runs it ([ActiveTrip.vehicleLeg]), the leg the
-     * train's calls are checked against: its own boarding stop, stops between and stop where the rider
-     * gets off. The Planner's leg for its own line, or with no train followed.
+     * The ride as the rider takes it on another of the ride's lines ([ActiveTrip.vehicleLeg]): the line
+     * of the train followed, or the line they're on board by where they were seen along
+     * ([ridingUnmatched]); null on the Planner's own line. The one place that says which line they're
+     * taking: whatever checks the ride as they take it (its stops, the line it names, its disruptions
+     * and their direction) asks this, so a line ridden by position counts as one with a train told
+     * (Codex, #459).
      */
-    fun ridden(trip: ActiveTrip): TripLeg? = trip.vehicleLeg ?: trip.leg
+    fun ridingOn(trip: ActiveTrip): TripLeg? = trip.vehicleLeg?.takeIf { trip.vehicleId.isNotBlank() || ridingUnmatched(trip) }
+
+    /**
+     * The ride as the rider takes it ([ridingOn]), the leg the train's calls are checked against: its
+     * own boarding stop, stops between and stop where the rider gets off. The Planner's leg for its
+     * own line, or with no train followed.
+     */
+    fun ridden(trip: ActiveTrip): TripLeg? = ridingOn(trip) ?: trip.leg
 
     /** The line TfL is asked about [trip]'s train on: the one it was followed on ([ridden]). */
     fun followedLine(trip: ActiveTrip): String = ridden(trip)?.lineId.orEmpty()
 
     /** The name of the line [trip]'s train is on ([followedLine]): the one the rider is told to board. */
-    fun followedLineName(trip: ActiveTrip): String =
-        trip.vehicleLeg?.takeIf { trip.vehicleId.isNotBlank() }?.lineName ?: trip.leg?.lineName.orEmpty()
+    fun followedLineName(trip: ActiveTrip): String = ridden(trip)?.lineName.orEmpty()
 
     /**
      * Whether a train with [calls] ahead of it takes [leg]: it calls at the boarding stop, and later
@@ -745,7 +754,8 @@ object OnTheWay {
      * ride by other stops between, and the rider is seen along the way its trains go.
      */
     fun seenAlong(trip: ActiveTrip, rider: LocationFix, positions: Map<String, Coordinates>, now: Instant, on: TripLeg? = null): Along? {
-        val waiting = waitingToBoard(trip, now) ?: trip.leg?.takeIf { ridingUnmatched(trip) } ?: return null
+        // On board by where they were seen, the line they were seen along ([ridden]): its own path.
+        val waiting = waitingToBoard(trip, now) ?: ridden(trip)?.takeIf { ridingUnmatched(trip) } ?: return null
         val leg = on ?: waiting
         val accuracy = rider.accuracyMeters?.toDouble() ?: return null
         val boarding = positions[leg.fromId] ?: return null
@@ -780,16 +790,23 @@ object OnTheWay {
      * (maintainer, 2026-10-01: seen at the next stop, they're on): on board by where they were seen,
      * the train followed let go (it may be a later one, still to come), and the stops counted from
      * there ([ridingAlong]) until a train is found that is ([boardedOn]). Seen further on since, they
-     * stay where they were seen furthest: a train doesn't go back.
+     * stay where they were seen furthest: a train doesn't go back. [on] is the ride as the line they
+     * were seen along runs it ([RideLines]): another of the ride's lines is kept as the line ridden
+     * ([ActiveTrip.vehicleLeg]), as a train told on it is, and its stops counted on its own path
+     * (Codex, PR #449). Seen along another line than the one they're counted on, they're counted on
+     * that one from then: its stops aren't the other's to compare.
      */
-    fun onBoardAlong(trip: ActiveTrip, along: Along, now: Instant): ActiveTrip {
+    fun onBoardAlong(trip: ActiveTrip, along: Along, now: Instant, on: TripLeg? = null): ActiveTrip {
         val ahead = ahead(along)
-        return if (ridingUnmatched(trip)) {
+        val line = on?.takeIf { it != trip.leg }
+        return if (ridingUnmatched(trip) && line == trip.vehicleLeg) {
             trip.copy(seenAlongStop = maxOf(trip.seenAlongStop, ahead))
         } else {
             trip.copy(
-                vehicleId = "", vehicleLeg = null, vehicleOffId = "", boardsAt = null, boarded = true, boardedAt = now, dueOffAt = null, heldFrom = null,
-                onBoardSeen = true, seenAlongStop = ahead,
+                vehicleId = "", vehicleLeg = line, vehicleOffId = "", boardsAt = null, boarded = true,
+                // Already on board by where they were seen, since then: the ride's time runs from there.
+                boardedAt = trip.boardedAt.takeIf { ridingUnmatched(trip) } ?: now,
+                dueOffAt = null, heldFrom = null, onBoardSeen = true, seenAlongStop = ahead,
             )
         }
     }
@@ -807,15 +824,17 @@ object OnTheWay {
     }
 
     // On [leg] by where the rider was last seen ([ActiveTrip.seenAlongStop]), with no train's calls:
-    // its next stop and the stops left from there, counted on the plan's path, and no time claimed.
-    // A leg whose stops can't be counted (a bus's) names only the stop. Null when not on board so.
+    // its next stop and the stops left from there, counted on the path of the line they were seen along
+    // ([ridden]: the plan's, or another of the ride's lines), and no time claimed. A leg whose stops
+    // can't be counted (a bus's) names only the stop. Null when not on board so.
     private fun ridingAlong(trip: ActiveTrip, leg: TripLeg): TripProgress.Riding? {
         if (!ridingUnmatched(trip)) return null
         val from = trip.seenAlongStop
+        val on = ridden(trip) ?: leg
         // A stop not named is left unnamed, not called by where they get off unless it's that one (Codex, PR #449).
-        val next = leg.pathNames.getOrNull(from)?.takeIf { it.isNotBlank() } ?: leg.toName.takeIf { leg.path.getOrNull(from) == leg.toId }
-        val stopsLeft = if (checkable(leg)) {
-            ((leg.path.indexOf(leg.toId).takeIf { it >= 0 } ?: leg.path.lastIndex) - from + 1).coerceAtLeast(1)
+        val next = on.pathNames.getOrNull(from)?.takeIf { it.isNotBlank() } ?: on.toName.takeIf { on.path.getOrNull(from) == on.toId }
+        val stopsLeft = if (checkable(on)) {
+            ((on.path.indexOf(on.toId).takeIf { it >= 0 } ?: on.path.lastIndex) - from + 1).coerceAtLeast(1)
         } else {
             null
         }
