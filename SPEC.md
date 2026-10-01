@@ -1570,8 +1570,16 @@ them there:
   closed"), and opens the trip. It fires on **high** signals (a coming line closed, suspended or not
   running, as a trip's ranking counts it; a stop still to reach that a notice in force says is closed
   or moved) and **medium** ones (severe delays, a part suspension or part closure: TfL's affected
-  stops aren't kept, so one can't yet be placed on the leg's own stretch to make it high). Minor
-  delays and the like never alert. A line or stop alert counts **only where *Disruptions* would warn
+  stops aren't kept, so one can't yet be placed on the leg's own stretch to make it high; and **no
+  train predicted at a change** the rider is **five minutes** or less from boarding at, "Jubilee: none
+  soon at Bond Street"). Minor delays and the like never alert. That last is read off the board at
+  the stop the ride boards at, for its own line: no train listed there that the line's route doesn't
+  send another way, a train it can't place counting as predicted, as does one leaving before the rider
+  can get there (that may only be where the predictions end). It's a change's only, a ride with one
+  before it on the route: at the first, the rider is looking at its board. Five minutes is well inside
+  TfL's predictions (about half an hour), so a line running there has a train predicted by then. The
+  board is the one the trip's screen reads once the rider walks or changes to that stop; on the ride
+  before, it's read for this alone (one request a refresh, for those last minutes), and not shown. A line or stop alert counts **only where *Disruptions* would warn
   of it on the trip right now**, by the same rules, so the alert and the screen never disagree:
   planned work only from its start day, a stop notice only in its window, a line's alert only for the
   direction the leg goes (one with no direction known counts both ways), and nothing the rider has
@@ -1590,8 +1598,8 @@ them there:
   or the trip arrives or ends. Like "time to board", one gone (taken down, or
   swiped away) isn't brought back short of something new. Each refresh asks TfL for the coming lines' statuses, one batched
   request, and the stops still to reach through the closure lookups the trip's screen and the list
-  share, each reused for five minutes. Planning again from where the rider is, and a train through a
-  change not yet predicted as the rider nears its stop, are still to come (`TODO.md`).
+  share, each reused for five minutes, and a change's board as above. Planning again from where the
+  rider is is still to come (`TODO.md`).
 - **Where it shows:** the trip's own screen (the next step over the route), a **card pinned at the
   top of the main view** (the near-me list, under the top bar, not scrolling with it; a station's
   page, and a station, platform or starred journey opened from the list, are each their own view),

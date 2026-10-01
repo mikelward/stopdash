@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import java.time.Duration
 import java.time.Instant
 
 /**
@@ -21,7 +22,7 @@ import java.time.Instant
  *
  * Only a fresh answer is evidence: the caller passes the lines and stops whose checks succeeded and
  * are current, so a failed or stale one is unknown, never a signal, and a TfL outage can't read as a
- * line suspended.
+ * line suspended. Likewise a change's board ([unpredicted]): only one read in the refresh that asks.
  */
 object RouteDisruption {
     /** How sure a signal is that a coming leg may not run as planned (tiers agreed 2026-09-29). */
@@ -64,6 +65,22 @@ object RouteDisruption {
             override val tier: Tier get() = Tier.HIGH
             override val key: String get() = "stop/$legIndex/$stopId/${notice.alertKey}/${notice.contentSignature}"
         }
+
+        /**
+         * No train of the line [lineId] (named [lineName]) that may take the leg is predicted at its
+         * boarding stop [stopId] (named [stopName]), a change the rider is a few minutes from
+         * ([changeNear], [unpredicted]). Heard once for the leg, however often trains come and go there.
+         */
+        data class Unpredicted(
+            override val legIndex: Int,
+            val lineId: String,
+            val lineName: String,
+            val stopId: String,
+            val stopName: String,
+        ) : Signal {
+            override val tier: Tier get() = Tier.MEDIUM
+            override val key: String get() = "unpredicted/$legIndex/$lineId/$stopId"
+        }
     }
 
     /**
@@ -71,10 +88,18 @@ object RouteDisruption {
      * evidence goes stale, null when nothing is known.
      */
     data class Found(val signals: List<Signal>, val until: Instant?) {
+        /** What's known with [signal] too, which stands no later than [stands]: so neither does the whole. */
+        fun with(signal: Signal, stands: Instant): Found =
+            Found(ordered(signals + signal), until?.let { minOf(it, stands) } ?: stands)
+
         companion object {
             val NONE = Found(emptyList(), null)
         }
     }
+
+    /** [signals] worst first, then in route order, as they're said. */
+    fun ordered(signals: List<Signal>): List<Signal> =
+        signals.sortedWith(compareByDescending<Signal> { it.tier }.thenBy { it.legIndex })
 
     /**
      * Where a stop sits, for matching a dismissal of its notice as the trip's closure card does
@@ -157,8 +182,67 @@ object RouteDisruption {
             val tier = tierOf(left.severity) ?: return@mapNotNull null
             Signal.Line(i, leg.lineId, leg.lineName, left, tier)
         }
-        return (lines + stopSignals(trip, progress, closures, places, dismissed, now))
-            .sortedWith(compareByDescending<Signal> { it.tier }.thenBy { it.legIndex })
+        return ordered(lines + stopSignals(trip, progress, closures, places, dismissed, now))
+    }
+
+    /**
+     * How soon the rider must be able to board a ride at a change for its board to be read for a train
+     * ([changeNear], [unpredicted]): "a few minutes from its boarding stop" (tiers agreed with the
+     * maintainer, 2026-09-29). Well inside TfL's predictions (about half an hour ahead), so a line
+     * running there has a train predicted by then; a ride further off may be past them (Low, never alerts).
+     */
+    val NEARS_CHANGE: Duration = Duration.ofMinutes(5)
+
+    /**
+     * The ride boarded at a change (one with a ride before it on the route) that [trip]'s rider is next
+     * to board, by its leg, while they can board it within [NEARS_CHANGE] of [now], as [progress]
+     * stands: waiting for it or changing onto it, walking to it, or on the ride before, due off soon
+     * enough with the change's walk and time after. Null when no such ride is that near, the rider is
+     * already on it, or when they can board isn't known (the ride before past TfL's predictions).
+     */
+    fun changeNear(trip: ActiveTrip, progress: TripProgress?, now: Instant): IndexedValue<TripLeg>? {
+        val legs = trip.route.legs
+        val (index, ready) = when (progress) {
+            is TripProgress.Waiting, is TripProgress.Changing, is TripProgress.Lost -> {
+                // A train left with them, or their word: they're on it, not waiting for one.
+                if (trip.boarded || trip.onBoardSeen) return null
+                trip.legIndex to (OnTheWay.readyAt(trip, progress) ?: trip.legStartedAt)
+            }
+            is TripProgress.Walking -> (trip.legIndex + 1) to progress.until.plus(progress.leg.changeAfter)
+            is TripProgress.Riding -> {
+                var at = progress.getOffAt?.plus(progress.leg.changeAfter) ?: return null
+                var i = trip.legIndex + 1
+                // The walk between the two rides, at the Planner's time, and the change time after it.
+                legs.getOrNull(i)?.takeIf { it.isWalk }?.let { walk ->
+                    at = at.plus(walk.run).plus(walk.changeAfter)
+                    i++
+                }
+                i to at
+            }
+            else -> return null
+        }
+        val ride = legs.getOrNull(index)?.takeIf { !it.isWalk } ?: return null
+        if ((0 until index).none { !legs[it].isWalk } || ready.isAfter(now.plus(NEARS_CHANGE))) return null
+        return IndexedValue(index, ride)
+    }
+
+    /**
+     * Whether [ride] (leg [legIndex]), boarded at a change, has no train of its line predicted on its
+     * boarding stop's board ([departures], a fresh answer): none listed that its line's route
+     * ([sequence]) doesn't send another way ([OnTheWay.mayTakeRide]). A train the route can't place, or
+     * any without the route, counts as predicted, so a route that can't be had never reads as no train.
+     * So does one TfL names no line for (of the ride's mode, or none given), which may be the rider's,
+     * as a trip's filters leave it unresolved ([DirectTrips.filter]); and one listed before the rider
+     * can get there: that may only be where the predictions end (Low, never alerts).
+     */
+    fun unpredicted(legIndex: Int, ride: TripLeg, departures: List<Departure>, sequence: LineSequence?): Signal.Unpredicted? {
+        // A ride with no line named can't be told on the board: unknown, never a signal.
+        if (ride.lineId.isBlank()) return null
+        val line = departures.filter {
+            it.lineId == ride.lineId || (it.lineId.isBlank() && (it.mode.isBlank() || it.mode.equals(ride.mode, ignoreCase = true)))
+        }
+        if (OnTheWay.mayTakeRide(ride, line, mapOf(ride.lineId to sequence)).isNotEmpty()) return null
+        return Signal.Unpredicted(legIndex, ride.lineId, ride.lineName, ride.fromId, ride.fromName)
     }
 
     // Each coming stop with a notice in force that the rider hasn't dismissed and that says it's

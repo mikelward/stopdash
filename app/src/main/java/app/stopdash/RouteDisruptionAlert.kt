@@ -116,11 +116,17 @@ internal object RouteDisruptionAlert {
         context.getSystemService(NotificationManager::class.java).activeNotifications
             .firstOrNull { it.id == NOTIFICATION_ID }?.notification?.extras?.getStringArray(EXTRA_HEARD)?.toSet().orEmpty()
 
-    // What one signal says: the line and its alert as the trip's chip has it, or the stop and what happened to it.
+    // What one signal says: the line and its alert as the trip's chip has it, the stop and what happened to
+    // it, or the line with no train predicted where the rider changes onto it.
     private fun text(context: Context, signal: RouteDisruption.Signal): String = when (signal) {
         is RouteDisruption.Signal.Line -> context.getString(R.string.route_disruption_line, signal.lineName.ifBlank { signal.lineId }, signal.status.description)
         is RouteDisruption.Signal.Stop -> context.getString(
             if (signal.closed) R.string.route_disruption_stop_closed else R.string.route_disruption_stop_moved,
+            signal.stopName.ifBlank { signal.stopId },
+        )
+        is RouteDisruption.Signal.Unpredicted -> context.getString(
+            R.string.route_disruption_unpredicted,
+            signal.lineName.ifBlank { signal.lineId },
             signal.stopName.ifBlank { signal.stopId },
         )
     }

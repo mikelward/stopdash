@@ -636,6 +636,8 @@
     <string name="route_disruption_stop_closed">%1$s closed</string>
     <!-- A stop the rest of a trip still has to reach, %1$s its name, that a notice says has moved. -->
     <string name="route_disruption_stop_moved">%1$s moved</string>
+    <!-- A line the rest of a trip changes onto, %1$s its name, with no train of it predicted at %2$s, the stop the rider changes at, a few minutes off: "Jubilee: none soon at Bond Street". -->
+    <string name="route_disruption_unpredicted">%1$s: none soon at %2$s</string>
     <!-- A leg: %1$s from, %2$s to. -->
     <string name="on_the_way_leg">%1$s → %2$s</string>
 </resources>

@@ -101,6 +101,7 @@ class RouteDisruptionChecksTest {
                 when (it) {
                     is RouteDisruption.Signal.Stop -> "${it.stopId} ${if (it.closed) "closed" else "moved"}"
                     is RouteDisruption.Signal.Line -> "${it.lineId} ${it.status.description}"
+                    is RouteDisruption.Signal.Unpredicted -> "${it.lineId} none at ${it.stopId}"
                 }
             },
         )

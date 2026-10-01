@@ -1223,8 +1223,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               trip screen's closure lookups now shared through `StopClosureChecks`) and posted by
               `RouteDisruptionAlert`, each signal heard once (`ActiveTrip.disruptionsHeard`). Needs a
               device check of the notification, its channel, and a swiped one staying away.
-          - [ ] **A train through a change still not predicted** as the rider nears its boarding
-                stop (Medium, above): not built.
+          - [x] **A train through a change still not predicted** as the rider nears its boarding
+                stop (Medium, above): five minutes or less before they can board there, a fresh
+                board at that stop listing no train of the ride's line its route doesn't send another
+                way (`RouteDisruption.changeNear`, `unpredicted`). Read on the ride before for this
+                alone, one request a refresh for those minutes; the trip's own board once they walk or
+                change there. A bus whose route uses the other pole of the stop pair isn't on that
+                board (the pick's own limit, *A train the board never listed* below).
           - [ ] **A part closure or suspension placed on the leg's own stretch** (High, above):
                 needs `LineStatus` to keep TfL's affected stops; until then every one is Medium.
           - [ ] **Planning again from where the rider is** (the re-plan tier, and the alert

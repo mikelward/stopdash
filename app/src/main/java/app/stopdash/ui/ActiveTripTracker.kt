@@ -346,7 +346,7 @@ class ActiveTripTracker(
         val boards = HashMap<TripLeg, Result<NextBoard>>()
         if (step(null, boards)) step(null, boards)
         // What's ahead changed with the step: a stop now behind the rider is no longer theirs to reach.
-        checkDisruptions()
+        checkDisruptions(boards)
     }
 
     /** End the trip: forgotten here and on the device. */
@@ -393,7 +393,7 @@ class ActiveTripTracker(
             // however long TfL takes: the steps share this refresh's attempts.
             val boards = HashMap<TripLeg, Result<NextBoard>>()
             if (step(fresh, boards)) step(null, boards)
-            checkDisruptions()
+            checkDisruptions(boards)
         }
     }
 
@@ -403,9 +403,10 @@ class ActiveTripTracker(
      * ([DisruptionPost.NEW]), and kept on the trip as heard, so a restart doesn't sound it again;
      * while it stays up, each check keeps it up to date silently ([DisruptionPost.KEEP]). Taken down
      * once nothing is known, or the trip has arrived or ended, and never brought back once gone
-     * (swiped away, or timed out with its evidence), short of something new.
+     * (swiped away, or timed out with its evidence), short of something new. [boards] are this
+     * refresh's reads of boarding stops, reused for a change the rider nears ([changeSignal]).
      */
-    private suspend fun checkDisruptions() {
+    private suspend fun checkDisruptions(boards: Map<TripLeg, Result<NextBoard>>) {
         val trip = _trip.value
         val progress = _progress.value
         if (trip == null || progress == null || progress == TripProgress.Arrived) {
@@ -426,19 +427,46 @@ class ActiveTripTracker(
         // follows the trip (the app closed with no ongoing notification), and at once with a refresh that
         // failed, as the trip's times stop being shown as live then (Codex, PR #441).
         val answered = _updatedAt.value
-        val until = found.until?.let { evidence -> answered?.let { minOf(evidence, it.plus(CURRENT_FOR)) } }
-        if (found.signals.isEmpty() || until == null) {
+        // No train predicted where the rider changes, from a board read for this refresh's answer only:
+        // none read once the refresh failed. It stands as long as that answer does.
+        val known = answered?.let { changeSignal(trip, progress, boards) }?.let { found.with(it, answered.plus(CURRENT_FOR)) } ?: found
+        val until = known.until?.let { evidence -> answered?.let { minOf(evidence, it.plus(CURRENT_FOR)) } }
+        if (known.signals.isEmpty() || until == null) {
             takeDisruptionDown()
             return
         }
-        val heard = found.signals.map { it.key }.filter { it !in trip.disruptionsHeard }
+        val heard = known.signals.map { it.key }.filter { it !in trip.disruptionsHeard }
         when {
-            heard.isNotEmpty() -> if (onDisruption(trip, found.signals, DisruptionPost.NEW, until)) {
+            heard.isNotEmpty() -> if (onDisruption(trip, known.signals, DisruptionPost.NEW, until)) {
                 disruptionUp = true
                 keep(trip.copy(disruptionsHeard = trip.disruptionsHeard + heard), progress)
             }
-            disruptionUp -> if (!onDisruption(trip, found.signals, DisruptionPost.KEEP, until)) takeDisruptionDown()
+            disruptionUp -> if (!onDisruption(trip, known.signals, DisruptionPost.KEEP, until)) takeDisruptionDown()
         }
+    }
+
+    // No train of its line predicted for the ride at a change the rider is a few minutes from
+    // ([RouteDisruption.changeNear], [RouteDisruption.unpredicted]), or null. Its board is this refresh's
+    // read when it's the trip's next board ([boards]), else read now: one request a refresh, only while
+    // such a change is near, which is while riding the ride before it. A read that fails is unknown,
+    // never a signal, and isn't asked again this refresh. A trip on the way has no National Rail ride
+    // ([OnTheWay.canFollow]), so TfL's board lists every train that may take it.
+    private suspend fun changeSignal(
+        trip: ActiveTrip,
+        progress: TripProgress,
+        boards: Map<TripLeg, Result<NextBoard>>,
+    ): RouteDisruption.Signal.Unpredicted? {
+        val (index, ride) = RouteDisruption.changeNear(trip, progress, clock()) ?: return null
+        val read = boards[ride]
+        val departures = if (read != null) read.getOrNull()?.departures ?: return null else try {
+            arrivals(ride.fromId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: TflException) {
+            warn("on the way: change board lookup failed for line ${ride.lineId}: ${e::class.simpleName}")
+            return null
+        }
+        return RouteDisruption.unpredicted(index, ride, departures, routeOf(ride.lineId))
     }
 
     // The direction each coming ride goes, by its leg, so the line's alert for the other way isn't the
