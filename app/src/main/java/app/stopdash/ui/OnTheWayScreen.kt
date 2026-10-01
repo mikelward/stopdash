@@ -168,6 +168,19 @@ internal fun OnTheWayScreen(
             modifier = Modifier.fillMaxSize().padding(padding).testTag("onTheWay"),
         ) {
             item(key = "next") { NextStep(progress, now, current) }
+            // Time left and when they get there (maintainer, 2026-10-01). Not from an answer too old to
+            // stand behind ([current]): it waits, as the step's own times do.
+            val eta = trip?.let { OnTheWay.eta(it, progress, now) }
+            val stale = !current && fromTfl(progress)
+            if (eta != null && !stale) {
+                item(key = "eta") {
+                    Text(
+                        etaText(eta, now),
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.testTag("onTheWayEta"),
+                    )
+                }
+            }
             // The next ride's trains go under its own row below (maintainer, 2026-09-28); here only
             // if that ride isn't among the legs still ahead, so they're never lost.
             val nextAt = if (nextTrains != null && trip != null) {
@@ -357,6 +370,20 @@ private fun NoteText(text: String) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
     )
+}
+
+/** [eta] as its screen says it at [now]: the minutes left, counted as the boards count, and the clock time. */
+@Composable
+internal fun etaText(eta: OnTheWay.Eta, now: Instant): String {
+    LocalConfiguration.current // Read again on a configuration change (locale, font scale).
+    return etaText(LocalContext.current.resources, eta, now)
+}
+
+/** [etaText] from [resources]. */
+internal fun etaText(resources: Resources, eta: OnTheWay.Eta, now: Instant): String {
+    val minutes = Countdown.minutes(eta.arrival, now).toInt()
+    val clock = CLOCK.format(eta.arrival.atZone(LONDON))
+    return resources.getString(if (eta.live) R.string.on_the_way_eta else R.string.on_the_way_eta_estimated, minutes, clock)
 }
 
 /** The card at the top: what the rider does next, from [progress]. */

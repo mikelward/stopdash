@@ -631,6 +631,49 @@ object OnTheWay {
     fun rideDone(trip: ActiveTrip, now: Instant): ActiveTrip = nextLeg(trip.copy(dueOffAt = null), now).first
 
     /**
+     * When [trip]'s rider gets where they're going, as its screen shows it with the time left
+     * (maintainer, 2026-10-01): [arrival], and [live] when it's TfL's prediction for where they get off
+     * the ride they're on, with only walks after. Otherwise it's estimated: from the train's time (due at
+     * the boarding stop, the Planner's time on board after), or the end of a walk or change, with the
+     * Planner's times for the legs and changes still ahead. Null with no train to time a ride from (still
+     * being found, lost, or not yet told for a rider on board by where they were seen), with where they
+     * get off beyond TfL's predictions, once arrived, or with no leg.
+     */
+    data class Eta(val arrival: Instant, val live: Boolean)
+
+    /** [trip]'s [Eta] at [now], from where it stands ([progress]). */
+    fun eta(trip: ActiveTrip, progress: TripProgress?, now: Instant): Eta? {
+        if (progress == TripProgress.Arrived) return null
+        // On board by where they were seen, with no train: counted stops only, which stand still between
+        // fixes, so a time from them would slide later as the clock runs (Codex, PR #449).
+        if (ridingUnmatched(trip)) return null
+        val leg = trip.leg ?: return null
+        // What it's timed from, and what follows that on the current leg: TfL's time where they get off,
+        // the train's at the boarding stop, or the end of a change or walk.
+        val (anchor, after, live) = when (progress) {
+            // Its stop beyond TfL's predictions: no time for it, as the step claims none (maintainer,
+            // 2026-09-29), rather than one counted from now that slides later between stops (Codex, PR #449).
+            is TripProgress.Riding -> Triple(progress.getOffAt ?: return null, Duration.ZERO, true)
+            // No train yet, none can be timed: no arrival rather than one sliding later as the clock
+            // runs (Codex, PR #449).
+            is TripProgress.Waiting -> Triple(progress.due ?: return null, leg.run, false)
+            is TripProgress.Changing -> Triple(progress.until, leg.run, false)
+            is TripProgress.Walking -> Triple(progress.until, Duration.ZERO, false)
+            else -> return null
+        }
+        // Gone by with nothing newer (a train still listed past its time, a walk running long): no
+        // arrival, rather than one lifted to now that slides later as the clock runs, live or not
+        // (Codex, PR #449).
+        if (anchor.isBefore(now)) return null
+        val ahead = trip.route.legs.drop(trip.legIndex + 1)
+        // Changes only between legs: the last leg's is to no next leg, as the route leaves it out (Codex, PR #449).
+        val changes = (listOf(leg) + ahead).dropLast(1).fold(Duration.ZERO) { sum, it -> sum.plus(it.changeAfter) }
+        val rest = ahead.fold(changes) { sum, next -> sum.plus(next.run) }
+        // A change still ahead is the Planner's time, as a ride is: estimated (Codex, PR #449).
+        return Eta(anchor.plus(after).plus(rest), live && ahead.all { it.isWalk } && changes.isZero)
+    }
+
+    /**
      * Whether a fix is asked for [trip] at [now] to follow a rider on board by where they were seen
      * ([ridingUnmatched]): where they are is all that counts their stops, and sees them where they get
      * off. For the ride's planned time from when they were seen on, and [AT_GET_OFF_AFTER] more for a

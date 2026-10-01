@@ -1534,6 +1534,15 @@ them there:
   Start but says it can't be followed yet: its times come from National Rail's boards, which name
   no train to follow. **One trip at a time:** while one is on the way, a route offers **Open current
   trip** in Start's place; the trip is ended from its own screen.
+- **Time left.** Under the step, the trip says how long is left and when it gets there
+  (maintainer, 2026-10-01): "29 min left · ~08:31". It's "~" when it's TfL's prediction for where
+  the rider gets off the ride they're on, with only walks after. It's "est." when any of it is the
+  Planner's: a train still to come (its time at the boarding stop, then the time on board), or a ride
+  or change still ahead. Like the step, it claims no time it can't take from a train: none while the
+  ride's train is still being found, while where the rider gets off is beyond TfL's predictions, or for
+  a rider on board by where they were seen until their train is told, nor once the time it's counted
+  from (TfL's, or the end of a walk or change) has passed without a newer one. It waits, as the step's own times do, while the
+  last answer is too old to stand behind.
 - **Following it.** The trip asks TfL for **the followed train's calls ahead of it**
   (`/Vehicle/{id}/Arrivals`, in one request) about every 30 s while it is shown. Still due at the
   boarding stop, the rider is **waiting** for it; once it has left, they are taken to be **on
