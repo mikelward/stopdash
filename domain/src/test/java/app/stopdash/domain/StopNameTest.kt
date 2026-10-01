@@ -54,6 +54,15 @@ class StopNameTest {
     }
 
     @Test
+    fun `strips National Rail's Rail Station Only qualifier`() {
+        // National Rail's board names a station sharing its name with a tube station this way; it
+        // must clean to the name TfL's route gives the stop, or a train bound there matches none.
+        assertEquals("Heathrow Terminal 5", cleanStopName("Heathrow Terminal 5 (Rail Station Only)"))
+        assertEquals("Heathrow Terminals 2 & 3", cleanStopName("Heathrow Terminals 2 & 3 (Rail Station Only)"))
+        assertEquals(cleanStopName("Heathrow Terminal 5 Rail Station"), cleanStopName("Heathrow Terminal 5 (Rail Station Only)"))
+    }
+
+    @Test
     fun `keeps a geographic parenthetical that names no line`() {
         // "(London)" disambiguates the place, not a line, so it stays.
         assertEquals("Stratford (London)", cleanStopName("Stratford (London)"))

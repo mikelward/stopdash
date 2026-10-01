@@ -10,7 +10,10 @@ private val LINE_PARENTHETICAL = Regex("""\s*\([^()]*\bLines?\)\s*$""", RegexOpt
  * Trims TfL's `commonName` down to what a rider reads on a sign. TfL suffixes a stop's
  * type onto the name — "Charing Cross Underground Station", "London Bridge Rail Station",
  * "Canary Wharf DLR Station" — which is noise once the app is already a departures board;
- * dropping it keeps the list glanceable (SPEC *Concise copy*). Suffix-only: a name with
+ * dropping it keeps the list glanceable (SPEC *Concise copy*). National Rail's board spells the
+ * same thing as a parenthetical on a station that shares its name with a tube station —
+ * "Heathrow Terminal 5 (Rail Station Only)" — and it goes too, so a train's destination there
+ * matches the stop TfL's route names ("Heathrow Terminal 5"). Suffix-only: a name with
  * no type suffix (most bus stops) is returned unchanged, and a stop literally called
  * "Station" is never emptied.
  *
@@ -47,6 +50,7 @@ private const val CROSS_STREET = " / "
 private fun cleanPart(part: String): String {
     var name = part.trim()
     val suffixes = listOf(
+        " (Rail Station Only)",
         " Underground Station",
         " DLR Station",
         " Rail Station",
