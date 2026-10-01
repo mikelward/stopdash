@@ -1461,7 +1461,13 @@ them there:
   of its stops couldn't be read) isn't followed, but it may be running, so that's said wherever it
   could have changed what the trip shows: no train found while the board lists a train of one that
   went unchecked is the refresh failing ("Couldn't update"), not no train; a train found is followed
-  all the same. Each train is
+  all the same. At a bus stop pair (a road's two poles), another of the ride's lines may stop only
+  across the road from the Planner's pole, so the trip reads the pair's other poles' boards as well,
+  but only a pole serving a line of the ride's mode whose route runs the ride from there (or whose
+  route isn't known): usually none, so a plain pair costs nothing more. A train counts only on the
+  board of the pole its line boards at, since a line's buses across the road are its way back. A pole
+  that should be read and can't be, or a pair whose poles can't be looked up, is said the same way
+  ("Couldn't update"), never taken for no bus there. Each train is
   judged against the ride as its own line runs it, by its
   own stops between: the Metropolitan from Baker Street to Finchley Road passes the Jubilee's stops
   without calling. Its line is kept with the trip, since TfL answers for a train on its own line
@@ -1521,7 +1527,8 @@ them there:
   changes onto it or waits for it, **the trains at its boarding stop that take them on** are listed
   under that ride's own row in the route's legs, drawn as the departures board draws a stop — its
   platform header, or a bus pole's letter ("Archway – Stop D", maintainer, 2026-09-29: not where the
-  buses go), over the board's own outlined card — so they read as a board, not as another step
+  buses go), over the board's own outlined card, and a bus pair's other pole read with it (*Which
+  train*) under its own header ("Stop E") — so they read as a board, not as another step
   (maintainer, 2026-09-28), and after its train has left until they're seen on board (above): every line of the ride's mode whose route calls at
   where they get off — judged by each train's own line route, so another branch's trains stay out —
   a row per line and terminus with its next few times, not only the train followed, a time grayed
@@ -1530,7 +1537,8 @@ them there:
   until the first board is in. It costs one arrivals request per refresh during those steps, plus,
   for a line at that stop whose route isn't already held, the same route lookup a trip's cards make
   (one or two TfL requests per line, kept a day and shared with them), and for a bus, coach or tram
-  stop one request for its pole's letter, kept for the process. All free, within the
+  stop one request for its pair's poles (its letter, and where another of its lines boards), kept
+  for the process, and one arrivals request a refresh for each other pole read. All free, within the
   keyless budget, and naming only stops and lines, never the rider; a route that can't be loaded
   says "Couldn't check every line" rather than drop its trains. The walk's check costs one GPS fix
   per refresh until the rider is seen there or the walk's estimated time is up. Below the next step
@@ -1676,11 +1684,13 @@ them there:
   the dismissal holds, for as long as that closure is under way, even once a milder alert shows over
   it. Dismissing a different alert the line shows doesn't hide a closure placed on the leg, which the
   rider was never shown. No train predicted at a change is read off the board at
-  the stop the ride boards at, for any of its lines the trip would follow (*Which train*): no train
+  the stop the ride boards at (with its pair's other poles, each train on the board of the pole its
+  line boards at), for any of its lines the trip would follow (*Which train*): no train
   of them listed there that its own line's route doesn't send another way, a train its route can't
   place counting as predicted, as does one leaving before the rider
   can get there (that may only be where the predictions end). With a train listed there of a line left
-  unchecked (*Which train*), it may take the rider on: unknown, never a signal. It's a change's only, a
+  unchecked (*Which train*), or a pole of the pair that couldn't be read, it may take the rider on:
+  unknown, never a signal. It's a change's only, a
   ride with one
   before it on the route: at the first, the rider is looking at its board. Five minutes is well inside
   TfL's predictions (about half an hour), so a line running there has a train predicted by then. The
@@ -1753,7 +1763,7 @@ delayed train doesn't keep GPS on), and a rider seen clear of the boarding stop
 (beyond 150 m of it) and either at one of the ride's later stops or 400 m on toward where they get
 off, within 300 m of the ride's way (its stops joined up), has boarded, whichever train was followed. The trip then follows the train they're on: of the
 trains the stop's board listed while the trip was shown, on any of the ride's lines the trip would
-follow (*Which train*), seen along that line's own way and bound where the rider gets off (not another
+follow (*Which train*; a bus pair's other poles' boards too), seen along that line's own way and bound where the rider gets off (not another
 branch), the one that most recently left it and isn't behind them (up to three
 asked after, a TfL request each, only then; a bus at either pole of the rider's stop pairs counts).
 Behind them is a train still to call at a stop they're past, or, seen at a stop, one due there more

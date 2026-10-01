@@ -292,7 +292,20 @@ data class NextTrains(
     // headed as the main view heads that stop ("Stop D"), not by where the ride goes; blank for none.
     val stopLetter: String = "",
     val towards: String = "",
-)
+    // The boarding stop pair's other poles read with it ([ActiveTripTracker.NextBoard.others]), each
+    // under its own header: another of the ride's lines boards there, across the road. None for a
+    // station, or with no other pole read.
+    val others: List<PoleTrains> = emptyList(),
+) {
+    /** Whether no pole has a train listed: the board's own ([trains]) nor any of [others]. */
+    val none: Boolean get() = trains.isEmpty() && others.all { it.trains.isEmpty() }
+}
+
+/**
+ * A pole of the boarding stop pair besides the ride's own ([NextTrains.others]): its trains that take
+ * the rider where they get off, headed by its letter and "towards" as the main view heads it.
+ */
+data class PoleTrains(val stopId: String, val stopName: String, val trains: List<Departure>, val stopLetter: String = "", val towards: String = "")
 
 /**
  * [board] ([ActiveTripTracker.nextBoard]) as [NextTrains] at [now]: its trains kept to those whose
@@ -308,21 +321,36 @@ internal fun rememberNextTrains(
     // board is in, rather than appear only once TfL answers.
     ride: TripLeg? = board?.ride,
 ): NextTrains? {
-    val lineIds = board?.let { OnTheWay.boardLineIds(it.ride, it.departures) }.orEmpty()
+    val lineIds = board?.let { OnTheWay.boardLineIds(it.ride, it.boards.values.flatten()) }.orEmpty()
     val sequences = rememberLineSequences(lineIds, now)
     // No board of this ride's yet (just started, or back after a restart): its section, loading.
     if (board == null || board.ride != ride) return ride?.let { NextTrains(it, emptyList(), pending = true, readyAt = readyAt) }
     // Never read: nothing to show but that the update failed.
     val fetchedAt = board.fetchedAt ?: return NextTrains(board.ride, emptyList(), failed = board.failed, readyAt = readyAt)
     val found = OnTheWay.boardTrains(board.ride, board.departures, fetchedAt, sequences, now)
+    // Each other pole's, as the ride boards there: only another line's way to the same stop shows, not
+    // a line's way back across the road.
+    val others = board.others.map { other ->
+        val ride = board.ride.copy(fromId = other.pole.id, fromName = other.pole.name.ifBlank { board.ride.fromName })
+        other to OnTheWay.boardTrains(ride, other.departures, fetchedAt, sequences, now)
+    }
+    val misses = found.misses + others.flatMap { it.second.misses }
     // A train its route couldn't place, logged where every trip filter logs it, so "Couldn't check
     // every line" can be explained.
     val routes = LocalRouteStops.current
-    LaunchedEffect(routes, found.misses) { routes?.reportMisses(found.misses) }
+    LaunchedEffect(routes, misses) { routes?.reportMisses(misses) }
     val stale = Staleness.isStale(fetchedAt, now)
     return NextTrains(
-        board.ride, found.trains, pending = found.pending, unresolved = found.unresolved, stale = stale, failed = board.failed,
+        board.ride, found.trains,
+        pending = found.pending || others.any { it.second.pending },
+        unresolved = found.unresolved || others.any { it.second.unresolved },
+        stale = stale,
+        // A pole of the pair left unread is said too: a train there went unseen.
+        failed = board.failed || board.partial,
         readyAt = readyAt, fetchedAt = fetchedAt, stopLetter = board.pole?.stopLetter.orEmpty(), towards = board.pole?.towards.orEmpty(),
+        others = others.map { (other, trains) ->
+            PoleTrains(other.pole.id, other.pole.name.ifBlank { board.ride.fromName }, trains.trains, other.pole.stopLetter, other.pole.towards)
+        },
     )
 }
 
@@ -336,11 +364,15 @@ internal fun rememberNextTrains(
 @Composable
 private fun NextTrainsSection(next: NextTrains, now: Instant) {
     val groups = remember(next, now) {
+        val fetchedAt = next.fetchedAt ?: SteadyClock.stamp(now)
+        // The ride's own pole first, then the pair's others, each its own header ("Stop N").
         StopGrouping.groupByStop(
             DepartureRows.forStop(
-                next.ride.fromId, next.ride.fromName, next.trains, now, fetchedAt = next.fetchedAt ?: SteadyClock.stamp(now),
+                next.ride.fromId, next.ride.fromName, next.trains, now, fetchedAt = fetchedAt,
                 stopLetter = next.stopLetter, towards = next.towards,
-            ),
+            ) + next.others.flatMap { pole ->
+                DepartureRows.forStop(pole.stopId, pole.stopName, pole.trains, now, fetchedAt = fetchedAt, stopLetter = pole.stopLetter, towards = pole.towards)
+            },
         )
     }
     Column(Modifier.fillMaxWidth().testTag("onTheWayTrains"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -350,7 +382,7 @@ private fun NextTrainsSection(next: NextTrains, now: Instant) {
             if (!next.failed) NoteText(stringResource(R.string.on_the_way_updating))
             return@Column
         }
-        if (next.failed && next.trains.isEmpty()) return@Column
+        if (next.failed && next.none) return@Column
         groups.forEach { group ->
             StopGroupHeader(group.stopName, group.qualifier, distanceLabel = null, firstOnScreen = false)
             StopGroupCard(

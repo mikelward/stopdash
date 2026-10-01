@@ -46,6 +46,10 @@ class ActiveTripTrackerTest {
     private val offered = mutableMapOf<String, List<TripLeg>>()
     // The lines of the ride that went unchecked, as a failed check leaves them ([RideLinesNow.uncheckedLines]).
     private var ridesUnchecked: Set<String> = emptySet()
+    // The boards each ride lines check was given, by stop.
+    private val ridesGiven = mutableListOf<Map<String, List<Departure>>>()
+    // The lines the rider hides.
+    private var hiddenLines: Set<String> = emptySet()
 
     private fun train(vehicle: String, minutes: Long) =
         Departure("red", "Red", "outbound", "C", null, at(minutes), "tube", vehicleId = vehicle)
@@ -174,11 +178,13 @@ class ActiveTripTrackerTest {
         },
         // As the cards find them: another line only where the departures given list a train of it.
         rideLines = { _, ride, given ->
+            ridesGiven += given
             RideLinesNow(
-                (offered[ride.lineId] ?: listOf(ride)).filter { it == ride || given.any { train -> train.lineId == it.lineId } },
+                (offered[ride.lineId] ?: listOf(ride)).filter { it == ride || given.values.flatten().any { train -> train.lineId == it.lineId } },
                 uncheckedLines = ridesUnchecked,
             )
         },
+        hidden = { hiddenLines },
         stopPoles = { area ->
             poleReads++
             if (polesFail) throw TflException.Offline(null)
@@ -3278,6 +3284,131 @@ class ActiveTripTrackerTest {
         tracker.refresh()
         assertNull(tracker.nextBoard.value?.pole)
         assertEquals(0, poleReads)
+    }
+
+    // A bus ride from pole Bs of the example pair BG to pair CG, the Planner's bus 1; and as bus 2 runs it
+    // from Bn, the other side of the road ([RideLines]).
+    private val busRide = TripLeg("bus", "1", "1", "Bs", "Pair B", "Cs", "Pair C", at(5), at(15), path = listOf("Cs"), fromArea = "BG", toArea = "CG")
+    private val busTwoRide = busRide.copy(lineId = "2", lineName = "2", fromId = "Bn", toId = "Cn", path = listOf("Cn"), fromArea = "", toArea = "")
+    private fun bus(line: String, vehicle: String, minutes: Long) = Departure(line, line, "outbound", "Pair C", null, at(minutes), "bus", vehicleId = vehicle)
+    private fun pole(id: String, letter: String, vararg lines: String) =
+        app.stopdash.domain.StopLocation(id, "Pair B", 0.0, 0.0, lines = lines.map { app.stopdash.domain.LineRef(it, it, "bus") }, stopLetter = letter)
+
+    // The pair BG: Bs serves bus 1, Bn bus 2, which runs to pair CG; bus 3 at Bw goes the other way.
+    private fun busPair() {
+        polesAt["BG"] = listOf(pole("Bs", "S", "1"), pole("Bn", "N", "2"), pole("Bw", "W", "3"))
+        sequences["2"] = app.stopdash.domain.LineSequence(
+            listOf(app.stopdash.domain.LineRoute("north", listOf("Bn", "Cn"))), mapOf("Bn" to "Pair B", "Cn" to "Pair C"),
+            stopAreas = mapOf("Bn" to "BG", "Cn" to "CG"),
+        )
+        sequences["3"] = app.stopdash.domain.LineSequence(
+            listOf(app.stopdash.domain.LineRoute("south", listOf("Cn", "Bw"))), mapOf("Bw" to "Pair B", "Cn" to "Pair C"),
+            stopAreas = mapOf("Bw" to "BG", "Cn" to "CG"),
+        )
+        offered["1"] = listOf(busRide, busTwoRide)
+    }
+
+    @Test
+    fun `a bus of the ride that stops only at the other pole of the boarding pair is followed`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        busPair()
+        // Bs lists bus 2 going the other way (its way back) before Bn's bus 2 that takes the rider.
+        departures["Bs"] = listOf(bus("2", "x", 5))
+        departures["Bn"] = listOf(bus("2", "b2", 6))
+        trains["2/x"] = listOf(call("Bs", 5), call("Ws", 9))
+        trains["2/b2"] = listOf(call("Bn", 6), call("Cn", 12))
+        tracker.start(TripRoute(listOf(busRide)), "Pair C", readyAt = now)
+        tracker.refresh()
+        assertEquals("b2", tracker.trip.value?.vehicleId)
+        assertEquals(busTwoRide, tracker.trip.value?.vehicleLeg)
+        // Only Bn's board is read besides the ride's own: Bw's bus 3 doesn't run the ride.
+        assertEquals(listOf("Bs", "Bn"), boardStops.distinct())
+        assertEquals(listOf("Bn"), tracker.nextBoard.value?.others?.map { it.pole.id })
+        assertEquals(mapOf("Bs" to departures.getValue("Bs"), "Bn" to departures.getValue("Bn")), ridesGiven.last())
+        // Bs's bus 2, the other way, is no bus of the ride's: never asked after.
+        assertEquals(listOf("b2/2"), askedOn.distinct())
+        assertFalse(tracker.failed.value)
+    }
+
+    @Test
+    fun `a pair's other pole is read only for a line that may take the ride, and never a hidden one's`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        busPair()
+        // Bus 2 hidden by the rider: only Bw's bus 3, which goes the other way, is left, so nothing more is read.
+        hiddenLines = setOf(app.stopdash.domain.HiddenModes.lineKey("2", "2"))
+        departures["Bs"] = listOf(bus("1", "b1", 7))
+        trains["1/b1"] = listOf(call("Bs", 7), call("Cs", 13))
+        tracker.start(TripRoute(listOf(busRide)), "Pair C", readyAt = now)
+        tracker.refresh()
+        assertEquals("b1", tracker.trip.value?.vehicleId)
+        assertEquals(listOf("Bs"), boardStops.distinct())
+        assertEquals(emptyList<ActiveTripTracker.PoleBoard>(), tracker.nextBoard.value?.others)
+        assertFalse(tracker.nextBoard.value?.partial ?: true)
+    }
+
+    @Test
+    fun `a pole of the pair that can't be read is said, and no bus found fails the refresh`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        busPair()
+        unknownStops += "Bn"
+        departures["Bn"] = listOf(bus("2", "b2", 6))
+        trains["2/b2"] = listOf(call("Bn", 6), call("Cn", 12))
+        tracker.start(TripRoute(listOf(busRide)), "Pair C", readyAt = now)
+        tracker.refresh()
+        // Bn's bus 2 may be theirs: none found isn't passed off as none to take.
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertTrue(tracker.failed.value)
+        assertEquals(true, tracker.nextBoard.value?.partial)
+        assertTrue(logged.any { it.startsWith("on the way: pair board lookup failed for line 1") })
+        // So too with the pair's poles unknown (another pair's, not yet read): which may list one can't be told.
+        unknownStops.clear()
+        tracker.end()
+        val other = busRide.copy(fromArea = "BG2")
+        offered["1"] = listOf(other, busTwoRide)
+        sequences["2"] = sequences.getValue("2").let { it.copy(stopAreas = it.stopAreas + ("Bn" to "BG2")) }
+        polesAt["BG2"] = polesAt.getValue("BG")
+        polesFail = true
+        tracker.start(TripRoute(listOf(other)), "Pair C", readyAt = now)
+        tracker.refresh()
+        assertTrue(tracker.failed.value)
+        assertEquals(true, tracker.nextBoard.value?.partial)
+        // Read again: Bn's bus is followed.
+        polesFail = false
+        tracker.refresh()
+        assertEquals("b2", tracker.trip.value?.vehicleId)
+        assertFalse(tracker.failed.value)
+        assertEquals(false, tracker.nextBoard.value?.partial)
+    }
+
+    @Test
+    fun `route disruption counts a bus at the other pole of a change's pair as predicted`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        busPair()
+        // Off the train at C, a walk to pair B, then bus 1 on.
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "Bs", "Pair B", at(16), at(18))
+        val busOn = busRide.copy(departure = at(20), arrival = at(28))
+        offered["1"] = listOf(busOn, busTwoRide.copy(departure = at(20), arrival = at(28)))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 16))
+        tracker.start(TripRoute(listOf(ride, walkOn, busOn)), "Pair C", readyAt = now)
+        tracker.refresh()
+        disruptionAlerts.clear()
+        // Nearing the change, no bus 1 at Bs, but bus 2 at Bn takes the rider on: nothing missing is said.
+        departures["Bn"] = listOf(bus("2", "b2", 21))
+        now = at(13)
+        trains["3"] = listOf(call("C", 16))
+        tracker.refresh()
+        assertTrue("Bn" in boardStops)
+        assertEquals(emptyList<String>(), disruptionAlerts)
+        // Bn's board unread: unknown, never a signal.
+        unknownStops += "Bn"
+        tracker.refresh()
+        assertEquals(emptyList<String>(), disruptionAlerts)
+        // Bn read and empty: no bus of the ride's lines is predicted there.
+        unknownStops.clear()
+        departures["Bn"] = emptyList()
+        tracker.refresh()
+        assertEquals(listOf("new ${RouteDisruption.Signal.Unpredicted(2, "1", "1", "Bs", "Pair B").key}"), disruptionAlerts)
     }
 
     @Test

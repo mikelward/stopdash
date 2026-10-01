@@ -68,20 +68,22 @@ internal class RideLineChecks(
     private val lock = Mutex()
 
     /**
-     * The lines [ride] of [route] may be taken on now, given its boarding stop's [departures]: the
-     * Planner's first when it's among them ([RideLines.vouched]), and those that went unchecked.
+     * The lines [ride] of [route] may be taken on now, given the [boards] read at its boarding stop, by
+     * stop id: its own pole's, and those of its stop pair's other poles the trip read
+     * ([RideLines.polesToRead]), where another line may board. The Planner's first when it's among them
+     * ([RideLines.vouched]), and those that went unchecked.
      */
-    suspend fun running(route: TripRoute, ride: TripLeg, departures: List<Departure>): RideLinesNow {
+    suspend fun running(route: TripRoute, ride: TripLeg, boards: Map<String, List<Departure>>): RideLinesNow {
         val hidden = hidden()
-        // Only the stop the trip reads: another pole of the pair isn't fetched (TODO, *A train the board never listed*).
-        val arrivals = mapOf(ride.fromId to departures)
+        // The stops the trip read, as the cards' stop pair ([RideLines.of]'s areaPoles): its own and its pair's.
+        val areaPoles = if (ride.fromArea.isBlank()) emptyMap() else mapOf(ride.fromArea to boards.keys.toList())
         val unread = HashSet<String>()
-        val sequences = RideLines.lineIds(listOf(route), arrivals, emptyMap(), hidden).associateWith { lookUp(it, unread) }
-        val lines = RideLines.of(listOf(route), arrivals, emptyMap(), sequences, hidden)[ride] ?: RideLines.only(ride)
+        val sequences = RideLines.lineIds(listOf(route), boards, areaPoles, hidden).associateWith { lookUp(it, unread) }
+        val lines = RideLines.of(listOf(route), boards, areaPoles, sequences, hidden)[ride] ?: RideLines.only(ride)
         // Another line of this ride ([RideLines.candidateIds]) whose route couldn't be read isn't known to
         // run it, so it can't be offered. One asked after for another ride of the plan bears on that
         // ride, not this one (Codex, PR #460).
-        val routeUnread = RideLines.candidateIds(ride, listOf(route), arrivals, emptyMap(), hidden).filterTo(HashSet()) { it in unread }
+        val routeUnread = RideLines.candidateIds(ride, listOf(route), boards, areaPoles, hidden).filterTo(HashSet()) { it in unread }
         // The Planner's alone: nothing to check, as the trip followed before.
         if (lines.legs.size == 1) return RideLinesNow(lines.legs, routeUnread)
         val now = clock()

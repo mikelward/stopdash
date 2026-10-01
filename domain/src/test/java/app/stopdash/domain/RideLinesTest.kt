@@ -85,6 +85,35 @@ class RideLinesTest {
     }
 
     @Test
+    fun `a pair's other pole is read only where one of its lines may run the ride`() {
+        // The Planner's bus 1 boards at Bs of pair BG and gets off at pair CG. Bn's bus 2 runs there; Bw's
+        // bus 3 goes the other way; Bx's bus 4 has no route known; By lists no lines; Bz serves only tube
+        // and the ride's own line.
+        val bus = leg("1", "Bs", "Cn", path = listOf("XG", "CG"), mode = "bus").copy(fromArea = "BG", toArea = "CG")
+        fun pole(id: String, vararg lines: Pair<String, String>) = StopLocation(id, "B", 0.0, 0.0, lines = lines.map { (line, mode) -> LineRef(line, line, mode) })
+        val bs = pole("Bs", "1" to "bus")
+        val bn = pole("Bn", "2" to "bus")
+        val bw = pole("Bw", "3" to "bus")
+        val bx = pole("Bx", "4" to "bus")
+        val by = pole("By")
+        val bz = pole("Bz", "red" to "tube", "1" to "bus")
+        val sequences = mapOf(
+            "2" to LineSequence(listOf(LineRoute("north", listOf("Bn", "Xn", "Cn2"))), emptyMap(), stopAreas = mapOf("Bn" to "BG", "Xn" to "XG", "Cn2" to "CG")),
+            "3" to LineSequence(listOf(LineRoute("south", listOf("Cn2", "Bw"))), emptyMap(), stopAreas = mapOf("Bw" to "BG", "Cn2" to "CG")),
+        )
+        val poles = listOf(bs, bn, bw, bx, by, bz)
+        // The ride's own pole is read anyway; of the rest, those that may have a bus taking the ride.
+        assertEquals(listOf(bn, bx, by), RideLines.polesToRead(bus, poles, sequences))
+        // A hidden line's pole needn't be read for it.
+        assertEquals(listOf(bx, by), RideLines.polesToRead(bus, poles, sequences, hidden = setOf(HiddenModes.lineKey("2", "2"))))
+        // A line of another mode at a pole doesn't take a bus ride, whatever its route.
+        val tube = pole("Bt", "2" to "tube")
+        assertEquals(emptyList<StopLocation>(), RideLines.polesToRead(bus, listOf(tube), sequences))
+        // The routes it goes by: the buses that may take the ride, never the ride's own or another mode.
+        assertEquals(listOf("2", "3", "4"), RideLines.pairLineIds(bus, poles + tube))
+    }
+
+    @Test
     fun `another line counts only once checked as running, the Planner's always`() {
         val green = leg("green", "A", "B")
         val good = LineStatus("green", LineStatus.GOOD_SERVICE, "Good Service")

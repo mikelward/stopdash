@@ -2998,12 +2998,15 @@ class MainActivity : ComponentActivity() {
                     arrivals = planner::arrivals,
                     vehicles = planner,
                     stationPlaces = planner::stationPlaces,
-                    // A bus ride's boarding pole, for its letter on the trip's board: one request per stop.
+                    // A bus ride's boarding stop pair, for its pole's letter on the trip's board and the
+                    // other poles another of its lines may board at: one request per stop.
                     stopPoles = planner::stopAreaPoles,
                     // The same routes, held a day, the trip's cards place its rides with.
                     lineSequence = { lineId -> routeStops(context.applicationContext).let { it.cached(lineId, "") ?: it.load(lineId, "") } },
                     // A ride's other lines, as its cards offer them: running, from stops open, not avoided.
                     rideLines = rideLineChecks(context.applicationContext)::running,
+                    // A bus stop pair's other pole isn't read for a line the rider hides.
+                    hidden = { HiddenModesSetting.current },
                     warn = ::logDepartureWarning,
                     onGetOffSoon = { trip, riding ->
                         GetOffSoonAlert.post(context.applicationContext, trip, riding, Instant.now(), ::logDepartureWarning)
