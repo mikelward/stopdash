@@ -139,6 +139,8 @@ import app.stopdash.ui.AppMenuActions
 import app.stopdash.ui.HideUndoCarrier
 import app.stopdash.ui.BugReportConsentDialog
 import app.stopdash.ui.DISRUPTION_REUSE
+import app.stopdash.ui.RouteDisruptionChecks
+import app.stopdash.ui.StopClosureChecks
 import app.stopdash.ui.DeparturesUiState
 import app.stopdash.ui.FAR_ARRIVALS_REUSE
 import app.stopdash.ui.FarRevealState
@@ -735,6 +737,7 @@ class MainActivity : ComponentActivity() {
                         onTheWayOpen = true
                         GetOffSoonAlert.ensureChannel(applicationContext)
                         TimeToBoardAlert.ensureChannel(applicationContext)
+                        RouteDisruptionAlert.ensureChannel(applicationContext)
                         if (ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                         }
@@ -2932,8 +2935,33 @@ class MainActivity : ComponentActivity() {
                         TimeToBoardAlert.post(context.applicationContext, trip, waiting, how, answeredAt, Instant.now(), ::logDepartureWarning)
                     },
                     onBoardSoonDone = { TimeToBoardAlert.cancel(context.applicationContext) },
+                    // "Route disruption": the trip's coming lines and stops, checked as its screen checks
+                    // them (statuses with their directions, closures through the cache the screens share).
+                    disruptions = routeDisruptionChecks(context.applicationContext)::check,
+                    onDisruption = { trip, signals, how, until ->
+                        RouteDisruptionAlert.post(context.applicationContext, trip, signals, how, until, Instant.now(), ::logDepartureWarning)
+                    },
+                    onDisruptionDone = { RouteDisruptionAlert.cancel(context.applicationContext) },
+                    disruptionsShown = { RouteDisruptionAlert.shown(context.applicationContext) },
                 )
             }.also { activeTripInstance = it }
+        }
+
+        // What a trip on the way's "route disruption" goes by: the client its screen asks statuses
+        // and closures of, the closure lookups the screens share, and the rider's dismissals.
+        private fun routeDisruptionChecks(context: Context): RouteDisruptionChecks {
+            val client = departuresClient(context)
+            return RouteDisruptionChecks(
+                client = client,
+                closures = StopClosureChecks(client, StopClosureCache.SHARED, DISRUPTION_REUSE, Dispatchers.IO, ::logDepartureWarning, "on the way"),
+                closureCache = StopClosureCache.SHARED,
+                dismissedStore = DataStoreDismissedAlertsStore.from(context, warn = ::logDepartureWarning),
+                sequence = { lineId -> routeStops(context).let { it.cached(lineId, "") ?: it.load(lineId, "") } },
+                hubOf = { routeStops(context).hubOf(it) },
+                clock = Instant::now,
+                io = Dispatchers.IO,
+                warn = ::logDepartureWarning,
+            )
         }
 
         // The Planner takes stop and station ids but not an interchange's.

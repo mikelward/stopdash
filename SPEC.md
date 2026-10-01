@@ -1558,6 +1558,37 @@ them there:
   and it is never brought back, so one the rider swiped away stays away.
   It comes down once the rider is on board (the train has left the stop, or they said so), another
   train is followed, or the trip ends, and never outlasts two minutes after the train was due.
+- **Route disruption** (maintainer, 2026-09-29): a heads-up when the trip learns something that may
+  stop a **coming leg** (the one the rider is on, and every one after): its line until they get off
+  it, so the one being ridden counts too; its boarding stop until they board; where it gets off until
+  they do; and where a walk ends that no ride meets (two stations a change walks between, or the stop
+  the route ends at). It keeps the rider from waiting for a train that won't come. It's **named for
+  what's known, not a verdict** that the route is dead ("Victoria: Part Suspended", "Example Road
+  closed"), and opens the trip. It fires on **high** signals (a coming line closed, suspended or not
+  running, as a trip's ranking counts it; a stop still to reach that a notice in force says is closed
+  or moved) and **medium** ones (severe delays, a part suspension or part closure: TfL's affected
+  stops aren't kept, so one can't yet be placed on the leg's own stretch to make it high). Minor
+  delays and the like never alert. A line or stop alert counts **only where *Disruptions* would warn
+  of it on the trip right now**, by the same rules, so the alert and the screen never disagree:
+  planned work only from its start day, a stop notice only in its window, a line's alert only for the
+  direction the leg goes (one with no direction known counts both ways), and nothing the rider has
+  dismissed, which comes back as it does there. The leg's direction is learned only from the train
+  the trip takes for it, and stands for the rest of that ride, through the train being dropped or
+  boarded; never from the other trains on the stop's board, which lists the line both ways. **Only a fresh, successful
+  answer is evidence**: a check that failed or has gone stale is unknown, never a signal, so a TfL
+  outage can't read as a line suspended. **One notification for the trip**, on its own channel,
+  updated in place as what's known changes: something not heard before on this trip (an escalation,
+  a new reason, or a notice's new window included, as a dismissal would show it again) is heard, once, and kept on the trip and on the notification itself, so a restart doesn't sound
+  it again, even one posted just before the app died; each check that still finds it keeps it up
+  silently. It **lasts no longer than its evidence is current, nor than a stop notice it names is in
+  force, nor than the trip's own answers stay live** (*Only a recent answer is live*), renewed by each check, so it
+  comes down by itself once nothing follows the trip; and it comes down at once when nothing is known
+  any more, a check fails (its own, or the trip's refresh, whose times then stop being stood behind),
+  or the trip arrives or ends. Like "time to board", one gone (taken down, or
+  swiped away) isn't brought back short of something new. Each refresh asks TfL for the coming lines' statuses, one batched
+  request, and the stops still to reach through the closure lookups the trip's screen and the list
+  share, each reused for five minutes. Planning again from where the rider is, and a train through a
+  change not yet predicted as the rider nears its stop, are still to come (`TODO.md`).
 - **Where it shows:** the trip's own screen (the next step over the route), a **card pinned at the
   top of the main view** (the near-me list, under the top bar, not scrolling with it; a station's
   page, and a station, platform or starred journey opened from the list, are each their own view),
@@ -1575,10 +1606,10 @@ declined, the trip still follows them on its screen and the main view's card, an
 get-off alerts are off (checked again on every return, so a change in Settings shows). "Get off
 soon" has **its own channel, high importance with sound and vibration**, so it can be silenced
 apart from the trip's ongoing notification; it goes **five minutes after the stop** (or 15 minutes
-with no time to it), so a stale alert doesn't linger. "Time to board" has **a channel of its own**
-too, alike, so either can be muted without the other. Until the foreground service below, both are
-said only while the app is open, as the trip is only followed then. Neither asks TfL for anything:
-each is worked out from the answers the trip already has.
+with no time to it), so a stale alert doesn't linger. "Time to board" and "Route disruption" each have
+**a channel of its own** too, alike, so any can be muted without the others. Until the foreground
+service below, all three are said only while the app is open, as the trip is only followed then.
+The first two ask TfL for nothing: each is worked out from the answers the trip already has.
 
 **Pending the maintainer's Play declarations** (built, not merged until they're made; maintainer,
 2026-09-26): an **ongoing notification with the app closed**, which needs a foreground service

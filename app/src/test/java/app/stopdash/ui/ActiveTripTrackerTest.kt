@@ -3,6 +3,7 @@ package app.stopdash.ui
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Departure
 import app.stopdash.domain.OnTheWay.Step
+import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripProgress
@@ -90,6 +91,26 @@ class ActiveTripTrackerTest {
     private var poleReads = 0
     private var polesFail = false
 
+    // What the disruption check knows about the trip's coming legs, and whether it fails.
+    private var known: List<RouteDisruption.Signal> = emptyList()
+    private var knownFails = false
+    // The direction of each coming leg's trains, as each check was given it.
+    private val directionsGiven = mutableListOf<Map<Int, String>>()
+    // What happened to the "route disruption" notification, in order: each post (how, with what's
+    // known, by key) or done.
+    private val disruptionAlerts = mutableListOf<String>()
+    private var disruptionPosts = true
+    // Whether a posted one is still showing: false once the rider swipes it away.
+    private var disruptionShowing = true
+    // Until when each post stands.
+    private val disruptionUntil = mutableListOf<Instant>()
+    // What a "route disruption" left showing from before a restart was posted with.
+    private var disruptionsShowing: Set<String> = emptySet()
+
+    private fun line(leg: Int, severity: Int, description: String) = RouteDisruption.Signal.Line(
+        leg, "red", "Red", app.stopdash.domain.LineStatus("red", severity, description), RouteDisruption.tierOf(severity)!!,
+    )
+
     private fun tracker(dispatcher: kotlinx.coroutines.CoroutineDispatcher, load: () -> ActiveTrip? = { null }) = ActiveTripTracker(
         load = load,
         save = {
@@ -152,7 +173,262 @@ class ActiveTripTrackerTest {
             if (how == ActiveTripTracker.BoardPost.KEEP) boardShowing && boardPosts else boardPosts
         },
         onBoardSoonDone = { boardAlerts += "done" },
+        disruptions = { _, _, directions ->
+            directionsGiven += directions
+            if (knownFails) throw TflException.Offline(null)
+            RouteDisruption.Found(known, now.plus(Duration.ofMinutes(5)).takeIf { known.isNotEmpty() })
+        },
+        onDisruption = { _, signals, how, until ->
+            disruptionAlerts += "${how.name.lowercase()} ${signals.joinToString(",") { it.key }}"
+            disruptionUntil += until
+            if (how == ActiveTripTracker.DisruptionPost.KEEP) disruptionShowing && disruptionPosts else disruptionPosts
+        },
+        onDisruptionDone = { disruptionAlerts += "done" },
+        disruptionsShown = { disruptionsShowing },
     ).also { current = it }
+
+    @Test
+    fun `route disruption is heard once, kept up to date, and goes once nothing is known`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        // A start with no trip kept clears any alert a trip ended before a restart left up.
+        assertEquals(listOf("done"), disruptionAlerts)
+        disruptionAlerts.clear()
+        tracker.refresh()
+        assertEquals(emptyList<String>(), disruptionAlerts)
+        val severe = line(0, 6, "Severe Delays")
+        known = listOf(severe)
+        tracker.refresh()
+        tracker.refresh()
+        assertEquals(listOf("new ${severe.key}", "keep ${severe.key}"), disruptionAlerts)
+        // Kept on the trip as heard, so a restart doesn't sound it again.
+        assertEquals(setOf(severe.key), kept?.disruptionsHeard)
+        known = emptyList()
+        tracker.refresh()
+        tracker.refresh()
+        assertEquals(listOf("new ${severe.key}", "keep ${severe.key}", "done"), disruptionAlerts)
+    }
+
+    @Test
+    fun `route disruption heard again for something new, silent for what's still known`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        disruptionAlerts.clear()
+        val part = line(0, 3, "Part Suspended")
+        val closed = RouteDisruption.Signal.Stop(0, "C", "C", closed = true)
+        known = listOf(part)
+        tracker.refresh()
+        known = listOf(closed, part)
+        tracker.refresh()
+        known = listOf(closed)
+        tracker.refresh()
+        assertEquals(
+            listOf("new ${part.key}", "new ${closed.key},${part.key}", "keep ${closed.key}"),
+            disruptionAlerts,
+        )
+        // An escalation is something new.
+        val suspended = line(0, 2, "Suspended")
+        known = listOf(closed, suspended)
+        tracker.refresh()
+        assertEquals("new ${closed.key},${suspended.key}", disruptionAlerts.last())
+    }
+
+    @Test
+    fun `route disruption comes down with a failed check, and isn't brought back`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        disruptionAlerts.clear()
+        val severe = line(0, 6, "Severe Delays")
+        known = listOf(severe)
+        tracker.refresh()
+        // Unknown is never a signal: what's up comes down rather than stand on no evidence.
+        knownFails = true
+        tracker.refresh()
+        knownFails = false
+        tracker.refresh()
+        assertEquals(listOf("new ${severe.key}", "done"), disruptionAlerts)
+        assertTrue(logged.any { it.startsWith("on the way: disruption check failed") })
+    }
+
+    @Test
+    fun `route disruption swiped away isn't brought back, and one that can't be kept up comes down`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        disruptionAlerts.clear()
+        val severe = line(0, 6, "Severe Delays")
+        known = listOf(severe)
+        tracker.refresh()
+        disruptionShowing = false
+        tracker.refresh()
+        tracker.refresh()
+        assertEquals(listOf("new ${severe.key}", "keep ${severe.key}", "done"), disruptionAlerts)
+    }
+
+    @Test
+    fun `route disruption that couldn't be heard is tried again`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        disruptionAlerts.clear()
+        val severe = line(0, 6, "Severe Delays")
+        known = listOf(severe)
+        disruptionPosts = false
+        tracker.refresh()
+        disruptionPosts = true
+        tracker.refresh()
+        assertEquals(listOf("new ${severe.key}", "new ${severe.key}"), disruptionAlerts)
+    }
+
+    @Test
+    fun `route disruption heard before a restart is kept up silently, and goes when the trip ends`() = runTest {
+        val severe = line(0, 6, "Severe Delays")
+        val keptTrip = ActiveTrip(route, "C", startedAt = t0, disruptionsHeard = setOf(severe.key))
+        val tracker = tracker(StandardTestDispatcher(testScheduler)) { keptTrip }
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.restore()
+        known = listOf(severe)
+        tracker.refresh()
+        tracker.end()
+        assertEquals(listOf("keep ${severe.key}", "done"), disruptionAlerts)
+    }
+
+    @Test
+    fun `route disruption still showing after the app died before keeping it as heard isn't sounded again`() = runTest {
+        val severe = line(0, 6, "Severe Delays")
+        // Posted, then the app died (or the save failed) before the trip kept it as heard.
+        val keptTrip = ActiveTrip(route, "C", startedAt = t0)
+        disruptionsShowing = setOf(severe.key)
+        val tracker = tracker(StandardTestDispatcher(testScheduler)) { keptTrip }
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.restore()
+        known = listOf(severe)
+        tracker.refresh()
+        assertEquals(listOf("keep ${severe.key}"), disruptionAlerts)
+        // And the trip now keeps it as heard.
+        assertEquals(setOf(severe.key), kept?.disruptionsHeard)
+    }
+
+    @Test
+    fun `route disruption lasts no longer than the trip's answers stay live, renewed by each check`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        known = listOf(line(0, 6, "Severe Delays"))
+        tracker.refresh()
+        now = at(1)
+        tracker.refresh()
+        // Its evidence stands five minutes; it comes down by itself 75 s after the last check, so
+        // once nothing follows the trip it doesn't linger.
+        assertEquals(listOf(t0.plus(ActiveTripTracker.CURRENT_FOR), at(1).plus(ActiveTripTracker.CURRENT_FOR)), disruptionUntil)
+    }
+
+    @Test
+    fun `route disruption about where the rider boards goes once they say they're on board`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        disruptionAlerts.clear()
+        val closed = RouteDisruption.Signal.Stop(0, "A", "A", closed = true)
+        known = listOf(closed)
+        tracker.refresh()
+        // Checked again with the step, not a refresh later.
+        known = emptyList()
+        tracker.goTo(Step(0), Step(0, onBoard = true))
+        assertEquals(listOf("new ${closed.key}", "done"), disruptionAlerts)
+    }
+
+    @Test
+    fun `route disruption is checked for the way the coming ride's trains go, on board too`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals(mapOf(0 to "outbound"), directionsGiven.last())
+        // On board by the rider's word, the board is gone, but the ride still goes the way its train
+        // was seen going (Codex, PR #441).
+        tracker.goTo(Step(0), Step(0, onBoard = true))
+        tracker.refresh()
+        assertNull(tracker.nextBoard.value)
+        assertEquals(mapOf(0 to "outbound"), directionsGiven.last())
+    }
+
+    @Test
+    fun `route disruption keeps the followed train's direction once it's off the board, whatever else is listed`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals(mapOf(0 to "outbound"), directionsGiven.last())
+        // The followed train is gone from the board, which lists only one going the other way: that
+        // says nothing about the rider's train (Codex, PR #441).
+        departures["A"] = listOf(train("4", 12).copy(direction = "inbound"))
+        tracker.refresh()
+        assertEquals(mapOf(0 to "outbound"), directionsGiven.last())
+    }
+
+    @Test
+    fun `route disruption keeps the ride's direction once its train is dropped, whatever the board lists`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals(mapOf(0 to "outbound"), directionsGiven.last())
+        // TfL no longer knows the train, so it's dropped, and the board lists only trains going the
+        // other way: they aren't the ride's, which still goes the way its train did (Codex, PR #441).
+        gone += "3"
+        departures["A"] = listOf(train("4", 12).copy(direction = "inbound"), train("5", 16).copy(direction = "inbound"))
+        tracker.refresh()
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(mapOf(0 to "outbound"), directionsGiven.last())
+    }
+
+    @Test
+    fun `route disruption gives no direction until a train is taken for the ride, whatever the board lists`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        // Every train listed goes one way, but none calls where the rider gets off, so none is theirs:
+        // the line's alerts count both ways (Codex, PR #441).
+        departures["A"] = listOf(train("4", 12).copy(direction = "inbound"), train("5", 16).copy(direction = "inbound"))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals("", tracker.trip.value?.vehicleId)
+        assertEquals(emptyMap<Int, String>(), directionsGiven.last())
+    }
+
+    @Test
+    fun `route disruption comes down with a failed trip refresh, however fresh its own checks`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        disruptionAlerts.clear()
+        val severe = line(0, 6, "Severe Delays")
+        known = listOf(severe)
+        tracker.refresh()
+        // The train can't be asked after: the trip's times are no longer stood behind, nor is this (Codex, PR #441).
+        failing = true
+        tracker.refresh()
+        failing = false
+        tracker.refresh()
+        assertEquals(listOf("new ${severe.key}", "done"), disruptionAlerts)
+    }
 
     @Test
     fun `time to board as the train comes in, kept up to date by each answer, and done once it leaves`() = runTest {

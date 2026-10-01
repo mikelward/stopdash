@@ -627,6 +627,15 @@
     <!-- The channel for the alert that the train (or bus) the rider waits for is about to arrive. -->
     <string name="time_to_board_channel">Time to board</string>
     <string name="time_to_board_channel_description">A trip on the way: when it\'s time to board</string>
+    <!-- The channel for the alert that something known may stop the rest of a trip on the way. -->
+    <string name="route_disruption_channel">Route disruption</string>
+    <string name="route_disruption_channel_description">A trip on the way: a disruption on the route ahead</string>
+    <!-- A line the rest of a trip rides, with its alert as the trip's chip has it: "Victoria: Part Suspended". -->
+    <string name="route_disruption_line">%1$s: %2$s</string>
+    <!-- A stop the rest of a trip still has to reach, %1$s its name, that a notice says is closed. -->
+    <string name="route_disruption_stop_closed">%1$s closed</string>
+    <!-- A stop the rest of a trip still has to reach, %1$s its name, that a notice says has moved. -->
+    <string name="route_disruption_stop_moved">%1$s moved</string>
     <!-- A leg: %1$s from, %2$s to. -->
     <string name="on_the_way_leg">%1$s → %2$s</string>
 </resources>

@@ -136,10 +136,16 @@ Android never backs up or transfers, so the trip survives the app being closed. 
 beyond coarse diagnostics (a line id, an error kind) or sent anywhere. While a trip is on the way, app
 open or closed, stopdash asks TfL about every 30 seconds where the followed train will call next, by TfL's own id for that
 train, and for the departures at a stop where the next leg boards; neither says anything about you
-that the trip's departures don't already. Ending the trip, or arriving, deletes it. The "get off
+that the trip's departures don't already. It also asks TfL about every 30 seconds for the status of
+the lines the rest of the trip rides, and (at most every five minutes, shared with the trip's screen
+and the list) whether the stops it still has to reach are closed or moved; these name the lines and
+stops of your route, which is why they're listed here, and go only to TfL, which the trip already
+asks about the same lines and stops. Ending the trip, or arriving, deletes it. The "get off
 soon" alert names the stop and the trip's destination on your lock screen, like any notification,
-and the "time to board" alert likewise names the line, the stop you board at and the destination;
-you can turn either off in Android's settings for StopDash. While a trip is on the way, an ongoing
+the "time to board" alert likewise names the line, the stop you board at and the destination, and
+the "route disruption" alert names a line of the rest of the trip and its disruption, or a stop
+still to reach that's closed or moved, with the destination; you can turn any of them off in
+Android's settings for StopDash. While a trip is on the way, an ongoing
 notification shows its next step, until you arrive or end the trip (or, for a trip left running,
 four hours after it started). If you've allowed location, stopdash takes your
 precise position about every 30 seconds while you walk to a stop you're boarding at, only to see

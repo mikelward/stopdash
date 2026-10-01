@@ -1134,7 +1134,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 stop, when leaving now just catches the train. The walk is timed from the plan, and
                 a train is followed only once the rider is taken to be at the stop, so this needs
                 the walk's own time from where they are.
-        - [ ] **A "Route disruption" alert** (maintainer, 2026-09-29): a heads-up when a trip on
+        - [x] **A "Route disruption" alert** (maintainer, 2026-09-29): a heads-up when a trip on
               the way learns something that may stop a leg the rider hasn't finished (a "coming
               leg" below): its boarding stop until its train is boarded, and its line and where it
               gets off until the rider does, so the one being ridden counts too. It keeps the rider
@@ -1218,6 +1218,18 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               before it ships. A re-plan sends the origin the mid-route task settles on (a stop, or
               where the rider is), so its Data Safety answer is that task's. Finer details are
               settled in the change that builds it.
+              Done, the high and medium tiers without planning again (SPEC *On the way*): what's known
+              (`RouteDisruption.signals`) is checked after each refresh (`RouteDisruptionChecks`, the
+              trip screen's closure lookups now shared through `StopClosureChecks`) and posted by
+              `RouteDisruptionAlert`, each signal heard once (`ActiveTrip.disruptionsHeard`). Needs a
+              device check of the notification, its channel, and a swiped one staying away.
+          - [ ] **A train through a change still not predicted** as the rider nears its boarding
+                stop (Medium, above): not built.
+          - [ ] **A part closure or suspension placed on the leg's own stretch** (High, above):
+                needs `LineStatus` to keep TfL's affected stops; until then every one is Medium.
+          - [ ] **Planning again from where the rider is** (the re-plan tier, and the alert
+                offering it): waits on *Explore how a trip recalculates mid-route* and on the trip
+                keeping its destination as chosen, above.
         - [ ] **Not to merge until the maintainer's Play declarations:** the ongoing notification
               with the app closed (a foreground service, which replaces the old *Step by step*
               item), and live location to see the train boarded and follow a bus.

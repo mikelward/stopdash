@@ -24,6 +24,8 @@ import java.time.Instant
  * departures stay up, since a rider still on the platform looks the same underground (maintainer, 2026-09-29).
  * [boardWarned] is the train whose "time to board" has been said ([OnTheWay.boardKey]): its leg and the train
  * followed there, so it's said once for each train the rider waits for, a missed one's next included.
+ * [disruptionsHeard] is each "route disruption" already heard ([RouteDisruption.Signal.key]), so a restart
+ * doesn't sound it again and only something new is heard.
  * Kept on the device only: where a rider is going is theirs (SPEC *Privacy*).
  */
 data class ActiveTrip(
@@ -44,6 +46,7 @@ data class ActiveTrip(
     val leftRide: ActiveTrip? = null,
     val onBoardSeen: Boolean = false,
     val boardWarned: String = "",
+    val disruptionsHeard: Set<String> = emptySet(),
 ) {
     /** The leg the rider is on, or null once they've arrived. */
     val leg: TripLeg? get() = route.legs.getOrNull(legIndex)
