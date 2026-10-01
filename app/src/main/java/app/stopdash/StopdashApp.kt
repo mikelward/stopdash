@@ -10,6 +10,7 @@ import app.stopdash.data.DistanceUnitsSetting
 import app.stopdash.data.MaxWalkSetting
 import app.stopdash.data.StepFreeSetting
 import app.stopdash.data.TripModesSetting
+import app.stopdash.data.AvoidedLinesSetting
 import app.stopdash.data.WalkingSpeedSetting
 import app.stopdash.data.HiddenModesSetting
 import app.stopdash.data.RailApiKeySetting
@@ -242,6 +243,7 @@ open class StopdashApp : Application() {
         MaxWalkSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         StepFreeSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         TripModesSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
+        AvoidedLinesSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         // Redraw the widget when the hidden modes change, so it leaves out what the list does without
         // waiting for the next refresh. Process-wide, so a change made just before the user leaves
         // for Settings or a search still reaches it; keyed on the in-process set the widget reads,

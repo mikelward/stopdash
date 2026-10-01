@@ -1,6 +1,7 @@
 package app.stopdash.data
 
 import androidx.datastore.core.DataStore
+import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.DistanceUnits
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.StepFree
@@ -92,6 +93,22 @@ class DataStoreAppSettingsTest {
     fun `a trip mode group this build doesn't know is dropped`() = runTest {
         val store = DataStoreAppSettings(FakeDataStore(PersistedSettings(tripModesOff = setOf("bus", "hovercraft"))))
         assertEquals(TripModes(setOf("bus")), store.tripModes().first())
+    }
+
+    @Test
+    fun `a trip avoids no line by default and persists the lines avoided`() = runTest {
+        val store = DataStoreAppSettings(FakeDataStore(null))
+        assertTrue(store.avoidedLines().first().isEmpty())
+        val northern = AvoidedLines.key("northern", "Northern line")
+        store.setAvoidedLines(setOf(northern))
+        assertEquals(setOf(northern), store.avoidedLines().first())
+    }
+
+    @Test
+    fun `an avoided entry that isn't a line's is dropped`() = runTest {
+        val northern = AvoidedLines.key("northern", "Northern line")
+        val store = DataStoreAppSettings(FakeDataStore(PersistedSettings(avoidedLines = setOf(northern, "bus"))))
+        assertEquals(setOf(northern), store.avoidedLines().first())
     }
 
     @Test

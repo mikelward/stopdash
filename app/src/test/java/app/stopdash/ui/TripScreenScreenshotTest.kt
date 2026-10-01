@@ -57,6 +57,7 @@ import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
+import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.Departure
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.ModeGroups
@@ -835,6 +836,71 @@ class TripScreenScreenshotTest {
         composeRule.onNodeWithText("Hide Jubilee line").performClick()
         composeRule.waitForIdle()
         assertEquals(listOf("tube", HiddenModes.lineKey("jubilee", "Jubilee line")), hidden)
+    }
+
+    @Test
+    fun a_line_avoided_from_a_cards_long_press_leaves_its_routes_out_until_its_chip_is_tapped() {
+        var avoided by mutableStateOf(emptySet<String>())
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {}, onHideMode = {},
+                    onTripModesChange = {},
+                    avoidedLines = avoided,
+                    onAvoidLine = { avoided = avoided + it },
+                    onStopAvoiding = { avoided = avoided - it },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        val more = composeRule.activity.getString(R.string.more_actions)
+        val menus = composeRule.onAllNodes(
+            SemanticsMatcher("long-presses to its menu") { it.config.getOrElseNullable(SemanticsActions.OnLongClick) { null }?.label == more },
+        )
+        assertEquals(3, menus.fetchSemanticsNodes().size)
+        // Nothing avoided, no chips.
+        composeRule.onNodeWithTag("avoidedLines").assertDoesNotExist()
+        // The first card rides the Windrush then the Jubilee: each can be avoided, beside its hide.
+        menus.onFirst().performSemanticsAction(SemanticsActions.OnLongClick)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Avoid Windrush line").assertIsDisplayed()
+        composeRule.onNodeWithText("Avoid Jubilee line").performClick()
+        composeRule.waitForIdle()
+        val jubilee = AvoidedLines.key("jubilee", "Jubilee line")
+        assertEquals(setOf(jubilee), avoided)
+        // Both routes riding it are left out, and its chip atop the routes says so.
+        assertEquals(1, menus.fetchSemanticsNodes().size)
+        composeRule.onNodeWithTag("avoidedLines").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Stop avoiding Jubilee line").assertIsDisplayed()
+        captureSnapshot("trip-routes-avoiding.png")
+        // A tap on the chip stops avoiding it: the routes come back, and the chips go.
+        composeRule.onNodeWithContentDescription("Stop avoiding Jubilee line").performClick()
+        composeRule.waitForIdle()
+        assertEquals(emptySet<String>(), avoided)
+        assertEquals(3, menus.fetchSemanticsNodes().size)
+        composeRule.onNodeWithTag("avoidedLines").assertDoesNotExist()
+    }
+
+    @Test
+    fun an_avoided_line_is_no_hidden_line_on_a_trip() {
+        // Avoided, the Jubilee leaves the trip by its own chip: the hidden banner, and its Show all,
+        // are for what's hidden from every list.
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {},
+                    avoidedLines = setOf(AvoidedLines.key("jubilee", "Jubilee line")),
+                    onStopAvoiding = {},
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.modes_show_all)).assertDoesNotExist()
+        composeRule.onNodeWithText("Avoiding").assertIsDisplayed()
+        // Only the route by the Elizabeth line is left.
+        composeRule.onAllNodesWithText("Jubilee", substring = true).assertCountEquals(1)
     }
 
     @Test

@@ -1346,6 +1346,19 @@ route. It is its own setting, not the list's hidden modes: a mode hidden from th
 noisy bus stop outside) can still be the best way somewhere, and a mode turned off for a trip (a
 Tube strike) doesn't empty the list. The settings wait takes it in too.
 
+**Avoiding a line** (maintainer, 2026-10-01). A route card's long press offers **Avoid ‹line›** for each
+line it rides, beside its *Hide* items. An avoided line is **sticky**: it is left out of every trip
+until the rider stops avoiding it, and each trip says so with a chip per line under the mode chips
+("Avoiding" · **Northern line ×**), which a tap clears. Settings lists them too (**Avoided lines**,
+"Left out of trips"), each with a **Remove**. The Planner has no way to leave out a line, and asking
+it for alternative routes (`includeAlternativeRoutes`) returned the same routes in testing, so a
+route riding an avoided line is dropped on the phone from the two plans a trip already asks for, as a
+route riding a hidden line is: never shown, nor fetched for. When every route found rides an avoided
+line, the trip says it found none, with the chips above to clear. It is its own setting, not the
+hidden lines: avoiding a line leaves it out of trips only, not the list, the widget or the watch, and
+the "hidden" banner never counts it. The settings wait takes it in too, so a route on an avoided line
+isn't shown first.
+
 **Two requests per plan.** The Planner answers with about three routes, often one route at three
 departures, so each plan asks it twice at once: for the quickest routes (its default) and for the
 **fewest changes**, which finds the walk to a station or the one bus the whole way that the quickest
@@ -1422,9 +1435,6 @@ coordinates already do, so the **Location** type StopDash declares for that look
 covers it, for the same purpose (app functionality) and with the same handling (sent to TfL to
 answer the request, not collected or kept by StopDash); the form is re-checked before the release
 that ships it.
-
-**Later:** avoiding a line, done on the phone: the Planner has no way to exclude a line, so the trip
-asks it for alternative routes and drops those using the avoided line.
 
 ### On the way
 

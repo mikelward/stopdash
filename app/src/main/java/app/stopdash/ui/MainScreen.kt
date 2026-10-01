@@ -147,6 +147,7 @@ import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.FartherBuses
 import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.DismissedAlert
+import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.lineLabel
 import app.stopdash.domain.ModeGroups
@@ -3054,8 +3055,10 @@ internal fun StopGroupHeader(
 /**
  * The long-press menu of a near-me header or row (SPEC *Finding stops → Hiding a mode*): an
  * optional [leading] item (a row's pin/unpin), then "Hide ‹mode›" for each of [modes], then "Hide
- * ‹line›" for each of [lines], each handed to [onHideMode] as its [HiddenModes.lineKey]. Wrapped in
- * [StopDashMenu] like the overflow menu, so it looks the same and the chosen text size reaches it.
+ * ‹line›" for each of [lines], each handed to [onHideMode] as its [HiddenModes.lineKey]; and, given
+ * [onAvoidLine] (a trip's route card), "Avoid ‹line›" for each of them too, handed over as its
+ * [AvoidedLines.key]. Wrapped in [StopDashMenu] like the overflow menu, so it looks the same and the
+ * chosen text size reaches it.
  */
 @Composable
 internal fun HideModeMenu(
@@ -3065,6 +3068,7 @@ internal fun HideModeMenu(
     onHideMode: (String) -> Unit,
     leading: (@Composable () -> Unit)? = null,
     lines: List<LineRef> = emptyList(),
+    onAvoidLine: ((String) -> Unit)? = null,
 ) {
     StopDashMenu(expanded = expanded, onDismissRequest = onDismiss) {
         leading?.invoke()
@@ -3088,6 +3092,19 @@ internal fun HideModeMenu(
                     onHideMode(HiddenModes.lineKey(line.id, label))
                 },
             )
+        }
+        // A trip's lines to avoid, after the hides: avoiding leaves a line out of trips only.
+        if (onAvoidLine != null) {
+            lines.distinctBy { it.id.lowercase() }.forEach { line ->
+                val label = lineLabel(line.name.ifBlank { line.id }, line.mode)
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.avoid_line, label)) },
+                    onClick = {
+                        onDismiss()
+                        onAvoidLine(AvoidedLines.key(line.id, label))
+                    },
+                )
+            }
         }
     }
 }
