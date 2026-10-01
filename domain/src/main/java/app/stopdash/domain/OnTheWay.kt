@@ -22,6 +22,8 @@ import java.time.Instant
  * known to be on board, by their word ([OnTheWay.atStep]) or seen along the ride ([OnTheWay.boardedOn]), not
  * only taken to be because the train followed left ([boarded]): until then the ride's step and its board of
  * departures stay up, since a rider still on the platform looks the same underground (maintainer, 2026-09-29).
+ * [boardWarned] is the train whose "time to board" has been said ([OnTheWay.boardKey]): its leg and the train
+ * followed there, so it's said once for each train the rider waits for, a missed one's next included.
  * Kept on the device only: where a rider is going is theirs (SPEC *Privacy*).
  */
 data class ActiveTrip(
@@ -41,6 +43,7 @@ data class ActiveTrip(
     val waitFrom: Instant? = null,
     val leftRide: ActiveTrip? = null,
     val onBoardSeen: Boolean = false,
+    val boardWarned: String = "",
 ) {
     /** The leg the rider is on, or null once they've arrived. */
     val leg: TripLeg? get() = route.legs.getOrNull(legIndex)
@@ -114,6 +117,9 @@ object OnTheWay {
 
     /** …or from this long before the train is due where the rider gets off. */
     val GET_OFF_SOON_TIME: Duration = Duration.ofMinutes(2)
+
+    /** "Time to board" from this long before the train followed is due at the boarding stop. */
+    val BOARD_SOON_TIME: Duration = Duration.ofMinutes(2)
 
     /**
      * How far from when the rider said they're on board ([atStep]) the train they boarded can be due,
@@ -1006,6 +1012,38 @@ object OnTheWay {
     /** Whether [progress] calls for "get off soon" not yet said on [trip]. */
     fun shouldWarn(trip: ActiveTrip, progress: TripProgress): Boolean =
         progress is TripProgress.Riding && progress.getOffSoon && trip.warnedLeg != trip.legIndex
+
+    /**
+     * The train a "time to board" is said for ([ActiveTrip.boardWarned]): [trip]'s leg and the train
+     * followed on it. A train the rider is left behind by hands over to the next one, a new key, so
+     * that one is said for in its time.
+     */
+    fun boardKey(trip: ActiveTrip): String = "${trip.legIndex}/${trip.vehicleId}"
+
+    /**
+     * Whether [progress] is time to board (maintainer, 2026-09-27): waiting for the train followed,
+     * due at the boarding stop within [BOARD_SOON_TIME] of [now] (or already due, still not left), the
+     * rider not yet on board by their word. Not while there's no train followed or no time for it.
+     */
+    fun boardSoon(trip: ActiveTrip, progress: TripProgress, now: Instant): Boolean =
+        progress is TripProgress.Waiting && progress.due != null && trip.vehicleId.isNotBlank() &&
+            !trip.boarded && !trip.onBoardSeen && !now.plus(BOARD_SOON_TIME).isBefore(progress.due)
+
+    /** Whether [progress] calls for "time to board" not yet said on [trip] for its train. */
+    fun shouldBoard(trip: ActiveTrip, progress: TripProgress, now: Instant): Boolean =
+        boardSoon(trip, progress, now) && trip.boardWarned != boardKey(trip)
+
+    /** [trip] with "time to board" said for its train. */
+    fun saidBoard(trip: ActiveTrip): ActiveTrip = trip.copy(boardWarned = boardKey(trip))
+
+    /**
+     * Whether a "time to board" said on [trip] still stands: its train is still the one followed, and
+     * the rider still waits for it ([progress]). Boarded, left behind, a leg moved on, the trip ended:
+     * it's done with, and taken down.
+     */
+    fun boardStands(trip: ActiveTrip, progress: TripProgress?): Boolean =
+        trip.boardWarned.isNotEmpty() && trip.boardWarned == boardKey(trip) && progress is TripProgress.Waiting &&
+            !trip.boarded && !trip.onBoardSeen
 
     // The next leg, from when this one was done plus the change the Planner allows after it (a
     // change with no walk leg of its own): a walk's time runs from there, and a ride's train is

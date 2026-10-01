@@ -62,6 +62,48 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `time to board from two minutes before the train is due, said once for it`() {
+        val following = OnTheWay.follow(trip, train("8", 5))
+        val calls = listOf(call("A", 5), call("B", 9), call("C", 14))
+        // Three minutes out: not yet.
+        val (early, waiting) = OnTheWay.advance(following, calls, at(2))
+        assertFalse(OnTheWay.shouldBoard(early, waiting, at(2)))
+        // Two minutes out, and on to the moment it's due: time to board.
+        val (due, soon) = OnTheWay.advance(following, calls, at(3))
+        assertTrue(OnTheWay.shouldBoard(due, soon, at(3)))
+        assertTrue(OnTheWay.shouldBoard(due, soon, at(5)))
+        // Said: not again for that train, and it stands while the rider waits for it.
+        val said = OnTheWay.saidBoard(due)
+        assertFalse(OnTheWay.shouldBoard(said, soon, at(4)))
+        assertTrue(OnTheWay.boardStands(said, soon))
+    }
+
+    @Test
+    fun `no time to board without a train followed and its time`() {
+        assertFalse(OnTheWay.shouldBoard(trip, TripProgress.Waiting(ride, null), at(4)))
+        // A time but no train named (the rider's word dropped one still minutes away): nothing to board.
+        assertFalse(OnTheWay.shouldBoard(trip, TripProgress.Waiting(ride, at(5)), at(4)))
+        val following = OnTheWay.follow(trip, train("8", 5))
+        // On board by their word already: they've boarded.
+        assertFalse(OnTheWay.shouldBoard(following.copy(onBoardSeen = true), TripProgress.Waiting(ride, at(5)), at(4)))
+    }
+
+    @Test
+    fun `time to board is done with once the train leaves, or another is followed`() {
+        val said = OnTheWay.saidBoard(OnTheWay.follow(trip, train("8", 5)))
+        // The train left the boarding stop: the rider is on it.
+        val (onBoard, riding) = OnTheWay.advance(said, listOf(call("B", 9), call("C", 14)), at(6))
+        assertFalse(OnTheWay.boardStands(onBoard, riding))
+        // Left behind: the next train followed is said for afresh, and the first's is done with.
+        val next = OnTheWay.follow(said.copy(vehicleId = ""), train("9", 8))
+        val waiting = TripProgress.Waiting(ride, at(8))
+        assertFalse(OnTheWay.boardStands(next, waiting))
+        assertTrue(OnTheWay.shouldBoard(next, waiting, at(7)))
+        // The leg moved on (Next): done with too.
+        assertFalse(OnTheWay.boardStands(said.copy(legIndex = 2), TripProgress.Waiting(second, at(25))))
+    }
+
+    @Test
     fun `off the train, the trip walks on, then waits for the next leg's train`() {
         val onBoard = OnTheWay.follow(trip, train("8", 5)).copy(boarded = true, dueOffAt = at(15))
         // Seen due at C at 15, and its calls no longer include C: the rider got off there.

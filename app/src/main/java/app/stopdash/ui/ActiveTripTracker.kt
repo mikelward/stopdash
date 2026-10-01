@@ -66,6 +66,14 @@ class ActiveTripTracker(
     private val onGetOffSoon: (ActiveTrip, TripProgress.Riding) -> Boolean = { _, _ -> true },
     // The rider has moved past a leg whose "get off soon" was said (or arrived): it's done with.
     private val onGetOffSoonDone: () -> Unit = {},
+    // "Time to board", once for each train waited for ([OnTheWay.shouldBoard]), then kept up to
+    // date by each fresh answer ([BoardPost]), with when that answer was had ([updatedAt]'s value),
+    // so it lasts exactly as long as the answer stays live ([CURRENT_FOR]): whether it's up, so a
+    // first one that couldn't be said is tried on the next refresh, and one that can't be kept up is
+    // taken down ([onBoardSoonDone]), not brought back.
+    private val onBoardSoon: (ActiveTrip, TripProgress.Waiting, BoardPost, Instant) -> Boolean = { _, _, _, _ -> true },
+    // A "time to board" said no longer stands ([OnTheWay.boardStands]): taken down.
+    private val onBoardSoonDone: () -> Unit = {},
 ) {
     private val _trip = MutableStateFlow<ActiveTrip?>(null)
     val trip: StateFlow<ActiveTrip?> = _trip.asStateFlow()
@@ -167,6 +175,10 @@ class ActiveTripTracker(
     // Whether the trip shown isn't yet known to be on the device ([keep]).
     private var unsaved = false
 
+    // Whether a "time to board" may be up ([settleBoard]). One kept from before a restart may be up
+    // still: notifications outlive the process (for as long as its answer stays live, [BoardPost]).
+    private var boardUp = false
+
     /** Read the kept trip, once; a trip started meanwhile wins. */
     /** Reads the kept trip, once; false when it couldn't be read, to be tried again. */
     suspend fun restore(): Boolean = lock.withLock { restoreLocked() }
@@ -187,9 +199,13 @@ class ActiveTripTracker(
         if (kept == null) {
             // No trip on the way: an alert left from one ended just before the app died goes too.
             onGetOffSoonDone()
+            onBoardSoonDone()
             return true
         }
         if (_trip.value == null) {
+            // A "time to board" said before the restart may still be up: the next fresh answer keeps
+            // it, if it is ([BoardPost.KEEP]).
+            boardUp = kept.boardWarned.isNotEmpty()
             // A move saved just before the app died, before it could take back the "get off soon"
             // for the leg left ([goTo]): taken back now. Marked on the trip, not guessed from its
             // warning, which also lags an alert said just before the app died (Codex, PR #351).
@@ -202,6 +218,7 @@ class ActiveTripTracker(
             }
             _trip.value = trip
             _progress.value = standing(trip, clock())
+            settleBoard()
         }
         return true
     }
@@ -289,6 +306,7 @@ class ActiveTripTracker(
         // (a ride's time, its next stop still blank), which waits for the pick below (Codex, PR #384).
         _updatedAt.value = null
         _progress.value = standing(moved, now, picking = true)
+        settleBoard()
         val boards = HashMap<TripLeg, Result<NextBoard>>()
         if (step(null, boards)) step(null, boards)
     }
@@ -312,6 +330,7 @@ class ActiveTripTracker(
         _updatedAt.value = null
         _notKept.value = false
         unsaved = false
+        settleBoard()
         true
     }
 
@@ -445,6 +464,13 @@ class ActiveTripTracker(
             // longer stood behind on any surface (its time, stops left and get off soon wait).
             _failed.value = true
             _updatedAt.value = null
+            // A "time to board" counting down to a time no longer stood behind comes down with it
+            // (D4), for good: it has been heard, and bringing it back could bring back one the rider
+            // swiped away, which nothing here can see once the refresh has failed (Codex, PR #440).
+            if (boardUp) {
+                onBoardSoonDone()
+                boardUp = false
+            }
             // The step as it was, unless a fix just moved the trip on: left behind (finding a train,
             // never the ride the rider isn't on), or seen at the stop they walked to (waiting there,
             // never still walking).
@@ -473,6 +499,27 @@ class ActiveTripTracker(
             // There is one alert: this one replaces any still to be taken back.
             next = OnTheWay.warned(next).copy(alertLeft = false)
         }
+        // "Time to board" as the train waited for comes in (SPEC *On the way*). While it stands, each
+        // fresh answer posts it again, silently, so its countdown follows the train and it lasts only
+        // as long as the answer is live ([BoardPost]).
+        if (progress is TripProgress.Waiting) {
+            val stands = OnTheWay.boardStands(next, progress)
+            // Whether it's time is judged by the clock now, after this step's lookups, so a slow one
+            // doesn't hold it back a refresh; the answer's own time ([now]) still ages it.
+            when {
+                OnTheWay.shouldBoard(next, progress, clock()) -> if (onBoardSoon(next, progress, BoardPost.NEW, now)) {
+                    next = OnTheWay.saidBoard(next)
+                    boardUp = true
+                }
+                // Gone (swiped away, timed out with the app away, or down with a failed refresh): not
+                // brought back. One this answer can't keep up (its train with no time, or past it, or
+                // the answer no longer live) is taken down now, not left counting down to its timeout.
+                stands && boardUp -> if (!onBoardSoon(next, progress, BoardPost.KEEP, now)) {
+                    onBoardSoonDone()
+                    boardUp = false
+                }
+            }
+        }
         // The ride ahead changed in this step: a board for one now boarded (or passed) is no longer
         // theirs to board from, and the next ride's (off a train and walking on) is read now, not a
         // refresh later. A failed read is said on the section alone: the step itself stood.
@@ -487,6 +534,8 @@ class ActiveTripTracker(
             // One that can't be would come back on the next start, so it's kept, said, and tried
             // again on the next refresh.
             _progress.value = progress
+            // Arrived: a "time to board" still up goes now, whether or not forgetting the trip works.
+            settleBoard()
             if (!withContext(io) { save(null) }) {
                 // Counted once, as End's is, not on each retry: the screen reopens on it once.
                 if (!_endFailed.value) _endFailures.value++
@@ -682,6 +731,27 @@ class ActiveTripTracker(
             _trip.value = trip.copy(alertLeft = false)
             unsaved = true
         }
+        settleBoard()
+    }
+
+    // A "time to board" that no longer stands ([OnTheWay.boardStands]) is taken down: the rider
+    // boarded, was left behind (the next train has its own), moved on, or the trip ended. It's kept
+    // said on the trip, so it isn't said again for the same train.
+    private fun settleBoard() {
+        if (!boardUp) return
+        val trip = _trip.value
+        if (trip != null && OnTheWay.boardStands(trip, _progress.value)) return
+        onBoardSoonDone()
+        boardUp = false
+    }
+
+    /** How [onBoardSoon] posts "time to board". */
+    enum class BoardPost {
+        /** Said for the first time for its train: heard. */
+        NEW,
+
+        /** Kept up to date while it's up, silently; not brought back once gone (swiped, timed out). */
+        KEEP,
     }
 
     companion object {

@@ -61,6 +61,14 @@ class ActiveTripTrackerTest {
     private var alertsDone = 0
     // What happened to the "get off soon" notification, in order: said or taken back.
     private val alerts = mutableListOf<String>()
+    // What happened to the "time to board" notification, in order: each post (how, with the train's
+    // time) or done.
+    private val boardAlerts = mutableListOf<String>()
+    private var boardPosts = true
+    // Whether a posted one is still showing: false once the rider swipes it away.
+    private var boardShowing = true
+    // When the answer each post counts from was had.
+    private val boardAnsweredAt = mutableListOf<Instant>()
     // Holds a train's calls back until completed, as a slow TfL answer does.
     private var gate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
     // Each station's point and entrances, by stop id, and how often they were asked for (a TfL request each).
@@ -138,7 +146,233 @@ class ActiveTripTrackerTest {
             alertsDone++
             alerts += "done"
         },
+        onBoardSoon = { _, waiting, how, answeredAt ->
+            boardAlerts += "${how.name.lowercase()} ${waiting.due}"
+            boardAnsweredAt += answeredAt
+            if (how == ActiveTripTracker.BoardPost.KEEP) boardShowing && boardPosts else boardPosts
+        },
+        onBoardSoonDone = { boardAlerts += "done" },
     ).also { current = it }
+
+    @Test
+    fun `time to board as the train comes in, kept up to date by each answer, and done once it leaves`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        now = at(5)
+        tracker.start(route, "C", readyAt = now)
+        // A start with no trip kept clears any alert a trip ended before a restart left up.
+        assertEquals(listOf("done"), boardAlerts)
+        boardAlerts.clear()
+        tracker.refresh()
+        // Three minutes out: not yet.
+        assertEquals(emptyList<String>(), boardAlerts)
+        now = at(6)
+        tracker.refresh()
+        assertEquals(listOf("new ${at(8)}"), boardAlerts)
+        assertEquals("0/3", kept?.boardWarned)
+        // Each fresh answer keeps it up, silently, never said anew; running late, at its new time.
+        now = at(7)
+        tracker.refresh()
+        trains["3"] = listOf(call("A", 9), call("B", 12), call("C", 15))
+        tracker.refresh()
+        assertEquals(listOf("new ${at(8)}", "keep ${at(8)}", "keep ${at(9)}"), boardAlerts)
+        // It left the boarding stop: the rider is on it, and the alert is done with.
+        now = at(10)
+        trains["3"] = listOf(call("B", 12), call("C", 15))
+        tracker.refresh()
+        assertEquals(listOf("new ${at(8)}", "keep ${at(8)}", "keep ${at(9)}", "done"), boardAlerts)
+        tracker.refresh()
+        assertEquals(4, boardAlerts.size)
+    }
+
+    @Test
+    fun `time to board comes down with a failed refresh, for good`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        now = at(6)
+        tracker.start(route, "C", readyAt = now)
+        boardAlerts.clear()
+        tracker.refresh()
+        // TfL can't be reached: the time it counts down to is no longer stood behind.
+        failing = true
+        tracker.refresh()
+        assertEquals(listOf("new ${at(8)}", "done"), boardAlerts)
+        // Not brought back by the next answer: it was heard, and may have been swiped away meanwhile,
+        // which the failed refresh couldn't see (Codex, PR #440).
+        failing = false
+        tracker.refresh()
+        tracker.refresh()
+        assertEquals(listOf("new ${at(8)}", "done"), boardAlerts)
+    }
+
+    @Test
+    fun `time to board swiped away before a failed refresh stays away`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        now = at(6)
+        tracker.start(route, "C", readyAt = now)
+        boardAlerts.clear()
+        tracker.refresh()
+        boardShowing = false
+        failing = true
+        tracker.refresh()
+        failing = false
+        tracker.refresh()
+        // Taken down (a no-op on a swiped one) and never posted again.
+        assertEquals(listOf("new ${at(8)}", "done"), boardAlerts)
+    }
+
+    @Test
+    fun `time to board swiped away isn't brought back`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        now = at(6)
+        tracker.start(route, "C", readyAt = now)
+        boardAlerts.clear()
+        tracker.refresh()
+        boardShowing = false
+        tracker.refresh()
+        tracker.refresh()
+        // Found gone on the first answer after (and taken down, a no-op on a swiped one), then left
+        // alone; nothing more to take down once it leaves.
+        assertEquals(listOf("new ${at(8)}", "keep ${at(8)}", "done"), boardAlerts)
+        now = at(10)
+        trains["3"] = listOf(call("B", 12), call("C", 15))
+        tracker.refresh()
+        assertEquals(listOf("new ${at(8)}", "keep ${at(8)}", "done"), boardAlerts)
+    }
+
+    @Test
+    fun `time to board an answer can't keep up comes down at once, not at its timeout`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        now = at(6)
+        tracker.start(route, "C", readyAt = now)
+        boardAlerts.clear()
+        tracker.refresh()
+        // Still showing, but this answer can't keep it up (its train now past, say): it would
+        // otherwise count down to a time no longer stood behind (Codex, PR #440).
+        boardPosts = false
+        tracker.refresh()
+        assertEquals(listOf("new ${at(8)}", "keep ${at(8)}", "done"), boardAlerts)
+        // And it isn't brought back.
+        boardPosts = true
+        tracker.refresh()
+        assertEquals(listOf("new ${at(8)}", "keep ${at(8)}", "done"), boardAlerts)
+    }
+
+    @Test
+    fun `time to board lasts from when its answer was had, however long the request took`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        now = at(6)
+        tracker.start(route, "C", readyAt = now)
+        boardAlerts.clear()
+        // The board read takes a minute: the post comes after it, but the answer is as old as the step.
+        boardTakes = Duration.ofMinutes(1)
+        tracker.refresh()
+        assertEquals(listOf("new ${at(8)}"), boardAlerts)
+        assertEquals(listOf(tracker.updatedAt.value), boardAnsweredAt)
+        assertEquals(at(6), boardAnsweredAt.single())
+    }
+
+    @Test
+    fun `time to board is judged after a slow lookup, not before it`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        // Two and a half minutes out when the step begins; the board read takes a minute.
+        now = at(5).plusSeconds(30)
+        tracker.start(route, "C", readyAt = now)
+        boardAlerts.clear()
+        boardTakes = Duration.ofMinutes(1)
+        tracker.refresh()
+        // A minute and a half out by the time it's known: said now, not a refresh later.
+        assertEquals(listOf("new ${at(8)}"), boardAlerts)
+        // Aged from the answer, though: when the step began.
+        assertEquals(at(5).plusSeconds(30), boardAnsweredAt.single())
+    }
+
+    @Test
+    fun `time to board goes on arriving, even when forgetting the trip fails`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("7", 5), train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(6)
+        tracker.start(route, "C", readyAt = now)
+        boardAlerts.clear()
+        tracker.refresh()
+        assertEquals(listOf("new ${at(8)}"), boardAlerts)
+        // Seen at C, having taken 7: arrived, though the trip can't be forgotten on the phone yet.
+        departures["A"] = listOf(train("9", 8))
+        trains["7"] = emptyList()
+        saves = false
+        now = at(13)
+        tracker.refresh(fixAt(51.52))
+        assertEquals(TripProgress.Arrived, tracker.progress.value)
+        assertEquals(listOf("new ${at(8)}", "done"), boardAlerts)
+    }
+
+    @Test
+    fun `time to board that couldn't be said is tried again`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        now = at(6)
+        tracker.start(route, "C", readyAt = now)
+        boardAlerts.clear()
+        boardPosts = false
+        tracker.refresh()
+        assertEquals("", kept?.boardWarned)
+        boardPosts = true
+        tracker.refresh()
+        assertEquals(listOf("new ${at(8)}", "new ${at(8)}"), boardAlerts)
+        assertEquals("0/3", kept?.boardWarned)
+    }
+
+    @Test
+    fun `time to board kept over a restart isn't said anew, and goes when the trip ends`() = runTest {
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        val saidBefore = ActiveTrip(route, "C", startedAt = t0, legStartedAt = at(5), vehicleId = "3", boardsAt = at(8), boardWarned = "0/3")
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { saidBefore })
+        now = at(7)
+        tracker.restore()
+        tracker.refresh()
+        // Kept up to date if it's still up, never heard again.
+        assertEquals(listOf("keep ${at(8)}"), boardAlerts)
+        tracker.end()
+        assertEquals(listOf("keep ${at(8)}", "done"), boardAlerts)
+    }
+
+    @Test
+    fun `time to board for a train the rider was left behind by goes, and the next one's is said in its time`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        now = at(7)
+        tracker.start(route, "C", readyAt = now)
+        boardAlerts.clear()
+        tracker.refresh()
+        assertEquals(listOf("new ${at(8)}"), boardAlerts)
+        // TfL drops it before it leaves: another train is picked, the first one's alert taken down.
+        gone += "3"
+        departures["A"] = listOf(train("4", 12))
+        trains["4"] = listOf(call("A", 12), call("B", 15), call("C", 18))
+        tracker.refresh()
+        assertEquals("4", tracker.trip.value?.vehicleId)
+        assertEquals(listOf("new ${at(8)}", "done"), boardAlerts)
+        now = at(10)
+        tracker.refresh()
+        assertEquals(listOf("new ${at(8)}", "done", "new ${at(12)}"), boardAlerts)
+    }
 
     @Test
     fun `Start follows the soonest train that runs where the rider is going`() = runTest {
