@@ -443,7 +443,13 @@ The app finds stops two ways:
   names it with the hidden groups ("Northern line hidden"), counting several ("2 lines hidden");
   "Show all" brings lines back with the modes. It lives in the same hidden set as the modes, so
   everything that follows one follows the other. A place's header doesn't offer lines: a busy one
-  would list dozens.
+  would list dozens. **Bringing back one item** (2026-10-01): a hide from a long press offers
+  **Undo** for a moment ("Northern line hidden · Undo"), which shows just that group or line again
+  — offered on the screen landed on when the hide ended a trip by hiding all it started from —
+  and **Settings lists what's hidden** while anything is, each group and line with its own **Show**
+  — where "Show all" is the one way to bring everything back. Whatever shows something again
+  re-picks the nearby set from the same fix, so its stops come back, as "Show all" does; a list or
+  trip out of view when Settings showed it re-picks as it comes back.
 
 ### Departures
 

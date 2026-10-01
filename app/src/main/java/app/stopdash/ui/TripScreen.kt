@@ -614,8 +614,10 @@ internal fun TripScreen(
     onRelocate: () -> Unit = {},
     hiddenModes: Set<String> = emptySet(),
     onShowAllModes: () -> Unit = {},
-    // A line row's long-press "Hide ‹mode›", as on the list (null: no menu).
+    // A line row's long-press "Hide ‹mode›", as on the list (null: no menu), and the Undo it then
+    // offers, showing the group or line just hidden again (null: no Undo).
     onHideMode: ((String) -> Unit)? = null,
+    onUnhideMode: ((String) -> Unit)? = null,
     // A change of hidden modes that didn't save, said once as the list says it, then acknowledged.
     hiddenModesWriteFailed: Boolean = false,
     onHiddenModesWriteFailureShown: () -> Unit = {},
@@ -685,7 +687,7 @@ internal fun TripScreen(
     CompositionLocalProvider(LocalRouteStops provides routeStops) {
         TripContent(
             title, state, now, access, onBack, onRetry, locationBanner, relocating, onRelocate,
-            hiddenModes, onShowAllModes, onHideMode, hiddenModesWriteFailed, onHiddenModesWriteFailureShown, menu, openRoute,
+            hiddenModes, onShowAllModes, onHideMode, onUnhideMode, hiddenModesWriteFailed, onHiddenModesWriteFailureShown, menu, openRoute,
             TripAlerts(dismissed, onDismissAlert, dismissWriteFailed, onDismissWriteFailureShown),
             onStart,
             onOpenTrip,
@@ -754,6 +756,7 @@ private fun TripContent(
     hiddenModes: Set<String> = emptySet(),
     onShowAllModes: () -> Unit = {},
     onHideMode: ((String) -> Unit)? = null,
+    onUnhideMode: ((String) -> Unit)? = null,
     hiddenModesWriteFailed: Boolean = false,
     onHiddenModesWriteFailureShown: () -> Unit = {},
     menu: AppMenuActions? = null,
@@ -961,6 +964,8 @@ private fun TripContent(
     // A dismiss on a leg's page that didn't persist, said back on the route (as the list says it back
     // on the list), then acknowledged so it isn't said again.
     val snackbarHostState = remember { SnackbarHostState() }
+    // A hide from a card offers Undo for a moment, as on the list.
+    val hideMode = rememberHideWithUndo(onHideMode, onUnhideMode, snackbarHostState)
     val dismissWriteFailedMessage = stringResource(R.string.dismiss_write_failed)
     LaunchedEffect(alerts.writeFailed) {
         if (alerts.writeFailed) {
@@ -1114,13 +1119,13 @@ private fun TripContent(
             Box(Modifier.fillMaxSize()) {
                 when {
                     cards == null -> TripPlaceholder(state, onRetry)
-                    open != null -> RouteLegs(open, rideLines, state, now, access, sequences, onRetry, alerts.dismissed, alerts.onDismiss, onHideMode, ::openDetail, loads.loading)
+                    open != null -> RouteLegs(open, rideLines, state, now, access, sequences, onRetry, alerts.dismissed, alerts.onDismiss, hideMode, ::openDetail, loads.loading)
                     else -> {
                         val routes = @Composable {
                             RouteList(
                                 cards, rideLines, state, now, access, sequences, onRetry, alerts.dismissed,
                                 onOpen = { setOpen(openRouteOf(it.route, poled, sequences, hiddenModes)) },
-                                onHideMode = onHideMode,
+                                onHideMode = hideMode,
                                 loading = loads.loading,
                             )
                         }

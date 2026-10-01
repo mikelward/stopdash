@@ -333,7 +333,8 @@ fun MainScreen(
     onHideMode: ((String) -> Unit)? = null,
     onShowAllModes: () -> Unit = {},
     // Shows or hides a whole group of modes from the overflow menu's checkboxes, one per
-    // [ModeGroups.ALL] group, ticked when shown. Null leaves the menu without them.
+    // [ModeGroups.ALL] group, ticked when shown; also the Undo a long press's hide offers, for the
+    // group or line just hidden. Null leaves the menu without them, and a hide without Undo.
     onSetModeGroupShown: ((ModeGroups.Group, Boolean) -> Unit)? = null,
     // A change of hidden modes failed to save: a snackbar says so, then [onHiddenModesWriteFailureShown].
     hiddenModesWriteFailed: Boolean = false,
@@ -358,6 +359,13 @@ fun MainScreen(
     onEditFavoritePlaces: (() -> Unit)? = null,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
+    // A long press's hide offers Undo for a moment, which shows that one item again as ticking its
+    // overflow checkbox does (SPEC *Finding stops → Hiding a mode*).
+    val hideMode = rememberHideWithUndo(
+        onHide = onHideMode,
+        onUnhide = onSetModeGroupShown?.let { setShown -> { entry: String -> setShown(ModeGroups.of(entry), true) } },
+        host = snackbarHostState,
+    )
     // Overflow-menu and About-dialog visibility. Saved so an open dialog survives rotation.
     var showAbout by rememberSaveable { mutableStateOf(false) }
     val starWriteFailedMessage = stringResource(R.string.star_write_failed)
@@ -1267,7 +1275,7 @@ fun MainScreen(
                         onToggleStar = onToggleStar,
                         starringAvailable = starringAvailable,
                         hiddenModes = hiddenModes,
-                        onHideMode = onHideMode,
+                        onHideMode = hideMode,
                         modesByPlace = placeModesShown,
                         onShowAllModes = onShowAllModes,
                         // Not on a platform's own view, which is one place.

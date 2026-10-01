@@ -122,6 +122,9 @@
          ("Bus, Tram"). Its action shows them all again. -->
     <string name="modes_hidden">%1$s hidden</string>
     <string name="modes_show_all">Show all</string>
+    <!-- The action on the snackbar just after a long press hid something ("Bus hidden"): shows
+         that one item again. -->
+    <string name="action_undo">Undo</string>
     <!-- Snackbar when a change of hidden modes couldn't be saved: it holds until the app restarts. -->
     <string name="hidden_modes_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
     <!-- The near-me list's empty state while modes are hidden, instead of "no departures": the
@@ -320,6 +323,13 @@
     <!-- Settings row that opens the favorite-places editor (SPEC D9). -->
     <string name="settings_favorite_places_title">Favorite places</string>
     <string name="settings_favorite_places_summary">Save places to route to, like Home and Work</string>
+    <!-- Settings' list of the modes and lines hidden from the near-me list, shown only while
+         something is; each has a Show action that brings just that one back. -->
+    <string name="settings_hidden_title">Hidden</string>
+    <string name="settings_hidden_summary">Left out of the list, trips, the widget and the watch</string>
+    <string name="settings_hidden_show">Show</string>
+    <!-- Screen-reader label for one item's Show action ("Show Northern line"). -->
+    <string name="settings_hidden_show_description">Show %1$s</string>
     <!-- The favorite-places editor screen (SPEC D9): a list of saved places with add/edit/delete. -->
     <string name="favorite_places_title">Favorite places</string>
     <!-- Shown briefly while the saved places are read from storage. -->

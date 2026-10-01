@@ -48,6 +48,7 @@ import app.stopdash.R
 import app.stopdash.domain.DEFAULT_FONT_SCALE
 import app.stopdash.domain.DistanceUnits
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.MAX_FONT_SCALE
@@ -123,6 +124,14 @@ fun SettingsScreen(
     onDismissStepFreeError: () -> Unit = {},
     // Opens the favorite-places editor (SPEC D9), hosted as its own overlay by the caller.
     onOpenFavoritePlaces: () -> Unit = {},
+    // The modes and lines hidden from the near-me list (SPEC *Finding stops → Hiding a mode*), listed
+    // while any are, each with a Show that brings back just that one ([onShowHidden]).
+    hiddenModes: Set<String> = emptySet(),
+    onShowHidden: (ModeGroups.Group) -> Unit = {},
+    // A Show that didn't save: the item is back for now but hidden again after a restart, so the
+    // list says so here, as the other settings do, until dismissed.
+    hiddenWriteFailed: Boolean = false,
+    onDismissHiddenError: () -> Unit = {},
 ) {
     // Counts the overflow's openings: each re-masks both keys ([ApiKeyRow]) before "Send bug report"
     // can be picked, since the report's screenshot is of this screen and a revealed key would be
@@ -171,6 +180,18 @@ fun SettingsScreen(
                     onClick = onOpenFavoritePlaces,
                     testTag = "favoritePlacesRow",
                 )
+                // What's hidden, under the places: like them, it decides what the list shows. Only
+                // while something is, as with the list's banner.
+                val hiddenItems = ModeGroups.hiddenItems(hiddenModes)
+                if (hiddenItems.isNotEmpty()) HiddenRow(hiddenItems, onShowHidden)
+                // Outside the list's own condition: the item that didn't save has already left it,
+                // perhaps the last one.
+                if (hiddenWriteFailed) {
+                    SettingErrorRow(
+                        text = stringResource(R.string.hidden_modes_write_failed),
+                        onDismiss = onDismissHiddenError,
+                    )
+                }
                 val fontSize = LocalFontSizeState.current
                 if (fontSize != null) {
                     TextSizeRow(
@@ -449,6 +470,35 @@ private fun SettingNavRow(title: String, summary: String, onClick: () -> Unit, t
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+/**
+ * The Hidden list (SPEC *Finding stops → Hiding a mode*): a title and what hiding does, over one row
+ * per hidden group or line ([items], from [ModeGroups.hiddenItems]) with a Show that brings back just
+ * that one ([onShow]); the list's "Show all" is the way to bring back everything at once.
+ */
+@Composable
+private fun HiddenRow(items: List<ModeGroups.Group>, onShow: (ModeGroups.Group) -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).testTag("hiddenList")) {
+        Text(text = stringResource(R.string.settings_hidden_title), style = MaterialTheme.typography.bodyLarge)
+        Text(
+            text = stringResource(R.string.settings_hidden_summary),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        for (item in items) {
+            val name = hiddenItemName(item)
+            val showDescription = stringResource(R.string.settings_hidden_show_description, name)
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(text = name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Spacer(modifier = Modifier.width(16.dp))
+                TextButton(
+                    onClick = { onShow(item) },
+                    modifier = Modifier.semantics { contentDescription = showDescription },
+                ) { Text(stringResource(R.string.settings_hidden_show)) }
+            }
         }
     }
 }
