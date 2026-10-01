@@ -749,9 +749,11 @@ end. Whenever the list is unavailable, the
 debug log records why (principle 2). The list follows one predicted train, so
 it is **withheld while the row is stale** — that prediction may no longer be the next train — and
 returns with the next refresh (D4). Each station carries a **line pill per connection** — the
-other tube, Overground, DLR, Elizabeth line and tram lines at the station or its interchange,
-from the same response. Buses are left out, since nearly every station has several and they would
-swamp the list. It is a full screen rather than a dialog
+other tube, Overground, DLR, Elizabeth line, tram and National Rail lines at the station or its
+interchange, from the same response. Buses are left out, since nearly every station has several and
+they would swamp the list. An interchange names its lines without saying which run trains, so there
+a National Rail operator counts by its TfL line id, from the known list the app already maps
+operators by; one not on it is left out rather than guessed at. It is a full screen rather than a dialog
 because it will grow per-route actions (a maps/nav hand-off), which a dialog would cap. **On the watched list, warning rows still lead**, above even a starred service — a stop
 closure or a no-prediction line-status row is something the user must see, and pinning a
 starred service above it would push a warning down the list (principle 2). **On the near-me

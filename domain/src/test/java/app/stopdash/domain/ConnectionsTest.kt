@@ -1,6 +1,7 @@
 package app.stopdash.domain
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ConnectionsTest {
@@ -22,10 +23,25 @@ class ConnectionsTest {
             LineRef("elizabeth", "Elizabeth line", ""),
             LineRef("avanti-west-coast", "Avanti West Coast", ""),
             LineRef("n5", "N5", ""),
+            // An operator TfL has no line id for here, so it isn't guessed at.
+            LineRef("example-railway", "Example Railway", ""),
         )
         val connections = Connections.of(lines, "northern")
-        assertEquals(listOf("lioness", "elizabeth"), connections.map { it.id })
-        assertEquals(listOf("overground", "elizabeth-line"), connections.map { it.mode })
+        assertEquals(listOf("lioness", "elizabeth", "avanti-west-coast"), connections.map { it.id })
+        assertEquals(listOf("overground", "elizabeth-line", "national-rail"), connections.map { it.mode })
+    }
+
+    @Test
+    fun `every National Rail operator TfL names is known by id, and none is a tube line`() {
+        // King's Cross St. Pancras, say: the operators at the interchange, each a national-rail pill.
+        val lines = listOf("thameslink", "great-northern", "london-north-eastern-railway", "east-midlands-railway", "southeastern")
+            .map { LineRef(it, it, "") }
+        assertEquals(List(lines.size) { "national-rail" }, Connections.of(lines, "victoria").map { it.mode })
+        assertTrue(NATIONAL_RAIL_LINE_IDS.isNotEmpty())
+        for (id in NATIONAL_RAIL_LINE_IDS) assertEquals(id, "national-rail", Connections.knownMode(id))
+        // Northern (the operator) has its own id, so the tube line keeps its mode.
+        assertEquals("tube", Connections.knownMode("northern"))
+        assertEquals("national-rail", Connections.knownMode("northern-rail"))
     }
 
     @Test

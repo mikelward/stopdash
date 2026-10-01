@@ -107,10 +107,10 @@ class RouteSequenceTest {
         val stops = RouteStops.ahead(northern, KENNINGTON, "Edgware", "Charing X", lineId = "northern")!!
             .associate { it.name to it.connections.map { line -> line.id } }
         assertEquals(emptyList<String>(), stops["Kennington"])
-        assertEquals(listOf("bakerloo", "jubilee", "waterloo-city"), stops["Waterloo"])
-        // The Victoria line from Euston's own station, the Lioness line from its interchange; the
-        // hub's buses and national-rail operators are left out.
-        assertEquals(listOf("victoria", "lioness"), stops["Euston"])
+        assertEquals(listOf("bakerloo", "jubilee", "waterloo-city", "south-western-railway"), stops["Waterloo"])
+        // The Victoria line from Euston's own station; the Lioness line and the National Rail
+        // operators from its interchange, each known by its TfL id; the hub's buses are left out.
+        assertEquals(listOf("victoria", "avanti-west-coast", "lioness", "west-midlands-trains"), stops["Euston"])
         assertEquals(listOf("central", "elizabeth"), stops["Tottenham Court Road"])
         val bank = RouteStops.ahead(northern, KENNINGTON, "High Barnet", "Bank", lineId = "northern")!!
             .first { it.name == "Bank" }
@@ -192,17 +192,20 @@ class RouteSequenceTest {
     }
 
     @Test
-    fun `an interchange's West Midlands Trains line is named London Northwestern, and still isn't a connection`() {
+    fun `an interchange's West Midlands Trains line is named London Northwestern, and is a National Rail connection`() {
         // The recorded Euston hub lists its lines under four modes, so each comes in with no mode of
-        // its own: renamed all the same, and left out of the connections as a national-rail
-        // operator at an interchange always is (never guessed at: Connections).
+        // its own: renamed all the same, and a connection by its TfL id, as every operator the app
+        // maps is (Connections), so its pill reads LNR as its departures do.
         val euston = northern.stopLines.getValue("940GZZLUEUS")
         assertEquals(
             LineRef("west-midlands-trains", "London Northwestern Railway", ""),
             euston.single { it.id == "west-midlands-trains" },
         )
         val stops = RouteStops.ahead(northern, KENNINGTON, "Edgware", "Charing X", lineId = "northern")!!
-        assertEquals(listOf("victoria", "lioness"), stops.first { it.name == "Euston" }.connections.map { it.id })
+        assertEquals(
+            LineRef("west-midlands-trains", "London Northwestern Railway", "national-rail"),
+            stops.first { it.name == "Euston" }.connections.single { it.id == "west-midlands-trains" },
+        )
     }
 
     @Test
