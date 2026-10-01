@@ -609,7 +609,7 @@ class ActiveTripTracker(
                     warn("on the way: train not found on line ${OnTheWay.followedLine(trip)}")
                     // A train not yet boarded that TfL no longer knows: dropped, so the next refresh
                     // picks another. Once on board it stays followed: TfL has only gone quiet on it.
-                    if (trip.boarded) failed = true else trip = trip.copy(vehicleId = "", vehicleLeg = null, vehicleOffId = "", boardsAt = null, dueOffAt = null)
+                    if (trip.boarded) failed = true else trip = trip.copy(vehicleId = "", vehicleLeg = null, vehicleOffId = "", boardsAt = null, dueOffAt = null, heldFrom = null)
                 }
             } catch (e: TflException) {
                 warn("on the way: train lookup failed for line ${if (trip.vehicleId.isBlank()) leg.lineId else OnTheWay.followedLine(trip)}: ${e::class.simpleName}")
@@ -635,7 +635,10 @@ class ActiveTripTracker(
             keep(trip, _progress.value?.takeIf { same } ?: standing(trip, now))
             return false
         }
-        var (next, progress) = OnTheWay.advance(trip, calls, now)
+        // Still seen at the boarding stop, by the fix this refresh took (aged by the reads since): the
+        // train's call there is theirs, however late, not a loop's next lap ([OnTheWay.atBoarding]).
+        val atBoarding = OnTheWay.atBoarding(trip, rider?.let { aged(it, Duration.ofMillis(elapsed() - reading)) })
+        var (next, progress) = OnTheWay.advance(trip, calls, now, atBoarding)
         // A train that turned out not to be the rider's: drop it, so the next refresh picks another.
         // Once on board it stays followed: TfL has only gone quiet on it.
         if (progress is TripProgress.Lost && calls != null && !next.boarded) next = next.copy(vehicleId = "", vehicleLeg = null, vehicleOffId = "", dueOffAt = null)

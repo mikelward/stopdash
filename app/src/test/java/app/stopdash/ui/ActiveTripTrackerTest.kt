@@ -2218,6 +2218,26 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `a loop train held on its way round is still awaited while the rider is seen at the boarding stop`() = runTest {
+        // Synthetic positions: the boarding stop, and the rider a few meters from it.
+        val placed = TripRoute(listOf(ride.copy(fromAt = app.stopdash.domain.Coordinates(51.5, -0.12))))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        // Still on its previous lap, B and C ahead of A, due at A at 12.
+        departures["A"] = listOf(train("8", 12))
+        trains["8"] = listOf(call("B", 3), call("C", 6), call("A", 12), call("B", 15), call("C", 18))
+        tracker.start(placed, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals(TripProgress.Waiting(placed.legs.single(), at(12)), tracker.progress.value)
+        // Held on its way round, its call at A jumps seven minutes: the calls of a train that just left
+        // with its next lap predicted. The rider, seen still at A, hasn't left on it.
+        trains["8"] = listOf(call("B", 4), call("C", 7), call("A", 19), call("B", 22), call("C", 25))
+        now = at(2)
+        tracker.refresh(fixAt(51.5003))
+        assertFalse(checkNotNull(tracker.trip.value).boarded)
+        assertEquals(TripProgress.Waiting(placed.legs.single(), at(19)), tracker.progress.value)
+    }
+
+    @Test
     fun `a get-off alert said for a train the rider turned out not to be on is taken back`() = runTest {
         // A short leg: get off soon is said as the train leaves, before a fix shows the rider left behind.
         val placed = TripRoute(listOf(ride.copy(fromAt = app.stopdash.domain.Coordinates(51.5, -0.12))))

@@ -29,7 +29,10 @@ import java.time.Instant
  * train followed runs it, where that's another of the ride's lines than the Planner's ([RideLines]):
  * its line is the one TfL answers for the train on, and the one the step tells the rider to board, and
  * the train's calls are checked against its own stops ([OnTheWay.ridden]). Null for the ride's own
- * line ([OnTheWay.followedLine], [OnTheWay.followedLineName]).
+ * line ([OnTheWay.followedLine], [OnTheWay.followedLineName]). [heldFrom] is when the train followed
+ * was due at the boarding stop before a call there was first taken as the same one only because the
+ * rider was seen still at the stop ([OnTheWay.atBoarding]): held there until then, and no later, so
+ * a rider still there after it may have missed the train, however late each call since has run.
  * Kept on the device only: where a rider is going is theirs (SPEC *Privacy*).
  */
 data class ActiveTrip(
@@ -52,6 +55,7 @@ data class ActiveTrip(
     val boardWarned: String = "",
     val disruptionsHeard: Set<String> = emptySet(),
     val vehicleLeg: TripLeg? = null,
+    val heldFrom: Instant? = null,
 ) {
     /** The leg the rider is on, or null once they've arrived. */
     val leg: TripLeg? get() = route.legs.getOrNull(legIndex)
@@ -406,7 +410,7 @@ object OnTheWay {
         // On board already by the rider's word ([atStep]), they're on this train: they stay so.
         trip.copy(
             vehicleId = train.vehicleId, vehicleLeg = on?.takeIf { it != trip.leg }, vehicleOffId = "", boardsAt = train.expectedArrival, boarded = trip.boarded,
-            boardedAt = trip.boardedAt.takeIf { trip.boarded }, dueOffAt = null,
+            boardedAt = trip.boardedAt.takeIf { trip.boarded }, dueOffAt = null, heldFrom = null,
         )
 
     /**
@@ -418,7 +422,7 @@ object OnTheWay {
      * passed, while the train's next stop is still on the leg; and an empty list ends a ride only once
      * the rider was seen due off.
      */
-    fun advance(trip: ActiveTrip, calls: List<VehicleCall>?, now: Instant): Pair<ActiveTrip, TripProgress> {
+    fun advance(trip: ActiveTrip, calls: List<VehicleCall>?, now: Instant, atBoarding: Boolean = false): Pair<ActiveTrip, TripProgress> {
         // Checked against the ride as the followed train's line runs it ([ridden]).
         val leg = ridden(trip)
         // On board by the rider's word while the train still stands at the boarding stop ([atStep]):
@@ -443,10 +447,26 @@ object OnTheWay {
         } else {
             calls
         }
-        return advanceAlong(on, ahead, now)
+        return advanceAlong(on, ahead, now, atBoarding)
     }
 
-    private fun advanceAlong(trip: ActiveTrip, calls: List<VehicleCall>?, now: Instant): Pair<ActiveTrip, TripProgress> {
+    /**
+     * Whether [rider] is seen still at the stop [trip]'s ride boards at, sure enough to tell
+     * ([usableFix]) and within [MISSED_WITHIN_METERS] of where the Planner places it: the train's call
+     * there is then still theirs to board, however late it has come to run ([ActiveTrip.heldFrom]).
+     * A loop's next lap would have taken them away, so a call that jumps a lap's worth later is the
+     * same one, late: a train held on its way round to the rider. Only the fixes a trip already
+     * takes (while waiting) are used: none is asked for this.
+     */
+    fun atBoarding(trip: ActiveTrip, rider: LocationFix?): Boolean {
+        val leg = trip.leg ?: return false
+        if (leg.isWalk) return false
+        val at = leg.fromAt ?: return false
+        val fix = rider?.let(::usableFix) ?: return false
+        return near(fix, at, MISSED_WITHIN_METERS)
+    }
+
+    private fun advanceAlong(trip: ActiveTrip, calls: List<VehicleCall>?, now: Instant, atBoarding: Boolean): Pair<ActiveTrip, TripProgress> {
         val leg = trip.leg ?: return trip to TripProgress.Arrived
         if (leg.isWalk) {
             val until = trip.legStartedAt.plus(leg.run)
@@ -465,7 +485,7 @@ object OnTheWay {
         // loop coming round again, after the rider's ride. Once on board, the rider stays on it
         // whatever it calls at next.
         if (!trip.boarded) {
-            val boarding = upcomingBoarding(trip, on, calls)
+            val (boarding, heldFrom) = upcomingBoarding(trip, on, calls, now, atBoarding)
             // A train due at the boarding stop before the rider can be there (revised earlier) isn't
             // one they can catch, still due or gone: another is to be picked.
             val due = if (boarding >= 0) calls[boarding].expected else trip.boardsAt
@@ -476,7 +496,7 @@ object OnTheWay {
                 val ahead = calls.drop(boarding + 1)
                 val off = ahead.indexOfFirst { arrivesAt(trip, on, it) }
                 if (!keepsToLeg(on, if (off >= 0) ahead.take(off) else ahead)) return trip to TripProgress.Lost(leg)
-                return trip.copy(boardsAt = due) to TripProgress.Waiting(leg, due, followedLineName(trip))
+                return trip.copy(boardsAt = due, heldFrom = heldFrom) to TripProgress.Waiting(leg, due, followedLineName(trip))
             }
         }
         val off = calls.indexOfFirst { arrivesAt(trip, on, it) }
@@ -743,7 +763,7 @@ object OnTheWay {
         val offId = calls.getOrNull(off)?.takeIf { !calls(it, leg.toId, leg.toName) }?.stopId.orEmpty()
         val aboard = trip.copy(
             vehicleId = train.vehicleId, vehicleLeg = leg.takeIf { it != planned }, vehicleOffId = offId,
-            boardsAt = train.expectedArrival, boarded = true, boardedAt = left, dueOffAt = null, onBoardSeen = true,
+            boardsAt = train.expectedArrival, boarded = true, boardedAt = left, dueOffAt = null, onBoardSeen = true, heldFrom = null,
         )
         return advance(aboard, calls, now).takeIf { it.second is TripProgress.Riding }
     }
@@ -891,7 +911,7 @@ object OnTheWay {
         // but only sure to 50 m could be a rider already moving off on the train.
         if (!near(rider, at, MISSED_WITHIN_METERS)) return trip
         return trip.copy(
-            vehicleId = "", vehicleLeg = null, vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null,
+            vehicleId = "", vehicleLeg = null, vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, heldFrom = null,
             legStartedAt = now, warnedLeg = -1, waitFrom = trip.waitFrom ?: trip.legStartedAt, onBoardSeen = false,
         )
     }
@@ -934,7 +954,7 @@ object OnTheWay {
         if (!leg.isWalk) return trip
         return trip.copy(
             legIndex = trip.legIndex + 1, legStartedAt = now.plus(leg.changeAfter),
-            vehicleId = "", vehicleLeg = null, vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, waitFrom = null,
+            vehicleId = "", vehicleLeg = null, vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, waitFrom = null, heldFrom = null,
             onBoardSeen = false,
         )
     }
@@ -949,7 +969,7 @@ object OnTheWay {
      */
     fun atLeg(trip: ActiveTrip, index: Int, now: Instant): ActiveTrip = trip.copy(
         legIndex = index.coerceIn(0, trip.route.legs.size), legStartedAt = now,
-        vehicleId = "", vehicleLeg = null, vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, warnedLeg = -1, waitFrom = null,
+        vehicleId = "", vehicleLeg = null, vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, warnedLeg = -1, waitFrom = null, heldFrom = null,
         onBoardSeen = false,
     )
 
@@ -1026,7 +1046,7 @@ object OnTheWay {
             // A train still minutes from the stop can't be the one they're on: more likely the one at
             // the platform, which the tracker picks as with none followed.
             val coming = at.vehicleId.isNotBlank() && at.boardsAt?.isAfter(now.plus(ON_BOARD_GRACE)) == true
-            val train = if (coming) at.copy(vehicleId = "", vehicleLeg = null, vehicleOffId = "", boardsAt = null, dueOffAt = null) else at
+            val train = if (coming) at.copy(vehicleId = "", vehicleLeg = null, vehicleOffId = "", boardsAt = null, dueOffAt = null, heldFrom = null) else at
             train.copy(boarded = true, boardedAt = now.minus(MISSED_WINDOW), legStartedAt = now, onBoardSeen = true)
         }
         // On board a ride and moved on by Next: kept, so Back can undo just that. Kept with no train
@@ -1105,7 +1125,7 @@ object OnTheWay {
         val leg = trip.leg
         val doneAt = if (leg?.isWalk == true) trip.legStartedAt.plus(leg.run) else trip.dueOffAt
         val from = (doneAt?.takeIf { it.isBefore(now) } ?: now).plus(leg?.changeAfter ?: Duration.ZERO)
-        val next = trip.copy(legIndex = trip.legIndex + 1, legStartedAt = from, vehicleId = "", vehicleLeg = null, vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, waitFrom = null, onBoardSeen = false)
+        val next = trip.copy(legIndex = trip.legIndex + 1, legStartedAt = from, vehicleId = "", vehicleLeg = null, vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, waitFrom = null, onBoardSeen = false, heldFrom = null)
         val onward = next.leg ?: return next to TripProgress.Arrived
         if (onward.isWalk) {
             val until = from.plus(onward.run)
@@ -1125,23 +1145,26 @@ object OnTheWay {
     // -1 once it has left. A call there before any of its calls on the leg is still to come, however
     // late. One after calls on the leg is a loop's: either the train still on its previous lap, or
     // its next lap after the rider's ride. With when it was due there ([ActiveTrip.boardsAt]), the
-    // previous lap is the call about then (within [LATE_BY]). Without, it's one a ride on the leg follows.
-    private fun upcomingBoarding(trip: ActiveTrip, leg: TripLeg, calls: List<VehicleCall>): Int {
+    // previous lap is the call about then (within [LATE_BY]), or, before the time it was due there
+    // when first taken so ([ActiveTrip.heldFrom]), any while the rider is still seen at the stop
+    // ([atBoarding]): a train held on its way round to them. That time is kept, not moved on by the
+    // later call each such reading takes, or each would put off the next (Codex, PR #452). Once it
+    // has come, a rider still there may have missed the train, which then went on to its next lap:
+    // that's left to the bound, and to the check for a rider left behind (Codex, PR #452). Without,
+    // it's one a ride on the leg follows. With it, the trip's [ActiveTrip.heldFrom] as it now stands.
+    private fun upcomingBoarding(trip: ActiveTrip, leg: TripLeg, calls: List<VehicleCall>, now: Instant, atBoarding: Boolean): Pair<Int, Instant?> {
         // The first call there the rider can catch (from [ActiveTrip.legStartedAt]): one before it is
         // an earlier lap they couldn't, when a later lap's call there follows; with none, it's the
         // picked train revised to leave too soon.
-        val atBoarding = calls.indices.filter { calls(calls[it], leg.fromId, leg.fromName) }
-        if (atBoarding.isEmpty()) return -1
-        val boarding = atBoarding.firstOrNull { !calls[it].expected.isBefore(trip.legStartedAt) } ?: atBoarding.last()
+        val there = calls.indices.filter { calls(calls[it], leg.fromId, leg.fromName) }
+        if (there.isEmpty()) return -1 to trip.heldFrom
+        val boarding = there.firstOrNull { !calls[it].expected.isBefore(trip.legStartedAt) } ?: there.last()
         val onLeg = calls.indexOfFirst { onPath(leg, it) >= 0 || calls(it, leg.toId, leg.toName) }
-        if (onLeg < 0 || boarding < onLeg) return boarding
-        val boardsAt = trip.boardsAt
-        val previousLap = if (boardsAt != null) {
-            !calls[boarding].expected.isAfter(boardsAt.plus(LATE_BY))
-        } else {
-            runsAlong(leg, calls.drop(boarding))
-        }
-        return if (previousLap) boarding else -1
+        if (onLeg < 0 || boarding < onLeg) return boarding to trip.heldFrom
+        val boardsAt = trip.boardsAt ?: return (if (runsAlong(leg, calls.drop(boarding))) boarding else -1) to trip.heldFrom
+        if (!calls[boarding].expected.isAfter(boardsAt.plus(LATE_BY))) return boarding to trip.heldFrom
+        val heldFrom = trip.heldFrom ?: boardsAt
+        return if (atBoarding && now.isBefore(heldFrom)) boarding to heldFrom else -1 to trip.heldFrom
     }
 
     // How much later than last seen a train can come to be due at the boarding stop in one refresh

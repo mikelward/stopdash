@@ -1069,11 +1069,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             when another is seen (this replaces the mock's "I'm on this one" tap as the way in).
         - [x] Which train makes each departure, and one train's calls ahead (`VehicleSource`).
         - [x] Following a started trip from its train's calls (`OnTheWay`, `:domain`).
-          - [ ] **A loop train's boarding call jumping over five minutes at once**: a loop train still
+          - [x] **A loop train's boarding call jumping over five minutes at once**: a loop train still
                 on its previous lap, whose call at the boarding stop moves more than five minutes
                 later between two refreshes, is taken for its next lap (it gives the very same calls
                 as one that just left with its next lap predicted). Tell them apart from the rider's
-                location (still at the stop), or from how long since the call was last seen.
+                location (still at the stop), or from how long since the call was last seen. *Done
+                by location (`OnTheWay.atBoarding`): seen still at the stop, the call is the same one,
+                late. Only the fixes the trip already takes; unseen, as before.*
           - [x] **Candidates past the first three**: a pick asks after at most three trains (one
                 request each, within the keyless rate limit). At a fork where the first three turn
                 off, none was found until one that runs along the leg came up. The board is now
@@ -1105,7 +1107,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 of when it was last seen, since a tight loop's next lap can come round inside the
                 ride's planned time. Held more than five minutes longer between two refreshes (the
                 app away), it reads as the next lap and the ride ends. The rider's location (still
-                at the stop) would tell them apart.
+                at the stop) would tell them apart, but not as the trip is built (Codex, PR #452): a
+                rider on board by their word asks for no fix, and one only taken to be on board is
+                seen at the stop as left behind a minute after the train was taken to leave, before
+                its calls are read. Needs the followed train's calls read before that check: one
+                still calling at the boarding stop, ahead of the ride, hasn't left them behind.
         - [ ] **The trip's screen as the route view, kept live** (maintainer, 2026-09-27: today's
               Next card and leg list for v1, this after): the route as the rider planned it, done
               legs hidden, a status line (stops left, next stop), the followed train marked, and

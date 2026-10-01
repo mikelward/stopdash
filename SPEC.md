@@ -1564,7 +1564,13 @@ them there:
   another branch looks the same until then), and beyond its predictions it is ridden with the stops
   left not counted, until it was seen due at the stop and has passed it. A followed train that neither calls at the
   boarding stop nor keeps to the leg is **lost** (the wrong train, or TfL lost it), and another is
-  picked; calls that can't be fetched claim nothing (principle 1).
+  picked; calls that can't be fetched claim nothing (principle 1). A loop train's call at the
+  boarding stop a lap later is its next lap, told by order and by how much later it has come to run.
+  While a fix sees the rider **still at the boarding stop** waiting for it, a call there is the same
+  one however late (a train held on its way round to them), before the time it was due there when
+  first held, since the next lap would have taken them away. A rider still there after that time may
+  have missed it, however late the train has been called since, which is left to the check for one
+  left behind. Only the fixes the trip already takes count: none is asked for this.
 - **Only a recent answer is live.** A train's time, the stops left and "get off soon" show only
   while the last answer is under about a minute and a quarter old; back after a while away, the
   step stays but its details say **Updating…** until the next answer (principle 1).
