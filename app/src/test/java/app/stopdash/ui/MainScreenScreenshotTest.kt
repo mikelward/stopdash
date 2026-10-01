@@ -305,6 +305,67 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `the near-me list leads with the telemetry question, and either button answers it`() {
+        val answers = mutableListOf<Boolean>()
+        capture("main-telemetry-invite.png") {
+            MainScreen(
+                DeparturesUiState.Loaded(stops(now.minusSeconds(60)), now.minusSeconds(60), lineStatuses = statuses()),
+                now,
+                {},
+                favoritePlaces = places,
+                onTelemetryInviteAnswer = { answers += it },
+            )
+        }
+        composeRule.onNodeWithText("Help make StopDash better?").assertExists()
+        composeRule.onNodeWithText("No thanks").performClick()
+        composeRule.onNodeWithText("Yes please").performClick()
+        assertEquals(listOf(false, true), answers)
+    }
+
+    @Test
+    fun `the telemetry question is put where nothing near has departures too`() {
+        var answer: Boolean? = null
+        composeRule.setContent {
+            MainScreen(
+                DeparturesUiState.Loaded(emptyList(), now.minusSeconds(30)),
+                now,
+                {},
+                onTelemetryInviteAnswer = { answer = it },
+            )
+        }
+        composeRule.onNodeWithTag("telemetryInvite").assertExists()
+        composeRule.onNodeWithText("Yes please").performClick()
+        assertEquals(true, answer)
+    }
+
+    @Test
+    fun `the telemetry question's answers wrap rather than squeeze at a large text size`() {
+        composeRule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
+                Box(Modifier.width(240.dp)) { TelemetryInviteCard(onAnswer = {}) }
+            }
+        }
+        // Too wide for one line together: "Yes please" goes under "No thanks", each whole.
+        val no = composeRule.onNodeWithText("No thanks").getUnclippedBoundsInRoot()
+        val yes = composeRule.onNodeWithText("Yes please").getUnclippedBoundsInRoot()
+        assertTrue("$yes not below $no", yes.top >= no.bottom)
+    }
+
+    @Test
+    fun `no telemetry question once it's answered`() {
+        composeRule.setContent {
+            MainScreen(
+                DeparturesUiState.Loaded(stops(now.minusSeconds(60)), now.minusSeconds(60), lineStatuses = statuses()),
+                now,
+                {},
+            )
+        }
+        composeRule.onNodeWithText("Upminster").assertExists()
+        composeRule.onNodeWithTag("telemetryInvite").assertDoesNotExist()
+    }
+
+    @Test
     fun `a chip shows its icon, its name, or both, as the place chose`() {
         composeRule.setContent {
             MainScreen(

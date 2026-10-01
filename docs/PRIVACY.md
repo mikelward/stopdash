@@ -193,7 +193,9 @@ If — and only while — you turn on **Help make StopDash better** in Settings,
 reports to **Firebase Crashlytics** and usage statistics to **Google Analytics for Firebase**
 (Google). It is **off by default**: nothing is collected until you turn it on, and a crash from
 before you did is discarded rather than sent (if one is waiting, reporting starts the next time you
-open the app).
+open the app). Until you've answered, the app asks once, with a card at the top of the stops near
+you: **Yes please** turns it on, **No thanks** keeps it off, and either way the card doesn't come
+back. You can change your answer in Settings at any time.
 
 What it sends:
 

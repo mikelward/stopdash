@@ -202,8 +202,10 @@ exercises the whole spine the widget later renders from.
           SDKs are off, the switch shows off and each failure is logged. If it ever bites, the
           narrower step is to hold a pending opt-in in the SDKs' own state (Analytics on,
           Crashlytics off) so a withdrawal also changes a third, SDK-managed file.
-    - [ ] **Invite the opt-in once on the home screen**, as simmo does, since stopdash has no
-          onboarding to ask it in: a dismissible card; off stays the default.
+    - [x] **Invite the opt-in once on the home screen**, as simmo does, since stopdash has no
+          onboarding to ask it in: a card atop the near-me list for an install with no stored
+          answer (`TelemetryConsent.unanswered`, `TelemetryInviteCard`), "Yes please" / "No
+          thanks" each storing one; off stays the default.
   - [x] **Log recent process-exit reasons at startup** into the shared log
         (`ActivityManager.getHistoricalProcessExitReasons`), as the siblings do
         (`ProcessExitReasons`), so a silent kill or native crash leaves a coarse cause in the
@@ -471,8 +473,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         step-free access can see which stations have it. TfL's StopPoint data carries accessibility
         properties; whether they're per station or per platform, and how current they are, is to
         check. A step-free-access outage notice should then read against it.
-  - [ ] **Tap a route row → all stops for that route** (maintainer, 2026-09-22). Extends the
+  - [x] **Tap a route row → all stops for that route** (maintainer, 2026-09-22). Extends the
         route-detail tap to show the route's full stop sequence, not just star + disruption text.
+        *Done: the route page lists every station from the boarding stop to where the soonest train
+        terminates (SPEC D8 → the route detail page).*
   - [x] **A unified, arrow-free appearance for the bus direction header** (maintainer, 2026-09-22;
         landed). The bus compass now reads as a bare direction word (`Southbound`), like the rail
         compass; `Stop` is reserved for a literal pole letter (`Stop E`); the shared terminus reads

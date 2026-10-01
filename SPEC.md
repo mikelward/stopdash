@@ -2466,7 +2466,16 @@ finds none; turning it off stops collection and discards what's unsent, so no re
 consent line either way. A withdrawal reaches the SDKs before the tap returns, an opt-in is stored
 before it reaches them, and the stored choice counts only while the SDKs agree with it (or an opt-in
 is pending): a failed write, a kill mid-change, or a backup restored onto a new install all resolve
-to **off**, so the user is asked again rather than collected from. `docs/PRIVACY.md` is the user-
+to **off**, so the user is asked again rather than collected from. **The question is put once**,
+as a card atop the near-me list, or atop its empty state where nothing near has departures (as the
+sibling apps do; stopdash has no onboarding to ask it in), its two answers wrapping onto a line
+each where they don't fit side by side:
+only to an install with no stored answer, and only once that's known, so it never flashes at
+someone who answered. **Yes please** and **No thanks** each store an answer, as the switch does, so
+the card doesn't return; a no that couldn't be stored is asked again next start, and a yes that
+couldn't be kept (not stored, or never taken up by the SDKs, at a start or after the tap) is asked
+again at once and next start, its stored choice deleted rather than kept as a no. It isn't shown
+on a station's page, a platform's, or a journey's own view. `docs/PRIVACY.md` is the user-
 facing disclosure and the Play Data Safety source.
 
 ## Engineering quality bar

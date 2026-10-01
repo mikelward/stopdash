@@ -437,6 +437,12 @@
     <string name="settings_text_size_content_description">Text size, %1$d percent</string>
     <string name="settings_telemetry_title">Help make StopDash better</string>
     <string name="settings_telemetry_summary">Share crash reports and usage stats. Never your stops, journeys or precise location.</string>
+    <!-- The same question put once atop the near-me list to an install that never answered it
+         (SPEC *Privacy*): either button stores the answer, so it isn't asked again. -->
+    <string name="telemetry_invite_title">Help make StopDash better?</string>
+    <string name="telemetry_invite_body">Share crash reports and usage stats so bugs get fixed? Never your stops, journeys or precise location.</string>
+    <string name="telemetry_invite_accept">Yes please</string>
+    <string name="telemetry_invite_decline">No thanks</string>
     <string name="settings_pinch_title">Pinch to resize text</string>
     <string name="settings_pinch_summary">Spread or pinch two fingers anywhere in the app to change the text size.</string>
     <!-- Settings: the units near-me distances are written in. "Auto" follows the phone's language. -->
