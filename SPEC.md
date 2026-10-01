@@ -1828,8 +1828,9 @@ A disrupted line is always kept flagged — its countdowns are never shown as ve
 Closure", "Suspended", "Severe Delays"), and a concise label recovered from the free-text
 reason where the wording is only TfL's vague bus catch-all "Special Service" — which names
 nothing on its own, the real state (usually a diversion) living only in the text. So a
-diverted bus reads "Diversion"; a vague status whose text yields nothing better falls back
-to "Service Alert" — never the meaningless "Special Service" — rather than being hidden.
+diverted bus reads "Diversion"; one the text denies or says has ended ("not diverted", "the
+diversion is no longer required") isn't named. A vague status whose text yields nothing better falls
+back to "Service Alert" — never the meaningless "Special Service" — rather than being hidden.
 On a line's page, **each station the alert's text names carries a ⚠** after its name, and **beside
 the alert's chip, each run of marked stations is named by its ends** ("Diversion  Moorgate to
 Monument", or one station alone by its name), so where it is reads next to what it is, compactly: the
