@@ -13,11 +13,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.FavoriteKind
+import app.stopdash.domain.FavoritePlace
+import app.stopdash.domain.FavoritePlaceIcon
+import app.stopdash.domain.TripDestination
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Assert.assertEquals
@@ -184,6 +192,50 @@ class LocationGateScreenshotTest {
             )
         }
         composeRule.onNodeWithText("No stops found nearby").assertExists()
+    }
+
+    // Stock stand-in places on synthetic coordinates, never a real person's (SPEC *Privacy*).
+    private val places = listOf(
+        FavoritePlace("home", FavoriteKind.HOME, "Home", Coordinates(51.51, -0.09), icon = FavoritePlaceIcon.HOME),
+        FavoritePlace("gym", FavoriteKind.CUSTOM, "Gym", Coordinates(51.52, -0.1)),
+    )
+
+    @Test
+    fun `no stops nearby still offers the saved places, a tap routing to one`() {
+        var routed: TripDestination.Place? = null
+        var edited = false
+        capture("location-empty-places.png") {
+            LocationGate(
+                NearbyStopsViewModel.State.Empty(FIX),
+                onAllow = {},
+                onRetry = {},
+                onOpenSettings = {},
+                places = places,
+                onRouteToPlace = { routed = it },
+                onEditPlaces = { edited = true },
+            )
+        }
+        composeRule.onNodeWithText("No stops found nearby").assertExists()
+        composeRule.onNodeWithContentDescription("Plan a trip to Gym").performClick()
+        assertEquals("Gym", routed?.name)
+        assertEquals(Coordinates(51.52, -0.1), routed?.coordinate)
+        composeRule.onNodeWithContentDescription("Plan a trip to Home").performTouchInput { longClick() }
+        assertTrue(edited)
+    }
+
+    @Test
+    fun `a state with no position to plan from offers no place chips`() {
+        var state by mutableStateOf<NearbyStopsViewModel.State>(NearbyStopsViewModel.State.Empty(FIX))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                LocationGate(state, onAllow = {}, onRetry = {}, onOpenSettings = {}, places = places)
+            }
+        }
+        composeRule.onNodeWithTag("favoriteChips").assertExists()
+        for (next in listOf(NearbyStopsViewModel.State.NoLocation, NearbyStopsViewModel.State.Locating)) {
+            state = next
+            composeRule.onNodeWithTag("favoriteChips").assertDoesNotExist()
+        }
     }
 
     @Test

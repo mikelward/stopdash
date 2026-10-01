@@ -958,11 +958,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               device by the maintainer (2026-09-28).
         - [x] **Long-press a place chip to open Favorite places** (maintainer, 2026-09-28). Checked on
               a device by the maintainer (2026-09-28).
-        - [ ] **Favorite chips on the "no stops nearby" screen** (Codex on #315): with nothing in
-              range the list gives way to the location gate, which has no chips. A chip there needs
-              the trip from here to plan from the rider's coordinate rather than from nearby stops
-              (it takes its origins from the nearby set today), or it would open a trip with nowhere
-              to start. Deferred from #315 to keep that PR to the list itself.
+        - [x] **Favorite chips on the "no stops nearby" screen** (Codex on #315): with nothing in
+              range the list gave way to the location gate, which had no chips. Done: the gate's
+              "No stops found nearby" heads the chips as the list's empty state does (the same
+              already-there and day rules, `rememberShownPlaces`), and a tap opens the trip from
+              here, which plans from the rider's position and so starts with no stop in range,
+              keyed by the position it plans from, moved after 150 m (`hereAnchor`), and
+              refreshed by each new position (`tripRepickId`). "No stops nearby" from a last-known fix now carries the approximate
+              banner, as the list does, over that trip and for the chips.
       - [x] **To… a geocoded place or postcode** (maintainer, 2026-09-27): the To… search now offers
             geocoded places (landmark, address, postcode) beneath the stop matches, each tagged
             *Place*/*Postcode*; tapping one plans to its coordinate (D9). TfL's Journey Planner is the

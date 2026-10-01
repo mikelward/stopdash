@@ -1106,13 +1106,18 @@ together) shows "Walk" where the pills go and its minutes, with no live row and 
 as **one row of chips**, one per place in the saved order, each showing the place's icon, its name, or both, as the place chose (below); a tap plans the trip
 as above. The row is the list's first item, so it **scrolls away with the list** rather than taking
 a pinned row's space, and scrolls sideways when the chips don't fit; when the stops near have no
-departures it still heads the empty state, just when a route elsewhere is wanted (with no stops in
-range at all there is no row yet, as the trip from here plans from nearby stops). It is on the
+departures it still heads the empty state, just when a route elsewhere is wanted, and with no stops in
+range at all it heads "No stops found nearby" the same way: the trip from here plans from the rider's
+position, so it needs no stop to start from (Codex on #315), and a position from a last-known fix is
+flagged approximate over that trip, as over the list. A move of 150 m or more plans that trip afresh,
+as a new nearest stop does a trip from the list, so routes from a place left are never shown for
+where the rider is now, even while the new plan loads (Codex on #439). It is on the
 near-me list only — not a station's page or a drill-down, which are about one place. A place the
 rider is **already at** is left out, since "Home" at home is a route to nowhere: **within 200 m** on
 an accurate fix (one whose own reported accuracy is within 100 m), back once past **250 m** so a
 wandering fix doesn't make a chip flicker. The rule leans towards showing: a fix the list flags as
-approximate, coarse or not updated, or one only an approximate location grant allows, hides nothing,
+approximate, coarse or not updated, a last-known fix (old, however tight), or one only an approximate
+location grant allows, hides nothing,
 as a wrongly hidden chip costs the one-tap route while a wrongly shown one costs only space. The
 places are read from the first frame, from the device (no request), so the row is there when the
 list is; a place list that can't be read shows no row here — Settings and the To… picker are where

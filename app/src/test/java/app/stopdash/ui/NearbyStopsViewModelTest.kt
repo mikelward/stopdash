@@ -588,6 +588,23 @@ class NearbyStopsViewModelTest {
     }
 
     @Test
+    fun `no stops nearby from a last-known fix flags the location approximate, as the list does`() = runTest {
+        // A trip from here plans from that fix, and the place chips read it as where the rider is: the
+        // banner says it may be out of date, however tight the old fix's accuracy (Codex on #439).
+        val location = MutableLocation(origin, isFallback = true, accuracyMeters = 10f)
+        val model = vm(location, FakeFinder { emptyList() })
+        model.locate()
+        advanceUntilIdle()
+        assertEquals(NearbyStopsViewModel.State.Empty(origin), model.state.value)
+        assertEquals(LocationBanner.APPROXIMATE, model.locationBanner.value)
+        // A fresh fix clears it.
+        location.isFallback = false
+        model.locate()
+        advanceUntilIdle()
+        assertEquals(null, model.locationBanner.value)
+    }
+
+    @Test
     fun `a precise fix far from the coarse one moves the set there`() = runTest {
         val precise = north(400.0)
         val finder = FakeFinder { listOf(stop("b1", 80.0, "bus")) }

@@ -4,9 +4,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
+import app.stopdash.domain.Coordinates
 import app.stopdash.domain.DirectTrips
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineSequence
+import app.stopdash.domain.NearestStops
 import app.stopdash.domain.TflException
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
@@ -87,3 +89,61 @@ internal fun hereOriginIds(
         distanceMeters.filterKeys { it in candidates },
     ).filter { it in candidates || it !in distanceMeters }
 }
+
+/**
+ * The id that keys a trip's plans, or null when the trip has nowhere to start and ends (every
+ * nearby stop hidden). From a *From…* station ([fromStopIds]), one of its own stops; from here, the
+ * stop of [anchors] (else [origin]) nearest the rider, so a move to a new nearest stop plans afresh,
+ * while the Planner plans from where the rider is. With no stop in range at all ([noneNearby]), a
+ * trip from here still plans (Codex on #315), keyed by the position it plans from ([hereAnchor],
+ * [hereStartId]), so routes planned from one place are never shown for another (Codex on #439). A
+ * stop with no lines, or an interchange's id (the Planner takes neither), is a start only when
+ * nothing else is.
+ */
+internal fun tripStartId(
+    origin: List<StopRef>,
+    anchors: List<StopRef>,
+    fromStopIds: Set<String>,
+    distanceMeters: Map<String, Double>,
+    noneNearby: Boolean,
+    hereAnchor: Coordinates?,
+): String? {
+    if (origin.isEmpty()) return hereAnchor?.takeIf { noneNearby }?.let(::hereStartId)
+    val starts = anchors.ifEmpty { origin }.filter { !it.id.startsWith(HUB_PREFIX) && it.lines.isNotEmpty() }
+        .ifEmpty { origin.filterNot { it.id.startsWith(HUB_PREFIX) } }
+    return (starts.filter { it.id in fromStopIds }.ifEmpty { starts })
+        .minByOrNull { distanceMeters[it.id] ?: Double.MAX_VALUE }?.id ?: origin.first().id
+}
+
+/**
+ * The re-pick a trip from here refreshes for ([TripViewModel.refreshFor]): the nearby set's
+ * [repickId], or, with no stop in range ([noneNearby]), where the rider is now ([here]). That trip has
+ * no set to re-pick, and its start never changes, so each new position stands in for a re-pick: a
+ * refined or re-taken fix refreshes it, and plans it again once the rider has moved far enough, as a
+ * re-pick does for a trip from the list (Codex on #439). The same position, the same id.
+ */
+internal fun tripRepickId(noneNearby: Boolean, here: Coordinates?, repickId: Long?): Long? =
+    if (noneNearby) here?.let { (it.latitude to it.longitude).hashCode().toLong() } else repickId
+
+/**
+ * Where a trip from here with no stop in range plans from, for its key ([tripStartId]): [anchor], the
+ * position it was keyed by last, until the rider ([here]) is [TripViewModel.REPLAN_MOVE_METERS] or more
+ * from it, then [here]. A move that far plans the trip afresh, as a new nearest stop does a trip from
+ * the list, so its routes from the place left are never shown, not even while the new plan loads or
+ * after it fails (Codex on #439); a smaller one (a refined fix) keeps the trip, refreshed
+ * ([tripRepickId]). Null while there's no position.
+ */
+internal fun hereAnchor(anchor: Coordinates?, here: Coordinates?): Coordinates? {
+    if (here == null || anchor == null) return here ?: anchor
+    val moved = NearestStops.distanceMeters(anchor.latitude, anchor.longitude, here.latitude, here.longitude)
+    return if (moved >= TripViewModel.REPLAN_MOVE_METERS) here else anchor
+}
+
+/** The key of a trip from here with no stop in range: the position ([hereAnchor]) it plans from. */
+internal fun hereStartId(anchor: Coordinates): String = "$HERE_START@${anchor.latitude},${anchor.longitude}"
+
+// What keys a trip from here with no stop in range, ahead of where it plans from.
+private const val HERE_START = "here"
+
+// The Planner takes stop and station ids but not an interchange's.
+private const val HUB_PREFIX = "HUB"

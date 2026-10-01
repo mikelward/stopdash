@@ -476,6 +476,10 @@ class NearbyStopsViewModel(
     private fun bannerFor(next: State, fix: LocationFix): LocationBanner? = when {
         // "No stops nearby" from a coarse fix is flagged too: the fix may be what missed them.
         next is State.Empty && fix.isCoarse && !fix.isFallback -> LocationBanner.COARSE
+        // And from a last-known fix, as the list is: a trip from here plans from it, so it says the
+        // position may be out of date, and the place chips don't take it as where the rider is (Codex
+        // on #439). The gate itself names only a coarse fix, which a precise one can still correct.
+        next is State.Empty && fix.isFallback -> LocationBanner.APPROXIMATE
         next !is State.Ready -> null
         fix.isFallback -> LocationBanner.APPROXIMATE
         fix.isCoarse -> LocationBanner.COARSE

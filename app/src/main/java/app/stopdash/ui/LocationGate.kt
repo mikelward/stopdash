@@ -3,6 +3,7 @@ package app.stopdash.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,6 +29,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
+import app.stopdash.domain.FavoritePlace
+import app.stopdash.domain.TripDestination
 import java.time.Instant
 
 /**
@@ -80,6 +83,14 @@ fun LocationGate(
     // The clock the pinned trip card reads (a ticking one from the caller, so an old answer turns
     // to "Updating…" while the gate stays up); default for a test.
     now: Instant = Instant.now(),
+    // The saved places to route to from "No stops found nearby", as atop the near-me list (SPEC
+    // *Routing from the near-me list*): a trip from here plans from the rider's position, so it needs
+    // no stop in range. The caller has already left out those the rider is at and those off today.
+    // Shown only there: every other state has no position to plan from.
+    places: List<FavoritePlace> = emptyList(),
+    onRouteToPlace: (TripDestination.Place) -> Unit = {},
+    // A long press on a chip: the saved places' own screen, as on the list. Null offers none.
+    onEditPlaces: (() -> Unit)? = null,
 ) {
     // Saved so an open About dialog survives rotation on the gate.
     var showAbout by rememberSaveable { mutableStateOf(false) }
@@ -144,6 +155,18 @@ fun LocationGate(
                         }
 
                         is NearbyStopsViewModel.State.Empty -> {
+                            // Nothing near is just when a route elsewhere is wanted: the chips head
+                            // the state, as they head the list's empty state, centered with the rest.
+                            if (places.isNotEmpty()) {
+                                FavoriteChips(
+                                    places,
+                                    onRouteToPlace,
+                                    Modifier.padding(bottom = 16.dp),
+                                    onEditPlaces = onEditPlaces,
+                                    contentPadding = PaddingValues(0.dp),
+                                    centered = true,
+                                )
+                            }
                             Body(stringResource(R.string.location_no_stops))
                             if (approximate) Body(stringResource(R.string.location_coarse))
                             Action(stringResource(R.string.try_again), onRetry)
