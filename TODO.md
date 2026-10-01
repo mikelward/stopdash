@@ -1304,11 +1304,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 still waits as it was, as before #449; only a sighting on the Planner's line puts them
                 on board by position. Doing the same for another line means counting its stops on that
                 line's own path (keeping the line ridden, as a told train does), not the Planner's.
-          - [ ] **Update as soon as location changes** (maintainer, 2026-10-01): while a trip is shown,
+          - [x] **Update as soon as location changes** (maintainer, 2026-10-01): while a trip is shown,
                 the rider is using the app, so timeliness comes first, within reason. Refresh on a
                 location update rather than only on the ~30 s cycle, with a minimum gap between
                 refreshes and a fallback timer when no update comes. Since a train is now matched only
-                against a fresh fix, this is what decides how soon it's named.
+                against a fresh fix, this is what decides how soon it's named. Done: with the app open
+                and a fix wanted, location every 5 s while the rider moves 10 m; each fix of use
+                refreshes the trip at once, at most every 10 s, in whichever loop follows it (the
+                app's, or the service's); the 30 s timer stays the fallback (`TripFixes`).
           - [ ] **Moving, but location stale**: decide what the trip shows, and what it asks for,
                 when the rider is taken to be moving (on board, or walking) and no fresh fix has come
                 in for a while (underground, indoors, a fix refused).

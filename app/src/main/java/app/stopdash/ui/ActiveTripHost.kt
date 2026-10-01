@@ -10,11 +10,17 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.LocationFix
+import app.stopdash.domain.TripFixes
 import app.stopdash.domain.TripRoute
+import app.stopdash.domain.awaitRefresh
+import app.stopdash.domain.refreshFix
+import app.stopdash.domain.watchTripFixes
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emptyFlow
 
 /**
  * Starts a trip on the way (SPEC *On the way*), for a screen several layers down (a trip's open route)
@@ -36,13 +42,18 @@ val ON_THE_WAY_REFRESH: Duration = Duration.ofSeconds(30)
 /**
  * Follows [tracker]'s trip while the app is in the foreground: the kept trip read once, then a
  * refresh every [ON_THE_WAY_REFRESH] while one is on the way — unless [serviceFollowing], when the
- * trip's foreground service does it, app open or closed (SPEC *On the way*). Nothing at all with no
- * trip.
+ * trip's foreground service does it, app open or closed (SPEC *On the way*). While the trip is shown
+ * it also watches location ([watchTripFixes]) as long as a fix could move it on, so a rider on the
+ * move has it refreshed on each fix, whichever of the two follows it ([TripFixes]). Nothing at all
+ * with no trip.
  */
 @Composable
 internal fun FollowActiveTrip(
     tracker: ActiveTripTracker,
     serviceFollowing: StateFlow<Boolean>,
+    fixes: TripFixes = TripFixes(),
+    // Precise fixes as they come, watched while the trip is shown and wants one.
+    updates: () -> Flow<LocationFix> = { emptyFlow() },
     // A fix when the trip wants one ([app.stopdash.domain.OnTheWay.wantsFix]): a walk to a stop ends
     // once the rider is seen there, not only on its time.
     rider: suspend (ActiveTrip?) -> LocationFix? = { null },
@@ -56,12 +67,20 @@ internal fun FollowActiveTrip(
     }
     val trip by tracker.trip.collectAsStateWithLifecycle()
     val service by serviceFollowing.collectAsStateWithLifecycle()
+    if (trip != null) {
+        LaunchedEffect(tracker, lifecycleOwner) {
+            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                watchTripFixes(tracker.trip, fixes, updates)
+            }
+        }
+    }
     if (trip != null && !service) {
         LaunchedEffect(tracker, lifecycleOwner) {
             lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                var woke: TripFixes.Seen? = null
                 while (true) {
-                    tracker.refresh(rider(tracker.trip.value))
-                    delay(ON_THE_WAY_REFRESH.toMillis())
+                    tracker.refresh(refreshFix(woke, fixes, tracker.trip.value, Instant.now(), take = rider))
+                    woke = awaitRefresh(fixes.latest, ON_THE_WAY_REFRESH)
                 }
             }
         }

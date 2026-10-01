@@ -4,7 +4,9 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
+import android.location.LocationListener
 import android.location.LocationManager
+import android.location.LocationRequest
 import android.os.Build
 import android.os.CancellationSignal
 import android.os.SystemClock
@@ -16,8 +18,12 @@ import app.stopdash.domain.LocationFix
 import app.stopdash.domain.LocationProvider
 import app.stopdash.domain.PreciseFixMemory
 import app.stopdash.domain.raceFix
+import java.time.Duration
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
@@ -46,6 +52,10 @@ class AndroidLocationProvider(
     // Off for a fix that must never be kept, such as a trip's left-behind check (SPEC *On the way*).
     private val remembers: Boolean = true,
 ) : LocationProvider {
+    // Whether [preciseUpdates] last found no accurate provider, so a caller asking again doesn't log
+    // it each time (main thread only).
+    private var updatesSkipped = false
+
     // Every location taken expires the remembered precise fix on the way out, whichever return
     // it takes and however long the fix took (the clock moves during the request).
     override suspend fun current(forceFresh: Boolean): LocationFix? =
@@ -208,6 +218,49 @@ class AndroidLocationProvider(
         position("${FixDiagnostics.Source.PRECISE.label} ${fix.provider} fix", fix.coordinates)
         if (remembers) remember(fix)
         return fix.toFix()
+    }
+
+    /**
+     * Precise fixes as they come, from one accurate provider (fused where there is one, else GPS)
+     * about every [every] while the rider moves [minDistanceMeters], until the flow is cancelled,
+     * when the request is removed. For a trip on the way while it's shown (SPEC *On the way*), so
+     * nothing is remembered or logged per fix (a warning only if it can't be asked, once until it
+     * can be again: a caller asks again every few seconds); none at all without precise location or
+     * an accurate provider, when the flow ends at once.
+     */
+    fun preciseUpdates(every: Duration, minDistanceMeters: Float): Flow<LocationFix> = callbackFlow {
+        val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+        val provider = manager?.takeIf { hasFineLocationPermission() }?.let { m ->
+            enabledProviders(m).filter(::isAccurateProvider).let { if (LocationManager.FUSED_PROVIDER in it) LocationManager.FUSED_PROVIDER else it.firstOrNull() }
+        }
+        if (manager == null || provider == null) {
+            if (manager != null && hasFineLocationPermission() && !updatesSkipped) {
+                warn("location updates skipped: no GPS or fused provider enabled")
+                updatesSkipped = true
+            }
+            close()
+            return@callbackFlow
+        }
+        updatesSkipped = false
+        val listener = LocationListener { location -> trySend(location.toLocated(provider).toFix()) }
+        val request = LocationRequest.Builder(every.toMillis())
+            .setQuality(LocationRequest.QUALITY_HIGH_ACCURACY)
+            .setMinUpdateDistanceMeters(minDistanceMeters)
+            .build()
+        try {
+            manager.requestLocationUpdates(provider, request, context.mainExecutor, listener)
+        } catch (e: SecurityException) {
+            // A revoke can race the permission check above: no updates, not a crash.
+            warn("location updates failed: permission")
+            close()
+            return@callbackFlow
+        } catch (e: IllegalArgumentException) {
+            // The provider went away between the check and the request.
+            warn("location updates failed: ${e::class.simpleName}")
+            close()
+            return@callbackFlow
+        }
+        awaitClose { manager.removeUpdates(listener) }
     }
 
     // The fix as handed over, with how sure it is and how long ago it was taken.
