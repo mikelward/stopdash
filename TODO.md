@@ -1282,17 +1282,20 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   taken as on it (its calls still name that stop), so the trip waits until TfL
                   catches up. Rare (TfL's lag is about a minute), but a train that has left could be
                   told apart by its calls moving on past the stop.
-            - [ ] **A train the board never listed**: the trains asked after are those the boarding
+            - [x] **A train the board never listed**: the trains asked after were those the boarding
                   stop's board listed while the trip was shown, in memory only, so after a restart,
                   or for a train that came and went between refreshes, the rider seen along the ride
-                  is on board by where they were seen with no train named: the stops are counted on
-                  the plan and no time is claimed (maintainer, 2026-10-01). Asking the board at the stop ahead of them would find it, for one
-                  more request. So is a bus using the other pole of the boarding stop pair from the
-                  one the Planner named: the board read is that pole's alone, for picking a train
-                  too, so another of the ride's bus routes that stops only at the pair's other pole
-                  is never followed either, picked or seen boarded (Codex, PR #451). Reading the
-                  pair's other pole as well would find both, for one more request a refresh while
-                  waiting (Codex, PR #383).
+                  was on board by where they were seen with no train named. Done: with none of those
+                  theirs, the board at the stop ahead of them is read (one request a fix, while their
+                  train is unknown), its trains that take the ride told by their calls (`boardedOn`),
+                  for a line whose stops are known by id and whose routes bring every train there
+                  the ride's way from the boarding stop, soonest first until a train behind them bounds theirs: the latest past them when seen at a stop, only a lone one between
+                  stops (*Two trains between the same two stops*).
+            - [ ] **A bus on the other pole of the boarding pair**: the board read is the pole the
+                  Planner named, alone, for picking a train too, so another of the ride's bus routes
+                  that stops only at the pair's other pole is never followed, picked or seen boarded
+                  (Codex, PR #451). Reading the pair's other pole as well would find both, for one
+                  more request a refresh while waiting (Codex, PR #383).
             - [ ] **Two trains between the same two stops**: the train the rider is on is the
                   newest that left the boarding stop and isn't behind them, judged by the stop each
                   calls at next. A later train that has caught up to between the same two stops calls

@@ -316,6 +316,38 @@ object OnTheWay {
     fun checkable(leg: TripLeg): Boolean = leg.path.isNotEmpty() && leg.path.none { it.startsWith(STOP_AREA_PREFIX) }
 
     /**
+     * Whether every train of [ride]'s line that reaches stop [ahead] of its path the ride's way ran
+     * there the way the ride does, by the line's routes ([sequence]): from the boarding stop, calling
+     * at just the ride's stops between, in order. A train on that stop's board may then be the
+     * rider's, where one that starts there, joins there from another branch, or reaches it by
+     * another way from the boarding stop can't be, and nothing a train says of the stops ahead of it
+     * tells which (Codex, PR #462). Where a route next calls at the ride's stop before that one, it is
+     * running back towards them there, and that pass is passed over; any other pass counts, a loop
+     * that comes round to the boarding stop later included (Codex, PR #462). False with no routes
+     * known, or none that reach it.
+     */
+    fun comesThroughBoarding(ride: TripLeg, ahead: Int, sequence: LineSequence?): Boolean {
+        val stop = ride.path.getOrNull(ahead) ?: ride.toId
+        val before = ride.path.getOrNull(ahead - 1) ?: ride.fromId
+        val way = (listOf(ride.fromId) + ride.path.take(ahead + 1)).let { if (it.last() == stop) it else it + stop }
+        // Each route under the ride's own ids, where the Planner names a station by a sibling of the one
+        // the route calls at ([LineSequence.callingAt]), as [ridePositions] places it: route by route, as
+        // one route calling at the ride's id leaves the line's others as they are (Codex, PR #462).
+        val ids = (listOf(ride.fromId) + ride.path + ride.toId).distinct()
+        val routes = (sequence ?: return false).routes.map { route ->
+            ids.fold(sequence.copy(routes = listOf(route))) { seq, id -> seq.callingAt(id) }.routes.single()
+        }
+        // Every way a route reaches that stop: a loop calling there twice brings trains to its board by
+        // both (Codex, PR #462).
+        val into = routes.flatMap { route ->
+            route.stopIds.indices.filter { at ->
+                route.stopIds[at] == stop && route.stopIds.getOrNull(at + 1) != before
+            }.map { at -> route.stopIds to at }
+        }
+        return into.isNotEmpty() && into.all { (stops, at) -> at >= way.size - 1 && stops.subList(at - way.size + 1, at + 1) == way }
+    }
+
+    /**
      * The ride the rider is on their way to board: the leg they're on while it's a ride they aren't
      * yet seen on (waiting, changing onto it, or its train left with them only taken to be on it), or
      * the ride after the walk they're on. Null once seen riding, on the walk to the destination, and
@@ -869,28 +901,7 @@ object OnTheWay {
     ): Pair<ActiveTrip, TripProgress>? {
         val planned = trip.leg ?: return null
         val leg = on ?: planned
-        val next = calls.firstOrNull() ?: return null
-        val off = calls.indexOfFirst { calls(it, leg.toId, leg.toName) || it.stopId in alightingPoles }
-        // Still to call at the boarding stop on its way there: not yet left it, so not the rider's.
-        if ((if (off >= 0) calls.take(off) else calls).any { calls(it, leg.fromId, leg.fromName) || it.stopId in boardingPoles }) return null
-        val at = if (checkable(leg)) {
-            // Where it calls next along the ride: where the rider gets off, when the path leaves that out.
-            val at = onPath(leg, next).takeIf { it >= 0 } ?: if (calls(next, leg.toId, leg.toName)) leg.path.size else return null
-            if (at < from) return null
-            at
-        } else {
-            // A leg whose stops can't be matched to the live ones by id (a bus's) is taken on reaching
-            // where the rider gets off: any bus of the mode would pass the rest.
-            if (off < 0) return null
-            // Where it calls next along the ride, its pole placed by stop area ([areas]): behind where
-            // the rider was seen, it's a later bus, not theirs. Once they were seen past the first
-            // stop, one that can't be placed can't be told from a later one (Codex, PR #383).
-            val at = if (off == 0) leg.path.size else areas[next.stopId]?.let { leg.path.indexOf(it) } ?: -1
-            if (from > 0 && at < from) return null
-            at
-        }
-        // Seen at that stop, a train still due there later is on its way to it, behind them.
-        if (atStop && at == from && next.expected.isAfter(now.plus(AT_STOP_DUE_WITHIN))) return null
+        val off = (placed(leg, calls, from, now, boardingPoles, alightingPoles, areas, atStop) as? Placed.At ?: return null).off
         val left = train.expectedArrival.takeIf { !it.isAfter(now) } ?: now
         // Kept with the pole it calls at for the rider's stop, where that's the pair's other one, so
         // it's known there as their stop ([arrivesAt]).
@@ -900,6 +911,71 @@ object OnTheWay {
             boardsAt = train.expectedArrival, boarded = true, boardedAt = left, dueOffAt = null, onBoardSeen = true, seenAlongStop = -1, heldFrom = null,
         )
         return advance(aboard, calls, now).takeIf { it.second is TripProgress.Riding }
+    }
+
+    /**
+     * Whether a train's [calls] show it behind the rider [boardedOn] tests it against, by the same
+     * rules: still to leave the boarding stop, calling next behind where they were seen, or, seen at a
+     * stop, still due there. A train its calls don't place (none, or none on the ride) isn't behind,
+     * nor known not to be.
+     */
+    fun behind(
+        trip: ActiveTrip,
+        calls: List<VehicleCall>,
+        from: Int,
+        now: Instant,
+        boardingPoles: Set<String> = emptySet(),
+        alightingPoles: Set<String> = emptySet(),
+        areas: Map<String, String> = emptyMap(),
+        atStop: Boolean = false,
+        on: TripLeg? = null,
+    ): Boolean {
+        val leg = on ?: trip.leg ?: return false
+        return placed(leg, calls, from, now, boardingPoles, alightingPoles, areas, atStop) == Placed.Behind
+    }
+
+    // Where a train's calls place it against a rider seen at or short of stop [from] of [leg]'s path:
+    // at or past them (with its call where they get off, -1 for none), behind them, or, null, not
+    // placed at all.
+    private sealed interface Placed {
+        data class At(val off: Int) : Placed
+        data object Behind : Placed
+    }
+
+    private fun placed(
+        leg: TripLeg,
+        calls: List<VehicleCall>,
+        from: Int,
+        now: Instant,
+        boardingPoles: Set<String>,
+        alightingPoles: Set<String>,
+        areas: Map<String, String>,
+        atStop: Boolean,
+    ): Placed? {
+        val next = calls.firstOrNull() ?: return null
+        val off = calls.indexOfFirst { calls(it, leg.toId, leg.toName) || it.stopId in alightingPoles }
+        // Still to call at the boarding stop on its way there: not yet left it, so not the rider's.
+        if ((if (off >= 0) calls.take(off) else calls).any { calls(it, leg.fromId, leg.fromName) || it.stopId in boardingPoles }) return Placed.Behind
+        val at = if (checkable(leg)) {
+            // Where it calls next along the ride: where the rider gets off, when the path leaves that out.
+            val at = onPath(leg, next).takeIf { it >= 0 } ?: if (calls(next, leg.toId, leg.toName)) leg.path.size else return null
+            if (at < from) return Placed.Behind
+            at
+        } else {
+            // A leg whose stops can't be matched to the live ones by id (a bus's) is taken on reaching
+            // where the rider gets off: any bus of the mode would pass the rest.
+            if (off < 0) return null
+            // Where it calls next along the ride, its pole placed by stop area ([areas]): behind where
+            // the rider was seen, it's a later bus, not theirs. Once they were seen past the first
+            // stop, one that can't be placed can't be told from a later one (Codex, PR #383).
+            val at = if (off == 0) leg.path.size else areas[next.stopId]?.let { leg.path.indexOf(it) } ?: -1
+            if (from > 0 && at < 0) return null
+            if (from > 0 && at < from) return Placed.Behind
+            at
+        }
+        // Seen at that stop, a train still due there later is on its way to it, behind them.
+        if (atStop && at == from && next.expected.isAfter(now.plus(AT_STOP_DUE_WITHIN))) return Placed.Behind
+        return Placed.At(off)
     }
 
     private fun distance(a: Coordinates, b: Coordinates): Double =

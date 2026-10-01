@@ -1776,7 +1776,23 @@ minutes more for a slow train, then none (battery). A train is only ever matched
 fix, never against where they were last seen (maintainer, 2026-10-01): that
 says where they were but not when, so a train that was behind them could match later just by moving
 on. Each fresh fix looks again for the train that took them, at or past the furthest they were seen;
-a fix behind that keeps where they are and matches nothing. A lookup that fails is said ("Couldn't
+a fix behind that keeps where they are and matches nothing. It looks first among the trains the
+boarding stop's board listed that have left it (one of those with no calls or destination to place
+it may be theirs, so then none is named); with none of them theirs, or none known (after a restart, or a train
+that came and went between refreshes), on the board at the stop ahead of them,
+which lists theirs arriving: one request a fix, only while their train is unknown, and only on a line
+whose stops are known by id (a bus's aren't). Not where the line's routes bring trains to that stop
+other than the ride's way, from the boarding stop by just its stops: one starting there, joining from
+another branch, or coming by another way can't be theirs, and nothing it says of the stops ahead
+tells it apart. Only a train that takes the
+ride is tried there, not a short working. Trains reach that stop in the order they run, those ahead of the rider first, so it's
+walked soonest first until a train its calls show behind them marks where theirs ends, or the board
+does. A few lookups that find neither, or a train on it TfL no longer knows, gives no id for, or
+whose calls or destination don't place it (which may be theirs), name no train: only a train shown
+behind them ends theirs. Seen at a stop, one behind is still due
+there, so the latest past them is theirs; between stops, one behind that has left the boarding stop
+calls next where theirs does, as one ahead of them does, so only a lone train is taken for theirs. Found that way, the ride's time still runs
+from when they were first seen on board. A lookup that fails is said ("Couldn't
 update"), but where they were seen still moves the step on and says "get off soon", since none of it
 stands on TfL. The ride's stops are placed from its line's route, and each train's from its own
 line's, which the trip's cards already hold. Underground, where no
