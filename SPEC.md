@@ -1457,7 +1457,12 @@ them there:
   Hammersmith & City, say), and the trip never follows a line the cards wouldn't offer. The trip
   checks the lines as the cards do whenever it picks a train (a line's status reused for a minute and
   no longer, its stops through the closure checks the screens share); with no other line, or none
-  checked, it follows the Planner's alone. Each train is judged against the ride as its own line runs it, by its
+  checked, it follows the Planner's alone. A line whose check failed (its route, its status, or one
+  of its stops couldn't be read) isn't followed, but it may be running, so that's said wherever it
+  could have changed what the trip shows: no train found while the board lists a train of one that
+  went unchecked is the refresh failing ("Couldn't update"), not no train; a train found is followed
+  all the same. Each train is
+  judged against the ride as its own line runs it, by its
   own stops between: the Metropolitan from Baker Street to Finchley Road passes the Jubilee's stops
   without calling. Its line is kept with the trip, since TfL answers for a train on its own line
   only, and the step to board names it ("Board Circle at …"). A train is told by its line as well as
@@ -1652,7 +1657,9 @@ them there:
   the stop the ride boards at, for any of its lines the trip would follow (*Which train*): no train
   of them listed there that its own line's route doesn't send another way, a train its route can't
   place counting as predicted, as does one leaving before the rider
-  can get there (that may only be where the predictions end). It's a change's only, a ride with one
+  can get there (that may only be where the predictions end). With a train listed there of a line left
+  unchecked (*Which train*), it may take the rider on: unknown, never a signal. It's a change's only, a
+  ride with one
   before it on the route: at the first, the rider is looking at its board. Five minutes is well inside
   TfL's predictions (about half an hour), so a line running there has a train predicted by then. The
   board is the one the trip's screen reads once the rider walks or changes to that stop; on the ride
@@ -1740,8 +1747,9 @@ they're on board on that line, its stops counted on its own path, as a train tol
 Which lines those are comes from the boarding stop's board, as on the cards; on board, it's read for
 its lines whenever a fix isn't along the line they're counted on, never an earlier read (kept in
 memory, or lost to a restart), since a board lists only the lines with a train predicted then; a read
-that fails leaves them where they were counted and says it couldn't update. Later fixes move that
-on, never back: each refresh takes one precise fix for the ride's planned time from then and five
+that fails, or a line of it left unchecked, leaves them where they were counted and says it couldn't
+update. Later fixes move that on, never back: each refresh takes one precise fix for the ride's
+planned time from then and five
 minutes more for a slow train, then none (battery). A train is only ever matched against a fresh
 fix, never against where they were last seen (maintainer, 2026-10-01): that
 says where they were but not when, so a train that was behind them could match later just by moving

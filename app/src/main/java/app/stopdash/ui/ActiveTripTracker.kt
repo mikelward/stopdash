@@ -59,7 +59,9 @@ class ActiveTripTracker(
     // The lines a ride of the trip's route may be taken on now, given its boarding stop's departures:
     // the ones the trip's cards offer ([RideLines.running], [RideLineChecks]), each as it runs the
     // ride, the Planner's first when it's among them. The Planner's alone where nothing else is checked.
-    private val rideLines: suspend (TripRoute, TripLeg, List<Departure>) -> List<TripLeg> = { _, ride, _ -> listOf(ride) },
+    // With them, the lines that went unchecked ([RideLinesNow.uncheckedLines]), which each use says where
+    // they could have changed what the trip shows.
+    private val rideLines: suspend (TripRoute, TripLeg, List<Departure>) -> RideLinesNow = { _, ride, _ -> RideLinesNow(listOf(ride)) },
     private val clock: () -> Instant = Instant::now,
     // A monotonic clock in ms, for timing a wait the wall clock could be set back during.
     private val elapsed: () -> Long = { System.nanoTime() / 1_000_000 },
@@ -499,8 +501,11 @@ class ActiveTripTracker(
         }
         // Each of the ride's lines the trip would follow there ([rideLines]) is placed by its own route,
         // kept a day and shared with the trip's cards: another line's train that takes the ride is one
-        // predicted (Codex, PR #451).
-        val lines = rideLines(trip.route, ride, departures)
+        // predicted (Codex, PR #451). A line left unchecked with a train listed there may have one taking the
+        // ride: unknown, never a signal. One with none listed couldn't add one (Codex, PR #460).
+        val found = rideLines(trip.route, ride, departures)
+        if (found.uncheckedOn(departures)) return null
+        val lines = found.lines
         val ids = (listOf(ride.lineId) + departures.filter { OnTheWay.lineOf(lines, it) != null }.map { it.lineId }).distinct()
         return RouteDisruption.unpredicted(index, ride, departures, lines, ids.associateWith { routeOf(it) })
     }
@@ -626,10 +631,15 @@ class ActiveTripTracker(
             try {
                 if (trip.vehicleId.isBlank()) {
                     searched = true
-                    val picked = pick(trip, now, board)
+                    val found = pick(trip, now, board)
+                    val picked = found.picked
                     if (picked != null) {
                         trip = OnTheWay.follow(trip, picked.first, picked.second)
                         calls = picked.third
+                    } else if (found.unchecked) {
+                        // None found, but a line of the ride went unchecked: a train of it may be theirs, so
+                        // the refresh failed rather than finding no train (Codex, PR #459).
+                        failed = true
                     }
                 } else {
                     calls = vehicles.vehicleCalls(trip.vehicleId, OnTheWay.followedLine(trip))
@@ -829,7 +839,11 @@ class ActiveTripTracker(
             val listed = board ?: if (along != null) emptyList() else {
                 linesListed(planned) ?: emptyList<Departure>().also { linesFailed = true }
             }
-            for (on in rideLines(trip.route, planned, (listed + gone).distinctBy(::seenKey))) {
+            val ride = rideLines(trip.route, planned, (listed + gone).distinctBy(::seenKey))
+            // Any line unchecked counts here, listed or not: a line of the plan can be ridden with no train of
+            // it on the board, and the rider may be on it.
+            if (ride.unchecked) linesFailed = true
+            for (on in ride.lines) {
                 val trains = gone.filter { it.lineId == on.lineId }
                 if (trains.isEmpty() && positional != null) continue
                 val route = if (on.lineId in routes) routes[on.lineId] else routeOf(on.lineId).also { routes[on.lineId] = it }
@@ -908,10 +922,15 @@ class ActiveTripTracker(
             null
         }
 
+    // What [pick] found: the train to follow, with the ride as its line runs it and its calls, or none;
+    // and whether the board lists a train of a line that went unchecked ([RideLinesNow.uncheckedOn]), so
+    // none found may be wrong. A line unchecked with no train listed couldn't add one (Codex, PR #460).
+    private class Pick(val picked: Triple<Departure, TripLeg, List<VehicleCall>>?, val unchecked: Boolean = false)
+
     // The soonest train the rider can catch on the trip's leg that runs where they're going, with the
-    // ride as its line runs it and its calls; null when none of the first few does (or none is due).
-    private suspend fun pick(trip: ActiveTrip, now: Instant, board: Result<NextBoard>?): Triple<Departure, TripLeg, List<VehicleCall>>? {
-        val leg = trip.leg ?: return null
+    // ride as its line runs it and its calls; none when none of the first few does (or none is due).
+    private suspend fun pick(trip: ActiveTrip, now: Instant, board: Result<NextBoard>?): Pick {
+        val leg = trip.leg ?: return Pick(null)
         // On board by the rider's word ([OnTheWay.atStep]): the train they're on is one at the platform
         // when they said so, maybe due a moment before.
         val readyAt = if (trip.boarded) trip.legStartedAt.minus(OnTheWay.ON_BOARD_GRACE) else maxOf(trip.legStartedAt, now)
@@ -922,7 +941,8 @@ class ActiveTripTracker(
         // Of the ride's lines the trip's cards offer ([rideLines]): the Planner's, and another that runs
         // between the same two stops, checked as running from stops checked open and not avoided. Each
         // train is then judged against the ride as its own line runs it.
-        val lines = rideLines(trip.route, leg, departures)
+        val ride = rideLines(trip.route, leg, departures)
+        val lines = ride.lines
         val catchable = OnTheWay.candidates(departures, lines, readyAt)
             .filter { !trip.boarded || !it.expectedArrival.isAfter(trip.legStartedAt.plus(OnTheWay.ON_BOARD_GRACE)) }
         // Only those their own line's route doesn't send another way are asked after, a request each:
@@ -950,9 +970,9 @@ class ActiveTripTracker(
             // Its own calls may have it leave before the rider can be there, however the board
             // shows it: then it's no train of theirs, and the next is tried now, not next refresh.
             if (OnTheWay.advance(OnTheWay.follow(trip, train, on), calls, now).second is TripProgress.Lost) continue
-            return Triple(train, on, calls)
+            return Pick(Triple(train, on, calls))
         }
-        return null
+        return Pick(null, ride.uncheckedOn(departures))
     }
 
     // The lines [ride]'s boarding stop's board lists now, for [rideLines], once the rider is on board

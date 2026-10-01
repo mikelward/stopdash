@@ -175,6 +175,20 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
             return rides.flatMap { ride -> candidates(ride, rides, arrivals, boardingStops(ride, areaPoles), hidden).map { it.first } }.distinct()
         }
 
+        /**
+         * The other lines [of] considers for [ride] alone, of [routes]' rides ([lineIds] gives every
+         * ride's): those of its mode in the plan or among its boarding stops' [arrivals]. A check of a
+         * line outside these bears on another ride, never this one.
+         */
+        fun candidateIds(
+            ride: TripLeg,
+            routes: List<TripRoute>,
+            arrivals: Map<String, List<Departure>>,
+            areaPoles: Map<String, List<String>>,
+            hidden: Set<String> = emptySet(),
+        ): List<String> =
+            candidates(ride, routes.flatMap { it.rides }.distinct(), arrivals, boardingStops(ride, areaPoles), hidden).map { it.first }
+
         // The stops whose arrivals the trip fetches for [ride]: its own, and every pole of its stop pair.
         private fun boardingStops(ride: TripLeg, areaPoles: Map<String, List<String>>): Set<String> =
             setOf(ride.fromId) + areaPoles[ride.fromArea].orEmpty()
