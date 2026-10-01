@@ -157,6 +157,57 @@ object RouteDisruption {
     }
 
     /**
+     * Whether a bus line's alert ([status], its own words) puts it off [leg]'s ride, on its line's routes
+     * ([sequence]) (maintainer, 2026-10-01): TfL gives a bus diversion's stretch only as prose
+     * ("not serving stops between Bank Station and Moorgate Station"), and an alert at the far end of
+     * a long route says nothing of the rider's part of it. Off only where every way a route of the line
+     * runs the ride (its boarding stop, then where it gets off) has a stretch the alert gives
+     * between two of its stops ([AlertStops.stretched]) and the ride calls at none of it. A stop
+     * merely named isn't enough: it may be an aside (Codex, PR #455). Unknown is on: no text, no
+     * route, a ride no route runs, an alert that gives no stretch on a route, or one of several under
+     * way ([LineStatus.soleAlert]), the others' words being lost.
+     * Buses only: a tube or rail line's delays spread along it, so naming a station elsewhere doesn't
+     * keep them off the ride, and its part closures are placed by TfL itself ([lineSignal]).
+     */
+    fun offRide(leg: TripLeg, status: LineStatus, sequence: LineSequence?): Boolean {
+        if (!leg.mode.equals(BUS, ignoreCase = true) || sequence == null || !scopable(status)) return false
+        val text = status.fullText ?: return false
+        // Every way a route could run the ride, its ends matched as bus placement matches them
+        // ([ridesOf]): the stop, its pair, or a stand of the same name (Codex, PR #455).
+        val rides = ridesOf(leg, sequence)
+        if (rides.isEmpty()) return false
+        return rides.all { (route, ride) ->
+            val stops = route.stopIds.map { RouteStop(it, sequence.stopNames[it].orEmpty()) }
+            val affected = AlertStops.stretched(text, stops)
+            affected.isNotEmpty() && ride.none { it in affected }
+        }
+    }
+
+    /**
+     * Whether [status], as an alert, could be left out of a ride it doesn't reach ([offRide]): its
+     * line's sole alert, about part of the route, and saying nothing of the whole. Asked before a route
+     * is fetched, so one that can only stay on costs none (Codex, PR #455).
+     */
+    fun scopable(status: LineStatus): Boolean {
+        // Only the line's sole alert: with others under way their words are lost, and may reach the ride.
+        if (!status.soleAlert) return false
+        val text = status.fullText
+        if (text.isNullOrBlank()) return false
+        // One alert can bundle an effect along the whole route with a stretch ("Severe delays throughout
+        // the route. Buses are not serving stops between …"): the stretch isn't all of it (Codex, PR #455).
+        if (LINE_WIDE.containsMatchIn(text) || LINE_WIDE.containsMatchIn(status.description)) return false
+        // Nor any sentence saying the route isn't running, however it's worded ("no route 99 buses are
+        // operating", "buses aren't expected to run"): a negation anywhere in it with running, operating
+        // or being in service (Codex, PR #455).
+        if (text.split('.', ';', ':', '!', '?', '\n').any { NOT_IN_SERVICE_NEGATION.containsMatchIn(it) && NOT_IN_SERVICE_VERB.containsMatchIn(it) }) return false
+        // Only a status that is itself about part of the route: a suspension, closure, delays or
+        // anything else is the line's as a whole, whatever stretch its words also give. A list of what
+        // may be left out rather than of what may not, so a label not thought of keeps the alert
+        // (Codex, PR #455).
+        return status.description.trim().lowercase() in STRETCH_LABELS
+    }
+
+    /**
      * Where [leg] calls, in order: where it boards, its path, and where it gets off. The path runs
      * through the end, but may leave it out (as [TripRoute.passedAt] allows), so the end is added
      * unless the path already ends with it: without it, the last stretch would never be placed (Codex,
@@ -231,6 +282,30 @@ object RouteDisruption {
      * notices, likewise only from current checks; [places] where each sits ([StopPlace]), for the
      * dismissals in [dismissed].
      */
+    /**
+     * The coming bus lines whose routes [signals] would read to place their alert ([offRide]): a ride
+     * whose line, as [signals] reads it the same day, direction and dismissals, gives a signal TfL
+     * hasn't placed and that could be left out ([scopable]). The same per-ride path as [signals], so
+     * a route is fetched only where it can change the answer — never for an alert dismissed, placed,
+     * route-wide or not sounding at all (Codex, PR #455).
+     */
+    fun routesWanted(
+        trip: ActiveTrip,
+        statuses: Map<String, LineStatus>,
+        directions: Map<Int, String>,
+        dismissed: Set<DismissedAlert>,
+        now: Instant,
+    ): Set<String> {
+        val shown = LineStatus.asOf(statuses, now)
+        return comingRides(trip).mapNotNullTo(LinkedHashSet()) { (i, leg) ->
+            val ride = rideAt(trip, i, leg)
+            if (!ride.mode.equals(BUS, ignoreCase = true)) return@mapNotNullTo null
+            val status = shown[ride.lineId] ?: return@mapNotNullTo null
+            lineSignal(i, ride, directions[i]?.let(status::forDirection) ?: status, dismissed)
+                ?.takeIf { !it.placed && scopable(it.status) }?.let { ride.lineId }
+        }
+    }
+
     fun signals(
         trip: ActiveTrip,
         progress: TripProgress?,
@@ -240,6 +315,10 @@ object RouteDisruption {
         places: Map<String, StopPlace>,
         dismissed: Set<DismissedAlert>,
         now: Instant,
+        // The coming lines' routes, by line, where had: what places a bus alert by the stops it names ([offRide]).
+        sequences: Map<String, LineSequence> = emptyMap(),
+        // Told of each leg whose line's alert is left out for naming only stops off the ride, for the log.
+        leftOff: (legIndex: Int) -> Unit = {},
     ): List<Signal> {
         if (progress == TripProgress.Arrived) return emptyList()
         val shown = LineStatus.asOf(statuses, now)
@@ -249,6 +328,7 @@ object RouteDisruption {
             val ride = rideAt(trip, i, leg)
             val status = shown[ride.lineId] ?: return@mapNotNull null
             lineSignal(i, ride, directions[i]?.let(status::forDirection) ?: status, dismissed)
+                ?.takeUnless { !it.placed && offRide(ride, it.status, sequences[ride.lineId]).also { off -> if (off) leftOff(i) } }
         }
         return ordered(lines + stopSignals(trip, progress, closures, places, dismissed, now))
     }
@@ -384,11 +464,31 @@ object RouteDisruption {
     private fun comingRides(trip: ActiveTrip): List<IndexedValue<TripLeg>> =
         trip.route.legs.withIndex().filter { (i, leg) -> i >= trip.legIndex && !leg.isWalk }
 
+    // TfL's mode for a bus, for [offRide].
+    private const val BUS = "bus"
+
     // TfL's `statusSeverity` for severe delays, for [tierOf].
     private const val SEVERE_DELAYS = 6
 
     // A line shut over part of its length, which TfL can place by the stops it names ([lineSignal]).
     private val PART_SEVERITIES = LineStatus.PART_SEVERITIES
+
+    // TfL's labels (and [resolveDisruption]'s inferred ones) for a status about part of a route.
+    private val STRETCH_LABELS = setOf("diversion", "diverted", "curtailed", "part closure", "part closed", "part suspended")
+
+    private val NOT_IN_SERVICE_NEGATION = Regex(NEGATION, RegexOption.IGNORE_CASE)
+    private val NOT_IN_SERVICE_VERB = Regex("""\b(?:run(?:s|ning)?|operat\w*|in\s+service)\b""", RegexOption.IGNORE_CASE)
+
+    // Wording for an effect along the whole route, not a stretch of it: delays, a thinner service, no
+    // service at all, buses cancelled or all of them affected, the route itself closed (not a road,
+    // the usual reason for a diversion), or the route as a whole. A part
+    // suspension is a stretch (Codex, PR #455).
+    private val LINE_WIDE = Regex(
+        """\b(?:delay|throughout|whole\s+(?:route|line)|entire\s+(?:route|line)|all\s+(?:stops|routes|along)|reduced\s+(?:service|frequency)|less\s+frequent|frequency|no\s+(?:[\w'’]+\s+){0,3}?(?:service|buses)\b|not\s+(?:running|operating|in\s+service)|(?<!\bpart\s)(?<!\bpartly\s)suspend|withdrawn|cancel\w*|(?:route|service|line)s?\b[^.;:]{0,20}?\b(?:is|are|been)\s+closed|all\s+(?:[\w'’]+\s+){0,2}?(?:buses|services|journeys|trips))""" +
+            // A contraction ends inside a word, so its own alternative, outside the word boundary above.
+            """|n['’]t\s+(?:running|operating|in\s+service)""",
+        RegexOption.IGNORE_CASE,
+    )
 }
 
 /**

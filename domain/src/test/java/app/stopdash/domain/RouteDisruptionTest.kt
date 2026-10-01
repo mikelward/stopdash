@@ -456,4 +456,161 @@ class RouteDisruptionTest {
         assertEquals(none.key, none.copy().key)
         assertNotEquals(none.key, none.copy(legIndex = 3).key)
     }
+
+    // A bus route north from Bank (fictional stops past Moorgate), and an alert in TfL's style
+    // naming a stretch at its south end (maintainer, 2026-10-01). Made-up words.
+    private val busRoute = LineSequence(
+        listOf(LineRoute("Bank - North End", listOf("b1", "b2", "b3", "b4", "b5", "b6"))),
+        mapOf(
+            "b1" to "Bank Station / King William Street", "b2" to "Example Street", "b3" to "Moorgate Station",
+            "b4" to "Alpha Road", "b5" to "Beta Road", "b6" to "North End",
+        ),
+    )
+    private val diversion = "EXAMPLE, EC2 - ROUTE 99 is on diversion northbound via Example Street. Buses are not " +
+        "serving stops between 'Bank Station/King William Street' and 'Moorgate Station'. Please allow extra time."
+    // [text] as its line's only alert under way, as TfL answered it ([LineStatus.soleAlert]).
+    private fun sole(text: String?) = LineStatus("99", 6, "Diversion", text, soleAlert = true)
+    private fun bus(from: String, to: String, mode: String = "bus") = TripLeg(mode, "99", "99", from, from, to, to, at(5), at(15))
+
+    @Test
+    fun `a bus alert naming only stops off the ride is off it`() {
+        assertTrue(RouteDisruption.offRide(bus("b4", "b6"), sole(diversion), busRoute))
+        // A ride through the stretch, into it, or out of it is on it.
+        assertFalse(RouteDisruption.offRide(bus("b1", "b5"), sole(diversion), busRoute))
+        assertFalse(RouteDisruption.offRide(bus("b2", "b6"), sole(diversion), busRoute))
+        assertFalse(RouteDisruption.offRide(bus("b3", "b4"), sole(diversion), busRoute))
+    }
+
+    @Test
+    fun `a ride inside a quoted stretch is on it, though it calls at neither end`() {
+        // The stretch's ends quoted, the ride between them (Codex, PR #455).
+        val route = LineSequence(
+            listOf(LineRoute("North", listOf("q0", "q1", "q2", "q3", "q4", "q5"))),
+            mapOf(
+                "q0" to "South End", "q1" to "Bank Station / King William Street", "q2" to "Middle Road",
+                "q3" to "Inner Road", "q4" to "Moorgate Station", "q5" to "North End",
+            ),
+        )
+        val alert = "Buses are not serving stops between 'Bank Station/King William Street' and 'Moorgate Station'."
+        assertFalse(RouteDisruption.offRide(bus("q2", "q3"), sole(alert), route))
+        assertTrue(RouteDisruption.offRide(bus("q4", "q5"), sole(alert.replace("'Moorgate Station'", "'Inner Road'")), route))
+    }
+
+    @Test
+    fun `a loop route's ride is on when any visit of its ends runs through the stretch`() {
+        // A to B is run twice: past X, and past C. An alert on C is on the ride, whichever it is (Codex, PR #455).
+        val loop = LineSequence(
+            listOf(LineRoute("Loop", listOf("lA", "lB", "lX", "lA", "lC", "lD", "lB"))),
+            mapOf("lA" to "Alpha Road", "lB" to "Beta Road", "lX" to "Example Street", "lC" to "Gamma Road", "lD" to "Delta Road"),
+        )
+        val alert = sole("Buses are not serving stops between 'Gamma Road' and 'Delta Road'.")
+        assertFalse(RouteDisruption.offRide(bus("lA", "lB"), alert, loop))
+        // Off only when no visit runs through it.
+        assertTrue(RouteDisruption.offRide(bus("lX", "lA"), alert, loop))
+        // Nor only to its first alighting visit: A to the second B runs through C (Codex, PR #455).
+        val pastEnd = LineSequence(
+            listOf(LineRoute("Loop", listOf("lA", "lB", "lX", "lC", "lD", "lB"))),
+            mapOf("lA" to "Alpha Road", "lB" to "Beta Road", "lX" to "Example Street", "lC" to "Gamma Road", "lD" to "Delta Road"),
+        )
+        assertFalse(RouteDisruption.offRide(bus("lA", "lB"), alert, pastEnd))
+    }
+
+    @Test
+    fun `a route calling at the other pole of the ride's stop pair still runs the ride`() {
+        // The Planner names pole p3 of pair P3. The route calling at p3 meets the stretch before the
+        // ride; the one calling at p3's opposite pole runs through it after boarding (Codex, PR #455).
+        val poles = LineSequence(
+            listOf(
+                LineRoute("One way", listOf("p1", "p2", "p3", "p6")),
+                LineRoute("Other way", listOf("p3x", "p1", "p2", "p6")),
+            ),
+            mapOf("p1" to "Alpha Road", "p2" to "Beta Road", "p3" to "Gamma Road", "p3x" to "Gamma Road", "p6" to "North End"),
+            stopAreas = mapOf("p3" to "P3", "p3x" to "P3"),
+        )
+        val alert = sole("Buses are not serving stops between 'Alpha Road' and 'Beta Road'.")
+        assertFalse(RouteDisruption.offRide(bus("p3", "p6").copy(fromArea = "P3"), alert, poles))
+        // Without the pair only the named pole's route counts, and it's clear of the stretch.
+        assertTrue(RouteDisruption.offRide(bus("p3", "p6"), alert, poles))
+    }
+
+    @Test
+    fun `a route calling at another stand of the ride's bus station still runs the ride`() {
+        // The Planner names stand s1 of a bus station, in no pair. One route calls at s1 and boards
+        // after the stretch; the other calls only at stand s2 of the same name and runs through it
+        // after boarding, so the alert is on the ride, as bus placement would match it (Codex, PR #455).
+        val stands = LineSequence(
+            listOf(
+                LineRoute("One way", listOf("s0", "sA", "sB", "s1", "sN")),
+                LineRoute("Other way", listOf("s2", "sA", "sB", "sN")),
+            ),
+            mapOf("s0" to "South End", "s1" to "Example Bus Station", "s2" to "Example Bus Station", "sA" to "Alpha Road", "sB" to "Beta Road", "sN" to "North End"),
+        )
+        val alert = sole("Buses are not serving stops between 'Alpha Road' and 'Beta Road'.")
+        val leg = bus("s1", "sN").copy(fromName = "Example Bus Station")
+        assertFalse(RouteDisruption.offRide(leg, alert, stands))
+        // Named otherwise, only the route calling at s1 runs it, and it's clear of the stretch.
+        assertTrue(RouteDisruption.offRide(leg.copy(fromName = "Elsewhere"), alert, stands))
+    }
+
+    @Test
+    fun `a stop named in passing doesn't place a bus alert`() {
+        // No stretch given: the stop it names may be an aside, so where it applies isn't known (Codex, PR #455).
+        val aside = "Route 99 is on diversion via Example Avenue owing to roadworks near Moorgate Station."
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), sole(aside), busRoute))
+    }
+
+    @Test
+    fun `a bus alert is on the ride when its stretch isn't known`() {
+        // Naming none of the route's stops, no text, no route, or a ride no route runs.
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), sole("Route 99 is on diversion via Example Avenue."), busRoute))
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), sole(null), busRoute))
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), sole(diversion), null))
+        assertFalse(RouteDisruption.offRide(bus("b6", "b4"), sole(diversion), busRoute))
+        // One alert bundling a route-wide effect with the stretch: the stretch isn't all of it (Codex, PR #455).
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), sole("Severe delays throughout the route. $diversion"), busRoute))
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), sole(diversion).copy(description = "Severe Delays"), busRoute))
+        // No service at all, under a label inferred from the diversion it also names (Codex, PR #455).
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), sole("No service on route 99. $diversion"), busRoute))
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), sole("Route 99 is not running. $diversion"), busRoute))
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), sole("Route 99 isn't operating due to a diversion. $diversion"), busRoute))
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), sole("Buses aren't running. $diversion"), busRoute))
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), sole("Route 99 isn’t running. $diversion"), busRoute))
+        // Every bus cancelled, however it's labeled (Codex, PR #455).
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), sole("All buses are cancelled due to a diversion. $diversion"), busRoute))
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), sole("All route 99 buses are diverted. $diversion"), busRoute))
+        // The route itself closed; a road closed is just why it's diverted (Codex, PR #455).
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), sole("Route 99 is closed because of a diversion. $diversion"), busRoute))
+        assertTrue(RouteDisruption.offRide(bus("b4", "b6"), sole("Example Road is closed. $diversion"), busRoute))
+        // Delays, in the plural TfL writes them, are the whole route's (Codex, PR #455).
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), sole("Severe delays due to roadworks. $diversion"), busRoute))
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), sole("No route 99 buses are operating. $diversion"), busRoute))
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), sole("Buses are not expected to run today. $diversion"), busRoute))
+        // A status about the whole line, whatever stretch its words give (Codex, PR #455).
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), sole(diversion).copy(description = "Suspended", severity = 2), busRoute))
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), sole(diversion).copy(description = "Service Closed", severity = 20), busRoute))
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), sole(diversion).copy(description = "Special Service"), busRoute))
+        // A part closure is about part of it.
+        assertTrue(RouteDisruption.offRide(bus("b4", "b6"), sole(diversion).copy(description = "Part Suspended", severity = 3), busRoute))
+        assertTrue(RouteDisruption.offRide(bus("b4", "b6"), sole(diversion).copy(description = "Part Closure", severity = 5), busRoute))
+        // One of several alerts under way: the others' words are lost, and may reach the ride (Codex, PR #455).
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), sole(diversion).copy(soleAlert = false), busRoute))
+        // Not a bus: a line's delays spread along it.
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6", mode = "tube"), sole(diversion), busRoute))
+    }
+
+    @Test
+    fun `a bus line's alert off the ride is left out, and said`() {
+        val leg = bus("b4", "b6")
+        val busTrip = ActiveTrip(TripRoute(listOf(leg)), "North End", startedAt = t0)
+        val alert = LineStatus("99", 6, "Diversion", diversion, soleAlert = true)
+        val left = mutableListOf<Int>()
+        fun found(sequences: Map<String, LineSequence>) = RouteDisruption.signals(
+            busTrip, TripProgress.Waiting(leg, at(5)), mapOf("99" to alert), emptyMap(), emptyMap(), emptyMap(), emptySet(), at(3),
+            sequences,
+        ) { left += it }
+        assertEquals(emptyList<Signal>(), found(mapOf("99" to busRoute)))
+        assertEquals(listOf(0), left)
+        // Without the route it's heard, as before.
+        assertEquals(1, found(emptyMap()).size)
+    }
 }

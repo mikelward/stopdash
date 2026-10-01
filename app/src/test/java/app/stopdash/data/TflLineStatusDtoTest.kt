@@ -50,6 +50,19 @@ class TflLineStatusDtoTest {
     }
 
     @Test
+    fun `an alert is the line's sole one only when nothing else is under way`() {
+        // Only the worst's words are kept, so a second alert under way means they don't speak for the line (Codex, PR #455).
+        val diversion = "Buses diverted via Example Street due to roadworks."
+        assertTrue(checkNotNull(line(status(5, "Diversion", diversion)).toLineStatus(monday)).soleAlert)
+        // The same alert repeated is still one.
+        assertTrue(checkNotNull(line(status(5, "Diversion", diversion), status(5, "Diversion", diversion)).toLineStatus(monday)).soleAlert)
+        val both = checkNotNull(line(status(5, "Diversion", diversion), status(6, "Severe Delays", "Severe delays across the route.")).toLineStatus(monday))
+        assertFalse(both.soleAlert)
+        // A good service has no alert to speak for.
+        assertFalse(checkNotNull(line(status(10, "Good Service")).toLineStatus(monday)).soleAlert)
+    }
+
+    @Test
     fun `only planned work is read for a later start`() {
         val later = "Service suspended until further notice. Replacement buses will run from 13 October."
         // A real-time alert is happening now, whatever its text dates (Codex, PR #337).
@@ -524,7 +537,10 @@ class TflLineStatusDtoTest {
             status(9, "Minor Delays", "Train fault southbound."),
         ).toLineStatus { entry -> if ("northbound" in entry.reason) setOf("inbound") else setOf("outbound") }!!
         val north = split.forDirection("inbound")
-        assertEquals(north, split.copy(byDirection = emptyMap()))
+        // The northbound way has its one alert; the line as a whole has two ([LineStatus.soleAlert]).
+        assertTrue(north.soleAlert)
+        assertFalse(split.soleAlert)
+        assertEquals(north, split.copy(byDirection = emptyMap(), soleAlert = true))
         val snapshot = app.stopdash.domain.DeparturesSnapshot(
             emptyList(), java.time.Instant.EPOCH,
             lineStatuses = mapOf("line" to app.stopdash.domain.LineStatusCheck(split, java.time.Instant.EPOCH)),

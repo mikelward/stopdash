@@ -16,6 +16,7 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import app.stopdash.domain.AlertLinks
 import app.stopdash.domain.AlertStops
+import app.stopdash.domain.RouteStop
 import app.stopdash.domain.RouteStops
 import app.stopdash.domain.ClosedNotice
 import app.stopdash.domain.NoticePlan
@@ -4182,6 +4183,13 @@ internal fun RouteDetailScreen(
         (stops as? RouteStopsUi.Loaded)?.let { AlertStops.affected(row.status?.fullText, it.stops) }
             ?: alertStops.mapTo(HashSet()) { it.id }
     }
+    // Beside the chip, where the alert is ([AlertStops.runs]). Each name once: a bus line's stops on both
+    // sides of the road are separate ids under one name, and both are matched.
+    val alertPlaces = remember(stops, alertStops, alertStretchIds) {
+        val shortName: (RouteStop) -> String = { stop -> stop.name.substringBefore(" / ").trim().ifBlank { stop.name.ifBlank { stop.id } } }
+        (stops as? RouteStopsUi.Loaded)?.let { AlertStops.runs(alertStretchIds, it.stops, shortName) }
+            ?: alertStops.map(shortName).distinct()
+    }
     // Every upcoming train on the followed route, not the card's first few — TfL predicts ~30 min
     // ahead, and the page has the room (SPEC *Route detail*).
     val topology = LocalRouteTopology.current
@@ -4341,16 +4349,13 @@ internal fun RouteDetailScreen(
                 ) {
                     Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                         DisruptionChip(status.description)
-                        // Where it is, beside what it is: the stations the alert names, in route order,
-                        // each by the part a rider reads on the stop (a bus stop's own name, not its
-                        // cross street), as the alert itself names them.
-                        if (alertStops.isNotEmpty()) {
+                        // Where it is, beside what it is: on the train's own list, the runs of stops the
+                        // alert touches (the ones its ⚠s mark), each by its ends, "A to B"; with no list
+                        // to follow, the stations it names. Each stop by the part a rider reads on it (a
+                        // bus stop's own name, not its cross street).
+                        if (alertPlaces.isNotEmpty()) {
                             Text(
-                                // Each name once: a bus line's stops on both sides of the road are
-                                // separate ids under one name, and both are matched.
-                                text = alertStops.map { stop ->
-                                    stop.name.substringBefore(" / ").trim().ifBlank { stop.name.ifBlank { stop.id } }
-                                }.distinct().joinToString(", "),
+                                text = alertPlaces.joinToString(", "),
                                 style = MaterialTheme.typography.bodyMedium,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,

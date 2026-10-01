@@ -1624,7 +1624,29 @@ them there:
   own stretch**; a stop still to reach that a notice in force says is closed or moved) and **medium**
   ones (severe delays; a part suspension or part closure placed elsewhere on the line, or not placed
   yet; and **no train predicted at a change** the rider is **five minutes** or less from boarding at,
-  "Jubilee: none soon at Bond Street"). Minor delays and the like never alert. TfL places a part
+  "Jubilee: none soon at Bond Street"). Minor delays and the like never alert. A **bus** line's alert
+  that names stops only off the rider's part of the route is left out, and the debug log says so
+  (maintainer, 2026-10-01): TfL gives a bus diversion's stretch only as prose ("not serving stops
+  between 'Bank Station' and 'Moorgate Station'"), read as the route page marks it, and a diversion at
+  the far end of a long route says nothing of the ride. It's left out only where every route that runs
+  the ride has stops the alert says won't be served and the ride calls at none of them. Only the words
+  TfL's bus alerts are seen to use count (maintainer, 2026-10-01): a stretch ("not serving stops
+  between 'A' and 'B'", "the stops from 'A' (E) to 'B' will not be served", "missing stops from A 'F'
+  to B 'T'", "bus stops from 'A' to 'B' will be missed", "the 'Hail & Ride' section from A to B are not being
+  served"), stops one by one ("missing the stop 'A'",
+  "will not serve stops 'A' and 'B'", "will miss stops A and B", "bus stop 'A' will not be served"), or a curtailment ("curtailed to
+  A", "will terminate at 'A'" leave out the stops after it; "will start from stop at 'B'" those
+  before it, on every route of the line, so it can only keep an alert). A stop is named as the route
+  lists it, give or take "Station" and a cross street before a slash in the alert ("King William Street
+  / Monument Station (G)" for "Monument"), or by the part of its listed name after the slash where the
+  alert gives the stop's letter ("Moorgate Station (L)" for "Finsbury Square / Moorgate"). Any other wording places
+  nothing, and so does an alert that also says stops are missed in other words, since reading free prose for where service is affected kept
+  misreading it, and a stop merely named may be an aside. And only when every stretch the alert
+  gives is one of these, only while it's the line's one alert under way (TfL's
+  others' words aren't kept, and may reach the ride), and only for a status about part of the route (a
+  diversion, curtailment or part closure, with no route-wide words such as delays): a suspension or
+  severe delays is the whole line's, whatever stretch it also names. Unknown counts as on. A tube or
+  rail line's alert never is: its delays spread along the line. TfL places a part
   closure by the stops it names as affected, taken section by section: each unbroken run of them
   along a route TfL says it affects, in the order that route runs, the section's two ends included.
   So two sections apart are never read as one shutting the stretch between them, and each carries
@@ -1792,9 +1814,10 @@ reason where the wording is only TfL's vague bus catch-all "Special Service" —
 nothing on its own, the real state (usually a diversion) living only in the text. So a
 diverted bus reads "Diversion"; a vague status whose text yields nothing better falls back
 to "Service Alert" — never the meaningless "Special Service" — rather than being hidden.
-On a line's page, **each station the alert's text names carries a ⚠** after its name, and **the
-same stations are listed beside the alert's chip** ("Diversion  Camomile Street, Fenchurch Street")
-so where it is reads next to what it is (maintainer, 2026-09-26) — a first guess at the stretch it
+On a line's page, **each station the alert's text names carries a ⚠** after its name, and **beside
+the alert's chip, each run of marked stations is named by its ends** ("Diversion  Moorgate to
+Monument", or one station alone by its name), so where it is reads next to what it is, compactly: the
+stop list's ⚠s give the detail (maintainer, 2026-09-26; runs 2026-10-01) — a first guess at the stretch it
 affects, since TfL gives that only as prose. A station matches without the place TfL qualifies it
 with ("Stratford" for "Stratford (London)") but not inside a longer station name on the same page, and a
 bus stop matches on its own name, not its cross
@@ -1809,11 +1832,14 @@ be a guess on a line with nothing running. A name counts as a place only where i
 ("Victoria line", "Bank branch", "Bank Holiday"), and only as a capitalized whole phrase; the guess
 errs toward marking, since it only adds a marker and never hides or reorders anything. **Where the
 alert gives a stretch** — "between Oxford Circus and Euston", "Oxford Circus to Euston" — the
-stations between the two named ends on the train's stop list carry a ⚠ too (2026-10-01), while the
-names beside the chip stay the ones the alert gives. Every stretch the alert gives is marked, even
+stations between the two named ends on the train's stop list carry a ⚠ too (2026-10-01), and the
+run beside the chip spans them. Every stretch the alert gives is marked, even
 one a sentence says still runs ("Trains are running between Morden and Kennington only"): telling
 the two apart from TfL's prose is open-ended, and one marked too many costs a glance (maintainer,
-2026-10-01). Not where an end isn't on the page, since what lies between off it isn't known. The
+2026-10-01). Not where an end isn't on the page, since what lies between off it isn't known. Every
+stop a trip reads as not served (*Route disruption*: a bus alert's stretch, the stops it misses one by
+one, the stops a curtailment leaves out) carries a ⚠ too, so the page and the trip read an alert the
+same way (maintainer, 2026-10-01). The
 compact chip is a follow-up (`TODO.md` Phase 3).
 **Work that hasn't started yet is noted, not flagged** (maintainer, 2026-09-28): a closure next
 month says nothing about today's buses, and a ⚠ for it trains the rider to ignore the ⚠. Neither of

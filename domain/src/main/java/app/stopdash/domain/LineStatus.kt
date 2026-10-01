@@ -55,6 +55,10 @@ data class LineStatus(
     // kept so a status re-ranked later ([asOf]) orders it as a fresh parse would (Codex, PR #337).
     val isFallback: Boolean = false,
     val closures: List<PartClosure> = emptyList(),
+    // Whether [description] and [fullText] are the line's only alert under way, as TfL answered: when
+    // several are, only the worst's words are kept, so its words don't speak for the rest
+    // ([RouteDisruption.offRide]; Codex, PR #455). False where not known.
+    val soleAlert: Boolean = false,
 ) {
     /** True when TfL reports anything other than a good service on this line. */
     val disrupted: Boolean get() = severity != GOOD_SERVICE
@@ -112,6 +116,9 @@ data class LineStatus(
             closures = (closures + due.mapNotNull { it.closure }).distinct(),
             byDirection = split,
             planned = planned - due.toSet(),
+            // The one alert under way only while nothing else is: work that has started is another
+            // (Codex, PR #455).
+            soleAlert = (soleAlert || !disrupted) && now.map { it.severity to it.fullText }.distinct().size == 1,
         )
     }
 

@@ -224,7 +224,9 @@ fun TflLineDto.toLineStatus(
         // Every part closure under way TfL words itself, not only the one shown, placed or not
         // ([LineStatus.closures]).
         val closures = under.mapNotNull { it.closure(direction) }.distinct()
-        return (current?.toLineStatus(id)?.copy(closures = closures) ?: good).copy(planned = planned)
+        // One alert under way, however many entries TfL repeats it in: its words are the whole story.
+        val sole = under.map { it.resolved.severity to it.resolved.fullText }.distinct().size == 1
+        return (current?.toLineStatus(id)?.copy(closures = closures, soleAlert = sole) ?: good).copy(planned = planned)
     }
     val whole = reduce(null) { true }
     if (alerts.isEmpty()) return whole
