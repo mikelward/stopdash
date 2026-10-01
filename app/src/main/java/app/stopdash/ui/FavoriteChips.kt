@@ -21,6 +21,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,8 +38,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.ChipLabel
+import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FavoritePlace
+import app.stopdash.domain.FavoriteShortcuts
 import app.stopdash.domain.TripDestination
+import java.time.DayOfWeek
 
 /**
  * The saved favorite places as one row of chips atop the near-me list and the From…/To… searches
@@ -164,3 +172,45 @@ private val CHIP_ICON_SIZE = 18.dp
 /** The name a favorite is known by: its label, or its resolved place name when the label is blank
  *  (as the Settings route-to and the To… picker name it). */
 internal fun favoriteRouteName(place: FavoritePlace): String = place.label.ifBlank { place.placeName.orEmpty() }
+
+/**
+ * The saved [places] to offer as chips where the shown set was found from [location]: less those the
+ * rider is already at, hidden within 200 m on an accurate fix and back past 250 m
+ * ([FavoriteShortcuts]), and those off [today]. Position and confidence come from the model's
+ * [riderFix] for this very location (a coarse set confirmed in place stands at the precise fix, and an
+ * approximate-only grant is rough even with no banner, Codex), and any [banner] (a stale or failed fix)
+ * makes it rough too. The previous answer, [hiddenPlaceIds], is read unobserved and handed back to
+ * [onHiddenPlaceIds] after the frame, so the band holds a place's state from one fix to the next
+ * without this frame recomposing on its own write. Null [places] (not read yet) offers none and leaves
+ * the memory as it was. Shared by the near-me list and its "no stops nearby" state.
+ */
+@Composable
+internal fun rememberShownPlaces(
+    places: List<FavoritePlace>?,
+    location: Coordinates,
+    riderFix: NearbyStopsViewModel.RiderFix?,
+    banner: LocationBanner?,
+    hiddenPlaceIds: Set<String>,
+    onHiddenPlaceIds: (Set<String>) -> Unit,
+    today: DayOfWeek?,
+): List<FavoritePlace> {
+    val rider = riderFix?.takeIf { it.from == location }
+    val riderAt = rider?.at ?: location
+    val riderAccurate = banner == null && rider?.accurate == true
+    val latestHiddenPlaceIds by rememberUpdatedState(hiddenPlaceIds)
+    val hiddenPlaceIdsNow = remember(places, riderAt, riderAccurate) {
+        places?.let {
+            FavoriteShortcuts.hiddenIds(
+                it,
+                riderAt,
+                precise = riderAccurate,
+                hiddenBefore = Snapshot.withoutReadObservation { latestHiddenPlaceIds },
+            )
+        }
+    }
+    SideEffect { if (hiddenPlaceIdsNow != null && hiddenPlaceIdsNow != hiddenPlaceIds) onHiddenPlaceIds(hiddenPlaceIdsNow) }
+    return remember(places, hiddenPlaceIdsNow, riderAccurate, today) {
+        if (places == null || hiddenPlaceIdsNow == null) emptyList()
+        else FavoriteShortcuts.shown(places, hiddenPlaceIdsNow, precise = riderAccurate, today = today)
+    }
+}

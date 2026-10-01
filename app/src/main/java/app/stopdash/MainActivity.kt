@@ -38,7 +38,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -106,7 +105,6 @@ import app.stopdash.domain.FartherBuses
 import app.stopdash.domain.FartherStations
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlacesSet
-import app.stopdash.domain.FavoriteShortcuts
 import app.stopdash.domain.FixedLocation
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.Journeys
@@ -163,6 +161,9 @@ import app.stopdash.ui.LocalRouteStops
 import app.stopdash.ui.LocalRouteTopology
 import app.stopdash.ui.LocationBanner
 import app.stopdash.ui.LocationGate
+import app.stopdash.ui.rememberShownPlaces
+import app.stopdash.ui.tripRepickId
+import app.stopdash.ui.tripStartId
 import app.stopdash.ui.MainScreen
 import app.stopdash.ui.MainViewModel
 import app.stopdash.ui.NearbyStopsViewModel
@@ -184,6 +185,7 @@ import app.stopdash.ui.WriteFailures
 import app.stopdash.ui.fartherCardsKey
 import app.stopdash.ui.fartherReached
 import app.stopdash.ui.favoriteRouteName
+import app.stopdash.ui.hereAnchor
 import app.stopdash.ui.hereOriginIds
 import app.stopdash.ui.reachedStopIds
 import app.stopdash.ui.rememberFarReveal
@@ -1026,21 +1028,95 @@ class MainActivity : ComponentActivity() {
                                 nearbyViewModel.resumeRefining()
                                 onStopOrDispose { nearbyViewModel.pauseRefining() }
                             }
+                            // The near-me trip, over the list or over "No stops found nearby": the same trip
+                            // either way, from the stops in range when there are any, else from the
+                            // rider's position alone ([noneNearby]).
+                            @Composable
+                            fun NearMeTrip(
+                                origin: List<StopRef>,
+                                anchors: List<StopRef>,
+                                here: Coordinates,
+                                distanceMeters: Map<String, Double>,
+                                clusters: List<NearbySelection.NearbyCluster>,
+                                noneNearby: Boolean,
+                            ) {
+                                val hidden by HiddenModesSetting.changes.collectAsStateWithLifecycle()
+                                // A precise fix that moves the set moves the trip too, as its own
+                                // re-locate does: the origins are worked out from the set shown.
+                                val refinementNow by nearbyViewModel.refinement.collectAsStateWithLifecycle()
+                                LaunchedEffect(refinementNow?.id) {
+                                    refinementNow?.let { nearbyViewModel.applyRefinement(it) }
+                                }
+                                HereTripArea(
+                                    origin = origin,
+                                    anchors = anchors,
+                                    here = here,
+                                    distanceMeters = distanceMeters,
+                                    clusters = clusters,
+                                    hiddenModes = hidden,
+                                    picking = herePicking,
+                                    toId = hereToId,
+                                    toName = hereToName,
+                                    favorite = hereFavorite,
+                                    // The trip's From row, over its To… search or its routes: start
+                                    // from a station instead. This trip stays open underneath, so Back
+                                    // finds it as it was; a station picked replaces it with that
+                                    // station's, to the same destination.
+                                    onChangeFrom = {
+                                        val kept = OriginChange.kept(hereTo())
+                                        originChange = OriginChange.NearMe(kept)
+                                        stationTo = kept
+                                        stationSearchOpen = true
+                                    },
+                                    onPlanTo = { herePicking = true },
+                                    onPickTo = { match ->
+                                        herePicking = false
+                                        hereToId = match.id
+                                        hereToName = match.name
+                                        hereFavorite = null
+                                    },
+                                    // A favorite place picked in the To… list routes to its
+                                    // coordinate (as Settings' route-to does): the coordinate is the
+                                    // destination, so there's no stop id.
+                                    onEditPlaces = { favoritePlacesOpen = true },
+                                    onOpenPlace = { place ->
+                                        herePicking = false
+                                        hereToId = null
+                                        hereToName = place.name
+                                        hereFavorite = place
+                                    },
+                                    // Back from the search returns to the trip, or to the list when
+                                    // no destination was picked yet.
+                                    onClosePicker = { if (hereToId == null && hereFavorite == null) closeHereTrip() else herePicking = false },
+                                    onClose = closeHereTrip,
+                                    // A return to the foreground re-locates first, as the list does,
+                                    // then refreshes the trip if the rider is still near its stops.
+                                    foregroundReturnPending = returnLatch.pending,
+                                    onForegroundReturnConsumed = { returnLatch.pending = false },
+                                    isRelocating = { nearbyViewModel.relocating.value },
+                                    returnBusy = nearbyViewModel::relocatingSinceLeft,
+                                    relocate = { nearbyViewModel.relocate() },
+                                    // "Show all" re-picks the set from the same fix, as the list's does,
+                                    // so a hidden mode's stops can become origins again.
+                                    showAllModes = {
+                                        HiddenModesSetting.showAll()
+                                        nearbyViewModel.refilter()
+                                    },
+                                    relocating = nearbyViewModel.relocating,
+                                    repicked = nearbyViewModel.repicked,
+                                    locationBanner = nearbyViewModel.locationBanner,
+                                    noneNearby = noneNearby,
+                                )
+                            }
                             when (val state = nearby) {
                                 // "To…" from the near-me list takes the list's place while it's open,
                                 // inside the nearby lifecycle: the location gate, its errors and a
                                 // re-locate on return apply to it as they do to the list.
                                 is NearbyStopsViewModel.State.Ready -> if (hereTripOpen) {
                                     val hidden by HiddenModesSetting.changes.collectAsStateWithLifecycle()
-                                    // A precise fix that moves the set moves the trip too, as its own
-                                    // re-locate does: the origins are worked out from the set shown.
-                                    val refinementNow by nearbyViewModel.refinement.collectAsStateWithLifecycle()
-                                    LaunchedEffect(refinementNow?.id) {
-                                        refinementNow?.let { nearbyViewModel.applyRefinement(it) }
-                                    }
-                                    HereTripArea(
+                                    NearMeTrip(
                                         // Worked out from the current set, so a re-locate moves the
-                                        // trip with the rider; none left (all hidden) ends it (below).
+                                        // trip with the rider; none left (all hidden) ends it.
                                         origin = remember(state, hidden) {
                                             val byId = state.nearbyStops.associateBy { it.id }
                                             hereOriginIds(state.eagerStops, state.nearbyStops, state.distanceMeters, hidden)
@@ -1052,58 +1128,7 @@ class MainActivity : ComponentActivity() {
                                         here = state.location,
                                         distanceMeters = state.distanceMeters,
                                         clusters = state.eager + state.more,
-                                        hiddenModes = hidden,
-                                        picking = herePicking,
-                                        toId = hereToId,
-                                        toName = hereToName,
-                                        favorite = hereFavorite,
-                                        // The trip's From row, over its To… search or its routes: start
-                                        // from a station instead. This trip stays open underneath, so Back
-                                        // finds it as it was; a station picked replaces it with that
-                                        // station's, to the same destination.
-                                        onChangeFrom = {
-                                            val kept = OriginChange.kept(hereTo())
-                                            originChange = OriginChange.NearMe(kept)
-                                            stationTo = kept
-                                            stationSearchOpen = true
-                                        },
-                                        onPlanTo = { herePicking = true },
-                                        onPickTo = { match ->
-                                            herePicking = false
-                                            hereToId = match.id
-                                            hereToName = match.name
-                                            hereFavorite = null
-                                        },
-                                        // A favorite place picked in the To… list routes to its
-                                        // coordinate (as Settings' route-to does): the coordinate is the
-                                        // destination, so there's no stop id.
-                                        onEditPlaces = { favoritePlacesOpen = true },
-                                        onOpenPlace = { place ->
-                                            herePicking = false
-                                            hereToId = null
-                                            hereToName = place.name
-                                            hereFavorite = place
-                                        },
-                                        // Back from the search returns to the trip, or to the list when
-                                        // no destination was picked yet.
-                                        onClosePicker = { if (hereToId == null && hereFavorite == null) closeHereTrip() else herePicking = false },
-                                        onClose = closeHereTrip,
-                                        // A return to the foreground re-locates first, as the list does,
-                                        // then refreshes the trip if the rider is still near its stops.
-                                        foregroundReturnPending = returnLatch.pending,
-                                        onForegroundReturnConsumed = { returnLatch.pending = false },
-                                        isRelocating = { nearbyViewModel.relocating.value },
-                                        returnBusy = nearbyViewModel::relocatingSinceLeft,
-                                        relocate = { nearbyViewModel.relocate() },
-                                        // "Show all" re-picks the set from the same fix, as the list's does,
-                                        // so a hidden mode's stops can become origins again.
-                                        showAllModes = {
-                                            HiddenModesSetting.showAll()
-                                            nearbyViewModel.refilter()
-                                        },
-                                        relocating = nearbyViewModel.relocating,
-                                        repicked = nearbyViewModel.repicked,
-                                        locationBanner = nearbyViewModel.locationBanner,
+                                        noneNearby = false,
                                     )
                                 } else {
                                     DeparturesForStops(
@@ -1142,6 +1167,16 @@ class MainActivity : ComponentActivity() {
                                         pendingTracker = departuresTracker,
                                     )
                                 }
+                                // A place chip on "No stops found nearby" opens the trip from where the
+                                // rider is, which needs no stop in range (Codex on #315).
+                                is NearbyStopsViewModel.State.Empty if hereTripOpen -> NearMeTrip(
+                                    origin = emptyList(),
+                                    anchors = emptyList(),
+                                    here = state.location,
+                                    distanceMeters = emptyMap(),
+                                    clusters = emptyList(),
+                                    noneNearby = true,
+                                )
                                 else -> {
                                     // While the gate is up (a failed/empty relocate, or a retry), drop
                                     // any departures store retained from the pre-gate set, so recovering
@@ -1164,6 +1199,16 @@ class MainActivity : ComponentActivity() {
                                         gateRefinement?.let { nearbyViewModel.applyRefinement(it) }
                                     }
                                     val gateBanner by nearbyViewModel.locationBanner.collectAsStateWithLifecycle()
+                                    // "No stops found nearby" still offers the saved places, less those the
+                                    // rider is at and those off today, as the list does: a trip from here
+                                    // plans from where the rider is (Codex on #315). A last-known fix
+                                    // carries a banner here too, so it hides none.
+                                    val gateRiderFix by nearbyViewModel.riderFix.collectAsStateWithLifecycle()
+                                    val emptyAt = (state as? NearbyStopsViewModel.State.Empty)?.location
+                                    val gatePlaces = if (emptyAt == null) emptyList() else rememberShownPlaces(
+                                        savedPlaces, emptyAt, gateRiderFix, gateBanner, hiddenPlaceIds.toSet(),
+                                        { hiddenPlaceIds = it.toList() }, today,
+                                    )
                                     LocationGate(
                                         state = state,
                                         now = tickingNow(),
@@ -1187,6 +1232,10 @@ class MainActivity : ComponentActivity() {
                                         // The station search needs no location, so it's offered here too:
                                         // most useful to exactly the users who can't use near me.
                                         onFindStation = { stationSearchOpen = true },
+                                        places = gatePlaces,
+                                        onRouteToPlace = routeToPlace,
+                                        // A long press on a chip edits the places, as on the list.
+                                        onEditPlaces = { favoritePlacesOpen = true },
                                     )
                                 }
                             }
@@ -1531,33 +1580,10 @@ class MainActivity : ComponentActivity() {
             val relocatingNow by relocating.collectAsStateWithLifecycle()
             val refreshing = departuresRefreshing || relocatingNow
             val locationBannerNow by locationBanner.collectAsStateWithLifecycle()
-            // The places the rider isn't already at: hidden within 200 m on an accurate fix, back past
-            // 250 m (FavoriteShortcuts). Position and confidence come from the model's RiderFix for
-            // this very set — a coarse set confirmed in place stands at the precise fix, and an
-            // approximate-only grant is rough even with no banner (Codex) — and any banner (a stale
-            // or failed fix) makes it rough too. The previous answer is read unobserved and handed
-            // back after the frame, so the band holds a place's state from one fix to the next
-            // without this frame recomposing on its own write.
             val riderFixNow by riderFix.collectAsStateWithLifecycle()
-            val rider = riderFixNow?.takeIf { it.from == ready.location }
-            val riderAt = rider?.at ?: ready.location
-            val riderAccurate = locationBannerNow == null && rider?.accurate == true
-            val latestHiddenPlaceIds by rememberUpdatedState(hiddenPlaceIds)
-            val hiddenPlaceIdsNow = remember(favoritePlaces, riderAt, riderAccurate) {
-                favoritePlaces?.let { places ->
-                    FavoriteShortcuts.hiddenIds(
-                        places,
-                        riderAt,
-                        precise = riderAccurate,
-                        hiddenBefore = Snapshot.withoutReadObservation { latestHiddenPlaceIds },
-                    )
-                }
-            }
-            SideEffect { if (hiddenPlaceIdsNow != null && hiddenPlaceIdsNow != hiddenPlaceIds) onHiddenPlaceIds(hiddenPlaceIdsNow) }
-            val shownPlaces = remember(favoritePlaces, hiddenPlaceIdsNow, riderAccurate, today) {
-                if (favoritePlaces == null || hiddenPlaceIdsNow == null) emptyList()
-                else FavoriteShortcuts.shown(favoritePlaces, hiddenPlaceIdsNow, precise = riderAccurate, today = today)
-            }
+            val shownPlaces = rememberShownPlaces(
+                favoritePlaces, ready.location, riderFixNow, locationBannerNow, hiddenPlaceIds, onHiddenPlaceIds, today,
+            )
             val hiddenModes by HiddenModesSetting.changes.collectAsStateWithLifecycle()
             // The nearest station of each rail line nothing nearby reaches, from the
             // bundled index (read off the main thread, once per process): no request.
@@ -2331,6 +2357,10 @@ class MainActivity : ComponentActivity() {
         // A change of start opened this trip: if there's nothing to start from, keep what was typed
         // for the destination, for the To… search the change goes back to.
         keepSearchOnEmptyOrigin: Boolean = false,
+        // The near-me list found no stop in range ("No stops found nearby"): the trip plans from
+        // [here] alone, which needs none (Codex on #315), keyed by where it plans from in place of a
+        // nearest stop. Otherwise an empty [origin] (every mode hidden) ends the trip, as before.
+        noneNearby: Boolean = false,
     ) {
         val appContext = applicationContext
         ConsumeForegroundReturn(
@@ -2368,17 +2398,27 @@ class MainActivity : ComponentActivity() {
         val stores: NearbyDeparturesStores = viewModel(key = "$keyPrefix-trip-stores")
         val toStores: NearbyDeparturesStores = viewModel(key = "$keyPrefix-to-stores")
         val writeFailures = viewModel<WriteFailuresHolder>().failures
+        // Where a trip with no stop in range plans from ([hereAnchor]): held in memory only, over a
+        // rotation as the trip's models are, and forgotten with the trip. Never saved, as the rider's
+        // position never is (Codex on #439).
+        val anchorHolder: HereAnchorHolder = viewModel(key = "$keyPrefix-here-anchor")
         val close = {
             stores.clearAll()
             toStores.clearAll()
             search.clear()
+            anchorHolder.anchor = null
             onClose()
         }
         // Nothing nearby to start from (every mode hidden, or a relocation that left none of the
         // origins): end the trip before offering a destination search it couldn't use. Mid-change
         // of start, what was typed for the destination is kept for the To… search the change goes
         // back to; otherwise the trip ends as any other does.
-        if (origin.isEmpty()) {
+        // Keyed on both ends, so a relocation to a new nearest stop plans afresh. With no stop in
+        // range, by where it plans from, which moves only with a move far enough to plan again.
+        val hereAnchor = hereAnchor(anchorHolder.anchor, here)
+        SideEffect { anchorHolder.anchor = hereAnchor }
+        val fromId = tripStartId(origin, anchors, fromStopIds, distanceMeters, noneNearby, hereAnchor)
+        if (fromId == null) {
             LaunchedEffect(Unit) {
                 if (keepSearchOnEmptyOrigin) {
                     stores.clearAll()
@@ -2486,15 +2526,7 @@ class MainActivity : ComponentActivity() {
             destKey = toStopIds.joinToString(",")
             destinationIds = ids
         }
-        // From a From… station, one of its own stops (the neighbors around it are no start); else
-        // the stop nearest the rider, which keys the trip (a move to a new nearest stop plans afresh)
-        // while the Planner plans from [here].
-        val starts = anchors.ifEmpty { origin }.filter { !it.id.startsWith(HUB_PREFIX) && it.lines.isNotEmpty() }
-            .ifEmpty { origin.filterNot { it.id.startsWith(HUB_PREFIX) } }
-        val fromStop = (starts.filter { it.id in fromStopIds }.ifEmpty { starts })
-            .minByOrNull { distanceMeters[it.id] ?: Double.MAX_VALUE } ?: origin.first()
-        // Keyed on both ends, so a relocation to a new nearest stop plans afresh.
-        val tripKey = "${fromStop.id}>$destKey"
+        val tripKey = "$fromId>$destKey"
         // When the rider last pulled on this trip's routes, kept past a new nearest stop (a trip model
         // of its own) and a configuration change, so the trip a pull's fresh fix moves to plans and
         // fetches afresh too.
@@ -2507,7 +2539,7 @@ class MainActivity : ComponentActivity() {
             factory = viewModelFactory {
                 initializer {
                     TripViewModel(
-                        journeyPlanner(appContext), departuresClient(appContext, boardAtEveryStop = true), fromStop.id,
+                        journeyPlanner(appContext), departuresClient(appContext, boardAtEveryStop = true), fromId,
                         destinations, warn = ::logDepartureWarning,
                         arrivals = ArrivalsCache.SHARED, departureSourceChanges = RailApiKeySetting.changes,
                         closureCache = StopClosureCache.SHARED,
@@ -2516,7 +2548,7 @@ class MainActivity : ComponentActivity() {
                         dismissedStore = DataStoreDismissedAlertsStore.from(appContext, warn = ::logDepartureWarning),
                         writeFailures = writeFailures,
                         destinationIds = destinationIds,
-                        origin = { latestHere?.let(TripOrigin::Here) ?: TripOrigin.Stop(fromStop.id) },
+                        origin = { latestHere?.let(TripOrigin::Here) ?: TripOrigin.Stop(fromId) },
                         walkingSpeed = WalkingSpeedSetting.changes.value,
                         maxWalk = MaxWalkSetting.changes.value,
                         stepFree = StepFreeSetting.changes.value,
@@ -2532,7 +2564,7 @@ class MainActivity : ComponentActivity() {
         SideEffect { lastPull?.let(trip::carryPull) }
         // The model outlives a rotation, and the origin it was made with reads that composition's
         // fix: this composition's replaces it, so a later plan starts from the current one.
-        SideEffect { trip.origin = { latestHere?.let(TripOrigin::Here) ?: TripOrigin.Stop(fromStop.id) } }
+        SideEffect { trip.origin = { latestHere?.let(TripOrigin::Here) ?: TripOrigin.Stop(fromId) } }
         // The walking-speed setting, from Settings or the picker atop the routes: a change plans again.
         val walkingSpeed by WalkingSpeedSetting.changes.collectAsStateWithLifecycle()
         SideEffect { trip.walkingSpeed = walkingSpeed }
@@ -2558,9 +2590,10 @@ class MainActivity : ComponentActivity() {
         // stop keeps this trip, but its walk and live times follow the new fix at once rather than
         // wait for the next tick.
         val repick by repicked.collectAsStateWithLifecycle()
+        val pickId = tripRepickId(noneNearby, here, repick?.id)
         // The model remembers which re-pick it refreshed for, so a rotation (a new effect over the
         // retained model) doesn't fetch again.
-        LaunchedEffect(trip, repick) { trip.refreshFor(repick?.id) }
+        LaunchedEffect(trip, pickId) { trip.refreshFor(pickId) }
         // The list's own foreground tick: live times refresh, and a plan past its reuse is planned
         // again, only while the trip is on screen (no background work, SPEC *Trips with a change*).
         LaunchedEffect(lifecycleOwner, trip) {
@@ -2575,11 +2608,11 @@ class MainActivity : ComponentActivity() {
         // From here the Planner's own first walk leg takes the rider to the first stop, so there's no
         // walk to add; at a From… station they're at its own stops (a neighbor, when every own stop is
         // hidden, is still a walk from it, at the rider's own pace as the Planner's walks are).
-        val access = if (here != null || fromStop.id in fromStopIds) Duration.ZERO else TripTiming.accessWalk(distanceMeters[fromStop.id] ?: 0.0, walkingSpeed)
+        val access = if (here != null || fromId in fromStopIds) Duration.ZERO else TripTiming.accessWalk(distanceMeters[fromId] ?: 0.0, walkingSpeed)
         val relocatingNow = relocating.collectAsStateWithLifecycle().value
         // A re-locate that has ended, with the re-pick it left: one that brought none new leaves a pull
         // from here nothing more to wait for ([TripViewModel.fixSettled]).
-        LaunchedEffect(trip, relocatingNow) { if (!relocatingNow) trip.fixSettled(repick?.id) }
+        LaunchedEffect(trip, relocatingNow) { if (!relocatingNow) trip.fixSettled(pickId) }
         val pulling by trip.pulling.collectAsStateWithLifecycle()
         TripScreen(
             title = title,
@@ -3048,6 +3081,14 @@ internal suspend fun persistBugReportOptOut(settings: AppSettings) {
 /** The activity's one [WriteFailures], retained across rotation and shared by every departures model. */
 internal class WriteFailuresHolder : androidx.lifecycle.ViewModel() {
     val failures = WriteFailures()
+}
+
+/**
+ * Where a trip from here with no stop in range plans from ([hereAnchor]), so its retained plans stay
+ * its own over a rotation. In memory only, gone with the process as the trip's models are.
+ */
+internal class HereAnchorHolder : androidx.lifecycle.ViewModel() {
+    var anchor: Coordinates? = null
 }
 
 internal class NearbyDeparturesStores : androidx.lifecycle.ViewModel() {
