@@ -1,0 +1,171 @@
+package app.stopdash.ui
+
+import app.stopdash.domain.ActiveTrip
+import app.stopdash.domain.DismissedAlertsStore
+import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.DismissedAlert
+import app.stopdash.domain.StopDisruption
+import app.stopdash.domain.TripClosures
+import app.stopdash.domain.LineSequence
+import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusBatch
+import app.stopdash.domain.RouteDisruption
+import app.stopdash.domain.Staleness
+import app.stopdash.domain.SteadyClock
+import app.stopdash.domain.StopClosureCache
+import app.stopdash.domain.TflClient
+import app.stopdash.domain.TripProgress
+import java.time.Instant
+import kotlin.time.toJavaDuration
+import kotlin.time.toKotlinDuration
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+
+/**
+ * What a trip on the way's "Route disruption" alert goes by (SPEC *On the way*), asked on each of the
+ * trip's refreshes: the coming lines' statuses, one batched request to TfL ([LineStatusBatch]); the
+ * stops still to reach, through the closure checks the trip's screen and the list share ([closures],
+ * each stop reused for five minutes); and the rider's dismissals ([dismissed]), so what they cleared
+ * on the trip stays cleared here. Only a check that succeeded is evidence: a line or stop whose check
+ * failed is left out ([RouteDisruption.signals]), and nothing is claimed for it.
+ */
+internal class RouteDisruptionChecks(
+    private val client: TflClient,
+    private val closures: StopClosureChecks,
+    private val closureCache: StopClosureCache,
+    // The rider's dismissals, read on each check and settled against the lines it answered.
+    private val dismissedStore: DismissedAlertsStore,
+    // A line's route (the day's), for where a stop sits ([RouteDisruption.StopPlace]); null when it can't be had.
+    private val sequence: suspend (String) -> LineSequence?,
+    // A stop's interchange from the bundled index, where no route of the trip's names one.
+    private val hubOf: (String) -> String?,
+    private val clock: () -> Instant,
+    private val io: CoroutineDispatcher,
+    // Coarse facts only: an error kind, a count, never a stop or line the rider is going by.
+    private val warn: (String) -> Unit,
+) {
+    /**
+     * Checks [trip] as it stands ([progress]): [directions] is the direction a coming leg's trains are
+     * seen going, by leg, where one is known ([LineStatus.forDirection]).
+     */
+    suspend fun check(trip: ActiveTrip, progress: TripProgress?, directions: Map<Int, String>): RouteDisruption.Found {
+        if (progress == null || progress == TripProgress.Arrived) return RouteDisruption.Found.NONE
+        val lines = RouteDisruption.comingLines(trip)
+        val stops = RouteDisruption.comingStops(trip, progress).map { it.value }.distinctBy { it.id }
+        val now = clock()
+        val ticket = closureCache.ask(now)
+        val (statuses, checked) = coroutineScope {
+            val statuses = async { statuses(lines) }
+            val checked = async { closures.check(stops.map { it.id }, ticket, now) }
+            statuses.await() to checked.await()
+        }
+        var cleared = try {
+            dismissedStore.dismissed().first()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Read back as nothing dismissed: the alert may then say what the rider cleared, never hide what they didn't.
+            warn("on the way: dismissals unreadable: ${e::class.simpleName}")
+            emptySet()
+        }
+        // Only checks still current count ([Staleness]): a stop's reused lookup ages from when it was asked.
+        val at = clock()
+        val current = checked.found.filterKeys { id -> checked.at[id]?.let { !Staleness.isStale(it, at) } == true }
+        // Placed only where a notice needs it: a check with nothing to show asks no route (Codex, PR #441).
+        val places = places(trip, stops.filter { !current[it.id].isNullOrEmpty() })
+        // A dismissed alert TfL no longer reports is forgotten, as the trip's screen and the list do, so
+        // the same alert coming back later is heard again even when nothing else checks its line or stop
+        // (Codex, PR #441): each line answered, and each stop checked, as its own place, settled against
+        // what this check found live.
+        val lineCheck = statuses?.let { lineDismissalCheck(it.statuses, it.answered, at) } ?: (emptySet<DismissedAlert>() to emptySet())
+        val stopCheck = stopDismissals(trip, progress, stops, current, at)
+        reconcileDismissals(cleared, lineCheck.first + stopCheck.first, lineCheck.second + stopCheck.second, dismissedStore, io, warn, "on the way") {
+            cleared = it
+        }
+        val signals = RouteDisruption.signals(trip, progress, statuses?.statuses.orEmpty(), directions, current, places, cleared, at)
+        if (signals.isEmpty()) return RouteDisruption.Found.NONE
+        // Stale no later than the oldest check behind a signal.
+        val stamps = signals.mapNotNull { signal ->
+            when (signal) {
+                is RouteDisruption.Signal.Line -> statuses?.at
+                is RouteDisruption.Signal.Stop -> checked.at[signal.stopId]
+            }
+        }
+        val stale = stamps.minOrNull()?.let { at.plus(Staleness.remainingUntilStale(SteadyClock.age(it, at).toKotlinDuration()).toJavaDuration()) }
+        // Nor past the end of a notice in force at a stop it names: one ending changes what that
+        // stop's card says, so it isn't left standing as current until a check notices (Codex, PR #441).
+        val ends = signals.filterIsInstance<RouteDisruption.Signal.Stop>()
+            .flatMap { current[it.stopId].orEmpty() }
+            .filter { it.isActiveAt(at) }
+            .mapNotNull { it.validTo }
+        val until = listOfNotNull(stale, ends.minOrNull()).minOrNull()
+        return RouteDisruption.Found(signals, until)
+    }
+
+    // The live closure cards' identities among [stops], and the places they settle: each stop checked
+    // and current, as its own place only. An interchange or stop area also holds stops a trip doesn't
+    // check, so a dismissal made there is left to the list, which sees the whole place (Codex, PR #441),
+    // as the list's own check of a journey's destinations leaves it ([MainViewModel]).
+    private fun stopDismissals(
+        trip: ActiveTrip,
+        progress: TripProgress,
+        stops: List<TripClosures.End>,
+        current: Map<String, List<StopDisruption>>,
+        at: Instant,
+    ): Pair<Set<DismissedAlert>, Set<String>> {
+        val own = stops.associate { it.id to RouteDisruption.StopPlace() }
+        val live = DepartureRows.liveStopClosureAlerts(RouteDisruption.closureCards(trip, progress, current, own, at))
+        val checked = stops.filter { it.id in current }.mapTo(HashSet()) { RouteDisruption.placeKey(trip, it.id, own[it.id]) }
+        return live to checked
+    }
+
+    // What a check of the coming lines' statuses found: the [statuses] TfL returned, the lines it gave a
+    // verdict on ([answered], a status or none), and when ([at], by the steady clock, as a fetch is stamped).
+    private class LineCheck(val statuses: Map<String, LineStatus>, val answered: Set<String>, val at: Instant)
+
+    // The [lines]' statuses, or null when none was answered. A line whose group failed is left out:
+    // unknown, not running normally.
+    private suspend fun statuses(lines: List<String>): LineCheck? {
+        if (lines.isEmpty()) return null
+        val results = LineStatusBatch.request(lines) { chunk -> withContext(io) { client.lineStatuses(chunk) } }
+        results.failure?.let { warn("on the way: line status failed for ${results.failed.size} line(s): ${it::class.simpleName}") }
+        if (!results.anyAnswered) return null
+        return LineCheck(results.answers.flatMap { it.value }.associateBy { it.lineId }, results.answeredIds, SteadyClock.stamp(clock()))
+    }
+
+    // Where each of [stops] sits, as the trip's closure cards place it ([routeClosures]): its interchange
+    // and stop area from the route of a ride that calls there, else the bundled index and a bus stop's pair.
+    private suspend fun places(trip: ActiveTrip, stops: List<TripClosures.End>): Map<String, RouteDisruption.StopPlace> {
+        val rides = trip.route.rides
+        // Each line's route asked for once a check, a failed one included (Codex, PR #441).
+        val sequences = HashMap<String, LineSequence?>()
+        return stops.associate { end ->
+            val lines = rides.filter { it.fromId == end.id || it.toId == end.id }.map { it.lineId }.distinct()
+            val route = lines.firstNotNullOfOrNull { line ->
+                if (line !in sequences) sequences[line] = lookUp(line)
+                sequences[line]
+            }
+            val hub = (route?.stopHubs?.get(end.id) ?: hubOf(end.id))?.takeIf { it.startsWith(HUB_PREFIX) }.orEmpty()
+            end.id to RouteDisruption.StopPlace(area = route?.stopAreas?.get(end.id) ?: end.area, hub = hub)
+        }
+    }
+
+    private suspend fun lookUp(line: String): LineSequence? =
+        try {
+            sequence(line)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Placed as best it can be without it: a dismissal made where the route placed it may not match.
+            warn("on the way: route unreadable: ${e::class.simpleName}")
+            null
+        }
+
+    private companion object {
+        const val HUB_PREFIX = "HUB"
+    }
+}

@@ -10,7 +10,6 @@ import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
-import app.stopdash.domain.Dismissed
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.HiddenModes
@@ -19,7 +18,6 @@ import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusBatch
 import app.stopdash.domain.StopClosureCache
 import app.stopdash.domain.StopDisruption
-import app.stopdash.domain.StopDisruptionBatch
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.FinalStop
 import app.stopdash.domain.TflException
@@ -37,7 +35,6 @@ import app.stopdash.domain.TripModes
 import app.stopdash.domain.TripTiming
 import app.stopdash.domain.mergedRoutes
 import app.stopdash.domain.withoutDetours
-import app.stopdash.domain.lineAlertKey
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -45,7 +42,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -936,6 +932,9 @@ class TripViewModel(
      */
     private val closureAsks = HashMap<String, StopClosureCache.Ask>()
 
+    // How the trip's stops are checked for closures: as a trip on the way checks its own.
+    private val closureChecks = StopClosureChecks(client, closureCache, closureReuse, io, warn, "trip")
+
     // The stops of [this] check that no check since has asked about: the ones its verdict settles.
     private fun ClosureCheck.latest(): Set<String> = ids.filterTo(HashSet()) { closureAsks[it] === ask }
 
@@ -1020,89 +1019,24 @@ class TripViewModel(
         // each stop's latest check from now on ([closureAsks]).
         val ticket = closureCache.ask(now)
         for (id in ids) closureAsks[id] = ticket
-        val found = HashMap<String, List<StopDisruption>>()
-        val at = HashMap<String, Instant>()
-        val ask = ids.filter { id ->
-            // Aged by the steady clock it's stamped by ([StopClosureCache.Ask.at]). Dated after now (the
-            // clock set back, across a reboot) is an age that can't be told, so asked again.
-            val held = closureCache[id]?.takeIf { SteadyClock.age(it.at, now).let { age -> !age.isNegative && age < closureReuse } }
-            held?.let {
-                found[id] = it.notices
-                at[id] = it.at
-            }
-            held == null
-        }
-        val (poles, others) = ask.partition(StopDisruptionBatch::isPole)
-        val answers = coroutineScope {
-            (
-                poles.chunked(StopDisruptionBatch.MAX_PER_REQUEST).map { chunk ->
-                    async { chunk to askClosures("${chunk.size} bus stop(s)") { client.poleDisruptions(chunk) } }
-                } + others.map { id ->
-                    async { listOf(id) to askClosures("stop $id") { mapOf(id to client.stopDisruptions(id)) } }
-                }
-            ).awaitAll()
-        }
-        val failed = HashSet<String>()
-        for ((asked, answer) in answers) {
-            for (id in asked) {
-                // As the cache settles each: a later lookup (the list's, landing first) wins over this
-                // one, failed or not.
-                closureCache.settle(id, ticket, answer.map { it[id].orEmpty() })
-                    .onSuccess {
-                        found[id] = it.notices
-                        at[id] = it.at
-                    }
-                    .onFailure { failed += id }
-            }
-        }
-        return ClosureCheck(found, at, failed, ids, ticket)
+        val checked = closureChecks.check(ids, ticket, now)
+        return ClosureCheck(checked.found, checked.at, checked.failed, ids, ticket)
     }
 
-    // One closure request's answer, or its failure (logged: an error kind and what was asked).
-    private suspend fun <T> askClosures(what: String, request: suspend () -> T): Result<T> =
-        try {
-            Result.success(withContext(io) { request() })
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: TflException) {
-            warn("trip closure check failed: ${e::class.simpleName} for $what")
-            Result.failure(e)
-        }
-
-    // What a status check found: the statuses TfL returned, answered [at], and the lines in a request
-    // that failed.
-    private class StatusCheck(val statuses: Map<String, LineStatus>, val failed: Set<String>, val at: Instant) {
+    // What a status check found: the statuses TfL returned, answered [at], the lines it gave a verdict
+    // on ([answered], a status or none), and the lines in a request that failed.
+    private class StatusCheck(val statuses: Map<String, LineStatus>, val answered: Set<String>, val failed: Set<String>, val at: Instant) {
         // Each returned line's answer time, for [State.statusesAt].
         fun answeredAt(): Map<String, Instant> = statuses.mapValues { at }
     }
 
     // One request per group TfL accepts (LineStatusBatch), each with its own outcome. Null when none
     // was answered: the last statuses stay rather than pass the lines off as running normally.
-    /**
-     * Settles the dismissals of the lines [check] answered, as the list's refresh does: one whose
-     * alert TfL no longer reports is forgotten, so the same alert coming back later shows again
-     * rather than staying hidden until the list happened to check that line (Codex on #367). Only an
-     * answered line counts, and not one still waiting on which way its alerts go: a dismissal of
-     * one direction's alert can't be matched against it until the split lands. The write outlasts
-     * the trip, as a dismissal's does: a trip left while it's being written would otherwise leave
-     * the ended alert's dismissal stored, for the next trip or the list to read back. Best-effort: a
-     * failed write is logged, and the next check tries again; what's shown here is pruned either way.
-     */
+    // Settles the dismissals of the lines [check] answered ([reconcileLineDismissals]).
     private suspend fun reconcileLineDismissals(check: StatusCheck) {
         val answered = check.statuses.filterKeys { it !in check.failed }
-        val checked = answered.values.filterNot { it.awaitingDirections }.mapTo(HashSet()) { lineAlertKey(it.lineId) }
-        if (checked.isEmpty()) return
-        val live = DepartureRows.liveLineStatusAlerts(answered, clock())
-        // In memory first, as the list does, so a write that fails can't keep the alert hidden here
-        // (Codex, PR #379).
-        val pruned = Dismissed.reconcile(_dismissed.value, live, checked)
-        if (pruned != _dismissed.value) _dismissed.value = pruned
-        try {
-            withContext(NonCancellable + io) { dismissedStore.reconcile(live, checked) }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            warn("trip dismissal reconcile failed: ${e::class.simpleName}")
+        reconcileLineDismissals(_dismissed.value, answered, check.answered, clock(), dismissedStore, io, warn, "trip") { pruned ->
+            if (pruned != _dismissed.value) _dismissed.value = pruned
         }
     }
 
@@ -1112,7 +1046,7 @@ class TripViewModel(
         if (results.unknown.isNotEmpty()) warn("trip line status: TfL doesn't know ${results.unknown.size} line(s)")
         if (!results.anyAnswered) return null
         // Stamped by the steady clock, as a fetch is ([SteadyClock]).
-        return StatusCheck(results.answers.flatMap { it.value }.associateBy { it.lineId }, results.failed.toSet(), SteadyClock.stamp(clock()))
+        return StatusCheck(results.answers.flatMap { it.value }.associateBy { it.lineId }, results.answeredIds, results.failed.toSet(), SteadyClock.stamp(clock()))
     }
 
     companion object {

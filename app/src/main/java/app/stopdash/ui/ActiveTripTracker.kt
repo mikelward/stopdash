@@ -5,6 +5,7 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LocationFix
 import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.StationPlaces
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopLocation
@@ -74,6 +75,19 @@ class ActiveTripTracker(
     private val onBoardSoon: (ActiveTrip, TripProgress.Waiting, BoardPost, Instant) -> Boolean = { _, _, _, _ -> true },
     // A "time to board" said no longer stands ([OnTheWay.boardStands]): taken down.
     private val onBoardSoonDone: () -> Unit = {},
+    // "Route disruption": what's known that may stop a coming leg ([RouteDisruptionChecks.check]),
+    // asked after each refresh, given the direction a coming leg's trains are seen going, by leg.
+    private val disruptions: suspend (ActiveTrip, TripProgress, Map<Int, String>) -> RouteDisruption.Found =
+        { _, _, _ -> RouteDisruption.Found.NONE },
+    // Posts what's known, as [DisruptionPost] says, standing until the given time: whether it's up,
+    // so one that couldn't be heard is tried on the next refresh, and one that can't be kept up is
+    // taken down ([onDisruptionDone]), not brought back.
+    private val onDisruption: (ActiveTrip, List<RouteDisruption.Signal>, DisruptionPost, Instant) -> Boolean = { _, _, _, _ -> true },
+    // Nothing known is left, or the trip ended: taken down.
+    private val onDisruptionDone: () -> Unit = {},
+    // What a "route disruption" still showing was posted with ([RouteDisruption.Signal.key]): heard,
+    // however the trip was left when the app died.
+    private val disruptionsShown: () -> Set<String> = { emptySet() },
 ) {
     private val _trip = MutableStateFlow<ActiveTrip?>(null)
     val trip: StateFlow<ActiveTrip?> = _trip.asStateFlow()
@@ -179,6 +193,14 @@ class ActiveTripTracker(
     // still: notifications outlive the process (for as long as its answer stays live, [BoardPost]).
     private var boardUp = false
 
+    // Whether a "route disruption" may be up ([checkDisruptions]). One heard before a restart may be up
+    // still, for as long as its evidence stays current.
+    private var disruptionUp = false
+
+    // The direction each of this trip's rides was seen going, by its leg ([directionsOf]). In memory
+    // only: after a restart a ride's direction is learned again, and meanwhile isn't known.
+    private val rideDirections = HashMap<Int, String>()
+
     /** Read the kept trip, once; a trip started meanwhile wins. */
     /** Reads the kept trip, once; false when it couldn't be read, to be tried again. */
     suspend fun restore(): Boolean = lock.withLock { restoreLocked() }
@@ -200,21 +222,34 @@ class ActiveTripTracker(
             // No trip on the way: an alert left from one ended just before the app died goes too.
             onGetOffSoonDone()
             onBoardSoonDone()
+            onDisruptionDone()
             return true
         }
         if (_trip.value == null) {
+            // A "route disruption" heard before the restart may still be up: the next check keeps it,
+            // or takes it down. What it says is heard, whether or not the trip kept so before the app
+            // died or a save failed: it's read back from the notification itself ([disruptionsShown]),
+            // so a restart never sounds it again (Codex, PR #441).
+            val shown = disruptionsShown()
+            disruptionUp = shown.isNotEmpty() || kept.disruptionsHeard.isNotEmpty()
             // A "time to board" said before the restart may still be up: the next fresh answer keeps
             // it, if it is ([BoardPost.KEEP]).
             boardUp = kept.boardWarned.isNotEmpty()
             // A move saved just before the app died, before it could take back the "get off soon"
             // for the leg left ([goTo]): taken back now. Marked on the trip, not guessed from its
             // warning, which also lags an alert said just before the app died (Codex, PR #351).
-            val trip = if (kept.alertLeft) {
+            val alertTaken = if (kept.alertLeft) {
                 onGetOffSoonDone()
                 unsaved = true
                 kept.copy(alertLeft = false)
             } else {
                 kept
+            }
+            val trip = if (alertTaken.disruptionsHeard.containsAll(shown)) {
+                alertTaken
+            } else {
+                unsaved = true
+                alertTaken.copy(disruptionsHeard = alertTaken.disruptionsHeard + shown)
             }
             _trip.value = trip
             _progress.value = standing(trip, clock())
@@ -247,6 +282,7 @@ class ActiveTripTracker(
         _updatedAt.value = null
         boardSeenRide = null
         boardSeen.clear()
+        rideDirections.clear()
         keep(trip, OnTheWay.advance(trip, null, now).second)
     }
 
@@ -309,6 +345,8 @@ class ActiveTripTracker(
         settleBoard()
         val boards = HashMap<TripLeg, Result<NextBoard>>()
         if (step(null, boards)) step(null, boards)
+        // What's ahead changed with the step: a stop now behind the rider is no longer theirs to reach.
+        checkDisruptions()
     }
 
     /** End the trip: forgotten here and on the device. */
@@ -330,7 +368,9 @@ class ActiveTripTracker(
         _updatedAt.value = null
         _notKept.value = false
         unsaved = false
+        rideDirections.clear()
         settleBoard()
+        takeDisruptionDown()
         true
     }
 
@@ -353,7 +393,77 @@ class ActiveTripTracker(
             // however long TfL takes: the steps share this refresh's attempts.
             val boards = HashMap<TripLeg, Result<NextBoard>>()
             if (step(fresh, boards)) step(null, boards)
+            checkDisruptions()
         }
+    }
+
+    /**
+     * "Route disruption" (SPEC *On the way*): what's known now that may stop a coming leg
+     * ([RouteDisruption.signals]). Something not heard before on this trip is heard
+     * ([DisruptionPost.NEW]), and kept on the trip as heard, so a restart doesn't sound it again;
+     * while it stays up, each check keeps it up to date silently ([DisruptionPost.KEEP]). Taken down
+     * once nothing is known, or the trip has arrived or ended, and never brought back once gone
+     * (swiped away, or timed out with its evidence), short of something new.
+     */
+    private suspend fun checkDisruptions() {
+        val trip = _trip.value
+        val progress = _progress.value
+        if (trip == null || progress == null || progress == TripProgress.Arrived) {
+            takeDisruptionDown()
+            return
+        }
+        val found = try {
+            disruptions(trip, progress, directionsOf(trip))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Unknown, never a signal: what's up comes down rather than stand on no evidence.
+            warn("on the way: disruption check failed: ${e::class.simpleName}")
+            RouteDisruption.Found.NONE
+        }
+        // No longer than its evidence is current, nor than the trip's own answer stays live ([CURRENT_FOR]
+        // from when it was had, [updatedAt]): renewed by each refresh, it comes down by itself once nothing
+        // follows the trip (the app closed with no ongoing notification), and at once with a refresh that
+        // failed, as the trip's times stop being shown as live then (Codex, PR #441).
+        val answered = _updatedAt.value
+        val until = found.until?.let { evidence -> answered?.let { minOf(evidence, it.plus(CURRENT_FOR)) } }
+        if (found.signals.isEmpty() || until == null) {
+            takeDisruptionDown()
+            return
+        }
+        val heard = found.signals.map { it.key }.filter { it !in trip.disruptionsHeard }
+        when {
+            heard.isNotEmpty() -> if (onDisruption(trip, found.signals, DisruptionPost.NEW, until)) {
+                disruptionUp = true
+                keep(trip.copy(disruptionsHeard = trip.disruptionsHeard + heard), progress)
+            }
+            disruptionUp -> if (!onDisruption(trip, found.signals, DisruptionPost.KEEP, until)) takeDisruptionDown()
+        }
+    }
+
+    // The direction each coming ride goes, by its leg, so the line's alert for the other way isn't the
+    // rider's. Learned only from the train the trip has taken for the ride (the followed one), read off
+    // the ride's board while it lists that train. That's the ride's direction, not only that train's,
+    // so it stands for the rest of the ride: once the board is gone (on board), and through the train
+    // being dropped or replaced, until a train taken for the ride is seen going another way. Never
+    // from the board's other trains (Codex, PR #441): a stop's board lists the line both ways, and
+    // where the rider's way has no service, just when its alert matters, it lists only the other.
+    // None known, none given, and the line's alerts count both ways ([LineStatus.alongRides]).
+    private fun directionsOf(trip: ActiveTrip): Map<Int, String> {
+        val board = _nextBoard.value?.takeIf { !it.failed }
+        // The followed train's ride is the leg being waited for or ridden, never a later one.
+        if (board != null && trip.vehicleId.isNotBlank() && trip.route.legs.getOrNull(trip.legIndex) == board.ride) {
+            board.departures.firstOrNull { it.vehicleId == trip.vehicleId && it.lineId == board.ride.lineId }
+                ?.direction?.takeIf { it.isNotBlank() }
+                ?.let { rideDirections[trip.legIndex] = it }
+        }
+        return rideDirections.filterKeys { it >= trip.legIndex }
+    }
+
+    private fun takeDisruptionDown() {
+        if (!disruptionUp) return
+        onDisruptionDone()
+        disruptionUp = false
     }
 
     // [fix] as it stands [waited] later, or null once that makes it too old to act on. One whose age
@@ -743,6 +853,15 @@ class ActiveTripTracker(
         if (trip != null && OnTheWay.boardStands(trip, _progress.value)) return
         onBoardSoonDone()
         boardUp = false
+    }
+
+    /** How [onDisruption] posts "route disruption". */
+    enum class DisruptionPost {
+        /** Something not heard before on this trip is known: heard. */
+        NEW,
+
+        /** Kept up to date while it's up, silently; not brought back once gone (swiped, timed out). */
+        KEEP,
     }
 
     /** How [onBoardSoon] posts "time to board". */

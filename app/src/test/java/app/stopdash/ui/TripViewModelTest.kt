@@ -281,6 +281,18 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `a trip's line check forgets a dismissal when TfL answers the line with no status`() = runTest(dispatcher) {
+        val blue = DismissedAlert.ofLineStatus(LineStatus("blue", 6, "Severe Delays"))
+        val store = reconcilingStore(setOf(blue))
+        val client = FakeClient(mutableMapOf("A" to listOf(train("red", "End", 2)))).apply { omitLines = setOf("blue") }
+        val trip = TripViewModel(FakePlanner(listOf(route)), client, "A", listOf(TripDestination.Stop("C")), clock = { now }, io = dispatcher, dismissedStore = store)
+        trip.refresh()
+        advanceUntilIdle()
+        // An answer naming nothing for the line is still a verdict on it, as the list counts it (Codex, PR #441).
+        assertEquals(emptySet<DismissedAlert>(), store.stored.value)
+    }
+
+    @Test
     fun `a trip forgets an ended alert's dismissal on screen even when the store can't be written`() = runTest(dispatcher) {
         val blue = DismissedAlert.ofLineStatus(LineStatus("blue", 6, "Severe Delays"))
         val stored = MutableStateFlow(setOf(blue))

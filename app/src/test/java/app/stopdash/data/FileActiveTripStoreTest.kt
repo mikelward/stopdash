@@ -48,6 +48,7 @@ class FileActiveTripStoreTest {
         vehicleOffId = "940GZZLUWLO",
         waitFrom = Instant.parse("2026-09-26T08:01:00Z"),
         boardWarned = "0/162",
+        disruptionsHeard = setOf("line/0/red/6/Severe Delays", "stop/1/C/closed"),
     )
 
     @Test
