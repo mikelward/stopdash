@@ -143,6 +143,7 @@ import app.stopdash.ui.AppMenuActions
 import app.stopdash.ui.HideUndoCarrier
 import app.stopdash.ui.BugReportConsentDialog
 import app.stopdash.ui.DISRUPTION_REUSE
+import app.stopdash.ui.RideLineChecks
 import app.stopdash.ui.RouteDisruptionChecks
 import app.stopdash.ui.StopClosureChecks
 import app.stopdash.ui.DeparturesUiState
@@ -2987,6 +2988,8 @@ class MainActivity : ComponentActivity() {
                     stopPoles = planner::stopAreaPoles,
                     // The same routes, held a day, the trip's cards place its rides with.
                     lineSequence = { lineId -> routeStops(context.applicationContext).let { it.cached(lineId, "") ?: it.load(lineId, "") } },
+                    // A ride's other lines, as its cards offer them: running, from stops open, not avoided.
+                    rideLines = rideLineChecks(context.applicationContext)::running,
                     warn = ::logDepartureWarning,
                     onGetOffSoon = { trip, riding ->
                         GetOffSoonAlert.post(context.applicationContext, trip, riding, Instant.now(), ::logDepartureWarning)
@@ -3019,6 +3022,22 @@ class MainActivity : ComponentActivity() {
                 dismissedStore = DataStoreDismissedAlertsStore.from(context, warn = ::logDepartureWarning),
                 sequence = { lineId -> routeStops(context).let { it.cached(lineId, "") ?: it.load(lineId, "") } },
                 hubOf = { routeStops(context).hubOf(it) },
+                clock = Instant::now,
+                io = Dispatchers.IO,
+                warn = ::logDepartureWarning,
+            )
+        }
+
+        // Which of a ride's lines a trip on the way may follow: the trip's cards' rule, with the client
+        // and closure lookups the screens share, the day's routes, and the lines the rider avoids.
+        private fun rideLineChecks(context: Context): RideLineChecks {
+            val client = departuresClient(context)
+            return RideLineChecks(
+                client = client,
+                closures = StopClosureChecks(client, StopClosureCache.SHARED, DISRUPTION_REUSE, Dispatchers.IO, ::logDepartureWarning, "on the way"),
+                closureCache = StopClosureCache.SHARED,
+                sequence = { lineId -> routeStops(context).let { it.cached(lineId, "") ?: it.load(lineId, "") } },
+                hidden = { HiddenModesSetting.current },
                 clock = Instant::now,
                 io = Dispatchers.IO,
                 warn = ::logDepartureWarning,

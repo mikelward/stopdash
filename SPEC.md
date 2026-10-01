@@ -1449,7 +1449,19 @@ them there:
 - **Which train.** Start assumes the **next train the rider can catch** on the first leg — the
   soonest the route lists that TfL names (its `vehicleId`) and that is due after the rider can
   reach the stop — and switches when another is seen to be the one they're on: picked by the
-  rider, or (with location, below) seen moving with them. A change picks the next leg's train the
+  rider, or (with location, below) seen moving with them. A ride goes by **any of its lines the
+  trip's cards offer** (maintainer, 2026-10-01), by the cards' own rule (*Trips with a change*): the
+  Planner's, and another line of the ride's mode whose route runs from its boarding stop to where it
+  gets off, once checked as running from stops checked open, and not one the rider avoids. So a
+  rider who boards the first train that takes them is followed on it (a Circle train along the
+  Hammersmith & City, say), and the trip never follows a line the cards wouldn't offer. The trip
+  checks the lines as the cards do whenever it picks a train (a line's status reused for a minute and
+  no longer, its stops through the closure checks the screens share); with no other line, or none
+  checked, it follows the Planner's alone. Each train is judged against the ride as its own line runs it, by its
+  own stops between: the Metropolitan from Baker Street to Finchley Road passes the Jubilee's stops
+  without calling. Its line is kept with the trip, since TfL answers for a train on its own line
+  only, and the step to board names it ("Board Circle at …"). A train is told by its line as well as
+  TfL's id for it, which is each line's own. A change picks the next leg's train the
   same way once the rider has got off and walked; a change with no walk of its own shows its time
   first, as the route does ("3 min to change"). A route that starts with a walk shows the walk
   first (maintainer, 2026-09-27), and its first ride's train is picked once it's done. The walk
@@ -1612,8 +1624,9 @@ them there:
   the dismissal holds, for as long as that closure is under way, even once a milder alert shows over
   it. Dismissing a different alert the line shows doesn't hide a closure placed on the leg, which the
   rider was never shown. No train predicted at a change is read off the board at
-  the stop the ride boards at, for its own line: no train listed there that the line's route doesn't
-  send another way, a train it can't place counting as predicted, as does one leaving before the rider
+  the stop the ride boards at, for any of its lines the trip would follow (*Which train*): no train
+  of them listed there that its own line's route doesn't send another way, a train its route can't
+  place counting as predicted, as does one leaving before the rider
   can get there (that may only be where the predictions end). It's a change's only, a ride with one
   before it on the route: at the first, the rider is looking at its board. Five minutes is well inside
   TfL's predictions (about half an hour), so a line running there has a train predicted by then. The
@@ -1624,7 +1637,10 @@ them there:
   direction the leg goes (one with no direction known counts both ways), and nothing the rider has
   dismissed, which comes back as it does there. The leg's direction is learned only from the train
   the trip takes for it, and stands for the rest of that ride, through the train being dropped or
-  boarded; never from the other trains on the stop's board, which lists the line both ways. **Only a fresh, successful
+  boarded; never from the other trains on the stop's board, which lists the line both ways. A ride
+  followed on another of its lines (*Which train*) is checked as that line, the one the rider is
+  boarding or on, its direction then not known, and its stops as that line's own (a bus's other pole
+  of the pair), a part closure placed on that line's own stretch. **Only a fresh, successful
   answer is evidence**: a check that failed or has gone stale is unknown, never a signal, so a TfL
   outage can't read as a line suspended. **One notification for the trip**, on its own channel,
   updated in place as what's known changes: something not heard before on this trip (an escalation,
@@ -1681,16 +1697,18 @@ refresh takes one precise fix (sure to within 100 m; about twenty at most, so a 
 delayed train doesn't keep GPS on), and a rider seen clear of the boarding stop
 (beyond 150 m of it) and either at one of the ride's later stops or 400 m on toward where they get
 off, within 300 m of the ride's way (its stops joined up), has boarded, whichever train was followed. The trip then follows the train they're on: of the
-trains the stop's board listed while the trip was shown, on the ride's line and bound where the rider
-gets off (not another branch), the one that most recently left it and isn't behind them (up to three
+trains the stop's board listed while the trip was shown, on any of the ride's lines the trip would
+follow (*Which train*), seen along that line's own way and bound where the rider gets off (not another
+branch), the one that most recently left it and isn't behind them (up to three
 asked after, a TfL request each, only then; a bus at either pole of the rider's stop pairs counts).
 Behind them is a train still to call at a stop they're past, or, seen at a stop, one due there more
 than a minute later: a newer train is tried first, so this is what keeps it from being taken for
 theirs. Two trains between the same two stops as the rider can't be told apart this way. Seen where
 they get off, they've done the ride, whichever train took them: the trip moves on to the next leg,
-as when a rider on a train is seen at their station. Another line's train isn't followed, as nowhere else on a
-trip is. With none found, the trip waits as it was. The ride's
-stops are placed from its line's route, which the trip's cards already hold. Underground, where no
+as when a rider on a train is seen at their station. A train of a line the cards don't offer
+(another mode's, one not running, one the rider avoids) isn't followed. With none found, the trip waits as it was. The ride's
+stops are placed from its line's route, and each train's from its own line's, which the trip's cards
+already hold. Underground, where no
 fix comes, it can't tell. The stop's position is the Planner's (or its line's route's); the fix is
 only compared with it, on the device, and never logged, kept or sent.
 Underground, where no fix comes, nothing is guessed. Outside those windows no fix is asked for; the

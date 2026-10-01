@@ -1,0 +1,114 @@
+package app.stopdash.ui
+
+import app.stopdash.domain.Departure
+import app.stopdash.domain.LineSequence
+import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusBatch
+import app.stopdash.domain.RideLines
+import app.stopdash.domain.Staleness
+import app.stopdash.domain.SteadyClock
+import app.stopdash.domain.StopClosureCache
+import app.stopdash.domain.TflClient
+import app.stopdash.domain.TflException
+import app.stopdash.domain.TripClosures
+import app.stopdash.domain.TripLeg
+import app.stopdash.domain.TripRoute
+import java.time.Duration
+import java.time.Instant
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+
+/**
+ * The lines a ride of a trip on the way may be taken on now (SPEC *On the way*): the ones the trip's
+ * cards offer, by the same rule ([RideLines.of], [RideLines.running]). That's the Planner's, and
+ * another line whose route runs between the same two stops, once it's checked as running (one
+ * batched status request, [LineStatusBatch]) from stops checked open (the closure checks the screens
+ * share, [closures]), and isn't one the rider avoids ([hidden]). Each comes as it runs the ride, its
+ * own stops between, so a train is checked against its own line's. A ride with no other line asks
+ * nothing; a line whose check fails isn't offered, so the trip falls back on the Planner's line.
+ */
+internal class RideLineChecks(
+    private val client: TflClient,
+    private val closures: StopClosureChecks,
+    private val closureCache: StopClosureCache,
+    // A line's route (the day's): which lines run between the ride's two stops, and by which stops.
+    private val sequence: suspend (String) -> LineSequence?,
+    // The modes and lines the rider hides, an avoided line among them.
+    private val hidden: () -> Set<String>,
+    private val clock: () -> Instant,
+    private val io: CoroutineDispatcher,
+    // Coarse facts only: an error kind, a count, never a stop or line the rider is going by.
+    private val warn: (String) -> Unit,
+) {
+    // Each line's status as last answered (null: TfL gave none) and when, by the steady clock: a trip
+    // refreshes more often than a line's status changes, so one answer serves a few refreshes.
+    private val statuses = HashMap<String, Pair<LineStatus?, Instant>>()
+    private val lock = Mutex()
+
+    /**
+     * The lines [ride] of [route] may be taken on now, given its boarding stop's [departures]: the
+     * Planner's first when it's among them ([RideLines.vouched]).
+     */
+    suspend fun running(route: TripRoute, ride: TripLeg, departures: List<Departure>): List<TripLeg> {
+        val hidden = hidden()
+        // Only the stop the trip reads: another pole of the pair isn't fetched (TODO, *A train the board never listed*).
+        val arrivals = mapOf(ride.fromId to departures)
+        val sequences = RideLines.lineIds(listOf(route), arrivals, emptyMap(), hidden).associateWith { lookUp(it) }
+        val lines = RideLines.of(listOf(route), arrivals, emptyMap(), sequences, hidden)[ride] ?: RideLines.only(ride)
+        // The Planner's alone: nothing to check, as the trip followed before.
+        if (lines.legs.size == 1) return lines.legs
+        val now = clock()
+        val ticket = closureCache.ask(now)
+        // The other lines' own stops: the Planner's line is judged where the route is ranked, as on the cards.
+        val stops = lines.legs.drop(1).flatMap { listOf(it.fromId, it.toId) }.distinct()
+        val (known, checked) = coroutineScope {
+            val known = async { statusesOf(lines.legs.map { it.lineId }.distinct()) }
+            val checked = async { closures.check(stops, ticket, now) }
+            known.await() to checked.await()
+        }
+        val at = clock()
+        // Only checks still current count ([Staleness]): a stop's reused lookup ages from when it was asked.
+        val current = checked.found.filterKeys { id -> checked.at[id]?.let { !Staleness.isStale(it, at) } == true }
+        return lines.running(LineStatus.asOf(known, at), TripClosures.opens(current, checked.failed, at))
+    }
+
+    // [ids]' statuses, each reused for [STATUS_REUSE] and no longer; a line whose check failed is
+    // left out, its last answer with it once that's older: unknown, so not checked as running. A line
+    // TfL is down for isn't offered on an answer from before (Codex, PR #451).
+    private suspend fun statusesOf(ids: List<String>): Map<String, LineStatus> = lock.withLock {
+        val now = clock()
+        val due = ids.filter { id -> statuses[id]?.let { (_, at) -> SteadyClock.age(at, now) >= STATUS_REUSE } ?: true }
+        if (due.isNotEmpty()) {
+            val results = LineStatusBatch.request(due) { chunk -> withContext(io) { client.lineStatuses(chunk) } }
+            results.failure?.let { warn("on the way: ride line status failed for ${results.failed.size} line(s): ${it::class.simpleName}") }
+            val stamp = SteadyClock.stamp(clock())
+            val answered = results.answers.flatMap { it.value }.associateBy { it.lineId }
+            results.answeredIds.forEach { id -> statuses[id] = answered[id] to stamp }
+        }
+        val at = clock()
+        ids.mapNotNull { id ->
+            statuses[id]?.takeIf { (_, stamp) -> SteadyClock.age(stamp, at) < STATUS_REUSE }?.first?.let { id to it }
+        }.toMap()
+    }
+
+    private suspend fun lookUp(line: String): LineSequence? =
+        try {
+            sequence(line)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: TflException) {
+            // Without its route the line isn't known to run between the two stops: not offered.
+            warn("on the way: route lookup failed for line $line: ${e::class.simpleName}")
+            null
+        }
+
+    private companion object {
+        // How long a line's status serves the trip's refreshes before it's asked again.
+        val STATUS_REUSE: Duration = Duration.ofSeconds(60)
+    }
+}

@@ -167,14 +167,34 @@ object RouteDisruption {
         if (leg.path.isEmpty()) emptyList()
         else (listOf(leg.fromId) + leg.path + listOf(leg.toId).filterNot { it == leg.path.last() }).filter { it.isNotBlank() }
 
-    /** The coming legs' lines: the ones whose status the alert needs, in route order. */
+    /** The coming legs' lines ([rideLine]): the ones whose status the alert needs, in route order. */
     fun comingLines(trip: ActiveTrip): List<String> =
-        comingRides(trip).map { it.value.lineId }.filter { it.isNotBlank() }.distinct()
+        comingRides(trip).map { (i, leg) -> rideLine(trip, i, leg).id }.filter { it.isNotBlank() }.distinct()
+
+    /**
+     * The line coming leg [index] ([leg]) of [trip] goes by, as its id and name: the line of the train
+     * the trip follows on the leg it's on, which can be another of the ride's lines than the Planner's
+     * ([OnTheWay.followedLine]), else the leg's own. A Circle train taken along the Hammersmith &
+     * City's stretch is checked as the Circle, not as a line the rider isn't on (Codex, PR #451).
+     */
+    fun rideLine(trip: ActiveTrip, index: Int, leg: TripLeg): LineRef =
+        rideAt(trip, index, leg).let { LineRef(it.lineId, it.lineName, it.mode) }
+
+    /**
+     * Coming leg [index] ([leg]) of [trip] as the rider takes it: on the leg they're on with another of
+     * the ride's lines' train followed, the ride as that line runs it ([ActiveTrip.vehicleLeg]), its own
+     * stops at either end (a bus's other pole of the pair, say); else the leg itself.
+     */
+    fun rideAt(trip: ActiveTrip, index: Int, leg: TripLeg): TripLeg =
+        if (index == trip.legIndex && trip.vehicleId.isNotBlank()) trip.vehicleLeg ?: leg else leg
 
     /**
      * The stops the trip still has to reach, each with the coming leg that reaches it first: a coming
      * ride's two ends (less where the rider has already boarded the one they're on), and a coming
-     * walk's end where no ride meets it. Mirrors [TripClosures.ends], over what's left.
+     * walk's end where no ride meets it. Mirrors [TripClosures.ends], over what's left. The ride the
+     * rider is on is taken as they take it ([rideAt]): another line's train followed there gets off at
+     * its own stop, and a closure there is checked even after the cards' checks are behind them
+     * (Codex, PR #451).
      */
     fun comingStops(trip: ActiveTrip, progress: TripProgress?): List<IndexedValue<TripClosures.End>> {
         if (progress == TripProgress.Arrived) return emptyList()
@@ -183,7 +203,7 @@ object RouteDisruption {
         // lost ([TripProgress.Lost]) has still left the stop behind.
         val boarded = progress is TripProgress.Riding || trip.boarded || trip.onBoardSeen
         val all = (trip.legIndex until legs.size).flatMap { i ->
-            val leg = legs[i]
+            val leg = rideAt(trip, i, legs[i])
             if (!leg.isWalk) {
                 listOfNotNull(
                     IndexedValue(i, TripClosures.End(leg.fromId, leg.fromArea, leg.lineId)).takeUnless { i == trip.legIndex && boarded },
@@ -223,8 +243,11 @@ object RouteDisruption {
         if (progress == TripProgress.Arrived) return emptyList()
         val shown = LineStatus.asOf(statuses, now)
         val lines = comingRides(trip).mapNotNull { (i, leg) ->
-            val status = shown[leg.lineId] ?: return@mapNotNull null
-            lineSignal(i, leg, directions[i]?.let(status::forDirection) ?: status, dismissed)
+            // The leg as the rider takes it ([rideAt]): another line's train followed is checked, named
+            // and placed as that line, on its own stretch (Codex, PR #451).
+            val ride = rideAt(trip, i, leg)
+            val status = shown[ride.lineId] ?: return@mapNotNull null
+            lineSignal(i, ride, directions[i]?.let(status::forDirection) ?: status, dismissed)
         }
         return ordered(lines + stopSignals(trip, progress, closures, places, dismissed, now))
     }
@@ -271,21 +294,32 @@ object RouteDisruption {
     }
 
     /**
-     * Whether [ride] (leg [legIndex]), boarded at a change, has no train of its line predicted on its
-     * boarding stop's board ([departures], a fresh answer): none listed that its line's route
-     * ([sequence]) doesn't send another way ([OnTheWay.mayTakeRide]). A train the route can't place, or
-     * any without the route, counts as predicted, so a route that can't be had never reads as no train.
-     * So does one TfL names no line for (of the ride's mode, or none given), which may be the rider's,
-     * as a trip's filters leave it unresolved ([DirectTrips.filter]); and one listed before the rider
-     * can get there: that may only be where the predictions end (Low, never alerts).
+     * Whether [ride] (leg [legIndex]), boarded at a change, has no train of its lines predicted on its
+     * boarding stop's board ([departures], a fresh answer): none listed of one of the ride's [lines], the
+     * ones the trip would follow on it ([OnTheWay.candidates]), that the train's own line route
+     * ([sequences], by line) doesn't send another way from the ride as its line runs it
+     * ([OnTheWay.mayTakeRide]). A train its route can't place, or any without its route, counts as
+     * predicted, so a route that can't be had never reads as no train. So does one TfL names no line for
+     * (of the ride's mode, or none given), which may be the rider's, as a trip's filters leave it
+     * unresolved ([DirectTrips.filter]); and one listed before the rider can get there: that may only be
+     * where the predictions end (Low, never alerts).
      */
-    fun unpredicted(legIndex: Int, ride: TripLeg, departures: List<Departure>, sequence: LineSequence?): Signal.Unpredicted? {
+    fun unpredicted(
+        legIndex: Int,
+        ride: TripLeg,
+        departures: List<Departure>,
+        lines: List<TripLeg>,
+        sequences: Map<String, LineSequence?>,
+    ): Signal.Unpredicted? {
         // A ride with no line named can't be told on the board: unknown, never a signal.
         if (ride.lineId.isBlank()) return null
-        val line = departures.filter {
-            it.lineId == ride.lineId || (it.lineId.isBlank() && (it.mode.isBlank() || it.mode.equals(ride.mode, ignoreCase = true)))
+        val predicted = departures.any { train ->
+            val on = OnTheWay.lineOf(lines, train)
+                ?: ride.takeIf { train.lineId.isBlank() && (train.mode.isBlank() || train.mode.equals(ride.mode, ignoreCase = true)) }
+                ?: return@any false
+            OnTheWay.mayTakeRide(on, listOf(train), sequences).isNotEmpty()
         }
-        if (OnTheWay.mayTakeRide(ride, line, mapOf(ride.lineId to sequence)).isNotEmpty()) return null
+        if (predicted) return null
         return Signal.Unpredicted(legIndex, ride.lineId, ride.lineName, ride.fromId, ride.fromName)
     }
 
@@ -343,7 +377,7 @@ object RouteDisruption {
         stopPlaceKey(place?.hub.orEmpty(), place?.area.orEmpty(), stopNames(trip)[stopId].orEmpty(), stopId)
 
     private fun stopNames(trip: ActiveTrip): Map<String, String> =
-        trip.route.legs.flatMap { listOf(it.fromId to it.fromName, it.toId to it.toName) }.toMap()
+        (trip.route.legs + listOfNotNull(trip.vehicleLeg)).flatMap { listOf(it.fromId to it.fromName, it.toId to it.toName) }.toMap()
 
     // The coming rides, by leg index: the one the rider is on (waiting for it, or on it) and every one after.
     private fun comingRides(trip: ActiveTrip): List<IndexedValue<TripLeg>> =
