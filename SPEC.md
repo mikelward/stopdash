@@ -2559,13 +2559,23 @@ finds none; turning it off stops collection and discards what's unsent, so no re
 consent line either way. A withdrawal reaches the SDKs before the tap returns, an opt-in is stored
 before it reaches them, and the stored choice counts only while the SDKs agree with it (or an opt-in
 is pending): a failed write, a kill mid-change, or a backup restored onto a new install all resolve
-to **off**, so the user is asked again rather than collected from. **The question is put once**,
+to **off**, so the user is asked again rather than collected from. The SDKs start themselves from
+their own remembered setting before the app reads anything, so an opted-in user's crash during
+startup is reported at no cost to startup. A stored choice lost on its own is read back rather than asked again
+(maintainer, 2026-10-01), from two marks kept apart from it: a no, which a withdrawal sets before
+anything else and which outranks the stored choice, so a withdrawal cut short still reads as the no
+(where it can't be created, the no is kept another way first, each in one step: the yes mark moved onto it, the no stored, or, with no yes mark, the stored yes deleted, which reads as never answered); and a yes, set once an opt-in is stored. Never from the SDKs' own flags or a pending opt-in: before
+the marks, a withdrawal that couldn't store its no deleted the stored choice instead, and could leave
+them set. With no mark it's never answered; a mark that can't be read fails closed, as a stored
+choice that can't be read does: off, and not asked. An answer stored before the marks existed is
+marked at the next start, and an opt-in clears the no first, and isn't applied where it can't. **The question is put once**,
 as a card atop the near-me list, or atop its empty state where nothing near has departures (as the
 sibling apps do; stopdash has no onboarding to ask it in), its two answers wrapping onto a line
 each where they don't fit side by side:
 only to an install with no stored answer, and only once that's known, so it never flashes at
 someone who answered. **Yes please** and **No thanks** each store an answer, as the switch does, so
-the card doesn't return; a no that couldn't be stored is asked again next start, and a yes that
+the card doesn't return; a no that couldn't be stored is still kept by its mark (asked again next
+start only where that couldn't be set either), and a yes that
 couldn't be kept (not stored, or never taken up by the SDKs, at a start or after the tap) is asked
 again at once and next start, its stored choice deleted rather than kept as a no. It isn't shown
 on a station's page, a platform's, or a journey's own view. `docs/PRIVACY.md` is the user-
