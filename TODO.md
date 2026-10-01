@@ -1293,6 +1293,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   there next too, and would be taken for theirs. Timing would tell them apart: the
                   rider's train left the boarding stop after the last fix still there and before the
                   first clear of it, and fixes while waiting could keep those two times.
+          - [ ] **Update as soon as location changes** (maintainer, 2026-10-01): while a trip is shown,
+                the rider is using the app, so timeliness comes first, within reason. Refresh on a
+                location update rather than only on the ~30 s cycle, with a minimum gap between
+                refreshes and a fallback timer when no update comes. Since a train is now matched only
+                against a fresh fix, this is what decides how soon it's named.
+          - [ ] **Moving, but location stale**: decide what the trip shows, and what it asks for,
+                when the rider is taken to be moving (on board, or walking) and no fresh fix has come
+                in for a while (underground, indoors, a fix refused).
           - [ ] Following a bus above ground by location (get off soon from where the bus is).
       - [x] **One-tap trips**: the near-me top bar's Directions button opens *To…* in one tap, with
             room freed by shortening the freshness stamp to "1 min ago" (maintainer, 2026-09-26).
