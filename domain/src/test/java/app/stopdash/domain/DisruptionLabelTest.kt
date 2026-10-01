@@ -58,6 +58,24 @@ class DisruptionLabelTest {
     }
 
     @Test
+    fun `a diversion or curtailment said to have ended names none`() {
+        // Denied after the noun, in its own clause (Codex, PR #455).
+        assertEquals("Service Alert", resolveDisruption("Special Service", 0, "The diversion is no longer required.").label)
+        assertEquals("Service Alert", resolveDisruption("Special Service", 0, "The diversion on route 25 has now ended.").label)
+        assertEquals("Service Alert", resolveDisruption("Special Service", 0, "Route 12 diversion has been lifted").label)
+        assertEquals("Service Alert", resolveDisruption("Special Service", 0, "The curtailment is no longer in place.").label)
+        assertEquals("Service Alert", resolveDisruption("Special Service", 0, "The diversion is not required.").label)
+        // A denial of something else, after a word that starts another clause, doesn't reach it.
+        assertEquals("Diversion", resolveDisruption("Special Service", 0, "Buses are diverted because Beta Road is no longer open.").label)
+        assertEquals("Diversion", resolveDisruption("Special Service", 0, "Buses are diverted, as the old route is no longer served.").label)
+        // One ended, another still in place: that one is named.
+        assertEquals("Diversion", resolveDisruption("Special Service", 0, "The curtailment has ended and buses are diverted via Example Road.").label)
+        assertEquals("Curtailed", resolveDisruption("Special Service", 0, "The diversion has been lifted, but buses are curtailed at Beta Road.").label)
+        // Said again later as still in place, it stands.
+        assertEquals("Diversion", resolveDisruption("Special Service", 0, "The morning diversion has ended. Buses are diverted via Example Road this evening.").label)
+    }
+
+    @Test
     fun `reads a diversion out of a reason that mentions other effects`() {
         // Only a diversion/curtailment is inferred from the prose; a road closure or delays
         // mentioned alongside it don't change the label.

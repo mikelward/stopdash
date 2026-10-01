@@ -2152,12 +2152,13 @@ Builds on Phase 1's minimal line-status marking.
       and cancellations of specific services where TfL exposes them.
 - [ ] Rich in-app disruption text; mark a disrupted line/stop even when predictions look
       normal (D3). Domain summarization JVM-tested.
-- [ ] **A catch-all reason that says a disruption has ended still names it** (Codex, PR #455).
-      "The diversion is no longer required" resolves to Diversion: `resolveDisruption` only looks
-      for a negation *before* the word, and predates #455 in looking at all. Recognize a denial that
-      follows the noun ("is no longer required", "has ended", "has been lifted") in the same clause,
-      so an ended diversion falls back to the non-alerting Service Alert. Same family as the
-      allowlist option below: guessing a label from prose by word lists.
+- [x] **A catch-all reason that says a disruption has ended still names it** (Codex, PR #455).
+      "The diversion is no longer required" resolved to Diversion: `resolveDisruption` only looked
+      for a negation *before* the word. Done: a denial that follows it in the same clause ("is no
+      longer required", "has ended", "has been lifted") denies it too, so an ended diversion falls
+      back to the non-alerting Service Alert; a clause ends at punctuation or a word that starts
+      another ("because", "and", …), so "diverted because the road is no longer open" still names
+      one. Same family as the allowlist option below: guessing a label from prose by word lists.
 - [ ] **Option: leave out a bus alert only when every sentence is one StopDash reads** (maintainer,
       2026-10-01, an option to weigh, not a decision). A bus line's alert is left out of a ride its
       stretch doesn't reach (PR #455) unless its text has one of a list of route-wide words

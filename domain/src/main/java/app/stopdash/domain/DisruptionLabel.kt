@@ -85,13 +85,31 @@ fun resolveDisruption(
 // between (Codex, PR #455). A negation of something else doesn't reach it: missing a real diversion
 // downgrades it to a generic alert that never sounds, so "buses are not serving stops A and B and are
 // diverted via X" still names one (Codex, PR #455).
+// Nor one said after it, in its own clause, to have ended: "the diversion is no longer required", "…
+// has ended", "… has been lifted" (Codex, PR #455).
 // [pattern] is a regex, matched in [cased] where given: [text] before it was lowercased, the same
 // length for every alphabet TfL writes in, so a match there is negated or not as in [text].
 private fun saidOutright(text: String, pattern: String, cased: String = text): Boolean =
-    Regex(pattern).findAll(cased).any { !NEGATED_JUST_BEFORE.containsMatchIn(text.substring(0, minOf(it.range.first, text.length))) }
+    Regex(pattern).findAll(cased).any { match ->
+        !NEGATED_JUST_BEFORE.containsMatchIn(text.substring(0, minOf(match.range.first, text.length))) &&
+            !ENDED.containsMatchIn(clauseAfter(text, match.range.last + 1))
+    }
 
 private val NEGATED_JUST_BEFORE =
     Regex("""$NEGATION(?:\s+(?!(?:and|but)\b)[\w'’]+)*\s*$""")
+
+// [text] from [start] to the end of its clause: punctuation, or a word that starts another clause, so
+// "diverted because Beta Road is no longer open" keeps the diversion.
+private fun clauseAfter(text: String, start: Int): String =
+    text.substring(minOf(start, text.length)).split(CLAUSE_END, limit = 2).first()
+
+private val CLAUSE_END =
+    Regex("""[.;:,!?]|\b(?:and|but|or|because|as|since|while|whilst|due|where|when|which|until|after|before|so|owing|if|though|although)\b""")
+
+// A clause saying what it follows has ended: "is no longer …", "is not required", "has (now) ended",
+// "has been lifted".
+private val ENDED =
+    Regex("""\b(?:is|are|was|were|has|have|had|will\s+be)\s+(?:now\s+)?(?:no\s+longer\b|not\s+(?:required|needed|necessary|in\s+(?:place|operation|effect|force))\b|(?:been\s+)?(?:lifted|removed|withdrawn|cancell?ed|stood\s+down|ended|finished)\b|over\b)""")
 
 /**
  * Picks the disruption to show from several coexisting ones. A true fallback
