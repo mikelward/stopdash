@@ -27,8 +27,9 @@ import org.junit.Test
 class ActiveTripTrackerTest {
     private val t0 = Instant.parse("2026-09-26T08:00:00Z")
     private fun at(minutes: Long) = t0.plus(Duration.ofMinutes(minutes))
-    // How often a stop's board was asked for (each is a TfL request).
+    // How often a stop's board was asked for (each is a TfL request), and which stops' boards were.
     private var boardReads = 0
+    private val boardStops = mutableListOf<String>()
     private var boardTakes: Duration = Duration.ZERO
     private var now = t0
     // A monotonic clock (ms), apart from [now]: the wall clock can be set back, this can't.
@@ -124,6 +125,7 @@ class ActiveTripTrackerTest {
         },
         arrivals = { stop ->
             boardReads++
+            boardStops += stop
             // TfL (or the request pool) taking its time: the clock moves on during the read.
             now = now.plus(boardTakes)
             if (stop in unknownStops) throw TflException.NotFound(null) else departures[stop].orEmpty()
@@ -409,6 +411,81 @@ class ActiveTripTrackerTest {
         tracker.refresh()
         assertEquals("", tracker.trip.value?.vehicleId)
         assertEquals(emptyMap<Int, String>(), directionsGiven.last())
+    }
+
+    @Test
+    fun `route disruption says no train of the line is predicted at a change the rider nears`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        // Off at C, a two-minute walk to D, then the blue line on.
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "D", "D", at(16), at(18))
+        val second = TripLeg("tube", "blue", "Blue", "D", "D", "E", "E", at(20), at(28), path = listOf("E"))
+        fun blue(vehicle: String, minutes: Long) = Departure("blue", "Blue", "outbound", "E", null, at(minutes), "tube", vehicleId = vehicle)
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 16))
+        // D lists a red train, none of the line the rider changes onto.
+        departures["D"] = listOf(train("8", 19))
+        tracker.start(TripRoute(listOf(ride, walkOn, second)), "E", readyAt = now)
+        disruptionAlerts.clear()
+        tracker.refresh()
+        // On the train, due off at 16: D is boarded from 18, not yet a few minutes off, so it isn't read.
+        now = at(7)
+        trains["3"] = listOf(call("B", 9), call("C", 16))
+        tracker.refresh()
+        assertTrue(tracker.progress.value is TripProgress.Riding)
+        assertFalse("D" in boardStops)
+        assertEquals(emptyList<String>(), disruptionAlerts)
+        // From 13, five minutes before: read, and no blue train there is said, standing only as long
+        // as the trip's answer does.
+        now = at(13)
+        trains["3"] = listOf(call("C", 16))
+        tracker.refresh()
+        val none = RouteDisruption.Signal.Unpredicted(2, "blue", "Blue", "D", "D")
+        assertEquals(listOf("new ${none.key}"), disruptionAlerts)
+        assertEquals(at(13).plus(ActiveTripTracker.CURRENT_FOR), disruptionUntil.last())
+        // Not on the trip's screen: while riding it has no board.
+        assertNull(tracker.nextBoard.value?.takeIf { it.ride == second })
+        // A blue train comes up there: nothing's left known, so it goes.
+        departures["D"] = listOf(blue("9", 21))
+        tracker.refresh()
+        assertEquals(listOf("new ${none.key}", "done"), disruptionAlerts)
+        // Off the train and walking to D: its board, read for the trip's screen, is the one asked, once.
+        departures["D"] = emptyList()
+        now = at(17)
+        trains["3"] = emptyList()
+        boardStops.clear()
+        tracker.refresh()
+        assertTrue(tracker.progress.value is TripProgress.Walking)
+        assertEquals(1, boardStops.count { it == "D" })
+        // Heard for the leg already, and gone since: not brought back.
+        assertEquals(listOf("new ${none.key}", "done"), disruptionAlerts)
+        assertEquals(setOf(none.key), kept?.disruptionsHeard)
+    }
+
+    @Test
+    fun `route disruption claims no missing train at a change from a board that can't be read`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "D", "D", at(16), at(18))
+        val second = TripLeg("tube", "blue", "Blue", "D", "D", "E", "E", at(20), at(28), path = listOf("E"))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 16))
+        tracker.start(TripRoute(listOf(ride, walkOn, second)), "E", readyAt = now)
+        tracker.refresh()
+        disruptionAlerts.clear()
+        now = at(13)
+        trains["3"] = listOf(call("C", 16))
+        unknownStops += "D"
+        tracker.refresh()
+        assertTrue(tracker.progress.value is TripProgress.Riding)
+        assertTrue("D" in boardStops)
+        assertEquals(emptyList<String>(), disruptionAlerts)
+        assertTrue(logged.any { it.startsWith("on the way: change board lookup failed for line blue") })
+        // Nor from one read for a refresh that failed: the trip's times aren't stood behind then.
+        unknownStops.clear()
+        boardStops.clear()
+        failing = true
+        tracker.refresh()
+        assertFalse("D" in boardStops)
+        assertEquals(emptyList<String>(), disruptionAlerts)
     }
 
     @Test

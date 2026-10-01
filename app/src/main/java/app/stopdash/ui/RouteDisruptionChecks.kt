@@ -91,6 +91,8 @@ internal class RouteDisruptionChecks(
             when (signal) {
                 is RouteDisruption.Signal.Line -> statuses?.at
                 is RouteDisruption.Signal.Stop -> checked.at[signal.stopId]
+                // A change's board is the tracker's to read, never this check's.
+                is RouteDisruption.Signal.Unpredicted -> null
             }
         }
         val stale = stamps.minOrNull()?.let { at.plus(Staleness.remainingUntilStale(SteadyClock.age(it, at).toKotlinDuration()).toJavaDuration()) }

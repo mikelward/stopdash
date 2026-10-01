@@ -205,4 +205,76 @@ class RouteDisruptionTest {
         assertFalse(MovedNotice.saysMoved("Lift moved out of service"))
         assertFalse(MovedNotice.saysMoved("Buses diverted"))
     }
+
+    @Test
+    fun `a change is near once the rider can board its ride within a few minutes`() {
+        fun near(trip: ActiveTrip, progress: TripProgress?, now: Instant) = RouteDisruption.changeNear(trip, progress, now)?.let { it.index to it.value.lineId }
+        // On the first ride, due off at C at 15, then a five-minute walk to D: they can board the
+        // second at 20, near from 15, not before.
+        assertNull(near(trip, riding, at(14)))
+        assertEquals(2 to "blue", near(trip, riding, at(15)))
+        // Due off past TfL's predictions: when they can board isn't known.
+        assertNull(near(trip, riding.copy(getOffAt = null), at(15)))
+        // Walking to it, until 20.
+        val walking = trip.copy(legIndex = 1, legStartedAt = at(15))
+        assertNull(near(walking, TripProgress.Walking(walk, at(20)), at(14)))
+        assertEquals(2 to "blue", near(walking, TripProgress.Walking(walk, at(20)), at(16)))
+        // Waiting there, until they're on its train.
+        val there = trip.copy(legIndex = 2, legStartedAt = at(20))
+        assertEquals(2 to "blue", near(there, TripProgress.Waiting(second, null), at(21)))
+        assertEquals(2 to "blue", near(there, TripProgress.Lost(second), at(21)))
+        assertNull(near(there.copy(boarded = true), TripProgress.Lost(second), at(21)))
+        assertNull(near(there.copy(onBoardSeen = true), TripProgress.Riding(second, "E", 1, at(30), false), at(21)))
+        // The first ride isn't boarded at a change, nor one walked to before any ride.
+        assertNull(near(trip, waiting, at(5)))
+        val walkIn = TripLeg(TripLeg.WALKING, "", "", "S", "S", "A", "A", t0, at(5))
+        assertNull(near(ActiveTrip(TripRoute(listOf(walkIn, ride)), "C", startedAt = t0), TripProgress.Walking(walkIn, at(5)), at(3)))
+        // A ride straight after another: due off, then the change time the Planner allows.
+        val straight = ride.copy(changeAfter = Duration.ofMinutes(3))
+        val onward = second.copy(fromId = "C", fromName = "C")
+        val changing = ActiveTrip(TripRoute(listOf(straight, onward)), "E", startedAt = t0)
+        assertNull(near(changing, riding.copy(leg = straight), at(12)))
+        assertEquals(1 to "blue", near(changing, riding.copy(leg = straight), at(13)))
+        assertEquals(emptyList<Pair<Int, String>>(), listOfNotNull(near(trip, TripProgress.Arrived, at(15))))
+    }
+
+    @Test
+    fun `no train of the line that may take the ride is predicted at a change`() {
+        fun due(line: String, destination: String) = Departure(line, line, "outbound", destination, null, at(21), "tube", vehicleId = "v-$line-$destination")
+        // A blue train to E: predicted. None at all, or only another line's: not.
+        assertNull(RouteDisruption.unpredicted(2, second, listOf(due("blue", "E")), null))
+        val none = RouteDisruption.unpredicted(2, second, listOf(due("red", "E")), null)
+        assertEquals(Signal.Unpredicted(2, "blue", "Blue", "D", "D"), none)
+        assertEquals(Tier.MEDIUM, none?.tier)
+        assertEquals(none, RouteDisruption.unpredicted(2, second, emptyList(), null))
+        // Only blue trains the other way, to Z: by its route, none takes the rider to E.
+        val blue = LineSequence(
+            listOf(LineRoute("D-E", listOf("D", "E")), LineRoute("D-Z", listOf("D", "Z"))),
+            mapOf("D" to "D", "E" to "E", "Z" to "Z"),
+        )
+        assertEquals(none, RouteDisruption.unpredicted(2, second, listOf(due("blue", "Z")), blue))
+        // Without the route, or with one that can't place it, it may be the rider's: not a signal.
+        assertNull(RouteDisruption.unpredicted(2, second, listOf(due("blue", "Z")), null))
+        assertNull(RouteDisruption.unpredicted(2, second, listOf(due("blue", "")), blue))
+        // A train TfL names no line for may be the rider's (Codex, PR #443), unless it's another mode's.
+        assertNull(RouteDisruption.unpredicted(2, second, listOf(due("", "")), blue))
+        assertNull(RouteDisruption.unpredicted(2, second, listOf(due("", "E").copy(mode = "")), blue))
+        assertEquals(none, RouteDisruption.unpredicted(2, second, listOf(due("", "E").copy(mode = "bus")), blue))
+        // A ride with no line named can't be told on any board.
+        assertNull(RouteDisruption.unpredicted(2, second.copy(lineId = ""), emptyList(), null))
+    }
+
+    @Test
+    fun `a signal added to what's known is said in order and stands no longer than either`() {
+        val line = Signal.Line(0, "red", "Red", status("red", 2, "Suspended"), Tier.HIGH)
+        val none = Signal.Unpredicted(2, "blue", "Blue", "D", "D")
+        assertEquals(RouteDisruption.Found(listOf(none), at(4)), RouteDisruption.Found.NONE.with(none, at(4)))
+        val both = RouteDisruption.Found(listOf(line), at(6)).with(none, at(4))
+        assertEquals(listOf<Signal>(line, none), both.signals)
+        assertEquals(at(4), both.until)
+        assertEquals(at(6), RouteDisruption.Found(listOf(line), at(6)).with(none, at(9)).until)
+        // Heard once for the leg, whatever the board lists between.
+        assertEquals(none.key, none.copy().key)
+        assertNotEquals(none.key, none.copy(legIndex = 3).key)
+    }
 }

@@ -143,8 +143,9 @@ stops of your route, which is why they're listed here, and go only to TfL, which
 asks about the same lines and stops. Ending the trip, or arriving, deletes it. The "get off
 soon" alert names the stop and the trip's destination on your lock screen, like any notification,
 the "time to board" alert likewise names the line, the stop you board at and the destination, and
-the "route disruption" alert names a line of the rest of the trip and its disruption, or a stop
-still to reach that's closed or moved, with the destination; you can turn any of them off in
+the "route disruption" alert names a line of the rest of the trip and its disruption, a stop
+still to reach that's closed or moved, or a line with no train predicted at the stop you change onto
+it at, with the destination; you can turn any of them off in
 Android's settings for StopDash. While a trip is on the way, an ongoing
 notification shows its next step, until you arrive or end the trip (or, for a trip left running,
 four hours after it started). If you've allowed location, stopdash takes your
