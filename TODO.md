@@ -1293,6 +1293,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   there next too, and would be taken for theirs. Timing would tell them apart: the
                   rider's train left the boarding stop after the last fix still there and before the
                   first clear of it, and fixes while waiting could keep those two times.
+          - [ ] **On board by position on another of the ride's lines** (Codex, PR #449): seen along
+                another offered line's own way (#451) with none of its trains told as theirs, the trip
+                still waits as it was, as before #449; only a sighting on the Planner's line puts them
+                on board by position. Doing the same for another line means counting its stops on that
+                line's own path (keeping the line ridden, as a told train does), not the Planner's.
           - [ ] **Update as soon as location changes** (maintainer, 2026-10-01): while a trip is shown,
                 the rider is using the app, so timeliness comes first, within reason. Refresh on a
                 location update rather than only on the ~30 s cycle, with a minimum gap between
