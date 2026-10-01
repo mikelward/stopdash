@@ -87,7 +87,7 @@ internal object TimeToBoardAlert {
         val pending = PendingIntent.getActivity(context, 1, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_appbar_route_arrow)
-            .setContentTitle(context.getString(R.string.on_the_way_board, waiting.leg.lineName, waiting.leg.fromName))
+            .setContentTitle(context.getString(R.string.on_the_way_board, waiting.lineName, waiting.leg.fromName))
             .setSubText(context.getString(R.string.on_the_way_title, trip.destinationName))
             // Counts down to the train in the header, live, rather than a time that goes stale.
             .setWhen(due.toEpochMilli())

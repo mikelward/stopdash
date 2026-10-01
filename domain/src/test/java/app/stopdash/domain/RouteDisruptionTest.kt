@@ -58,6 +58,13 @@ class RouteDisruptionTest {
         val endsOnFoot = ActiveTrip(TripRoute(listOf(ride, walkOn)), "F", startedAt = t0)
         assertEquals(listOf(0 to "A", 0 to "C", 1 to "F"), ids(endsOnFoot, waiting))
         assertEquals(emptyList<Pair<Int, String>>(), ids(trip, TripProgress.Arrived))
+        // Another of the ride's lines followed, getting off at its own stop (a bus's other pole, say):
+        // that's the stop checked, for the leg the rider is on (Codex, PR #451).
+        val green = Departure("green", "Green", "outbound", "C2", null, at(5), "tube", vehicleId = "4")
+        val following = OnTheWay.follow(trip, green, ride.copy(lineId = "green", lineName = "Green", toId = "C2", toName = "C2"))
+        assertEquals(listOf(0 to "A", 0 to "C2", 2 to "D", 2 to "E"), ids(following, waiting))
+        val closed = signals(following, closures = mapOf("C2" to listOf(StopDisruption("Station closed"))))
+        assertEquals(listOf("C2"), closed.map { (it as Signal.Stop).stopId })
     }
 
     @Test
@@ -136,6 +143,28 @@ class RouteDisruptionTest {
         // The second ride (D–E) is placed by its own calls.
         val blue = mapOf("red" to good("red"), "blue" to status("blue", 5, "Part Closure").shutting(listOf("D", "E")))
         assertEquals(Tier.HIGH, signals(statuses = blue).single().tier)
+    }
+
+    @Test
+    fun `a ride followed on another of its lines is checked as that line`() {
+        // A green train taken on the red ride (the Circle along the Hammersmith & City, say): the green
+        // line's alert is the ride's, named as it; the red line's says nothing of the train taken (Codex, PR #451).
+        val green = Departure("green", "Green", "outbound", "C", null, at(5), "tube", vehicleId = "4")
+        val following = OnTheWay.follow(trip, green, ride.copy(lineId = "green", lineName = "Green"))
+        assertEquals(listOf("green", "blue"), RouteDisruption.comingLines(following))
+        val statuses = mapOf("red" to status("red", 2, "Suspended"), "green" to status("green", 6, "Severe Delays"), "blue" to good("blue"))
+        val signal = signals(following, statuses = statuses).single() as Signal.Line
+        assertEquals(listOf("green", "Green", "Severe Delays"), listOf(signal.lineId, signal.lineName, signal.status.description))
+        // With no train followed, or once the leg is done with, the Planner's line again.
+        assertEquals(listOf("red", "blue"), RouteDisruption.comingLines(trip))
+        assertEquals("red", (signals(statuses = statuses).first() as Signal.Line).lineId)
+        // A part closure is placed on that line's own stretch: green runs A by X to C, and a section
+        // shut A–X is its ride's, where the red line's ride by B wouldn't run through it.
+        val byX = OnTheWay.follow(trip, green, ride.copy(lineId = "green", lineName = "Green", path = listOf("X", "C")))
+        val shut = mapOf("green" to status("green", 3, "Part Suspended").shutting(listOf("A", "X")), "blue" to good("blue"))
+        val placed = signals(byX, statuses = shut).single() as Signal.Line
+        assertEquals(listOf("green", Tier.HIGH), listOf(placed.lineId, placed.tier))
+        assertEquals(Tier.MEDIUM, (signals(following, statuses = shut).single() as Signal.Line).tier)
     }
 
     @Test
@@ -374,31 +403,46 @@ class RouteDisruptionTest {
     }
 
     @Test
-    fun `no train of the line that may take the ride is predicted at a change`() {
+    fun `no train of the lines that may take the ride is predicted at a change`() {
         fun due(line: String, destination: String) = Departure(line, line, "outbound", destination, null, at(21), "tube", vehicleId = "v-$line-$destination")
-        // A blue train to E: predicted. None at all, or only another line's: not.
-        assertNull(RouteDisruption.unpredicted(2, second, listOf(due("blue", "E")), null))
-        val none = RouteDisruption.unpredicted(2, second, listOf(due("red", "E")), null)
-        assertEquals(Signal.Unpredicted(2, "blue", "Blue", "D", "D"), none)
-        assertEquals(Tier.MEDIUM, none?.tier)
-        assertEquals(none, RouteDisruption.unpredicted(2, second, emptyList(), null))
-        // Only blue trains the other way, to Z: by its route, none takes the rider to E.
         val blue = LineSequence(
             listOf(LineRoute("D-E", listOf("D", "E")), LineRoute("D-Z", listOf("D", "Z"))),
             mapOf("D" to "D", "E" to "E", "Z" to "Z"),
         )
-        assertEquals(none, RouteDisruption.unpredicted(2, second, listOf(due("blue", "Z")), blue))
+        // The red line here runs D to Y only.
+        val red = LineSequence(listOf(LineRoute("D-Y", listOf("D", "Y"))), mapOf("D" to "D", "Y" to "Y"))
+        val routes = mapOf("blue" to blue, "red" to red)
+        // The lines the trip would follow on the ride ([RideLines.running]): the Planner's, and red,
+        // which the cards offer from D to E.
+        val lines = listOf(second, second.copy(lineId = "red", lineName = "Red"))
+        // A blue train to E: predicted. None at all, or only a red one its route doesn't take to E: not.
+        assertNull(RouteDisruption.unpredicted(2, second, listOf(due("blue", "E")), lines, emptyMap()))
+        val none = RouteDisruption.unpredicted(2, second, listOf(due("red", "Y")), lines, routes)
+        assertEquals(Signal.Unpredicted(2, "blue", "Blue", "D", "D"), none)
+        assertEquals(Tier.MEDIUM, none?.tier)
+        assertEquals(none, RouteDisruption.unpredicted(2, second, emptyList(), lines, routes))
+        // Another of the ride's lines whose route takes it to E is a train predicted for the ride
+        // (Codex, PR #451), as is one whose route can't be had.
+        val redToE = LineSequence(listOf(LineRoute("D-E", listOf("D", "E"))), mapOf("D" to "D", "E" to "E"))
+        assertNull(RouteDisruption.unpredicted(2, second, listOf(due("red", "E")), lines, routes + ("red" to redToE)))
+        // Not one the trip wouldn't follow: a line the cards don't offer (not running, avoided) isn't
+        // counted, whatever its route (Codex, PR #451).
+        assertEquals(none, RouteDisruption.unpredicted(2, second, listOf(due("red", "E")), listOf(second), routes + ("red" to redToE)))
+        assertNull(RouteDisruption.unpredicted(2, second, listOf(due("red", "E")), lines, mapOf("blue" to blue)))
+        // A bus at the same stop never is.
+        assertEquals(none, RouteDisruption.unpredicted(2, second, listOf(due("10", "E").copy(mode = "bus")), lines, routes))
+        // Only blue trains the other way, to Z: by its route, none takes the rider to E.
+        assertEquals(none, RouteDisruption.unpredicted(2, second, listOf(due("blue", "Z")), lines, routes))
         // Without the route, or with one that can't place it, it may be the rider's: not a signal.
-        assertNull(RouteDisruption.unpredicted(2, second, listOf(due("blue", "Z")), null))
-        assertNull(RouteDisruption.unpredicted(2, second, listOf(due("blue", "")), blue))
+        assertNull(RouteDisruption.unpredicted(2, second, listOf(due("blue", "Z")), lines, emptyMap()))
+        assertNull(RouteDisruption.unpredicted(2, second, listOf(due("blue", "")), lines, routes))
         // A train TfL names no line for may be the rider's (Codex, PR #443), unless it's another mode's.
-        assertNull(RouteDisruption.unpredicted(2, second, listOf(due("", "")), blue))
-        assertNull(RouteDisruption.unpredicted(2, second, listOf(due("", "E").copy(mode = "")), blue))
-        assertEquals(none, RouteDisruption.unpredicted(2, second, listOf(due("", "E").copy(mode = "bus")), blue))
+        assertNull(RouteDisruption.unpredicted(2, second, listOf(due("", "")), lines, routes))
+        assertNull(RouteDisruption.unpredicted(2, second, listOf(due("", "E").copy(mode = "")), lines, routes))
+        assertEquals(none, RouteDisruption.unpredicted(2, second, listOf(due("", "E").copy(mode = "bus")), lines, routes))
         // A ride with no line named can't be told on any board.
-        assertNull(RouteDisruption.unpredicted(2, second.copy(lineId = ""), emptyList(), null))
+        assertNull(RouteDisruption.unpredicted(2, second.copy(lineId = ""), emptyList(), listOf(second.copy(lineId = "")), emptyMap()))
     }
-
     @Test
     fun `a signal added to what's known is said in order and stands no longer than either`() {
         val line = Signal.Line(0, "red", "Red", status("red", 2, "Suspended"), Tier.HIGH)

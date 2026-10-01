@@ -395,7 +395,8 @@ internal fun nextStepText(resources: Resources, progress: TripProgress?, now: In
     val live = progress is TripProgress.Riding || (progress is TripProgress.Waiting && progress.due != null)
     if (live && !current) return nextStepText(resources, progress, now).first to resources.getString(R.string.on_the_way_updating)
     return when (progress) {
-        is TripProgress.Waiting -> resources.getString(R.string.on_the_way_board, progress.leg.lineName, progress.leg.fromName) to
+        // The line of the train followed, which can be another of the ride's lines than the Planner's.
+        is TripProgress.Waiting -> resources.getString(R.string.on_the_way_board, progress.lineName, progress.leg.fromName) to
             // As the boards count it ([Countdown.minutes]): the train due here is often on the board
             // below, and the two must never read a minute apart.
             (progress.due?.let { resources.getString(R.string.on_the_way_due, Countdown.minutes(it, now).toInt()) } ?: resources.getString(finding(progress.leg)))

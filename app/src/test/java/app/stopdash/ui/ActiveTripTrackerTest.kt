@@ -37,6 +37,12 @@ class ActiveTripTrackerTest {
 
     private val ride = TripLeg("tube", "red", "Red", "A", "A", "C", "C", at(5), at(15), path = listOf("B", "C"))
     private val route = TripRoute(listOf(ride))
+    // The ride as the blue line runs it, as the trip's cards offer it ([RideLines]): A to C by B too.
+    private val blueRide = ride.copy(lineId = "blue", lineName = "Blue")
+    // The ride as the purple line runs it: A to C by its own stop X between.
+    private val purpleRide = ride.copy(lineId = "purple", lineName = "Purple", path = listOf("X", "C"))
+    // The lines the trip's cards offer for each ride, by the ride's line: the Planner's alone unless a test says.
+    private val offered = mutableMapOf<String, List<TripLeg>>()
 
     private fun train(vehicle: String, minutes: Long) =
         Departure("red", "Red", "outbound", "C", null, at(minutes), "tube", vehicleId = vehicle)
@@ -48,6 +54,8 @@ class ActiveTripTrackerTest {
     private val unknownStops = mutableSetOf<String>()
     private val gone = mutableSetOf<String>()
     private val asked = mutableListOf<String>()
+    // Each train's calls asked for, with the line TfL was asked on.
+    private val askedOn = mutableListOf<String>()
     private var kept: ActiveTrip? = null
     private var saves = true
     // The next save is cut short, as by the activity being recreated mid-write.
@@ -85,6 +93,8 @@ class ActiveTripTrackerTest {
     // reading one takes, on the monotonic clock.
     private val sequences = mutableMapOf<String, app.stopdash.domain.LineSequence>()
     private var sequenceTakes = 0L
+    // A line's own route read time, where it's not [sequenceTakes].
+    private val sequenceTakesFor = mutableMapOf<String, Long>()
     // How long a train's calls take to read, on the monotonic clock.
     private var vehicleTakes = 0L
     // Each stop area's poles, and how often they were asked for (a TfL request each).
@@ -137,7 +147,9 @@ class ActiveTripTrackerTest {
                 if (failing) throw TflException.Offline(null)
                 if (vehicleId in gone) throw TflException.NotFound(null)
                 asked += vehicleId
-                return trains[vehicleId].orEmpty()
+                askedOn += "$vehicleId/$lineId"
+                // By its line and id where a test gives two lines' trains one id, as TfL's ids are each line's own.
+                return (trains["$lineId/$vehicleId"] ?: trains[vehicleId]).orEmpty()
             }
         },
         stationPlaces = { stop ->
@@ -148,8 +160,12 @@ class ActiveTripTrackerTest {
             entrancesAt[stop] ?: app.stopdash.domain.StationPlaces()
         },
         lineSequence = { lineId ->
-            ticks += sequenceTakes
+            ticks += sequenceTakesFor[lineId] ?: sequenceTakes
             sequences[lineId]
+        },
+        // As the cards find them: another line only where the departures given list a train of it.
+        rideLines = { _, ride, given ->
+            (offered[ride.lineId] ?: listOf(ride)).filter { it == ride || given.any { train -> train.lineId == it.lineId } }
         },
         stopPoles = { area ->
             poleReads++
@@ -188,6 +204,100 @@ class ActiveTripTrackerTest {
         onDisruptionDone = { disruptionAlerts += "done" },
         disruptionsShown = { disruptionsShowing },
     ).also { current = it }
+
+    @Test
+    fun `a ride is followed on another of its lines when that train comes first and takes the rider`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        offered["red"] = listOf(ride, blueRide)
+        // Another tube line's train first (as the Circle comes along the Hammersmith & City), then
+        // the ride's own: the first that takes the rider where they get off is followed.
+        val blue = Departure("blue", "Blue", "outbound", "C", null, at(6), "tube", vehicleId = "4")
+        departures["A"] = listOf(blue, train("3", 8))
+        trains["4"] = listOf(call("A", 6), call("B", 9), call("C", 12))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals("4", tracker.trip.value?.vehicleId)
+        assertEquals(blueRide, tracker.trip.value?.vehicleLeg)
+        // The rider is told to board the line the train is on (Codex, PR #451).
+        assertEquals("Blue", (tracker.progress.value as TripProgress.Waiting).lineName)
+        // TfL is asked about it on its own line, then and on each refresh after.
+        assertEquals(listOf("4/blue"), askedOn)
+        tracker.refresh()
+        assertEquals(listOf("4/blue", "4/blue"), askedOn)
+        assertEquals(blueRide, kept?.vehicleLeg)
+    }
+
+    @Test
+    fun `another line's train that turns off before where the rider gets off isn't followed`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        offered["red"] = listOf(ride, blueRide)
+        val blue = Departure("blue", "Blue", "outbound", "Z", null, at(6), "tube", vehicleId = "4")
+        departures["A"] = listOf(blue, train("3", 8))
+        // The blue train leaves the ride at B for its own branch.
+        trains["4"] = listOf(call("A", 6), call("B", 9), call("Z", 12))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals("3", tracker.trip.value?.vehicleId)
+        assertNull(tracker.trip.value?.vehicleLeg)
+        assertEquals(listOf("4/blue", "3/red"), askedOn)
+    }
+
+    @Test
+    fun `another line the trip's cards don't offer isn't followed, however its train runs`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        // Blue comes first and takes the rider, but the cards don't offer it (its status unchecked or
+        // not running, a stop of its closed, or avoided): the trip follows red, as the cards would have
+        // it (Codex, PR #451).
+        val blue = Departure("blue", "Blue", "outbound", "C", null, at(6), "tube", vehicleId = "4")
+        departures["A"] = listOf(blue, train("3", 8))
+        trains["4"] = listOf(call("A", 6), call("B", 9), call("C", 12))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals("3", tracker.trip.value?.vehicleId)
+        assertEquals(listOf("3/red"), askedOn)
+    }
+
+    @Test
+    fun `a ride is followed on another line by that line's own stops between`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        // Purple runs from A to C by X, not red's B (as the Metropolitan runs past the Jubilee's stops):
+        // its train is checked against its own, not taken for one leaving the ride (Codex, PR #451).
+        offered["red"] = listOf(ride, purpleRide)
+        departures["A"] = listOf(Departure("purple", "Purple", "outbound", "C", null, at(6), "tube", vehicleId = "P"), train("3", 8))
+        trains["P"] = listOf(call("A", 6), call("X", 9), call("C", 12))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals("P", tracker.trip.value?.vehicleId)
+        assertEquals(purpleRide, tracker.trip.value?.vehicleLeg)
+        assertEquals("Purple", (tracker.progress.value as TripProgress.Waiting).lineName)
+        // Gone from A with the rider: riding, its stops left counted along its own path.
+        now = at(7)
+        trains["P"] = listOf(call("X", 9), call("C", 12))
+        tracker.refresh()
+        val riding = tracker.progress.value as TripProgress.Riding
+        assertEquals(2, riding.stopsLeft)
+        assertEquals(ride, riding.leg)
+    }
+
+    @Test
+    fun `two lines' trains sharing an id are each tried, as TfL's ids are each line's own`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        offered["red"] = listOf(ride, blueRide)
+        // The blue line's train 4 turns off before C; the red line's train 4, a little later, takes the ride.
+        val blue = Departure("blue", "Blue", "outbound", "Z", null, at(6), "tube", vehicleId = "4")
+        departures["A"] = listOf(blue, train("4", 8))
+        trains["blue/4"] = listOf(call("A", 6), call("B", 9), call("Z", 12))
+        trains["red/4"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals("4", tracker.trip.value?.vehicleId)
+        assertNull(tracker.trip.value?.vehicleLeg)
+        assertEquals(listOf("4/blue", "4/red"), askedOn)
+    }
 
     @Test
     fun `route disruption is heard once, kept up to date, and goes once nothing is known`() = runTest {
@@ -402,6 +512,33 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `route disruption gives no direction for a ride followed on another line, the ride's own kept for it`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        offered["red"] = listOf(ride, blueRide)
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals(mapOf(0 to "outbound"), directionsGiven.last())
+        // Its train dropped, a blue train that takes the ride is followed: the red line's direction
+        // says nothing of the blue line's `inbound`/`outbound`, so the leg's is unknown (Codex, PR #451).
+        gone += "3"
+        departures["A"] = listOf(Departure("blue", "Blue", "inbound", "C", null, at(10), "tube", vehicleId = "4"))
+        trains["4"] = listOf(call("A", 10), call("B", 13), call("C", 16))
+        tracker.refresh()
+        assertEquals("blue", tracker.trip.value?.vehicleLeg?.lineId)
+        assertEquals(emptyMap<Int, String>(), directionsGiven.last())
+        // A red train followed again goes the way the red one was seen going.
+        gone -= "3"
+        gone += "4"
+        departures["A"] = listOf(train("5", 12))
+        trains["5"] = listOf(call("A", 12), call("B", 15), call("C", 18))
+        tracker.refresh()
+        assertNull(tracker.trip.value?.vehicleLeg)
+        assertEquals(mapOf(0 to "outbound"), directionsGiven.last())
+    }
+
+    @Test
     fun `route disruption gives no direction until a train is taken for the ride, whatever the board lists`() = runTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         // Every train listed goes one way, but none calls where the rider gets off, so none is theirs:
@@ -422,8 +559,12 @@ class ActiveTripTrackerTest {
         fun blue(vehicle: String, minutes: Long) = Departure("blue", "Blue", "outbound", "E", null, at(minutes), "tube", vehicleId = vehicle)
         departures["A"] = listOf(train("3", 6))
         trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 16))
-        // D lists a red train, none of the line the rider changes onto.
-        departures["D"] = listOf(train("8", 19))
+        // D lists a green train, of a line the trip's cards don't offer, its route sending it to Y: none
+        // of a line that takes the rider on to E (another of the ride's lines would count, Codex on #451).
+        departures["D"] = listOf(Departure("green", "Green", "outbound", "Y", null, at(19), "tube", vehicleId = "8"))
+        sequences["green"] = app.stopdash.domain.LineSequence(
+            listOf(app.stopdash.domain.LineRoute("D-Y", listOf("D", "Y"))), mapOf("D" to "D", "Y" to "Y"),
+        )
         tracker.start(TripRoute(listOf(ride, walkOn, second)), "E", readyAt = now)
         disruptionAlerts.clear()
         tracker.refresh()
@@ -783,8 +924,8 @@ class ActiveTripTrackerTest {
         stopNames = mapOf("A" to "A", "B" to "B", "C" to "C"),
         stopPositions = mapOf("A" to (51.5 to -0.12), "B" to (51.51 to -0.12), "C" to (51.52 to -0.12)),
     )
-    private fun fixAt(latitude: Double) =
-        app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(latitude, -0.12), isFallback = false, accuracyMeters = 20f, ageMillis = 1_000L)
+    private fun fixAt(latitude: Double, longitude: Double = -0.12) =
+        app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(latitude, longitude), isFallback = false, accuracyMeters = 20f, ageMillis = 1_000L)
 
     @Test
     fun `a rider seen along the ride while its train is awaited is on the train that left`() = runTest {
@@ -908,6 +1049,58 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `seen along another of the ride's lines, its own stops place the rider on its train`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        // Purple runs from A to C by X, a street west of red's B: seen at X, the rider is on the purple
+        // train that left A, placed by purple's own stops (Codex, PR #451).
+        sequences["purple"] = app.stopdash.domain.LineSequence(
+            routes = listOf(app.stopdash.domain.LineRoute("A ↔ C", listOf("A", "X", "C"))),
+            stopNames = mapOf("A" to "A", "X" to "X", "C" to "C"),
+            stopPositions = mapOf("A" to (51.5 to -0.12), "X" to (51.51 to -0.135), "C" to (51.52 to -0.12)),
+        )
+        offered["red"] = listOf(ride, purpleRide)
+        departures["A"] = listOf(Departure("purple", "Purple", "outbound", "C", null, at(5), "tube", vehicleId = "P"), train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(6)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals("9", tracker.trip.value?.vehicleId)
+        // P has left A, 9 is still to come; the rider is seen at X.
+        departures["A"] = listOf(train("9", 8))
+        trains["P"] = listOf(call("X", 8), call("C", 12))
+        now = at(7)
+        tracker.refresh(fixAt(51.51, -0.135))
+        assertEquals("P", tracker.trip.value?.vehicleId)
+        assertEquals(purpleRide, tracker.trip.value?.vehicleLeg)
+        assertEquals("X", (tracker.progress.value as TripProgress.Riding).nextStop)
+    }
+
+    @Test
+    fun `seen along another of the ride's lines, it's placed on its train though the ride's own route can't be had`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        // Red's route can't be had; purple's can, and the rider is seen along it (Codex, PR #451).
+        sequences["purple"] = app.stopdash.domain.LineSequence(
+            routes = listOf(app.stopdash.domain.LineRoute("A ↔ C", listOf("A", "X", "C"))),
+            stopNames = mapOf("A" to "A", "X" to "X", "C" to "C"),
+            stopPositions = mapOf("A" to (51.5 to -0.12), "X" to (51.51 to -0.135), "C" to (51.52 to -0.12)),
+        )
+        offered["red"] = listOf(ride, purpleRide)
+        departures["A"] = listOf(Departure("purple", "Purple", "outbound", "C", null, at(5), "tube", vehicleId = "P"), train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(6)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals("9", tracker.trip.value?.vehicleId)
+        departures["A"] = listOf(train("9", 8))
+        trains["P"] = listOf(call("X", 8), call("C", 12))
+        now = at(7)
+        tracker.refresh(fixAt(51.51, -0.135))
+        assertEquals("P", tracker.trip.value?.vehicleId)
+        assertEquals(purpleRide, tracker.trip.value?.vehicleLeg)
+    }
+
+    @Test
     fun `seen along the ride, a train TfL no longer knows is passed over, and said`() = runTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         sequences["red"] = redLine
@@ -944,6 +1137,30 @@ class ActiveTripTrackerTest {
         sequenceTakes = 10_000L
         now = at(7)
         tracker.refresh(fixAt(51.51))
+        assertEquals("9", tracker.trip.value?.vehicleId)
+        assertEquals(TripProgress.Waiting(ride, at(8)), tracker.progress.value)
+    }
+
+    @Test
+    fun `a fix grown old over another line's slow route read doesn't end the ride`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        // Red's route can't be had; purple's read is slow. Seen where the ride gets off, but by a fix
+        // too old by then to say so (Codex, PR #451).
+        sequences["purple"] = app.stopdash.domain.LineSequence(
+            routes = listOf(app.stopdash.domain.LineRoute("A ↔ C", listOf("A", "X", "C"))),
+            stopNames = mapOf("A" to "A", "X" to "X", "C" to "C"),
+            stopPositions = mapOf("A" to (51.5 to -0.12), "X" to (51.51 to -0.135), "C" to (51.52 to -0.12)),
+        )
+        offered["red"] = listOf(ride, purpleRide)
+        departures["A"] = listOf(Departure("purple", "Purple", "outbound", "C", null, at(5), "tube", vehicleId = "P"), train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(6)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        departures["A"] = listOf(train("9", 8))
+        sequenceTakesFor["purple"] = 10_000L
+        now = at(7)
+        tracker.refresh(fixAt(51.52))
         assertEquals("9", tracker.trip.value?.vehicleId)
         assertEquals(TripProgress.Waiting(ride, at(8)), tracker.progress.value)
     }

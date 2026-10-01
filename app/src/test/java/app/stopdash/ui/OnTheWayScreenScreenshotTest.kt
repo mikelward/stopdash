@@ -563,6 +563,15 @@ class OnTheWayScreenScreenshotTest {
     }
 
     @Test
+    fun the_step_names_the_line_of_the_train_followed() {
+        val resources = composeRule.activity.resources
+        val leg = TripLeg("tube", "red", "Red", "A", "Example Station", "B", "B", at(4), at(20))
+        // Another of the ride's lines' train followed: that's the line to board (Codex, PR #451).
+        assertEquals("Board Blue at Example Station", nextStepText(resources, TripProgress.Waiting(leg, at(6), "Blue"), now).first)
+        assertEquals("Board Red at Example Station", nextStepText(resources, TripProgress.Waiting(leg, null), now).first)
+    }
+
+    @Test
     fun on_the_way_looks_for_a_bus_as_a_bus() {
         val bus = TripLeg("bus", "134", "134", "490000000001A", "Example Road", "490000000002B", "Example Street", at(4), at(20))
         show(ActiveTrip(TripRoute(listOf(bus)), "Example Street", startedAt = now), TripProgress.Waiting(bus, null))

@@ -21,17 +21,18 @@ class FileActiveTripStoreTest {
     val tmp = TemporaryFolder()
 
     private val t0 = Instant.parse("2026-09-26T08:00:00Z")
+    private val jubilee = TripLeg(
+        "tube", "jubilee", "Jubilee", "940GZZLUCWR", "Canada Water", "940GZZLUWLO", "Waterloo",
+        t0, t0.plusSeconds(600), path = listOf("940GZZLUBMY", "940GZZLUWLO"),
+        pathNames = listOf("Bermondsey", "Waterloo"),
+        changeAfter = Duration.ofMinutes(3), headings = listOf("Stanmore"),
+        fromAt = app.stopdash.domain.Coordinates(51.5, -0.12),
+        toAt = app.stopdash.domain.Coordinates(51.53, -0.12),
+    )
     private val trip = ActiveTrip(
         route = TripRoute(
             listOf(
-                TripLeg(
-                    "tube", "jubilee", "Jubilee", "940GZZLUCWR", "Canada Water", "940GZZLUWLO", "Waterloo",
-                    t0, t0.plusSeconds(600), path = listOf("940GZZLUBMY", "940GZZLUWLO"),
-                    pathNames = listOf("Bermondsey", "Waterloo"),
-                    changeAfter = Duration.ofMinutes(3), headings = listOf("Stanmore"),
-                    fromAt = app.stopdash.domain.Coordinates(51.5, -0.12),
-                    toAt = app.stopdash.domain.Coordinates(51.53, -0.12),
-                ),
+                jubilee,
                 TripLeg(TripLeg.WALKING, "", "", "940GZZLUWLO", "Waterloo", "910GWLOO", "Waterloo", t0.plusSeconds(600), t0.plusSeconds(900)),
             ),
         ),
@@ -49,6 +50,11 @@ class FileActiveTripStoreTest {
         waitFrom = Instant.parse("2026-09-26T08:01:00Z"),
         boardWarned = "0/162",
         disruptionsHeard = setOf("line/0/red/6/Severe Delays", "stop/1/C/closed"),
+        // A Jubilee ride followed on another line's train, as that line runs it: by its own stops between.
+        vehicleLeg = jubilee.copy(
+            lineId = "metropolitan", lineName = "Metropolitan", path = listOf("940GZZLUWLO"), pathNames = listOf("Waterloo"),
+            headings = emptyList(), fromAt = null, toAt = null,
+        ),
     )
 
     @Test
@@ -321,5 +327,15 @@ class FileActiveTripStoreTest {
         )
         FileActiveTripStore(file).save(trip.copy(route = TripRoute(listOf(rail))))
         assertEquals("London Northwestern Railway", FileActiveTripStore(file).load()?.route?.legs?.single()?.lineName)
+    }
+
+    @Test
+    fun `a trip saved before trains were kept with their line follows its ride's own line`() {
+        val file = File(tmp.root, "active-trip.json")
+        FileActiveTripStore(file).save(trip.copy(vehicleLeg = null))
+        assertEquals(false, file.readText().contains("vehicleLeg"))
+        assertEquals(trip.copy(vehicleLeg = null), FileActiveTripStore(file).load())
+        assertEquals("jubilee", app.stopdash.domain.OnTheWay.followedLine(FileActiveTripStore(file).load()!!))
+        assertEquals("Jubilee", app.stopdash.domain.OnTheWay.followedLineName(FileActiveTripStore(file).load()!!))
     }
 }

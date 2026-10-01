@@ -4,6 +4,7 @@ import java.time.Duration
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -149,11 +150,62 @@ class OnTheWayTest {
         assertEquals(2, (OnTheWay.advance(following, calls, at(6)).second as TripProgress.Riding).stopsLeft)
     }
 
+    // The ride as another of its lines runs it ([RideLines]): from the same stop to the same stop, by
+    // its own stop X between rather than the Planner's B.
+    private val blueRide = ride.copy(lineId = "blue", lineName = "Blue", path = listOf("X", "C"))
+
     @Test
-    fun `a leg's candidate trains are its line's, named, reachable and once each`() {
+    fun `a leg's candidate trains are those of its lines, named, reachable and once each`() {
+        // Another line the trip's cards offer takes the ride too (the Circle along the Hammersmith &
+        // City): its route and calls say whether a train of it does.
         val other = Departure("blue", "Blue", "outbound", "C", null, at(5), "tube", vehicleId = "4")
-        val trains = listOf(train("9", 8), train("8", 5), other, train("", 6), train("8", 5), train("7", 1))
-        assertEquals(listOf("8", "9"), OnTheWay.candidates(trains, ride, at(3)).map { it.vehicleId })
+        // A line they don't offer never does, of the ride's mode or not (Codex, PR #451), nor a train
+        // TfL names no line for.
+        val green = Departure("green", "Green", "outbound", "C", null, at(4), "tube", vehicleId = "G1")
+        val bus = Departure("10", "10", "outbound", "C", null, at(4), "bus", vehicleId = "B1")
+        val lineless = Departure("", "", "outbound", "C", null, at(4), "tube", vehicleId = "6")
+        val lines = listOf(ride, blueRide)
+        val trains = listOf(train("9", 8), train("8", 5), other, green, bus, lineless, train("", 6), train("8", 5), train("7", 1))
+        assertEquals(listOf("8", "4", "9"), OnTheWay.candidates(trains, lines, at(3)).map { it.vehicleId })
+        // The Planner's line alone: another line's train isn't followed.
+        assertEquals(listOf("8", "9"), OnTheWay.candidates(trains, listOf(ride), at(3)).map { it.vehicleId })
+        // A train's id is its line's own: two lines' trains sharing one are each a candidate (Codex, PR #451).
+        val sameId = other.copy(vehicleId = "8", expectedArrival = at(6))
+        assertEquals(listOf("red/8", "blue/8"), OnTheWay.candidates(listOf(train("8", 5), sameId), lines, at(3)).map { "${it.lineId}/${it.vehicleId}" })
+        assertEquals(blueRide, OnTheWay.lineOf(lines, other))
+        assertNull(OnTheWay.lineOf(lines, green))
+    }
+
+    @Test
+    fun `a train followed on another line is checked against that line's own stops`() {
+        val other = Departure("blue", "Blue", "outbound", "C", null, at(5), "tube", vehicleId = "4")
+        val following = OnTheWay.follow(trip, other, blueRide)
+        assertEquals(blueRide, following.vehicleLeg)
+        assertEquals("blue", OnTheWay.followedLine(following))
+        // On the Planner's own line it's the leg itself, as before, and a trip kept before the line
+        // was stored follows its ride's own.
+        assertNull(OnTheWay.follow(trip, train("8", 5), ride).vehicleLeg)
+        assertEquals("red", OnTheWay.followedLine(following.copy(vehicleLeg = null)))
+        // Its calls by its own stop between (X, not the Planner's B) keep to its ride (Codex, PR #451);
+        // the same calls for a train on the Planner's line leave the leg.
+        val calls = listOf(call("A", 5), call("X", 9), call("C", 14))
+        val waiting = OnTheWay.advance(following, calls, at(3)).second
+        assertEquals("Blue", (waiting as TripProgress.Waiting).lineName)
+        assertEquals(ride, waiting.leg)
+        assertEquals(TripProgress.Lost(ride), OnTheWay.advance(OnTheWay.follow(trip, train("4", 5)), calls, at(3)).second)
+        // Riding, its stops left are counted along its own path.
+        val riding = OnTheWay.advance(following.copy(boarded = true), listOf(call("X", 9), call("C", 14)), at(6)).second as TripProgress.Riding
+        assertEquals(2, riding.stopsLeft)
+        assertEquals(ride, riding.leg)
+        // The rider is told to board the line the train is on, not the Planner's (Codex, PR #451).
+        assertEquals("Red", OnTheWay.followedLineName(following.copy(vehicleId = "")))
+        // Its "time to board" is its own: another line's train with the same id is another train.
+        assertNotEquals(OnTheWay.boardKey(following), OnTheWay.boardKey(OnTheWay.follow(trip, train("4", 5))))
+        // Dropped with the train when the leg moves on.
+        val (next, _) = OnTheWay.advance(following.copy(boarded = true, dueOffAt = at(15)), listOf(call("D", 16)), at(15))
+        assertEquals(1, next.legIndex)
+        assertEquals("", next.vehicleId)
+        assertNull(next.vehicleLeg)
     }
 
     @Test

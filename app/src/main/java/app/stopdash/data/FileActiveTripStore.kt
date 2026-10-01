@@ -270,6 +270,9 @@ private data class PersistedActiveTrip(
     val boardWarned: String = "",
     // Absent from a trip kept before it was stored: nothing heard yet, so what's known is said.
     val disruptionsHeard: List<String> = emptyList(),
+    // Absent from a trip kept before it was stored: its train is on the ride's own line, the only
+    // one followed then, and named and checked as it.
+    val vehicleLeg: PersistedTripLeg? = null,
 ) {
     fun toTrip() = ActiveTrip(
         route = TripRoute(legs.map { it.toLeg() }),
@@ -289,6 +292,7 @@ private data class PersistedActiveTrip(
         onBoardSeen = onBoardSeen,
         boardWarned = boardWarned,
         disruptionsHeard = disruptionsHeard.toSet(),
+        vehicleLeg = vehicleLeg?.toLeg(),
     )
 
     companion object {
@@ -310,6 +314,7 @@ private data class PersistedActiveTrip(
             onBoardSeen = trip.onBoardSeen,
             boardWarned = trip.boardWarned,
             disruptionsHeard = trip.disruptionsHeard.sorted(),
+            vehicleLeg = trip.vehicleLeg?.let { PersistedTripLeg.of(it) },
         )
     }
 }

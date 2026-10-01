@@ -1276,8 +1276,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   is left waiting. Asking the board at the stop ahead of them would find it, for one
                   more request. So is a bus using the other pole of the boarding stop pair from the
                   one the Planner named: the board read is that pole's alone, for picking a train
-                  too. Reading the pair's other pole as well would find it, for one more request a
-                  refresh while waiting (Codex, PR #383).
+                  too, so another of the ride's bus routes that stops only at the pair's other pole
+                  is never followed either, picked or seen boarded (Codex, PR #451). Reading the
+                  pair's other pole as well would find both, for one more request a refresh while
+                  waiting (Codex, PR #383).
             - [ ] **Two trains between the same two stops**: the train the rider is on is the
                   newest that left the boarding stop and isn't behind them, judged by the stop each
                   calls at next. A later train that has caught up to between the same two stops calls
@@ -1343,11 +1345,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [x] **Every line between a ride's two stops** (maintainer, 2026-09-27): each ride also shows
             the unnamed lines serving its own boarding and getting-off stops (strict same stop, a
             road's two poles as one), as equals on its pill and with rows of their own.
-      - [ ] **On the way with a ride's other lines**: a started trip still follows only the
-            Planner's line for each ride, so boarding another of its lines isn't recognized, with
-            location or without. Following one needs that line's route to check and place its
-            train, and its line kept to look it up on, since TfL answers for a train on one line
-            only (Codex on #383).
+      - [x] **On the way with a ride's other lines**: a started trip follows a train of any of
+            the ride's lines its cards offer (maintainer, 2026-10-01: the cards' rule, `RideLines`
+            via `RideLineChecks`), picked or seen boarded, each judged against the ride as its own
+            line runs it, and keeps that line's ride to look the train up on, since TfL answers
+            for a train on one line only (Codex on #383).
       - [ ] (Consider, maintainer 2026-10-01) **A train held short of the stop reads "0" for
             minutes.** TfL keeps re-predicting a train held between two stations as about to
             arrive, so a trip's "Due in 0 min", its board and the departures list all read "0" until
