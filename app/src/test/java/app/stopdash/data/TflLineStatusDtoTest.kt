@@ -1,5 +1,7 @@
 package app.stopdash.data
 
+import app.stopdash.domain.LineStatus
+import app.stopdash.domain.PartClosure
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -75,6 +77,168 @@ class TflLineStatusDtoTest {
     }
 
     @Test
+    fun `the detail's affected stops are read, and kept with the shown alert`() {
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        // As TfL's detail answers a part suspension: the shut section's stops, ends included.
+        val entry = json.decodeFromString<TflLineStatusEntryDto>(
+            """{"statusSeverity": 3, "statusSeverityDescription": "Part Suspended", "reason": "No service between A and C.",
+               "disruption": {"category": "RealTime", "affectedRoutes": [],
+                 "affectedStops": [{"naptanId": "A", "commonName": "A Station"}, {"naptanId": "B"}, {"id": "C"}, {"naptanId": ""}]}}""",
+        )
+        assertEquals(setOf("A", "B", "C"), entry.affectedStopIds())
+        assertEquals(emptySet<String>(), status(3, "Part Suspended", "x").affectedStopIds())
+
+        val delays = status(9, "Minor Delays", "Minor delays.")
+        val stops = mapOf(entry.reason to listOf(listOf("A", "B", "C")), delays.reason to listOf(listOf("X", "Y")))
+        val result = checkNotNull(
+            line(delays, entry).toLineStatus(
+                monday,
+                sectionsOf = { stops[it.reason].orEmpty().anyWay() },
+            ) { entry -> if (entry.reason == delays.reason) setOf("outbound") else null },
+        )
+        // The suspension is shown, with its own stops, line-wide and the one way it applies alone.
+        assertEquals("Part Suspended", result.description)
+        assertEquals(listOf(listOf("A", "B", "C")), result.sections)
+        assertEquals(listOf(listOf("A", "B", "C")), result.forDirection("inbound").sections)
+        // Not looked up: no stops, but still a closure under way.
+        val unlooked = checkNotNull(line(entry).toLineStatus(monday))
+        assertEquals(emptyList<List<String>>(), unlooked.sections)
+        assertEquals(listOf("Part Suspended"), unlooked.closures.map { it.description })
+        // With no route's stops given there's no order to split or run the affected stops by: no
+        // section, so the alert is never placed.
+        assertEquals(emptyList<AffectedSection>(), entry.affectedSections())
+    }
+
+    @Test
+    fun `every part closure under way places, not only the one shown`() {
+        // Two part closures of one rank, on different stretches; and a delay whose detail names stops.
+        val first = status(5, "Part Closure", "No service between X and Y.")
+        val second = status(5, "Part Closure", "No service between A and C.")
+        val delays = status(6, "Severe Delays", "Severe delays between D and E.")
+        val stops = mapOf(
+            first.reason to listOf(listOf("X", "Y")),
+            second.reason to listOf(listOf("A", "B", "C")),
+            delays.reason to listOf(listOf("D", "E")),
+        )
+        val result = checkNotNull(line(first, second, delays).toLineStatus(monday, sectionsOf = { stops[it.reason].orEmpty().anyWay() }))
+        assertEquals("No service between X and Y.", result.fullText)
+        assertEquals(listOf(listOf("X", "Y"), listOf("A", "B", "C")), result.sections)
+        assertTrue(result.coversRide(listOf("A", "B")))
+        // A delay shuts nothing, so its stops never place.
+        assertFalse(result.coversRide(listOf("D", "E")))
+        // Shown behind a worse suspension elsewhere, the closure still places.
+        val suspended = status(3, "Part Suspended", "No service between P and Q.")
+        val behind = checkNotNull(
+            line(suspended, second).toLineStatus(monday, sectionsOf = { if (it.reason == second.reason) listOf(listOf("A", "B", "C")).anyWay() else emptyList() }),
+        )
+        assertEquals("Part Suspended", behind.description)
+        assertTrue(behind.coversRide(listOf("B", "C")))
+        // Each kept whole, so the one placed on a ride can be named: its own wording, not the shown one's.
+        assertEquals(listOf("Part Closure", "No service between A and C."), behind.closureOn(listOf("B", "C"))?.let { listOf(it.description, it.fullText) })
+        // Behind minor delays TfL numbers lower (9 to 11), a part closed still places.
+        val closed = status(11, "Part Closed", "No service between A and C.")
+        val minor = checkNotNull(
+            line(status(9, "Minor Delays", "Minor delays."), closed).toLineStatus(monday, sectionsOf = { if (it.reason == closed.reason) listOf(listOf("A", "B", "C")).anyWay() else emptyList() }),
+        )
+        assertEquals("Minor Delays", minor.description)
+        assertEquals("Part Closed", minor.closureOn(listOf("A", "B"))?.description)
+    }
+
+    @Test
+    fun `an alert's direction is its own entry's, not another's with the same text`() {
+        // A part closed one way, minor delays the other, worded the same: the delays' way carries no
+        // closure, which would otherwise stand in for the alert it shows (Codex, PR #446).
+        val closed = status(11, "Part Closed", "Engineering work.")
+        val delays = status(9, "Minor Delays", "Engineering work.")
+        val result = checkNotNull(
+            line(closed, delays).toLineStatus(monday) { entry -> if (entry.statusSeverity == 11) setOf("inbound") else setOf("outbound") },
+        )
+        assertEquals(listOf("Part Closed"), result.forDirection("inbound").closures.map { it.description })
+        assertEquals(emptyList<String>(), result.forDirection("outbound").closures.map { it.description })
+        assertEquals("Minor Delays", result.forDirection("outbound").description)
+    }
+
+    @Test
+    fun `a planned part closure keeps its sections for the day it starts`() {
+        // Read before it starts, it isn't under way; kept across that day, it places on its section
+        // without waiting for the next check (Codex, PR #446). A planned diversion has none to keep.
+        val later = "No service between A and C from 13 Oct 07:00 until 31 Oct 18:00."
+        val closed = status(5, "Part Closure", later).copy(disruption = TflLineDisruptionDto(category = "PlannedWork"))
+        val result = checkNotNull(line(closed).toLineStatus(monday, sectionsOf = { listOf(listOf("A", "B", "C")).anyWay() }))
+        assertEquals(emptyList<PartClosure>(), result.closures)
+        assertFalse(result.coversRide(listOf("A", "B")))
+        val started = result.asOf(java.time.LocalDate.of(2026, 10, 13))
+        assertTrue(started.coversRide(listOf("A", "B")))
+        assertEquals("Part Closure", started.closureOn(listOf("A", "B"))?.description)
+        assertNull(checkNotNull(line(plannedWork("Road will be closed from 13 Oct 07:00. Buses will be diverted.")).toLineStatus(monday)).planned.single().closure)
+    }
+
+    @Test
+    fun `a direction's status keeps only its own sections, or those of no stated direction`() {
+        // One closure both ways, shutting A–B the same way round in both (a bus's one-way loop), but
+        // TfL names that stretch on the outbound route only: an inbound ride round the loop isn't
+        // placed on it, and with its direction unknown it is (Codex, PR #446).
+        val closed = status(5, "Part Closure", "No service between A and B.")
+        val outbound = checkNotNull(
+            line(closed).toLineStatus(monday, sectionsOf = { listOf(AffectedSection("outbound", listOf("A", "B"))) }) { setOf("inbound", "outbound") },
+        )
+        assertTrue(outbound.forDirection("outbound").coversRide(listOf("A", "B")))
+        assertFalse(outbound.forDirection("inbound").coversRide(listOf("A", "B")))
+        assertTrue(outbound.coversRide(listOf("A", "B")))
+        // A section on a route TfL gave no direction for counts both ways.
+        val unstated = checkNotNull(
+            line(closed).toLineStatus(monday, sectionsOf = { listOf(AffectedSection("", listOf("A", "B"))) }) { setOf("inbound", "outbound") },
+        )
+        assertTrue(unstated.forDirection("inbound").coversRide(listOf("A", "B")))
+    }
+
+    @Test
+    fun `a diversion read from a catch-all's reason is never placed, though it ranks with a part closure`() {
+        val diverted = status(0, "Special Service", "Buses diverted between A and C.")
+        val closed = status(5, "Part Closure", "No service between A and C.")
+        val sections = { _: TflLineStatusEntryDto -> listOf(listOf("A", "B", "C")).anyWay() }
+        val diversion = checkNotNull(line(diverted).toLineStatus(monday, sectionsOf = sections))
+        assertEquals("Diversion", diversion.description)
+        assertEquals(5, diversion.severity)
+        assertEquals(emptyList<List<String>>(), diversion.sections)
+        assertEquals(emptyList<PartClosure>(), diversion.closures)
+        assertFalse(diversion.coversRide(listOf("A", "B")))
+        // A part closure TfL words itself, with the same section, is.
+        val closure = checkNotNull(line(closed).toLineStatus(monday, sectionsOf = sections))
+        assertTrue(closure.coversRide(listOf("A", "B")))
+    }
+
+    @Test
+    fun `an alert's sections are its affected stops' unbroken runs along each affected route`() {
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        fun route(direction: String, vararg stops: String) =
+            stops.joinToString(prefix = "{\"direction\": \"$direction\", \"routeSectionNaptanEntrySequence\": [", postfix = "]}") {
+                """{"ordinal": 1, "stopPoint": {"naptanId": "$it"}}"""
+            }
+        // One alert naming two sections, A–B and D–E, on a route that also calls at C between them;
+        // the route back lists the same sections the other way; a third route gives no direction. TfL's
+        // affected stops are unordered.
+        val entry = json.decodeFromString<TflLineStatusEntryDto>(
+            """{"statusSeverity": 3, "reason": "No service between A and B, and D and E.",
+               "disruption": {"affectedRoutes": [${route("outbound", "A", "B", "C", "D", "E")}, ${route("Inbound", "E", "D", "C", "B", "A")}, ${route("", "X", "A", "B")}],
+                 "affectedStops": [{"naptanId": "E"}, {"naptanId": "A"}, {"naptanId": "D"}, {"naptanId": "B"}]}}""",
+        )
+        // Each run in its route's order and with its route's direction, the way back its own; X isn't
+        // affected, so the third route's run is A–B, with no direction.
+        assertEquals(
+            listOf(
+                AffectedSection("outbound", listOf("A", "B")),
+                AffectedSection("outbound", listOf("D", "E")),
+                AffectedSection("inbound", listOf("E", "D")),
+                AffectedSection("inbound", listOf("B", "A")),
+                AffectedSection("", listOf("A", "B")),
+            ),
+            entry.affectedSections(),
+        )
+        assertEquals(emptyList<AffectedSection>(), status(3, "Part Suspended", "x").affectedSections())
+    }
+
+    @Test
     fun `an alert that can't be dated counts as under way`() {
         val result = checkNotNull(
             line(status(0, "Special Service", "Buses diverted due to a burst water main.")).toLineStatus(monday),
@@ -117,7 +281,7 @@ class TflLineStatusDtoTest {
         val south = "Road closed: southbound buses will be diverted."
         val result = checkNotNull(
             line(status(0, "Special Service", north), status(0, "Special Service", south))
-                .toLineStatus { reason -> if (reason == north) setOf("inbound") else setOf("outbound") },
+                .toLineStatus { entry -> if (entry.reason == north) setOf("inbound") else setOf("outbound") },
         )
         assertEquals(north, result.forDirection("inbound").fullText)
         assertEquals(south, result.forDirection("outbound").fullText)
@@ -152,7 +316,7 @@ class TflLineStatusDtoTest {
         val unknown = "Buses will be diverted and miss stops."
         val result = checkNotNull(
             line(status(0, "Special Service", north), status(0, "Special Service", unknown))
-                .toLineStatus { reason -> if (reason == north) setOf("inbound") else null },
+                .toLineStatus { entry -> if (entry.reason == north) setOf("inbound") else null },
         )
         assertEquals(unknown, result.forDirection("outbound").fullText)
     }
@@ -358,7 +522,7 @@ class TflLineStatusDtoTest {
         val split = line(
             status(6, "Severe Delays", "Signal failure northbound."),
             status(9, "Minor Delays", "Train fault southbound."),
-        ).toLineStatus { reason -> if ("northbound" in reason) setOf("inbound") else setOf("outbound") }!!
+        ).toLineStatus { entry -> if ("northbound" in entry.reason) setOf("inbound") else setOf("outbound") }!!
         val north = split.forDirection("inbound")
         assertEquals(north, split.copy(byDirection = emptyMap()))
         val snapshot = app.stopdash.domain.DeparturesSnapshot(
@@ -373,3 +537,9 @@ class TflLineStatusDtoTest {
         assertEquals(false, live.forDirection("inbound").disrupted)
     }
 }
+
+// Every stretch the status's closures shut, in the order they came.
+private val LineStatus.sections: List<List<String>> get() = closures.flatMap { it.sections }
+
+// Sections TfL gave for routes of no stated direction, counted both ways.
+private fun List<List<String>>.anyWay(): List<AffectedSection> = map { AffectedSection("", it) }

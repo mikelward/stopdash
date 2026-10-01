@@ -34,6 +34,14 @@ import java.time.LocalDate
  * [planned] is the line's work that hasn't started yet ([AlertStart]): kept apart from the
  * disruption, so a closure next month doesn't flag today's buses, but still there for a row to note
  * and its page to spell out. A line with only planned work is a good service with [planned] set.
+ *
+ * [closures] are **every** part closure or part suspension under way ([PART_SEVERITIES]) that TfL
+ * words itself ([PartClosure]), not only the one shown: two can be under way at once on different
+ * stretches, and the one shown is whichever TfL ranks worse, which can be a milder status TfL numbers
+ * lower (Codex, PR #446). Each is kept whole, its wording with the stretches TfL places it on, so one
+ * placed on a ride can be named for what it is ([closureOn]), and one behind a milder alert is still
+ * a closure under way. A label read from a catch-all's reason (a diversion,
+ * [ResolvedDisruption.inferred]) is none.
  */
 data class LineStatus(
     val lineId: String,
@@ -46,6 +54,7 @@ data class LineStatus(
     // The shown disruption resolved only to the generic fallback label ([ResolvedDisruption.isFallback]):
     // kept so a status re-ranked later ([asOf]) orders it as a fresh parse would (Codex, PR #337).
     val isFallback: Boolean = false,
+    val closures: List<PartClosure> = emptyList(),
 ) {
     /** True when TfL reports anything other than a good service on this line. */
     val disrupted: Boolean get() = severity != GOOD_SERVICE
@@ -62,6 +71,23 @@ data class LineStatus(
 
     /** This status and each per-direction one: every alert a row could show for the line. */
     val allStatuses: List<LineStatus> get() = listOf(this) + byDirection.values
+
+    /**
+     * The worst of [closures] TfL places on a ride calling at [calls] ([PartClosure.coversRide]), or
+     * null when none is, or none is known.
+     */
+    fun closureOn(calls: List<String>): PartClosure? =
+        closures.filter { it.coversRide(calls) }.minByOrNull { it.severity }
+
+    /** Whether any of [closures] is placed on a ride calling at [calls] ([closureOn]). */
+    fun coversRide(calls: List<String>): Boolean = closureOn(calls) != null
+
+    /**
+     * This status naming [closure] instead of the alert shown: a closure placed on a ride is what the
+     * rider is told of there, whatever TfL ranks above it.
+     */
+    fun naming(closure: PartClosure): LineStatus =
+        copy(severity = closure.severity, description = closure.description, fullText = closure.fullText, isFallback = false, byDirection = emptyMap())
 
     /**
      * This status as of [today] in London: planned work whose day has come counts as under way,
@@ -81,6 +107,9 @@ data class LineStatus(
             description = worst.label,
             isFallback = worst.isFallback,
             fullText = worst.fullText.ifBlank { null },
+            // [closures] kept: they are still under way, whichever alert now shows. A started part
+            // closure joins them, placed by the sections it was planned with.
+            closures = (closures + due.mapNotNull { it.closure }).distinct(),
             byDirection = split,
             planned = planned - due.toSet(),
         )
@@ -89,6 +118,12 @@ data class LineStatus(
     companion object {
         /** TfL's `statusSeverity` for a normal, undisrupted line. */
         const val GOOD_SERVICE = 10
+
+        /**
+         * TfL `statusSeverity` values for a line shut over part of its length (part suspended, part
+         * closure, part closed): the ones whose stops TfL names place them ([closures]).
+         */
+        val PART_SEVERITIES: Set<Int> = setOf(3, 5, 11)
 
         /** [statuses] each as of [now]'s day in London ([asOf]). */
         fun asOf(statuses: Map<String, LineStatus>, now: java.time.Instant): Map<String, LineStatus> {
@@ -122,6 +157,34 @@ data class LineStatus(
 }
 
 /**
+ * A part closure or part suspension under way ([LineStatus.PART_SEVERITIES]): its [severity],
+ * [description] and [fullText] as an alert shows them, and the [sections] TfL names it as shutting.
+ * They come from the same detail lookup as an alert's direction: each section's stops in the order its
+ * route runs them, its ends included, a section apart from another kept apart. Empty while not looked
+ * up, or where TfL gave nothing to order the stops by, so they say only where a closure is, never where
+ * one isn't.
+ */
+data class PartClosure(
+    val severity: Int,
+    val description: String,
+    val fullText: String?,
+    val sections: List<List<String>>,
+) {
+    /**
+     * Whether it's placed on a ride calling at [calls] in order (where it boards, then each stop
+     * through where it gets off): two calls in a row both in one of its [sections], the same way
+     * round, so the ride runs through a section it names in the direction it's shut. A ride that only
+     * starts or ends at a section's edge isn't: trains still run up to it. Nor is one running between
+     * two sections, or through one the other way. A section on a loop can name a stop twice: the
+     * stretch is there if any of its calls at the second stop follows any at the first (Codex, PR #446).
+     */
+    fun coversRide(calls: List<String>): Boolean =
+        calls.zipWithNext().any { (from, to) ->
+            sections.any { section -> section.indexOf(from).let { at -> at >= 0 && section.lastIndexOf(to) > at } }
+        }
+}
+
+/**
  * A line alert for work that hasn't started ([AlertStart]): its chip [label] ("Diversion"), TfL's
  * [fullText], the day it [startsOn] in London, and its [severity] on TfL's scale and [isFallback], for
  * ranking it when that day comes ([LineStatus.asOf]).
@@ -130,6 +193,10 @@ data class LineStatus(
  * carried: a check the widget stores drops TfL's prose, as it does a status's, so the identity a
  * dismissal is matched against is kept instead. Null for one read from TfL, whose identity is
  * worked out from the alert itself.
+ *
+ * [closure] is the part closure or suspension it becomes when it starts ([LineStatus.closures]),
+ * with the sections TfL places it on, so a status kept across that day places it at once rather than
+ * after its next check (Codex, PR #446). Null for any other alert, and where the widget stores it.
  */
 data class PlannedAlert(
     val label: String,
@@ -140,6 +207,7 @@ data class PlannedAlert(
     // when it starts, as it would in a fresh parse (Codex, PR #337).
     val isFallback: Boolean = false,
     val fingerprint: String? = null,
+    val closure: PartClosure? = null,
 ) {
     companion object {
         /** TfL's severity for a part closure: planned work's usual grade. */

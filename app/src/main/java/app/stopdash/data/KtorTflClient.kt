@@ -467,9 +467,11 @@ class KtorTflClient(
         lookUpAlertDirections(lines)
         val directions = alertDirections?.takeIf { alertDirectionScope != null }
         return lines.mapNotNull { line ->
-            line.toLineStatus(clock(), onBadDate = { warn("line ${line.id}: unreadable alert posting date") }) { reason ->
-                directions?.directionsOf(line.id, reason)
-            }
+            line.toLineStatus(
+                clock(),
+                onBadDate = { warn("line ${line.id}: unreadable alert posting date") },
+                sectionsOf = { entry -> directions?.sectionsOf(line.id, entry).orEmpty() },
+            ) { entry -> directions?.directionsOf(line.id, entry) }
                 // Marked while a lookup for it runs, so the caller asks again next refresh instead
                 // of reusing this unsplit answer for its whole reuse window (Codex, PR #334).
                 ?.let { if (directions?.anyUnknown(line) == true) it.copy(awaitingDirections = true) else it }

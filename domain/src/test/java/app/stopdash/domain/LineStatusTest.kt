@@ -2,7 +2,9 @@ package app.stopdash.domain
 
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LineStatusTest {
@@ -64,6 +66,72 @@ class LineStatusTest {
         val suspended = LineStatus("blue", 3, "Suspended", fullText = "Suspended.", planned = listOf(closure))
         assertEquals("Suspended", suspended.asOf(today).description)
         assertEquals(emptyList<PlannedAlert>(), suspended.asOf(today).planned)
+    }
+
+    @Test
+    fun `the closures under way stay, whichever alert a started one makes the worst`() {
+        val closures = listOf(PartClosure(3, "Part Suspended", "No trains A to B.", listOf(listOf("A", "B"))))
+        // The suspension stays worst: its closure stays.
+        val suspended = LineStatus("blue", 3, "Part Suspended", fullText = "No trains A to B.", planned = listOf(closure), closures = closures)
+        assertEquals(closures, suspended.asOf(today).closures)
+        // The started closure now shows over the part closed, which is still under way: it still places.
+        val behind = LineStatus("blue", 11, "Part Closed", fullText = "No trains A to B.", planned = listOf(closure), closures = closures)
+        assertEquals("Part Closure", behind.asOf(today).description)
+        assertEquals(closures, behind.asOf(today).closures)
+    }
+
+    @Test
+    fun `a planned part closure that starts joins the closures, placed by its sections`() {
+        // Kept across the day it starts (Codex, PR #446): it places on the stretch it was planned for,
+        // beside the closure already under way, without waiting for the next check.
+        val under = PartClosure(3, "Part Suspended", "No trains X to Y.", listOf(listOf("X", "Y")))
+        val planned = closure.copy(closure = PartClosure(5, "Part Closure", "Closed from 13 October.", listOf(listOf("A", "B", "C"))))
+        val status = LineStatus("blue", 9, "Minor Delays", fullText = "Minor delays.", planned = listOf(planned, later), closures = listOf(under))
+        assertFalse(status.coversRide(listOf("A", "B")))
+        val now = status.asOf(today)
+        assertEquals(listOf(under, planned.closure), now.closures)
+        assertTrue(now.coversRide(listOf("A", "B")))
+        assertEquals("Part Closure", now.closureOn(listOf("A", "B"))?.description)
+        // Not before its day.
+        assertFalse(status.asOf(today.minusDays(1)).coversRide(listOf("A", "B")))
+    }
+
+    @Test
+    fun `a ride runs through an alert's section only between two of its stops in a row`() {
+        val closure = PartClosure(3, "Part Suspended", null, listOf(listOf("B", "C", "D"), listOf("F", "G")))
+        assertTrue(closure.coversRide(listOf("A", "B", "C")))
+        assertTrue(closure.coversRide(listOf("C", "D", "E")))
+        // Up to its edge, or from it: trains still run there.
+        assertFalse(closure.coversRide(listOf("A", "B")))
+        assertFalse(closure.coversRide(listOf("D", "E", "F")))
+        // Calling at one, then elsewhere, then another: not between them.
+        assertFalse(closure.coversRide(listOf("B", "X", "D")))
+        assertFalse(closure.coversRide(listOf("B")))
+        assertFalse(LineStatus("blue", 3, "Part Suspended").coversRide(listOf("B", "C")))
+        // Between two sections: from one's edge to the other's.
+        assertFalse(closure.coversRide(listOf("D", "F")))
+        assertTrue(closure.coversRide(listOf("E", "F", "G")))
+        // Through a section the other way round: shut B to D, not D to B.
+        assertFalse(closure.coversRide(listOf("E", "D", "C", "B")))
+        assertTrue(closure.coversRide(listOf("B", "D")))
+        // A loop's section naming a stop twice: B then A is its closing stretch.
+        val loop = PartClosure(3, "Part Suspended", null, listOf(listOf("A", "B", "A")))
+        assertTrue(loop.coversRide(listOf("B", "A")))
+        assertTrue(loop.coversRide(listOf("A", "B")))
+        assertFalse(loop.coversRide(listOf("B", "C")))
+    }
+
+    @Test
+    fun `the worst closure placed on a ride is the one named there`() {
+        val closed = PartClosure(11, "Part Closed", "No trains A to C.", listOf(listOf("A", "B", "C")))
+        val suspended = PartClosure(3, "Part Suspended", "No trains B to C.", listOf(listOf("B", "C")))
+        val elsewhere = PartClosure(2, "Suspended", null, listOf(listOf("X", "Y")))
+        val status = LineStatus("blue", 9, "Minor Delays", fullText = "Minor delays.", closures = listOf(closed, suspended, elsewhere))
+        assertEquals(suspended, status.closureOn(listOf("A", "B", "C")))
+        assertEquals(closed, status.closureOn(listOf("A", "B")))
+        assertEquals(null, status.closureOn(listOf("C", "D")))
+        val named = status.naming(closed)
+        assertEquals(listOf(11, "Part Closed", "No trains A to C."), listOf(named.severity, named.description, named.fullText))
     }
 
     @Test

@@ -1578,11 +1578,40 @@ them there:
   the route ends at). It keeps the rider from waiting for a train that won't come. It's **named for
   what's known, not a verdict** that the route is dead ("Victoria: Part Suspended", "Example Road
   closed"), and opens the trip. It fires on **high** signals (a coming line closed, suspended or not
-  running, as a trip's ranking counts it; a stop still to reach that a notice in force says is closed
-  or moved) and **medium** ones (severe delays, a part suspension or part closure: TfL's affected
-  stops aren't kept, so one can't yet be placed on the leg's own stretch to make it high; and **no
-  train predicted at a change** the rider is **five minutes** or less from boarding at, "Jubilee: none
-  soon at Bond Street"). Minor delays and the like never alert. That last is read off the board at
+  running, as a trip's ranking counts it; a part suspension or part closure **TfL places on the leg's
+  own stretch**; a stop still to reach that a notice in force says is closed or moved) and **medium**
+  ones (severe delays; a part suspension or part closure placed elsewhere on the line, or not placed
+  yet; and **no train predicted at a change** the rider is **five minutes** or less from boarding at,
+  "Jubilee: none soon at Bond Street"). Minor delays and the like never alert. TfL places a part
+  closure by the stops it names as affected, taken section by section: each unbroken run of them
+  along a route TfL says it affects, in the order that route runs, the section's two ends included.
+  So two sections apart are never read as one shutting the stretch between them, and each carries
+  its direction: a section shut one way doesn't place a ride the other way through the same
+  stations, nor, where the rider's direction is known, one TfL scoped to the other direction's route
+  even where both run it the same way round (a bus's one-way loop). The leg runs through a section when two of its calls in a row, from where it boards
+  through where it gets off, are both in it the same way round; a leg the Planner gave no stops along
+  isn't placed, since its two ends alone don't say which way it runs (a branch, a loop), nor is a bus
+  leg, whose stops the Planner gives as stop areas TfL's sections never name (TfL words bus alerts as
+  a catch-all, which isn't placed anyway). A leg that
+  only meets a section's edge doesn't (trains still run up to it); one placed elsewhere stays medium rather than dropped, as
+  TfL's section may not be all a closure touches; where TfL gives no route to order the stops
+  by, nothing is placed; and nor is a diversion read out of a catch-all's text (*Disruptions*), which
+  ranks beside a part closure but isn't one. Every part closure or suspension under way on the line
+  places, not only the one the line's warning names: two can be under way at once on different
+  stretches, and the warning names whichever TfL ranks worse, which can be milder (TfL numbers minor
+  delays above "Part Closed"). A planned one keeps the stretch it was planned for, so a check kept
+  across the day it starts places it at once, not after the next check. One placed on the leg is what the alert says, **named for itself**
+  ("Victoria: Part Closed"), whatever the line shows above it; a line already high stays as it is, and
+  isn't heard again for it. One not placed on the leg is medium as any other, and behind an alert
+  that never alerts (minor delays) it's still said, named for itself. An alert TfL gives no reason for has no text to tie its detail to, so
+  it's never placed. The sections come
+  with the alert's direction, from the one lookup of its detail (*Disruptions*), looked up again when
+  the same text comes back as another kind of alert (a new severity), so the first check
+  after a new alert, before that lookup lands, calls it medium; placing it on the next is an
+  escalation, heard as one, though a rider who dismissed the alert has already read where it is, so
+  the dismissal holds, for as long as that closure is under way, even once a milder alert shows over
+  it. Dismissing a different alert the line shows doesn't hide a closure placed on the leg, which the
+  rider was never shown. No train predicted at a change is read off the board at
   the stop the ride boards at, for its own line: no train listed there that the line's route doesn't
   send another way, a train it can't place counting as predicted, as does one leaving before the rider
   can get there (that may only be where the predictions end). It's a change's only, a ride with one
@@ -1744,13 +1773,19 @@ the line's stored check keeps the work to come with the rest of its status, aged
 northbound diversion says nothing about the buses heading south, and flagging them sends the rider
 reading about a stretch they won't touch. TfL names an alert's direction only in its detailed status
 response, ~40× the regular one, so the refresh stays plain and each new alert's direction is looked
-up once in the background and remembered by its text (reworded text is a new alert). A lookup that
+up once in the background and remembered by its text while it's shown (reworded text, or the same
+text back after it was gone, is a new alert: TfL reuses wording for a later closure). A lookup that
 fails is tried again a minute later, then after twice as long each time, up to half an hour, so TfL
 failing it over and over costs a detailed response every so often, not one every refresh; a new alert
 on the line is still looked up at once, its wait starting over. Until that
 answer arrives, or if it fails, or where TfL scopes an alert to no direction or a row has none (most
 rail predictions), the alert shows in both directions, as before — the split only ever hides an
-alert TfL itself says is for the other way. A trip's cards follow it too, by the direction each ride's
+alert TfL itself says is for the other way. The same answer names the stops each alert affects, kept
+with it, section by section, for a trip on the way to place a part closure on a leg (*On the way*):
+an entry's stops and directions stay its own, apart from another with the same text that TfL ranks
+differently or files as planned work, so a closure planned for later never places one under way, and
+a closure one way never counts for minor delays the other way worded the same; and the same text
+come back as another kind (a new severity) is looked up again, once. A trip's cards follow it too, by the direction each ride's
 trains are seen going: a line not seen along its ride yet, or seen going both ways, keeps its
 line-wide alert. The widget and watch do the same: the widget's
 snapshot keeps each direction's status beside the line-wide one, the watch receives them with

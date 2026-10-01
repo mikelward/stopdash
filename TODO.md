@@ -1154,8 +1154,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               contract goes into SPEC's *On the way* with the change that builds it:
               - **High:** a coming leg's line closed or suspended (as the trip already counts it),
                 or part closed or part suspended where TfL places it on the leg's own stretch
-                (which needs the affected stops kept: `LineStatus` keeps only the direction today,
-                so until it does every part closure or part suspension is Medium); a stop the
+                (by the affected stops TfL names, kept with the alert's direction); a stop the
                 route still has to reach closed or moved: where a coming leg boards or gets off, or
                 where a walk ends (a change between stations, or the stop the route ends at), as
                 the trip screen checks them (*Closure checks where the rider gets off* above); or
@@ -1237,8 +1236,22 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 alone, one request a refresh for those minutes; the trip's own board once they walk or
                 change there. A bus whose route uses the other pole of the stop pair isn't on that
                 board (the pick's own limit, *A train the board never listed* below).
-          - [ ] **A part closure or suspension placed on the leg's own stretch** (High, above):
-                needs `LineStatus` to keep TfL's affected stops; until then every one is Medium.
+          - [x] **A part closure or suspension placed on the leg's own stretch** (High, above):
+                the direction lookup now keeps the sections TfL names each alert as shutting, each
+                an unbroken run of its affected stops along an affected route, in its order and
+                with its direction (`affectedSections`, `LineAlertDirections.sectionsOf`); every
+                part closure under way is kept whole with its own (`LineStatus.closures`,
+                `PartClosure.sections`). One with a section taking in two of a coming leg's calls
+                in a row, the same way round, is High and named for itself
+                (`RouteDisruption.lineSignal`, `PartClosure.coversRide`). Placed elsewhere, or not
+                placed yet, it stays Medium.
+          - [ ] **Placing a part closure on a bus leg** (Codex, #446): a bus leg's path is stop
+                areas (`490G…`) while TfL's sections are poles, so `rideCalls` never finds two
+                calls in a section and a bus leg stays Medium (the safe side). Unreachable today:
+                every disrupted bus line in TfL's status (2026-10-01, 278 of 675) is a severity-0
+                "Special Service", whose inferred label is never placed. If TfL starts wording bus
+                part closures, map the path's areas to the route's poles (its line sequence, as
+                the trip's cards already load) before `coversRide`.
           - [ ] **Planning again from where the rider is** (the re-plan tier, and the alert
                 offering it): waits on *Explore how a trip recalculates mid-route* and on the trip
                 keeping its destination as chosen, above.

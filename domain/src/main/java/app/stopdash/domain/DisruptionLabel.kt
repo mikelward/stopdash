@@ -20,6 +20,10 @@ data class ResolvedDisruption(
     // prose reaches [LineStatus.fullText] for the route detail view — the compact label is
     // [label], the prose is this. Blank when TfL gave no reason for the entry.
     val fullText: String = "",
+    // The label was read out of a catch-all's reason ("Special Service" → "Diversion"), not worded
+    // by TfL: its severity is ours, borrowed from the closure it ranks beside, so it's never taken
+    // for a part closure TfL places on a stretch (Codex, PR #446).
+    val inferred: Boolean = false,
 )
 
 /**
@@ -65,8 +69,8 @@ fun resolveDisruption(
     return DISRUPTION_KEYWORDS
         .filter { keyword -> keyword.needles.any { it in text } }
         .minByOrNull { it.severity }
-        ?.let { ResolvedDisruption(it.label, it.severity, fullText = reason.trim()) }
-        ?: ResolvedDisruption(SERVICE_ALERT_LABEL, SERVICE_ALERT_SEVERITY, isFallback = true, fullText = reason.trim())
+        ?.let { ResolvedDisruption(it.label, it.severity, fullText = reason.trim(), inferred = true) }
+        ?: ResolvedDisruption(SERVICE_ALERT_LABEL, SERVICE_ALERT_SEVERITY, isFallback = true, fullText = reason.trim(), inferred = true)
 }
 
 /**

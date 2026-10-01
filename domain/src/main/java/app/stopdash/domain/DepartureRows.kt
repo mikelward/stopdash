@@ -556,6 +556,9 @@ object DepartureRows {
      * Given [now], each status as rows draw it then ([LineStatus.asOf]) counts too: planned work
      * whose day has come is shown, and so dismissed, as a disruption, and a reused status still
      * holds it as planned — pruning that dismissal would bring the ⚠ straight back (Codex, PR #337).
+     * So does each part closure still under way behind the alert shown ([LineStatus.closures]): one
+     * dismissed while it showed is still the rider's dismissal once a milder alert TfL ranks above it
+     * shows, and a trip's "route disruption" names it again where it's placed on a ride (Codex, PR #446).
      */
     fun liveLineStatusAlerts(lineStatuses: Map<String, LineStatus>, now: Instant? = null): Set<DismissedAlert> =
         // Each direction's alert counts too: a row shows its own direction's, so that is what a
@@ -564,7 +567,8 @@ object DepartureRows {
             .flatMap { it.allStatuses }.flatMapTo(mutableSetOf()) { status ->
             // A planned alert is one too, so its dismissal isn't pruned while it's still coming.
             listOfNotNull(DismissedAlert.ofLineStatus(status).takeIf { status.disrupted }) +
-                status.planned.map { DismissedAlert.ofPlanned(status.lineId, it) }
+                status.planned.map { DismissedAlert.ofPlanned(status.lineId, it) } +
+                status.closures.map { DismissedAlert.ofLineStatus(status.naming(it)) }
         }
 
     /**

@@ -1799,6 +1799,18 @@ class DepartureRowsTest {
     }
 
     @Test
+    fun `a part closure under way behind the alert shown stays live, so its dismissal holds`() {
+        // Dismissed while it showed; minor delays, which TfL numbers above "Part Closed", now show over
+        // it. Pruning its dismissal would sound it again on a trip it's placed on (Codex, PR #446).
+        val closure = PartClosure(11, "Part Closed", "No service between A and C.", listOf(listOf("A", "B", "C")))
+        val minor = LineStatus("victoria", 9, "Minor Delays", "Minor delays.", closures = listOf(closure))
+        val shownBefore = LineStatus("victoria", 11, "Part Closed", "No service between A and C.")
+        val live = DepartureRows.liveLineStatusAlerts(mapOf("victoria" to minor))
+        assertTrue(DismissedAlert.ofLineStatus(shownBefore) in live)
+        assertTrue(DismissedAlert.ofLineStatus(minor) in live)
+    }
+
+    @Test
     fun `a dismissed closure shows again when TfL extends or moves its window`() {
         fun rowsWith(vararg notices: StopDisruption) = DepartureRows.across(
             listOf(
