@@ -40,15 +40,25 @@ object RouteDisruption {
          */
         val key: String
 
-        /** The line [lineId] (named [lineName]) the leg rides has an alert: [status], as shown on the trip. */
+        /**
+         * The line [lineId] (named [lineName]) the leg rides has an alert: [status], as shown on the trip,
+         * or, [placed], a part closure TfL places on the leg's own stretch, which raised it to [tier]
+         * ([lineSignal]).
+         */
         data class Line(
             override val legIndex: Int,
             val lineId: String,
             val lineName: String,
             val status: LineStatus,
             override val tier: Tier,
+            val placed: Boolean = false,
         ) : Signal {
-            override val key: String get() = DismissedAlert.ofLineStatus(status).let { "line/$legIndex/${it.alertKey}/${it.contentSignature}" }
+            // Placing it is an escalation the rider hasn't heard: the first check after a new alert,
+            // before its detail lands, finds it unplaced, so a placed one is a key of its own and is heard
+            // again when the next check places it (Codex, PR #446).
+            override val key: String get() = DismissedAlert.ofLineStatus(status).let {
+                "line/$legIndex/${it.alertKey}/${it.contentSignature}" + if (placed) "/placed" else ""
+            }
         }
 
         /**
@@ -110,15 +120,52 @@ object RouteDisruption {
     /**
      * TfL `statusSeverity` values that are a signal, and how sure: a line not running at all is
      * [Tier.HIGH] (as a trip's ranking counts it, [TripTiming.NOT_RUNNING_SEVERITIES]); severe delays,
-     * a part suspension or a part closure is [Tier.MEDIUM]. A part closure would be High where TfL
-     * places it on the leg's own stretch, but the affected stops aren't kept, so every one is Medium.
-     * Anything else (minor delays, a reduced service) never alerts.
+     * a part suspension or a part closure is [Tier.MEDIUM], a part one raised to High where TfL places
+     * it on the leg's own stretch ([lineSignal]). Anything else (minor delays, a reduced service) never
+     * alerts.
      */
     fun tierOf(severity: Int): Tier? = when (severity) {
         in TripTiming.NOT_RUNNING_SEVERITIES -> Tier.HIGH
-        PART_SUSPENDED, PART_CLOSURE, SEVERE_DELAYS, PART_CLOSED -> Tier.MEDIUM
+        in PART_SEVERITIES, SEVERE_DELAYS -> Tier.MEDIUM
         else -> null
     }
+
+    /**
+     * What the line alert [status] (shown for the coming leg [index], [leg]) is a signal of, if
+     * anything: [status] at its own [tierOf], unless a part closure or suspension TfL places on the
+     * leg's own stretch ([LineStatus.closureOn], from where it boards through where it gets off) would
+     * say more. Then that closure is the signal, [Tier.HIGH] and named for what it is, even behind an
+     * alert TfL ranks above it that never alerts (minor delays) or is only Medium (severe delays):
+     * [Signal.Line.placed] only so, when placing it raised the tier. Shown already at High, the alert
+     * stands as it is, and isn't heard again for being placed (Codex, PR #446). One whose stretch
+     * isn't known, or lies elsewhere on the line, stays Medium: TfL's section may not be all a closure
+     * touches, so it's never dropped, even behind an alert that never alerts, which it then stands in
+     * for, named for itself (Codex, PR #446). A closure the rider dismissed (as the alert shown)
+     * doesn't come back for being placed: its text already names its stretch.
+     */
+    fun lineSignal(index: Int, leg: TripLeg, status: LineStatus, dismissed: Set<DismissedAlert>): Signal.Line? {
+        val shown = status.remainingAfter(dismissed)?.takeIf { it.disrupted }
+        val tier = shown?.let { tierOf(it.severity) }
+        if (shown != null && tier == Tier.HIGH) return Signal.Line(index, leg.lineId, leg.lineName, shown, tier)
+        // The closures under way the rider hasn't dismissed, named for themselves.
+        fun undismissed(closure: PartClosure) = status.naming(closure).takeIf { DismissedAlert.ofLineStatus(it) !in dismissed }
+        status.closures.filter { it.coversRide(rideCalls(leg)) }.sortedBy { it.severity }.firstNotNullOfOrNull(::undismissed)
+            ?.let { return Signal.Line(index, leg.lineId, leg.lineName, it, Tier.HIGH, placed = true) }
+        if (shown != null && tier != null) return Signal.Line(index, leg.lineId, leg.lineName, shown, tier)
+        return status.closures.sortedBy { it.severity }.firstNotNullOfOrNull(::undismissed)
+            ?.let { Signal.Line(index, leg.lineId, leg.lineName, it, Tier.MEDIUM) }
+    }
+
+    /**
+     * Where [leg] calls, in order: where it boards, its path, and where it gets off. The path runs
+     * through the end, but may leave it out (as [TripRoute.passedAt] allows), so the end is added
+     * unless the path already ends with it: without it, the last stretch would never be placed (Codex,
+     * PR #446). A loop's path can pass the end earlier on, so it's the path's last call that counts. None for a leg the Planner gave no path for: its two ends alone don't say which way
+     * it runs between them (a branch, a loop), so nothing is placed on it (Codex, PR #446).
+     */
+    fun rideCalls(leg: TripLeg): List<String> =
+        if (leg.path.isEmpty()) emptyList()
+        else (listOf(leg.fromId) + leg.path + listOf(leg.toId).filterNot { it == leg.path.last() }).filter { it.isNotBlank() }
 
     /** The coming legs' lines: the ones whose status the alert needs, in route order. */
     fun comingLines(trip: ActiveTrip): List<String> =
@@ -177,10 +224,7 @@ object RouteDisruption {
         val shown = LineStatus.asOf(statuses, now)
         val lines = comingRides(trip).mapNotNull { (i, leg) ->
             val status = shown[leg.lineId] ?: return@mapNotNull null
-            val scoped = directions[i]?.let(status::forDirection) ?: status
-            val left = scoped.remainingAfter(dismissed)?.takeIf { it.disrupted } ?: return@mapNotNull null
-            val tier = tierOf(left.severity) ?: return@mapNotNull null
-            Signal.Line(i, leg.lineId, leg.lineName, left, tier)
+            lineSignal(i, leg, directions[i]?.let(status::forDirection) ?: status, dismissed)
         }
         return ordered(lines + stopSignals(trip, progress, closures, places, dismissed, now))
     }
@@ -305,11 +349,11 @@ object RouteDisruption {
     private fun comingRides(trip: ActiveTrip): List<IndexedValue<TripLeg>> =
         trip.route.legs.withIndex().filter { (i, leg) -> i >= trip.legIndex && !leg.isWalk }
 
-    // TfL's `statusSeverity` names, for [tierOf].
-    private const val PART_SUSPENDED = 3
-    private const val PART_CLOSURE = 5
+    // TfL's `statusSeverity` for severe delays, for [tierOf].
     private const val SEVERE_DELAYS = 6
-    private const val PART_CLOSED = 11
+
+    // A line shut over part of its length, which TfL can place by the stops it names ([lineSignal]).
+    private val PART_SEVERITIES = LineStatus.PART_SEVERITIES
 }
 
 /**

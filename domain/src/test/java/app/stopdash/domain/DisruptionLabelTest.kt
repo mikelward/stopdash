@@ -20,7 +20,7 @@ class DisruptionLabelTest {
     @Test
     fun `names a bus diversion hidden behind Special Service`() {
         val reason = "Road will be closed for works. Buses will be diverted and will miss stops."
-        assertEquals(ResolvedDisruption("Diversion", 5, fullText = reason), resolveDisruption("Special Service", 0, reason))
+        assertEquals(ResolvedDisruption("Diversion", 5, fullText = reason, inferred = true), resolveDisruption("Special Service", 0, reason))
     }
 
     @Test
@@ -58,11 +58,11 @@ class DisruptionLabelTest {
         // A catch-all that named nothing is a true fallback (isFallback = true) — the one
         // thing sorted below every informative status regardless of severity.
         assertEquals(
-            ResolvedDisruption("Service Alert", 9, isFallback = true, fullText = "Planned engineering works this weekend."),
+            ResolvedDisruption("Service Alert", 9, isFallback = true, fullText = "Planned engineering works this weekend.", inferred = true),
             resolveDisruption("Special Service", 0, "Planned engineering works this weekend."),
         )
         assertEquals(
-            ResolvedDisruption("Service Alert", 9, isFallback = true),
+            ResolvedDisruption("Service Alert", 9, isFallback = true, inferred = true),
             resolveDisruption("Special Service", 0, ""),
         )
     }

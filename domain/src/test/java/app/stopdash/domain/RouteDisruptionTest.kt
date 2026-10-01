@@ -28,6 +28,10 @@ class RouteDisruptionTest {
     private fun status(line: String, severity: Int, description: String) = LineStatus(line, severity, description, "$description on the line")
     private fun good(line: String) = LineStatus(line, LineStatus.GOOD_SERVICE, "Good Service")
 
+    // This alert, TfL placing it on [sections] (each in the order its route runs).
+    private fun LineStatus.shutting(vararg sections: List<String>) =
+        copy(closures = listOf(PartClosure(severity, description, fullText, sections.toList())))
+
     private fun signals(
         trip: ActiveTrip = this.trip,
         progress: TripProgress? = waiting,
@@ -66,6 +70,72 @@ class RouteDisruptionTest {
         assertNull(RouteDisruption.tierOf(9))
         assertNull(RouteDisruption.tierOf(7))
         assertEquals(emptyList<Signal>(), signals(statuses = mapOf("red" to status("red", 9, "Minor Delays"))))
+    }
+
+    @Test
+    fun `a part closure TfL places on the leg's own stretch is high, elsewhere or unplaced medium`() {
+        // [stops] is one section, in the order its route runs.
+        fun tierWith(severity: Int, description: String, stops: List<String>) =
+            signals(statuses = mapOf("red" to status("red", severity, description).let { if (stops.isEmpty()) it else it.shutting(stops) }, "blue" to good("blue"))).single().tier
+        // The ride A–B–C runs through the section B to X: High.
+        assertEquals(Tier.HIGH, tierWith(3, "Part Suspended", listOf("B", "C", "X")))
+        // Boarding inside it, getting off past it: still through it.
+        assertEquals(Tier.HIGH, tierWith(5, "Part Closure", listOf("Y", "A", "B")))
+        assertEquals(Tier.HIGH, tierWith(11, "Part Closed", listOf("A", "B")))
+        // Only meeting its edge (getting off where it starts, boarding where it ends): trains still run there.
+        assertEquals(Tier.MEDIUM, tierWith(3, "Part Suspended", listOf("C", "X", "Y")))
+        assertEquals(Tier.MEDIUM, tierWith(3, "Part Suspended", listOf("Y", "A")))
+        // Two of its stops that aren't calls in a row: the ride doesn't run between them.
+        assertEquals(Tier.MEDIUM, tierWith(3, "Part Suspended", listOf("A", "C")))
+        // Elsewhere on the line, or not known where: Medium, as before.
+        assertEquals(Tier.MEDIUM, tierWith(3, "Part Suspended", listOf("X", "Y")))
+        assertEquals(Tier.MEDIUM, tierWith(3, "Part Suspended", emptyList()))
+        // Severe delays alone, no closure placed, stay Medium.
+        assertEquals(Tier.MEDIUM, tierWith(6, "Severe Delays", emptyList()))
+        // Two sections apart, A–X and B–Y: the ride runs A to B between them, through neither.
+        val apart = status("red", 3, "Part Suspended").shutting(listOf("X", "A"), listOf("B", "Y"))
+        assertEquals(Tier.MEDIUM, signals(statuses = mapOf("red" to apart, "blue" to good("blue"))).single().tier)
+        // The same stations shut the other way (C to A): the ride runs A to C, which still runs.
+        assertEquals(Tier.MEDIUM, tierWith(3, "Part Suspended", listOf("X", "C", "B", "A")))
+    }
+
+    @Test
+    fun `a ride's last stretch is placed even when its path leaves out where it gets off`() {
+        // A to C, its path naming B alone: the stretch B–C is still the ride's.
+        val shortPath = ride.copy(path = listOf("B"))
+        val trip = ActiveTrip(TripRoute(listOf(shortPath, walk, second)), "E", startedAt = t0)
+        val red = status("red", 3, "Part Suspended").shutting(listOf("B", "C", "X"))
+        assertEquals(listOf("A", "B", "C"), RouteDisruption.rideCalls(shortPath))
+        assertEquals(listOf("A", "B", "C"), RouteDisruption.rideCalls(ride))
+        // On a loop, A–B–C–B, its path naming B early on and leaving out the end: still added.
+        assertEquals(listOf("A", "B", "C", "B"), RouteDisruption.rideCalls(ride.copy(toId = "B", path = listOf("B", "C"))))
+        assertEquals(Tier.HIGH, signals(trip, TripProgress.Waiting(shortPath, at(5)), mapOf("red" to red, "blue" to good("blue"))).single().tier)
+    }
+
+    @Test
+    fun `a ride the Planner gave no path for isn't placed`() {
+        // Its two ends alone don't say which way it runs between them: a section TfL shuts from A to C
+        // on one branch says nothing of a ride A to C by the other (Codex, PR #446).
+        val pathless = ride.copy(path = emptyList())
+        val trip = ActiveTrip(TripRoute(listOf(pathless, walk, second)), "E", startedAt = t0)
+        val red = status("red", 3, "Part Suspended").shutting(listOf("A", "X", "C"))
+        assertEquals(emptyList<String>(), RouteDisruption.rideCalls(pathless))
+        assertEquals(Tier.MEDIUM, signals(trip, TripProgress.Waiting(pathless, at(5)), mapOf("red" to red, "blue" to good("blue"))).single().tier)
+    }
+
+    @Test
+    fun `a part closure is placed by the direction's own stops, and on the ride being ridden too`() {
+        // Inbound shuts B to C; outbound shuts elsewhere. The leg's trains are seen going inbound.
+        val inbound = status("red", 3, "Part Suspended").shutting(listOf("B", "C"))
+        val outbound = status("red", 3, "Part Suspended").copy(fullText = "Outbound only").shutting(listOf("X", "Y"))
+        val split = inbound.copy(byDirection = mapOf("inbound" to inbound, "outbound" to outbound))
+        val statuses = mapOf("red" to split, "blue" to good("blue"))
+        assertEquals(Tier.HIGH, signals(statuses = statuses, directions = mapOf(0 to "inbound")).single().tier)
+        assertEquals(Tier.MEDIUM, signals(statuses = statuses, directions = mapOf(0 to "outbound")).single().tier)
+        assertEquals(Tier.HIGH, signals(progress = riding, statuses = statuses, directions = mapOf(0 to "inbound")).single().tier)
+        // The second ride (D–E) is placed by its own calls.
+        val blue = mapOf("red" to good("red"), "blue" to status("blue", 5, "Part Closure").shutting(listOf("D", "E")))
+        assertEquals(Tier.HIGH, signals(statuses = blue).single().tier)
     }
 
     @Test
@@ -114,6 +184,71 @@ class RouteDisruptionTest {
         val worse = signals(statuses = mapOf("red" to status("red", 2, "Suspended"))).single()
         assertNotEquals(part.key, worse.key)
         assertEquals(part.key, signals(statuses = mapOf("red" to status("red", 3, "Part Suspended")), now = at(4)).single().key)
+    }
+
+    @Test
+    fun `a part closure placed once its detail lands is heard again, but a dismissal still holds`() {
+        // The first check finds it unplaced (its sections not looked up yet); the next places it on the
+        // ride A–B–C: an escalation to High, with a key of its own, so it's heard.
+        val unplaced = status("red", 3, "Part Suspended")
+        val placed = unplaced.shutting(listOf("A", "B", "C"))
+        val before = signals(statuses = mapOf("red" to unplaced, "blue" to good("blue"))).single()
+        val after = signals(statuses = mapOf("red" to placed, "blue" to good("blue"))).single()
+        assertEquals(Tier.MEDIUM, before.tier)
+        assertEquals(Tier.HIGH, after.tier)
+        assertNotEquals(before.key, after.key)
+        // The rider dismissed this very alert on the trip (its text names the stretch already): placing
+        // it doesn't bring it back, so the alert and the screen still agree.
+        val dismissed = setOf(DismissedAlert.ofLineStatus(unplaced))
+        assertEquals(emptyList<Signal>(), signals(statuses = mapOf("red" to placed, "blue" to good("blue")), dismissed = dismissed))
+    }
+
+    @Test
+    fun `a part closure placed on the ride is the signal, named, behind any alert shown above it`() {
+        val closure = PartClosure(11, "Part Closed", "No trains B to C", listOf(listOf("A", "B", "C")))
+        fun shown(severity: Int, description: String, vararg closures: PartClosure) =
+            signals(statuses = mapOf("red" to status("red", severity, description).copy(closures = closures.toList()), "blue" to good("blue")))
+        // Minor delays shown, TfL ranking them above a part closure on the ride's stretch: the closure
+        // is still heard, High, and named for what it is (Codex, PR #446).
+        val behindMinor = shown(9, "Minor Delays", closure).single() as Signal.Line
+        assertEquals(Tier.HIGH, behindMinor.tier)
+        assertTrue(behindMinor.placed)
+        assertEquals("Part Closed", behindMinor.status.description)
+        assertEquals("No trains B to C", behindMinor.status.fullText)
+        // Likewise behind severe delays, which alone are only Medium.
+        assertEquals("Part Closed", (shown(6, "Severe Delays", closure).single() as Signal.Line).status.description)
+        // Elsewhere on the line, or not placed yet, it's Medium as any part closure is, even behind
+        // minor delays, which never alert: it stands in for them, named for itself (Codex, PR #446).
+        val elsewhere = closure.copy(sections = listOf(listOf("X", "Y")))
+        for (unplaced in listOf(elsewhere, closure.copy(sections = emptyList()))) {
+            val behind = shown(9, "Minor Delays", unplaced).single() as Signal.Line
+            assertEquals(listOf(Tier.MEDIUM, false, "Part Closed"), listOf(behind.tier, behind.placed, behind.status.description))
+        }
+        // Behind severe delays, Medium already, the delays are what's said.
+        assertEquals("Severe Delays", (shown(6, "Severe Delays", elsewhere).single() as Signal.Line).status.description)
+        // Minor delays alone still never alert.
+        assertEquals(emptyList<Signal>(), shown(9, "Minor Delays"))
+        // The rider dismissed the delays shown, not the closure, which they were never shown: it still
+        // comes. Dismissed itself, it doesn't.
+        val minor = status("red", 9, "Minor Delays").copy(closures = listOf(closure))
+        fun dismissing(vararg alerts: DismissedAlert) =
+            signals(statuses = mapOf("red" to minor, "blue" to good("blue")), dismissed = alerts.toSet())
+        assertEquals(listOf("Part Closed"), dismissing(DismissedAlert.ofLineStatus(minor)).map { (it as Signal.Line).status.description })
+        assertEquals(emptyList<Signal>(), dismissing(DismissedAlert.ofLineStatus(minor.naming(closure))))
+    }
+
+    @Test
+    fun `an alert already high isn't heard again for a closure placed on the ride`() {
+        val suspended = status("red", 2, "Suspended")
+        val closure = PartClosure(5, "Part Closure", "No trains B to C", listOf(listOf("A", "B", "C")))
+        val before = signals(statuses = mapOf("red" to suspended, "blue" to good("blue"))).single() as Signal.Line
+        val after = signals(statuses = mapOf("red" to suspended.copy(closures = listOf(closure)), "blue" to good("blue"))).single() as Signal.Line
+        // Its detail landing places a closure on the ride, but the line was High already: the same alert,
+        // the same key, not heard again (Codex, PR #446).
+        assertEquals(Tier.HIGH, after.tier)
+        assertFalse(after.placed)
+        assertEquals("Suspended", after.status.description)
+        assertEquals(before.key, after.key)
     }
 
     @Test
