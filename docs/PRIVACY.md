@@ -134,9 +134,10 @@ nothing runs once you leave the trip.
 end it: the route's stops and lines, the leg you're on and the train followed, in app storage that
 Android never backs up or transfers, so the trip survives the app being closed. It's never logged
 beyond coarse diagnostics (a line id, an error kind) or sent anywhere. While a trip is on the way, app
-open or closed, stopdash asks TfL about every 30 seconds where the followed train will call next, by TfL's own id for that
+open or closed, stopdash asks TfL about every 30 seconds (with the app open, as often as every 10
+seconds while you're moving) where the followed train will call next, by TfL's own id for that
 train, and for the departures at a stop where the next leg boards; neither says anything about you
-that the trip's departures don't already. It also asks TfL about every 30 seconds for the status of
+that the trip's departures don't already. It also asks TfL as often for the status of
 the lines the rest of the trip rides, and (at most every five minutes, shared with the trip's screen
 and the list) whether the stops it still has to reach are closed or moved; these name the lines and
 stops of your route, which is why they're listed here, and go only to TfL, which the trip already
@@ -154,7 +155,8 @@ whether you've reached it, and for the first ten minutes you wait there for your
 whether you've already left on another (at a later stop of the ride, or well along it), a few times in the five
 minutes after your train leaves that stop, only to see whether you got on (you're still at the stop
 if not), and a few times as your train nears the station you get off at, only to see whether you're
-already there. Each is compared on the device with the public positions of the ride's stops (and a
+already there. With the app open, it follows your position as you move instead, every few seconds,
+for the same purposes and only while one of them applies. Each is compared on the device with the public positions of the ride's stops (and a
 station's entrances) and then dropped: never logged, kept, or sent anywhere.
 
 **Starred journeys** (two stops you travel between) are kept on the device with your other

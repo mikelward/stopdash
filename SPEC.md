@@ -1544,7 +1544,11 @@ them there:
   from (TfL's, or the end of a walk or change) has passed without a newer one. It waits, as the step's own times do, while the
   last answer is too old to stand behind.
 - **Following it.** The trip asks TfL for **the followed train's calls ahead of it**
-  (`/Vehicle/{id}/Arrivals`, in one request) about every 30 s while it is shown. Still due at the
+  (`/Vehicle/{id}/Arrivals`, in one request) about every 30 s while it is shown, and sooner on the
+  move: while the app is open and a fix could move the trip on, each new fix as the rider moves
+  refreshes it at once, at most every 10 s, since it's then that a train is named or a walk seen
+  ended (maintainer, 2026-10-01: while the trip is shown, being current comes first, within
+  reason). Still due at the
   boarding stop, the rider is **waiting** for it; once it has left, they are taken to be **on
   it**, the next stop and the stops left to getting off counted from its calls — so it works
   underground with no GPS. **Taken to be is not seen to be** (maintainer, 2026-09-29): a rider still on
@@ -1752,7 +1756,9 @@ A kept trip it can't read is read again for up to 10 minutes, since its age isn'
 If Android refuses the service, or it fails, the trip's screen says it updates only while the app is
 open (never failing silently); each opening tries the service again.
 The battery cost is that, the ~30 s train lookup while shown, and with location, those few precise
-fixes; nothing new leaves the device but the followed train's TfL id.
+fixes; and with the app open, location every few seconds while a fix could move the trip on and the
+rider moves, with the screen already on (none standing still, none once no fix is wanted), and the
+lookup up to every 10 s instead of 30. Nothing new leaves the device but the followed train's TfL id.
 
 ### Disruptions
 

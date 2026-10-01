@@ -6,8 +6,11 @@ import android.app.NotificationManager
 import android.content.pm.ServiceInfo
 import androidx.test.core.app.ApplicationProvider
 import app.stopdash.domain.ActiveTrip
+import app.stopdash.domain.Coordinates
+import app.stopdash.domain.LocationFix
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripProgress
+import app.stopdash.domain.TripFixes
 import app.stopdash.domain.TripRoute
 import java.time.Duration
 import java.time.Instant
@@ -15,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.currentTime
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -85,6 +89,27 @@ class OnTheWayNotificationTest {
         following.join()
         assertEquals(1, refreshes)
         assertEquals(5_000L, currentTime)
+    }
+
+    @Test
+    fun `a fix from the trip shown refreshes it sooner, and is handed to that refresh`() = runTest {
+        val kept = MutableStateFlow<ActiveTrip?>(trip)
+        val fixes = TripFixes { currentTime }
+        val handed = mutableListOf<Pair<Long, TripFixes.Seen?>>()
+        val following = launch {
+            followTrip(kept, MutableStateFlow(0), Duration.ofSeconds(30), Duration.ofHours(4),
+                fixes = fixes.latest, minGap = Duration.ofSeconds(10)) { handed += currentTime to it }
+        }
+        advanceTimeBy(12_000)
+        fixes.offer(LocationFix(Coordinates(51.5, -0.12), isFallback = false, accuracyMeters = 10f, ageMillis = 0))
+        val seen = fixes.latest.value
+        runCurrent()
+        // Then the timer again, 30 s on, with no fix.
+        advanceTimeBy(43_000)
+        kept.value = null
+        following.join()
+        assertEquals(listOf(0L to null, 12_000L to seen, 42_000L to null), handed)
+        assertEquals(55_000L, currentTime)
     }
 
     @Test

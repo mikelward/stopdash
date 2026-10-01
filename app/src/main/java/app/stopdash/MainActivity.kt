@@ -129,6 +129,9 @@ import app.stopdash.domain.SavedTrip
 import app.stopdash.domain.ToChoice
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripOrigin
+import app.stopdash.domain.ON_THE_WAY_FIX_DISTANCE_METERS
+import app.stopdash.domain.ON_THE_WAY_FIX_EVERY
+import app.stopdash.domain.TripFixes
 import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripTiming
 import app.stopdash.domain.UsageEvent
@@ -687,7 +690,12 @@ class MainActivity : ComponentActivity() {
                 val tracker = remember { activeTrip(applicationContext) }
                 val onTheWayScope = rememberCoroutineScope()
                 // A fix only while the trip wants one (a walk to a stop): never logged or kept.
-                FollowActiveTrip(tracker, OnTheWayService.running) { trip -> onTheWayFix(onTheWayLocation, trip) }
+                FollowActiveTrip(
+                    tracker,
+                    OnTheWayService.running,
+                    fixes = tripFixes,
+                    updates = { onTheWayLocation.preciseUpdates(ON_THE_WAY_FIX_EVERY, ON_THE_WAY_FIX_DISTANCE_METERS) },
+                ) { trip -> onTheWayFix(onTheWayLocation, trip) }
                 // A trip End couldn't forget opens again to say so, in whichever composition is
                 // current when End returns (the one that asked may have been recreated since).
                 val endFailures by tracker.endFailures.collectAsStateWithLifecycle()
@@ -2974,6 +2982,10 @@ class MainActivity : ComponentActivity() {
         // outlives the app being closed. Its train lookups go through the shared TfL budget.
         private val activeTripLock = Any()
         private var activeTripInstance: ActiveTripTracker? = null
+
+        // The fixes seen while the trip on the way is shown, for whichever loop follows it to act on
+        // at once (SPEC *On the way*). In memory only, never kept or logged.
+        internal val tripFixes = TripFixes()
 
         internal fun activeTrip(context: Context): ActiveTripTracker = synchronized(activeTripLock) {
             activeTripInstance ?: run {

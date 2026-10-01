@@ -18,8 +18,12 @@ import androidx.core.content.ContextCompat
 import app.stopdash.data.AndroidLocationProvider
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.LocationFix
+import app.stopdash.domain.ON_THE_WAY_MIN_GAP
 import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.TripFixes
 import app.stopdash.domain.TripProgress
+import app.stopdash.domain.awaitRefresh
+import app.stopdash.domain.refreshFix
 import app.stopdash.ui.ActiveTripTracker
 import app.stopdash.ui.ON_THE_WAY_REFRESH
 import app.stopdash.ui.nextStepText
@@ -38,7 +42,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -98,10 +105,13 @@ class OnTheWayService : Service() {
                         stopSelf()
                     },
                 ) {
+                    // A fix seen while the trip is shown refreshes it at once ([TripFixes]).
+                    val fixes = MainActivity.tripFixes
                     followTrip(tracker.trip, tracker.starting, ON_THE_WAY_REFRESH, OnTheWayWakeLock.LIMIT, restore = tracker::restore,
                         startedFor = { Duration.between(it.startedAt, Instant.now()) },
-                        keepAwake = { awake?.let(OnTheWayWakeLock::renew) }) {
-                        tracker.refresh(if (located && locationAllowed()) riderIfWanted(tracker.trip.value) else null)
+                        keepAwake = { awake?.let(OnTheWayWakeLock::renew) }, fixes = fixes.latest) { seen ->
+                        // A fix the open app saw is used whether or not this service may take its own.
+                        tracker.refresh(refreshFix(seen, fixes, tracker.trip.value, Instant.now(), mayTake = located && locationAllowed(), ::riderIfWanted))
                     }
                 }
             }
@@ -229,7 +239,9 @@ internal suspend fun followThenStop(warn: (String) -> Unit, stop: () -> Unit, fa
 /**
  * Refreshes the trip every [every] until it's gone (arrived or ended), or until [cap] after it
  * started, once no start is in flight ([starting]). A trip gone mid-wait ends it
- * at once, so the ongoing notification never outlives the trip by a wait.
+ * at once, so the ongoing notification never outlives the trip by a wait. A fix from [fixes] (the
+ * trip shown, and moving) refreshes it sooner, no less than [minGap] after the last ([awaitRefresh]),
+ * and is handed to that [refresh]; the timer's hands it none.
  */
 internal suspend fun followTrip(
     trip: StateFlow<ActiveTrip?>,
@@ -239,7 +251,9 @@ internal suspend fun followTrip(
     restore: suspend () -> Boolean = { true },
     startedFor: (ActiveTrip) -> Duration = { Duration.ZERO },
     keepAwake: () -> Unit = {},
-    refresh: suspend () -> Unit,
+    fixes: StateFlow<TripFixes.Seen?> = MutableStateFlow(null),
+    minGap: Duration = ON_THE_WAY_MIN_GAP,
+    refresh: suspend (TripFixes.Seen?) -> Unit,
 ) {
     // Started from the Start tap, the trip may not be kept yet: a start in flight is waited for.
     starting.first { it == 0 }
@@ -264,10 +278,15 @@ internal suspend fun followTrip(
     val left = cap.minus(startedFor(following))
     if (left.isNegative || left.isZero) return
     withTimeoutOrNull(left.toMillis()) {
+        var woke: TripFixes.Seen? = null
         while (trip.value != null) {
             keepAwake()
-            refresh()
-            withTimeoutOrNull(every.toMillis()) { trip.first { it == null } }
+            refresh(woke)
+            // Whichever comes first: the trip gone, a fix, or the timer (null).
+            woke = merge(
+                trip.filter { it == null }.map<ActiveTrip?, TripFixes.Seen?> { null },
+                flow { emit(awaitRefresh(fixes, every, minGap)) },
+            ).first()
         }
     }
 }
