@@ -723,6 +723,43 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `seen along another of the ride's lines with no train found, its own stops count the ride`() {
+        // Purple runs the ride A to C by X and Y, three stops to red's two (Codex, PR #449).
+        val purple = ride.copy(lineId = "purple", lineName = "Purple", path = listOf("X", "Y", "C"), pathNames = listOf("Ex", "Why", "Cee"))
+        val waiting = OnTheWay.follow(trip, train("9", 8))
+        // Seen at X: on board by where they were seen, purple kept as the line ridden, as a told train's is.
+        val on = OnTheWay.onBoardAlong(waiting, OnTheWay.Along(0, atStop = true), at(7), on = purple)
+        assertEquals("", on.vehicleId)
+        assertEquals(purple, on.vehicleLeg)
+        assertTrue(OnTheWay.ridingUnmatched(on))
+        assertEquals("Purple", OnTheWay.followedLineName(on))
+        // It's the line they're taking for whatever checks the ride, its disruptions too, as a told
+        // train's is: purple's status asked, not red's (Codex, PR #459).
+        assertEquals(purple, OnTheWay.ridingOn(on))
+        assertEquals(purple, RouteDisruption.rideAt(on, 0, ride))
+        assertEquals("purple", RouteDisruption.rideLine(on, 0, ride).id)
+        assertNull(OnTheWay.ridingOn(waiting))
+        // Y next, two of purple's stops left, though red's path has only C after its first stop.
+        assertEquals(TripProgress.Riding(ride, "Why", 2, null, false, byPosition = true), OnTheWay.advance(on, null, at(8)).second)
+        // Seen further on along purple, moved on along purple's path, never back.
+        val further = OnTheWay.onBoardAlong(on, OnTheWay.Along(1, atStop = true), at(9), on = purple)
+        assertEquals(2, further.seenAlongStop)
+        assertEquals(at(7), further.boardedAt)
+        assertEquals(2, OnTheWay.onBoardAlong(further, OnTheWay.Along(0, atStop = false), at(10), on = purple).seenAlongStop)
+        // Later fixes are placed on purple's own stops.
+        val purplePositions = mapOf("A" to platform, "X" to Coordinates(51.507, -0.13), "Y" to Coordinates(51.514, -0.13), "C" to atC)
+        assertEquals(OnTheWay.Along(1, atStop = true), OnTheWay.seenAlong(on, fix(Coordinates(51.514, -0.13), 20f), purplePositions, at(9)))
+        // Seen along red after all: counted on red's path from there, the ride's time still from when they boarded.
+        val red = OnTheWay.onBoardAlong(further, OnTheWay.Along(0, atStop = true), at(10), on = ride)
+        assertNull(red.vehicleLeg)
+        assertEquals(1, red.seenAlongStop)
+        assertEquals(at(7), red.boardedAt)
+        assertEquals("Red", OnTheWay.followedLineName(red))
+        assertNull(OnTheWay.ridingOn(red))
+        assertEquals("red", RouteDisruption.rideLine(red, 0, ride).id)
+    }
+
+    @Test
     fun `seen along the ride with no train of theirs found, the rider is on board by where they were seen`() {
         val named = ride.copy(pathNames = listOf("Bee", "Cee"))
         val waiting = OnTheWay.follow(trip.copy(route = TripRoute(listOf(named, walk, second))), train("9", 8))

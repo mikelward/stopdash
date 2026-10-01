@@ -1299,11 +1299,20 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   there next too, and would be taken for theirs. Timing would tell them apart: the
                   rider's train left the boarding stop after the last fix still there and before the
                   first clear of it, and fixes while waiting could keep those two times.
-          - [ ] **On board by position on another of the ride's lines** (Codex, PR #449): seen along
+          - [x] **On board by position on another of the ride's lines** (Codex, PR #449): seen along
                 another offered line's own way (#451) with none of its trains told as theirs, the trip
-                still waits as it was, as before #449; only a sighting on the Planner's line puts them
-                on board by position. Doing the same for another line means counting its stops on that
-                line's own path (keeping the line ridden, as a told train does), not the Planner's.
+                still waited as it was, as before #449; only a sighting on the Planner's line put them
+                on board by position. Done: they're on board on that line, kept as the line ridden
+                (`ActiveTrip.vehicleLeg`, as a told train is), its stops counted on its own path
+                (`OnTheWay.onBoardAlong`'s `on`).
+          - [ ] **A ride line whose check failed is said, not dropped silently** (Codex, PR #459):
+                `RideLineChecks.running` leaves out a line whose route, status or stop-closure check
+                failed, and the trip falls back on the Planner's line (#451), but nothing tells the
+                refresh: it reads as current. That holds for every caller: the train picked while
+                waiting, the change-board signal, and placing a rider seen off the line they're
+                counted on by position. Have the ride lines carry whether a check failed, and let
+                each caller report "Couldn't update" where the lines it went without could have
+                changed what it shows.
           - [x] **Update as soon as location changes** (maintainer, 2026-10-01): while a trip is shown,
                 the rider is using the app, so timeliness comes first, within reason. Refresh on a
                 location update rather than only on the ~30 s cycle, with a minimum gap between

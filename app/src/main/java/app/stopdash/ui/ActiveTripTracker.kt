@@ -523,10 +523,10 @@ class ActiveTripTracker(
                 ?.direction?.takeIf { it.isNotBlank() }
                 ?.let { rideDirections[trip.legIndex] = it }
         }
-        // Learned from the ride's own line, it isn't another line's: while a train of another is followed
-        // on the leg, that leg's is unknown, and its alerts count both ways (Codex, PR #451). Kept for
-        // a train of the ride's own line followed again.
-        val otherLine = trip.vehicleId.isNotBlank() && OnTheWay.followedLine(trip) != trip.leg?.lineId
+        // Learned from the ride's own line, it isn't another line's: while another is taken on the leg (its
+        // train followed, or ridden by where they were seen: Codex, #459), that leg's is unknown, and its
+        // alerts count both ways (Codex, PR #451). Kept for a train of the ride's own line followed again.
+        val otherLine = OnTheWay.ridingOn(trip)?.let { it.lineId != trip.leg?.lineId } == true
         return rideDirections.filterKeys { it >= trip.legIndex && !(otherLine && it == trip.legIndex) }
     }
 
@@ -761,13 +761,17 @@ class ActiveTripTracker(
     // [trip] on board the ride the rider was seen along ([OnTheWay.seenAlong]), with its train's calls
     // when it can be told: the most recent of the trains its board listed that has left the boarding
     // stop and is on the ride at or beyond where they were seen ([OnTheWay.boardedOn]). With none found
-    // they're on board all the same, by where they were seen on the ride's own line ([OnTheWay.onBoardAlong],
-    // maintainer, 2026-10-01), with no calls. A train is only ever matched against this fresh fix, never
+    // they're on board all the same, by where they were seen ([OnTheWay.onBoardAlong], maintainer,
+    // 2026-10-01), with no calls: along the ride's own line, or else along another of its lines, its
+    // stops counted on that line's own path (Codex, PR #449). A train is only ever matched against this fresh fix, never
     // against where they were last seen, which says where but not when (maintainer, 2026-10-01). Null
     // when they aren't seen along it. Seen where they get off, the ride is done, with no calls
     // ([OnTheWay.rideDone]). [rider]'s age holds at [seenAt] ([elapsed]).
     private suspend fun boardedAlong(trip: ActiveTrip, rider: LocationFix, seenAt: Long, now: Instant): SeenAlong? {
-        val leg = OnTheWay.waitingToBoard(trip, now) ?: trip.leg?.takeIf { OnTheWay.ridingUnmatched(trip) } ?: return null
+        // On board by where they were seen, the line they were seen along ([OnTheWay.ridden]).
+        val leg = OnTheWay.waitingToBoard(trip, now) ?: OnTheWay.ridden(trip)?.takeIf { OnTheWay.ridingUnmatched(trip) } ?: return null
+        // The ride as the Planner gives it, whose lines are offered ([rideLines]).
+        val planned = trip.leg ?: return null
         // The ride's own line's route, when it can be had: another of the ride's lines is placed by its
         // own, so one isn't held back by this (Codex, PR #451). On board by where they were seen, it's
         // what places them, so failing to read it is said: their position stands, but the refresh that
@@ -798,9 +802,9 @@ class ActiveTripTracker(
         // Gone from the latest board, or due by now: left the stop (the rider, seen away from it, is on one).
         // With no board for the ride (gone once they're on board by where they were seen), only those due
         // by now: later ones, not yet left, would crowd theirs out of the few asked after (Codex, PR #449).
-        val board = _nextBoard.value?.takeIf { it.ride == leg }?.departures
+        val board = _nextBoard.value?.takeIf { it.ride == planned }?.departures
         val listed = board.orEmpty().mapTo(HashSet(), ::seenKey)
-        val gone = boardSeen.values.takeIf { boardSeenRide == leg }.orEmpty()
+        val gone = boardSeen.values.takeIf { boardSeenRide == planned }.orEmpty()
             .filter { (board != null && seenKey(it) !in listed) || !it.expectedArrival.isAfter(now) }
         // Of the ride's lines the trip would follow ([rideLines]), each placed by its own route and
         // stops: another line can take the ride by other stops between, and the rider is seen along
@@ -808,13 +812,26 @@ class ActiveTripTracker(
         // branch's can look like the ride until it turns off, which its calls may not reach yet (Codex,
         // PR #383). A line whose route can't be had places none of its trains.
         // Read off the board and the trains gone from it: a line known only by a train that has left
-        // is one of the ride's lines still, its train the one to match (Codex, PR #451).
+        // is one of the ride's lines still, its train the one to match (Codex, PR #451). With no board
+        // (on board), the stop's board read for its lines when they aren't seen along this one
+        // ([linesListed]): never what it listed before, which is kept only for the trains gone from it.
         val routes = hashMapOf<String, LineSequence?>(leg.lineId to sequence)
         val found = mutableListOf<Triple<Departure, TripLeg, OnTheWay.Along>>()
-        if (gone.isNotEmpty()) {
-            for (on in rideLines(trip.route, leg, (board.orEmpty() + gone).distinctBy(::seenKey))) {
+        // Where they're on board by position if no train is found: along the line just checked, or
+        // else the first other line of the ride they're seen along (Codex, PR #449).
+        var positional = along?.let { leg to it }
+        // Whether the stop's board couldn't be read for the ride's lines ([linesListed]): those lines
+        // went unchecked, so the refresh isn't passed off as current (Codex, PR #459).
+        var linesFailed = false
+        // Another line is looked at for its trains gone from the board, or, not seen along this one,
+        // for where they are: a line's route is a request (held a day), not asked for otherwise.
+        if (gone.isNotEmpty() || along == null) {
+            val listed = board ?: if (along != null) emptyList() else {
+                linesListed(planned) ?: emptyList<Departure>().also { linesFailed = true }
+            }
+            for (on in rideLines(trip.route, planned, (listed + gone).distinctBy(::seenKey))) {
                 val trains = gone.filter { it.lineId == on.lineId }
-                if (trains.isEmpty()) continue
+                if (trains.isEmpty() && positional != null) continue
                 val route = if (on.lineId in routes) routes[on.lineId] else routeOf(on.lineId).also { routes[on.lineId] = it }
                 if (route == null) continue
                 val onAlong = if (on == leg) {
@@ -826,11 +843,14 @@ class ActiveTripTracker(
                     OnTheWay.seenAlong(trip, fresh, OnTheWay.ridePositions(on, route), now, on = on)
                 } ?: continue
                 if (onAlong.atEnd) return SeenAlong(OnTheWay.rideDone(trip, now))
+                if (positional == null) positional = on to onAlong
                 OnTheWay.takesRide(on, trains, mapOf(on.lineId to route)).forEach { found += Triple(it, on, onAlong) }
             }
         }
-        if (along == null && found.isEmpty()) return null
-        var failed = false
+        // Placed nowhere, their position stands; with the lines unread, that's said, as for a route
+        // that couldn't be read above.
+        if (positional == null && found.isEmpty()) return SeenAlong(trip, failed = true).takeIf { linesFailed && OnTheWay.ridingUnmatched(trip) }
+        var failed = linesFailed
         for ((train, on, onAlong) in found.sortedByDescending { it.first.expectedArrival }.take(PICK_TRIES)) {
             val calls = try {
                 vehicles.vehicleCalls(train.vehicleId, train.lineId)
@@ -863,12 +883,12 @@ class ActiveTripTracker(
         }
         // Grown too old over the lookups, it is no proof of where they are now.
         aged(rider, Duration.ofMillis(elapsed() - seenAt)) ?: return null
-        // Seen along the ride's own line with none of its trains theirs: on board all the same, by where
-        // they were seen. A failed lookup is said (the refresh failing), but doesn't leave them shown at
-        // the platform (Codex, PR #449).
-        if (along == null) return null
-        if (!failed) warn("on the way: seen along the ride, no train that left found on line ${leg.lineId}: on board by where seen")
-        return SeenAlong(OnTheWay.onBoardAlong(trip, along, now), failed = failed)
+        // Seen along one of the ride's lines with none of its trains theirs: on board all the same, by
+        // where they were seen, counted on that line's stops. A failed lookup is said (the refresh
+        // failing), but doesn't leave them shown at the platform (Codex, PR #449).
+        val (seenOn, where) = positional ?: return null
+        if (!failed) warn("on the way: seen along the ride, no train that left found on line ${seenOn.lineId}: on board by where seen")
+        return SeenAlong(OnTheWay.onBoardAlong(trip, where, now, on = seenOn), failed = failed)
     }
 
     // What a rider seen along their ride ([boardedAlong]) makes of [trip]: on the train that took them,
@@ -934,6 +954,24 @@ class ActiveTripTracker(
         }
         return null
     }
+
+    // The lines [ride]'s boarding stop's board lists now, for [rideLines], once the rider is on board
+    // by where they were seen: the board isn't read on board, and without it only the Planner's line
+    // would be offered, so a rider seen along another would be left on the line last kept (Codex, PR
+    // #459). Read afresh each time, never what an earlier read listed (kept in memory, or not at all
+    // after a restart): a board lists only the lines with a train predicted then, so an earlier one
+    // can leave out a line that has one now (Codex, PR #459). A request a fix, only for one not along
+    // the line they're counted on: no more often than the board is read while waiting. Null when the
+    // read fails: the Planner's line alone is offered, and the refresh is said to have failed.
+    private suspend fun linesListed(ride: TripLeg): List<Departure>? =
+        try {
+            arrivals(ride.fromId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: TflException) {
+            warn("on the way: ride lines board lookup failed for line ${ride.lineId}: ${e::class.simpleName}")
+            null
+        }
 
     // The upcoming ride's board ([nextBoard]), fetched at [now], or null with none upcoming. Asked
     // for once a refresh: a second step reuses [boards]' attempt, answer or failure, so a slow or

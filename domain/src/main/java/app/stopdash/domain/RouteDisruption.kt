@@ -181,12 +181,13 @@ object RouteDisruption {
         rideAt(trip, index, leg).let { LineRef(it.lineId, it.lineName, it.mode) }
 
     /**
-     * Coming leg [index] ([leg]) of [trip] as the rider takes it: on the leg they're on with another of
-     * the ride's lines' train followed, the ride as that line runs it ([ActiveTrip.vehicleLeg]), its own
-     * stops at either end (a bus's other pole of the pair, say); else the leg itself.
+     * Coming leg [index] ([leg]) of [trip] as the rider takes it: on the leg they're on, taking another
+     * of the ride's lines ([OnTheWay.ridingOn]: its train followed, or on board on it by where they were
+     * seen), the ride as that line runs it, its own stops at either end (a bus's other pole of the pair,
+     * say); else the leg itself.
      */
     fun rideAt(trip: ActiveTrip, index: Int, leg: TripLeg): TripLeg =
-        if (index == trip.legIndex && trip.vehicleId.isNotBlank()) trip.vehicleLeg ?: leg else leg
+        if (index == trip.legIndex) OnTheWay.ridingOn(trip) ?: leg else leg
 
     /**
      * The stops the trip still has to reach, each with the coming leg that reaches it first: a coming
