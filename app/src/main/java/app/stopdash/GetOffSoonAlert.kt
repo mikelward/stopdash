@@ -84,7 +84,7 @@ internal object GetOffSoonAlert {
         }
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_appbar_route_arrow)
-            .setContentTitle(context.getString(R.string.on_the_way_get_off, riding.leg.toName))
+            .setContentTitle(context.getString(R.string.get_off_soon_title, riding.leg.toName))
             .setContentText(text)
             .setSubText(context.getString(R.string.on_the_way_title, trip.destinationName))
             .setCategory(NotificationCompat.CATEGORY_NAVIGATION)

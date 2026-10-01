@@ -146,9 +146,9 @@ class OnTheWayScreenScreenshotTest {
             }
         }
         composeRule.onNodeWithText("To Canary Wharf").assertIsDisplayed()
-        composeRule.onNodeWithText("Get off at Stratford").assertIsDisplayed()
+        composeRule.onNodeWithText("Ride to Stratford").assertIsDisplayed()
         captureSnapshot("on-the-way-banner.png")
-        composeRule.onNodeWithText("Get off at Stratford").performClick()
+        composeRule.onNodeWithText("Ride to Stratford").performClick()
         assertTrue(opened)
     }
 
@@ -163,7 +163,8 @@ class OnTheWayScreenScreenshotTest {
                 }
             }
         }
-        composeRule.onNodeWithText("Get off at Stratford").assertIsDisplayed()
+        // The stop being next is no longer known either, so it's the ride, not "Get off at" (Codex, PR #456).
+        composeRule.onNodeWithText("Ride to Stratford").assertIsDisplayed()
         composeRule.onNodeWithText("Updating…").assertIsDisplayed()
     }
 
@@ -409,7 +410,7 @@ class OnTheWayScreenScreenshotTest {
     @Test
     fun on_the_way_on_the_train() {
         show(trip.copy(boarded = true, onBoardSeen = true), TripProgress.Riding(mildmay, "Hackney Central", 4, at(16), getOffSoon = false))
-        onCard("Get off at Stratford").assertIsDisplayed()
+        onCard("Ride to Stratford").assertIsDisplayed()
         // The time left on the ride, as its stop is predicted (maintainer, 2026-09-29).
         composeRule.onNodeWithText("4 stops (~16 min) · next Hackney Central").assertIsDisplayed()
         captureSnapshot("on-the-way-riding.png")
@@ -435,7 +436,9 @@ class OnTheWayScreenScreenshotTest {
     @Test
     fun on_the_way_get_off_soon() {
         show(trip.copy(boarded = true, onBoardSeen = true), TripProgress.Riding(mildmay, "Stratford", 1, at(1), getOffSoon = true))
+        // The card says the moment; the step's own row still names the ride (maintainer, 2026-10-01).
         onCard("Get off at Stratford").assertIsDisplayed()
+        composeRule.onNodeWithText("Ride to Stratford").assertIsDisplayed()
         composeRule.onNodeWithText("Next stop (~1 min)").assertIsDisplayed()
         captureSnapshot("on-the-way-get-off.png")
     }
@@ -466,8 +469,13 @@ class OnTheWayScreenScreenshotTest {
     fun on_the_way_an_old_answer_isnt_shown_as_live() {
         // Back after a while away: the last answer said get off next, but that's no longer known.
         show(trip.copy(boarded = true, onBoardSeen = true), TripProgress.Riding(mildmay, "Stratford", 1, at(1), getOffSoon = true), current = false)
-        onCard("Get off at Stratford").assertIsDisplayed()
+        // Nor told to get off now: the step is the ride until the next answer (Codex, PR #456).
+        onCard("Ride to Stratford").assertIsDisplayed()
+        composeRule.onNodeWithText("Get off at Stratford").assertDoesNotExist()
         composeRule.onNodeWithText("Updating…").assertIsDisplayed()
+        // Only taken to be on board, it's still the ride, not boarding again (Codex, PR #456).
+        val unseen = TripProgress.Riding(mildmay, "Stratford", 1, at(1), getOffSoon = true, seen = false)
+        assertEquals("Ride to Stratford", nextStepText(composeRule.activity.resources, unseen, now, current = false).first)
         composeRule.onNodeWithText("Next stop").assertDoesNotExist()
     }
 
@@ -481,7 +489,7 @@ class OnTheWayScreenScreenshotTest {
         // Back from the walk is getting off the ride before it: a ride is two steps (maintainer, 2026-09-29).
         composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoBack")).performClick()
         composeRule.onNodeWithText("Stratford → Canary Wharf").performClick()
-        composeRule.onNodeWithText("Get off at Canary Wharf").performClick()
+        composeRule.onNodeWithText("Ride to Canary Wharf").performClick()
         composeRule.onNodeWithText("Highbury & Islington → Stratford").performClick()
         // The step they're at already: nothing to move to.
         composeRule.onNodeWithText("Stratford → Stratford").performClick()
@@ -525,9 +533,9 @@ class OnTheWayScreenScreenshotTest {
         composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoNext")).performClick()
         composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoBack")).performClick()
         // Nor is a step's row a way back (Codex, PR #384).
-        composeRule.onNodeWithText("Get off at Canary Wharf").performClick()
+        composeRule.onNodeWithText("Ride to Canary Wharf").performClick()
         composeRule.onNodeWithText("Stratford → Canary Wharf").performClick()
-        assertTrue(composeRule.onAllNodes(hasClickAction() and androidx.compose.ui.test.hasText("Get off at Canary Wharf")).fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodes(hasClickAction() and androidx.compose.ui.test.hasText("Ride to Canary Wharf")).fetchSemanticsNodes().isEmpty())
         assertEquals(emptyList<Pair<OnTheWay.Step, OnTheWay.Step>>(), went)
         composeRule.onNodeWithText("End trip").assertIsEnabled()
     }

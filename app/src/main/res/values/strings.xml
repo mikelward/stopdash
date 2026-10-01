@@ -610,7 +610,9 @@
     <string name="on_the_way_take_tram">Take the tram to %1$s</string>
     <string name="on_the_way_take_boat">Take the boat to %1$s</string>
     <string name="on_the_way_take_cable_car">Take the cable car to %1$s</string>
-    <string name="on_the_way_get_off">Get off at %1$s</string>
+    <!-- On the ride, seen on board: %1$s where they get off. A continuous action, as "Walk to" is
+         (maintainer, 2026-10-01). -->
+    <string name="on_the_way_ride_to">Ride to %1$s</string>
     <string name="on_the_way_next_stop">Next stop</string>
     <!-- Stops left not known (a bus beyond its predictions); %1$s the next stop. -->
     <string name="on_the_way_next_is">Next: %1$s</string>
@@ -656,6 +658,9 @@
     <string name="on_the_way_failed">Couldn\'t update just now</string>
     <string name="on_the_way_alerts_off">Get-off alerts are off</string>
     <string name="get_off_soon_channel">Get off soon</string>
+    <!-- The stop being next, %1$s the stop: the get-off-soon alert's title, and the next step on the trip's card,
+         the main view's card and the ongoing notification. A point in time, unlike the step row's "Ride to". -->
+    <string name="get_off_soon_title">Get off at %1$s</string>
     <string name="on_the_way_channel_description">A trip on the way: the next step, while you travel</string>
     <string name="get_off_soon_channel_description">A trip on the way: when your stop is next</string>
     <!-- The channel for the alert that the train (or bus) the rider waits for is about to arrive. -->

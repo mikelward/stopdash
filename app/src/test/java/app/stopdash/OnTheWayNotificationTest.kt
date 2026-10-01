@@ -45,7 +45,7 @@ class OnTheWayNotificationTest {
         val notification = OnTheWayNotification.build(app, trip, riding, failed = false, updatedAt = now, now = now)
         assertEquals(OnTheWayNotification.CHANNEL_ID, notification.channelId)
         assertTrue(notification.flags and Notification.FLAG_ONGOING_EVENT != 0)
-        assertEquals("Get off at Stratford", notification.extras.getString(Notification.EXTRA_TITLE))
+        assertEquals("Ride to Stratford", notification.extras.getString(Notification.EXTRA_TITLE))
         assertEquals("4 stops (~12 min) · next Hackney Central", notification.extras.getString(Notification.EXTRA_TEXT))
         assertEquals("To Stratford", notification.extras.getString(Notification.EXTRA_SUB_TEXT))
         assertTrue(shadowOf(notification.contentIntent).savedIntent.getBooleanExtra(GetOffSoonAlert.EXTRA_OPEN_ON_THE_WAY, false))
