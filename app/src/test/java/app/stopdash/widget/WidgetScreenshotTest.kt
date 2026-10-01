@@ -26,6 +26,7 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import java.time.Instant
 import java.time.LocalDate
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -225,8 +226,10 @@ class WidgetScreenshotTest {
                 stale = false,
                 uncertain = false,
                 stamp = "Updated just now",
-                rows = listOf(WidgetRowModel(rail, emptyList(), noTimes = NoTimes.NO_KEY), rowModel(row("victoria", "Victoria", "Brixton", 120))),
-                stacked = true,
+                rows = listOf(
+                    WidgetRowModel(rail, emptyList(), noTimes = NoTimes.NO_KEY, statusStacked = true),
+                    rowModel(row("victoria", "Victoria", "Brixton", 120)).copy(stackedLines = listOf(true)),
+                ),
             ),
             size = DpSize(180.dp, 180.dp),
             fontScale = 1.3f,
@@ -309,7 +312,7 @@ class WidgetScreenshotTest {
                 stale = false,
                 uncertain = false,
                 stamp = "Updated 14 min ago",
-                // The minimum height's line budget (widgetLineBudget) is one line.
+                // The minimum height's rows (widgetRowsHeight) fit one line.
                 rows = listOf(rowModel(row("victoria", "Victoria", "Brixton", 120))),
             ),
             size = DpSize(180.dp, 110.dp),
@@ -382,22 +385,76 @@ class WidgetScreenshotTest {
                 LineStatusCheck(LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service"), now.minusSeconds(30))
             },
         )
-        // The same budgets StopDashWidget.provideGlance derives for this size and font.
-        val stacked = widgetRowsStacked(size.width, fontScale)
-        val model = widgetModel(
-            snapshot,
-            now,
-            maxLines = widgetLineBudget(size.height, fontScale, stacked = stacked),
-            maxLinesWithNote = widgetLineBudget(size.height, fontScale, withNote = true, stacked = stacked),
-            maxLinesCompact = widgetLineBudget(size.height, fontScale, compact = true, stacked = stacked),
-            stacked = stacked,
-        )
+        // The same cell StopDashWidget.provideGlance passes for this size and font.
+        val model = widgetModel(snapshot, now, geometry = WidgetGeometry(size.width, size.height, fontScale))
         capture(name, model, size = size, fontScale = fontScale)
+    }
+
+    // The compact width at a large font (Codex on #155): the row with three times stacks, so its
+    // destination isn't squeezed out, while the rows with one time stay on one line each.
+    @Test
+    fun `a row with three times stacks where one with a single time needn't`() {
+        fun dep(lineId: String, lineName: String, destination: String, offsetSeconds: Long) =
+            Departure(lineId, lineName, "inbound", destination, null, now.plusSeconds(offsetSeconds), "tube")
+        val size = DpSize(220.dp, 250.dp)
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(
+                StopArrivals(
+                    "490000001A",
+                    "Example Stop",
+                    listOf(
+                        dep("victoria", "Victoria", "Brixton", 60),
+                        dep("victoria", "Victoria", "Brixton", 240),
+                        dep("victoria", "Victoria", "Brixton", 480),
+                        dep("district", "District", "Richmond", 120),
+                        dep("northern", "Northern", "Morden", 180),
+                    ),
+                    now.minusSeconds(30),
+                    disruptions = emptyList(),
+                ),
+            ),
+            fetchedAt = now.minusSeconds(30),
+            lineStatuses = listOf("victoria", "district", "northern").associateWith {
+                LineStatusCheck(LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service"), now.minusSeconds(30))
+            },
+        )
+        val model = widgetModel(snapshot, now, geometry = WidgetGeometry(size.width, size.height, 1.3f))
+        assertEquals(listOf(listOf(true), listOf(false), listOf(false)), model.rows.map { it.stackedLines })
+        capture("widget-stacked-per-row.png", model, size = size, fontScale = 1.3f)
+    }
+
+    // A status under one time at the compact width and a large font (Codex on #457): beside the
+    // pill's column it would be cut, so it starts under the pill.
+    @Test
+    fun `a status that doesn't fit beside the pill starts under it`() {
+        fun dep(lineId: String, lineName: String, destination: String, offsetSeconds: Long) =
+            Departure(lineId, lineName, "inbound", destination, null, now.plusSeconds(offsetSeconds), "tube")
+        val size = DpSize(220.dp, 180.dp)
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(
+                StopArrivals(
+                    "490000001A",
+                    "Example Stop",
+                    listOf(dep("victoria", "Victoria", "Brixton", 120), dep("district", "District", "Richmond", 240)),
+                    now.minusSeconds(30),
+                    disruptions = emptyList(),
+                ),
+            ),
+            fetchedAt = now.minusSeconds(30),
+            lineStatuses = mapOf(
+                "victoria" to LineStatusCheck(LineStatus("victoria", 3, "Part Suspended"), now.minusSeconds(30)),
+                "district" to LineStatusCheck(LineStatus("district", LineStatus.GOOD_SERVICE, "Good Service"), now.minusSeconds(30)),
+            ),
+        )
+        val model = widgetModel(snapshot, now, geometry = WidgetGeometry(size.width, size.height, 1.3f))
+        assertEquals(listOf(listOf(false), listOf(false)), model.rows.map { it.stackedLines })
+        assertEquals(listOf(false, true), model.rows.map { it.statusBeside })
+        capture("widget-status-under-pill.png", model, size = size, fontScale = 1.3f)
     }
 
     // The narrowest width at a large system font, tall enough for the title row: the title gives
     // way, the freshness stamp stays whole, and the row stacks as it does at this width and font
-    // (widgetRowsStacked).
+    // (widgetRowStacked).
     @Test
     fun `narrowest width at a large font keeps the stamp whole`() {
         capture(
@@ -407,8 +464,10 @@ class WidgetScreenshotTest {
                 stale = false,
                 uncertain = false,
                 stamp = "Updated 14 min ago",
-                rows = listOf(rowModel(row("victoria", "Victoria", "Brixton", 120))),
-                stacked = widgetRowsStacked(180.dp, 1.3f),
+                rows = listOf(
+                    rowModel(row("victoria", "Victoria", "Brixton", 120))
+                        .copy(stackedLines = listOf(widgetRowStacked(listOf("2 min"), false, 180.dp, 1.3f))),
+                ),
             ),
             size = DpSize(180.dp, 180.dp),
             fontScale = 1.3f,

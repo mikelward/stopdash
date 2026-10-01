@@ -2499,12 +2499,21 @@ and these carry the rest as their own PRs:
       cap overflowed even the default 240x180dp cell. The widget now uses `SizeMode.Responsive`
       height buckets and derives its line budget from the bucket's height (`widgetLineBudget`,
       conservative per-line cost), pixel-checked by the full-budget and minimum-size screenshots.
-- [ ] **Per-row widget stacking from the row's own width (Codex P2 on #155).** The widget stacks
+- [x] **Per-row widget stacking from the row's own width (Codex P2 on #155).** The widget stacks
       a departure onto two lines only on the narrow (<220dp) bucket at 1.3x font or more. A wide-bucket
       row with three times ("0 · 3 · 6 min") at a large font can still squeeze its destination out.
       Fix properly: decide stacking per row from its estimated countdown width, count the line budget in
       dp instead of lines, and add width buckets (the 220dp bucket stands for every width above it).
-      Glance can't measure text, so this stays an estimate; judge it on a device.
+      Glance can't measure text, so this stays an estimate; judge it on a device. *Done, per
+      destination line rather than per row (so a line a tight budget drops can't stack the ones it
+      keeps; Codex on #457): a line stacks when its countdown (with the planned-work calendar) leaves
+      under about five characters of destination beside the pill (`widgetRowStacked`, widths
+      estimated by character), and a status drawn alone on the reason it shows; the budget is the
+      rows' height in dp and each line costs what it draws (`LineCosts` on the shared
+      `BudgetedRows.select`, which the watch tile keeps counting in lines); and a 300dp bucket joins
+      180 and 220 (three widths by five heights, under a host's sixteen). A narrow widget at the
+      default font now stacks a line with two or three times too. The estimates still want a look
+      on a device.*
 - [x] **Named Overground pills on the widget (own PR, Codex P2 on #44).** The widget now draws
       the six named Overground lines hollow, as the app and the watch do (`widgetPillStyle`, from
       the shared `pillColors`): Glance has no border, so the ring is the accent behind a box of the
