@@ -578,9 +578,9 @@ internal fun routeKey(route: TripRoute): String =
 // How many of a first leg's trains its row times.
 private const val SHOWN_TRAINS = 3
 
-private val CLOCK: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+internal val CLOCK: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val MINUTE: DateTimeFormatter = DateTimeFormatter.ofPattern("mm")
-private val LONDON: ZoneId = ZoneId.of("Europe/London")
+internal val LONDON: ZoneId = ZoneId.of("Europe/London")
 
 /**
  * When the rider last pulled on the routes to [destKey] ([TripViewModel.pullRefresh]), for the screen

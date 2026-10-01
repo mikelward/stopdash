@@ -777,6 +777,49 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `a trip's arrival is TfL's where the rider gets off only on the last ride, else estimated`() {
+        // On the first ride, its stop predicted: the walk and the next ride after are the Planner's.
+        val riding = trip.copy(boarded = true)
+        assertEquals(
+            OnTheWay.Eta(at(28), live = false),
+            OnTheWay.eta(riding, TripProgress.Riding(ride, "B", 2, at(15), false), at(6)),
+        )
+        // On the last ride: TfL's time where they get off.
+        val last = trip.copy(legIndex = 2, boarded = true)
+        assertEquals(OnTheWay.Eta(at(30), live = true), OnTheWay.eta(last, TripProgress.Riding(second, "E", 1, at(30), true), at(25)))
+        // TfL's time for it already past: none, rather than the clock shown as live (Codex, PR #449).
+        assertNull(OnTheWay.eta(last, TripProgress.Riding(second, "E", 1, at(30), true), at(31)))
+        // Its stop beyond the predictions: no time claimed for it, rather than one sliding later (Codex, PR #449).
+        assertNull(OnTheWay.eta(last, TripProgress.Riding(second, "E", 1, null, true), at(22)))
+        // A change counts between legs only: none after the last (Codex, PR #449), one after the first does.
+        val changes = TripRoute(listOf(ride.copy(changeAfter = Duration.ofMinutes(4)), walk, second.copy(changeAfter = Duration.ofMinutes(5))))
+        assertEquals(OnTheWay.Eta(at(30), live = true), OnTheWay.eta(last.copy(route = changes), TripProgress.Riding(second, "E", 1, at(30), true), at(25)))
+        assertEquals(OnTheWay.Eta(at(32), live = false), OnTheWay.eta(riding.copy(route = changes), TripProgress.Riding(ride, "B", 2, at(15), false), at(6)))
+        // Waiting: the train's time at the boarding stop, then the Planner's.
+        assertEquals(OnTheWay.Eta(at(31), live = false), OnTheWay.eta(trip, TripProgress.Waiting(ride, at(8)), at(6)))
+        // Walking: until the walk's time is up, then the Planner's.
+        assertEquals(OnTheWay.Eta(at(28), live = false), OnTheWay.eta(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(20)), at(16)))
+        // TfL's time where they get off, then a change before the walk: the change is the Planner's (Codex, PR #449).
+        val changeThenWalk = TripRoute(listOf(ride, second.copy(changeAfter = Duration.ofMinutes(3)), walk))
+        assertEquals(
+            OnTheWay.Eta(at(38), live = false),
+            OnTheWay.eta(trip.copy(route = changeThenWalk, legIndex = 1, boarded = true), TripProgress.Riding(second, "E", 1, at(30), true), at(25)),
+        )
+        // What it's timed from gone by, with nothing newer: none, rather than one sliding later as the clock
+        // runs (Codex, PR #449): a walk running long, a train still listed past its time.
+        assertNull(OnTheWay.eta(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(20)), at(32)))
+        assertNull(OnTheWay.eta(trip, TripProgress.Waiting(ride, at(8)), at(9)))
+        assertNull(OnTheWay.eta(trip, TripProgress.Arrived, at(6)))
+        // No train to time the ride from: none, rather than one sliding later as the clock runs (Codex, PR #449).
+        assertNull(OnTheWay.eta(trip, TripProgress.Waiting(ride, null), at(6)))
+        assertNull(OnTheWay.eta(trip, TripProgress.Lost(ride), at(6)))
+        assertNull(OnTheWay.eta(trip, null, at(6)))
+        // On board by where they were seen: no arrival from stops that stand still between fixes (Codex, PR #449).
+        val seenOn = OnTheWay.onBoardAlong(OnTheWay.follow(trip, train("9", 8)), OnTheWay.Along(0, atStop = true), at(7))
+        assertNull(OnTheWay.eta(seenOn, OnTheWay.advance(seenOn, null, at(8)).second, at(8)))
+    }
+
+    @Test
     fun `waiting for a ride's train, a fix is wanted and one sure to 100 m will do`() {
         val waiting = OnTheWay.follow(trip, train("9", 8))
         assertTrue(OnTheWay.wantsFix(waiting, at(6)))

@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
@@ -567,6 +568,25 @@ class OnTheWayScreenScreenshotTest {
         assertEquals("4 stops · next Hackney Central", nextStepText(resources, TripProgress.Riding(mildmay, "Hackney Central", 4, null, getOffSoon = false), now).second)
         // No stops counted and none named: no detail rather than a guess.
         assertEquals("", nextStepText(resources, TripProgress.Riding(mildmay, null, null, null, getOffSoon = false), now).second)
+    }
+
+    @Test
+    fun the_trip_says_its_time_left_and_when_it_gets_there() {
+        val resources = composeRule.activity.resources
+        assertEquals("14 min left · est. 08:16", etaText(resources, OnTheWay.Eta(at(14), live = false), now))
+        assertEquals("14 min left · ~08:16", etaText(resources, OnTheWay.Eta(at(14), live = true), now))
+        // On the last ride, TfL's time where they get off; not from an answer too old to stand behind.
+        val last = trip.copy(legIndex = 2, boarded = true, onBoardSeen = true)
+        val riding = TripProgress.Riding(jubilee, "Canning Town", 2, at(31), getOffSoon = false)
+        show(last, riding)
+        composeRule.onNodeWithTag("onTheWayEta").assertTextEquals("31 min left · ~08:33")
+    }
+
+    @Test
+    fun the_trip_doesnt_say_when_it_gets_there_from_an_old_answer() {
+        val last = trip.copy(legIndex = 2, boarded = true, onBoardSeen = true)
+        show(last, TripProgress.Riding(jubilee, "Canning Town", 2, at(31), getOffSoon = false), current = false)
+        composeRule.onNodeWithTag("onTheWayEta").assertDoesNotExist()
     }
 
     @Test

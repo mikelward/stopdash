@@ -575,6 +575,11 @@
     <string name="on_the_way_end">End trip</string>
     <string name="on_the_way_done">Done</string>
     <string name="on_the_way_next">Next</string>
+    <!-- A trip's time left and when it gets there, on its screen: %1$d is minutes, %2$s a clock time.
+         "About" (~): TfL's prediction where the rider gets off, with only walks after. -->
+    <string name="on_the_way_eta">%1$d min left · ~%2$s</string>
+    <!-- The same, estimated from the Planner's times for what's still ahead. -->
+    <string name="on_the_way_eta_estimated">%1$d min left · est. %2$s</string>
     <!-- Moves the trip on to its next step, as if the rider had got there. -->
     <string name="on_the_way_go_next">Next</string>
     <!-- Moves the trip back to its previous step, to undo a Next tapped too soon. -->
