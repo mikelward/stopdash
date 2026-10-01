@@ -17,6 +17,7 @@ import app.stopdash.domain.JourneyPlanner
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.SteadyClock
+import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopGroup
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
@@ -3228,6 +3229,39 @@ class TripViewModelTest {
         assertEquals(emptySet<String>(), trip.state.value.closuresUnknown)
         assertEquals(emptySet<String>(), trip.state.value.closuresFailed)
         assertNull(statusNote(trip.state.value, unchecked = false))
+    }
+
+    @Test
+    fun `a trip's closure check forgets a dismissed closure that ended at a stop it checked, not an interchange's`() = runTest(dispatcher) {
+        // B's closure as its own stop's card keys it, and as a card at an interchange B is in would.
+        val card = DepartureRows.across(
+            listOf(StopArrivals("B", "", emptyList(), SteadyClock.stamp(now), disruptions = stationClosed)),
+            now,
+        ).single { it.stopDisruption != null }
+        val atB = DismissedAlert.ofStopClosure(card)
+        val atHub = DismissedAlert.ofStopClosure(card.copy(hubId = "HUBX"))
+        val store = reconcilingStore(setOf(atB, atHub))
+        val client = FakeClient(mutableMapOf()).apply { disruptions = mapOf("B" to stationClosed) }
+        val trip = TripViewModel(FakePlanner(listOf(route)), client, "A", listOf(TripDestination.Stop("C")), clock = { now }, io = dispatcher, dismissedStore = store)
+        trip.refresh()
+        advanceUntilIdle()
+        // Still closed: both stay dismissed.
+        assertEquals(setOf(atB, atHub), store.stored.value)
+        // A failed lookup isn't evidence it reopened.
+        now = now.plus(Duration.ofMinutes(6))
+        client.disruptions = emptyMap()
+        client.failDisruptions = setOf("B")
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(setOf(atB, atHub), store.stored.value)
+        // Checked clear: B's own dismissal goes, so the same notice coming back shows again, without
+        // waiting for the list (Codex on #367). The interchange's stays: the trip didn't look at its
+        // other stops, so that's left to the list.
+        client.failDisruptions = emptySet()
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(setOf(atHub), store.stored.value)
+        assertEquals(setOf(atHub), trip.dismissed.value)
     }
 
     @Test

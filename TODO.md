@@ -1297,16 +1297,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             placed stands handed to it, or its own copy of the routes, to ask about them too. Done:
             the screen hands it every stop it judges the routes at, placed stands and other lines'
             poles included, and the trip checks those it doesn't ask about itself.
-      - [ ] **Prune a trip's stop-closure dismissals once its own checks see the notice end**
+      - [x] **Prune a trip's stop-closure dismissals once its own checks see the notice end**
             (Codex on #367): the list reconciles its dismissals after each check, dropping one whose
             alert has ended at a place it checked, so the same text recurring later shows again. A
-            trip now does for its lines' alerts, but not for a stop closure: a dismissal made on it
-            is pruned only when the list happens to check that place. Needs each checked stop's
-            place as the list keys it (its interchange and stop area, from the route data the screen
-            loads, handed to the model as the shown stops are), so a reconcile can't miss the
-            dismissal or drop a live one; and a place the trip checked only one member of runs into
-            the list's own open question (*Prune a hub-keyed dismissal only when every member was
-            checked*).
+            trip now does too, for each stop it checked as its own place only (`stopDismissalCheck`,
+            shared with a trip on the way, PR #441), as the list's own check of a journey's
+            destinations does. A dismissal made at an interchange or stop area is still left to the
+            list: the trip looks at only some of its stops, which runs into the list's own open
+            question (*Prune a hub-keyed dismissal only when every member was checked*).
       - [ ] **Arrows between a route's pills** if space permits (dropped for width, 2026-09-26).
       - [ ] **Show a route's fare** (maintainer, 2026-09-27). The Planner response a trip already
             fetches carries one per journey (`journeys[].fare`, ignored today): `totalCost` in

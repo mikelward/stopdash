@@ -1807,7 +1807,11 @@ detail says "Service alert dismissed" rather than claim a clean line (principle 
 status row, which exists only to carry the alert, goes with it. A refresh
 prunes it only for a line whose status TfL actually returned, as for places, and a trip's own line
 check prunes it the same way, so an alert dismissed on a trip shows again when it recurs, without
-waiting for the list to check that line. Expiring a dismissal after a day is a `TODO.md` follow-up.
+waiting for the list to check that line. A trip's own closure checks prune a stop's closure dismissal
+the same way, and so do a trip on the way's: each stop it checked, as its own place only. A
+dismissal made at an interchange or stop area, which also holds stops the trip didn't look at, is
+left to the list, which looks at the whole place. Expiring a dismissal after a day is a `TODO.md`
+follow-up.
 
 The order is **dedupe, then title, then strip** (maintainer, 2026-09-22): the near-me fold groups
 by place first, on the newline-normalized-but-**not-name-stripped** text, so it stays independent

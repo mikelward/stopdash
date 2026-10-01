@@ -772,6 +772,7 @@ class TripViewModel(
                     next.copy(closuresUnknown = unknownClosures(next.routes.orEmpty(), next))
                 }
                 fetched?.let { reconcileLineDismissals(it) }
+                reconcileStopDismissals(checked)
             }
             // Lines first seen in this refresh's arrivals: checked now rather than a tick later, so one
             // isn't shown for a minute with nothing said of its status. Merged in; a failure leaves
@@ -968,6 +969,7 @@ class TripViewModel(
                 // The routes can have changed while it was out, making one of these their own.
                 next.copy(closuresUnknown = unknownClosures(next.routes.orEmpty(), next))
             }
+            reconcileStopDismissals(checked)
         }
     }
 
@@ -1032,6 +1034,18 @@ class TripViewModel(
 
     // One request per group TfL accepts (LineStatusBatch), each with its own outcome. Null when none
     // was answered: the last statuses stay rather than pass the lines off as running normally.
+    // Settles the dismissals of the stops [check] found, each as its own place ([stopDismissalCheck]),
+    // so a closure dismissed on the trip shows again when it recurs, without waiting for the list to
+    // check that stop (Codex on #367). Only the stops no later check has asked about since: an older
+    // answer landing late isn't evidence over a newer one.
+    private suspend fun reconcileStopDismissals(check: ClosureCheck) {
+        val latest = check.latest()
+        val (live, checked) = stopDismissalCheck(check.found.filterKeys { it in latest }, clock())
+        reconcileDismissals(_dismissed.value, live, checked, dismissedStore, io, warn, "trip") { pruned ->
+            if (pruned != _dismissed.value) _dismissed.value = pruned
+        }
+    }
+
     // Settles the dismissals of the lines [check] answered ([reconcileLineDismissals]).
     private suspend fun reconcileLineDismissals(check: StatusCheck) {
         val answered = check.statuses.filterKeys { it !in check.failed }

@@ -6,6 +6,9 @@ import app.stopdash.domain.Dismissed
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.SteadyClock
+import app.stopdash.domain.StopArrivals
+import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.TflException
 import app.stopdash.domain.lineAlertKey
 import java.time.Instant
@@ -119,6 +122,19 @@ internal fun lineDismissalCheck(
 ): Pair<Set<DismissedAlert>, Set<String>> {
     val checked = answeredIds.filterNot { answered[it]?.awaitingDirections == true }.mapTo(HashSet()) { lineAlertKey(it) }
     return DepartureRows.liveLineStatusAlerts(answered, now) to checked
+}
+
+/**
+ * What a closure check settles dismissals against ([reconcileDismissals]): the live closure alerts
+ * among the notices it [found] at each stop (from lookups that succeeded), and the places it settles,
+ * each stop as its own place only. An interchange or stop area also holds stops the check didn't look
+ * at, so a dismissal made there is left to the list, which sees the whole place, as the list's own
+ * check of a journey's destinations leaves it ([MainViewModel]; Codex, PR #441). The trip's screen and
+ * a trip on the way both settle their stops here.
+ */
+internal fun stopDismissalCheck(found: Map<String, List<StopDisruption>>, now: Instant): Pair<Set<DismissedAlert>, Set<String>> {
+    val stops = found.map { (id, notices) -> StopArrivals(id, "", emptyList(), SteadyClock.stamp(now), disruptions = notices) }
+    return DepartureRows.liveStopClosureAlerts(DepartureRows.across(stops, now)) to found.keys
 }
 
 /**
