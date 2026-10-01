@@ -2,9 +2,7 @@ package app.stopdash.ui
 
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.DismissedAlertsStore
-import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DismissedAlert
-import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.TripClosures
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
@@ -82,7 +80,7 @@ internal class RouteDisruptionChecks(
         // (Codex, PR #441): each line answered, and each stop checked, as its own place, settled against
         // what this check found live.
         val lineCheck = statuses?.let { lineDismissalCheck(it.statuses, it.answered, at) } ?: (emptySet<DismissedAlert>() to emptySet())
-        val stopCheck = stopDismissals(trip, progress, stops, current, at)
+        val stopCheck = stopDismissalCheck(current, at)
         reconcileDismissals(cleared, lineCheck.first + stopCheck.first, lineCheck.second + stopCheck.second, dismissedStore, io, warn, "on the way") {
             cleared = it
         }
@@ -104,23 +102,6 @@ internal class RouteDisruptionChecks(
             .mapNotNull { it.validTo }
         val until = listOfNotNull(stale, ends.minOrNull()).minOrNull()
         return RouteDisruption.Found(signals, until)
-    }
-
-    // The live closure cards' identities among [stops], and the places they settle: each stop checked
-    // and current, as its own place only. An interchange or stop area also holds stops a trip doesn't
-    // check, so a dismissal made there is left to the list, which sees the whole place (Codex, PR #441),
-    // as the list's own check of a journey's destinations leaves it ([MainViewModel]).
-    private fun stopDismissals(
-        trip: ActiveTrip,
-        progress: TripProgress,
-        stops: List<TripClosures.End>,
-        current: Map<String, List<StopDisruption>>,
-        at: Instant,
-    ): Pair<Set<DismissedAlert>, Set<String>> {
-        val own = stops.associate { it.id to RouteDisruption.StopPlace() }
-        val live = DepartureRows.liveStopClosureAlerts(RouteDisruption.closureCards(trip, progress, current, own, at))
-        val checked = stops.filter { it.id in current }.mapTo(HashSet()) { RouteDisruption.placeKey(trip, it.id, own[it.id]) }
-        return live to checked
     }
 
     // What a check of the coming lines' statuses found: the [statuses] TfL returned, the lines it gave a
