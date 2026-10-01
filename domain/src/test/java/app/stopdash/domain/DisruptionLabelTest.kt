@@ -27,6 +27,16 @@ class DisruptionLabelTest {
     fun `matches the diversion keyword regardless of case`() {
         assertEquals("Diversion", resolveDisruption("Special Service", 0, "Route on DIVERSION.").label)
         assertEquals("Diversion", resolveDisruption("special service", 0, "Buses Diverted.").label)
+        // TfL's other words for a curtailment (maintainer, 2026-10-01).
+        assertEquals("Curtailed", resolveDisruption("Special Service", 0, "Route 99 is cutting short of its normal route.").label)
+        assertEquals("Curtailed", resolveDisruption("Special Service", 0, "Buses towards North End will terminate at 'Beta Road' (D).").label)
+        // Denied, it names none (Codex, PR #455).
+        assertEquals("Service Alert", resolveDisruption("Special Service", 0, "Buses aren't terminating at Beta Road.").label)
+        assertEquals("Service Alert", resolveDisruption("Special Service", 0, "The service will not be cut short.").label)
+        assertEquals("Service Alert", resolveDisruption("Special Service", 0, "The service is not expected to be cut short.").label)
+        assertEquals("Service Alert", resolveDisruption("Special Service", 0, "No buses are diverted between Alpha Road and Beta Road.").label)
+        // A negation of something else in the clause doesn't deny it (Codex, PR #455).
+        assertEquals("Diversion", resolveDisruption("Special Service", 0, "Buses are not serving stops A and B and are diverted via Example Road.").label)
     }
 
     @Test

@@ -42,6 +42,10 @@ class RouteDisruptionChecksTest {
     private var dismissed: Set<DismissedAlert> = emptySet()
     private var dismissedFails = false
     private var sequenceReads = 0
+    private var routeDelayMillis = 0L
+    private var routesInFlight = 0
+    private var mostRoutesInFlight = 0
+    private var routes: Map<String, LineSequence> = emptyMap()
     private var hubs: Map<String, String> = emptyMap()
     private val logged = mutableListOf<String>()
 
@@ -79,9 +83,16 @@ class RouteDisruptionChecksTest {
                 dismissed = app.stopdash.domain.Dismissed.reconcile(dismissed, live, checkedPlaces)
             }
         },
-        sequence = { _: String ->
+        sequence = { line: String ->
             sequenceReads++
-            null as LineSequence?
+            routesInFlight++
+            mostRoutesInFlight = maxOf(mostRoutesInFlight, routesInFlight)
+            try {
+                if (routeDelayMillis > 0) kotlinx.coroutines.delay(routeDelayMillis)
+                routes[line]
+            } finally {
+                routesInFlight--
+            }
         },
         hubOf = { hubs[it] },
         clock = { now },
@@ -109,6 +120,65 @@ class RouteDisruptionChecksTest {
         assertEquals(1, statusReads)
         assertEquals(listOf("A", "C"), closureReads.sorted())
         assertEquals(now.plus(Duration.ofMinutes(5)), found.until)
+    }
+
+    @Test
+    fun `a bus alert naming only stops off the ride is left out, and logged`() = runTest {
+        val checks = checks(StopClosureCache(), StandardTestDispatcher(testScheduler))
+        val bus = TripLeg("bus", "99", "99", "b3", "b3", "b4", "b4", at(5), at(15))
+        val busTrip = ActiveTrip(TripRoute(listOf(bus)), "b4", startedAt = t0)
+        routes = mapOf(
+            "99" to LineSequence(
+                listOf(app.stopdash.domain.LineRoute("North", listOf("b1", "b2", "b3", "b4"))),
+                mapOf("b1" to "Bank Station", "b2" to "Moorgate Station", "b3" to "Alpha Road", "b4" to "Beta Road"),
+            ),
+        )
+        statuses = mapOf("99" to LineStatus("99", 6, "Diversion", "Not serving stops between 'Bank Station' and 'Moorgate Station'.", soleAlert = true))
+        assertEquals(RouteDisruption.Found.NONE, checks.check(busTrip, TripProgress.Waiting(bus, at(5)), emptyMap()))
+        assertEquals(1, sequenceReads)
+        assertTrue(logged.any { it == "on the way: 1 line alert(s) left out, naming only stops off the ride" })
+        // Planned work counts from its day, as the signals read it: started today, its route is read;
+        // later, or an alert that can't sound (minor delays), costs no route (Codex, PR #455).
+        val today = java.time.LocalDate.ofInstant(now, java.time.ZoneId.of("Europe/London"))
+        fun planned(day: java.time.LocalDate) = mapOf("99" to LineStatus("99", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(
+            app.stopdash.domain.PlannedAlert("Diversion", "Diverted.", day, 6, false),
+        )))
+        sequenceReads = 0
+        statuses = planned(today)
+        checks.check(busTrip, TripProgress.Waiting(bus, at(5)), emptyMap())
+        assertEquals(1, sequenceReads)
+        sequenceReads = 0
+        statuses = planned(java.time.LocalDate.of(2099, 1, 1))
+        checks.check(busTrip, TripProgress.Waiting(bus, at(5)), emptyMap())
+        statuses = mapOf("99" to LineStatus("99", 9, "Minor Delays", "Minor delays.", soleAlert = true))
+        checks.check(busTrip, TripProgress.Waiting(bus, at(5)), emptyMap())
+        // Nor does one that sounds but can only stay on: severe delays are the whole route's.
+        statuses = mapOf("99" to LineStatus("99", 6, "Severe Delays", "Severe delays.", soleAlert = true))
+        checks.check(busTrip, TripProgress.Waiting(bus, at(5)), emptyMap())
+        // Nor one the rider dismissed: it won't sound, wherever it is.
+        val diverted = LineStatus("99", 6, "Diversion", "Not serving stops between 'Bank Station' and 'Moorgate Station'.", soleAlert = true)
+        statuses = mapOf("99" to diverted)
+        dismissed = setOf(DismissedAlert.ofLineStatus(diverted))
+        checks.check(busTrip, TripProgress.Waiting(bus, at(5)), emptyMap())
+        dismissed = emptySet()
+        assertEquals(0, sequenceReads)
+        // Named on the ride, it's heard.
+        statuses = mapOf("99" to LineStatus("99", 6, "Diversion", "Not serving stops between 'Moorgate Station' and 'Beta Road'.", soleAlert = true))
+        assertEquals(1, checks.check(busTrip, TripProgress.Waiting(bus, at(5)), emptyMap()).signals.size)
+    }
+
+    @Test
+    fun `the alerting bus lines' routes are read at once`() = runTest {
+        // The check waits on all of them, so not one after another (Codex, PR #455).
+        val checks = checks(StopClosureCache(), StandardTestDispatcher(testScheduler))
+        val first = TripLeg("bus", "98", "98", "b1", "b1", "b2", "b2", at(5), at(10))
+        val second = TripLeg("bus", "99", "99", "b2", "b2", "b3", "b3", at(12), at(20))
+        val busTrip = ActiveTrip(TripRoute(listOf(first, second)), "b3", startedAt = t0)
+        statuses = listOf("98", "99").associateWith { LineStatus(it, 6, "Diversion", "Not serving stops between 'Bank Station' and 'Moorgate Station'.", soleAlert = true) }
+        routeDelayMillis = 1_000
+        checks.check(busTrip, TripProgress.Waiting(first, at(5)), emptyMap())
+        assertEquals(2, sequenceReads)
+        assertEquals(2, mostRoutesInFlight)
     }
 
     @Test

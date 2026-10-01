@@ -67,11 +67,30 @@ fun resolveDisruption(
     // named it is a true fallback — flagged so it sorts below every informative status.
     val text = reason.lowercase()
     return DISRUPTION_KEYWORDS
-        .filter { keyword -> keyword.needles.any { it in text } }
+        .filter { keyword -> keyword.needles.any { saidOutright(text, it) } }
         .minByOrNull { it.severity }
         ?.let { ResolvedDisruption(it.label, it.severity, fullText = reason.trim(), inferred = true) }
         ?: ResolvedDisruption(SERVICE_ALERT_LABEL, SERVICE_ALERT_SEVERITY, isFallback = true, fullText = reason.trim(), inferred = true)
 }
+
+// Whether [needle] appears in [text] (lowercased) without a negation governing it: one earlier in the
+// same run of words, with no punctuation, "and", "but" or "or" between ("no" included: "no buses are
+// diverted between …"; Codex, PR #455). "Buses aren't terminating at …"
+// and "the service is not expected to be cut short" name no curtailment, however many words lie
+// between (Codex, PR #455). A negation of something else doesn't reach it: missing a real diversion
+// downgrades it to a generic alert that never sounds, so "buses are not serving stops A and B and are
+// diverted via X" still names one (Codex, PR #455).
+private fun saidOutright(text: String, needle: String): Boolean {
+    var at = text.indexOf(needle)
+    while (at >= 0) {
+        if (!NEGATED_JUST_BEFORE.containsMatchIn(text.substring(0, at))) return true
+        at = text.indexOf(needle, at + 1)
+    }
+    return false
+}
+
+private val NEGATED_JUST_BEFORE =
+    Regex("""$NEGATION(?:\s+(?!(?:and|but|or)\b)[\w']+)*\s*$""")
 
 /**
  * Picks the disruption to show from several coexisting ones. A true fallback
@@ -106,7 +125,8 @@ private data class DisruptionKeyword(val label: String, val severity: Int, val n
 
 private val DISRUPTION_KEYWORDS = listOf(
     DisruptionKeyword("Diversion", 5, listOf("diverted", "diversion")),
-    DisruptionKeyword("Curtailed", 5, listOf("curtailed", "curtailment")),
+    // TfL's own words for one, as seen in the wild (maintainer, 2026-10-01).
+    DisruptionKeyword("Curtailed", 5, listOf("curtailed", "curtailment", "cutting short", "cut short", "will terminate at", "terminating at")),
 )
 
 /**

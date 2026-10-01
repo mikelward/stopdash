@@ -109,19 +109,51 @@ fun alightingKey(leg: TripLeg): String = leg.toArea.ifEmpty { leg.plannedToId.if
 fun isStop(sequence: LineSequence, id: String, stop: String): Boolean =
     id == stop || sequence.stopAreas[id] == stop
 
+// Whether the route's stop [id] is where [leg] boards: the Planner's stop, or any pole of its pair.
+private fun boardsAt(leg: TripLeg, sequence: LineSequence, id: String) =
+    id == leg.fromId || (leg.fromArea.isNotEmpty() && sequence.stopAreas[id] == leg.fromArea)
+
+// A stand in no pair by its name, used only where the route doesn't call at the stand itself: the
+// Planner can name a bus station's stand the line doesn't use, as where it gets off (maintainer,
+// 2026-09-30), and the route's own stand is the only tie between them.
+private fun boardsByName(leg: TripLeg, sequence: LineSequence, id: String) =
+    leg.fromArea.isEmpty() && sequence.stopNames[id]?.equals(leg.fromName, ignoreCase = true) == true
+
+// Whether the route's stop [id] is where [leg] gets off, as [boardsAt] at its other end.
+private fun alightsAt(leg: TripLeg, sequence: LineSequence, id: String) =
+    id == leg.toId || (leg.toArea.isNotEmpty() && sequence.stopAreas[id] == leg.toArea)
+
+// A stop in no pair (a bus station's stands, "Archway Station") by its name, as [boardsByName].
+private fun alightsByName(leg: TripLeg, sequence: LineSequence, id: String) =
+    leg.toArea.isEmpty() && sequence.stopNames[id]?.equals(leg.toName, ignoreCase = true) == true
+
+/**
+ * Every way a route of [sequence] could run [leg]'s ride, each as its route and the stops from where
+ * it boards through where it gets off, matching the ends as [onPoles] does: the stop, any pole of its
+ * pair, or, on a route that calls at neither, a stand of the same name. A loop calls at an end more
+ * than once, so every boarding visit pairs with every later alighting one; which is the rider's isn't
+ * asked (Codex, PR #455). For a reader that must hold whichever way it's run ([RouteDisruption.offRide]).
+ */
+fun ridesOf(leg: TripLeg, sequence: LineSequence): List<Pair<LineRoute, List<String>>> =
+    sequence.routes.flatMap { route ->
+        val ids = route.stopIds
+        ids.indices.filter { boardsAt(leg, sequence, ids[it]) }
+            .ifEmpty { ids.indices.filter { boardsByName(leg, sequence, ids[it]) } }
+            .flatMap { from ->
+                val later = (from + 1 until ids.size)
+                later.filter { alightsAt(leg, sequence, ids[it]) }
+                    .ifEmpty { later.filter { alightsByName(leg, sequence, ids[it]) } }
+                    .map { to -> route to ids.subList(from, to + 1) }
+            }
+    }
+
 // The poles [leg]'s bus boards and gets off at by its line's route ([onPoles]), or null where the
 // route gives no single answer.
 private fun polesOf(leg: TripLeg, sequence: LineSequence): Pair<String, String>? {
-    fun boards(id: String) = id == leg.fromId || (leg.fromArea.isNotEmpty() && sequence.stopAreas[id] == leg.fromArea)
-    // A stand in no pair by its name, only where the route doesn't call at the stand itself: the
-    // Planner can name a bus station's stand the line doesn't use, as where it gets off (maintainer,
-    // 2026-09-30), and the route's own stand is the only tie between them.
-    fun boardsNamed(id: String) = leg.fromArea.isEmpty() && sequence.stopNames[id]?.equals(leg.fromName, ignoreCase = true) == true
-    fun alights(id: String) = id == leg.toId || (leg.toArea.isNotEmpty() && sequence.stopAreas[id] == leg.toArea)
-    // A stop in no pair (a bus station's stands, "Archway Station") by its name, only where the route
-    // doesn't call at the stop itself: the Planner can name a stand the line doesn't use, and the
-    // route's own stand is the only tie between them.
-    fun named(id: String) = leg.toArea.isEmpty() && sequence.stopNames[id]?.equals(leg.toName, ignoreCase = true) == true
+    fun boards(id: String) = boardsAt(leg, sequence, id)
+    fun boardsNamed(id: String) = boardsByName(leg, sequence, id)
+    fun alights(id: String) = alightsAt(leg, sequence, id)
+    fun named(id: String) = alightsByName(leg, sequence, id)
     val next = leg.path.firstOrNull()
     val ends = sequence.routes.flatMap { route ->
         val boarding = route.stopIds.indices.filter { boards(route.stopIds[it]) }

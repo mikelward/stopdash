@@ -60,6 +60,17 @@ class LineStatusTest {
     }
 
     @Test
+    fun `work that starts makes another alert under way`() {
+        // A diversion that was the line's one alert isn't, once planned work starts beside it (Codex, PR #455).
+        val diversion = LineStatus("blue", 3, "Diversion", fullText = "Diverted.", planned = listOf(closure), soleAlert = true)
+        assertFalse(diversion.asOf(today).soleAlert)
+        // Work starting on a good service is the one alert under way.
+        assertTrue(LineStatus("blue", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(closure)).asOf(today).soleAlert)
+        // Nothing started: as it was.
+        assertTrue(diversion.copy(planned = listOf(later)).asOf(today).soleAlert)
+    }
+
+    @Test
     fun `the worse of a started planned alert and a current one makes the chip`() {
         val delays = LineStatus("blue", 9, "Minor Delays", fullText = "Minor delays.", planned = listOf(closure))
         assertEquals("Part Closure", delays.asOf(today).description)

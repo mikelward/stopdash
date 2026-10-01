@@ -1619,7 +1619,26 @@ them there:
   own stretch**; a stop still to reach that a notice in force says is closed or moved) and **medium**
   ones (severe delays; a part suspension or part closure placed elsewhere on the line, or not placed
   yet; and **no train predicted at a change** the rider is **five minutes** or less from boarding at,
-  "Jubilee: none soon at Bond Street"). Minor delays and the like never alert. TfL places a part
+  "Jubilee: none soon at Bond Street"). Minor delays and the like never alert. A **bus** line's alert
+  that names stops only off the rider's part of the route is left out, and the debug log says so
+  (maintainer, 2026-10-01): TfL gives a bus diversion's stretch only as prose ("not serving stops
+  between 'Bank Station' and 'Moorgate Station'"), read as the route page marks it, and a diversion at
+  the far end of a long route says nothing of the ride. It's left out only where every route that runs
+  the ride has stops the alert says won't be served and the ride calls at none of them. Only the words
+  TfL's bus alerts are seen to use count (maintainer, 2026-10-01): a stretch ("not serving stops
+  between 'A' and 'B'", "the stops from 'A' (E) to 'B' will not be served", "missing stops from A 'F'
+  to B 'T'", "bus stops from 'A' to 'B' will be missed", "the 'Hail & Ride' section from A to B are not being
+  served"), stops one by one ("missing the stop 'A'",
+  "will not serve stops 'A' and 'B'", "will miss stops A and B", "bus stop 'A' will not be served"), or a curtailment ("curtailed to
+  A", "will terminate at 'A'" leave out the stops after it; "will start from stop at 'B'" those
+  before it, on every route of the line, so it can only keep an alert). Any other wording places
+  nothing, and so does an alert that also says stops are missed in other words, since reading free prose for where service is affected kept
+  misreading it, and a stop merely named may be an aside. And only when every stretch the alert
+  gives is one of these, only while it's the line's one alert under way (TfL's
+  others' words aren't kept, and may reach the ride), and only for a status about part of the route (a
+  diversion, curtailment or part closure, with no route-wide words such as delays): a suspension or
+  severe delays is the whole line's, whatever stretch it also names. Unknown counts as on. A tube or
+  rail line's alert never is: its delays spread along the line. TfL places a part
   closure by the stops it names as affected, taken section by section: each unbroken run of them
   along a route TfL says it affects, in the order that route runs, the section's two ends included.
   So two sections apart are never read as one shutting the stretch between them, and each carries
