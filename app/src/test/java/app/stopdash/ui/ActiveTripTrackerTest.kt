@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import app.stopdash.domain.SteadyClock
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -321,12 +322,38 @@ class ActiveTripTrackerTest {
         tracker.refresh()
         tracker.refresh()
         assertEquals(listOf("new ${severe.key}", "keep ${severe.key}"), disruptionAlerts)
+        // The trip's screen shows what the alert says (maintainer, 2026-10-01), no longer than its evidence stands.
+        val shown = tracker.routeDisruptions.value!!
+        assertEquals(listOf(severe), shown.at(shown.until.minusSeconds(1)))
+        assertEquals(emptyList<RouteDisruption.Signal>(), shown.at(shown.until))
         // Kept on the trip as heard, so a restart doesn't sound it again.
         assertEquals(setOf(severe.key), kept?.disruptionsHeard)
         known = emptyList()
         tracker.refresh()
         tracker.refresh()
         assertEquals(listOf("new ${severe.key}", "keep ${severe.key}", "done"), disruptionAlerts)
+        assertNull(tracker.routeDisruptions.value)
+    }
+
+    @Test
+    fun `a disruption card's expiry holds when the wall clock is set back`() {
+        // Kept in the steady frame: an hour set back doesn't keep it up an hour longer (Codex, PR #453).
+        var offset = Duration.ZERO
+        SteadyClock.source = object : SteadyClock.Source {
+            override val frame: SteadyClock.Frame? = null
+            override fun offset(): Duration = offset
+        }
+        try {
+            val signal = line(0, 6, "Severe Delays")
+            val wall = Instant.parse("2026-09-26T08:00:00Z")
+            val known = ActiveTripTracker.KnownDisruptions(listOf(signal), SteadyClock.stamp(wall.plusSeconds(75)))
+            assertEquals(listOf(signal), known.at(wall.plusSeconds(60)))
+            // Two minutes on, the clock set back an hour: past its evidence, whatever the wall says.
+            offset = Duration.ofHours(1)
+            assertEquals(emptyList<RouteDisruption.Signal>(), known.at(wall.plusSeconds(120).minus(Duration.ofHours(1))))
+        } finally {
+            SteadyClock.source = null
+        }
     }
 
     @Test
@@ -368,9 +395,12 @@ class ActiveTripTrackerTest {
         // Unknown is never a signal: what's up comes down rather than stand on no evidence.
         knownFails = true
         tracker.refresh()
+        assertNull(tracker.routeDisruptions.value)
         knownFails = false
         tracker.refresh()
         assertEquals(listOf("new ${severe.key}", "done"), disruptionAlerts)
+        // Known again, it's back on the trip's screen, though not sounded again.
+        assertEquals(listOf(severe), tracker.routeDisruptions.value?.signals)
         assertTrue(logged.any { it.startsWith("on the way: disruption check failed") })
     }
 
@@ -388,6 +418,10 @@ class ActiveTripTrackerTest {
         tracker.refresh()
         tracker.refresh()
         assertEquals(listOf("new ${severe.key}", "keep ${severe.key}", "done"), disruptionAlerts)
+        // The alert went, but what's known still stands on the trip's screen.
+        assertEquals(listOf(severe), tracker.routeDisruptions.value?.signals)
+        tracker.end()
+        assertNull(tracker.routeDisruptions.value)
     }
 
     @Test

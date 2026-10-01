@@ -1604,7 +1604,10 @@ them there:
   they do; and where a walk ends that no ride meets (two stations a change walks between, or the stop
   the route ends at). It keeps the rider from waiting for a train that won't come. It's **named for
   what's known, not a verdict** that the route is dead ("Victoria: Part Suspended", "Example Road
-  closed"), and opens the trip. It fires on **high** signals (a coming line closed, suspended or not
+  closed"), with TfL's own words for a line's alert under that (where it's diverted or shut, which
+  stops), and opens the trip, whose screen shows each thing known in full, with the ride it's on
+  (maintainer, 2026-10-01): a bare "Diversion" doesn't say where. Swiping the alert away leaves it on
+  the screen while it's still known, and no card outlasts its evidence, as the alert doesn't. It fires on **high** signals (a coming line closed, suspended or not
   running, as a trip's ranking counts it; a part suspension or part closure **TfL places on the leg's
   own stretch**; a stop still to reach that a notice in force says is closed or moved) and **medium**
   ones (severe delays; a part suspension or part closure placed elsewhere on the line, or not placed

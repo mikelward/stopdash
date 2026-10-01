@@ -14,6 +14,7 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -26,7 +27,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.ui.input.pointer.pointerInput
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Departure
+import app.stopdash.domain.LineStatus
 import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripRoute
@@ -75,12 +78,46 @@ class OnTheWayScreenScreenshotTest {
         appOpenOnly: Boolean = false,
         nextTrains: NextTrains? = null,
         onGoTo: (OnTheWay.Step, OnTheWay.Step) -> Unit = { _, _ -> },
+        disruptions: List<RouteDisruption.Signal> = emptyList(),
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
-                OnTheWayScreen(trip, progress, failed, now, onEnd, onBack, current = current, notKept = notKept, endFailed = endFailed, alertsOff = alertsOff, appOpenOnly = appOpenOnly, nextTrains = nextTrains, onGoTo = onGoTo)
+                OnTheWayScreen(trip, progress, failed, now, onEnd, onBack, current = current, notKept = notKept, endFailed = endFailed, alertsOff = alertsOff, appOpenOnly = appOpenOnly, nextTrains = nextTrains, onGoTo = onGoTo, disruptions = disruptions)
             }
         }
+    }
+
+    @Test
+    fun on_the_way_says_where_the_route_is_disrupted() {
+        // What tapping the route disruption alert opens: where and how, not only "Part Suspended"
+        // (maintainer, 2026-10-01). The alert's words are made up.
+        val status = LineStatus("jubilee", 3, "Part Suspended", fullText = "No service between Stratford and Canary Wharf while we fix a signal failure.")
+        val signal = RouteDisruption.Signal.Line(2, "jubilee", "Jubilee", status, RouteDisruption.Tier.HIGH, placed = true)
+        show(trip, TripProgress.Waiting(mildmay, at(4)), disruptions = listOf(signal, signal.copy(legIndex = 1)))
+        composeRule.onNodeWithText("Jubilee: Part Suspended").assertIsDisplayed()
+        composeRule.onNodeWithText(status.fullText!!).assertIsDisplayed()
+        // The ride it's on, as its step below reads.
+        assertEquals(2, composeRule.onAllNodesWithText("Stratford → Canary Wharf").fetchSemanticsNodes().size)
+        // The same alert on two legs reads once.
+        assertEquals(1, composeRule.onAllNodesWithText("Jubilee: Part Suspended").fetchSemanticsNodes().size)
+        captureSnapshot("on-the-way-disruption.png")
+    }
+
+    @Test
+    fun a_disruption_card_shows_the_ride_as_taken() {
+        // Another of the ride's lines' train followed: the signals are that ride's, its line and its own
+        // stops, and so is the card's footer (Codex, PR #453). The stops are made up for the test.
+        val taken = jubilee.copy(lineId = "circle", lineName = "Circle", toId = "940GZZLUWHM", toName = "West Ham")
+        val following = trip.copy(legIndex = 2, vehicleId = "EXAMPLE", vehicleLeg = taken)
+        val status = LineStatus("circle", 6, "Severe Delays", fullText = "Severe delays while we fix a signal failure.")
+        val line = RouteDisruption.Signal.Line(2, "circle", "Circle", status, RouteDisruption.Tier.MEDIUM)
+        val stop = RouteDisruption.Signal.Stop(2, "940GZZLUWHM", "West Ham", closed = true)
+        show(following, TripProgress.Waiting(jubilee, at(26)), disruptions = listOf(stop, line))
+        composeRule.onNodeWithText("Circle: Severe Delays").assertIsDisplayed()
+        composeRule.onNodeWithText("West Ham closed").assertIsDisplayed()
+        // Both cards name the ride taken, its pill announcing the full line name.
+        assertEquals(2, composeRule.onAllNodesWithText("Stratford → West Ham").fetchSemanticsNodes().size)
+        assertEquals(2, composeRule.onAllNodesWithContentDescription("Circle", substring = true).fetchSemanticsNodes().size)
     }
 
     @Test

@@ -139,6 +139,28 @@ class ActiveTripTracker(
         val pole: StopLocation? = null,
     )
 
+    /**
+     * What's known to be wrong on the route ahead ([RouteDisruption.Signal], worst first), as the
+     * route disruption alert was last posted with: the trip's screen shows the same, in full, so
+     * tapping the alert finds where and how (maintainer, 2026-10-01), with how long its evidence
+     * stands ([KnownDisruptions.until]). Null once nothing is known.
+     */
+    private val _routeDisruptions = MutableStateFlow<KnownDisruptions?>(null)
+    val routeDisruptions: StateFlow<KnownDisruptions?> = _routeDisruptions.asStateFlow()
+
+    /**
+     * What's known wrong on the route ahead ([signals]), standing [until] its evidence goes stale, as
+     * the alert's own timeout does: refreshes paused (the app closed on a trip followed only while
+     * open) leave nothing shown as current past it (D4; Codex, PR #453).
+     */
+    data class KnownDisruptions(val signals: List<RouteDisruption.Signal>, val until: Instant) {
+        /**
+         * [signals] while they stand at the wall time [now], else none. [until] is in the steady frame
+         * ([SteadyClock.stamp]), so a wall clock set back can't keep them up (Codex, PR #453).
+         */
+        fun at(now: Instant): List<RouteDisruption.Signal> = if (SteadyClock.stamp(now).isBefore(until)) signals else emptyList()
+    }
+
     private val _nextBoard = MutableStateFlow<NextBoard?>(null)
     val nextBoard: StateFlow<NextBoard?> = _nextBoard.asStateFlow()
 
@@ -443,13 +465,14 @@ class ActiveTripTracker(
             takeDisruptionDown()
             return
         }
+        _routeDisruptions.value = KnownDisruptions(known.signals, SteadyClock.stamp(until))
         val heard = known.signals.map { it.key }.filter { it !in trip.disruptionsHeard }
         when {
             heard.isNotEmpty() -> if (onDisruption(trip, known.signals, DisruptionPost.NEW, until)) {
                 disruptionUp = true
                 keep(trip.copy(disruptionsHeard = trip.disruptionsHeard + heard), progress)
             }
-            disruptionUp -> if (!onDisruption(trip, known.signals, DisruptionPost.KEEP, until)) takeDisruptionDown()
+            disruptionUp -> if (!onDisruption(trip, known.signals, DisruptionPost.KEEP, until)) takeDisruptionDown(known = false)
         }
     }
 
@@ -507,7 +530,10 @@ class ActiveTripTracker(
         return rideDirections.filterKeys { it >= trip.legIndex && !(otherLine && it == trip.legIndex) }
     }
 
-    private fun takeDisruptionDown() {
+    // [known]: whether what was known goes too (nothing is left, or the trip ended), not only the
+    // alert (swiped away), which leaves the trip's screen still showing it.
+    private fun takeDisruptionDown(known: Boolean = true) {
+        if (known) _routeDisruptions.value = null
         if (!disruptionUp) return
         onDisruptionDone()
         disruptionUp = false

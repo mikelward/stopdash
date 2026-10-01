@@ -795,6 +795,7 @@ class MainActivity : ComponentActivity() {
                                     onTheWayOpen = false
                                 }
                                 val nextBoard by tracker.nextBoard.collectAsStateWithLifecycle()
+                                val routeDisruptions by tracker.routeDisruptions.collectAsStateWithLifecycle()
                                 // The next ride's trains, checked against the same route data as the trip's cards.
                                 CompositionLocalProvider(LocalRouteStops provides routeStops(applicationContext)) {
                                 OnTheWayScreen(
@@ -816,6 +817,7 @@ class MainActivity : ComponentActivity() {
                                     notKept = notKept,
                                     endFailed = endFailed,
                                     appOpenOnly = appOpenOnly,
+                                    disruptions = routeDisruptions?.at(now).orEmpty(),
                                     // The rider at a step the trip couldn't tell they'd reached (maintainer, 2026-09-28).
                                     onGoTo = { from, to ->
                                         ((application as? StopdashApp)?.applicationScope ?: onTheWayScope).launch { tracker.goTo(from, to) }
