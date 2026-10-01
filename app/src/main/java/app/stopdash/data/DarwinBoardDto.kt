@@ -88,13 +88,14 @@ fun DarwinBoardDto.toDepartures(warn: (String) -> Unit = {}): List<Departure> {
             return@mapNotNull null
         }
         val at = instantNear(now, time) ?: return@mapNotNull null
-        val destination = service.destination.orEmpty().mapNotNull { it.locationName?.trim()?.ifBlank { null } }
+        // Each place cleaned on its own, so a train dividing for two keeps neither's qualifier.
+        val destination = service.destination.orEmpty().mapNotNull { it.locationName?.trim()?.ifBlank { null }?.let(::cleanStopName) }
         Departure(
             lineId = railLineId(operator, service.operatorCode),
             // Named as a rider knows it, here where the feed's name comes in (SPEC *Line pill colors*).
             lineName = riderLineName(operator, NATIONAL_RAIL_MODE),
             direction = "",
-            destination = cleanStopName(destination.joinToString(" & ")),
+            destination = destination.joinToString(" & "),
             platform = service.platform?.trim()?.ifBlank { null }?.let { "Platform $it" },
             expectedArrival = at,
             mode = NATIONAL_RAIL_MODE,

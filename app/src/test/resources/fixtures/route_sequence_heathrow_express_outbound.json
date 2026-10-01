@@ -1,0 +1,274 @@
+{
+ "lineId": "heathrow-express",
+ "direction": "outbound",
+ "orderedLineRoutes": [
+  {
+   "name": "London Paddington  &harr;  Heathrow Terminal 5 ",
+   "naptanIds": [
+    "910GPADTON",
+    "910GHTRWAPT",
+    "910GHTRWTM5"
+   ]
+  }
+ ],
+ "stopPointSequences": [
+  {
+   "stopPoint": [
+    {
+     "id": "910GPADTON",
+     "name": "London Paddington Rail Station",
+     "topMostParentId": "HUBPAD",
+     "stationId": "910GPADTON",
+     "modes": [
+      "elizabeth-line",
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "elizabeth",
+       "name": "Elizabeth line"
+      },
+      {
+       "id": "great-western-railway",
+       "name": "Great Western Railway"
+      },
+      {
+       "id": "heathrow-express",
+       "name": "Heathrow Express"
+      }
+     ]
+    },
+    {
+     "id": "910GHTRWAPT",
+     "name": "Heathrow Terminals 2 & 3 Rail Station",
+     "topMostParentId": "HUBH13",
+     "stationId": "910GHTRWAPT",
+     "modes": [
+      "elizabeth-line",
+      "national-rail"
+     ],
+     "lines": [
+      {
+       "id": "elizabeth",
+       "name": "Elizabeth line"
+      },
+      {
+       "id": "heathrow-express",
+       "name": "Heathrow Express"
+      }
+     ]
+    },
+    {
+     "id": "910GHTRWTM5",
+     "name": "Heathrow Terminal 5 Rail Station",
+     "topMostParentId": "HUBHX5",
+     "stationId": "910GHTRWTM5",
+     "modes": [
+      "national-rail",
+      "elizabeth-line"
+     ],
+     "lines": [
+      {
+       "id": "elizabeth",
+       "name": "Elizabeth line"
+      },
+      {
+       "id": "heathrow-express",
+       "name": "Heathrow Express"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "stations": [
+  {
+   "id": "HUBH13",
+   "name": "Heathrow Terminals 2 & 3",
+   "topMostParentId": "",
+   "stationId": "",
+   "modes": [
+    "bus",
+    "elizabeth-line",
+    "national-rail",
+    "plane",
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "105",
+     "name": "105"
+    },
+    {
+     "id": "111",
+     "name": "111"
+    },
+    {
+     "id": "278",
+     "name": "278"
+    },
+    {
+     "id": "285",
+     "name": "285"
+    },
+    {
+     "id": "a10",
+     "name": "A10"
+    },
+    {
+     "id": "elizabeth",
+     "name": "Elizabeth line"
+    },
+    {
+     "id": "heathrow-express",
+     "name": "Heathrow Express"
+    },
+    {
+     "id": "n140",
+     "name": "N140"
+    },
+    {
+     "id": "n9",
+     "name": "N9"
+    },
+    {
+     "id": "piccadilly",
+     "name": "Piccadilly"
+    },
+    {
+     "id": "sl7",
+     "name": "SL7"
+    },
+    {
+     "id": "sl9",
+     "name": "SL9"
+    },
+    {
+     "id": "u3",
+     "name": "U3"
+    }
+   ]
+  },
+  {
+   "id": "HUBHX5",
+   "name": "Heathrow Airport Terminal 5",
+   "topMostParentId": "",
+   "stationId": "",
+   "modes": [
+    "bus",
+    "national-rail",
+    "plane",
+    "tube",
+    "elizabeth-line"
+   ],
+   "lines": [
+    {
+     "id": "350",
+     "name": "350"
+    },
+    {
+     "id": "423",
+     "name": "423"
+    },
+    {
+     "id": "482",
+     "name": "482"
+    },
+    {
+     "id": "490",
+     "name": "490"
+    },
+    {
+     "id": "elizabeth",
+     "name": "Elizabeth line"
+    },
+    {
+     "id": "heathrow-express",
+     "name": "Heathrow Express"
+    },
+    {
+     "id": "n9",
+     "name": "N9"
+    },
+    {
+     "id": "piccadilly",
+     "name": "Piccadilly"
+    }
+   ]
+  },
+  {
+   "id": "HUBPAD",
+   "name": "Paddington",
+   "topMostParentId": "",
+   "stationId": "",
+   "modes": [
+    "bus",
+    "elizabeth-line",
+    "national-rail",
+    "tube"
+   ],
+   "lines": [
+    {
+     "id": "16",
+     "name": "16"
+    },
+    {
+     "id": "23",
+     "name": "23"
+    },
+    {
+     "id": "27",
+     "name": "27"
+    },
+    {
+     "id": "36",
+     "name": "36"
+    },
+    {
+     "id": "7",
+     "name": "7"
+    },
+    {
+     "id": "bakerloo",
+     "name": "Bakerloo"
+    },
+    {
+     "id": "circle",
+     "name": "Circle"
+    },
+    {
+     "id": "district",
+     "name": "District"
+    },
+    {
+     "id": "elizabeth",
+     "name": "Elizabeth line"
+    },
+    {
+     "id": "great-western-railway",
+     "name": "Great Western Railway"
+    },
+    {
+     "id": "hammersmith-city",
+     "name": "Hammersmith & City"
+    },
+    {
+     "id": "heathrow-express",
+     "name": "Heathrow Express"
+    },
+    {
+     "id": "n205",
+     "name": "N205"
+    },
+    {
+     "id": "n27",
+     "name": "N27"
+    },
+    {
+     "id": "n7",
+     "name": "N7"
+    }
+   ]
+  }
+ ]
+}
