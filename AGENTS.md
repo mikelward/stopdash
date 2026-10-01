@@ -5,9 +5,12 @@ Conventions for AI agents working in this repository.
 `CLAUDE.md` and `GEMINI.md` are symlinks to this file, so every agent reads the same
 conventions. Edit `AGENTS.md`.
 
-StopDash is an Android app (Kotlin + Compose; `:app`, a pure-Kotlin `:domain`, `:shared`,
+Routemo is an Android app (Kotlin + Compose; `:app`, a pure-Kotlin `:domain`, `:shared`,
 and a Wear OS `:wear`) that shows live TfL departures for watched stops on the lock screen,
-the home screen, the watch, and in the app.
+the home screen, the watch, and in the app. **Routemo is the name users see** (maintainer,
+2026-10-01: strings, store listing, docs); the repository, packages (`app.stopdash`), class
+names and Data Layer paths keep **stopdash**, which is what "stopdash" names in code and dev
+notes. Never put the old "StopDash" back in front of users.
 Product and architecture decisions live in `SPEC.md`; the phased plan lives in
 `TODO.md`. This repo mirrors the engineering conventions of the sibling Android repos —
 `mikelward/simmo`, `mikelward/snoozemo`, and `mikelward/typelauncher`; when a convention
@@ -284,7 +287,7 @@ and place names stay as TfL spells them.
 ## Cost and reliability
 
 Call out cost and reliability up front when adding infrastructure or an external call.
-StopDash's one dependency (TfL Unified API) is free (£0; ~50 req/min keyless, ~500 with a
+Routemo's one dependency (TfL Unified API) is free (£0; ~50 req/min keyless, ~500 with a
 user key) — anything new that leaves the device is a distribution/privacy decision, named
 alongside its dollar figure and its Play Data Safety consequence. Battery is the user's
 running cost: a new wakeup, location request, or refresh interval is a battery change and

@@ -122,7 +122,7 @@ exercises the whole spine the widget later renders from.
   - `/StopPoint/{id}/Disruption` for the watched stops: **[landed, PR #15]** a stop's own
     disruption surfaces as a stop-level status row (sorted above the line-status and timed
     rows) even when its lines' status is normal, so a closed stop isn't shown with
-    valid-looking departures. StopDash **marks** (keeps the departures, adds the row) rather
+    valid-looking departures. Routemo **marks** (keeps the departures, adds the row) rather
     than suppresses — TfL's closure data is coarse and often absent, so hiding departures on
     it would risk dropping valid ones; and it surfaces **any** stop disruption rather than
     classifying closures (that's Phase 3). A closed stop with zero predictions still surfaces
@@ -162,7 +162,7 @@ exercises the whole spine the widget later renders from.
   - [x] **Crashlytics — off-device crash + breadcrumb reporting** (requested 2026-09-21; built
         2026-09-24). A Crashlytics `Destination.OFF_DEVICE` sink on `StopdashDebugLog` (androidlog
         redacts every argument not marked `safe(...)`), logged exceptions as non-fatals, and
-        Firebase Analytics, all behind the **Help make StopDash better** opt-in (off by default,
+        Firebase Analytics, all behind the **Help make Routemo better** opt-in (off by default,
         Settings). Inert without `google-services.json`; debug builds never collect. SPEC
         *Privacy*, `docs/PRIVACY.md`, `dev-docs/firebase.md`.
     - [ ] **Human setup before it collects anything** (`dev-docs/firebase.md`): after the package
@@ -2056,7 +2056,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       brand its London trains carry, in place of TfL's "West Midlands Trains" and the feed's "LNR
       & WMR", renamed where names come in from TfL, the rail feed or a saved copy (maintainer,
       2026-09-30), so directions, spoken labels and titles match the LNR pill.
-- [ ] (Later) **Revisit auto-locate-on-open and the location states.** StopDash
+- [ ] (Later) **Revisit auto-locate-on-open and the location states.** Routemo
       resolves location once on open (a `LaunchedEffect` gated on `PermissionRequired`) and
       the nearby set never re-resolves afterward except via the temporary crosshair button.
       Work out the intended behavior across the states — first open, permission
@@ -2192,7 +2192,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       via a `geo:0,0?q=lat,lng(Name)` intent (a labeled pin at TfL's published stop position, never
       the user's fix). No new dependency and $0; with no maps app a toast says so. The stop's
       position and name reach an app the user picked, only on their tap — user-initiated sharing,
-      not collection by StopDash, so no Play Data Safety change.
+      not collection by Routemo, so no Play Data Safety change.
 
 ## Phase 3 — Full disruptions
 
@@ -2209,13 +2209,13 @@ Builds on Phase 1's minimal line-status marking.
       back to the non-alerting Service Alert; a clause ends at punctuation or a word that starts
       another ("because", "and", …), so "diverted because the road is no longer open" still names
       one. Same family as the allowlist option below: guessing a label from prose by word lists.
-- [ ] **Option: leave out a bus alert only when every sentence is one StopDash reads** (maintainer,
+- [ ] **Option: leave out a bus alert only when every sentence is one Routemo reads** (maintainer,
       2026-10-01, an option to weigh, not a decision). A bus line's alert is left out of a ride its
       stretch doesn't reach (PR #455) unless its text has one of a list of route-wide words
       ("delays", "not running", "suspended", "cancelled", …). Review kept finding words the list
       missed, each one a rider who'd lose their only warning, and TfL can always word an outage the
       list doesn't name. *The option:* an allowlist instead: leave the alert out only when every
-      sentence is a kind StopDash reads (the stops not served, "diverted via …", a direction, a date
+      sentence is a kind Routemo reads (the stops not served, "diverted via …", a direction, a date
       or reason), so any other sentence keeps it on. *Gains:* it fails safe, with no word to miss.
       *Costs:* some off-ride diversions would still warn until their wording is added. *First:*
       check how many of the TfL alerts collected in PR #455's tests it would still leave out.
@@ -2801,6 +2801,13 @@ and these carry the rest as their own PRs:
         docs). A new ID is a new app on devices and a new Play listing; see the Play item
         above. The repo's URLs (and its Pages privacy URL) point at `mikelward/stopdash`,
         ahead of the maintainer renaming the GitHub repo.
+  - [x] **Display name Routemo** (maintainer, 2026-10-01; RouteMo and LDNGo were compared):
+        what users see is Routemo — the launcher and watch labels, every string naming the app,
+        the widget, the bug report, the Play listing ("Routemo - London bus + tube") and feature
+        graphic, `docs/PRIVACY.md`, SPEC and README. The application ID, packages, class and file
+        names, Data Layer paths and the repository keep stopdash, so the package rename above
+        still holds for those; renaming them too would be its own decision (a new ID is a new
+        app, as above).
     - [x] **Station builders renamed too**, with the station index and codes rebuilt from
           live data. TfL now gives Clapham Junction's second id (`910GCLPHMJ1`) South Western
           Railway as well as the Overground, so it keeps its `CLJ` code like St Pancras's two
@@ -2909,7 +2916,7 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
       Data Safety decision: the stops someone watches say where they live and travel.
 
 - [ ] (Later, open call) **Other cities beyond London** (recorded 2026-09-19 at the
-      maintainer's request). StopDash is TfL-specific today: the data layer talks only to
+      maintainer's request). Routemo is TfL-specific today: the data layer talks only to
       the TfL Unified API, and line colors/codes are TfL's. The **domain layer**
       (`app.stopdash.domain` — stops, departures, staleness) is *shaped* around one
       departures model much of a multi-city version would reuse, but it is **not already
@@ -2951,7 +2958,7 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 ## Decisions needing review
 
 - [ ] **Which routes get a Fastest / Simplest header (autopilot, 2026-09-30).** Taken: Fastest over
-  the first card, which the list already ranks as the soonest arrival StopDash stands behind, and
+  the first card, which the list already ranks as the soonest arrival Routemo stands behind, and
   none on a lone card or one whose arrival is withheld; Simplest over the card with the fewest
   rides, the earliest shown on a tie, and none when every card rides as often; "Fastest ·
   Simplest" when one card is both. *Alternatives:* Fastest by raw earliest arrival across tiers
@@ -3317,7 +3324,7 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
     generation and only prune if the stored set still matches, mirroring `saveIfStopsMatch`. Left
     as a follow-up under this class rather than added mid-PR (the same concurrent-writer race).
 - **About/Licenses entry point is an overflow menu → About dialog → full-screen Licenses
-  overlay, reachable from every state** (autopilot, licenses-screen PR). StopDash has no nav
+  overlay, reachable from every state** (autopilot, licenses-screen PR). Routemo has no nav
   graph and, until now, no About/Settings surface, so the licenses screen needed a home.
   Chosen: a `MoreVert` overflow in the departures top bar, **and** an "About" button on the
   location gate, both open the shared About dialog (app name + version); its one action opens

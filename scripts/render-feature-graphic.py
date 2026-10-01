@@ -23,6 +23,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, os.pardir, "docs", "play-store", "feature-graphic.png")
 FONTS = sys.argv[1] if len(sys.argv) > 1 else "package/files"
 
+# The wordmark, then the tagline a line each: what the app covers, then what it does.
+NAME = "Routemo"
+TAGLINE = [("London bus + tube", 600), ("Live departures", 500), ("and trip planning", 500)]
+
 W, H, SS = 1024, 500, 4
 BG = "#FFFFFF"
 INK = "#1D1B20"         # on-surface
@@ -49,7 +53,7 @@ img = Image.new("RGB", (s(W), s(H)), BG)
 d = ImageDraw.Draw(img)
 
 # The route-lines mark (the icon's 22..84 x 43..65 design units), scaled to MARK_W wide.
-MARK_X, MARK_Y, MARK_W = 64, 132, 104
+MARK_X, MARK_Y, MARK_W = 64, 112, 104
 u = MARK_W / 62.0
 
 
@@ -70,11 +74,10 @@ for x, y in [(77, 47), (77, 61), (64, 54)]:
     r = aw / 2
     d.ellipse([mx(x) - r, my(y) - r, mx(x) + r, my(y) + r], fill="#000000")
 
-# Wordmark and tagline.
-d.text((s(64), s(208)), "StopDash", font=font(700, 72), fill=INK)
-tag = font(500, 30)
-d.text((s(64), s(308)), "Live London departures,", font=tag, fill=INK_MUTED)
-d.text((s(64), s(348)), "at a glance", font=tag, fill=INK_MUTED)
+# Wordmark and tagline: the first line, what it covers, reads darker than what it does.
+d.text((s(64), s(188)), NAME, font=font(700, 72), fill=INK)
+for i, (line, weight) in enumerate(TAGLINE):
+    d.text((s(64), s(288 + 40 * i)), line, font=font(weight, 30), fill=INK if i == 0 else INK_MUTED)
 
 # The place header and its departures card.
 CX1, CY1, CX2 = 464, 108, 960

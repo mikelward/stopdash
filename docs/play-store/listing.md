@@ -11,7 +11,7 @@ The default language is **English (United States)**, matching the app's base str
 Play setup in `dev-docs/play-store-internal-track.md`. The UK gets its own translation (below),
 the way `values-en-rGB` overrides the app's strings.
 
-**App name** (30 characters max): `StopDash: London departures`
+**App name** (30 characters max): `Routemo - London bus + tube`
 
 **Short description** (80 characters max):
 
@@ -29,11 +29,11 @@ the way `values-en-rGB` overrides the app's strings.
 > • **Find a station**: search any stop or station by name, no location needed
 > • **National Rail** (optional): add your own free API key to see live mainline times
 >
-> Honest about freshness: every time shows how old it is, and StopDash never passes old data off as live. When TfL can't be reached, it says so.
+> Honest about freshness: every time shows how old it is, and Routemo never passes old data off as live. When TfL can't be reached, it says so.
 >
 > No ads, no account. Your location goes only to TfL, only to find stops near you. On a trip you start, it's also checked on your phone to see if you boarded, and never sent. A bug report includes it only if you agree. Crash reports and usage stats (with a rough region from your IP address) are opt-in and off by default.
 >
-> Powered by TfL Open Data. StopDash isn't affiliated with or endorsed by Transport for London.
+> Powered by TfL Open Data. Routemo isn't affiliated with or endorsed by Transport for London.
 
 Until the widget shows user-chosen watched stops (`TODO.md` Phase 2), the copy promises
 stops *near you*, not "your stops"; revise it when that lands.
@@ -95,15 +95,15 @@ Why:
   with your TfL requests, and your Rail Data Marketplace key, sent with National Rail
   requests. Each goes only to the service that issued it, and ties those requests to your
   account there.
-- **Everything marked Analytics** is sent only when *Help make StopDash better* is on, and
+- **Everything marked Analytics** is sent only when *Help make Routemo better* is on, and
   it's off by default. That's why those rows are Optional.
-- **Ephemeral = No** on every row: StopDash can't vouch for how long TfL keeps a request,
+- **Ephemeral = No** on every row: Routemo can't vouch for how long TfL keeps a request,
   and the app keeps its last few lookup positions in its cache for up to a day. Answering No
   never understates.
 - **Shared = No:** a TfL request is user-initiated and expected, and Firebase acts as a
   service provider. Play excludes both from "sharing".
 - **Not declared:**
   - The bug report: the user hands it to an app they choose through the share sheet, so
-    StopDash never collects it.
+    Routemo never collects it.
   - The Play update check: it carries no user data.
   - Android backup: it's the platform's channel, not the app's.
