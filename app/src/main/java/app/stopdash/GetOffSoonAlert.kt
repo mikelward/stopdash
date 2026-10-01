@@ -12,6 +12,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.TripProgress
+import app.stopdash.ui.stopsText
 import java.time.Duration
 import java.time.Instant
 
@@ -77,9 +78,9 @@ internal object GetOffSoonAlert {
             .putExtra(EXTRA_OPEN_ON_THE_WAY, true)
         val pending = PendingIntent.getActivity(context, 0, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val text = when (val left = riding.stopsLeft) {
-            null -> context.getString(R.string.on_the_way_next_is, riding.nextStop)
+            null -> riding.nextStop?.let { context.getString(R.string.on_the_way_next_is, it) }
             0, 1 -> context.getString(R.string.on_the_way_next_stop)
-            else -> context.resources.getQuantityString(R.plurals.on_the_way_stops, left, left, riding.nextStop)
+            else -> stopsText(context.resources, left, riding.nextStop, null)
         }
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_appbar_route_arrow)

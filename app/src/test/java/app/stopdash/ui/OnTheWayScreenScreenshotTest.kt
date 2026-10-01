@@ -548,6 +548,28 @@ class OnTheWayScreenScreenshotTest {
     }
 
     @Test
+    fun stops_counted_from_where_the_rider_was_seen_dont_wait_for_tfl() {
+        val resources = composeRule.activity.resources
+        // Restored with no answer yet: counted from location, not TfL, so shown as they were (Codex, PR #449).
+        val byPosition = TripProgress.Riding(mildmay, "Hackney Central", 4, null, getOffSoon = false, byPosition = true)
+        assertEquals("4 stops · next Hackney Central", nextStepText(resources, byPosition, now, current = false).second)
+        // A train's, from an answer too old to stand behind, still waits.
+        val fromTrain = TripProgress.Riding(mildmay, "Hackney Central", 4, null, getOffSoon = false)
+        assertEquals("Updating…", nextStepText(resources, fromTrain, now, current = false).second)
+    }
+
+    @Test
+    fun a_next_stop_not_named_is_left_out_of_the_stops_left() {
+        val resources = composeRule.activity.resources
+        // Not called by where they get off (Codex, PR #449): the stops alone, timed where predicted.
+        assertEquals("4 stops", nextStepText(resources, TripProgress.Riding(mildmay, null, 4, null, getOffSoon = false), now).second)
+        assertEquals("4 stops (~16 min)", nextStepText(resources, TripProgress.Riding(mildmay, null, 4, at(16), getOffSoon = false), now).second)
+        assertEquals("4 stops · next Hackney Central", nextStepText(resources, TripProgress.Riding(mildmay, "Hackney Central", 4, null, getOffSoon = false), now).second)
+        // No stops counted and none named: no detail rather than a guess.
+        assertEquals("", nextStepText(resources, TripProgress.Riding(mildmay, null, null, null, getOffSoon = false), now).second)
+    }
+
+    @Test
     fun each_mode_is_looked_for_by_its_own_name() {
         val resources = composeRule.activity.resources
         fun leg(mode: String) = TripLeg(mode, "x", "X", "A", "A", "B", "B", at(4), at(20))

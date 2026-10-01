@@ -1712,13 +1712,24 @@ than a minute later: a newer train is tried first, so this is what keeps it from
 theirs. Two trains between the same two stops as the rider can't be told apart this way. Seen where
 they get off, they've done the ride, whichever train took them: the trip moves on to the next leg,
 as when a rider on a train is seen at their station. A train of a line the cards don't offer
-(another mode's, one not running, one the rider avoids) isn't followed. With none found, the trip waits as it was. The ride's
-stops are placed from its line's route, and each train's from its own line's, which the trip's cards
-already hold. Underground, where no
+(another mode's, one not running, one the rider avoids) isn't followed. With none found they're
+**on board all the same** (maintainer, 2026-10-01: seen at the next stop, they're on): the step
+becomes "Get off at …", the stops left counted on the plan's path from where they were seen, and no
+time claimed. Later fixes move that on, never back: each refresh takes one precise fix for the ride's
+planned time from then and five minutes more for a slow train, then none (battery). A train is only
+ever matched against a fresh fix, never against where they were last seen (maintainer, 2026-10-01): that
+says where they were but not when, so a train that was behind them could match later just by moving
+on. Each fresh fix looks again for the train that took them, at or past the furthest they were seen;
+a fix behind that keeps where they are and matches nothing. A lookup that fails is said ("Couldn't
+update"), but where they were seen still moves the step on and says "get off soon", since none of it
+stands on TfL. The ride's stops are placed from its line's route, and each train's from its own
+line's, which the trip's cards already hold. Underground, where no
 fix comes, it can't tell. The stop's position is the Planner's (or its line's route's); the fix is
 only compared with it, on the device, and never logged, kept or sent.
 Underground, where no fix comes, nothing is guessed. Outside those windows no fix is asked for; the
-battery cost is at most ten fixes per ride after boarding, and about twenty while waiting. Following a bus above ground by location is still to do. It holds a partial wake lock (screen off) for the trip, since
+battery cost is at most ten fixes per ride after boarding, and about twenty while waiting. A rider
+on board by where they were seen is the exception: one fix a refresh (about two a minute) for the
+ride's planned time and five minutes more, so about fifty on a twenty-minute ride, and then none. Following a bus above ground by location is still to do. It holds a partial wake lock (screen off) for the trip, since
 a sleeping phone would otherwise stall the refresh and the get-off alert: renewed for two minutes on
 each refresh, so a stalled service lets go. A trip never ended is followed in the background until
 four hours after it started; the service then stops, and the app still follows the trip whenever it's open.
