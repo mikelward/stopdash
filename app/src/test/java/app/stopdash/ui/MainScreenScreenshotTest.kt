@@ -317,7 +317,7 @@ class MainScreenScreenshotTest {
                 onTelemetryInviteAnswer = { answers += it },
             )
         }
-        composeRule.onNodeWithText("Help make StopDash better?").assertExists()
+        composeRule.onNodeWithText("Help make Routemo better?").assertExists()
         composeRule.onNodeWithText("No thanks").performClick()
         composeRule.onNodeWithText("Yes please").performClick()
         assertEquals(listOf(false, true), answers)
