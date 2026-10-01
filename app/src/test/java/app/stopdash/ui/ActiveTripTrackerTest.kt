@@ -44,6 +44,8 @@ class ActiveTripTrackerTest {
     private val purpleRide = ride.copy(lineId = "purple", lineName = "Purple", path = listOf("X", "C"))
     // The lines the trip's cards offer for each ride, by the ride's line: the Planner's alone unless a test says.
     private val offered = mutableMapOf<String, List<TripLeg>>()
+    // The lines of the ride that went unchecked, as a failed check leaves them ([RideLinesNow.uncheckedLines]).
+    private var ridesUnchecked: Set<String> = emptySet()
 
     private fun train(vehicle: String, minutes: Long) =
         Departure("red", "Red", "outbound", "C", null, at(minutes), "tube", vehicleId = vehicle)
@@ -172,7 +174,10 @@ class ActiveTripTrackerTest {
         },
         // As the cards find them: another line only where the departures given list a train of it.
         rideLines = { _, ride, given ->
-            (offered[ride.lineId] ?: listOf(ride)).filter { it == ride || given.any { train -> train.lineId == it.lineId } }
+            RideLinesNow(
+                (offered[ride.lineId] ?: listOf(ride)).filter { it == ride || given.any { train -> train.lineId == it.lineId } },
+                uncheckedLines = ridesUnchecked,
+            )
         },
         stopPoles = { area ->
             poleReads++
@@ -667,6 +672,89 @@ class ActiveTripTrackerTest {
         tracker.refresh()
         assertFalse("D" in boardStops)
         assertEquals(emptyList<String>(), disruptionAlerts)
+    }
+
+    @Test
+    fun `route disruption claims no missing train at a change while a line of the ride went unchecked`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "D", "D", at(16), at(18))
+        val second = TripLeg("tube", "blue", "Blue", "D", "D", "E", "E", at(20), at(28), path = listOf("E"))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 16))
+        // D lists a green train, its route sending it to Y.
+        departures["D"] = listOf(Departure("green", "Green", "outbound", "Y", null, at(19), "tube", vehicleId = "8"))
+        sequences["green"] = app.stopdash.domain.LineSequence(
+            listOf(app.stopdash.domain.LineRoute("D-Y", listOf("D", "Y"))), mapOf("D" to "D", "Y" to "Y"),
+        )
+        tracker.start(TripRoute(listOf(ride, walkOn, second)), "E", readyAt = now)
+        tracker.refresh()
+        disruptionAlerts.clear()
+        // D lists no blue train, but green, listed there, couldn't be checked as one of the ride's lines: a
+        // train of it may take the rider on, so nothing is known, and no missing train is claimed (Codex,
+        // PR #459).
+        now = at(13)
+        trains["3"] = listOf(call("C", 16))
+        ridesUnchecked = setOf("green")
+        tracker.refresh()
+        assertTrue("D" in boardStops)
+        assertEquals(emptyList<String>(), disruptionAlerts)
+        // A line unchecked with no train listed at D couldn't add one: it's said (Codex, PR #460).
+        ridesUnchecked = setOf("purple")
+        tracker.refresh()
+        assertEquals(listOf("new ${RouteDisruption.Signal.Unpredicted(2, "blue", "Blue", "D", "D").key}"), disruptionAlerts)
+    }
+
+    @Test
+    fun `waiting, no train found while a line of the ride went unchecked fails the refresh`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        // No red train on the board, but a blue one, and blue couldn't be checked as one of the ride's lines:
+        // it may be theirs, so the refresh failed rather than finding no train (Codex, PR #459).
+        ridesUnchecked = setOf("blue")
+        departures["A"] = listOf(Departure("blue", "Blue", "outbound", "C", null, at(6), "tube", vehicleId = "4"))
+        now = at(4)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertTrue(tracker.failed.value)
+        // A line unchecked with no train on the board couldn't add one: no train found is just that (Codex,
+        // PR #460).
+        ridesUnchecked = setOf("purple")
+        tracker.refresh()
+        assertFalse(tracker.failed.value)
+        // A red train found all the same is followed: what was checked stands.
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        tracker.refresh()
+        assertFalse(tracker.failed.value)
+        assertEquals("9", tracker.trip.value?.vehicleId)
+    }
+
+    @Test
+    fun `on board by position, a fix off their line while a line of the ride went unchecked fails the refresh`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(6)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // 9 still to come, they're seen at B: on board by where they were seen.
+        now = at(7)
+        tracker.refresh(fixAt(51.51))
+        val onBoard = TripProgress.Riding(ride, "C", 1, null, true, byPosition = true)
+        assertEquals(onBoard, tracker.progress.value)
+        // Seen a street off red's way, with another line of the ride unchecked: they may be on it, so the
+        // refresh failed, their position kept (Codex, PR #459).
+        // Any line unchecked counts here, listed or not: a line of the plan can be ridden with no train on the board.
+        ridesUnchecked = setOf("purple")
+        now = at(8)
+        tracker.refresh(fixAt(51.51, -0.135))
+        assertTrue(tracker.failed.value)
+        assertEquals(onBoard, tracker.progress.value)
+        // With every line checked, a fix that places them nowhere is no failure: their position stands.
+        ridesUnchecked = emptySet()
+        tracker.refresh(fixAt(51.51, -0.135))
+        assertFalse(tracker.failed.value)
+        assertEquals(onBoard, tracker.progress.value)
     }
 
     @Test

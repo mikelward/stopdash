@@ -1305,14 +1305,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 on board by position. Done: they're on board on that line, kept as the line ridden
                 (`ActiveTrip.vehicleLeg`, as a told train is), its stops counted on its own path
                 (`OnTheWay.onBoardAlong`'s `on`).
-          - [ ] **A ride line whose check failed is said, not dropped silently** (Codex, PR #459):
-                `RideLineChecks.running` leaves out a line whose route, status or stop-closure check
-                failed, and the trip falls back on the Planner's line (#451), but nothing tells the
-                refresh: it reads as current. That holds for every caller: the train picked while
-                waiting, the change-board signal, and placing a rider seen off the line they're
-                counted on by position. Have the ride lines carry whether a check failed, and let
-                each caller report "Couldn't update" where the lines it went without could have
-                changed what it shows.
+          - [x] **A ride line whose check failed is said, not dropped silently** (Codex, PR #459):
+                `RideLineChecks.running` left out a line whose route, status or stop-closure check
+                failed, and the trip fell back on the Planner's line (#451), but nothing told the
+                refresh: it read as current, for every caller. Done: the ride lines carry whether one
+                went unchecked (`RideLinesNow.unchecked`). No train picked while waiting then fails
+                the refresh (a train found is still followed); the change-board signal is unknown,
+                never "no train predicted"; and a rider on board by position, seen off their line
+                and placed nowhere, keeps their place with the refresh failed.
           - [x] **Update as soon as location changes** (maintainer, 2026-10-01): while a trip is shown,
                 the rider is using the app, so timeliness comes first, within reason. Refresh on a
                 location update rather than only on the ~30 s cycle, with a minimum gap between

@@ -34,6 +34,19 @@ class RideLinesTest {
     }
 
     @Test
+    fun `a ride's candidates are its own mode's, in the plan or on its board, not another ride's`() {
+        // A tube ride, two bus rides, then another tube ride: lineIds asks after every ride's.
+        val bus7 = leg("7", "D", "E", mode = "bus")
+        val bus8 = leg("8", "E", "F", mode = "bus")
+        val green = leg("green", "F", "G")
+        val plan = TripRoute(listOf(ride, bus7, bus8, green))
+        assertEquals(setOf("green", "8", "7", "red"), RideLines.lineIds(listOf(plan), atA, emptyMap()).toSet())
+        // The tube ride's are the tube lines: green in the plan and on its board, never the buses.
+        assertEquals(listOf("green"), RideLines.candidateIds(ride, listOf(plan), atA, emptyMap()))
+        assertEquals(listOf("8"), RideLines.candidateIds(bus7, listOf(plan), atA, emptyMap()))
+    }
+
+    @Test
     fun `a line reaching the stop another way is shown but doesn't time the ride`() {
         val lines = linesOf(mapOf("green" to sequence("A", "Z", "B")))
         assertEquals(listOf("red", "green"), lines.legs.map { it.lineId })
