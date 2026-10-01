@@ -273,6 +273,9 @@ private data class PersistedActiveTrip(
     // Absent from a trip kept before it was stored: its train is on the ride's own line, the only
     // one followed then, and named and checked as it.
     val vehicleLeg: PersistedTripLeg? = null,
+    // Absent from a trip kept before it was stored: no call yet taken only because the rider was seen
+    // at the stop, so the next such reading starts the hold from the train's due time then.
+    val heldFrom: String? = null,
 ) {
     fun toTrip() = ActiveTrip(
         route = TripRoute(legs.map { it.toLeg() }),
@@ -293,6 +296,7 @@ private data class PersistedActiveTrip(
         boardWarned = boardWarned,
         disruptionsHeard = disruptionsHeard.toSet(),
         vehicleLeg = vehicleLeg?.toLeg(),
+        heldFrom = heldFrom?.let(Instant::parse),
     )
 
     companion object {
@@ -315,6 +319,7 @@ private data class PersistedActiveTrip(
             boardWarned = trip.boardWarned,
             disruptionsHeard = trip.disruptionsHeard.sorted(),
             vehicleLeg = trip.vehicleLeg?.let { PersistedTripLeg.of(it) },
+            heldFrom = trip.heldFrom?.toString(),
         )
     }
 }

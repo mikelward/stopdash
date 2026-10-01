@@ -1086,6 +1086,55 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `a rider seen at the boarding stop is there by a fix sure enough to tell`() {
+        assertTrue(OnTheWay.atBoarding(placed, stillThere))
+        // 1 km down the line, unsure, with no fix, or with no point for the stop: not seen there.
+        assertFalse(OnTheWay.atBoarding(placed, downTheLine))
+        assertFalse(OnTheWay.atBoarding(placed, fix(platform, accuracyMeters = 80f)))
+        assertFalse(OnTheWay.atBoarding(placed, null))
+        assertFalse(OnTheWay.atBoarding(trip, stillThere))
+        // On a walk there's no boarding stop yet.
+        assertFalse(OnTheWay.atBoarding(placed.copy(legIndex = 1), stillThere))
+    }
+
+    @Test
+    fun `a loop train whose boarding call jumps a lap's worth later is still awaited while the rider is seen at the stop`() {
+        // Still on its previous lap, B and C ahead of A: due at A at 12.
+        val (waiting, _) = OnTheWay.advance(OnTheWay.follow(placed, train("8", 12)), listOf(call("B", 3), call("C", 6), call("A", 12), call("B", 15), call("C", 18)), at(1))
+        // A refresh later, held on its way round: its call at A jumps seven minutes, the very calls a
+        // train that just left with its next lap predicted would give.
+        val held = listOf(call("B", 4), call("C", 7), call("A", 19), call("B", 22), call("C", 25))
+        // Unseen, that reads as the train having left with the rider.
+        assertTrue(OnTheWay.advance(waiting, held, at(2)).first.boarded)
+        // Seen still at A, it's the same call, late: still awaited.
+        val (still, progress) = OnTheWay.advance(waiting, held, at(2), atBoarding = true)
+        assertFalse(still.boarded)
+        assertEquals(TripProgress.Waiting(placed.leg!!, at(19)), progress)
+        // Once its time at A has come, a rider still there may have missed it: its next lap's A isn't
+        // waited for, but left to the check for a rider left behind (Codex, PR #452).
+        val gone = listOf(call("B", 14), call("C", 17), call("A", 30), call("B", 33), call("C", 36))
+        val (missed, after) = OnTheWay.advance(waiting, gone, at(13), atBoarding = true)
+        assertTrue(missed.boarded)
+        assertTrue(after is TripProgress.Riding)
+        // That time is the one it was due at when first held, not the later one each held call moves it
+        // to: from the trip as the hold left it, due at 19, a rider still there at 13 may have missed
+        // the train, and a call a lap later still isn't waited for (Codex, PR #452).
+        assertEquals(at(12), still.heldFrom)
+        val (rolled, _) = OnTheWay.advance(still, listOf(call("B", 14), call("C", 17), call("A", 26), call("B", 29)), at(13), atBoarding = true)
+        assertTrue(rolled.boarded)
+        // Held again before it, it's still the same call.
+        val (heldAgain, again) = OnTheWay.advance(still, listOf(call("B", 5), call("C", 8), call("A", 26), call("B", 29)), at(3), atBoarding = true)
+        assertEquals(TripProgress.Waiting(placed.leg!!, at(26)), again)
+        assertEquals(at(12), heldAgain.heldFrom)
+        // After it, one held at the time it was last due, near enough, is still awaited as any is.
+        val (stillThere, stillDue) = OnTheWay.advance(still, listOf(call("B", 14), call("C", 17), call("A", 20), call("B", 23)), at(13), atBoarding = true)
+        assertFalse(stillThere.boarded)
+        assertEquals(TripProgress.Waiting(placed.leg!!, at(20)), stillDue)
+        // A train newly followed starts afresh.
+        assertNull(OnTheWay.follow(still, train("9", 25)).heldFrom)
+    }
+
+    @Test
     fun `a rider on board isn't on a train followed that is still minutes from the stop`() {
         // 8 is followed, due at A at 9; at 4 the rider says they're on board: the train they're on
         // is one at the platform, so 8 is let go for one due about now to be picked.

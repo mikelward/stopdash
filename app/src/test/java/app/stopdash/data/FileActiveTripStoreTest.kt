@@ -55,6 +55,7 @@ class FileActiveTripStoreTest {
             lineId = "metropolitan", lineName = "Metropolitan", path = listOf("940GZZLUWLO"), pathNames = listOf("Waterloo"),
             headings = emptyList(), fromAt = null, toAt = null,
         ),
+        heldFrom = Instant.parse("2026-09-26T08:01:30Z"),
     )
 
     @Test
@@ -337,5 +338,13 @@ class FileActiveTripStoreTest {
         assertEquals(trip.copy(vehicleLeg = null), FileActiveTripStore(file).load())
         assertEquals("jubilee", app.stopdash.domain.OnTheWay.followedLine(FileActiveTripStore(file).load()!!))
         assertEquals("Jubilee", app.stopdash.domain.OnTheWay.followedLineName(FileActiveTripStore(file).load()!!))
+    }
+
+    @Test
+    fun `a trip saved before a held train's time was kept has none`() {
+        val file = File(tmp.root, "active-trip.json")
+        FileActiveTripStore(file).save(trip.copy(heldFrom = null))
+        assertEquals(false, file.readText().contains("heldFrom"))
+        assertEquals(trip.copy(heldFrom = null), FileActiveTripStore(file).load())
     }
 }
