@@ -13,6 +13,7 @@ import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -22,7 +23,9 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import app.stopdash.domain.DistanceUnits
+import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.ui.theme.StopDashTheme
@@ -696,6 +699,83 @@ class SettingsScreenScreenshotTest {
 
         composeRule.onNodeWithTag("apiKeyClear").performScrollTo().performClick()
         composeRule.runOnIdle { assert(saved == "") }
+    }
+
+    @Test
+    fun settings_hidden_list() {
+        val northern = HiddenModes.lineKey("northern", "Northern line")
+        var hidden by mutableStateOf(linkedSetOf(northern, "bus", "tube", "dlr") as Set<String>)
+        val shown = mutableListOf<String>()
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(
+                    liveWidgetRefresh = false,
+                    onLiveWidgetRefreshChange = {},
+                    onBack = {},
+                    hiddenModes = hidden,
+                    onShowHidden = { group ->
+                        shown += group.key
+                        hidden = ModeGroups.withGroup(hidden, group, hide = false)
+                    },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        // Under the places: each group in menu order, then the lines, each with its own Show.
+        composeRule.onNodeWithText("Hidden").assertIsDisplayed()
+        composeRule.onNodeWithText("Tube & DLR").assertIsDisplayed()
+        composeRule.onNodeWithText("Bus").assertIsDisplayed()
+        composeRule.onNodeWithText("Northern line").assertIsDisplayed()
+        captureSnapshot("settings-hidden.png")
+
+        // Show brings back just that one; the rest stays listed.
+        composeRule.onNodeWithContentDescription("Show Northern line").performClick()
+        composeRule.waitForIdle()
+        assertEquals(listOf(northern), shown)
+        composeRule.onNodeWithText("Northern line").assertDoesNotExist()
+        composeRule.onNodeWithText("Bus").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Show Tube & DLR").performClick()
+        composeRule.onNodeWithContentDescription("Show Bus").performClick()
+        composeRule.waitForIdle()
+        assertEquals(listOf(northern, "tube", "bus"), shown)
+        // Nothing hidden: no list at all.
+        composeRule.onNodeWithTag("hiddenList").assertDoesNotExist()
+    }
+
+    @Test
+    fun aShowThatDidNotSave_isSaidInSettings_evenWithTheListGone() {
+        var failed by mutableStateOf(true)
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(
+                    liveWidgetRefresh = false,
+                    onLiveWidgetRefreshChange = {},
+                    onBack = {},
+                    // The last hidden item was shown again, and that didn't save.
+                    hiddenModes = emptySet(),
+                    hiddenWriteFailed = failed,
+                    onDismissHiddenError = { failed = false },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        val message = composeRule.activity.getString(app.stopdash.R.string.hidden_modes_write_failed)
+        composeRule.onNodeWithText(message).assertIsDisplayed()
+        composeRule.onNodeWithText("Dismiss").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(message).assertDoesNotExist()
+    }
+
+    @Test
+    fun settings_hidden_list_isAbsent_whenNothingIsHidden() {
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {})
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("hiddenList").assertDoesNotExist()
     }
 
     /**

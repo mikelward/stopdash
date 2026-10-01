@@ -1,6 +1,7 @@
 package app.stopdash.ui
 
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LocationFix
 import app.stopdash.domain.LocationProvider
@@ -163,6 +164,52 @@ class NearbyStopsViewModelTest {
         model.refilter()
         advanceUntilIdle()
         assertEquals(listOf("b1", "t1"), (model.state.value as NearbyStopsViewModel.State.Ready).eagerStops.map { it.id })
+    }
+
+    @Test
+    fun `a set knows when something it was picked without has been shown again since`() = runTest {
+        val stops = listOf(stop("b1", 50.0, "bus"), stop("t1", 300.0, "tube"))
+        val northern = HiddenModes.lineKey("northern", "Northern line")
+        var hidden = setOf("bus", northern)
+        val gate = CompletableDeferred<Unit>()
+        var waitForLookup = false
+        val model = NearbyStopsViewModel(
+            location = FakeLocation(origin),
+            finder = FakeFinder {
+                stops
+            }.let { found ->
+                // The second lookup waits on [gate], to catch the re-pick under way.
+                object : StopFinder by found {
+                    override suspend fun nearbyStops(latitude: Double, longitude: Double, radiusMeters: Int, stopTypes: List<String>): List<StopLocation> {
+                        if (waitForLookup) gate.await()
+                        return found.nearbyStops(latitude, longitude, radiusMeters, stopTypes)
+                    }
+                }
+            },
+            io = dispatcher,
+            hiddenModes = { hidden },
+        )
+        // No set yet: nothing to re-pick.
+        assertFalse(model.shownAgainSincePick(emptySet()))
+        model.locate()
+        advanceUntilIdle()
+        assertEquals(setOf("bus", northern), (model.state.value as NearbyStopsViewModel.State.Ready).pickedHidden)
+        // Hiding more, or nothing changed, isn't a reason to re-pick; showing either one again is.
+        assertFalse(model.shownAgainSincePick(setOf("bus", northern)))
+        assertFalse(model.shownAgainSincePick(setOf("bus", northern, "tram")))
+        assertTrue(model.shownAgainSincePick(setOf(northern)))
+        assertTrue(model.shownAgainSincePick(setOf("bus")))
+
+        // A re-pick under way reads the hidden set when it gets there, so it isn't asked for twice.
+        hidden = setOf(northern)
+        waitForLookup = true
+        model.refilter()
+        advanceUntilIdle()
+        assertFalse(model.shownAgainSincePick(setOf(northern)))
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(listOf("b1", "t1"), (model.state.value as NearbyStopsViewModel.State.Ready).eagerStops.map { it.id })
+        assertFalse(model.shownAgainSincePick(setOf(northern)))
     }
 
     @Test

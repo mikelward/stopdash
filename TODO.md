@@ -709,8 +709,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         Central line, not just its whole mode: "Hide ‹line›" beside "Hide all ‹group› services" in a
         near-me row's long-press menu and a trip card's menu (each line its legs ride). Not on a
         place's header, where a busy place would list dozens.
-  - [ ] **A "Hidden" list in Settings** to unhide one item at a time, and an **Undo** snackbar
-        right after hiding, once there's more than modes to hide.
+  - [x] **A "Hidden" list in Settings** to unhide one item at a time, and an **Undo** snackbar
+        right after hiding, once there's more than modes to hide. *Done: a long press's hide offers
+        Undo for that one item, and Settings lists each hidden group and line with a Show, while
+        anything is hidden. A nearby set remembers what it was picked without, so a list or trip
+        out of view when Settings showed something re-picks as it comes back.*
   - [x] **Skip the National Rail board for a hidden National Rail mode** at a station that also
         serves an unhidden mode, in the near-me list, a farther station's card and the widget; a
         starred journey's rail times are kept (`HiddenModes.wantsRailBoard`).

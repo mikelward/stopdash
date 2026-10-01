@@ -131,6 +131,52 @@ class StarLongPressTest {
     }
 
     @Test
+    fun `a hide from the menu offers Undo, which shows just what was hidden`() {
+        var hidden: String? = null
+        val shown = mutableListOf<Pair<String, Boolean>>()
+        composeRule.setContent {
+            StopDashTheme {
+                MainScreen(
+                    state = loaded(),
+                    now = now,
+                    onRefresh = {},
+                    onHideMode = { hidden = it },
+                    onSetModeGroupShown = { group, show -> shown += group.key to show },
+                )
+            }
+        }
+        composeRule.onNodeWithText("Brixton").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Hide Victoria line").performClick()
+        composeRule.waitForIdle()
+        val victoria = HiddenModes.lineKey("victoria", "Victoria line")
+        assertEquals(victoria, hidden)
+        composeRule.onNodeWithText("Victoria line hidden").assertExists()
+        // A second hide takes the first one's offer away: Undo is for the latest.
+        composeRule.onNodeWithText("Brixton").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Hide all Tube & DLR services").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Victoria line hidden").assertDoesNotExist()
+        composeRule.onNodeWithText("Tube & DLR hidden").assertExists()
+        composeRule.onNodeWithText("Undo").performClick()
+        composeRule.waitForIdle()
+        assertEquals(listOf("tube" to true), shown)
+        composeRule.onNodeWithText("Tube & DLR hidden").assertDoesNotExist()
+    }
+
+    @Test
+    fun `without a way to show it again, a hide offers no Undo`() {
+        composeRule.setContent {
+            StopDashTheme {
+                MainScreen(state = loaded(), now = now, onRefresh = {}, onHideMode = {})
+            }
+        }
+        composeRule.onNodeWithText("Brixton").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Hide Victoria line").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Undo").assertDoesNotExist()
+    }
+
+    @Test
     fun `a header's long press offers every mode the place serves, not just those with trains due`() {
         var hidden: String? = null
         val mixed = stop.copy(

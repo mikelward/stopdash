@@ -534,6 +534,13 @@ internal fun modesLabel(modes: List<String>): String =
 internal fun groupName(group: ModeGroups.Group): String = GROUP_NAMES[group.key] ?: modeName(group.key)
 
 /**
+ * What a hidden item is called where it's named alone (the Undo snackbar, Settings' Hidden list): a
+ * hidden line by its own label ("Northern line"), a group by [groupName].
+ */
+internal fun hiddenItemName(group: ModeGroups.Group): String =
+    if (HiddenModes.isLineKey(group.key)) HiddenModes.hiddenLineLabels(setOf(group.key)).single() else groupName(group)
+
+/**
  * A group's name as it reads mid-sentence ("Hide all train services"): the common nouns lowercase,
  * the Tube and the DLR, being names, as they are.
  */

@@ -39,6 +39,13 @@ object ModeGroups {
     fun hiddenGroups(hidden: Set<String>): List<Group> =
         (ALL + hidden.filterNot(HiddenModes::isLineKey).map(::of)).distinctBy { it.key }.filter { g -> g.modes.any { HiddenModes.isHidden(it, hidden) } }
 
+    /**
+     * Everything [hidden], one item each, for Settings' Hidden list to show again one at a time: the
+     * groups in menu order, then each hidden line as a group of its own ([of]), in the order hidden.
+     */
+    fun hiddenItems(hidden: Set<String>): List<Group> =
+        hiddenGroups(hidden) + hidden.filter(HiddenModes::isLineKey).map(::of)
+
     /** [hidden] with all of [group] hidden (or shown again when [hide] is false). */
     fun withGroup(hidden: Set<String>, group: Group, hide: Boolean): Set<String> =
         if (hide) {

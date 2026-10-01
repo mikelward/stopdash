@@ -1639,6 +1639,36 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun a_hide_from_a_leg_offers_undo_as_the_list_does() {
+        var hidden: String? = null
+        var unhidden: String? = null
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf", state = planned.copy(live = planned.live - canadaWaterTube.first),
+                    now = now, access = Duration.ofMinutes(2), routeStops = RouteStopsRepository(source),
+                    onBack = {}, onRetry = {}, onHideMode = { hidden = it }, onUnhideMode = { unhidden = it },
+                )
+            }
+        }
+        composeRule.onAllNodes(hasClickAction() and hasContentDescription("Windrush") and hasContentDescription("Jubilee"))
+            .onFirst().performClick()
+        composeRule.waitForIdle()
+        val more = composeRule.activity.getString(R.string.more_actions)
+        composeRule.onNode(
+            hasAnyDescendant(hasContentDescription("Jubilee")) and
+                SemanticsMatcher("long-presses to its menu") { it.config.getOrElseNullable(SemanticsActions.OnLongClick) { null }?.label == more },
+        ).performSemanticsAction(SemanticsActions.OnLongClick)
+        composeRule.onNodeWithText("Hide all Tube & DLR services").performClick()
+        composeRule.waitForIdle()
+        assertEquals("tube", hidden)
+        composeRule.onNodeWithText("Tube & DLR hidden").assertExists()
+        composeRule.onNodeWithText("Undo").performClick()
+        composeRule.waitForIdle()
+        assertEquals("tube", unhidden)
+    }
+
+    @Test
     fun a_hide_that_did_not_save_is_said_on_the_trip() {
         var acknowledged = 0
         composeRule.setContent {

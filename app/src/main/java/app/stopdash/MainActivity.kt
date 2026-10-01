@@ -138,6 +138,7 @@ import app.stopdash.telemetry.TelemetryConsent
 import app.stopdash.ui.ARRIVALS_REUSE
 import app.stopdash.ui.ActiveTripTracker
 import app.stopdash.ui.AppMenuActions
+import app.stopdash.ui.HideUndoCarrier
 import app.stopdash.ui.BugReportConsentDialog
 import app.stopdash.ui.DISRUPTION_REUSE
 import app.stopdash.ui.DeparturesUiState
@@ -155,6 +156,7 @@ import app.stopdash.ui.KeyRejectedFrame
 import app.stopdash.ui.LINE_STATUS_REUSE
 import app.stopdash.ui.LicensesScreen
 import app.stopdash.ui.LocalAppMenu
+import app.stopdash.ui.LocalHideUndoCarrier
 import app.stopdash.ui.LocalOnTheWay
 import app.stopdash.ui.LocalOnTheWayBanner
 import app.stopdash.ui.LocalRouteStops
@@ -515,6 +517,19 @@ class MainActivity : ComponentActivity() {
                 // could save the old place's departures to the widget mid-fix). Back on the list, it
                 // is rebuilt from the current set.
                 val listStores: NearbyDeparturesStores = viewModel()
+                // Something hidden shown again where nothing re-picked for it at once — Settings'
+                // Hidden list, a trip's Undo — re-picks the near-me set from its fix, its retained
+                // list dropped so it's rebuilt from that set, as a From… page's "Show all" does. The
+                // list's own Show all, checkboxes and Undo re-pick in place first, and this then
+                // finds nothing owed (SPEC *Finding stops → Hiding a mode*).
+                val hiddenNow by HiddenModesSetting.changes.collectAsStateWithLifecycle()
+                val hiddenWriteFailedNow by HiddenModesSetting.writeFailed.collectAsStateWithLifecycle()
+                LaunchedEffect(hiddenNow) {
+                    if (nearbyViewModel.shownAgainSincePick(hiddenNow)) {
+                        listStores.clearAll()
+                        nearbyViewModel.refilter()
+                    }
+                }
                 // The near-me trip's To… as a station's is held, for a change of start to carry.
                 val hereTo = { ToChoice(picking = herePicking, stopId = hereToId, name = hereToName, place = hereFavorite) }
                 val closeHereTrip = {
@@ -698,7 +713,10 @@ class MainActivity : ComponentActivity() {
                 val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
                     alertsOff = !GetOffSoonAlert.canAlert(applicationContext)
                 }
+                // An Undo offer whose screen closed under it, put back by the screen landed on.
+                val hideUndoCarrier = remember { HideUndoCarrier() }
                 CompositionLocalProvider(
+                    LocalHideUndoCarrier provides hideUndoCarrier,
                     LocalAppMenu provides AppMenuActions(
                         updateAvailable = updateAvailable.value,
                         onOpenAppListing = ::openPlayListing,
@@ -990,6 +1008,12 @@ class MainActivity : ComponentActivity() {
                                     stepFreeWriteFailed = stepFreeWriteFailed,
                                     onDismissStepFreeError = StepFreeSetting::writeFailureShown,
                                     onOpenFavoritePlaces = { favoritePlacesOpen = true },
+                                    // One item shown again at a time; the lists showing nearby stops
+                                    // re-pick for it as they come back into view.
+                                    hiddenModes = hiddenNow,
+                                    onShowHidden = { group -> HiddenModesSetting.setGroupHidden(group, hidden = false) },
+                                    hiddenWriteFailed = hiddenWriteFailedNow,
+                                    onDismissHiddenError = HiddenModesSetting::writeFailureShown,
                                     onBack = { settingsOpen = false },
                                 )
                             }
@@ -2106,6 +2130,16 @@ class MainActivity : ComponentActivity() {
             nearMeStores.clearAll()
             nearbyViewModel.refilter()
         }
+        // Something shown again while this page was out of view (Settings' Hidden list) or from its
+        // trip's Undo: re-pick from the same place, the kept list dropped so it's rebuilt from the
+        // new set, as the near-me list does for the same (above).
+        val fromListStores: NearbyDeparturesStores = viewModel(key = "from-list-stores")
+        LaunchedEffect(hidden) {
+            if (fromNearby.shownAgainSincePick(hidden)) {
+                fromListStores.clearAll()
+                fromNearby.refilter()
+            }
+        }
         // A return to the foreground refreshes the page, as it does the near-me list: here by
         // re-picking from the same place (nothing moves), then refreshing a same-set page.
         var returnPending by rememberSaveable { mutableStateOf(false) }
@@ -2562,8 +2596,10 @@ class MainActivity : ComponentActivity() {
             onRelocate = onLocate ?: relocate,
             hiddenModes = hiddenModes,
             onShowAllModes = showAllModes,
-            // A line row's long-press "Hide ‹mode›", as on the list.
+            // A line row's long-press "Hide ‹mode›", as on the list, and its Undo: the nearby sets
+            // re-pick for what's shown again on their own ([NearbyStopsViewModel.shownAgainSincePick]).
             onHideMode = { mode -> HiddenModesSetting.setGroupHidden(ModeGroups.of(mode), hidden = true) },
+            onUnhideMode = { mode -> HiddenModesSetting.setGroupHidden(ModeGroups.of(mode), hidden = false) },
             hiddenModesWriteFailed = HiddenModesSetting.writeFailed.collectAsStateWithLifecycle().value,
             onHiddenModesWriteFailureShown = HiddenModesSetting::writeFailureShown,
             menu = LocalAppMenu.current,

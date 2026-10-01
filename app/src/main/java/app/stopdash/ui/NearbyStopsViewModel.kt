@@ -109,6 +109,8 @@ class NearbyStopsViewModel(
             val more: List<NearbySelection.NearbyCluster>,
             val distanceMeters: Map<String, Double>,
             val location: Coordinates,
+            // The hidden modes and lines these stops were picked without ([shownAgainSincePick]).
+            val pickedHidden: Set<String> = emptySet(),
         ) : State {
             /** The eager tier flattened to the stops shown and fetched at once. */
             val eagerStops: List<StopRef> get() = eager.flatMap { c -> c.stops.map { it.toStopRef() } }
@@ -432,6 +434,19 @@ class NearbyStopsViewModel(
     }
 
     /**
+     * Whether something the shown set was picked without has been shown again since ([hidden] is the
+     * hidden set now), and nothing under way will pick it up: a re-locate or re-pick in flight reads
+     * the hidden set as it gets there. A page that didn't show it again itself — Settings' Hidden list
+     * did, while the page was out of view — re-picks ([refilter]) when this is true, so its stops come
+     * back as "Show all" brings them (SPEC *Finding stops → Hiding a mode*). False with no set shown.
+     */
+    fun shownAgainSincePick(hidden: Set<String>): Boolean {
+        if (locateJob?.isActive == true) return false
+        val picked = (_state.value as? State.Ready)?.pickedHidden ?: return false
+        return picked.any { !HiddenModes.isHidden(it, hidden) }
+    }
+
+    /**
      * Re-picks the nearby set from the fix already shown, after the hidden modes changed: showing a
      * mode again brings its stops back, hiding one drops the stops that served only it. No new fix,
      * and the lookup is a cache hit, so it costs no request; the departures for any newly picked
@@ -605,7 +620,8 @@ class NearbyStopsViewModel(
         } else {
             found.map { if (it.id in anchorStopIds) it.copy(latitude = fix.latitude, longitude = fix.longitude) else it }
         }
-        val shown = HiddenModes.stops(placed, hiddenModes())
+        val hidden = hiddenModes()
+        val shown = HiddenModes.stops(placed, hidden)
         val result = NearbySelection.selectClusters(
             shown, fix.latitude, fix.longitude, outerRadiusMeters = radiusMeters,
         ).takeIf { it.eager.isNotEmpty() }
@@ -684,6 +700,7 @@ class NearbyStopsViewModel(
             // The exact fix, retained in memory so the consent-gated bug report files the
             // coordinate and these distances from one and the same fix (SPEC *Privacy*).
             location = fix,
+            pickedHidden = hidden,
         )
     }
 

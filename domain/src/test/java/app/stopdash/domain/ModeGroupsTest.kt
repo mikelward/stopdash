@@ -41,4 +41,18 @@ class ModeGroupsTest {
         assertEquals(listOf("bus"), ModeGroups.hiddenGroups(hidden).map { it.key })
         assertEquals(setOf("bus"), ModeGroups.withGroup(hidden, line, hide = false))
     }
+
+    @Test
+    fun `the hidden list has each group once in menu order, then the lines in the order hidden`() {
+        val northern = HiddenModes.lineKey("northern", "Northern line")
+        val bus134 = HiddenModes.lineKey("134", "134")
+        // Hidden in this order: a line, the bus, the DLR (so all Tube & DLR), another line.
+        val hidden = linkedSetOf(northern, "bus", "tube", "dlr", bus134)
+        val items = ModeGroups.hiddenItems(hidden)
+        assertEquals(listOf("tube", "bus", northern, bus134), items.map { it.key })
+        // Each item shows again by itself: the rest stays hidden.
+        assertEquals(setOf("tube", "dlr", "bus", bus134), ModeGroups.withGroup(hidden, items[2], hide = false))
+        assertEquals(setOf(northern, "tube", "dlr", bus134), ModeGroups.withGroup(hidden, items[1], hide = false))
+        assertEquals(emptyList<ModeGroups.Group>(), ModeGroups.hiddenItems(emptySet()))
+    }
 }
