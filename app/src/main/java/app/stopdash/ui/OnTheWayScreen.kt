@@ -52,6 +52,8 @@ import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Countdown
 import app.stopdash.domain.Departure
 import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.RouteDisruption
+import app.stopdash.RouteDisruptionAlert
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopGrouping
 import app.stopdash.domain.DepartureRows
@@ -96,6 +98,9 @@ internal fun OnTheWayScreen(
     // The rider says they're at a step ([OnTheWay.Step], [ActiveTripTracker.goTo]): Next, or a step
     // tapped. Null leaves both out.
     onGoTo: ((from: OnTheWay.Step, to: OnTheWay.Step) -> Unit)? = null,
+    // What's wrong on the route ahead ([ActiveTripTracker.routeDisruptions]), worst first: what the
+    // route disruption alert says, here in full, so tapping it finds where and how (maintainer, 2026-10-01).
+    disruptions: List<RouteDisruption.Signal> = emptyList(),
 ) {
     BackHandler(onBack = onBack)
     val destination = trip?.destinationName
@@ -179,6 +184,12 @@ internal fun OnTheWayScreen(
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.testTag("onTheWayEta"),
                     )
+                }
+            }
+            if (trip != null) {
+                // Each thing known once, as the alert has it: two legs on one line read as one.
+                disruptions.distinctBy { DisruptionKey.of(it) }.forEach { signal ->
+                    item(key = "disruption/${signal.key}") { DisruptionCard(signal, trip.route.legs.getOrNull(signal.legIndex)?.let { RouteDisruption.rideAt(trip, signal.legIndex, it) }) }
                 }
             }
             // The next ride's trains go under its own row below (maintainer, 2026-09-28); here only
@@ -508,6 +519,47 @@ private fun LegLine(leg: TripLeg, rides: List<TripLeg>, current: Boolean, done: 
         color = color,
         onTap = onTap,
     )
+}
+
+// What makes two signals the same thing to the rider: the alert's own words ([RouteDisruptionAlert.text]).
+private object DisruptionKey {
+    fun of(signal: RouteDisruption.Signal): Any = when (signal) {
+        is RouteDisruption.Signal.Line -> Triple(signal.lineId, signal.status.description, signal.status.fullText)
+        is RouteDisruption.Signal.Stop -> Pair(signal.stopId, signal.closed)
+        is RouteDisruption.Signal.Unpredicted -> Pair(signal.lineId, signal.stopId)
+    }
+}
+
+/**
+ * One thing wrong on the route ahead ([RouteDisruption.Signal]): headed as its alert is
+ * ([RouteDisruptionAlert.text]), then TfL's own words for a line's alert (where it's diverted or
+ * shut, which stops), then the ride it's on as the rider takes it ([leg], [RouteDisruption.rideAt]). High in the error
+ * tone, the rest muted.
+ */
+@Composable
+private fun DisruptionCard(signal: RouteDisruption.Signal, leg: TripLeg?) {
+    val context = LocalContext.current
+    val colors = if (signal.tier == RouteDisruption.Tier.HIGH) {
+        CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer)
+    } else {
+        CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    Card(colors = colors, modifier = Modifier.fillMaxWidth().testTag("onTheWayDisruption")) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(RouteDisruptionAlert.text(context, signal), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            (signal as? RouteDisruption.Signal.Line)?.status?.fullText?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium)
+            }
+            if (leg != null && !leg.isWalk) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // The ride as the rider takes it ([RouteDisruption.rideAt]), as the signal was found:
+                    // another of the ride's lines' train followed, its line and its own stops (Codex, PR #453).
+                    LinePill(leg.lineName, leg.lineId, leg.mode)
+                    Text(stringResource(R.string.on_the_way_leg, leg.fromName, leg.toName), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+    }
 }
 
 /**
