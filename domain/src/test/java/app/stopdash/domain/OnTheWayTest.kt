@@ -975,6 +975,56 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `a train can be the rider's from when they can be at the stop, or a minute before once on board`() {
+        val waiting = trip.copy(legStartedAt = at(6))
+        assertEquals(at(6), OnTheWay.boardableFrom(waiting))
+        assertEquals(at(5), OnTheWay.boardableFrom(waiting.copy(boarded = true)))
+    }
+
+    @Test
+    fun `where a train taken for the rider's calls next along the ride`() {
+        val waiting = OnTheWay.follow(trip, train("9", 8))
+        // Short of B: one calling next at B is at 0, one past it at C at 1; two between B and C both at 1.
+        assertEquals(0, OnTheWay.nextAlong(waiting, listOf(call("B", 7), call("C", 12)), 0, at(6)))
+        assertEquals(1, OnTheWay.nextAlong(waiting, listOf(call("C", 9)), 0, at(6)))
+        assertEquals(1, OnTheWay.nextAlong(waiting, listOf(call("C", 10)), 1, at(6)))
+        // One boardedOn wouldn't take (behind them, or not placed) is nowhere.
+        assertNull(OnTheWay.nextAlong(waiting, listOf(call("B", 7), call("C", 12)), 1, at(6)))
+        assertNull(OnTheWay.nextAlong(waiting, emptyList(), 0, at(6)))
+    }
+
+    @Test
+    fun `an older train of the line is apart from the rider's only where its calls prove it ahead`() {
+        val waiting = OnTheWay.follow(trip, train("9", 8))
+        val allStops = LineSequence(listOf(LineRoute("A-C", listOf("A", "B", "C", "D"))), emptyMap())
+        // The train taken for theirs, short of B, calls next at B (0). An older one calling next at B too is
+        // at the same spot; one calling next at C has passed B, as every way to C calls there.
+        assertEquals(OnTheWay.Twin.SAME, OnTheWay.twinOf(waiting, 0, listOf(call("B", 8), call("C", 12)), 0, at(6), allStops))
+        assertEquals(OnTheWay.Twin.APART, OnTheWay.twinOf(waiting, 0, listOf(call("C", 9)), 0, at(6), allStops))
+        // Past where they get off, it's ahead whatever the routes.
+        assertEquals(OnTheWay.Twin.APART, OnTheWay.twinOf(waiting, 0, listOf(call("D", 9)), 0, at(6), null))
+        // A fast service skipping B calls next at C while still short of it (Codex, PR #465), and without
+        // the routes nothing says it passed B.
+        val withFast = allStops.copy(routes = allStops.routes + LineRoute("A-C fast", listOf("A", "C", "D")))
+        assertEquals(OnTheWay.Twin.UNKNOWN, OnTheWay.twinOf(waiting, 0, listOf(call("C", 9)), 0, at(6), withFast))
+        assertEquals(OnTheWay.Twin.UNKNOWN, OnTheWay.twinOf(waiting, 0, listOf(call("C", 9)), 0, at(6), null))
+        // So too where the fast route names A by a sibling id at the same interchange: route by route, it's
+        // still a way from A that skips B (Codex, PR #465).
+        val siblingFast = LineSequence(
+            allStops.routes + LineRoute("A-C fast", listOf("A2", "C", "D")),
+            mapOf("A" to "A", "A2" to "A", "B" to "B", "C" to "C", "D" to "D"),
+            stopHubs = mapOf("A" to "HUBA", "A2" to "HUBA"),
+        )
+        assertEquals(OnTheWay.Twin.UNKNOWN, OnTheWay.twinOf(waiting, 0, listOf(call("C", 9)), 0, at(6), siblingFast))
+        // A loop round to A and on to C without B: its second time round skips B (Codex, PR #465).
+        val loop = LineSequence(listOf(LineRoute("loop", listOf("A", "B", "C", "A", "C", "D"))), emptyMap())
+        assertEquals(OnTheWay.Twin.UNKNOWN, OnTheWay.twinOf(waiting, 0, listOf(call("C", 9)), 0, at(6), loop))
+        // No calls, in a race with TfL's predictions; or calling next before theirs: either may be theirs.
+        assertEquals(OnTheWay.Twin.UNKNOWN, OnTheWay.twinOf(waiting, 0, emptyList(), 0, at(6), allStops))
+        assertEquals(OnTheWay.Twin.UNKNOWN, OnTheWay.twinOf(waiting, 1, listOf(call("B", 8), call("C", 12)), 0, at(6), allStops))
+    }
+
+    @Test
     fun `a train is behind the rider only when its calls show it`() {
         val waiting = OnTheWay.follow(trip, train("9", 8))
         // Still to call at A; seen at C, still to reach B; seen at B, due there in three minutes: behind.

@@ -237,6 +237,15 @@ object OnTheWay {
         trains.filter { it.vehicleId.isNotBlank() && !it.expectedArrival.isBefore(readyAt) }.minByOrNull { it.expectedArrival }
 
     /**
+     * The earliest a train can have been due at [trip]'s boarding stop and be the rider's: when they could be
+     * there ([ActiveTrip.legStartedAt]), or a minute before once on board ([ON_BOARD_GRACE]): on board by
+     * their word ([atStep]), the leg starts as they say it, the train at the platform about then. One due
+     * before it left without them, as the trip has it.
+     */
+    fun boardableFrom(trip: ActiveTrip): Instant =
+        if (trip.boarded) trip.legStartedAt.minus(ON_BOARD_GRACE) else trip.legStartedAt
+
+    /**
      * The trains a ride could be followed on, soonest first: departures at its boarding stop of one of
      * its [lines], as its board lists them, that TfL names and the rider can reach by [readyAt], each
      * once. [lines] are the ride's lines the trip's cards offer ([RideLines.running]): the Planner's,
@@ -336,6 +345,15 @@ object OnTheWay {
      */
     fun checkable(leg: TripLeg): Boolean = leg.path.isNotEmpty() && leg.path.none { it.startsWith(STOP_AREA_PREFIX) }
 
+    // Each of [sequence]'s routes alone, under [ride]'s own ids where the Planner names a station by a
+    // sibling of the one the route calls at ([LineSequence.callingAt]), as [ridePositions] places it:
+    // route by route, as one route calling at the ride's id leaves the line's others as they are (Codex,
+    // PR #462).
+    private fun rideRoutes(ride: TripLeg, sequence: LineSequence): List<LineSequence> {
+        val ids = (listOf(ride.fromId) + ride.path + ride.toId).distinct()
+        return sequence.routes.map { route -> ids.fold(sequence.copy(routes = listOf(route))) { seq, id -> seq.callingAt(id) } }
+    }
+
     /**
      * Whether every train of [ride]'s line that reaches stop [ahead] of its path the ride's way ran
      * there the way the ride does, by the line's routes ([sequence]): from the boarding stop, calling
@@ -351,13 +369,7 @@ object OnTheWay {
         val stop = ride.path.getOrNull(ahead) ?: ride.toId
         val before = ride.path.getOrNull(ahead - 1) ?: ride.fromId
         val way = (listOf(ride.fromId) + ride.path.take(ahead + 1)).let { if (it.last() == stop) it else it + stop }
-        // Each route under the ride's own ids, where the Planner names a station by a sibling of the one
-        // the route calls at ([LineSequence.callingAt]), as [ridePositions] places it: route by route, as
-        // one route calling at the ride's id leaves the line's others as they are (Codex, PR #462).
-        val ids = (listOf(ride.fromId) + ride.path + ride.toId).distinct()
-        val routes = (sequence ?: return false).routes.map { route ->
-            ids.fold(sequence.copy(routes = listOf(route))) { seq, id -> seq.callingAt(id) }.routes.single()
-        }
+        val routes = rideRoutes(ride, sequence ?: return false).map { it.routes.single() }
         // Every way a route reaches that stop: a loop calling there twice brings trains to its board by
         // both (Codex, PR #462).
         val into = routes.flatMap { route ->
@@ -955,11 +967,100 @@ object OnTheWay {
         return placed(leg, calls, from, now, boardingPoles, alightingPoles, areas, atStop) == Placed.Behind
     }
 
+    /**
+     * Where along the ride a train [boardedOn] takes for the rider's calls next, by the same rules: the
+     * position on the ride's path (as [on] runs it) of the stop its [calls] reach next, the path's
+     * length for where the rider gets off, -1 for a bus's stop not placed before the first. Two trains
+     * between the same two stops call next at the same one, so this tells them apart no more than their
+     * calls do. Null when [boardedOn] wouldn't take it.
+     */
+    fun nextAlong(
+        trip: ActiveTrip,
+        calls: List<VehicleCall>,
+        from: Int,
+        now: Instant,
+        boardingPoles: Set<String> = emptySet(),
+        alightingPoles: Set<String> = emptySet(),
+        areas: Map<String, String> = emptyMap(),
+        atStop: Boolean = false,
+        on: TripLeg? = null,
+    ): Int? {
+        val leg = on ?: trip.leg ?: return null
+        return (placed(leg, calls, from, now, boardingPoles, alightingPoles, areas, atStop) as? Placed.At)?.at
+    }
+
+    /** How a train taken for the rider's stands to an older one of its line that left ([twinOf]). */
+    enum class Twin { APART, SAME, UNKNOWN }
+
+    /**
+     * Whether an older train of its line that left the boarding stop, with [calls], may be at the
+     * same spot as the train taken for the rider's, which calls next at [next] ([nextAlong]) on the ride
+     * as [on] runs it: a later train that has caught up to between the same two stops calls next where
+     * theirs does, so neither can be told for theirs (TODO, *Two trains between the same two stops*).
+     * APART only when its calls prove it ahead of them: none of them on the ride (past where the rider
+     * gets off), or its next call further on, where every way the line's routes ([sequence]) run there
+     * from the boarding stop calls at [next]'s stop first, so it has passed that stop. SAME calling next
+     * at the same stop. UNKNOWN otherwise: no calls (in a race with TfL's predictions), a next call it
+     * doesn't place, one before [next]'s, or one further on that a faster train skipping [next]'s stop
+     * calls next while still short of it (Codex, PR #465).
+     */
+    fun twinOf(
+        trip: ActiveTrip,
+        next: Int,
+        calls: List<VehicleCall>,
+        from: Int,
+        now: Instant,
+        sequence: LineSequence?,
+        boardingPoles: Set<String> = emptySet(),
+        alightingPoles: Set<String> = emptySet(),
+        areas: Map<String, String> = emptyMap(),
+        on: TripLeg? = null,
+    ): Twin {
+        val leg = on ?: trip.leg ?: return Twin.UNKNOWN
+        if (calls.isEmpty()) return Twin.UNKNOWN
+        val onRide = calls.any { call ->
+            calls(call, leg.toId, leg.toName) || call.stopId in alightingPoles || onPath(leg, call) >= 0 ||
+                areas[call.stopId]?.let { it in leg.path || it == leg.toArea } == true
+        }
+        if (!onRide) return Twin.APART
+        val older = nextAlong(trip, calls, from, now, boardingPoles, alightingPoles, areas, atStop = false, on = leg) ?: return Twin.UNKNOWN
+        return when {
+            older == next -> Twin.SAME
+            older > next && passes(leg, sequence, next, older) -> Twin.APART
+            else -> Twin.UNKNOWN
+        }
+    }
+
+    /**
+     * Whether every way [sequence]'s routes run [ride]'s line from its boarding stop to its stop [to] (a
+     * position on its path, its length for where the rider gets off) calls at its stop [at] between, so a
+     * train calling next at [to] has passed [at]'s stop. A route that skips it (a fast service), or none
+     * running that way, leaves that unknown. A road's poles count as their stop pair ([LineSequence.stopAreas]).
+     */
+    fun passes(ride: TripLeg, sequence: LineSequence?, at: Int, to: Int): Boolean {
+        if (sequence == null || at < 0 || at >= to || at >= ride.path.size) return false
+        fun stopAt(i: Int) = if (i >= ride.path.size) ride.toId else ride.path[i]
+        // Route by route under the ride's ids ([rideRoutes]): a fast route naming a stop by a sibling id is
+        // still a way that skips it, not one left out (Codex, PR #465). Every way from each pass of the
+        // boarding stop: a loop's second time round can skip the stop its first calls at (Codex, PR #465).
+        val ways = rideRoutes(ride, sequence).flatMap { seen ->
+            fun isStop(id: String, stop: String) =
+                id == stop || seen.stopAreas[id] == stop || (stop == ride.toId && ride.toArea.isNotEmpty() && seen.stopAreas[id] == ride.toArea)
+            fun boards(id: String) = id == ride.fromId || (ride.fromArea.isNotEmpty() && seen.stopAreas[id] == ride.fromArea)
+            val ids = seen.routes.single().stopIds
+            ids.indices.filter { boards(ids[it]) }.mapNotNull { start ->
+                val end = (start + 1 until ids.size).firstOrNull { isStop(ids[it], stopAt(to)) } ?: return@mapNotNull null
+                ids.subList(start + 1, end).any { isStop(it, stopAt(at)) }
+            }
+        }
+        return ways.isNotEmpty() && ways.all { it }
+    }
+
     // Where a train's calls place it against a rider seen at or short of stop [from] of [leg]'s path:
-    // at or past them (with its call where they get off, -1 for none), behind them, or, null, not
-    // placed at all.
+    // at or past them (with its call where they get off, -1 for none, and where along the path it
+    // calls next), behind them, or, null, not placed at all.
     private sealed interface Placed {
-        data class At(val off: Int) : Placed
+        data class At(val off: Int, val at: Int) : Placed
         data object Behind : Placed
     }
 
@@ -996,7 +1097,7 @@ object OnTheWay {
         }
         // Seen at that stop, a train still due there later is on its way to it, behind them.
         if (atStop && at == from && next.expected.isAfter(now.plus(AT_STOP_DUE_WITHIN))) return Placed.Behind
-        return Placed.At(off)
+        return Placed.At(off, at)
     }
 
     private fun distance(a: Coordinates, b: Coordinates): Double =

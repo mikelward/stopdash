@@ -954,6 +954,9 @@ class ActiveTripTracker(
         var matches = 0
         var bounded = false
         var unknown = false
+        // Seen between stops, the newest train gone from the board that's past them: theirs, unless an
+        // older one of its line they could have boarded may be at the same spot ([twinOf]).
+        var lone: Lone? = null
         trains@ while (true) {
             var lookups = 0
             for ((train, on, onAlong) in candidates) {
@@ -1017,7 +1020,15 @@ class ActiveTripTracker(
                     }
                     continue
                 }
-                if (!ahead) return SeenAlong(matched.first, calls)
+                if (!ahead) {
+                    // Seen at a stop, one behind them is still due there, so the latest past them is theirs.
+                    if (onAlong.atStop) return SeenAlong(matched.first, calls)
+                    val next = OnTheWay.nextAlong(
+                        trip, calls, onAlong.from, now, boardingPoles, alightingPoles, areas, atStop = false, on = on,
+                    ) ?: continue
+                    lone = Lone(SeenAlong(matched.first, calls), train, on, onAlong, next, routes[on.lineId], boardingPoles, alightingPoles, areas)
+                    break@trains
+                }
                 matches++
                 // Due at the stop ahead, not at theirs: when it was there isn't known, so it isn't taken
                 // for a loop's next lap calling there (Codex, PR #462).
@@ -1046,13 +1057,25 @@ class ActiveTripTracker(
             maybe.filterTo(unsure) { it !in taking || it.vehicleId.isBlank() }
             candidates = maybe.map { Triple(it, seenOn, where) }.sortedBy { it.first.expectedArrival }
         }
+        // The newest train past them, alone where it calls next: theirs. With an older one of its line at the
+        // same spot, or one not to be told (its calls in a race, its lookup failed, which is said, or too many
+        // to look up), neither.
+        val twin = lone?.let { twinOf(trip, it, found, now) }
+        if (twin?.second == true) failed = true
         // Grown too old over the lookups, it is no proof of where they are now.
         aged(rider, Duration.ofMillis(elapsed() - seenAt)) ?: return null
-        // Seen along one of the ride's lines with none of its trains theirs: on board all the same, by
-        // where they were seen, counted on that line's stops. A failed lookup is said (the refresh
-        // failing), but doesn't leave them shown at the platform (Codex, PR #449).
-        val (seenOn, where) = positional ?: return null
-        if (!failed) warn("on the way: seen along the ride, no train that left found on line ${seenOn.lineId}: on board by where seen")
+        if (lone != null && twin?.first == OnTheWay.Twin.APART) return lone.seen
+        // Seen along one of the ride's lines with none of its trains theirs, or two that can't be told apart:
+        // on board all the same, by where they were seen, counted on that line's stops. A failed lookup is
+        // said (the refresh failing), but doesn't leave them shown at the platform (Codex, PR #449). Two
+        // trains of a line not told apart are both of that line: they're counted on it, not on the first
+        // line they were seen along, which can share its way (Codex, PR #465).
+        val (seenOn, where) = lone?.let { it.on to it.along } ?: positional ?: return null
+        if (twin != null && !failed) {
+            warn("on the way: seen along the ride between stops with two trains that left on line ${seenOn.lineId}: on board by where seen")
+        } else if (!failed) {
+            warn("on the way: seen along the ride, no train that left found on line ${seenOn.lineId}: on board by where seen")
+        }
         return SeenAlong(OnTheWay.onBoardAlong(trip, where, now, on = seenOn), failed = failed)
     }
 
@@ -1060,6 +1083,62 @@ class ActiveTripTracker(
     // with its [calls], or on board by where they were seen with none; [failed] when a lookup for their
     // train failed, which the refresh reports.
     private class SeenAlong(val trip: ActiveTrip, val calls: List<VehicleCall>? = null, val failed: Boolean = false)
+
+    // The newest train gone from the board that's past a rider seen between stops ([boardedAlong]): what it
+    // makes of the trip, the train, the ride as its line runs it, where they were seen on it, where it
+    // calls next ([OnTheWay.nextAlong]), its line's route, and what placed its calls.
+    private class Lone(
+        val seen: SeenAlong,
+        val train: Departure,
+        val on: TripLeg,
+        val along: OnTheWay.Along,
+        val next: Int,
+        val route: LineSequence?,
+        val boardingPoles: Set<String>,
+        val alightingPoles: Set<String>,
+        val areas: Map<String, String>,
+    )
+
+    // How the older trains of [first]'s line among those gone from the board ([found], any of the ride's
+    // lines, newest first) stand to it ([OnTheWay.twinOf]): APART only when each the rider could have
+    // boarded ([OnTheWay.boardableFrom]: a board read during a change keeps one due before they could be at
+    // the stop, Codex, PR #465) is shown ahead of them, or TfL no longer knows it (gone, at its terminus:
+    // past them). Each, not just the next: trains of a line overtake, so one that left earlier can be at
+    // their spot behind one that's ahead (Codex, PR #465). A lookup each, only then, and no more than
+    // [PICK_TRIES]: with more, any of the rest may be at their spot, so it's unknown. With whether a lookup
+    // failed, said by the refresh.
+    private suspend fun twinOf(
+        trip: ActiveTrip,
+        first: Lone,
+        found: List<Triple<Departure, TripLeg, OnTheWay.Along>>,
+        now: Instant,
+    ): Pair<OnTheWay.Twin, Boolean> {
+        val newestFirst = found.sortedByDescending { it.first.expectedArrival }
+        val from = newestFirst.indexOfFirst { it.first == first.train && it.second == first.on }
+        val boardable = OnTheWay.boardableFrom(trip)
+        val older = newestFirst.drop(from + 1)
+            .filter { it.second.lineId == first.on.lineId && !it.first.expectedArrival.isBefore(boardable) }
+            .map { it.first }
+        if (older.size > PICK_TRIES) return OnTheWay.Twin.UNKNOWN to false
+        for (train in older) {
+            val calls = try {
+                vehicles.vehicleCalls(train.vehicleId, train.lineId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: TflException.NotFound) {
+                warn("on the way: train not found on line ${train.lineId}")
+                continue
+            } catch (e: TflException) {
+                warn("on the way: train lookup failed for line ${train.lineId}: ${e::class.simpleName}")
+                return OnTheWay.Twin.UNKNOWN to true
+            }
+            val twin = OnTheWay.twinOf(
+                trip, first.next, calls, first.along.from, now, first.route, first.boardingPoles, first.alightingPoles, first.areas, on = first.on,
+            )
+            if (twin != OnTheWay.Twin.APART) return twin to false
+        }
+        return OnTheWay.Twin.APART to false
+    }
 
     // [lineId]'s route ([lineSequence]), or null when it can't be had: a failure said coarsely, by
     // the line and the kind of error.
@@ -1084,8 +1163,8 @@ class ActiveTripTracker(
     private suspend fun pick(trip: ActiveTrip, now: Instant, board: Result<NextBoard>?): Pick {
         val leg = trip.leg ?: return Pick(null)
         // On board by the rider's word ([OnTheWay.atStep]): the train they're on is one at the platform
-        // when they said so, maybe due a moment before.
-        val readyAt = if (trip.boarded) trip.legStartedAt.minus(OnTheWay.ON_BOARD_GRACE) else maxOf(trip.legStartedAt, now)
+        // when they said so, maybe due a moment before ([OnTheWay.boardableFrom]).
+        val readyAt = OnTheWay.boardableFrom(trip).let { if (trip.boarded) it else maxOf(it, now) }
         // This refresh's read of the boards ([fetchBoard]); its failure thrown for [step] to report.
         val read = board?.getOrThrow()?.takeIf { it.ride == leg } ?: boardOf(leg, fetchedAt = null)
         val boards = read.boards

@@ -1768,7 +1768,14 @@ branch), the one that most recently left it and isn't behind them (up to three
 asked after, a TfL request each, only then; a bus at either pole of the rider's stop pairs counts).
 Behind them is a train still to call at a stop they're past, or, seen at a stop, one due there more
 than a minute later: a newer train is tried first, so this is what keeps it from being taken for
-theirs. Two trains between the same two stops as the rider can't be told apart this way. Seen where
+theirs. Two trains between the same two stops as the rider can't be told apart this way: seen between stops,
+the newest past them is theirs only when each older one of its line that left after they could be at
+the stop (a request each, up to three; with more, none is named) is shown ahead of them, as trains of
+a line overtake: past where they get off, or calling next further on where every way the line
+runs there calls first at the stop the newer calls at next (a fast train that skips it may still be
+short of it). Otherwise (the same next stop, no calls, or a lookup that fails, which is said) neither
+is named and they're on board by where they were seen (below), on those trains' line, until a fix at
+a stop tells. Seen where
 they get off, they've done the ride, whichever train took them: the trip moves on to the next leg,
 as when a rider on a train is seen at their station. A train of a line the cards don't offer
 (another mode's, one not running, one the rider avoids) isn't followed. With none found they're
