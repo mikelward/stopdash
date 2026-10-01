@@ -4,6 +4,7 @@ import app.stopdash.domain.NoTimes
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
+import java.time.LocalDate
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -65,6 +66,23 @@ class WatchHomeScreenshotTest {
                 TileLine.Disruption(TileRow("Waterloo & City", "waterloo-city", "tube", "WAT", "", "", false, false), "Suspended", alone = true),
                 row("victoria", "Victoria", "tube", "VIC", "Brixton", "1 · 4 min"),
                 TileLine.Disruption(TileRow("Victoria", "victoria", "tube", "VIC", "", "", false, false), "Severe Delays", alone = false),
+                row("central", "Central", "tube", "CEN", "Ealing Broadway", "3 min"),
+            ),
+            ageMinutes = 0,
+            stale = false,
+            partial = false,
+        ),
+        refresh = true,
+    )
+
+    @Test
+    fun planned() = capture(
+        "planned",
+        TileFrame.Rows(
+            listOf(
+                TileLine.Departure(
+                    TileRow("Victoria", "victoria", "tube", "VIC", "Brixton", "1 · 4 min", false, false, TilePlanned("Part Closure", LocalDate.of(2026, 10, 3))),
+                ),
                 row("central", "Central", "tube", "CEN", "Ealing Broadway", "3 min"),
             ),
             ageMinutes = 0,

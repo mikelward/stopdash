@@ -17,12 +17,14 @@ import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.NoTimes
+import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.RailFeed
 import app.stopdash.domain.STATUS_DIRECTION_KEY
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.StopArrivals
 import com.github.takahirom.roborazzi.captureRoboImage
 import java.time.Instant
+import java.time.LocalDate
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -163,6 +165,24 @@ class WidgetScreenshotTest {
                 rows = listOf(WidgetRowModel(suspended, emptyList()), rowModel(delayed)),
             ),
         )
+    }
+
+    @Test
+    fun `a line with work still to come shows a calendar before its countdown`() {
+        val closure = PlannedAlert("Part Closure", "No service.", LocalDate.of(2026, 9, 27))
+        val planned = row("victoria", "Victoria", "Brixton", 120).copy(plannedAlerts = listOf(closure))
+        // A disruption under way leads: its ⚠ line, and no calendar.
+        val delayed = row("jubilee", "Jubilee", "Stratford", 240)
+            .copy(status = LineStatus("jubilee", 6, "Severe Delays"), plannedAlerts = listOf(closure))
+        val model = WidgetModel(
+            hasData = true,
+            stale = false,
+            uncertain = false,
+            stamp = "Updated just now",
+            rows = listOf(rowModel(planned), rowModel(delayed)),
+        )
+        capture("widget-planned.png", model)
+        capture("widget-planned-dark.png", model, dark = true)
     }
 
     @Test

@@ -4,14 +4,17 @@ import androidx.compose.ui.unit.dp
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DeparturesSnapshot
+import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.JourneyCall
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCheck
+import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.WidgetJourney
 import java.time.Instant
+import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -596,6 +599,25 @@ class WidgetModelTest {
         // With room for all three, both rows show, only Victoria marked.
         val roomy = widgetModel(snapshot, now, maxLines = 3)
         assertEquals(listOf(severe, null), roomy.rows.map { it.row.status })
+    }
+
+    @Test
+    fun `a line with work still to come carries its calendar, which costs no line, until it's dismissed`() {
+        val closure = PlannedAlert("Part Closure", "No service between Stop A and Stop B.", LocalDate.of(2026, 9, 27))
+        val good = LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(closure))
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(stop("490A", listOf(departure("victoria", 120), departure("jubilee", 240)), now)),
+            fetchedAt = now,
+            lineStatuses = mapOf("victoria" to LineStatusCheck(good, now)),
+        )
+        val model = widgetModel(snapshot, now, maxLines = 2)
+        // Both rows fit two lines: the calendar sits beside Victoria's countdown, not under it.
+        assertEquals(listOf("victoria", "jubilee"), model.rows.map { it.row.lineId })
+        assertEquals(listOf(listOf(closure), emptyList()), model.rows.map { it.row.plannedAlerts })
+        assertNull(model.rows.first().row.status)
+        // Dismissed in the app, it's put away here too.
+        val dismissed = snapshot.withDismissals(setOf(DismissedAlert.ofPlanned("victoria", closure)))
+        assertEquals(emptyList<PlannedAlert>(), widgetModel(dismissed, now, maxLines = 2).rows.first().row.plannedAlerts)
     }
 
     @Test

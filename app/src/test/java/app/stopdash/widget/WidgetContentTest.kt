@@ -2,16 +2,21 @@ package app.stopdash.widget
 
 import androidx.glance.appwidget.testing.unit.runGlanceAppWidgetUnitTest
 import androidx.compose.ui.unit.DpSize
+import androidx.test.core.app.ApplicationProvider
 import androidx.compose.ui.unit.dp
+import androidx.glance.testing.unit.hasContentDescription
 import androidx.glance.testing.unit.hasContentDescriptionEqualTo
 import androidx.glance.testing.unit.hasText
 import androidx.glance.testing.unit.hasTextEqualTo
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.LineStatus
+import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.lineCode
 import app.stopdash.domain.riderLineName
 import java.time.Instant
+import java.time.LocalDate
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -105,6 +110,30 @@ class WidgetContentTest {
         }
         onNode(hasText("Brixton")).assertExists()
         onNode(hasText("Updated just now")).assertExists()
+    }
+
+    @Test
+    fun `a row with work still to come shows its calendar, named for TalkBack, unless it's disrupted`() = runGlanceAppWidgetUnitTest {
+        val closure = PlannedAlert("Part Closure", "No service.", LocalDate.of(2026, 9, 27))
+        val planned = row("victoria", 120, now.minusSeconds(30)).copy(plannedAlerts = listOf(closure))
+        val disrupted = row("jubilee", 240, now.minusSeconds(30))
+            .copy(status = LineStatus("jubilee", 6, "Severe Delays"), plannedAlerts = listOf(closure))
+        // The calendar's description is read from the app's strings.
+        setContext(ApplicationProvider.getApplicationContext())
+        provideComposable {
+            WidgetContent(
+                WidgetModel(
+                    hasData = true,
+                    stale = false, uncertain = false,
+                    stamp = "Updated just now",
+                    rows = listOf(rowModel(planned), rowModel(disrupted)),
+                ),
+                now,
+            )
+        }
+        // One calendar: the disrupted row's ⚠ stands in for its, as in the app.
+        onAllNodes(hasContentDescription("Planned Part Closure from 27 ")).assertCountEquals(1)
+        onNode(hasContentDescriptionEqualTo("Disrupted: Severe Delays")).assertExists()
     }
 
     @Test

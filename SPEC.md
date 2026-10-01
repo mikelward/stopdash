@@ -1659,7 +1659,11 @@ toward the ⚠, since a disruption flagged a day early beats one hidden while it
 judged against the day the rows are drawn, not the day the status was fetched: a status kept past a
 failed check turns its calendar into the ⚠ once the work's day comes. Dismissing the calendar puts away the
 notice, not the disruption: on the day the work starts its ⚠ shows as it would for any new alert,
-and dismissing that is a second, separate choice.
+and dismissing that is a second, separate choice. The widget and the watch (its tile and app) carry
+the same calendar beside a row's first countdown, taking no line of their own, for the soonest work
+still to come on its line, and follow the app's dismissals and its turn to the ⚠ on the work's day,
+redrawing at that midnight:
+the line's stored check keeps the work to come with the rest of its status, aged out with it.
 
 **A line alert is shown only on rows travelling the way it affects** (maintainer, 2026-09-28): a
 northbound diversion says nothing about the buses heading south, and flagging them sends the rider

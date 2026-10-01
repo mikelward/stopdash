@@ -7,6 +7,7 @@ import app.stopdash.domain.DepartureLabels
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.NoTimes
+import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.StarredRow
@@ -16,11 +17,16 @@ import app.stopdash.ui.BudgetedRow
 import app.stopdash.ui.BudgetedRows
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 import java.util.SortedSet
 import kotlin.time.toJavaDuration
 import kotlin.time.toKotlinDuration
 
-/** One departure line of the tile: a service's pill, where it's going, and its countdowns (or `?`). */
+/**
+ * One departure line of the tile: a service's pill, where it's going, and its countdowns (or `?`).
+ * [planned] is the work still to come on its line, for the calendar beside the countdown, on a row's
+ * first line when nothing is under way (as the widget marks it); null otherwise.
+ */
 data class TileRow(
     val lineName: String,
     val lineId: String,
@@ -30,7 +36,11 @@ data class TileRow(
     val countdown: String,
     val starred: Boolean,
     val stale: Boolean,
+    val planned: TilePlanned? = null,
 )
+
+/** Work still to come on a line ([PlannedAlert]): its label and the day it starts, for a screen reader. */
+data class TilePlanned(val label: String, val startsOn: LocalDate)
 
 /** One line of the tile's list. */
 sealed interface TileLine {
@@ -216,11 +226,14 @@ object TileTimeline {
                 val stale = staleStop[row.stopId] == true
                 val star = StarredRow.of(row) in starred
                 val code = lineCode(row.lineName, row.mode, row.lineId)
-                for (group in chosen.groups) {
+                // The soonest work to come, when nothing's under way: a disruption's ⚠ leads instead.
+                val planned = row.plannedAlerts.firstOrNull()?.takeIf { row.status == null }?.let { TilePlanned(it.label, it.startsOn) }
+                for ((index, group) in chosen.groups.withIndex()) {
                     val label = DepartureLabels.destinationLabel(group.destination, row.directionKey) ?: "—"
                     val shown = if (group.branch != null) "$label/${group.branch}" else label
                     val countdown = if (stale) "?" else Countdown.mergedLabel(group.times, now)
-                    add(TileLine.Departure(TileRow(row.lineName, row.lineId, row.mode, code, shown, countdown, star, stale)))
+                    val calendar = planned.takeIf { index == 0 }
+                    add(TileLine.Departure(TileRow(row.lineName, row.lineId, row.mode, code, shown, countdown, star, stale, calendar)))
                 }
                 // Its line was counted in the budget ([BudgetedRows.select]), and is never the one dropped.
                 row.status?.let { status ->
@@ -337,6 +350,8 @@ object TileTimeline {
         val hidden = envelope.hiddenModes.toSet()
         // A disruption's mark is withheld at its own check's boundary.
         envelope.lineStatusExpiries(now).forEach(::add)
+        // Work starting while its check is live turns its calendar into the ⚠ at that midnight.
+        envelope.plannedStarts(now).forEach(::add)
         for (stop in stops) {
             add(stop.fetchedAt.plus(threshold))
             // Each minute of this stop's age, from the first one after now.

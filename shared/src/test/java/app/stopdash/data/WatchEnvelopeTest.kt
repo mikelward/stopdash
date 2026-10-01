@@ -3,17 +3,21 @@ package app.stopdash.data
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DeparturesSnapshot
+import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.NoTimes
+import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.RailFeed
 import app.stopdash.domain.RoutePattern
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.Terminating
+import app.stopdash.domain.plannedAlertFingerprint
 import java.time.Instant
+import java.time.LocalDate
 import kotlin.time.Duration.Companion.minutes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -514,6 +518,31 @@ class WatchEnvelopeTest {
         val live = envelope.liveLineStatuses(now).getValue("victoria")
         assertEquals(false, live.forDirection("inbound").disrupted)
         assertEquals(9, live.forDirection("outbound").severity)
+    }
+
+    @Test
+    fun `work still to come reaches the watch with its calendar, a dismissed one put away`() {
+        val closure = PlannedAlert("Part Closure", "No service between Stop A and Stop B.", LocalDate.of(2026, 10, 3))
+        val diversion = PlannedAlert("Diversion", "Buses diverted.", LocalDate.of(2026, 10, 10))
+        val good = LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(closure, diversion))
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(stop("940GEXAMPLE1", listOf(departure(3)))),
+            fetchedAt = now,
+            lineStatuses = mapOf("victoria" to LineStatusCheck(good, now)),
+        ).withDismissals(setOf(DismissedAlert.ofPlanned("victoria", closure)))
+        val envelope = decoded(WatchEnvelopes.build(snapshot, emptySet(), now = now))
+        val planned = envelope.lineStatuses.single().planned
+        // TfL's prose stays on the phone; its identity goes, as what the dismissed flag marks.
+        assertEquals(listOf("Part Closure" to true, "Diversion" to false), planned.map { it.label to it.dismissed })
+        assertEquals(listOf(closure, diversion).map(::plannedAlertFingerprint), planned.map { it.fingerprint })
+        val live = envelope.liveLineStatuses(now).getValue("victoria")
+        assertEquals(false, live.disrupted)
+        assertEquals(listOf("Diversion"), live.planned.map { it.label })
+        assertEquals(LocalDate.of(2026, 10, 10), live.planned.single().startsOn)
+        // On its day the dismissed calendar's work is under way, and marked as such.
+        val onTheDay = Instant.parse("2026-10-02T23:01:00Z")
+        val shifted = envelope.copy(lineStatuses = envelope.lineStatuses.map { it.copy(checkedAtMillis = onTheDay.minusSeconds(60).toEpochMilli()) })
+        assertEquals("Part Closure", shifted.liveLineStatuses(onTheDay).getValue("victoria").description)
     }
 
     @Test

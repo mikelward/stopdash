@@ -10,14 +10,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -30,10 +33,12 @@ import androidx.compose.ui.unit.sp
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.material3.Button
+import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import app.stopdash.domain.NoTimes
 import app.stopdash.domain.riderLineName
+import app.stopdash.shared.R as SharedR
 import app.stopdash.ui.PillColors
 import app.stopdash.ui.pillColors
 
@@ -135,13 +140,31 @@ private fun DepartureRow(row: TileRow) {
         if (stacked) {
             Column(modifier = Modifier.weight(1f).padding(start = 4.dp)) {
                 Destination(row, Modifier)
-                Countdown(row)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    row.planned?.let { Calendar(it) }
+                    Countdown(row)
+                }
             }
         } else {
             Destination(row, Modifier.weight(1f).padding(horizontal = 4.dp))
+            row.planned?.let { Calendar(it) }
             Countdown(row)
         }
     }
+}
+
+/**
+ * Work still to come on a row's line: the tile's muted calendar, before the countdown, and what's
+ * planned and from when to a screen reader.
+ */
+@Composable
+private fun Calendar(planned: TilePlanned) {
+    Icon(
+        painter = painterResource(SharedR.drawable.ic_calendar),
+        contentDescription = plannedDescription(LocalContext.current, planned),
+        tint = Muted,
+        modifier = Modifier.padding(end = 4.dp).size(16.dp),
+    )
 }
 
 /**

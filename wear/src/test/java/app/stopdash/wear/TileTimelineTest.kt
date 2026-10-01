@@ -7,11 +7,13 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCheck
+import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.NoTimes
 import app.stopdash.domain.RailFeed
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
 import java.time.Instant
+import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -350,6 +352,41 @@ class TileTimelineTest {
         val expiry = fetched.plusSeconds(180)
         assertTrue(entries.any { it.start == expiry })
         assertTrue((entries.at(expiry) as TileFrame.Rows).lines.none { it is TileLine.Disruption })
+    }
+
+    @Test
+    fun `work still to come puts a calendar on the row's first line, unless a disruption leads`() {
+        val closure = PlannedAlert("Part Closure", "No service.", LocalDate.of(2026, 10, 3))
+        val two = stop("940GA", listOf(departure(120), departure(300, destination = "Walthamstow Central")))
+        val good = LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(closure))
+        val planned = rows(TileTimeline.frame(withStatus(envelope(two), good), fetched))
+        assertEquals(listOf(TilePlanned("Part Closure", LocalDate.of(2026, 10, 3)), null), planned.map { it.planned })
+        // The calendar takes no line: the frame lists only the departures.
+        assertTrue((TileTimeline.frame(withStatus(envelope(two), good), fetched) as TileFrame.Rows).lines.none { it is TileLine.Disruption })
+        // Under way, the disruption's ⚠ leads and the calendar isn't drawn.
+        val both = rows(TileTimeline.frame(withStatus(envelope(two), severe.copy(planned = listOf(closure))), fetched))
+        assertTrue(both.all { it.planned == null })
+    }
+
+    @Test
+    fun `work starting while its check is live turns its calendar into the warning at midnight`() {
+        // Fetched and checked at 23:58 in London; the closure starts the next day.
+        val night = Instant.parse("2026-10-02T22:58:00Z")
+        val midnight = Instant.parse("2026-10-02T23:00:00Z")
+        val closure = PlannedAlert("Part Closure", "No service.", LocalDate.of(2026, 10, 3))
+        val train = Departure("victoria", "Victoria", "inbound", "Brixton", null, night.plusSeconds(240), "tube")
+        val env = withStatus(
+            envelope(stop("940GA", listOf(train), at = night)),
+            LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(closure)),
+            at = night,
+        )
+        val entries = TileTimeline.entries(env, night)
+        assertTrue(entries.any { it.start == midnight })
+        assertEquals(TilePlanned("Part Closure", LocalDate.of(2026, 10, 3)), rows(entries.at(night)).single().planned)
+        val after = (entries.at(midnight) as TileFrame.Rows).lines
+        assertEquals("Part Closure", (after.single { it is TileLine.Disruption } as TileLine.Disruption).description)
+        assertNull(rows(entries.at(midnight)).single().planned)
+        assertEquals(midnight, TileTimeline.nextChange(env, night.plusSeconds(61)))
     }
 
     @Test

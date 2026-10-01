@@ -2099,12 +2099,13 @@ Builds on Phase 1's minimal line-status marking.
               direction its trains along the ride are seen going (`LineStatus.alongRides`), before
               dismissals, as a list row's is; a line not seen yet, or seen both ways, keeps the
               line-wide status. The open route's summary does the same.
-        - [ ] **Planned work's calendar icon on the widget and watch**: they persist a line check without its
-              planned work, so a line whose only alert is still to come shows as a clean
-              line there (it showed the ⚠ before), with no calendar in its place (Codex, PR #337). Needs
-              `planned` persisted with the check (and the watch envelope, a privacy-doc check) and
-              the glyph drawn by both surfaces. A check is refetched on the widget's own schedule,
-              so work that has started still reaches them as a disruption.
+        - [x] **Planned work's calendar icon on the widget and watch**: they persisted a line check without its
+              planned work, so a line whose only alert is still to come showed as a clean
+              line there (it showed the ⚠ before), with no calendar in its place (Codex, PR #337). Done:
+              the check stores `planned` (label, start day, rank and dismissal identity, never the
+              prose), on the line and each direction, and the watch envelope carries it with a
+              per-alert dismissed flag (privacy doc updated); the widget, the tile and the watch app
+              draw the calendar beside a row's first countdown, and its ⚠ on the day, as the app does.
         - [x] **Upcoming planned work as info** (maintainer, 2026-09-28): read the start date out
               of the reason text ("from 13 Oct 07:00"; `validityPeriods.fromDate` is when TfL posted
               it, not when it starts) and show a not-yet-started alert with an info icon instead of

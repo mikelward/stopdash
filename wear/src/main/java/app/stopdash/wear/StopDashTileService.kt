@@ -33,11 +33,13 @@ import androidx.wear.tiles.TileService
 import app.stopdash.data.RouteTopologyStore
 import app.stopdash.domain.NoTimes
 import app.stopdash.domain.riderLineName
+import app.stopdash.shared.R as SharedR
 import app.stopdash.ui.PillColors
 import app.stopdash.ui.pillColors
 import com.google.common.util.concurrent.ListenableFuture
 import java.time.Duration
 import java.time.Instant
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -121,7 +123,19 @@ class StopDashTileService : TileService() {
         requestParams: RequestBuilders.ResourcesRequest,
     ): ListenableFuture<ResourceBuilders.Resources> =
         CallbackToFutureAdapter.getFuture { completer ->
-            completer.set(ResourceBuilders.Resources.Builder().setVersion(RESOURCES_VERSION).build())
+            completer.set(
+                ResourceBuilders.Resources.Builder()
+                    .setVersion(RESOURCES_VERSION)
+                    .addIdToImageMapping(
+                        TileLayout.CALENDAR_ID,
+                        ResourceBuilders.ImageResource.Builder()
+                            .setAndroidResourceByResId(
+                                ResourceBuilders.AndroidImageResourceByResId.Builder().setResourceId(SharedR.drawable.ic_calendar).build(),
+                            )
+                            .build(),
+                    )
+                    .build(),
+            )
             "stopdash-tile-resources"
         }
 
@@ -131,7 +145,8 @@ class StopDashTileService : TileService() {
     }
 
     companion object {
-        private const val RESOURCES_VERSION = "1"
+        // Bumped with each image added, so a host holding the old set asks for the new one.
+        private const val RESOURCES_VERSION = "2"
         private const val TAG = "StopDash.Tile"
 
         /** A floor on the re-render interval, so a cut a moment away can't ask for a tight loop. */
@@ -147,6 +162,15 @@ class StopDashTileService : TileService() {
 }
 
 /** The tile's layout for one [TileFrame]. */
+/**
+ * What a screen reader says for [planned]'s calendar, on the tile and in the watch app: "Planned
+ * Part Closure from 13 Oct", the day short and in the watch's own locale, as the app says it.
+ */
+internal fun plannedDescription(context: Context, planned: TilePlanned): String {
+    val date = planned.startsOn.format(DateTimeFormatter.ofPattern("d MMM", context.resources.configuration.locales[0]))
+    return context.getString(R.string.planned_alert_description, planned.label, date)
+}
+
 internal object TileLayout {
     private val white = Color.White.toArgb()
     private val gray = Color(0xFFB0ABA3).toArgb()
@@ -202,7 +226,7 @@ internal object TileLayout {
                     column.addContent(
                         when (line) {
                             is TileLine.Header -> text(line.text, 12f, gray, bold = true, spoken = line.spoken)
-                            is TileLine.Departure -> row(line.row)
+                            is TileLine.Departure -> row(context, line.row)
                             is TileLine.Disruption -> disruption(context, line)
                             TileLine.OnlyHidden -> text(context.getString(R.string.tile_only_hidden), 14f, white, maxLines = 2)
                             is TileLine.EmptyStop -> {
@@ -272,7 +296,7 @@ internal object TileLayout {
         return chip(context.getString(R.string.tile_all_stops), white, ALL_STOPS_ID, ActionBuilders.LaunchAction.Builder().setAndroidActivity(app).build())
     }
 
-    private fun row(row: TileRow): LayoutElement =
+    private fun row(context: Context, row: TileRow): LayoutElement =
         Row.Builder()
             .setWidth(expand())
             .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
@@ -285,8 +309,33 @@ internal object TileLayout {
                     .build(),
             )
             .addContent(Spacer.Builder().setWidth(dp(4f)).build())
+            .apply {
+                row.planned?.let {
+                    addContent(calendar(context, it))
+                    addContent(Spacer.Builder().setWidth(dp(4f)).build())
+                }
+            }
             .addContent(text(row.countdown, 14f, if (row.stale) warning else white, bold = true))
             .build()
+
+    /**
+     * Work still to come on a row's line: the app's and the widget's muted calendar, before the
+     * countdown, and what's planned and from when to a screen reader.
+     */
+    private fun calendar(context: Context, planned: TilePlanned): LayoutElement =
+        LayoutElementBuilders.Image.Builder()
+            .setResourceId(CALENDAR_ID)
+            .setWidth(dp(CALENDAR_SIZE))
+            .setHeight(dp(CALENDAR_SIZE))
+            .setColorFilter(LayoutElementBuilders.ColorFilter.Builder().setTint(argb(gray)).build())
+            .setModifiers(Modifiers.Builder().setSemantics(semantics(plannedDescription(context, planned))).build())
+            .build()
+
+    /** The calendar's image resource, registered with the tile's resources ([StopDashTileService.onTileResourcesRequest]). */
+    const val CALENDAR_ID = "calendar"
+
+    // The 14sp countdown's line height, on the 4dp grid.
+    private const val CALENDAR_SIZE = 16f
 
     /**
      * A disrupted line's "⚠ Severe Delays" in the warning color: beside its pill when the line has no

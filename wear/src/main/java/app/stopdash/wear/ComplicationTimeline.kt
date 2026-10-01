@@ -131,28 +131,42 @@ object ComplicationTimeline {
         // As the tile does: a check or a stop dated after [now] stays untrusted for the whole
         // timeline, including the hand-over rebuilt later in it.
         val envelope = received?.distrustingFuture(now) ?: return noData
+        val timeline = timeline(envelope, now, row, topology) ?: return noData
+        // Work starting while its check is still live is under way from that midnight (SPEC
+        // *Disruptions*): its ⚠ shows, and a suspension's status row may lead, so the timeline is
+        // built again from there.
+        val start = envelope.plannedStarts(now).firstOrNull() ?: return timeline
+        return until(timeline, start) + entries(envelope, start, row, topology)
+    }
+
+    /** [entries] from [now] for an [envelope] already trusted as of then; null when there's nothing to show. */
+    private fun timeline(envelope: WatchEnvelope, now: Instant, row: StarredRow?, topology: RouteTopology): List<ComplicationEntry>? {
         // A pick the widget no longer shows (its stop gone, or its mode hidden on the phone) gives
         // way to the default row; the pick itself is kept, so un-hiding the mode brings it back.
         val picked = row?.takeIf { shows(envelope, it, now) }
-        val chosen = picked ?: defaultRow(envelope, now) ?: return noData
+        val chosen = picked ?: defaultRow(envelope, now) ?: return null
         val built = rowEntries(envelope, chosen, now, topology)
         if (picked != null) return built
         // A default row whose line is disrupted can owe its place to that check: as a suspension's
         // status alone, or once its last train has gone and only the status is left. So at the
         // check's expiry the timeline hands over to the default chosen then (the same row, rebuilt,
         // when it still leads), rather than keep an expired line with nothing to say.
-        if (envelope.liveLineStatuses(now)[chosen.lineId] == null) return built
+        // Work only still to come puts no row first, so it gives no place to hand over from.
+        if (envelope.liveLineStatuses(now)[chosen.lineId]?.allStatuses?.any(LineStatus::disrupted) != true) return built
         val expiry = statusExpiry(envelope, chosen.lineId)?.takeIf { it > now } ?: return built
-        val before = built.mapNotNull { entry ->
+        return until(built, expiry) + entries(envelope, expiry, null, topology)
+    }
+
+    /** [entries] cut off at [at]: the ones before it, the last ending there. */
+    private fun until(entries: List<ComplicationEntry>, at: Instant): List<ComplicationEntry> =
+        entries.mapNotNull { entry ->
             val end = entry.end
             when {
-                entry.start >= expiry -> null
-                end == null || end > expiry -> entry.copy(end = expiry)
+                entry.start >= at -> null
+                end == null || end > at -> entry.copy(end = at)
                 else -> entry
             }
         }
-        return before + entries(envelope, expiry, null, topology)
-    }
 
     /** When [lineId]'s check stops being shown (SPEC D3/D4), or null when it has none. */
     private fun statusExpiry(envelope: WatchEnvelope, lineId: String): Instant? =

@@ -1,6 +1,7 @@
 package app.stopdash.domain
 
 import java.time.Instant
+import java.time.LocalDate
 import kotlin.time.toJavaDuration
 import kotlin.time.toKotlinDuration
 
@@ -49,15 +50,19 @@ data class DeparturesSnapshot(
     val lineStatuses: Map<String, LineStatusCheck> = emptyMap(),
 ) {
     /**
-     * The disruptions to mark at [now]: the disrupted lines whose check is still within the shared
-     * staleness threshold ([Staleness]), less the ones the user dismissed ([LineStatusCheck.dismissed]). An older one is withheld, as an old countdown is (D4),
-     * rather than claim a line is still disrupted (or, by its absence, clear) on a check that old.
+     * The alerts to mark at [now]: the lines disrupted, or with work still to come
+     * ([LineStatus.planned]), whose check is still within the shared staleness threshold
+     * ([Staleness]), less the ones the user dismissed ([LineStatusCheck.shown]). An older one is
+     * withheld, as an old countdown is (D4), rather than claim a line is still disrupted (or, by its
+     * absence, clear) on a check that old.
      */
-    fun liveLineStatuses(now: Instant): Map<String, LineStatus> =
-        lineStatuses.values
+    fun liveLineStatuses(now: Instant): Map<String, LineStatus> {
+        val today = now.atZone(AlertStart.ZONE).toLocalDate()
+        return lineStatuses.values
             .filter { it.isLive(now) }
-            .mapNotNull { it.shown() }
+            .mapNotNull { it.shown(today) }
             .associateBy { it.lineId }
+    }
 
     /**
      * Whether [lineId]'s status is known at [now]: it has a live check, good or disrupted. A line
@@ -78,8 +83,9 @@ data class DeparturesSnapshot(
         val marked = lineStatuses.mapValues { (_, check) ->
             val isDismissed = dismissals.hide(check)
             val directions = dismissals.hiddenDirections(check)
-            if (isDismissed == check.dismissed && directions == check.dismissedDirections) check
-            else check.copy(dismissed = isDismissed, dismissedDirections = directions)
+            val planned = dismissals.hiddenPlanned(check)
+            if (isDismissed == check.dismissed && directions == check.dismissedDirections && planned == check.dismissedPlanned) check
+            else check.copy(dismissed = isDismissed, dismissedDirections = directions, dismissedPlanned = planned)
         }
         return if (marked == lineStatuses) this else copy(lineStatuses = marked)
     }
@@ -113,10 +119,19 @@ data class DeparturesSnapshot(
             .filter { (_, check) -> check.known && !check.fromFuture(now) }
             .mapNotNull { (lineId, check) ->
                 val expiry = SteadyClock.toWall(check.checkedAt).plus(threshold)
-                val matters = check.shown() != null || lineFreshUntil(lineId)?.let { expiry.isBefore(it) } == true
+                val matters = check.shown(now.atZone(AlertStart.ZONE).toLocalDate()) != null ||
+                    lineFreshUntil(lineId)?.let { expiry.isBefore(it) } == true
                 expiry.takeIf { matters }
             }
-        return (listOf(arrivalsExpire) + checkExpiries)
+        // Work starting while its check is still live turns its calendar into the ⚠ at that
+        // midnight, dismissed or not ([LineStatusCheck.shown]).
+        val plannedStarts = lineStatuses.values
+            .filter { check -> check.known && !check.fromFuture(now) }
+            .flatMap { check ->
+                val expiry = SteadyClock.toWall(check.checkedAt).plus(threshold)
+                check.plannedStarts.filter { it.isBefore(expiry) }
+            }
+        return (listOf(arrivalsExpire) + checkExpiries + plannedStarts)
             .filter { it.isAfter(now) }
             .minOrNull()
     }
@@ -152,6 +167,10 @@ data class LineStatusCheck(
     val dismissedDirections: Set<String> = emptySet(),
     // Each direction's status's full dismissal identity, as [fingerprint] is the line-wide one's.
     val directionFingerprints: Map<String, String> = status.byDirection.mapValues { (_, it) -> lineAlertFingerprint(it) },
+    // The planned alerts ([LineStatus.planned], the line's or a direction's) the user dismissed, by
+    // [plannedAlertFingerprint], set where [dismissed] is and for the same reason: each is its own
+    // alert, put away on its own, and only while it's still to come ([shown]).
+    val dismissedPlanned: Set<String> = emptySet(),
 ) {
     /** Whether [alerts] holds a dismissal of exactly this alert, full reason included. */
     fun dismissedBy(alerts: Set<DismissedAlert>): Boolean =
@@ -162,12 +181,22 @@ data class LineStatusCheck(
         if (!known) emptySet()
         else directionFingerprints.filterTo(mutableMapOf()) { (_, it) -> dismissedLine(alerts, status.lineId, it) }.keys
 
+    /** The fingerprints of this check's planned alerts that [alerts] holds a dismissal of. */
+    fun plannedDismissedBy(alerts: Set<DismissedAlert>): Set<String> =
+        if (!known) emptySet()
+        else status.allStatuses.flatMap { it.planned }.map(::plannedAlertFingerprint)
+            .filterTo(mutableSetOf()) { dismissedLine(alerts, status.lineId, it) }
+
     /**
      * [status] as a surface marks it, with each part the user dismissed ([dismissed],
      * [dismissedDirections]) read as a good service, so a row going that way shows no mark while
-     * the rest still do; null when no verdict was given or nothing disrupted is left to mark.
+     * the rest still do; null when no verdict was given or nothing is left to mark, disrupted or to
+     * come. Given [today] (in London), planned work whose day has come counts as under way
+     * ([LineStatus.asOf]) whether or not its calendar was dismissed: that put away the notice, not
+     * the disruption (SPEC *Disruptions*). The planned work still to come keeps the ones not
+     * [dismissedPlanned].
      */
-    fun shown(): LineStatus? {
+    fun shown(today: LocalDate? = null): LineStatus? {
         if (!known) return null
         fun good(s: LineStatus) = s.copy(severity = LineStatus.GOOD_SERVICE)
         val directions = status.byDirection.mapValues { (direction, it) -> if (direction in dismissedDirections) good(it) else it }
@@ -177,11 +206,25 @@ data class LineStatusCheck(
             // The line-wide status is the line's worst alert, so dismissing that alert for the way it
             // applies dismisses it here too. A row with no direction still shows what's left: the
             // other way's alert. In practice one is left; of several, the most severe by TfL's scale.
-            remaining.isNotEmpty() -> remaining.minBy { it.severity }
+            // The line's own planned work stays, as a row with no direction carries it in the app.
+            remaining.isNotEmpty() -> remaining.minBy { it.severity }.copy(planned = status.planned)
             else -> good(status)
         }
-        return whole.copy(byDirection = directions).takeIf { it.allStatuses.any(LineStatus::disrupted) }
+        val dated = whole.copy(byDirection = directions).let { s -> today?.let(s::asOf) ?: s }
+        fun kept(s: LineStatus) = s.planned.filterNot { plannedAlertFingerprint(it) in dismissedPlanned }
+        val shown = if (dismissedPlanned.isEmpty()) dated
+        else dated.copy(planned = kept(dated), byDirection = dated.byDirection.mapValues { (_, it) -> it.copy(planned = kept(it)) })
+        return shown.takeIf { it.allStatuses.any(LineStatus::hasAlerts) }
     }
+
+    /**
+     * When each piece of planned work this check carries starts, London midnight of its day (the
+     * line's or a direction's): where a surface marking it changes, its calendar becoming the ⚠
+     * ([shown]). None for a check with no verdict.
+     */
+    val plannedStarts: List<Instant>
+        get() = if (!known) emptyList()
+        else status.allStatuses.flatMap { it.planned }.map { it.startsOn.atStartOfDay(AlertStart.ZONE).toInstant() }.distinct()
 
     /** True while the check is younger than the shared staleness threshold, and not from the future. */
     fun isLive(now: Instant): Boolean {

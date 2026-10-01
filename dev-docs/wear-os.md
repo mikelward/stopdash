@@ -281,6 +281,13 @@ the watch app ships would break pairing between old and new installs.
   does ("⚠ Severe Delays", a suspended line with no countdown as its status alone) and withhold
   each mark at the same expiry, the shared staleness threshold from its own check time: the
   tile's timeline and the app's ticker break there, and a complication entry spanning it is split.
+  A check carries the line's work still to come too (`PersistedLineStatus.planned`, its label,
+  start day and dismissal identity, never TfL's prose), so the tile and the app put the widget's
+  calendar beside a row's first countdown; the complication has no room for it. Work that starts
+  while its check is live turns into its ⚠ at that midnight in London, so the tile's timeline, the
+  app's ticker and the complication's timeline break there too (as the widget's redraw does). Each planned
+  alert's `dismissed` flag is set by the phone, as the status's is, and the watch keeps its
+  identity because that is what the flag marks.
   A line with no live check (never checked, the lookup failed, the check aged out) turns the
   tile's and the app's note to "Couldn't check for disruptions" and the tile's foot to Refresh.
   Stop closures still stay off: they have no age-stamped rendering.

@@ -2,6 +2,7 @@ package app.stopdash.domain
 
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -340,5 +341,98 @@ class LineStatusCheckTest {
         answered.forEach { assertEquals(LineStatusCheck(LineStatus(it, 6, "Severe Delays"), t0), refreshed.lineStatuses[it]) }
         // A failed request's lines keep their older checks, to age out as before.
         failed.forEach { assertEquals(earlier, refreshed.lineStatuses.getValue(it).checkedAt) }
+    }
+
+    // Planned work, from a week after t0 (SPEC *Disruptions*): the widget and watch read it off the check.
+    private val closure = PlannedAlert("Part Closure", "No service between Stop A and Stop B.", LocalDate.of(2026, 9, 27))
+    private val diversion = PlannedAlert("Diversion", "Buses diverted.", LocalDate.of(2026, 10, 4))
+
+    @Test
+    fun `work still to come is marked on a good service, on the row, without a disruption`() {
+        val snap = snapshot(mapOf("victoria" to LineStatusCheck(good.copy(planned = listOf(closure)), t0)))
+        val live = snap.liveLineStatuses(t0).getValue("victoria")
+        assertEquals(false, live.disrupted)
+        assertEquals(listOf(closure), live.planned)
+        val row = DepartureRows.across(snap.stops, t0, snap.liveLineStatuses(t0)).single()
+        assertNull(row.status)
+        assertEquals(listOf(closure), row.plannedAlerts)
+        // Withheld with the check, as a disruption is.
+        assertTrue(snap.liveLineStatuses(t0.plus(Duration.ofMinutes(6))).isEmpty())
+        // Its expiry takes the calendar away, so it's a boundary even once the arrivals are stale.
+        val later = snapshot(mapOf("victoria" to LineStatusCheck(good.copy(planned = listOf(closure)), t0.plusSeconds(60))))
+        assertEquals(t0.plusSeconds(360), later.nextBoundary(t0.plusSeconds(301)))
+        assertNull(snapshot(mapOf("victoria" to LineStatusCheck(good, t0.plusSeconds(60)))).nextBoundary(t0.plusSeconds(301)))
+    }
+
+    @Test
+    fun `a dismissed calendar goes on its own, and a dismissed disruption leaves the line's calendar`() {
+        val both = good.copy(planned = listOf(closure, diversion))
+        val snap = snapshot(mapOf("victoria" to LineStatusCheck(both, t0)))
+        val shown = snap.withDismissals(setOf(DismissedAlert.ofPlanned("victoria", closure)))
+        assertEquals(setOf(plannedAlertFingerprint(closure)), shown.lineStatuses.getValue("victoria").dismissedPlanned)
+        assertEquals(listOf(diversion), shown.liveLineStatuses(t0).getValue("victoria").planned)
+        // Both dismissed: nothing marked, and the line still counts as checked.
+        val all = snap.withDismissals(setOf(closure, diversion).mapTo(HashSet()) { DismissedAlert.ofPlanned("victoria", it) })
+        assertTrue(all.liveLineStatuses(t0).isEmpty())
+        assertTrue(all.statusKnown("victoria", t0))
+        // Reworded, it's a new alert: the old dismissal doesn't hide it.
+        val reworded = snapshot(mapOf("victoria" to LineStatusCheck(good.copy(planned = listOf(closure.copy(fullText = "New text."))), t0)))
+        assertEquals(1, reworded.withDismissals(setOf(DismissedAlert.ofPlanned("victoria", closure))).liveLineStatuses(t0).getValue("victoria").planned.size)
+        // The disruption dismissed, the work to come is still noted.
+        val disrupted = snapshot(mapOf("victoria" to LineStatusCheck(severe.copy(planned = listOf(closure)), t0)))
+        val live = disrupted.withDismissals(setOf(DismissedAlert.ofLineStatus(severe))).liveLineStatuses(t0).getValue("victoria")
+        assertEquals(false, live.disrupted)
+        assertEquals(listOf(closure), live.planned)
+    }
+
+    @Test
+    fun `work whose day has come shows its warning, its calendar dismissed or not`() {
+        // Checked at 23:58 in London the night before, and still live two minutes after midnight.
+        val checked = Instant.parse("2026-09-26T22:58:00Z")
+        val now = Instant.parse("2026-09-26T23:01:00Z")
+        val snap = DeparturesSnapshot(
+            stops = listOf(StopArrivals("A", "Stop A", listOf(departure()), checked)),
+            fetchedAt = checked,
+            lineStatuses = mapOf("victoria" to LineStatusCheck(good.copy(planned = listOf(closure)), checked)),
+        )
+        val dismissed = snap.withDismissals(setOf(DismissedAlert.ofPlanned("victoria", closure)))
+        // Midnight in London is a boundary: a static surface redraws there, dismissed or not.
+        val midnight = Instant.parse("2026-09-26T23:00:00Z")
+        assertEquals(midnight, snap.nextBoundary(checked))
+        assertEquals(midnight, dismissed.nextBoundary(checked))
+        // Work starting only once the check has aged out sets none.
+        val later = snap.copy(lineStatuses = mapOf("victoria" to LineStatusCheck(good.copy(planned = listOf(closure)), checked.minusSeconds(240))))
+        assertEquals(checked.plusSeconds(60), later.nextBoundary(checked))
+        // The night before, the dismissed calendar is put away.
+        assertTrue(dismissed.liveLineStatuses(checked).isEmpty())
+        // On the day, the work is under way: its warning shows, as a new alert's would.
+        for (shown in listOf(snap, dismissed)) {
+            val live = shown.liveLineStatuses(now).getValue("victoria")
+            assertTrue(live.disrupted)
+            assertEquals("Part Closure", live.description)
+            assertEquals(emptyList<PlannedAlert>(), live.planned)
+        }
+    }
+
+    @Test
+    fun `an ended calendar dismissal hides only a check made before its end was seen`() {
+        val ended = Dismissals(emptySet(), mapOf(DismissedAlert.ofPlanned("victoria", closure) to t0))
+        val old = snapshot(mapOf("victoria" to LineStatusCheck(good.copy(planned = listOf(closure)), t0)))
+        assertTrue(old.withDismissals(ended).liveLineStatuses(t0).isEmpty())
+        val newer = snapshot(mapOf("victoria" to LineStatusCheck(good.copy(planned = listOf(closure)), t0.plusSeconds(1))))
+        assertEquals(listOf(closure), newer.withDismissals(ended).liveLineStatuses(t0.plusSeconds(1)).getValue("victoria").planned)
+    }
+
+    @Test
+    fun `a direction's own calendar is dismissed on its own too`() {
+        val inbound = good.copy(planned = listOf(closure))
+        val outbound = good.copy(planned = listOf(diversion))
+        val split = good.copy(planned = listOf(closure, diversion), byDirection = mapOf("inbound" to inbound, "outbound" to outbound))
+        val shown = snapshot(mapOf("victoria" to LineStatusCheck(split, t0)))
+            .withDismissals(setOf(DismissedAlert.ofPlanned("victoria", closure)))
+            .liveLineStatuses(t0).getValue("victoria")
+        assertEquals(emptyList<PlannedAlert>(), shown.forDirection("inbound").planned)
+        assertEquals(listOf(diversion), shown.forDirection("outbound").planned)
+        assertEquals(listOf(diversion), shown.planned)
     }
 }

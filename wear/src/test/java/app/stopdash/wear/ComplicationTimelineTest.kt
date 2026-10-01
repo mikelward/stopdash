@@ -7,6 +7,7 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCheck
+import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.RoutePattern
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.Staleness
@@ -14,6 +15,7 @@ import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.Terminating
 import java.time.Instant
+import java.time.LocalDate
 import kotlin.time.toJavaDuration
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -367,4 +369,22 @@ class ComplicationTimelineTest {
         assertTrue(ComplicationTimeline.entries(env, fetched.minusSeconds(30)).first().content is ComplicationContent.Departure)
     }
 
+
+    @Test
+    fun `work starting while its check is live is marked from that midnight, until the check expires`() {
+        // Fetched and checked at 23:58 in London; the closure starts the next day.
+        val night = Instant.parse("2026-10-02T22:58:00Z")
+        val midnight = Instant.parse("2026-10-02T23:00:00Z")
+        val closure = PlannedAlert("Part Closure", "No service.", LocalDate.of(2026, 10, 3))
+        val train = Departure("victoria", "Victoria", "inbound", "Brixton", null, night.plusSeconds(240), "tube")
+        val stop = StopArrivals("940GA", "Stop 940GA", listOf(train), night, lines = listOf(LineRef("victoria", "Victoria", "tube")))
+        val good = LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(closure))
+        val env = WatchEnvelope(stops = listOf(stop.toPersisted()), lineStatuses = listOf(LineStatusCheck(good, night).toPersisted()))
+        val entries = ComplicationTimeline.entries(env, night)
+        assertNull((entries.at(night) as ComplicationContent.Departure).disruption)
+        assertEquals("Part Closure", (entries.at(midnight) as ComplicationContent.Departure).disruption)
+        // At the check's expiry the warning goes with it: the train has gone, so the default row it
+        // kept hands over, to nothing left to show.
+        assertEquals(ComplicationContent.NoData, entries.at(night.plusSeconds(300)))
+    }
 }
