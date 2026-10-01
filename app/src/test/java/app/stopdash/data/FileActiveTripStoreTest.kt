@@ -47,6 +47,7 @@ class FileActiveTripStoreTest {
         alertLeft = true,
         vehicleOffId = "940GZZLUWLO",
         waitFrom = Instant.parse("2026-09-26T08:01:00Z"),
+        boardWarned = "0/162",
     )
 
     @Test

@@ -1547,6 +1547,17 @@ them there:
   counted to when the train followed is due where they get off, as the boards count a time; none while
   that stop is beyond TfL's predictions, as no time is claimed there.
 - **Get off soon**, from **one stop, or two minutes, out**, said once per leg.
+- **Time to board** (maintainer, 2026-09-27), from **two minutes before the train followed is due**
+  at the boarding stop, while the rider waits for it: heard once for each train, so the next one is said
+  for in its time when they're left behind by the first. It names the ride ("Board Jubilee at Bond
+  Street") and counts down to the train in its header. **Only a live answer stands behind it**, as
+  behind the trip's own times (*Only a recent answer is live*, below): each fresh answer posts it
+  again, silently, at the train's latest time, and it lasts only as long as that answer is live, so
+  with the app gone it comes down by itself. A refresh that fails, or an answer that can't keep it up
+  (the train with no time now, or past it), takes it down at once, for good: it has been heard by then,
+  and it is never brought back, so one the rider swiped away stays away.
+  It comes down once the rider is on board (the train has left the stop, or they said so), another
+  train is followed, or the trip ends, and never outlasts two minutes after the train was due.
 - **Where it shows:** the trip's own screen (the next step over the route), a **card pinned at the
   top of the main view** (the near-me list, under the top bar, not scrolling with it; a station's
   page, and a station, platform or starred journey opened from the list, are each their own view),
@@ -1564,8 +1575,10 @@ declined, the trip still follows them on its screen and the main view's card, an
 get-off alerts are off (checked again on every return, so a change in Settings shows). "Get off
 soon" has **its own channel, high importance with sound and vibration**, so it can be silenced
 apart from the trip's ongoing notification; it goes **five minutes after the stop** (or 15 minutes
-with no time to it), so a stale alert doesn't linger. Until the foreground service below, it's
-said only while the app is open, as the trip is only followed then.
+with no time to it), so a stale alert doesn't linger. "Time to board" has **a channel of its own**
+too, alike, so either can be muted without the other. Until the foreground service below, both are
+said only while the app is open, as the trip is only followed then. Neither asks TfL for anything:
+each is worked out from the answers the trip already has.
 
 **Pending the maintainer's Play declarations** (built, not merged until they're made; maintainer,
 2026-09-26): an **ongoing notification with the app closed**, which needs a foreground service

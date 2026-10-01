@@ -266,6 +266,8 @@ private data class PersistedActiveTrip(
     // Absent from a trip kept before it was stored: taken as not yet seen on board, so its ride's
     // step and board show until location or the rider says otherwise, as for any trip now.
     val onBoardSeen: Boolean = false,
+    // Absent from a trip kept before it was stored: none said yet, so a train due soon is said for.
+    val boardWarned: String = "",
 ) {
     fun toTrip() = ActiveTrip(
         route = TripRoute(legs.map { it.toLeg() }),
@@ -283,6 +285,7 @@ private data class PersistedActiveTrip(
         vehicleOffId = vehicleOffId,
         waitFrom = waitFrom?.let(Instant::parse),
         onBoardSeen = onBoardSeen,
+        boardWarned = boardWarned,
     )
 
     companion object {
@@ -302,6 +305,7 @@ private data class PersistedActiveTrip(
             vehicleOffId = trip.vehicleOffId,
             waitFrom = trip.waitFrom?.toString(),
             onBoardSeen = trip.onBoardSeen,
+            boardWarned = trip.boardWarned,
         )
     }
 }

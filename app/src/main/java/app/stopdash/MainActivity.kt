@@ -734,6 +734,7 @@ class MainActivity : ComponentActivity() {
                         OnTheWayService.start(applicationContext)
                         onTheWayOpen = true
                         GetOffSoonAlert.ensureChannel(applicationContext)
+                        TimeToBoardAlert.ensureChannel(applicationContext)
                         if (ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                         }
@@ -2927,6 +2928,10 @@ class MainActivity : ComponentActivity() {
                         GetOffSoonAlert.post(context.applicationContext, trip, riding, Instant.now(), ::logDepartureWarning)
                     },
                     onGetOffSoonDone = { GetOffSoonAlert.cancel(context.applicationContext) },
+                    onBoardSoon = { trip, waiting, how, answeredAt ->
+                        TimeToBoardAlert.post(context.applicationContext, trip, waiting, how, answeredAt, Instant.now(), ::logDepartureWarning)
+                    },
+                    onBoardSoonDone = { TimeToBoardAlert.cancel(context.applicationContext) },
                 )
             }.also { activeTripInstance = it }
         }

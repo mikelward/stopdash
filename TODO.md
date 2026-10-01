@@ -1122,10 +1122,18 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         - [x] The main view's pinned card (the near-me list; a station page is its own look).
         - [x] "Get off soon" on its own channel (sound, vibration), the permission asked on Start.
               Only while the app is open until the foreground service below lands.
-        - [ ] **A "time to board" alert** (maintainer, 2026-09-27): a heads-up as the rider's train
-              is about to arrive (or it's time to head for the platform), on its own channel so it
-              can be muted apart from "Get off soon". Today the wait shows only as a countdown on
-              the trip's screen and pinned card (and the ongoing notification, once it lands).
+        - [x] **A "time to board" alert** (maintainer, 2026-09-27): a heads-up as the rider's train
+              is about to arrive, on its own channel so it can be muted apart from "Get off soon".
+              Done: two minutes before the train followed is due at the boarding stop, once for each
+              train (`OnTheWay.shouldBoard`, kept on the trip as `boardWarned`), its header counting
+              down to the train and lasting only while its answer is live (`CURRENT_FOR`, renewed
+              silently by each fresh answer, down for good on a failed refresh); taken down once the
+              rider is on board, another train is followed, or the trip ends (`boardStands`). Needs a
+              device check of the countdown, the channel and a swiped one staying away.
+          - [ ] **"Time to head for the platform"**: the same heads-up while the rider walks to the
+                stop, when leaving now just catches the train. The walk is timed from the plan, and
+                a train is followed only once the rider is taken to be at the stop, so this needs
+                the walk's own time from where they are.
         - [ ] **A "Route disruption" alert** (maintainer, 2026-09-29): a heads-up when a trip on
               the way learns something that may stop a leg the rider hasn't finished (a "coming
               leg" below): its boarding stop until its train is boarded, and its line and where it

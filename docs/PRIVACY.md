@@ -137,8 +137,9 @@ beyond coarse diagnostics (a line id, an error kind) or sent anywhere. While a t
 open or closed, stopdash asks TfL about every 30 seconds where the followed train will call next, by TfL's own id for that
 train, and for the departures at a stop where the next leg boards; neither says anything about you
 that the trip's departures don't already. Ending the trip, or arriving, deletes it. The "get off
-soon" alert names the stop and the trip's destination on your lock screen, like any notification;
-you can turn it off in Android's settings for StopDash. While a trip is on the way, an ongoing
+soon" alert names the stop and the trip's destination on your lock screen, like any notification,
+and the "time to board" alert likewise names the line, the stop you board at and the destination;
+you can turn either off in Android's settings for StopDash. While a trip is on the way, an ongoing
 notification shows its next step, until you arrive or end the trip (or, for a trip left running,
 four hours after it started). If you've allowed location, stopdash takes your
 precise position about every 30 seconds while you walk to a stop you're boarding at, only to see

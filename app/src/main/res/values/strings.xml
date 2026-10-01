@@ -622,6 +622,9 @@
     <string name="get_off_soon_channel">Get off soon</string>
     <string name="on_the_way_channel_description">A trip on the way: the next step, while you travel</string>
     <string name="get_off_soon_channel_description">A trip on the way: when your stop is next</string>
+    <!-- The channel for the alert that the train (or bus) the rider waits for is about to arrive. -->
+    <string name="time_to_board_channel">Time to board</string>
+    <string name="time_to_board_channel_description">A trip on the way: when it\'s time to board</string>
     <!-- A leg: %1$s from, %2$s to. -->
     <string name="on_the_way_leg">%1$s → %2$s</string>
 </resources>
