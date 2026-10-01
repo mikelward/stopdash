@@ -2149,6 +2149,22 @@ Builds on Phase 1's minimal line-status marking.
       and cancellations of specific services where TfL exposes them.
 - [ ] Rich in-app disruption text; mark a disrupted line/stop even when predictions look
       normal (D3). Domain summarization JVM-tested.
+- [ ] **A catch-all reason that says a disruption has ended still names it** (Codex, PR #455).
+      "The diversion is no longer required" resolves to Diversion: `resolveDisruption` only looks
+      for a negation *before* the word, and predates #455 in looking at all. Recognize a denial that
+      follows the noun ("is no longer required", "has ended", "has been lifted") in the same clause,
+      so an ended diversion falls back to the non-alerting Service Alert. Same family as the
+      allowlist option below: guessing a label from prose by word lists.
+- [ ] **Option: leave out a bus alert only when every sentence is one StopDash reads** (maintainer,
+      2026-10-01, an option to weigh, not a decision). A bus line's alert is left out of a ride its
+      stretch doesn't reach (PR #455) unless its text has one of a list of route-wide words
+      ("delays", "not running", "suspended", "cancelled", …). Review kept finding words the list
+      missed, each one a rider who'd lose their only warning, and TfL can always word an outage the
+      list doesn't name. *The option:* an allowlist instead: leave the alert out only when every
+      sentence is a kind StopDash reads (the stops not served, "diverted via …", a direction, a date
+      or reason), so any other sentence keeps it on. *Gains:* it fails safe, with no word to miss.
+      *Costs:* some off-ride diversions would still warn until their wording is added. *First:*
+      check how many of the TfL alerts collected in PR #455's tests it would still leave out.
 - [ ] **Name a disruption from the reason text, and judge relevance** (reported 2026-09-19,
       on-device; refined 2026-09-20). A rider expects "Diversion", not "Special Service".
       **Landed so far:** a vague "Special Service" is replaced by a concise label parsed from
