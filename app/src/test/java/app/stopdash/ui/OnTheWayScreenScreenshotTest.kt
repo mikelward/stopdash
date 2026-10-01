@@ -329,6 +329,24 @@ class OnTheWayScreenScreenshotTest {
     }
 
     @Test
+    fun a_bus_board_shows_the_other_pole_of_the_pair_under_its_own_letter() {
+        // The 25 boards at Stop D; the 86 runs the same way from Stop E, across the road: each pole's
+        // buses under its own header, the ride's own first.
+        val bus = TripLeg("bus", "25", "25", "490000000001D", "Stratford", "490000000002A", "Bow", at(4), at(20))
+        val buses = listOf(Departure("25", "25", "outbound", "Bow", null, at(6), "bus"))
+        val across = PoleTrains("490000000001E", "Stratford", listOf(Departure("86", "86", "outbound", "Bow", null, at(8), "bus")), stopLetter = "E", towards = "Bow")
+        show(
+            trip.copy(route = TripRoute(listOf(bus))), TripProgress.Waiting(bus, at(6)),
+            nextTrains = NextTrains(bus, buses, readyAt = now, stopLetter = "D", towards = "Bow", others = listOf(across)),
+        )
+        val own = composeRule.onNodeWithText("Stop D", substring = true).assertIsDisplayed().getUnclippedBoundsInRoot()
+        val other = composeRule.onNodeWithText("Stop E", substring = true).assertIsDisplayed().getUnclippedBoundsInRoot()
+        assertTrue(other.top >= own.bottom)
+        composeRule.onNodeWithText("86").assertIsDisplayed()
+        captureSnapshot("on-the-way-bus-board-pair-poles.png")
+    }
+
+    @Test
     fun a_board_row_with_nothing_to_open_leaves_the_touch_to_what_holds_it() {
         // No tap and no long press: the row takes no gesture at all, so a touch goes through.
         var touched = false

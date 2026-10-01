@@ -189,6 +189,35 @@ data class RideLines(val legs: List<TripLeg>, val timed: List<TripLeg>) {
         ): List<String> =
             candidates(ride, routes.flatMap { it.rides }.distinct(), arrivals, boardingStops(ride, areaPoles), hidden).map { it.first }
 
+        /**
+         * Of [poles], the poles of [ride]'s stop pair (the other side of the road, or another stand),
+         * those besides its own whose board may list another line's train taking the ride ([of]), so a
+         * trip that reads only their boards reads no more than it needs: a pole serving a line of the
+         * ride's mode, not the ride's own nor [hidden], whose route ([sequences]) runs the ride from
+         * that pole, or whose route isn't known (none in [sequences]). A pole TfL lists no lines for
+         * may serve one, so it's read too.
+         */
+        fun polesToRead(
+            ride: TripLeg,
+            poles: List<StopLocation>,
+            sequences: Map<String, LineSequence?>,
+            hidden: Set<String> = emptySet(),
+        ): List<StopLocation> = poles.filter { pole ->
+            pole.id != ride.fromId && (pole.lines.isEmpty() || pole.lines.any { line ->
+                mayTake(ride, line, hidden) && sequences[line.id]?.let { runTo(ride, ride, line.id, line.name, it, setOf(pole.id)) != null } ?: true
+            })
+        }
+
+        /** The lines of [poles] whose routes [polesToRead] goes by: those that may take [ride] at all. */
+        fun pairLineIds(ride: TripLeg, poles: List<StopLocation>, hidden: Set<String> = emptySet()): List<String> =
+            poles.filter { it.id != ride.fromId }.flatMap { it.lines }.filter { mayTake(ride, it, hidden) }.map { it.id }.distinct()
+
+        // Whether [line] may take [ride] from another pole of its pair: of its mode (TfL may give none),
+        // not its own line, and not [hidden].
+        private fun mayTake(ride: TripLeg, line: LineRef, hidden: Set<String>): Boolean =
+            line.id.isNotBlank() && line.id != ride.lineId && !HiddenModes.isHidden(ride.mode, line.id, hidden) &&
+                (line.mode.isBlank() || line.mode.equals(ride.mode, ignoreCase = true))
+
         // The stops whose arrivals the trip fetches for [ride]: its own, and every pole of its stop pair.
         private fun boardingStops(ride: TripLeg, areaPoles: Map<String, List<String>>): Set<String> =
             setOf(ride.fromId) + areaPoles[ride.fromArea].orEmpty()

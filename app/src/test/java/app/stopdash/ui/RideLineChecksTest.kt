@@ -43,7 +43,7 @@ class RideLineChecksTest {
     private val routesFail = mutableSetOf<String>()
 
     // Red runs A, B, C; blue the same; purple from A to C by X.
-    private val sequences = mapOf(
+    private val sequences = mutableMapOf(
         "red" to LineSequence(listOf(LineRoute("A-C", listOf("A", "B", "C"))), mapOf("A" to "A", "B" to "B", "C" to "C")),
         "blue" to LineSequence(listOf(LineRoute("A-C", listOf("A", "B", "C"))), mapOf("A" to "A", "B" to "B", "C" to "C")),
         "purple" to LineSequence(listOf(LineRoute("A-C", listOf("A", "X", "C"))), mapOf("A" to "A", "X" to "X", "C" to "C")),
@@ -78,6 +78,28 @@ class RideLineChecksTest {
 
     private fun due(line: String) = Departure(line, line.replaceFirstChar { it.uppercase() }, "outbound", "C", null, at(6), "tube", vehicleId = "v-$line")
     private fun good(line: String) = LineStatus(line, LineStatus.GOOD_SERVICE, "Good Service")
+
+    // The ride's own stop's board alone, as a ride read at a station is.
+    private suspend fun RideLineChecks.running(route: TripRoute, ride: TripLeg, departures: List<Departure>) =
+        running(route, ride, mapOf(ride.fromId to departures))
+
+    @Test
+    fun `a line boarding at the other pole of the ride's stop pair is offered from that pole's board`() = runTest {
+        val checks = checks(StandardTestDispatcher(testScheduler))
+        // The Planner's bus 1 boards at Bs of pair BG for pair CG; bus 2 runs there from Bn, across the road.
+        val bus = TripLeg("bus", "1", "1", "Bs", "B", "Cs", "C", at(5), at(15), path = listOf("Cs"), fromArea = "BG", toArea = "CG")
+        val plan = TripRoute(listOf(bus))
+        sequences["2"] = LineSequence(listOf(LineRoute("north", listOf("Bn", "Cn"))), mapOf("Bn" to "B", "Cn" to "C"), stopAreas = mapOf("Bn" to "BG", "Cn" to "CG"))
+        statuses = mapOf("1" to good("1"), "2" to good("2"))
+        val two = Departure("2", "2", "outbound", "C", null, at(6), "bus", vehicleId = "b2")
+        // Bn's board, read with Bs's: bus 2 is offered, boarding at Bn, its stops checked open there.
+        val found = checks.running(plan, bus, mapOf("Bs" to emptyList(), "Bn" to listOf(two)))
+        assertEquals(listOf("1", "2"), found.lines.map { it.lineId })
+        assertEquals("Bn" to "Cn", found.lines[1].let { it.fromId to it.toId })
+        assertTrue("Bn" in closureReads)
+        // Bs's board alone: bus 2 isn't known there.
+        assertEquals(listOf("1"), checks.running(plan, bus, mapOf("Bs" to emptyList())).lines.map { it.lineId })
+    }
 
     @Test
     fun `a ride with no other line on its board is the Planner's alone, nothing asked`() = runTest {

@@ -1291,11 +1291,17 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   for a line whose stops are known by id and whose routes bring every train there
                   the ride's way from the boarding stop, soonest first until a train behind them bounds theirs: the latest past them when seen at a stop, only a lone one between
                   stops (*Two trains between the same two stops*).
-            - [ ] **A bus on the other pole of the boarding pair**: the board read is the pole the
+            - [x] **A bus on the other pole of the boarding pair**: the board read is the pole the
                   Planner named, alone, for picking a train too, so another of the ride's bus routes
                   that stops only at the pair's other pole is never followed, picked or seen boarded
                   (Codex, PR #451). Reading the pair's other pole as well would find both, for one
-                  more request a refresh while waiting (Codex, PR #383).
+                  more request a refresh while waiting (Codex, PR #383). Done: the pair's other poles
+                  are read with the board, but only one serving a line whose route runs the ride from
+                  there, or whose route isn't known (`RideLines.polesToRead`), so a plain pair costs
+                  nothing more; each train counts on its own line's pole's board only
+                  (`OnTheWay.listedFor`), for the pick, the trains seen leave, the change's "no train
+                  predicted" and the trip's board, which heads each pole by its letter. A pole, or the
+                  pair, that can't be read is said (`NextBoard.partial`), never taken for no bus there.
             - [ ] **Two trains between the same two stops**: the train the rider is on is the
                   newest that left the boarding stop and isn't behind them, judged by the stop each
                   calls at next. A later train that has caught up to between the same two stops calls

@@ -177,6 +177,24 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `a train is kept on the board of the pole its line boards at`() {
+        // The Planner's bus 1 boards at Bs; bus 2 runs the ride from Bn, the other side of the road.
+        fun bus(line: String, vehicle: String) = Departure(line, line, "outbound", "C", null, at(6), "bus", vehicleId = vehicle)
+        val one = TripLeg("bus", "1", "1", "Bs", "B", "C", "C", at(5), at(15), fromArea = "BG")
+        val two = one.copy(lineId = "2", lineName = "2", fromId = "Bn", fromArea = "")
+        val lines = listOf(one, two)
+        // Each line's own way is kept; its way back across the road isn't, nor a train of a line
+        // not offered anywhere but at the ride's own pole.
+        val boards = mapOf(
+            "Bs" to listOf(bus("1", "a"), bus("2", "b"), bus("9", "c")),
+            "Bn" to listOf(bus("1", "d"), bus("2", "e"), bus("9", "f")),
+        )
+        assertEquals(listOf("a", "c", "e"), OnTheWay.listedFor(one, boards, lines).map { it.vehicleId })
+        // With one board read, a line boarding where nothing was read keeps its trains as listed.
+        assertEquals(listOf("a", "b", "c"), OnTheWay.listedFor(one, mapOf("Bs" to boards.getValue("Bs")), lines).map { it.vehicleId })
+    }
+
+    @Test
     fun `a train followed on another line is checked against that line's own stops`() {
         val other = Departure("blue", "Blue", "outbound", "C", null, at(5), "tube", vehicleId = "4")
         val following = OnTheWay.follow(trip, other, blueRide)

@@ -252,6 +252,27 @@ object OnTheWay {
             // A train's id is TfL's within its line, so two lines' trains can share one.
             .distinctBy { it.lineId to it.vehicleId }
 
+    /**
+     * The trains of [boards], the boards read for [ride] by stop id (its own stop's, and those of its
+     * stop pair's other poles: [RideLines.polesToRead]), each kept only on the board of the stop it
+     * may board from: a train of one of the ride's [lines] where its line boards ([TripLeg.fromId]),
+     * any other train on the ride's own stop's. A line's train on another pole's board goes another
+     * way (the other side of the road is its way back), so it's no train of the ride. A line boarding
+     * at a stop whose board wasn't [read] keeps its trains wherever they're listed, as with one board.
+     */
+    fun listedFor(
+        ride: TripLeg,
+        boards: Map<String, List<Departure>>,
+        lines: List<TripLeg>,
+        read: Set<String> = boards.keys,
+    ): List<Departure> =
+        boards.flatMap { (stop, trains) ->
+            trains.filter { train ->
+                val from = lineOf(lines, train)?.fromId ?: ride.fromId
+                from == stop || from !in read
+            }
+        }
+
     /** The ride as [train]'s line runs it, of the ride's [lines]; null when its line isn't one of them. */
     fun lineOf(lines: List<TripLeg>, train: Departure): TripLeg? =
         train.lineId.takeIf { it.isNotBlank() }?.let { id -> lines.firstOrNull { it.lineId == id } }
