@@ -34,7 +34,7 @@ class YourStopsTest {
     fun `a favorite opened lately is listed once, among the recent, most recent first`() {
         val oxford = StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))
         val bank = StationMatch("940GZZLUBNK", "Bank", listOf("tube"))
-        val yours = YourStops.of(listOf(journey), emptyList(), listOf(oxford, bank), emptyList())
+        val yours = YourStops.of(listOf(journey), emptyList(), listOf(oxford, bank).map(SearchEntry::Stop), emptyList())
         assertEquals(listOf(oxford, bank), yours.recent)
         assertEquals(listOf("Example Road"), yours.favorites.map { it.name })
         // The user's own, by last use: the recent first, then the favorites not used lately.
@@ -51,6 +51,43 @@ class YourStopsTest {
         assertEquals("490000000099", added.first().id)
         assertEquals(RecentStations.MAX, added.size)
         assertEquals(stops.dropLast(1), added.drop(1))
+    }
+
+    @Test
+    fun `a place picked from To… lists under Recent in the order picked, and matches nothing typed`() {
+        val oxford = StationMatch("940GZZLUOXC", "Oxford Circus Underground Station", listOf("tube"))
+        val bank = StationMatch("940GZZLUBNK", "Bank", listOf("tube"))
+        val gallery = PlaceHit("Example Gallery", Coordinates(51.5, -0.12), PlaceKind.PLACE)
+        val yours = YourStops.of(
+            listOf(journey), emptyList(),
+            recent = listOf(SearchEntry.Stop(bank), SearchEntry.Place(gallery), SearchEntry.Stop(oxford)),
+            known = emptyList(),
+        )
+        // Listed in the order picked, the stops' names cleaned as before.
+        assertEquals(
+            listOf(SearchEntry.Stop(bank), SearchEntry.Place(gallery), SearchEntry.Stop(oxford.copy(name = "Oxford Circus"))),
+            yours.recentPicks,
+        )
+        // Only the stops match as the user types, or lead a search.
+        assertEquals(listOf("940GZZLUBNK", "940GZZLUOXC"), yours.recent.map { it.id })
+        assertEquals(listOf("940GZZLUBNK", "940GZZLUOXC", "490000000001A"), yours.own)
+        // A stop listed as before, with no places, lists as it always did.
+        assertEquals(listOf(SearchEntry.Stop(bank)), YourStops(recent = listOf(bank)).recentPicks)
+    }
+
+    @Test
+    fun `a place picked again moves to the front by its name and coordinate, in the same capped list`() {
+        val gallery = SearchEntry.Place(PlaceHit("Example Gallery", Coordinates(51.5, -0.12), PlaceKind.PLACE))
+        val stops = (1..RecentStations.MAX).map { SearchEntry.Stop(StationMatch("49000000000$it", "Stop $it")) }
+        val withPlace = RecentStations.add(stops, gallery)
+        assertEquals(gallery, withPlace.first())
+        assertEquals(RecentStations.MAX, withPlace.size)
+        val again = RecentStations.add(RecentStations.add(withPlace, stops[0]), gallery)
+        assertEquals(listOf(gallery, stops[0]), again.take(2))
+        assertEquals(1, again.count { it == gallery })
+        // Another place of the same name elsewhere is another pick.
+        val elsewhere = SearchEntry.Place(PlaceHit("Example Gallery", Coordinates(51.4, -0.1), PlaceKind.PLACE))
+        assertEquals(2, RecentStations.add(again, elsewhere).count { it is SearchEntry.Place })
     }
 
     @Test

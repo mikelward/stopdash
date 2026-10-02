@@ -1,5 +1,9 @@
 package app.stopdash.data
 
+import app.stopdash.domain.Coordinates
+import app.stopdash.domain.PlaceHit
+import app.stopdash.domain.PlaceKind
+import app.stopdash.domain.SearchEntry
 import app.stopdash.domain.StationMatch
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -24,6 +28,36 @@ class FileRecentStationsStoreTest {
         FileRecentStationsStore(file).add(stop)
         FileRecentStationsStore(file).add(oxford)
         assertEquals(listOf(oxford, stop), FileRecentStationsStore(file).load())
+    }
+
+    @Test
+    fun `a picked place is kept among the stops, in the order picked, across a reload`() {
+        val file = File(tmp.root, "recent-destinations.json")
+        val gallery = PlaceHit("Example Gallery", Coordinates(51.5, -0.12), PlaceKind.PLACE)
+        val postcode = PlaceHit("SW1A 1AA", Coordinates(51.501, -0.141), PlaceKind.POSTCODE)
+        FileRecentStationsStore(file).add(oxford)
+        FileRecentStationsStore(file).addPlace(gallery)
+        FileRecentStationsStore(file).add(stop)
+        FileRecentStationsStore(file).addPlace(postcode)
+        assertEquals(
+            listOf(SearchEntry.Place(postcode), SearchEntry.Stop(stop), SearchEntry.Place(gallery), SearchEntry.Stop(oxford)),
+            FileRecentStationsStore(file).loadPicks(),
+        )
+        // The stations alone, as a search that lists no places reads them.
+        assertEquals(listOf(stop, oxford), FileRecentStationsStore(file).load())
+    }
+
+    @Test
+    fun `a list written before places were kept reads back as its stations`() {
+        val file = File(tmp.root, "recent-stations.json")
+            .apply { writeText("""{"stations":[{"id":"940GZZLUOXC","name":"Oxford Circus","modes":["tube"]}]}""") }
+        assertEquals(listOf(SearchEntry.Stop(oxford)), FileRecentStationsStore(file).loadPicks())
+        // And a place of a kind this build doesn't know reads as a place.
+        file.writeText("""{"stations":[{"id":"","name":"Example Gallery","latitude":51.5,"longitude":-0.12,"placeKind":"LANDMARK"}]}""")
+        assertEquals(
+            listOf(SearchEntry.Place(PlaceHit("Example Gallery", Coordinates(51.5, -0.12), PlaceKind.PLACE))),
+            FileRecentStationsStore(file).loadPicks(),
+        )
     }
 
     @Test

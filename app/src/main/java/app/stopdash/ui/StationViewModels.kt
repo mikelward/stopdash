@@ -33,6 +33,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -73,6 +75,9 @@ class StationSearchViewModel(
     private val searchPlaces: suspend (String) -> List<PlaceCandidate> = { emptyList() },
     // Remembers a station opened from the search, for the recent list; blocking, run on [io].
     private val recordOpen: suspend (StationMatch) -> Unit = {},
+    // Remembers a geocoded place picked from a To… search, in the same recent list; blocking, run on
+    // [io]. Only a To… picker supplies it — the default keeps none.
+    private val recordPlace: suspend (PlaceHit) -> Unit = {},
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val debounceMillis: Long = DEBOUNCE_MILLIS,
     private val warn: (String) -> Unit = {},
@@ -82,9 +87,10 @@ class StationSearchViewModel(
         val result: Result = Result.Idle,
         val searching: Boolean = false,
         // The user's starred and recently opened stops, listed before anything is typed; unread
-        // (false) until the first read lands, so the screen doesn't flash its prompt first.
+        // (false) until the first read lands, so the screen doesn't flash its prompt first. The recent
+        // list holds the geocoded places a To… search picked too, in the order picked.
         val favorites: List<StationMatch> = emptyList(),
-        val recent: List<StationMatch> = emptyList(),
+        val recent: List<SearchEntry> = emptyList(),
         // The user's saved favorite places, offered at the top of a To… picker so they can route to
         // one without typing (SPEC D9). Empty outside a To… picker, which passes no [onOpenPlace].
         val favoritePlaces: List<FavoritePlace> = emptyList(),
@@ -121,6 +127,9 @@ class StationSearchViewModel(
     val state: StateFlow<State> = _state.asStateFlow()
 
     private var search: Job? = null
+
+    // Taken by each recent-list write in turn ([record]).
+    private val recording = Mutex()
 
     // TfL's answer behind the matches on screen, for the query it answered: an open re-ranks it
     // rather than asking again. Dropped as each search starts, so a failed one never borrows it.
@@ -186,10 +195,28 @@ class StationSearchViewModel(
      */
     fun onOpened(match: StationMatch) {
         viewModelScope.launch {
-            withContext(NonCancellable + io) { recordOpen(match) }
+            record { recordOpen(match) }
             refreshYours()
             rerank()
         }
+    }
+
+    /**
+     * Remember the geocoded place [hit] as picked, for the recent list, as [onOpened] does a station;
+     * the write finishes even if the search closes. A place matches nothing typed, so nothing re-ranks.
+     */
+    fun onPlaceOpened(hit: PlaceHit) {
+        viewModelScope.launch {
+            record { recordPlace(hit) }
+            refreshYours()
+        }
+    }
+
+    // Runs one recent-list write on [io], after every write tapped before it ([recording], whose
+    // waiters are served in order), so the last pick leads however long each takes (Codex, PR #478).
+    // Neither the wait nor the write is cancelled by the search closing.
+    private suspend fun record(write: suspend () -> Unit) {
+        withContext(NonCancellable) { recording.withLock { withContext(io) { write() } } }
     }
 
     // The matches on screen ranked again with the user's stops as now read — from the bundled index
@@ -238,7 +265,7 @@ class StationSearchViewModel(
                     _state.update {
                         it.copy(
                             favorites = read.favorites,
-                            recent = read.recent,
+                            recent = read.recentPicks,
                             favoritePlaces = places.orEmpty(),
                             favoritePlacesFailed = places == null,
                             yoursRead = true,

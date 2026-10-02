@@ -360,7 +360,11 @@ The app finds stops two ways:
   (the same station twice) leaves. Only coming back from a station re-ranks the whole list. A name in parts — a stop with
   its cross street ("Foo Street / Bar Road"), a place after its area ("City of Westminster, Tate
   Britain") — matches a query starting **any part** as a prefix. Best-effort: a geocode failure yields
-  no places and the stops still stand. A better geocoder is a later option (`TODO.md`).
+  no places and the stops still stand. A better geocoder is a later option (`TODO.md`). A place
+  picked is **remembered under *To…*'s *Recent*** with the stops picked there, in the order picked
+  (maintainer, 2026-10-02), its name and coordinate kept on the device as the stops are (*Privacy*);
+  a tap routes to it again, tagged as in the results. It matches nothing typed (the geocoder finds it
+  again), and a search that routes to no place (*From…*) never lists one.
 - **Farther stations** (maintainer, 2026-09-25) — where the near-me list reaches only one tube
   station, the rest of the network can be two miles off. Below the loaded places, a **collapsed card** stands for the nearest station of each **rail line** the loaded
   nearby stops don't serve (a station left unfetched in the *more* tier doesn't count, since nothing

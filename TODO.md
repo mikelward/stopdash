@@ -996,8 +996,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               index's best four show at once with a spinner beneath, and TfL's stops and places are
               appended below them as each arrives, never re-ranked above. Follow-up: see on a device
               whether a better TfL match landing below the fold is missed.
-        - [ ] **Remember a picked place in *Recent***: a chosen geocoded place isn't recorded (no stop
-              id); *To…*'s *Recent* keeps only stops. Consider a device-local recent-places list.
+        - [x] **Remember a picked place in *Recent*** (2026-10-02): a geocoded place picked from *To…* is
+              kept with the stops picked there, by its name and coordinate, in the order picked, and
+              listed under *Recent* with its Place/Postcode tag.
         - [x] **Extend geocoded places to the From-station To… picker**: its search offers places too.
       - [x] **Read a rail leg TfL names only by its platform** (found 2026-09-30 recording #420's
             fixtures): the Planner can name a rail leg's end by `individualStopId` alone
