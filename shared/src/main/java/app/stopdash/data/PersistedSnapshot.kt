@@ -8,6 +8,7 @@ import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.plannedAlertFingerprint
+import app.stopdash.domain.plannedShownFingerprint
 import app.stopdash.domain.lineAlertFingerprint
 import app.stopdash.domain.RailFeed
 import app.stopdash.domain.Staleness
@@ -208,18 +209,32 @@ data class PersistedPlannedAlert(
     val fingerprint: String,
     // As [PersistedLineStatus.dismissed], for this alert. Only in the watch envelope.
     val dismissed: Boolean = false,
+    // The line's status's full identity once this is the alert it shows ([plannedShownFingerprint]),
+    // TfL's prose included, which the app's verdicts on it are reached on. Null in an alert written
+    // before this field: none is then applied to it, the safe way. Defaulted.
+    val shownFingerprint: String? = null,
+    // As [PersistedLineStatus.behind], for this alert once its day comes ([PlannedAlert.behindAt]).
+    // Only in the watch envelope.
+    val behind: List<PersistedStopWay> = emptyList(),
 )
 
 private fun PlannedAlert.toPersisted(dismissed: Set<String>): PersistedPlannedAlert {
     val identity = plannedAlertFingerprint(this)
-    return PersistedPlannedAlert(label, startsOn.toString(), severity, isFallback, identity, identity in dismissed)
+    return PersistedPlannedAlert(
+        label, startsOn.toString(), severity, isFallback, identity, identity in dismissed,
+        shownFingerprint = plannedShownFingerprint(this), behind = behindAt.toPersisted(),
+    )
 }
 
 // Null for a day that doesn't read: the alert is left out rather than guessed at (it can only come
 // from a store this build didn't write).
 private fun PersistedPlannedAlert.toDomain(): PlannedAlert? =
     try {
-        PlannedAlert(label, fullText = "", LocalDate.parse(startsOn), severity, isFallback, fingerprint)
+        PlannedAlert(
+            label, fullText = "", LocalDate.parse(startsOn), severity, isFallback, fingerprint,
+            // Read back as none where it wasn't kept: none of the app's verdicts can match a guess.
+            shownFingerprint = shownFingerprint ?: "", behindAt = behind.toDomain(),
+        )
     } catch (_: DateTimeParseException) {
         null
     }
@@ -272,7 +287,7 @@ fun PersistedLineStatus.toDomain(): LineStatusCheck {
  * snapshot is read, never stored with it.
  */
 private fun PersistedLineStatus.undismissed(): PersistedLineStatus {
-    fun List<PersistedPlannedAlert>.undismissed() = map { it.copy(dismissed = false) }
+    fun List<PersistedPlannedAlert>.undismissed() = map { it.copy(dismissed = false, behind = emptyList()) }
     return copy(
         dismissed = false,
         directions = directions.map { it.copy(dismissed = false, planned = it.planned.undismissed(), behind = emptyList()) },

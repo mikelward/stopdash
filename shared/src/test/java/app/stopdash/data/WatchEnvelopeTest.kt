@@ -1,6 +1,7 @@
 package app.stopdash.data
 
 import app.stopdash.domain.AlertBehind
+import app.stopdash.domain.AlertStart
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DeparturesSnapshot
@@ -19,6 +20,7 @@ import app.stopdash.domain.StopWay
 import app.stopdash.domain.Terminating
 import app.stopdash.domain.lineAlertFingerprint
 import app.stopdash.domain.plannedAlertFingerprint
+import app.stopdash.domain.plannedShownFingerprint
 import java.time.Instant
 import java.time.LocalDate
 import kotlin.time.Duration.Companion.minutes
@@ -534,6 +536,51 @@ class WatchEnvelopeTest {
             placed.toPersisted().toDomain()!!.withAlertsBehind(setOf(AlertBehind("99", lineAlertFingerprint(diversion), "490GEXAMPLE1", "inbound")))
                 .lineStatuses.getValue("99").status.behindAt,
         )
+    }
+
+    @Test
+    fun `planned work starting today takes the app's verdict through the stored snapshot and on the watch`() {
+        val today = now.atZone(AlertStart.ZONE).toLocalDate()
+        val work = PlannedAlert("Diversion", "Buses are not serving stops between 'Bank Station' and 'Moorgate Station'.", today, severity = 5)
+        val plannedOnly = LineStatus("99", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(work))
+        val bus = departure(3, line = "99", destination = "North End", mode = "bus")
+        val fresh = DeparturesSnapshot(
+            stops = listOf(stop("490GEXAMPLE1", listOf(bus)), stop("490GEXAMPLE2", listOf(bus))),
+            fetchedAt = now,
+            lineStatuses = mapOf("99" to LineStatusCheck(plannedOnly, now)),
+        )
+        // Stored, its prose left out, and read back with the verdict the app reached on the work's words.
+        val verdict = AlertBehind("99", lineAlertFingerprint(plannedOnly.asOf(today)), "490GEXAMPLE1", "inbound")
+        val stored = fresh.toPersisted().toDomain()!!
+        val placed = stored.withAlertsBehind(setOf(verdict))
+        fun drawn(statuses: Map<String, LineStatus>, stops: List<StopArrivals>) =
+            DepartureRows.across(stops, now, statuses).associateBy { it.stopId }
+        val widget = drawn(placed.liveLineStatuses(now), placed.stops)
+        assertNull(widget.getValue("490GEXAMPLE1").status)
+        assertEquals("Diversion", widget.getValue("490GEXAMPLE2").status?.description)
+        // The phone keeps none of it, as for a status's own verdict.
+        assertEquals(emptySet<StopWay>(), placed.toPersisted().toDomain()!!.lineStatuses.getValue("99").status.planned.single().behindAt)
+        // The watch is sent it, and draws the same.
+        val envelope = decoded(WatchEnvelopes.build(placed, emptySet(), now = now))
+        assertEquals(listOf(PersistedStopWay("490GEXAMPLE1", "inbound")), envelope.lineStatuses.single().planned.single().behind)
+        val watch = drawn(envelope.liveLineStatuses(now), envelope.stops.map { it.toDomain() })
+        assertNull(watch.getValue("490GEXAMPLE1").status)
+        assertEquals("Diversion", watch.getValue("490GEXAMPLE2").status?.description)
+    }
+
+    @Test
+    fun `a stop trimmed from an envelope isn't named by a verdict on planned work either`() {
+        val today = now.atZone(AlertStart.ZONE).toLocalDate()
+        val work = PlannedAlert("Diversion", "Not serving 'A' to 'B'.", today, severity = 5)
+        val plannedOnly = LineStatus("99", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(work))
+        val stops = (1..30).map { i -> stop("490GEXAMPLE$i", (1..6).map { departure(it.toLong(), line = "99", destination = "Far End $i", mode = "bus") }) }
+        val snapshot = DeparturesSnapshot(stops = stops, fetchedAt = now, lineStatuses = mapOf("99" to LineStatusCheck(plannedOnly, now)))
+            .withAlertsBehind(stops.mapTo(HashSet()) { AlertBehind("99", plannedShownFingerprint(work), it.stopId, "inbound") })
+        val full = WatchEnvelopes.build(snapshot, emptySet(), now = now).bytes.size
+        val trimmed = decoded(WatchEnvelopes.build(snapshot, emptySet(), dataItemBudget = 100, transferCeiling = full / 2, now = now))
+        val sent = trimmed.stops.map { it.stopId }.toSet()
+        assertTrue(sent.size < stops.size)
+        assertEquals(sent, trimmed.lineStatuses.single().planned.single().behind.map { it.stopId }.toSet())
     }
 
     @Test

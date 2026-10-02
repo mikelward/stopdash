@@ -252,7 +252,8 @@ object WatchEnvelopes {
         // The line checks for the lines the kept stops show, so a dropped stop's lines go with it.
         // Less the alert fingerprint: only the phone matches a dismissal against it, and the
         // watch reads the dismissed flag the phone already set. A planned alert keeps its own, which
-        // is how the watch tells which one its flag marks.
+        // is how the watch tells which one its flag marks, and the one it shows once its day comes,
+        // which is how the watch tells whether several started that day are one alert.
         // Sent as the wall clock reads each check now, as a fetch is: the watch ages it by its own clock.
         val allStatuses = snapshot.lineStatuses.toPersistedStatuses()
             .map { status ->
@@ -268,8 +269,15 @@ object WatchEnvelopes {
             val lines = linesOfPersisted(kept)
             val ids = kept.mapTo(HashSet()) { it.stopId }
             fun List<PersistedStopWay>.at() = filter { it.stopId in ids }
+            fun List<PersistedPlannedAlert>.at() = map { it.copy(behind = it.behind.at()) }
             return allStatuses.filter { it.lineId in lines }
-                .map { status -> status.copy(behind = status.behind.at(), directions = status.directions.map { it.copy(behind = it.behind.at()) }) }
+                .map { status ->
+                    status.copy(
+                        behind = status.behind.at(),
+                        planned = status.planned.at(),
+                        directions = status.directions.map { it.copy(behind = it.behind.at(), planned = it.planned.at()) },
+                    )
+                }
         }
         // Kept whatever stops go: a few KB at most, and only while TfL's routes differ from the asset.
         val lines = routeLines.toSortedMap().mapValues { (_, patterns) -> patterns.map(PersistedRoutePattern::of) }

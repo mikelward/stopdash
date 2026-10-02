@@ -2220,8 +2220,9 @@ Builds on Phase 1's minimal line-status marking.
           - [x] **An alert that appears while the app is closed** (2026-10-02): the widget's own
                 refresh places it, with the routes the app already holds for the day and no request.
                 A line whose route isn't held flags until the app next shows that stop.
-          - [ ] **Planned work whose day has come** isn't placed on those surfaces: they read the alert
-                as of the day, and a verdict is on the alert the app was shown, so it flags there.
+          - [x] **Planned work whose day has come** (2026-10-02): a stored check keeps each planned
+                alert's words as it will show them, so the app's verdict on it applies once its day
+                comes, where nothing else is under way.
         - [ ] **Behind the rider on a tube or rail line**: not attempted, as its delays spread
               along the line; a part closure TfL places itself might be, as a trip places one.
         A status-only line page (a

@@ -84,6 +84,52 @@ class AlertsBehindTest {
         assertNull(rows.getValue("b4").statusBehind)
     }
 
+    @Test
+    fun `planned work that is all that's under way once its day comes takes the verdict reached on its words`() {
+        val today = now.atZone(AlertStart.ZONE).toLocalDate()
+        val work = PlannedAlert("Diversion", diversion.fullText!!, today, severity = 5)
+        val plannedOnly = LineStatus("99", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(work))
+        // The app reaches its verdict on the work as the list shows it today: these words.
+        val route = LineSequence(
+            listOf(LineRoute("Bank - North End", listOf("b1", "b2", "b3", "b4", "b5"), "inbound")),
+            mapOf("b1" to "Bank", "b2" to "Example Street", "b3" to "Moorgate", "b4" to "Alpha Road", "b5" to "North End"),
+        )
+        val reached = AlertsBehind.placement(listOf(stop("b4"), stop("b2")), mapOf("99" to plannedOnly), mapOf("99" to route), now).behind
+        val onWork = AlertBehind("99", plannedShownFingerprint(work), "b4", "inbound")
+        assertEquals(setOf(onWork), reached)
+        // So a glance surface reading the stored check, the work still to come in it, places it there.
+        val rows = drawn(snapshot(plannedOnly).withAlertsBehind(setOf(onWork)))
+        assertNull(rows.getValue("b4").status)
+        assertEquals("Diversion", rows.getValue("b4").statusBehind?.description)
+        assertEquals("Diversion", rows.getValue("b2").status?.description)
+        // Not yet due: nothing to flag or place, the verdict notwithstanding.
+        val tomorrow = plannedOnly.copy(planned = listOf(work.copy(startsOn = today.plusDays(1))))
+        assertNull(drawn(snapshot(tomorrow).withAlertsBehind(setOf(onWork))).getValue("b4").statusBehind)
+    }
+
+    @Test
+    fun `work starting today beside other work takes no verdict, whatever each was found`() {
+        val today = now.atZone(AlertStart.ZONE).toLocalDate()
+        val work = PlannedAlert("Diversion", diversion.fullText!!, today, severity = 5)
+        val other = PlannedAlert("Diversion", "Buses are diverted away from 'Alpha Road'.", today, severity = 5)
+        val both = LineStatus("99", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(work, other))
+        val verdicts = listOf(work, other).mapTo(HashSet()) { AlertBehind("99", plannedShownFingerprint(it), "b4", "inbound") }
+        val rows = drawn(snapshot(both).withAlertsBehind(verdicts))
+        assertEquals("Diversion", rows.getValue("b4").status?.description)
+        assertNull(rows.getValue("b4").statusBehind)
+        // As stored, their prose left out, the two read alike but for the words each shows: still none.
+        fun stored(alert: PlannedAlert) = alert.copy(fullText = "", shownFingerprint = plannedShownFingerprint(alert))
+        val asStored = both.copy(planned = listOf(stored(work), stored(other)))
+        val storedRows = drawn(snapshot(asStored).withAlertsBehind(verdicts))
+        assertEquals("Diversion", storedRows.getValue("b4").status?.description)
+        assertNull(storedRows.getValue("b4").statusBehind)
+        // Nor beside an alert already under way, even one in the same words: it was placed as itself.
+        val onTop = diversion.copy(description = "Diverted", planned = listOf(work))
+        val onTopRows = drawn(snapshot(onTop).withAlertsBehind(setOf(AlertBehind("99", plannedShownFingerprint(work), "b4", "inbound"))))
+        assertNotNull(onTopRows.getValue("b4").status)
+        assertNull(onTopRows.getValue("b4").statusBehind)
+    }
+
     // The diversion still on the list's rows.
     private val onRows = setOf("99" to lineAlertFingerprint(diversion))
 
