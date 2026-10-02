@@ -14,6 +14,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -95,6 +97,276 @@ class NearbyStopsViewModelTest {
         longitude = 0.0,
         lines = listOf(LineRef("$mode-$id", id, mode)),
     )
+
+    // About 330 m north of the origin: far enough to move the list.
+    private val walked = Coordinates(0.003, 0.0)
+
+    private fun walkedFix(at: Coordinates = walked) = LocationFix(at, isFallback = false, accuracyMeters = 15f, ageMillis = 0)
+
+    // A model following [moves], on a clock the test sets.
+    private fun following(
+        moves: kotlinx.coroutines.flow.Flow<LocationFix>,
+        clock: () -> Long,
+        finder: FakeFinder,
+        location: LocationProvider = FakeLocation(origin),
+        position: (String, Coordinates) -> Unit = { _, _ -> },
+    ) =
+        NearbyStopsViewModel(
+            location = location,
+            finder = finder,
+            io = dispatcher,
+            elapsedMillis = clock,
+            moves = { moves },
+            position = position,
+        ).also { it.resumeRefining() }
+
+    // The origin for a lookup, and [fresh] when a precise fix is asked for.
+    private class FreshLocation(var fresh: LocationFix?) : LocationProvider {
+        var asked = 0
+        override suspend fun current(forceFresh: Boolean): LocationFix? = LocationFix(Coordinates(0.0, 0.0), isFallback = false)
+        override suspend fun preciseWithAccuracy(): LocationFix? = fresh.also { asked++ }
+    }
+
+    @Test
+    fun `a rider who walks off while the list is shown has it moved, through the same path a precise fix takes`() = runTest {
+        val moves = kotlinx.coroutines.flow.MutableSharedFlow<LocationFix>()
+        var clock = 0L
+        val finder = FakeFinder { listOf(stop("t1", 100.0, "tube")) }
+        val model = following(moves, { clock }, finder)
+        model.locate()
+        advanceUntilIdle()
+
+        clock += 61_000
+        moves.emit(walkedFix())
+        advanceUntilIdle()
+
+        val offered = model.refinement.value!!
+        assertEquals(origin, offered.from)
+        assertEquals(walked, offered.precise)
+        model.applyRefinement(offered)
+        advanceUntilIdle()
+        assertEquals(walked.latitude, finder.lastLatitude!!, 1e-9)
+    }
+
+    @Test
+    fun `within a minute of the list being found, a move waits the minute out`() = runTest {
+        val moves = kotlinx.coroutines.flow.MutableSharedFlow<LocationFix>()
+        val model = following(moves, { testScheduler.currentTime }, FakeFinder { listOf(stop("t1", 100.0, "tube")) })
+        model.locate()
+        advanceUntilIdle()
+        val foundAt = testScheduler.currentTime
+
+        advanceTimeBy(30_000)
+        moves.emit(walkedFix())
+        runCurrent()
+        assertEquals(null, model.refinement.value)
+
+        // No further update comes (the rider stopped there); the minute running out moves it.
+        advanceTimeBy(foundAt + 60_000 - testScheduler.currentTime + 1)
+        assertEquals(walked, model.refinement.value?.precise)
+    }
+
+    @Test
+    fun `a newer move replaces one waiting out the minute, and an unsure one doesn't`() = runTest {
+        val moves = kotlinx.coroutines.flow.MutableSharedFlow<LocationFix>()
+        val model = following(moves, { testScheduler.currentTime }, FakeFinder { listOf(stop("t1", 100.0, "tube")) })
+        model.locate()
+        advanceUntilIdle()
+        // Halfway through the minute, so the waiting fix is still fresh when it ends.
+        advanceTimeBy(30_000)
+
+        moves.emit(walkedFix())
+        runCurrent()
+        val farther = Coordinates(0.004, 0.0)
+        moves.emit(walkedFix(farther))
+        runCurrent()
+        moves.emit(walkedFix(Coordinates(0.005, 0.0)).copy(accuracyMeters = 500f))
+        advanceUntilIdle()
+
+        assertEquals(farther, model.refinement.value?.precise)
+    }
+
+    @Test
+    fun `a rider who comes back near the list within the minute cancels the move waiting on it`() = runTest {
+        val moves = kotlinx.coroutines.flow.MutableSharedFlow<LocationFix>()
+        val model = following(moves, { testScheduler.currentTime }, FakeFinder { listOf(stop("t1", 100.0, "tube")) })
+        model.locate()
+        advanceUntilIdle()
+
+        moves.emit(walkedFix())
+        runCurrent()
+        moves.emit(walkedFix(origin))
+        advanceUntilIdle()
+
+        assertEquals(null, model.refinement.value)
+    }
+
+    @Test
+    fun `a move that waited past its freshness asks for a fresh fix and moves to that`() = runTest {
+        val moves = kotlinx.coroutines.flow.MutableSharedFlow<LocationFix>()
+        val farther = Coordinates(0.004, 0.0)
+        val location = FreshLocation(LocationFix(farther, isFallback = false, accuracyMeters = 10f, ageMillis = 0))
+        val model = following(moves, { testScheduler.currentTime }, FakeFinder { listOf(stop("t1", 100.0, "tube")) }, location)
+        model.locate()
+        advanceUntilIdle()
+
+        // At once after the lookup: it waits the whole minute, twice the freshness bound.
+        moves.emit(walkedFix())
+        advanceUntilIdle()
+
+        assertEquals(1, location.asked)
+        assertEquals(farther, model.refinement.value?.precise)
+    }
+
+    @Test
+    fun `a move that waited past its freshness, with no fresh fix to be had, moves nothing`() = runTest {
+        val moves = kotlinx.coroutines.flow.MutableSharedFlow<LocationFix>()
+        val location = FreshLocation(null)
+        val model = following(moves, { testScheduler.currentTime }, FakeFinder { listOf(stop("t1", 100.0, "tube")) }, location)
+        model.locate()
+        advanceUntilIdle()
+
+        moves.emit(walkedFix())
+        advanceUntilIdle()
+
+        assertEquals(1, location.asked)
+        assertEquals(null, model.refinement.value)
+    }
+
+    @Test
+    fun `each movement update goes in the recent-positions window, sure or not`() = runTest {
+        val moves = kotlinx.coroutines.flow.MutableSharedFlow<LocationFix>()
+        val positions = mutableListOf<Pair<String, Coordinates>>()
+        val model = following(
+            moves, { testScheduler.currentTime }, FakeFinder { listOf(stop("t1", 100.0, "tube")) },
+            position = { what, at -> positions += what to at },
+        )
+        model.locate()
+        advanceUntilIdle()
+        positions.clear()
+
+        moves.emit(walkedFix())
+        moves.emit(walkedFix().copy(accuracyMeters = null))
+        runCurrent()
+
+        assertEquals(listOf("movement update ±15 m" to walked, "movement update" to walked), positions)
+    }
+
+    @Test
+    fun `a sure fix that comes during a resolve is kept and judged once it ends`() = runTest {
+        val moves = kotlinx.coroutines.flow.MutableSharedFlow<LocationFix>()
+        val farther = Coordinates(0.004, 0.0)
+        val location = FreshLocation(LocationFix(farther, isFallback = false, accuracyMeters = 10f, ageMillis = 0))
+        // The second lookup hangs until the test lets it finish.
+        var lookups = 0
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val finder = object : StopFinder {
+            override suspend fun nearbyStops(latitude: Double, longitude: Double, radiusMeters: Int, stopTypes: List<String>): List<StopLocation> {
+                if (lookups++ == 1) gate.await()
+                return listOf(stop("t1", 100.0, "tube"))
+            }
+        }
+        val model = NearbyStopsViewModel(
+            location = location, finder = finder, io = dispatcher,
+            elapsedMillis = { testScheduler.currentTime }, moves = { moves },
+        ).also { it.resumeRefining() }
+        model.locate()
+        advanceUntilIdle()
+
+        // A refresh: the list stays shown while it re-resolves.
+        model.relocate()
+        runCurrent()
+        assertTrue(model.state.value is NearbyStopsViewModel.State.Ready)
+        moves.emit(walkedFix())
+        runCurrent()
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        // Not dropped: once the resolve ended it waited out the minute, went stale, and a fresh
+        // precise fix moved the list.
+        assertEquals(farther, model.refinement.value?.precise)
+    }
+
+    @Test
+    fun `a fix ages while it waits for a resolve, so one that went stale meanwhile isn't used`() = runTest {
+        val moves = kotlinx.coroutines.flow.MutableSharedFlow<LocationFix>()
+        val farther = Coordinates(0.004, 0.0)
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var preciseAsked = 0
+        // The refresh's fresh fix hangs, then comes back only as a fallback: the set is kept as it
+        // was, its minute already run.
+        val location = object : LocationProvider {
+            override suspend fun current(forceFresh: Boolean): LocationFix =
+                if (forceFresh) {
+                    gate.await()
+                    LocationFix(origin, isFallback = true)
+                } else {
+                    LocationFix(origin, isFallback = false)
+                }
+            override suspend fun preciseWithAccuracy(): LocationFix =
+                LocationFix(farther, isFallback = false, accuracyMeters = 10f, ageMillis = 0).also { preciseAsked++ }
+        }
+        val model = following(moves, { testScheduler.currentTime }, FakeFinder { listOf(stop("t1", 100.0, "tube")) }, location)
+        model.locate()
+        advanceUntilIdle()
+        advanceTimeBy(61_000)
+
+        model.relocate()
+        runCurrent()
+        // Already 25 s old when it comes, then 10 s behind the refresh: 35 s, past the bound.
+        moves.emit(walkedFix().copy(ageMillis = 25_000))
+        runCurrent()
+        advanceTimeBy(10_000)
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(1, preciseAsked)
+        assertEquals(farther, model.refinement.value?.precise)
+    }
+
+    @Test
+    fun `with no list shown, no updates are asked for, and they start once one is`() = runTest {
+        val moves = kotlinx.coroutines.flow.MutableSharedFlow<LocationFix>()
+        val location = MutableLocation(null)
+        val model = NearbyStopsViewModel(
+            location = location,
+            finder = FakeFinder { listOf(stop("t1", 100.0, "tube")) },
+            io = dispatcher,
+            elapsedMillis = { testScheduler.currentTime },
+            moves = { moves },
+        ).also { it.resumeRefining() }
+        model.locate()
+        advanceUntilIdle()
+        assertEquals(0, moves.subscriptionCount.value)
+
+        // Permission granted, say: the next locate finds a list, and updates are asked for afresh.
+        location.fix = origin
+        model.locate()
+        advanceUntilIdle()
+        assertEquals(1, moves.subscriptionCount.value)
+    }
+
+    @Test
+    fun `updates are asked for only while the list is on screen`() = runTest {
+        val moves = kotlinx.coroutines.flow.MutableSharedFlow<LocationFix>()
+        var clock = 0L
+        val model = following(moves, { clock }, FakeFinder { listOf(stop("t1", 100.0, "tube")) })
+        model.locate()
+        advanceUntilIdle()
+        assertEquals(1, moves.subscriptionCount.value)
+
+        model.pauseRefining()
+        advanceUntilIdle()
+        assertEquals(0, moves.subscriptionCount.value)
+        clock += 61_000
+        moves.emit(walkedFix())
+        advanceUntilIdle()
+        assertEquals(null, model.refinement.value)
+
+        model.resumeRefining()
+        advanceUntilIdle()
+        assertEquals(1, moves.subscriptionCount.value)
+    }
 
     @Test
     fun `a lookup reports how its fix went and how many stops of each mode are near, nothing more`() = runTest {
@@ -576,6 +848,57 @@ class NearbyStopsViewModelTest {
         assertEquals(LocationBanner.COARSE, model.locationBanner.value)
         assertEquals(null, model.refinement.value)
         assertEquals(NearbyStopsViewModel.RiderFix(from = origin, at = origin, accurate = false), model.riderFix.value)
+    }
+
+    @Test
+    fun `a precise follow-up that gave up is answered by a sure movement update`() = runTest {
+        val moves = kotlinx.coroutines.flow.MutableSharedFlow<LocationFix>()
+        val model = following(
+            moves, { testScheduler.currentTime }, FakeFinder { listOf(stop("b1", 80.0, "bus")) },
+            location = CoarseThenPrecise(coarse = origin, precise = null),
+        )
+        model.locate()
+        advanceUntilIdle()
+        // GPS never answered the follow-up: the set is flagged and the answer still owed.
+        assertEquals(LocationBanner.COARSE, model.locationBanner.value)
+
+        // GPS comes back with a fix close to the set: it confirms it, as the follow-up would have.
+        moves.emit(walkedFix(north(40.0)))
+        advanceUntilIdle()
+        assertEquals(null, model.locationBanner.value)
+        assertEquals(north(40.0), model.riderFix.value?.at)
+        assertEquals(null, model.refinement.value)
+
+        // With the debt settled, a later walk follows as usual.
+        advanceTimeBy(61_000)
+        moves.emit(walkedFix())
+        advanceUntilIdle()
+        assertEquals(walked, model.refinement.value?.precise)
+    }
+
+    @Test
+    fun `a sure update that comes while the precise follow-up is still asking answers it`() = runTest {
+        val moves = kotlinx.coroutines.flow.MutableSharedFlow<LocationFix>()
+        val gate = kotlinx.coroutines.CompletableDeferred<LocationFix?>()
+        // A coarse fix, then a precise request that hasn't answered yet.
+        val location = object : LocationProvider {
+            override suspend fun current(forceFresh: Boolean) = LocationFix(origin, isFallback = false, isCoarse = true)
+            override suspend fun preciseWithAccuracy(): LocationFix? = gate.await()
+        }
+        val model = following(moves, { testScheduler.currentTime }, FakeFinder { listOf(stop("b1", 80.0, "bus")) }, location)
+        model.locate()
+        advanceUntilIdle()
+        assertEquals(LocationBanner.COARSE, model.locationBanner.value)
+
+        moves.emit(walkedFix(north(40.0)))
+        advanceUntilIdle()
+
+        // Answered by the update: confirmed in place, and the request still pending is dropped.
+        assertEquals(null, model.locationBanner.value)
+        assertEquals(north(40.0), model.riderFix.value?.at)
+        gate.complete(LocationFix(walked, isFallback = false, accuracyMeters = 10f))
+        advanceUntilIdle()
+        assertEquals(null, model.refinement.value)
     }
 
     @Test

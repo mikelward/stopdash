@@ -3158,8 +3158,10 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
         the first foreground, and `relocating` gates a mid-relocate return — so grant-return/rotation/
         moved-to-set don't relocate spuriously. Wiring pinned by `ForegroundReturnTest` (drives the
         real latcher/overlay/consume topology).
-- **Automatic distance-triggered re-locate (milestone A, after C) — try-it, revisit
-  (maintainer, 2026-09-20).** Milestone C makes refresh re-locate; the user pulls to refresh
+- [x] **Automatic distance-triggered re-locate (milestone A, after C) — try-it, revisit
+  (maintainer, 2026-09-20; built 2026-10-02: 12 s updates while the list is on screen, a move of
+  100 m+ on a fix within 50 m, at most once a minute, trip fixes included; the self-idle below is
+  still open if a stationary open phone proves costly).** Milestone C makes refresh re-locate; the user pulls to refresh
   when walking past a station, and if that's fast enough (the re-locate forces a fresh fix —
   `FixSelection.resolve(forceFresh = true)` bypasses the cache fast path — so it waits ~1–2 s
   typically, capped at 10 s with a last-fix fallback) it may be enough on its own. If automatic "updates as I walk"

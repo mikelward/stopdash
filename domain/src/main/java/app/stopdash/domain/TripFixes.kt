@@ -100,16 +100,13 @@ suspend fun watchTripFixes(
         .collectLatest { wanted ->
             if (!wanted) return@collectLatest
             try {
-                while (true) {
-                    updates().collect { fix ->
-                        // Judged for what the trip wants now: a fix too vague for it would only wake a
-                        // refresh that can't use it.
-                        val current = trip.value ?: return@collect
-                        OnTheWay.usableFix(fix, current, now())?.let(fixes::offer)
-                    }
-                    // Ended with location still wanted: precise location, or the provider, isn't
-                    // there now. Asked again, so one allowed or switched on mid-trip is used (Codex, #458).
-                    delay(WANTS_FIX_RECHECK.toMillis())
+                // Updates that end while location is still wanted (precise location, or the provider,
+                // isn't there now) are asked for again, so one allowed or switched on mid-trip is used.
+                askedAgainWhenEnded(WANTS_FIX_RECHECK, updates).collect { fix ->
+                    // Judged for what the trip wants now: a fix too vague for it would only wake a
+                    // refresh that can't use it.
+                    val current = trip.value ?: return@collect
+                    OnTheWay.usableFix(fix, current, now())?.let(fixes::offer)
                 }
             } finally {
                 // No longer watched (no fix wanted, or the app left): the last position goes with it.
