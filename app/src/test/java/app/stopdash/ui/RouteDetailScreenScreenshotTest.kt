@@ -5,6 +5,10 @@ import android.graphics.Canvas
 import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import kotlinx.coroutines.Dispatchers
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -63,6 +67,11 @@ class RouteDetailScreenScreenshotTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
+    /** As [composeRule]'s setContent, with the alert's marks read on the main thread ([LocalAlertWorker]). */
+    private fun setDetail(content: @Composable () -> Unit) = composeRule.setContent {
+        CompositionLocalProvider(LocalAlertWorker provides Dispatchers.Main.immediate) { content() }
+    }
+
     private val now: Instant = Instant.parse("2026-09-18T08:00:00Z")
 
     // TfL's prose behind the "Severe Delays" chip — deliberately long, so the collapsed one-line
@@ -108,7 +117,7 @@ class RouteDetailScreenScreenshotTest {
             fetchedAt = now,
         )
         val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = row,
@@ -146,7 +155,7 @@ class RouteDetailScreenScreenshotTest {
             ),
         )
         val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = row,
@@ -183,7 +192,7 @@ class RouteDetailScreenScreenshotTest {
         )
         val row = DepartureRows.across(listOf(stop), now).single()
         val focus = RouteFocus.of(DepartureRows.destinationLines(row, 3).single { it.destination == "Peterborough" })
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = row,
@@ -225,7 +234,7 @@ class RouteDetailScreenScreenshotTest {
             fetchedAt = now,
         )
         val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = row,
@@ -253,7 +262,7 @@ class RouteDetailScreenScreenshotTest {
 
     @Test
     fun disruptedRoute_showsChipStarAndCollapsedAlert() {
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = disruptedRow(),
@@ -305,7 +314,7 @@ class RouteDetailScreenScreenshotTest {
         val row = DepartureRows.across(listOf(stop), now, statuses).first { it.upcoming.isNotEmpty() }
         assertEquals(null, row.status)
         val dismissed = mutableListOf<PlannedAlert>()
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = row,
@@ -336,7 +345,7 @@ class RouteDetailScreenScreenshotTest {
     @Test
     fun tappingDismiss_reportsTheDismiss() {
         var dismissed = 0
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = disruptedRow(),
@@ -364,7 +373,7 @@ class RouteDetailScreenScreenshotTest {
         // The user dismissed the line's status: the chip and prose are gone, but the line is still
         // disrupted, so the page must not read "No disruptions reported" (SPEC principle 1).
         val row = disruptedRow().copy(status = null, statusDismissed = true)
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = row,
@@ -410,7 +419,7 @@ class RouteDetailScreenScreenshotTest {
             DepartureRows.across(listOf(stop), now, mapOf("99" to diversion)),
             mapOf("99" to sequence),
         ).single()
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = row,
@@ -442,7 +451,7 @@ class RouteDetailScreenScreenshotTest {
         // The stop's own disruption lookup failed but the line's was dismissed: two independent facts,
         // so both notes show (SPEC principle 1).
         val row = disruptedRow().copy(status = null, statusDismissed = true)
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = row,
@@ -466,7 +475,7 @@ class RouteDetailScreenScreenshotTest {
 
     @Test
     fun tappingTheAlert_expandsToTheFullText() {
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = disruptedRow(),
@@ -494,7 +503,7 @@ class RouteDetailScreenScreenshotTest {
     @Test
     fun tappingTheStar_togglesTheRow() {
         var toggled = false
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = disruptedRow(),
@@ -516,7 +525,7 @@ class RouteDetailScreenScreenshotTest {
 
     @Test
     fun aStarredRoute_offersToUnpin() {
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = disruptedRow(),
@@ -552,7 +561,7 @@ class RouteDetailScreenScreenshotTest {
             fetchedAt = now,
         )
         val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = row,
@@ -579,7 +588,7 @@ class RouteDetailScreenScreenshotTest {
 
     @Test
     fun aTubeLine_isNamedAsALine() {
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = healthyRow(),
@@ -609,7 +618,7 @@ class RouteDetailScreenScreenshotTest {
             fetchedAt = now,
         )
         val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = row,
@@ -629,7 +638,7 @@ class RouteDetailScreenScreenshotTest {
 
     @Test
     fun aHealthyRoute_saysNoDisruptions_andStillStars() {
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = healthyRow(),
@@ -654,7 +663,7 @@ class RouteDetailScreenScreenshotTest {
         // The line status is known (a disruption is shown), but this stop's own disruption lookup
         // (a closure/move) failed — disruptionUnknown is set. The alert isn't the whole story, so
         // the detail must still say the stop-level disruption wasn't checked (SPEC principle 1).
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = disruptedRow(),
@@ -679,7 +688,7 @@ class RouteDetailScreenScreenshotTest {
         // A stale row whose stop-disruption lookup also failed: "may be out of date" (the age) and
         // "couldn't check for disruptions" (the failed stop-level check) are independent facts, so
         // both must show — the age warning must not stand in for the failed check (SPEC principle 1).
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = disruptedRow(),
@@ -704,7 +713,7 @@ class RouteDetailScreenScreenshotTest {
     fun whenDisruptionUnknown_saysCouldntCheck_notNoDisruptions() {
         // The lookup failed, so a null status is unchecked, not clean: the detail must not claim
         // "No disruptions reported" (SPEC principle 1).
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = healthyRow(),
@@ -728,7 +737,7 @@ class RouteDetailScreenScreenshotTest {
     fun whenStale_saysStatusMayBeOutOfDate_notNoDisruptions() {
         // A stale snapshot: the disruption status is from an old fetch, so the detail must not
         // claim "No disruptions reported" (SPEC D4) — it caveats instead.
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = healthyRow(),
@@ -761,7 +770,7 @@ class RouteDetailScreenScreenshotTest {
             "Highbury & Islington", "Finsbury Park", "Seven Sisters", "Tottenham Hale", "Blackhorse Road",
             "Walthamstow Central",
         ).mapIndexed { i, name -> RouteStop("stop$i", name, victoriaLineConnections[name].orEmpty()) }
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = healthyRow(platform = "Northbound - Platform 5"),
@@ -814,7 +823,7 @@ class RouteDetailScreenScreenshotTest {
     }
 
     private fun stepFreeVictoriaLine(dark: Boolean, liftsOut: app.stopdash.domain.LiftOutageCache? = null) {
-        composeRule.setContent {
+        setDetail {
             StopDashTheme(darkTheme = dark, dynamicColor = false) {
                 CompositionLocalProvider(LocalStepFree provides stepFreeTable, LocalLiftsOut provides liftsOut) {
                     RouteDetailScreen(
@@ -919,7 +928,7 @@ class RouteDetailScreenScreenshotTest {
             fetchedAt = now,
         )
         val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 CompositionLocalProvider(LocalStepFree provides stepFreeTable) {
                     RouteDetailScreen(
@@ -948,7 +957,7 @@ class RouteDetailScreenScreenshotTest {
 
     @Test
     fun stopList_marksNothingWithoutTheTable() {
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = healthyRow(platform = "Northbound - Platform 5"),
@@ -985,7 +994,7 @@ class RouteDetailScreenScreenshotTest {
             fetchedAt = now,
         )
         val row = DepartureRows.across(listOf(stop), now, statuses).first { it.upcoming.isNotEmpty() }
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = row,
@@ -1031,7 +1040,7 @@ class RouteDetailScreenScreenshotTest {
             JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUOXC", "Oxford Circus"), "victoria",
         )
         val toggled = mutableListOf<StarredJourney>()
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = healthyRow(platform = "Northbound - Platform 5"),
@@ -1082,7 +1091,7 @@ class RouteDetailScreenScreenshotTest {
     fun theJourneyTip_showsAboveAStarrableList_untilDismissed() {
         val stops = listOf(RouteStop("940GZZLUVIC", "Victoria"), RouteStop("940GZZLUGPK", "Green Park"))
         var dismissed = 0
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = healthyRow(platform = "Northbound - Platform 5"),
@@ -1108,7 +1117,7 @@ class RouteDetailScreenScreenshotTest {
 
     @Test
     fun theJourneyTip_isHiddenWhereNoJourneyCanBeStarred() {
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = healthyRow(platform = "Northbound - Platform 5"),
@@ -1132,7 +1141,7 @@ class RouteDetailScreenScreenshotTest {
     fun tappingAnUnnamedStation_savesTheIdItShows() {
         val stops = listOf(RouteStop("940GZZLUVIC", "Victoria"), RouteStop("940GZZLUGPK", ""))
         val toggled = mutableListOf<StarredJourney>()
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = healthyRow(platform = "Northbound - Platform 5"),
@@ -1169,7 +1178,7 @@ class RouteDetailScreenScreenshotTest {
         )
         val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
         val toggled = mutableListOf<StarredJourney>()
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = row,
@@ -1222,7 +1231,7 @@ class RouteDetailScreenScreenshotTest {
         val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
         val starredOutbound = StarredJourney(JourneyEnd("490000001N", "Park"), JourneyEnd("490000002N", "Hill"), "b1", "B1", "bus")
         val toggled = mutableListOf<StarredJourney>()
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = row,
@@ -1272,7 +1281,7 @@ class RouteDetailScreenScreenshotTest {
         val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
         val saved = StarredJourney(JourneyEnd("490000001N", "Park"), JourneyEnd("490000002X", "Hill"), "b1", "B1", "bus")
         val toggled = mutableListOf<StarredJourney>()
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = row,
@@ -1312,7 +1321,7 @@ class RouteDetailScreenScreenshotTest {
         val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
         // Starred from the b1's page; this is the b2's.
         val starredOnB1 = StarredJourney(JourneyEnd("490000001N", "Park"), JourneyEnd("490000002N", "Hill"), "b1", "B1", "bus")
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = row,
@@ -1339,7 +1348,7 @@ class RouteDetailScreenScreenshotTest {
 
     @Test
     fun staleRow_withholdsTheStopList() {
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = healthyRow(),
@@ -1387,7 +1396,7 @@ class RouteDetailScreenScreenshotTest {
                 status = row.status!!.copy(description = "Suspended", fullText = "Victoria line: suspended between Green Park and Oxford Circus."),
             )
         }
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 CompositionLocalProvider(LocalRouteStops provides repository) {
                     RouteDetailScreen(
@@ -1412,6 +1421,56 @@ class RouteDetailScreenScreenshotTest {
     }
 
     @Test
+    fun aReworded_alertClearsTheLastOnesPlaces_whileItsOwnAreRead() {
+        // The marks are read off the main thread; held here until released, so the page between a
+        // reword and its new marks can be checked. Public names, synthetic ids and wording.
+        val scheduler = kotlinx.coroutines.test.TestCoroutineScheduler()
+        val held = kotlinx.coroutines.test.StandardTestDispatcher(scheduler)
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence =
+                    LineSequence(
+                        routes = listOf(LineRoute("Victoria - Walthamstow", listOf("s1", "s2", "s3"))),
+                        stopNames = mapOf("s1" to "Victoria", "s2" to "Green Park", "s3" to "Oxford Circus"),
+                    )
+            },
+            io = kotlinx.coroutines.Dispatchers.Unconfined,
+        )
+        val base = disruptedRow().let { row -> row.copy(upcoming = emptyList()) }
+        var row by androidx.compose.runtime.mutableStateOf(
+            base.copy(status = base.status!!.copy(description = "Suspended", fullText = "Victoria line: suspended between Green Park and Oxford Circus.")),
+        )
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalRouteStops provides repository, LocalAlertWorker provides held) {
+                    RouteDetailScreen(
+                        row = row,
+                        isStarred = false,
+                        starrable = false,
+                        disruptionUnknown = false,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        scheduler.advanceUntilIdle()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Green Park, Oxford Circus").assertIsDisplayed()
+
+        row = base.copy(status = base.status!!.copy(description = "Suspended", fullText = "Victoria line: suspended at Victoria."))
+        composeRule.waitForIdle()
+        // Read, not yet released: the last alert's places are gone, not shown under the new one.
+        composeRule.onNodeWithText("Green Park, Oxford Circus").assertDoesNotExist()
+        scheduler.advanceUntilIdle()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Victoria").assertIsDisplayed()
+    }
+
+    @Test
     fun aStaleRow_stillNamesTheAlertsStationsBesideTheChip() {
         // A stale row's train-specific stop list is withheld, but the alert's stations are still
         // named, from the line's stations. Public names, synthetic ids and wording.
@@ -1426,7 +1485,7 @@ class RouteDetailScreenScreenshotTest {
             io = kotlinx.coroutines.Dispatchers.Unconfined,
         )
         val row = disruptedRow().let { it.copy(status = it.status!!.copy(fullText = "No service between Green Park and Oxford Circus.")) }
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 CompositionLocalProvider(LocalRouteStops provides repository) {
                     RouteDetailScreen(
@@ -1463,7 +1522,7 @@ class RouteDetailScreenScreenshotTest {
             io = kotlinx.coroutines.Dispatchers.Unconfined,
         )
         val row = disruptedRow().let { it.copy(status = it.status!!.copy(fullText = "No service between Green Park and Oxford Circus.")) }
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 CompositionLocalProvider(LocalRouteStops provides repository) {
                     RouteDetailScreen(
@@ -1487,7 +1546,7 @@ class RouteDetailScreenScreenshotTest {
     @Test
     fun staleStatusRow_showsNoStopMessage() {
         val statusRow = disruptedRow().copy(upcoming = emptyList())
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteDetailScreen(
                     row = statusRow,
@@ -1507,7 +1566,7 @@ class RouteDetailScreenScreenshotTest {
     @Test
     fun stopListFailure_saysWhyAndRetries() {
         var retried = 0
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 RouteStopsSection(
                     state = RouteStopsUi.Failed(DeparturesUiState.Error.Kind.OFFLINE),
@@ -1536,7 +1595,7 @@ class RouteDetailScreenScreenshotTest {
             io = kotlinx.coroutines.Dispatchers.Unconfined,
         )
         val row = disruptedRow().let { it.copy(status = it.status!!.copy(fullText = "No service between Green Park and Oxford Circus.")) }
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 CompositionLocalProvider(LocalRouteStops provides repository) {
                     RouteDetailScreen(
@@ -1570,7 +1629,7 @@ class RouteDetailScreenScreenshotTest {
             },
         )
         val row = healthyRow()
-        composeRule.setContent {
+        setDetail {
             StopDashTheme {
                 CompositionLocalProvider(LocalRouteStops provides repository) {
                     RouteStopsSection(
