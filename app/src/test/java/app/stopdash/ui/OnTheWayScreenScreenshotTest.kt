@@ -29,6 +29,7 @@ import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripProgress
@@ -79,10 +80,16 @@ class OnTheWayScreenScreenshotTest {
         nextTrains: NextTrains? = null,
         onGoTo: (OnTheWay.Step, OnTheWay.Step) -> Unit = { _, _ -> },
         disruptions: List<RouteDisruption.Signal> = emptyList(),
+        replanFrom: ReplanOrigin.Stop? = null,
+        onPlanAgain: ((ReplanOrigin.Stop) -> Unit)? = null,
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
-                OnTheWayScreen(trip, progress, failed, now, onEnd, onBack, current = current, notKept = notKept, endFailed = endFailed, alertsOff = alertsOff, appOpenOnly = appOpenOnly, nextTrains = nextTrains, onGoTo = onGoTo, disruptions = disruptions)
+                OnTheWayScreen(
+                    trip, progress, failed, now, onEnd, onBack, current = current, notKept = notKept, endFailed = endFailed, alertsOff = alertsOff,
+                    appOpenOnly = appOpenOnly, nextTrains = nextTrains, onGoTo = onGoTo, disruptions = disruptions,
+                    replanFrom = replanFrom, onPlanAgain = onPlanAgain,
+                )
             }
         }
     }
@@ -101,6 +108,34 @@ class OnTheWayScreenScreenshotTest {
         // The same alert on two legs reads once.
         assertEquals(1, composeRule.onAllNodesWithText("Jubilee: Part Suspended").fetchSemanticsNodes().size)
         captureSnapshot("on-the-way-disruption.png")
+    }
+
+    @Test
+    fun a_disruption_offers_to_plan_again_from_the_station_ahead() {
+        // The station still ahead nearest the rider (maintainer, 2026-10-02); the alert's words are made up.
+        val status = LineStatus("jubilee", 3, "Part Suspended", fullText = "No service between Stratford and Canary Wharf.")
+        val signal = RouteDisruption.Signal.Line(2, "jubilee", "Jubilee", status, RouteDisruption.Tier.HIGH, placed = true)
+        val from = ReplanOrigin.Stop("910GHGHI", "Highbury & Islington")
+        val asked = mutableListOf<ReplanOrigin.Stop>()
+        show(trip, TripProgress.Waiting(mildmay, at(4)), disruptions = listOf(signal), replanFrom = from, onPlanAgain = { asked += it })
+        composeRule.onNodeWithText("Plan again from Highbury & Islington").assertIsDisplayed().performClick()
+        assertEquals(listOf(from), asked)
+        captureSnapshot("on-the-way-plan-again.png")
+    }
+
+    @Test
+    fun a_station_the_trip_has_since_passed_isnt_offered() {
+        // Worked out before the trip moved on to the Jubilee: Highbury & Islington is behind the rider now.
+        val status = LineStatus("jubilee", 3, "Part Suspended", fullText = "No service between Stratford and Canary Wharf.")
+        val signal = RouteDisruption.Signal.Line(2, "jubilee", "Jubilee", status, RouteDisruption.Tier.HIGH, placed = true)
+        show(trip.copy(legIndex = 2), TripProgress.Waiting(jubilee, at(26)), disruptions = listOf(signal), replanFrom = ReplanOrigin.Stop("910GHGHI", "Highbury & Islington"), onPlanAgain = {})
+        composeRule.onNodeWithTag("onTheWayPlanAgain").assertDoesNotExist()
+    }
+
+    @Test
+    fun nothing_known_wrong_offers_no_plan_again() {
+        show(trip, TripProgress.Waiting(mildmay, at(4)), replanFrom = ReplanOrigin.Stop("910GHGHI", "Highbury & Islington"), onPlanAgain = {})
+        composeRule.onNodeWithTag("onTheWayPlanAgain").assertDoesNotExist()
     }
 
     @Test

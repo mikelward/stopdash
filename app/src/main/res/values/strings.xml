@@ -587,6 +587,8 @@
     <string name="on_the_way_open_current">Open current trip</string>
     <string name="on_the_way_start">Start</string>
     <string name="on_the_way_end">End trip</string>
+    <!-- TODO: translate -->
+    <string name="on_the_way_plan_again" tools:ignore="MissingTranslation">Plan again from %1$s</string>
     <string name="on_the_way_done">Done</string>
     <string name="on_the_way_next">Next</string>
     <!-- A trip's time left and when it gets there, on its screen: %1$d is minutes, %2$s a clock time.

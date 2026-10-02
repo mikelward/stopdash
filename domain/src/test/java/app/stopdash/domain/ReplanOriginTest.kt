@@ -99,4 +99,26 @@ class ReplanOriginTest {
         assertNull(ReplanOrigin.of(trip, near("F"), positions, rideAhead = null))
         assertNull(ReplanOrigin.of(trip.copy(legIndex = 2), null, positions, rideAhead = null))
     }
+
+    @Test
+    fun `how far along the ride is counted from the stops left`() {
+        val riding = trip(1).copy(boarded = true)
+        // Two stops left, B and C: B is next.
+        assertEquals(0, ReplanOrigin.rideAhead(riding, TripProgress.Riding(red, "B", 2, null, false)))
+        assertEquals(1, ReplanOrigin.rideAhead(riding, TripProgress.Riding(red, "C", 1, null, true)))
+        assertNull(ReplanOrigin.rideAhead(riding, TripProgress.Riding(red, null, null, null, false)))
+        assertNull(ReplanOrigin.rideAhead(riding, TripProgress.Waiting(red, null)))
+    }
+
+    @Test
+    fun `a stop is named as the route names it`() {
+        val named = blue.copy(pathNames = listOf("Elm Park", "Fir Grove"), fromName = "Dock")
+        val trip = ActiveTrip(TripRoute(listOf(red, named)), "F", startedAt = t0)
+        assertEquals("Dock", ReplanOrigin.nameOf(trip, "D"))
+        assertEquals("Elm Park", ReplanOrigin.nameOf(trip, "E"))
+        assertEquals("C", ReplanOrigin.nameOf(trip, "C"))
+        assertEquals("Z", ReplanOrigin.nameOf(trip, "Z"))
+        assertEquals(ReplanOrigin.Stop("A", "A"), ReplanOrigin.stopOf(trip, null, positions, rideAhead = null))
+        assertEquals(ReplanOrigin.Stop("E", "Elm Park"), ReplanOrigin.stopOf(trip.copy(legIndex = 1), near("E"), positions, rideAhead = null))
+    }
 }

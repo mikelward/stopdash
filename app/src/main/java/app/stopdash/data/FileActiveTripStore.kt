@@ -283,6 +283,9 @@ private data class PersistedActiveTrip(
     // the stop the route ends at.
     val destinations: List<PersistedTripDestination> = emptyList(),
     val destinationIds: Map<String, String> = emptyMap(),
+    // Absent from a trip kept before it was: planning again opens the trip list from the route's
+    // own stops alone.
+    val destinationStopId: String = "",
 ) {
     fun toTrip() = ActiveTrip(
         route = TripRoute(legs.map { it.toLeg() }),
@@ -308,6 +311,7 @@ private data class PersistedActiveTrip(
         // One this build can't read (a kind a later one added) is dropped rather than failing the trip.
         destinations = destinations.mapNotNull { it.toDestination() },
         destinationIds = destinationIds,
+        destinationStopId = destinationStopId,
     )
 
     companion object {
@@ -334,6 +338,7 @@ private data class PersistedActiveTrip(
             heldFrom = trip.heldFrom?.toString(),
             destinations = trip.destinations.map { PersistedTripDestination.of(it) },
             destinationIds = trip.destinationIds,
+            destinationStopId = trip.destinationStopId,
         )
     }
 }

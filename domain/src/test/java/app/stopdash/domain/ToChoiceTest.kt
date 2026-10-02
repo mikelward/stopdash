@@ -51,4 +51,24 @@ class ToChoiceTest {
         assertFalse(ToChoice.NONE.pickPlace(place).clearDestination().open)
         assertFalse(ToChoice.NONE.pickStop(bank).clearDestination().open)
     }
+
+    private val t0 = java.time.Instant.parse("2026-10-02T08:00:00Z")
+    private val ride = TripLeg("tube", "victoria", "Victoria", "940GZZLUVIC", "Victoria", "940GZZLUKSX", "King's Cross St. Pancras", t0, t0.plusSeconds(600))
+    private val trip = ActiveTrip(TripRoute(listOf(ride)), "King's Cross", startedAt = t0)
+
+    @Test
+    fun `a trip on the way is planned again to the stop or station picked`() {
+        assertEquals(ToChoice(stopId = "HUBKGX", name = "King's Cross"), ToChoice.of(trip.copy(destinationStopId = "HUBKGX")))
+    }
+
+    @Test
+    fun `a trip on the way to a place is planned again to it`() {
+        val place = TripDestination.Place(Coordinates(51.5, -0.12), "Work")
+        assertEquals(ToChoice(name = "Work", place = place), ToChoice.of(trip.copy(destinations = listOf(place))))
+    }
+
+    @Test
+    fun `a trip kept before its destination was is planned again to where its route ends`() {
+        assertEquals(ToChoice(stopId = "940GZZLUKSX", name = "King's Cross"), ToChoice.of(trip))
+    }
 }

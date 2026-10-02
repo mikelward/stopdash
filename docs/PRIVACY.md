@@ -118,7 +118,8 @@ location**, the position the near-me list was found from, so the Planner can wal
 stop or station serves the trip best. That is usually the position the nearby-stops lookup has just
 sent TfL; when the app reused a recent lookup of the same spot instead (below), opening the trip is
 what sends it; a trip from a *From…* station starts from
-that station's stop id. The destination goes as the stop you picked. When you pick a station complex
+that station's stop id, as does **Plan again** on a trip on the way, which starts from a stop on its
+route (the one still ahead nearest you, worked out on your device: your location isn't sent). The destination goes as the stop you picked. When you pick a station complex
 such as King's Cross St. Pancras, the Planner is asked once for each of its stations and once for
 its bus stops, each request carrying the same start. A trip **to a saved favorite** sends its stored
 **coordinate** as the destination — the Planner walks the last leg to it — while the favorite's name

@@ -61,6 +61,7 @@ class FileActiveTripStoreTest {
         // Waterloo as the trip list planned to it: the station complex's stops, each to the stop it stands for.
         destinations = listOf(TripDestination.Stop("940GZZLUWLO"), TripDestination.Stop("910GWLOO")),
         destinationIds = mapOf("940GZZLUWLO" to "940GZZLUWLO", "910GWLOO" to "910GWLOO", "490000254W" to "910GWLOO"),
+        destinationStopId = "HUBWAT",
     )
 
     @Test
@@ -364,9 +365,11 @@ class FileActiveTripStoreTest {
     @Test
     fun `a trip saved before its destination was kept has none, and loads`() {
         val file = File(tmp.root, "active-trip.json")
-        FileActiveTripStore(file).save(trip.copy(destinations = emptyList(), destinationIds = emptyMap()))
+        val before = trip.copy(destinations = emptyList(), destinationIds = emptyMap(), destinationStopId = "")
+        FileActiveTripStore(file).save(before)
         assertFalse(file.readText().contains("destinations"))
-        assertEquals(trip.copy(destinations = emptyList(), destinationIds = emptyMap()), FileActiveTripStore(file).load())
+        assertFalse(file.readText().contains("destinationStopId"))
+        assertEquals(before, FileActiveTripStore(file).load())
     }
 
     @Test

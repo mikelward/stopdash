@@ -1,10 +1,12 @@
 package app.stopdash.ui
 
 import app.stopdash.domain.ActiveTrip
+import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LocationFix
 import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RideLines
 import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.StationPlaces
@@ -188,6 +190,15 @@ class ActiveTripTracker(
     private val _nextBoard = MutableStateFlow<NextBoard?>(null)
     val nextBoard: StateFlow<NextBoard?> = _nextBoard.asStateFlow()
 
+    /**
+     * Where the trip would be planned again from while something is known wrong on the route ahead
+     * ([routeDisruptions]): the station still ahead on it nearest the rider ([ReplanOrigin], maintainer
+     * 2026-10-02), worked out with each check that finds something. Null while nothing is known, or no
+     * ride is left to plan.
+     */
+    private val _replanFrom = MutableStateFlow<ReplanOrigin.Stop?>(null)
+    val replanFrom: StateFlow<ReplanOrigin.Stop?> = _replanFrom.asStateFlow()
+
     // Every train the upcoming ride's boards have listed ([readBoard]), by the stop it was listed at
     // and then its line and TfL's id for it ([seenKey]), for [boardedAlong]: one that has since left may
     // be the rider's. Of one ride only, in memory only.
@@ -343,8 +354,8 @@ class ActiveTripTracker(
 
     /**
      * Start [route] to [destinationName], the rider at its first stop by [readyAt]: its first ride's
-     * train is picked on the next [refresh]. [destinations] and [destinationIds] are the destination as
-     * chosen ([ActiveTrip.destinations]).
+     * train is picked on the next [refresh]. [destinations], [destinationIds] and [destinationStopId] are
+     * the destination as chosen ([ActiveTrip.destinations]).
      */
     suspend fun start(
         route: TripRoute,
@@ -352,10 +363,20 @@ class ActiveTripTracker(
         readyAt: Instant,
         destinations: List<TripDestination> = emptyList(),
         destinationIds: Map<String, String> = emptyMap(),
+        destinationStopId: String = "",
+        // In place of the trip on the way (a route planned again from partway along): it's ended first,
+        // under the same lock, a kept one not read yet included ([restoreLocked]), and [onEnded] told.
+        // One that can't be ended stays, and nothing is started ([endFailed] says so).
+        replacing: Boolean = false,
+        onEnded: () -> Unit = {},
     ) = lock.withLock {
         // One trip at a time: a kept one not read yet, or one on the way, stays. One that couldn't be
         // read may be on the way, so none is started over it; the failure is said ([failed]).
         if (!restoreLocked()) return@withLock
+        if (replacing && _trip.value != null) {
+            if (!endLocked()) return@withLock
+            onEnded()
+        }
         if (_trip.value != null) return@withLock
         val now = clock()
         // From the first leg, a walk included: the rider walks it first (maintainer, 2026-09-27), and
@@ -365,9 +386,9 @@ class ActiveTripTracker(
         val first = route.legs.firstOrNull()
         val trip = if (first != null && readyAt.isAfter(now)) {
             val toStop = TripLeg(TripLeg.WALKING, "", "", "", "", first.fromId, first.fromName, now, readyAt)
-            ActiveTrip(TripRoute(listOf(toStop) + route.legs), destinationName, startedAt = now, legStartedAt = now, destinations = destinations, destinationIds = destinationIds)
+            ActiveTrip(TripRoute(listOf(toStop) + route.legs), destinationName, startedAt = now, legStartedAt = now, destinations = destinations, destinationIds = destinationIds, destinationStopId = destinationStopId)
         } else {
-            ActiveTrip(route, destinationName, startedAt = now, legIndex = 0, legStartedAt = readyAt, destinations = destinations, destinationIds = destinationIds)
+            ActiveTrip(route, destinationName, startedAt = now, legIndex = 0, legStartedAt = readyAt, destinations = destinations, destinationIds = destinationIds, destinationStopId = destinationStopId)
         }
         _updatedAt.value = null
         boardSeenRide = null
@@ -389,11 +410,15 @@ class ActiveTripTracker(
         readyAt: Instant,
         destinations: List<TripDestination> = emptyList(),
         destinationIds: Map<String, String> = emptyMap(),
+        destinationStopId: String = "",
+        // In place of the trip on the way ([start]'s [replacing]), [onEnded] told once it's ended.
+        replacing: Boolean = false,
+        onEnded: () -> Unit = {},
     ): Job {
         _starting.update { it + 1 }
         return scope.launch {
             try {
-                start(route, destinationName, readyAt, destinations, destinationIds)
+                start(route, destinationName, readyAt, destinations, destinationIds, destinationStopId, replacing, onEnded)
             } finally {
                 _starting.update { it - 1 }
             }
@@ -447,14 +472,17 @@ class ActiveTripTracker(
     }
 
     /** End the trip: forgotten here and on the device. */
-    suspend fun end(): Boolean = lock.withLock {
+    suspend fun end(): Boolean = lock.withLock { endLocked() }
+
+    // [end], under [lock].
+    private suspend fun endLocked(): Boolean {
         // Forgotten on the device first, as on arrival. One that can't be would come back on the
         // next start, so it isn't ended: it stays, and [endFailed] says so. An arrival already
         // forgotten has nothing left to forget: only what's on screen is let go.
         if (_trip.value != null && !withContext(io) { save(null) }) {
             _endFailed.value = true
             _endFailures.value++
-            return@withLock false
+            return false
         }
         _endFailed.value = false
         _endFailures.value = 0
@@ -468,7 +496,7 @@ class ActiveTripTracker(
         rideDirections.clear()
         settleBoard()
         takeDisruptionDown()
-        true
+        return true
     }
 
     /**
@@ -490,7 +518,8 @@ class ActiveTripTracker(
             // however long TfL takes: the steps share this refresh's attempts.
             val boards = HashMap<TripLeg, Result<NextBoard>>()
             if (step(fresh, boards)) step(null, boards)
-            checkDisruptions(boards)
+            // The fix as given, with when: aged once, where it's used, for all the time since (Codex on #479).
+            checkDisruptions(boards, rider, asked)
         }
     }
 
@@ -503,7 +532,7 @@ class ActiveTripTracker(
      * (swiped away, or timed out with its evidence), short of something new. [boards] are this
      * refresh's reads of boarding stops, reused for a change the rider nears ([changeSignal]).
      */
-    private suspend fun checkDisruptions(boards: Map<TripLeg, Result<NextBoard>>) {
+    private suspend fun checkDisruptions(boards: Map<TripLeg, Result<NextBoard>>, rider: LocationFix? = null, asked: Long = elapsed()) {
         val trip = _trip.value
         val progress = _progress.value
         if (trip == null || progress == null || progress == TripProgress.Arrived) {
@@ -541,6 +570,8 @@ class ActiveTripTracker(
             }
             disruptionUp -> if (!onDisruption(trip, known.signals, DisruptionPost.KEEP, until)) takeDisruptionDown(known = false)
         }
+        // Only once the alert is out: the routes it may read never hold up what's known (Codex on #479).
+        _replanFrom.value = replanStop(trip, progress, rider, asked)
     }
 
     // No train of its line predicted for the ride at a change the rider is a few minutes from
@@ -604,10 +635,31 @@ class ActiveTripTracker(
         return rideDirections.filterKeys { it >= trip.legIndex && !(otherLine && it == trip.legIndex) }
     }
 
+    // Where [trip] would be planned again from ([replanFrom]): its rides ahead placed by their lines'
+    // routes, kept a day and shared with the trip's cards, so rarely a request. A route that can't be
+    // had leaves its stops unplaced, and the next stop ahead stands in.
+    // [rider] is the fix as given at [asked], aged here, once, as it's used: after the routes' reads too.
+    private suspend fun replanStop(trip: ActiveTrip, progress: TripProgress, rider: LocationFix?, asked: Long): ReplanOrigin.Stop? {
+        val rides = trip.route.legs.withIndex().drop(trip.legIndex)
+            .map { (index, leg) -> if (index == trip.legIndex) OnTheWay.ridden(trip) ?: leg else leg }
+            .filter { !it.isWalk }
+        val ahead = ReplanOrigin.rideAhead(trip, progress)
+        // No fix that places the rider: the next stop ahead, whatever the routes say, so none is asked
+        // for (Codex, PR #479).
+        fun now() = rider?.let { aged(it, Duration.ofMillis(elapsed() - asked)) }?.takeIf(ReplanOrigin::placesRider)
+        now() ?: return ReplanOrigin.stopOf(trip, null, emptyMap(), ahead)
+        val positions = HashMap<String, Coordinates>()
+        for (ride in rides) routeOf(ride.lineId)?.let { positions.putAll(OnTheWay.ridePositions(ride, it)) }
+        return ReplanOrigin.stopOf(trip, now(), positions, ahead)
+    }
+
     // [known]: whether what was known goes too (nothing is left, or the trip ended), not only the
     // alert (swiped away), which leaves the trip's screen still showing it.
     private fun takeDisruptionDown(known: Boolean = true) {
-        if (known) _routeDisruptions.value = null
+        if (known) {
+            _routeDisruptions.value = null
+            _replanFrom.value = null
+        }
         if (!disruptionUp) return
         onDisruptionDone()
         disruptionUp = false
