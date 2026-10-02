@@ -1,6 +1,6 @@
 [versions]
 aboutlibraries = "12.2.4"
-androidlog = "3.0.73"
+androidlog = "3.1.74"
 agp = "9.4.1"
 crashlyticsPlugin = "3.0.8"
 activity = "1.13.0"

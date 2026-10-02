@@ -2833,6 +2833,11 @@ Mirrors the sibling fleet:
   why the app's last few processes ended — the platform's reason (a crash, an ANR, a low-memory
   or standby kill), never its free-text description — pinned so a busy run can't push that out of
   a bug report, since a silent kill otherwise leaves the next run's log looking like a clean start.
+  After an ANR it also pins where the main thread was stuck: a few frames of the frozen code, read
+  from the platform's own record of that freeze, since an ANR's reason alone doesn't say which
+  code froze the screen. A frame is a code location, never a value: the device's copy carries it,
+  and so does a consent-gated bug report (which sends that copy unredacted), while the Crashlytics
+  rendering carries a placeholder in its place.
 - **The main thread's disk reads and writes are noted in that log**, in every build (reports come
   from release builds, where logcat is out of reach): the kind and the first of the app's own
   frames under it, once each per run and at most 20 a run. The main thread is for UI only, and a
