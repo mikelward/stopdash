@@ -18,6 +18,8 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.await
+import app.stopdash.MainActivity
+import app.stopdash.data.DataStoreAlertsBehindStore
 import app.stopdash.data.DataStoreAppSettings
 import app.stopdash.data.DataStoreDismissedAlertsStore
 import app.stopdash.data.DataStoreSnapshotStore
@@ -28,13 +30,17 @@ import app.stopdash.data.SharedTflRateLimiter
 import app.stopdash.data.SharedTflRequestPool
 import app.stopdash.data.logAppSettingsWarning
 import app.stopdash.data.WatchRefreshOutcome
+import app.stopdash.domain.AlertsBehind
+import app.stopdash.domain.AlertsBehindStore
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.lineAlertKey
 import app.stopdash.domain.TflException
+import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.WidgetRefresh
 import app.stopdash.ui.ARRIVALS_REUSE
@@ -425,6 +431,9 @@ internal suspend fun refreshStoredSnapshot(
                 // still good. With no arrivals fresh, the lines are still checked, so a suspension
                 // declared during an arrivals outage reaches the widget ([WidgetRefresh.refresh]).
                 var answered: List<LineStatus>? = null
+                // Every line in a request TfL answered, returned or not: one it left out gets a
+                // no-verdict check ([WidgetRefresh.refreshedLineStatuses]), so it was checked too.
+                var asked: Set<String> = emptySet()
                 val outcome = WidgetRefresh.refresh(
                     prior,
                     Instant::now,
@@ -439,7 +448,10 @@ internal suspend fun refreshStoredSnapshot(
                     fetchStatuses = { lineIds ->
                         // Called once per request TfL accepts: every answered one's statuses count.
                         widgetLineStatuses(client, lineIds, onKeyRejected = { statusKeyRejected.set(true) })
-                            ?.also { answered = answered.orEmpty() + it }
+                            ?.also {
+                                answered = answered.orEmpty() + it
+                                asked = asked + lineIds
+                            }
                     },
                 ) { stopId ->
                     attempted.incrementAndGet()
@@ -475,6 +487,9 @@ internal suspend fun refreshStoredSnapshot(
                         // closed is shown again rather than hidden. Only once this refresh's statuses are
                         // stored; a discarded one leaves it to the app's own refresh.
                         if (applied) answered?.let { reconcileWidgetDismissals(dismissals(), it) }
+                        // Places the alerts it just fetched, as the app's list does, so one that came up
+                        // while the app was closed needn't flag where it lies behind a stop.
+                        if (applied) placeWidgetAlerts(context, answered.orEmpty(), asked)
                     }
                     is WidgetRefresh.Outcome.Statuses -> {
                         // Only the statuses are stored, merged per line with whatever the app wrote
@@ -482,6 +497,7 @@ internal suspend fun refreshStoredSnapshot(
                         // to age honestly. The store redraws the widget, as a save does.
                         WidgetSnapshotStore(context).updateLineStatuses(outcome.checks)
                         answered?.let { reconcileWidgetDismissals(dismissals(), it) }
+                        placeWidgetAlerts(context, answered.orEmpty(), asked)
                     }
                     // Nothing fresh: re-render so the unchanged snapshot ages honestly.
                     WidgetRefresh.Outcome.Unchanged -> StopDashWidget().updateAll(context)
@@ -538,6 +554,74 @@ internal suspend fun reconcileWidgetDismissals(store: DismissedAlertsStore, answ
     } catch (e: Exception) {
         logWidgetSnapshotWarning("widget refresh couldn't prune dismissed alerts: ${e::class.simpleName}")
     }
+}
+
+/**
+ * Places the alerts TfL just [answered] at the widget's [stops] ([AlertsBehind.placement]), as the app's
+ * list does, and keeps what it finds for the widget and the watch: an alert that came up while the app
+ * was closed then needn't flag where it lies wholly behind a stop. With the routes the app already holds
+ * (each line's for a day, [MainActivity.routeStops]) and no request of its own: a line whose route isn't
+ * held is left to the app. Only the lines [asked] about count as checked, those TfL left out included, as
+ * an alert reused from an earlier check isn't known gone. At the stops stored, not the ones this cycle
+ * loaded: the app may have stored another place's, or a newer check of a line, meanwhile. Best-effort: a
+ * failure is logged, and the alerts flag as before.
+ */
+private suspend fun placeWidgetAlerts(context: Context, answered: List<LineStatus>, asked: Set<String>) {
+    if (asked.isEmpty()) return
+    val routes = MainActivity.routeStops(context)
+    val snapshots = WidgetSnapshotStore(context)
+    placeWidgetAlerts(
+        stored = { snapshots.stored() },
+        answered,
+        asked,
+        sequenceOf = { lineId ->
+            routes.warm()
+            routes.cached(lineId, "")
+        },
+        store = DataStoreAlertsBehindStore.from(context.applicationContext, warn = ::logWidgetSnapshotWarning),
+    )
+}
+
+/**
+ * [placeWidgetAlerts] with the [stored] snapshot, its routes ([sequenceOf], held only) and [store] given,
+ * as a test gives them. [stored] is read to place the alerts, and again just before they're kept: only
+ * the stops still stored then ([AlertPlacement.everyStop] false), and the lines whose stored check is
+ * still this refresh's answer ([AlertPlacement.lines]), are spoken for. So the app moving to new stops,
+ * or storing a newer check of a line, while the routes were read leaves its verdicts there alone (Codex,
+ * PR #472).
+ */
+internal suspend fun placeWidgetAlerts(
+    stored: suspend () -> DeparturesSnapshot?,
+    answered: List<LineStatus>,
+    asked: Set<String>,
+    sequenceOf: suspend (String) -> LineSequence?,
+    store: AlertsBehindStore,
+    now: Instant = Instant.now(),
+) {
+    if (asked.isEmpty()) return
+    try {
+        val at = stored()?.stops ?: return
+        val statuses = answered.filter { it.lineId in asked }.associateBy { it.lineId }
+        val sequences = DepartureRows.linesWithAlertsToPlace(at, statuses, now).associateWith { sequenceOf(it) }
+        val placed = AlertsBehind.placement(at, statuses, sequences, now, lines = asked)
+        val still = stored() ?: return
+        val current = asked.filterTo(HashSet()) { line -> still.lineStatuses[line]?.isAnswer(statuses[line]) == true }
+        store.record(
+            placed.copy(stops = placed.stops intersect still.stops.mapTo(HashSet()) { it.stopId }, lines = current, everyStop = false),
+        )
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        logWidgetSnapshotWarning("widget refresh couldn't place alerts: ${e::class.simpleName}")
+    }
+}
+
+// Whether this stored check is still the answer a refresh got for its line: [status] by its full words,
+// each direction's too, or no verdict where TfL left the line out (a null [status]).
+private fun LineStatusCheck.isAnswer(status: LineStatus?): Boolean {
+    if (status == null) return !known
+    val answer = LineStatusCheck(status, checkedAt)
+    return known && fingerprint == answer.fingerprint && directionFingerprints == answer.directionFingerprints
 }
 
 /**

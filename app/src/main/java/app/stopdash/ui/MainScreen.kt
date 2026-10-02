@@ -16,6 +16,7 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import app.stopdash.domain.AlertLinks
 import app.stopdash.domain.AlertStart
+import app.stopdash.domain.AlertsBehind
 import app.stopdash.domain.AlertStops
 import app.stopdash.domain.RouteStop
 import app.stopdash.domain.RouteStops
@@ -547,11 +548,8 @@ fun MainScreen(
     // alert is, not when.
     val alertsBehind = LocalAlertsBehind.current
     val alertVerdicts = remember(loaded?.stops, loaded?.lineStatuses, alertDay, alertSequences) {
-        loaded?.let { ld ->
-            DepartureRows.alertsBehind(DepartureRows.across(ld.stops, now, ld.lineStatuses), alertSequences)
-                // Every stop shown, placed or not: the store keeps verdicts at these alone.
-                .copy(stops = ld.stops.mapTo(HashSet()) { it.stopId })
-        }
+        // At every stop shown, placed or not: the store keeps verdicts at these alone.
+        loaded?.let { ld -> AlertsBehind.placement(ld.stops, ld.lineStatuses, alertSequences, now) }
     }
     // Nothing until the list has stops: an empty first frame says nothing of where the rider is.
     LaunchedEffect(alertsBehind, alertVerdicts) {

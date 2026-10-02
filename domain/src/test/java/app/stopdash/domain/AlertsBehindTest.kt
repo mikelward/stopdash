@@ -129,6 +129,32 @@ class AlertsBehindTest {
     }
 
     @Test
+    fun `a placement that checked only some lines leaves the others' verdicts alone`() {
+        // The widget's refresh asked TfL about another line only: this one's alert isn't known gone.
+        val held = mapOf(verdict to now.minus(Duration.ofMinutes(10)))
+        assertNull(AlertsBehind.recorded(held, AlertPlacement(emptySet(), emptySet(), setOf("b4"), lines = setOf("100")), now))
+        // Asked about this line and its alert gone: dropped, as from the list.
+        assertEquals(emptyMap<AlertBehind, Instant>(), AlertsBehind.recorded(held, AlertPlacement(emptySet(), emptySet(), setOf("b4"), lines = setOf("99")), now))
+    }
+
+    @Test
+    fun `a placement speaking only for its stops leaves verdicts elsewhere, and adds none outside them`() {
+        // The widget's refresh, at b4 alone: a verdict at b9 is the app's to keep or drop.
+        val held = mapOf(verdict.copy(stopId = "b9") to now.minus(Duration.ofMinutes(10)))
+        val atB4 = AlertPlacement(setOf(verdict), setOf(verdict), setOf("b4"), onRows, everyStop = false)
+        assertEquals(held + (verdict to now), AlertsBehind.recorded(held, atB4, now))
+        // A verdict reached at a stop the placement doesn't speak for isn't added.
+        val outside = AlertPlacement(setOf(verdict), setOf(verdict), setOf("b2"), onRows, everyStop = false)
+        assertNull(AlertsBehind.recorded(held, outside, now))
+        // Nor one reached on a line it doesn't speak for, and that line's held verdict, though weighed
+        // and not found behind, is left too.
+        val otherLine = AlertPlacement(setOf(verdict), setOf(verdict), setOf("b4"), onRows, lines = setOf("100"))
+        assertNull(AlertsBehind.recorded(emptyMap(), otherLine, now))
+        val disproved = AlertPlacement(emptySet(), setOf(verdict), setOf("b4"), onRows, lines = setOf("100"))
+        assertNull(AlertsBehind.recorded(mapOf(verdict to now), disproved, now))
+    }
+
+    @Test
     fun `a verdict at a stop the list no longer shows goes at once, and is never applied there`() {
         // The rider moved on: the list shows other stops, and the store keeps none of the old place.
         val held = mapOf(verdict to now.minus(Duration.ofMinutes(10)))

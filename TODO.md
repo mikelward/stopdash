@@ -2217,10 +2217,9 @@ Builds on Phase 1's minimal line-status marking.
         - [x] **The widget and watch place an alert behind the stop too** (2026-10-02): the near-me
               list keeps its verdicts, by the alert's words, and they apply them as they read the
               stored departures, as they do a dismissal.
-          - [ ] **An alert that appears while the app is closed** flags on the widget and watch until
-                the app next shows that stop: the widget's own refresh has TfL's words but places
-                nothing. It could, from the routes the app already holds for the day, with no new
-                request.
+          - [x] **An alert that appears while the app is closed** (2026-10-02): the widget's own
+                refresh places it, with the routes the app already holds for the day and no request.
+                A line whose route isn't held flags until the app next shows that stop.
           - [ ] **Planned work whose day has come** isn't placed on those surfaces: they read the alert
                 as of the day, and a verdict is on the alert the app was shown, so it flags there.
         - [ ] **Behind the rider on a tube or rail line**: not attempted, as its delays spread
