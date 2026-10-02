@@ -2833,6 +2833,12 @@ Mirrors the sibling fleet:
   why the app's last few processes ended — the platform's reason (a crash, an ANR, a low-memory
   or standby kill), never its free-text description — pinned so a busy run can't push that out of
   a bug report, since a silent kill otherwise leaves the next run's log looking like a clean start.
+- **The main thread's disk reads and writes are noted in that log**, in every build (reports come
+  from release builds, where logcat is out of reach): the kind and the first of the app's own
+  frames under it, once each per run and at most 20 a run. The main thread is for UI only, and a
+  stutter too short to be an ANR otherwise leaves no trace. Network use on the main thread isn't
+  among them: the platform refuses it outright (it throws), which is kept, and an uncaught throw
+  is a crash the process-exit lines already record.
 - **A bug report leaves the device only under explicit consent.** The overflow's *Send bug
   report* composes the log plus the **exact location**, per-stop distances, and a **screenshot of
   the reporting screen** and hands it to the platform share sheet — user-initiated, £0, no service
