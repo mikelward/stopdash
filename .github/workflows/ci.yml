@@ -565,6 +565,19 @@ jobs:
         # shrinking and packaging must fail here first rather than after merge.
         run: ./gradlew :app:assembleRelease :wear:assembleRelease
 
+      - name: Check the watch app still advertises itself to the phone
+        # Play services reads this array, never the app's code, so resource
+        # shrinking dropped it once: the watch advertised nothing, the phone saw
+        # no watch with StopDash and sent it nothing, and every test passed.
+        run: |
+          set -euo pipefail
+          aapt2="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)aapt2"
+          if ! "$aapt2" dump resources wear/build/outputs/apk/release/wear-release-unsigned.apk \
+              | grep -A3 'array/android_wear_capabilities' | grep -q '"stopdash_watch"'; then
+            echo "::error::The release watch APK lost its stopdash_watch capability (res/raw/keep.xml)."
+            exit 1
+          fi
+
   release-build:
     name: Build the release AAB
     # The signed AAB, built in parallel with `build` and `screenshot-tests`
