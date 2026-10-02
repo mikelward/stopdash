@@ -23,7 +23,7 @@ class PlanTargetsFixtureTest {
             expectSuccess = true
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         },
-        baseUrl = "https://tfl.example",
+        baseUrl = "https://tfl.example", decodeDispatcher = serialDecode,
     )
 
     @Test

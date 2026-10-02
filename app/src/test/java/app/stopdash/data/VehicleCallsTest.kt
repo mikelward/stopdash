@@ -32,7 +32,7 @@ class VehicleCallsTest {
             expectSuccess = true
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
-        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", appKey = { "EXAMPLE" })
+        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, appKey = { "EXAMPLE" })
     }
 
     @Test

@@ -24,6 +24,7 @@ import io.ktor.utils.io.ByteReadChannel
 import java.io.File
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import app.stopdash.domain.TripRoute
@@ -51,7 +52,7 @@ class JourneyPlannerTest {
             expectSuccess = true
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
-        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", appKey = { "EXAMPLE" }, warn = warn)
+        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, appKey = { "EXAMPLE" }, warn = warn)
     }
 
     @Test
@@ -403,7 +404,7 @@ class JourneyPlannerTest {
             expectSuccess = true
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
-        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", appKey = { "EXAMPLE" }, warn = warn)
+        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, appKey = { "EXAMPLE" }, warn = warn)
     }
 
     // Constructed: an answer of one route per entry of [minutes], each a walk between two stations
@@ -474,6 +475,39 @@ class JourneyPlannerTest {
     }
 
     @Test
+    fun `a plan is read off the thread that asked for it, so a screen's own load never freezes it`() {
+        // The answer that has the planner look a platform's station up in the bundled index.
+        val via = checkNotNull(javaClass.getResource("/fixtures/journey_results_euston_to_st_pauls_via.json")).readText()
+        val engine = MockEngine { respond(ByteReadChannel(via), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json")) }
+        val http = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val lookedUpOn = mutableListOf<Thread>()
+        val client = KtorTflClient(
+            httpClient = http,
+            baseUrl = "https://tfl.example",
+            stationOf = { lookedUpOn += Thread.currentThread(); null },
+        )
+        // The caller's own single thread, as a screen's main thread is.
+        val caller = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            val callerThread = caller.submit<Thread> { Thread.currentThread() }.get()
+            kotlinx.coroutines.runBlocking(caller.asCoroutineDispatcher()) {
+                client.fewestChangesVia(
+                    TripOrigin.Here(Coordinates(51.5282, -0.1337)),
+                    TripDestination.Place(Coordinates(51.5138, -0.0984), "St Paul's"),
+                    "490G000672",
+                )
+            }
+            assertTrue(lookedUpOn.isNotEmpty())
+            assertTrue(lookedUpOn.none { it == callerThread })
+        } finally {
+            caller.shutdown()
+        }
+    }
+
+    @Test
     fun `a train the Planner names by its platform alone leaves from that platform's station`() = runTest {
         // The same recorded answer: besides the 46, Thameslink from St Pancras's low-level
         // platforms, which the Planner names by an access area alone ("9100STPXBOX", no station).
@@ -486,7 +520,7 @@ class JourneyPlannerTest {
                 expectSuccess = true
                 install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
             }
-            return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", warn = { warnings += it }, stationOf = stationOf)
+            return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, warn = { warnings += it }, stationOf = stationOf)
         }
         val from = TripOrigin.Here(Coordinates(51.5282, -0.1337))
         val to = TripDestination.Place(Coordinates(51.5138, -0.0984), "St Paul's")

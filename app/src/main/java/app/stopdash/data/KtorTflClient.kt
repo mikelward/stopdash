@@ -57,6 +57,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -114,6 +115,10 @@ class KtorTflClient(
     // the Planner names by its platform alone; it reads the bundled index, so the planner calls it off
     // the main thread. None by default (tests, the other clients): such a route is dropped as unreadable.
     private val stationOf: (String) -> String? = { null },
+    // Where each request's answer is read: decoding a route's sequence (~600 KB for a National Rail
+    // line) and mapping a plan (which reads the bundled station index) froze the screen for seconds
+    // when it ran on a caller's main thread, as a screen's own loads do. A test swaps in its own.
+    private val decodeDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, JourneyPlanner, PostcodeResolver, PlaceSearch, VehicleSource {
     override suspend fun journeys(
         from: TripOrigin,
@@ -591,7 +596,7 @@ class KtorTflClient(
     private suspend fun <T> tflRequest(block: suspend (key: String?) -> T): T =
         requestPool.run { tflRequestInSlot(block) }
 
-    private suspend inline fun <T> tflRequestInSlot(block: suspend (key: String?) -> T): T {
+    private suspend inline fun <T> tflRequestInSlot(crossinline block: suspend (key: String?) -> T): T {
         // The key this request sent, so a refusal can be told as the key's (see below).
         var sent: String? = null
         return try {
@@ -603,7 +608,8 @@ class KtorTflClient(
             val key = appKey()
             sent = key
             rateLimiterFor(key).acquire()
-            block(key).also { if (key != null) keyAnswered(key, false) }
+            // Off the caller's thread, whoever calls: the answer is decoded and mapped there.
+            withContext(decodeDispatcher) { block(key) }.also { if (key != null) keyAnswered(key, false) }
         } catch (e: CancellationException) {
             // Never swallow cancellation — rethrow first so structured concurrency
             // isn't broken (a canceled refresh must actually cancel).
