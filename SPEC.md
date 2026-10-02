@@ -2369,9 +2369,14 @@ surface.)
   is the next two trains, the cap of a row's few times counting both. A canceled train goes at its
   scheduled time, as a timed one does; one delayed with no estimate stays while its board lists it,
   since it hasn't left (and a stale stop withholds it as any). It joins the row and
-  destination its timed trains are in, so a line or destination whose every train has no time
-  isn't drawn yet, and nothing that times a journey sees it: a trip, the widget and the watch
-  leave it out, as before. The TfL-run services a board also lists (Overground, Elizabeth line,
+  destination its timed trains are in, on its own platform when it names one: a train named for a
+  platform none of those timed trains is on is that platform's own, never drawn under another
+  platform's header or hidden in a row naming none. A line, platform or destination whose every train has no
+  time is drawn as its own row or route line, never as a "No departures" warning: it goes after
+  the trains that are coming, since none of its is known to be, and opening it follows its own
+  route, never another's train. A starred journey's card shows one only beside a train of the
+  journey to the same place, as its route to the far end goes unchecked. Nothing that times a
+  journey sees it: a trip, the widget and the watch leave it out, as before. The TfL-run services a board also lists (Overground, Elizabeth line,
   and tube trains on shared platforms, such as the District at Richmond) come from TfL alone. A board's train
   joins TfL's line by the **operator's code**, mapped to TfL's own line id, not by its brand name
   (maintainer, 2026-09-26): West Midlands Trains runs as two brands TfL has no line for, and

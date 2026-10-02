@@ -344,7 +344,9 @@ object Journeys {
                     val served = servedDestinations(sequence, segment.originId, destinations)
                     if (row.status == null || served.isEmpty()) return@mapNotNull null
                     reached += served
-                    return@mapNotNull row
+                    // The line's warning alone: trains with no time ([DepartureRow.untimed]) aren't
+                    // checked against the journey's far end, so a card never shows them as its own.
+                    return@mapNotNull row.copy(untimed = emptyList())
                 }
                 // The mode from any departure when TfL left it off the soonest one.
                 val mode = row.mode.ifBlank { row.upcoming.firstOrNull { it.mode.isNotBlank() }?.mode.orEmpty() }
@@ -385,10 +387,10 @@ object Journeys {
                     changes += JourneyChange(
                         stopId,
                         sequence.stopNames[stopId].orEmpty(),
-                        row.copy(upcoming = departures, destination = departures.first().destination),
+                        row.copy(upcoming = departures, destination = departures.first().destination, untimed = row.untimedTo(departures)),
                     )
                 }
-                if (calling.isEmpty()) null else row.copy(upcoming = calling, destination = calling.first().destination)
+                if (calling.isEmpty()) null else row.copy(upcoming = calling, destination = calling.first().destination, untimed = row.untimedTo(calling))
             }
         return JourneyTrains(kept, pending, unresolved, routeFailed, reached, changes, misses)
     }
@@ -435,6 +437,14 @@ object Journeys {
     /** [this] with [journey]'s ends in place of the sibling stop ids its routes call at. */
     private fun LineSequence.callingAtEnds(journey: StarredJourney): LineSequence =
         callingAt(journey.from.stopId).callingAt(journey.to.stopId)
+
+    /**
+     * [this] row's trains with no time ([DepartureRow.untimed]) to a destination one of [kept] runs to:
+     * drawn among those on a journey card, as on the stop's own. One to anywhere else isn't, since its
+     * path to the journey's far end goes unchecked; it would be a line of its own there.
+     */
+    private fun DepartureRow.untimedTo(kept: List<Departure>): List<UntimedTrain> =
+        untimed.filter { train -> kept.any { it.destination == train.train.destination } }
 
     /** Whether any of a journey card's direct [rows] has a train due: a status-only row has none. */
     fun directDue(rows: List<DepartureRow>): Boolean = rows.any { it.upcoming.isNotEmpty() }

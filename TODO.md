@@ -2356,10 +2356,10 @@ Builds on Phase 1's minimal line-status marking.
         rides beside a stop's arrivals (`TflClient.untimed`, `StopArrivals.untimed`, never saved),
         and joins its line's row and destination line in its place (`DepartureRows.withUntimed`,
         `Countdown.entries`).
-    - [ ] **A line or destination whose every train has no time**: one isn't drawn on its own
-          yet. A row with no timed train reads as a status row in about twenty places
-          (`upcoming.isEmpty()`), and a route row tapped with no timed train follows another
-          route's, so it needs a row and a focus of its own.
+    - [x] **A line or destination whose every train has no time**: drawn as its own row or
+          route line, after the coming trains (`DepartureRow.hasTrains` tells it from a status
+          row; `DepartureRows.withUntimed` gives it a row, `destinationLines` a line), and its
+          page follows its own train (`followedDeparture`).
     - [ ] **On a trip's boards, the widget and the watch**: each leaves them out, as before. A
           trip's board and route timing read only the timed trains; the widget and the watch draw
           from the saved snapshot, which doesn't carry them (a schema change).

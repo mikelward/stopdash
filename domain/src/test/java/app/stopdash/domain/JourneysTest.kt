@@ -160,6 +160,44 @@ class JourneysTest {
     }
 
     @Test
+    fun `a journey's row keeps the trains with no time to where its kept trains go, and only those`() {
+        val segment = Journeys.segment(journey, rail)!!
+        val toA = UntimedTrain(departure("Bottom A", 300), canceled = true)
+        // Bottom B trains don't call at Mid, so neither does a canceled one: never a line of its own on the card.
+        val toB = UntimedTrain(departure("Bottom B", 30), canceled = true)
+        val rows = DepartureRows.across(
+            listOf(
+                StopArrivals(
+                    "TOP", "TOP", listOf(departure("Bottom A", 120), departure("Bottom B", 60)), fetchedAt = now,
+                    untimed = listOf(toA, toB),
+                ),
+            ),
+            now,
+        )
+        val trains = Journeys.trains(segment, rows, mapOf("example" to rail))
+        assertEquals(listOf(toA), trains.rows.flatMap { it.untimed })
+    }
+
+    @Test
+    fun `a journey's warning row for a line whose every train has no time shows the warning alone`() {
+        val segment = Journeys.segment(journey, rail)!!
+        val disrupted = LineStatus("example", 6, "Severe Delays")
+        val rows = DepartureRows.across(
+            listOf(
+                StopArrivals(
+                    "TOP", "TOP", emptyList(), fetchedAt = now, lines = listOf(LineRef("example", "example", "tube")),
+                    untimed = listOf(UntimedTrain(departure("Bottom A", 120), canceled = true)),
+                ),
+            ),
+            now,
+            mapOf("example" to disrupted),
+        )
+        val row = Journeys.trains(segment, rows, mapOf("example" to rail)).rows.single()
+        assertEquals(disrupted, row.status)
+        assertEquals(emptyList<UntimedTrain>(), row.untimed)
+    }
+
+    @Test
     fun `a bus journey's way back boards across the road, found by stop area`() {
         assertEquals(JourneySegment("PARKN", setOf("HILLN")), Journeys.segment(parkToHill, bus()))
         assertEquals(JourneySegment("HILLS", setOf("PARKS")), Journeys.segment(parkToHill.reversed(), bus()))

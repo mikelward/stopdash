@@ -135,6 +135,32 @@ class FollowedDepartureTest {
         assertEquals(listOf(nearDelayed), routeUntimed(row, null))
     }
 
+    @Test
+    fun `a route whose every train has no time follows its own train, never another route's`() {
+        // One platform: a coming train to Far, and only a canceled one to Elsewhere.
+        val toFar = Departure("great-example", "Great Example", "", "Far", "Platform 1", now.plusSeconds(300), "national-rail")
+        val elsewhereCanceled = UntimedTrain(toFar.copy(destination = "Elsewhere", expectedArrival = now.plusSeconds(60)), canceled = true)
+        val row = DepartureRows.across(
+            listOf(StopArrivals("910GEXAMPLE", "Example", listOf(toFar), now, untimed = listOf(elsewhereCanceled))),
+            now,
+        ).single()
+        val elsewhere = RouteFocus.of(DepartureRows.destinationLines(row, 3).single { it.destination == "Elsewhere" })
+        assertEquals("Elsewhere", followedDeparture(row, elsewhere)?.destination)
+        assertEquals(emptyList<Departure>(), routeDepartures(row, elsewhere))
+        assertEquals(listOf(elsewhereCanceled), routeUntimed(row, elsewhere))
+    }
+
+    @Test
+    fun `a row whose every train has no time follows its soonest by schedule`() {
+        val canceled = UntimedTrain(
+            Departure("great-example", "Great Example", "", "Far", "Platform 1", now.plusSeconds(60), "national-rail"),
+            canceled = true,
+        )
+        val row = DepartureRows.across(listOf(StopArrivals("910GEXAMPLE", "Example", emptyList(), now, untimed = listOf(canceled))), now).single()
+        assertEquals(canceled.train, followedDeparture(row, null))
+        assertEquals(listOf(canceled), routeUntimed(row, null))
+    }
+
     private companion object {
         const val HBT = "940GZZLUHBT"
         const val HGT = "940GZZLUHGT"
