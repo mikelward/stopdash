@@ -93,4 +93,36 @@ class CountdownTest {
 
         assertEquals(listOf(bakerloo, central), Countdown.upcoming(listOf(central, bakerloo), now))
     }
+
+    @Test
+    fun `trains with no time take their place among the times, as words`() {
+        val five = departure(offsetSeconds = 300)
+        val twelve = departure(offsetSeconds = 720)
+        val canceled = UntimedTrain(departure(offsetSeconds = 420), canceled = true)
+        val delayed = UntimedTrain(departure(offsetSeconds = 60), canceled = false)
+        val entries = Countdown.entries(listOf(twelve, five), listOf(canceled, delayed))
+        assertEquals(
+            listOf(Countdown.Entry.Untimed(delayed), Countdown.Entry.Timed(five), Countdown.Entry.Untimed(canceled), Countdown.Entry.Timed(twelve)),
+            entries,
+        )
+        assertEquals("D · 5 · X · 12 min", Countdown.mergedLabel(entries, now, canceled = "X", delayed = "D"))
+        // The unit after the last number, wherever that falls; none with no number.
+        assertEquals("5 min · X", Countdown.mergedLabel(Countdown.entries(listOf(five), listOf(canceled)), now, "X", "D"))
+        assertEquals("X", Countdown.mergedLabel(Countdown.entries(emptyList(), listOf(canceled)), now, "X", "D"))
+        // Times alone read as [mergedLabel] always has.
+        assertEquals(Countdown.mergedLabel(listOf(five, twelve), now), Countdown.mergedLabel(Countdown.entries(listOf(five, twelve), emptyList()), now, "X", "D"))
+        // A timed train first on a tie.
+        val tied = UntimedTrain(departure(offsetSeconds = 300), canceled = true)
+        assertEquals(Countdown.Entry.Timed(five), Countdown.entries(listOf(five), listOf(tied)).first())
+    }
+
+    @Test
+    fun `a canceled train goes at its scheduled time, a delayed one stays while its board lists it`() {
+        val canceled = UntimedTrain(departure(offsetSeconds = 60), canceled = true)
+        val delayed = UntimedTrain(departure(offsetSeconds = 60), canceled = false)
+        assertTrue(Countdown.stillShown(canceled, now))
+        assertFalse(Countdown.stillShown(canceled, now.plusSeconds(60)))
+        // Past its schedule a delayed train hasn't left, which is when it's delayed.
+        assertTrue(Countdown.stillShown(delayed, now.plusSeconds(600)))
+    }
 }

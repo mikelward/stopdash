@@ -57,6 +57,16 @@ class WatchEnvelopeTest {
         (WatchEnvelopes.decode(payload.bytes) as WatchDecode.Ok).envelope
 
     @Test
+    fun `a stop's trains with no time are never saved, so the widget and the watch never have them`() {
+        val canceled = app.stopdash.domain.UntimedTrain(departure(2, line = "great-example", direction = "", mode = "national-rail"), canceled = true)
+        val stop = stop("910GEXAMPLE", listOf(departure(5, line = "great-example", direction = "", mode = "national-rail")))
+            .copy(untimed = listOf(canceled))
+        val back = stop.toPersisted().toDomain()
+        assertEquals(emptyList<app.stopdash.domain.UntimedTrain>(), back.untimed)
+        assertEquals(stop.departures, back.departures)
+    }
+
+    @Test
     fun `round trips to the same stops, and the same rows the widget builds`() {
         val snapshot = DeparturesSnapshot(
             stops = listOf(

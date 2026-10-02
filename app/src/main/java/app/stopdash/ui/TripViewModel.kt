@@ -914,7 +914,8 @@ class TripViewModel(
             // Dated by their oldest part: a National Rail board another screen fetched moments ago
             // keeps its age ([TflClient.fetchedAt]).
             val fetchedAt = client.stampOf(stopId, at)
-            if (shared) arrivals.put(stopId, departures, fetchedAt, client.railFeed(stopId), generation, source)
+            // Its board's trains with no time kept with them for the list, though no trip times them.
+            if (shared) arrivals.put(stopId, departures, fetchedAt, client.railFeed(stopId), generation, source, client.untimed(stopId))
             StopLive(departures, fetchedAt)
         } catch (e: CancellationException) {
             throw e

@@ -46,6 +46,73 @@ class DepartureRowsTest {
         )
     }
 
+    // A National Rail train of the synthetic Great Example line, from a station's board.
+    private fun rail(destination: String, offsetSeconds: Long, platform: String? = null) =
+        departure("great-example", "Great Example", "", destination, offsetSeconds, platform, mode = "national-rail")
+
+    @Test
+    fun `a train with no time joins its line's row by platform, else by destination, never as a departure`() {
+        val timed = rail("Far", 300, "Platform 4")
+        val unplatformed = rail("Farther", 600)
+        val samePlatform = UntimedTrain(rail("Far", 120, "Platform 4"), canceled = true)
+        // No platform yet: it joins the line's row that has a timed train to the same place.
+        val noPlatform = UntimedTrain(rail("Far", 900), canceled = false)
+        // Nowhere a timed train of its line goes: not drawn.
+        val elsewhere = UntimedTrain(rail("Nowhere", 200), canceled = true)
+        val stop = StopArrivals(
+            "910GEXAMPLE", "Example", listOf(timed, unplatformed), fetchedAt = now,
+            untimed = listOf(noPlatform, samePlatform, elsewhere),
+        )
+        val rows = DepartureRows.across(listOf(stop), now)
+        val far = rows.single { it.directionKey == "Platform 4" }
+        assertEquals(listOf(timed), far.upcoming)
+        // Soonest scheduled first.
+        assertEquals(listOf(samePlatform, noPlatform), far.untimed)
+        assertEquals(emptyList<UntimedTrain>(), rows.single { it.directionKey == "Farther" }.untimed)
+        assertTrue(rows.none { elsewhere in it.untimed })
+        // Never among a row's departures, which everything that times a train reads.
+        assertTrue(rows.all { row -> row.upcoming.none { d -> stop.untimed.any { it.train == d } } })
+    }
+
+    @Test
+    fun `a canceled train is gone from its row at its scheduled time, a delayed one isn't`() {
+        val timed = rail("Far", 600, "Platform 4")
+        val canceled = UntimedTrain(rail("Far", -30, "Platform 4"), canceled = true)
+        val delayed = UntimedTrain(rail("Far", -30, "Platform 4"), canceled = false)
+        val stop = StopArrivals("910GEXAMPLE", "Example", listOf(timed), fetchedAt = now, untimed = listOf(canceled, delayed))
+        assertEquals(listOf(delayed), DepartureRows.across(listOf(stop), now).single().untimed)
+    }
+
+    @Test
+    fun `a train with no time ending where the rider is goes nowhere for them, as a timed one doesn't`() {
+        val timed = rail("Far", 300, "Platform 4")
+        val here = UntimedTrain(rail("Far", 120, "Platform 4").copy(destinationId = "910GHERE"), canceled = true)
+        val stop = StopArrivals(
+            "910GEXAMPLE", "Example", listOf(timed), fetchedAt = now,
+            untimed = listOf(here),
+            nearer = Terminating.Nearer(ids = setOf("910GHERE")),
+        )
+        assertEquals(emptyList<UntimedTrain>(), DepartureRows.across(listOf(stop), now).single().untimed)
+    }
+
+    @Test
+    fun `a destination line puts its trains with no time among its times, capped together`() {
+        val row = rowWith(rail("Far", 300), rail("Far", 600), rail("Far", 900)).copy(
+            untimed = listOf(
+                UntimedTrain(rail("Far", 120), canceled = true),
+                UntimedTrain(rail("Far", 450), canceled = false),
+                UntimedTrain(rail("Elsewhere", 200), canceled = true),
+            ),
+        )
+        val line = DepartureRows.destinationLines(row, maxTimes = 3).single()
+        // The canceled one before the first time and the delayed one after it fill the cap of three, so
+        // the later times are past it.
+        assertEquals(listOf(now.plusSeconds(300)), line.times.map { it.expectedArrival })
+        assertEquals(listOf(true, false), line.untimed.map { it.canceled })
+        // One for a destination no timed train goes to isn't drawn on its own.
+        assertTrue(line.untimed.none { it.train.destination == "Elsewhere" })
+    }
+
     @Test
     fun `destinationLines yields one group for a non-branching row`() {
         val row = rowWith(

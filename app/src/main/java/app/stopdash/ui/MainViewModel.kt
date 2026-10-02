@@ -33,6 +33,7 @@ import app.stopdash.domain.StopClosureCache
 import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.StopDisruptionBatch
 import app.stopdash.domain.TflClient
+import app.stopdash.domain.UntimedTrain
 import app.stopdash.domain.stopPlaceKey
 import app.stopdash.domain.TflException
 import app.stopdash.domain.UsageEvent
@@ -800,6 +801,13 @@ class MainViewModel(
         else -> client.railFeed(stopId)
     }
 
+    // A stop's trains with no time after its arrivals ([TflClient.untimed]), found as [railFeedOf] is.
+    private fun untimedOf(stopId: String, departures: List<Departure>?, shared: ArrivalsCache.Entry?): List<UntimedTrain> = when {
+        departures == null -> emptyList()
+        shared != null -> shared.untimed
+        else -> client.untimed(stopId)
+    }
+
     private suspend fun fetchBatch(
         stops: List<StopRef>,
         prior: Map<String, StopArrivals>,
@@ -1067,6 +1075,7 @@ class MainViewModel(
                             towards = stop.towards,
                             nearer = Terminating.nearer(stop.id, places),
                             freshRailFeed = railFeedOf(stop.id, departures, shared[i]),
+                            freshUntimed = untimedOf(stop.id, departures, shared[i]),
                         )
                         waiting -= stop.id
                         report()
@@ -1156,6 +1165,7 @@ class MainViewModel(
                 towards = stop.towards,
                 nearer = nearer,
                 freshRailFeed = railFeedOf(stop.id, departures, shared[i]),
+                freshUntimed = untimedOf(stop.id, departures, shared[i]),
             )?.let { merged += it }
         }
 

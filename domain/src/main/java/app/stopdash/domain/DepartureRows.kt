@@ -118,12 +118,18 @@ object DepartureRows {
             // Directions are inferred first, over the whole stop, so a hidden terminating train
             // still lends its direction to a kept one on its platform, as in [shows].
             val shown = Terminating.drop(inferDirections(stop.departures), stop.nearer)
-            val timed =
+            // The board's trains with no time, by the same rule: a canceled train ending here goes
+            // nowhere for the rider either. One canceled goes at its scheduled time ([Countdown.stillShown]).
+            val untimed = Terminating.drop(stop.untimed.map { it.train }, stop.nearer).toHashSet()
+                .let { kept -> stop.untimed.filter { it.train in kept && Countdown.stillShown(it, now) } }
+            val timed = withUntimed(
                 forStop(
                     stop.stopId, stop.stopName, shown, now, lineStatuses, stop.fetchedAt,
                     stop.clusterId, stop.stopLetter, stop.bearing, stop.towards, splitPlatforms,
                     lineModes = stop.lines.associate { it.id to it.mode },
-                )
+                ),
+                untimed,
+            )
             // A line whose every live prediction was hidden has departures, just none that help: it
             // mustn't surface as a "No departures" status row. Counted over live predictions only,
             // like the timed rows, so an expired onward one doesn't make it look shown.
@@ -176,15 +182,48 @@ object DepartureRows {
         row: DepartureRow,
         maxTimes: Int,
         topology: RouteTopology = RouteTopology.EMPTY,
-    ): List<DestinationGroup> =
-        row.upcoming
+    ): List<DestinationGroup> {
+        fun keyOf(departure: Departure) =
+            departure.destination to topology.grouping(row.lineId, row.stopId, departure.destination, departure.branch).mergeKey
+        // A train with no time joins its destination's line among the timed trains, and only that:
+        // one with none there isn't drawn on its own (TODO, *Show delays and cancellations honestly*).
+        val untimed = row.untimed.groupBy { keyOf(it.train) }
+        return row.upcoming
             .map { it to topology.grouping(row.lineId, row.stopId, it.destination, it.branch) }
             .groupBy { (departure, grouping) -> departure.destination to grouping.mergeKey }
             .map { (key, entries) ->
+                // The group's times and its trains with no time in one order, capped together, so a
+                // canceled train shows in its place among the next few rather than past them.
+                val times = entries.map { it.first }
+                val shown = Countdown.entries(times, untimed[key].orEmpty()).take(maxTimes)
                 // All entries in a group share a merge key (the same forward path from this stop),
                 // so they also share the branch label the group resolved to.
-                DestinationGroup(key.first, entries.first().second.label, entries.map { it.first }.take(maxTimes))
+                DestinationGroup(
+                    key.first,
+                    entries.first().second.label,
+                    shown.mapNotNull { (it as? Countdown.Entry.Timed)?.departure },
+                    shown.mapNotNull { (it as? Countdown.Entry.Untimed)?.train },
+                )
             }
+    }
+
+    /**
+     * [rows] (one stop's timed rows, soonest first) each with the trains of its line and way that [untimed]
+     * holds: those its row's direction key names ([directionKeyOf], a platform or a destination), else the
+     * soonest row of the line with a timed train to the same destination. One with neither isn't drawn
+     * (TODO, *Show delays and cancellations honestly*).
+     */
+    internal fun withUntimed(rows: List<DepartureRow>, untimed: List<UntimedTrain>): List<DepartureRow> {
+        if (untimed.isEmpty()) return rows
+        val joined = untimed.groupBy { train ->
+            rows.indexOfFirst { it.lineId == train.train.lineId && it.directionKey == directionKeyOf(train.train) }
+                .takeIf { it >= 0 }
+                ?: rows.indexOfFirst { row -> row.lineId == train.train.lineId && row.upcoming.any { it.destination == train.train.destination } }
+        }
+        return rows.mapIndexed { i, row ->
+            joined[i]?.let { row.copy(untimed = it.sortedBy { train -> train.train.expectedArrival }) } ?: row
+        }
+    }
 
     /**
      * Collapse the "near me now" rows so a **(line, direction)** appears once — from the
@@ -1040,6 +1079,11 @@ data class StopArrivals(
     // stop, and saved with it so the widget's location-free refresh drops the same ones. Empty for
     // a stop with no known distance.
     val nearer: Terminating.Nearer = Terminating.Nearer(),
+    // The trains this stop's National Rail board listed with no time to count down ([UntimedTrain]:
+    // canceled, or delayed with no estimate), apart from [departures] so nothing times them. Shown in
+    // their rows by the in-app list ([DepartureRow.untimed]); not persisted, so a surface drawing from
+    // the saved snapshot (the widget, the watch) never has them.
+    val untimed: List<UntimedTrain> = emptyList(),
 )
 
 /**
@@ -1054,4 +1098,7 @@ data class DestinationGroup(
     val destination: String,
     val branch: String?,
     val times: List<Departure>,
+    // The destination's trains with no time to count down ([DepartureRow.untimed]), drawn among
+    // [times] in their place ([Countdown.entries]); empty but in the in-app list.
+    val untimed: List<UntimedTrain> = emptyList(),
 )

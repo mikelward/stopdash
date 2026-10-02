@@ -17,7 +17,25 @@ import kotlinx.coroutines.sync.withLock
 interface RailBoardSource {
     val available: Boolean
     suspend fun departures(crs: String): List<Departure>
+
+    /** [crs]'s whole board: its trains with a time, and those it lists with none ([RailBoard.untimed]). */
+    suspend fun board(crs: String): RailBoard = RailBoard(departures(crs))
 }
+
+/**
+ * A National Rail station's board: the trains with a time to count down ([departures]), and those it
+ * lists with none ([untimed]), kept apart so only a surface that says what they are shows them.
+ */
+data class RailBoard(val departures: List<Departure>, val untimed: List<UntimedTrain> = emptyList())
+
+/**
+ * A National Rail train its board lists with no time to count down: [canceled], or "Delayed" with no
+ * estimate (SPEC *National Rail*). [train] is it as a departure would be, its
+ * [Departure.expectedArrival] the time it was scheduled to leave: that places it among the trains with
+ * a time, and is never counted down. Its own type, never in a list of [Departure]s, so nothing that
+ * times a journey or a countdown can take it for a train that's coming.
+ */
+data class UntimedTrain(val train: Departure, val canceled: Boolean)
 
 /**
  * Where a National Rail station's National Rail times stand after its last fetch: the board came
@@ -125,6 +143,12 @@ class RailAwareTflClient(
 
     override fun fetchedAt(stopId: String): Instant? = boardTimes[stopId]
 
+    // Each stop's trains with no time from its last board ([UntimedTrain]); absent when its last
+    // arrivals carried no board.
+    private val untimedByStop = ConcurrentHashMap<String, List<UntimedTrain>>()
+
+    override fun untimed(stopId: String): List<UntimedTrain> = untimedByStop[stopId].orEmpty()
+
     // With National Rail times on, a station's board goes under whichever of its stops this client
     // picked, so its arrivals aren't another client's to reuse; with none, it's TfL's alone.
     override fun shareable(stopId: String): Boolean = !rail.available || codes().crsFor(stopId) == null
@@ -136,6 +160,7 @@ class RailAwareTflClient(
 
     override suspend fun arrivals(stopId: String): List<Departure> {
         boardTimes.remove(stopId)
+        untimedByStop.remove(stopId)
         val crs = codes().crsFor(stopId)
         if (crs == null || !rail.available) {
             // A station a key would give National Rail times says so; any other stop has none to give.
@@ -198,6 +223,7 @@ class RailAwareTflClient(
     override suspend fun arrivals(stopId: String, railBoard: Boolean): List<Departure> {
         if (railBoard || !hasRailBoard(stopId)) return arrivals(stopId)
         boardTimes.remove(stopId)
+        untimedByStop.remove(stopId)
         feeds.remove(stopId)
         codes().crsFor(stopId)?.let { crs -> ownersLock.withLock { if (owners[crs]?.first == stopId) owners.remove(crs) } }
         return tfl.arrivals(stopId)
@@ -213,26 +239,30 @@ class RailAwareTflClient(
         fromTfl + fetched?.departures.orEmpty()
     }
 
-    // [stopId]'s feed and board time once its arrivals carry [board], or would have (null: it failed).
+    // [stopId]'s feed, board time and untimed trains once its arrivals carry [board], or would have
+    // (null: it failed).
     private fun showed(stopId: String, board: ArrivalsCache.Entry?) {
         feeds[stopId] = if (board == null) RailFeed.UNAVAILABLE else RailFeed.LIVE
-        board?.let { boardTimes[stopId] = it.fetchedAt }
+        board?.let {
+            boardTimes[stopId] = it.fetchedAt
+            untimedByStop[stopId] = it.untimed
+        }
     }
 
     /** [crs]'s board, kept or asked for, with when it was fetched; null when it failed (logged). */
     private suspend fun fetchBoard(crs: String, stopId: String): ArrivalsCache.Entry? {
-        suspend fun request(): List<Departure>? =
+        suspend fun request(): RailBoard? =
             try {
-                rail.departures(crs)
+                rail.board(crs)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TflException) {
                 warn("national rail board failed for stop $stopId: ${e.message}")
                 null
             }
-        val cache = boards ?: return request()?.let { ArrivalsCache.Entry(it, SteadyClock.stamp(clock())) }
+        val cache = boards ?: return request()?.let { ArrivalsCache.Entry(it.departures, SteadyClock.stamp(clock()), untimed = it.untimed) }
         // Kept, and asked for once however many screens and stops ask at the same time.
-        return cache.fetchOnce(BOARD_KEY + crs, clock(), BOARD_SOURCE) { request() }
+        return cache.fetchBoardOnce(BOARD_KEY + crs, clock(), BOARD_SOURCE) { request() }
     }
 
     private suspend fun takeHandoff(crs: String): ArrivalsCache.Entry? = ownersLock.withLock {

@@ -2,7 +2,9 @@ package app.stopdash.data
 
 import app.stopdash.domain.Departure
 import app.stopdash.domain.NATIONAL_RAIL_MODE
+import app.stopdash.domain.RailBoard
 import app.stopdash.domain.TFL_RUN_OPERATORS
+import app.stopdash.domain.UntimedTrain
 import app.stopdash.domain.cleanStopName
 import app.stopdash.domain.railLineId
 import app.stopdash.domain.riderLineName
@@ -46,18 +48,23 @@ data class DarwinLocationDto(
 
 private val UK = ZoneId.of("Europe/London")
 
+/** The board's trains with a time ([toBoard]'s departures). */
+fun DarwinBoardDto.toDepartures(warn: (String) -> Unit = {}): List<Departure> = toBoard(warn).departures
+
 /**
- * The board's departures stopdash stands behind (SPEC principle 1): each with an expected time,
- * as an absolute instant so its countdown runs like a TfL prediction. Left out: a cancelled train,
- * one "Delayed" with no estimate, one with no operator, and the TfL-run services TfL's own
- * feed already carries. Times are UK clock times on the board's own date ([generatedAt]), rolled
- * over midnight when they fall far from it. Throws when a board with trains has no readable
- * [generatedAt], or when every train with a time has one it can't read (missing or garbled; those
- * are left out and reported via [warn]), so the failure is reported rather than read as empty.
+ * The board as stopdash shows it (SPEC principle 1): each train with an expected time, as an absolute
+ * instant so its countdown runs like a TfL prediction, and apart from them each canceled train and
+ * each "Delayed" with no estimate, at its scheduled time and never counted down ([RailBoard.untimed]).
+ * Left out: a train with no operator, and the TfL-run services TfL's own feed already carries. Times
+ * are UK clock times on the board's own date ([generatedAt]), rolled over midnight when they fall far
+ * from it. Throws when a board with trains has no readable [generatedAt], or when every train with a
+ * time has one it can't read (missing or garbled; those are left out and reported via [warn]), so the
+ * failure is reported rather than read as empty. An untimed train whose schedule can't be read is left
+ * out and reported too.
  */
-fun DarwinBoardDto.toDepartures(warn: (String) -> Unit = {}): List<Departure> {
+fun DarwinBoardDto.toBoard(warn: (String) -> Unit = {}): RailBoard {
     val services = trainServices.orEmpty()
-    if (services.isEmpty()) return emptyList()
+    if (services.isEmpty()) return RailBoard(emptyList())
     // A board with trains but no readable time it was made at can't date them: a failure (the
     // client reports it), not a quiet "no departures".
     val generated = generatedAt?.let {
@@ -72,25 +79,17 @@ fun DarwinBoardDto.toDepartures(warn: (String) -> Unit = {}): List<Departure> {
     // time), and reported below, so a changed feed doesn't pass for an empty timetable.
     var timed = 0
     var unreadable = 0
-    val departures = services.mapNotNull { service ->
-        if (service.isCancelled) return@mapNotNull null
-        if (service.operatorCode?.uppercase() in TFL_RUN_OPERATORS) return@mapNotNull null
-        val operator = service.operator?.trim()?.ifBlank { null } ?: return@mapNotNull null
-        val expected = when (val etd = service.etd?.trim()) {
-            "Delayed", "Cancelled" -> return@mapNotNull null
-            // A missing time (no estimate, or "On time" with no schedule) is unreadable, not skipped.
-            "On time" -> service.std.orEmpty()
-            else -> etd.orEmpty()
-        }
-        timed++
-        val time = parseClock(expected.trim()) ?: run {
-            unreadable++
-            return@mapNotNull null
-        }
-        val at = instantNear(now, time) ?: return@mapNotNull null
+    var unscheduled = 0
+    val departures = mutableListOf<Departure>()
+    val untimed = mutableListOf<UntimedTrain>()
+    for (service in services) {
+        if (service.operatorCode?.uppercase() in TFL_RUN_OPERATORS) continue
+        val operator = service.operator?.trim()?.ifBlank { null } ?: continue
+        val etd = service.etd?.trim()
+        val canceled = service.isCancelled || etd == "Cancelled"
         // Each place cleaned on its own, so a train dividing for two keeps neither's qualifier.
         val destination = service.destination.orEmpty().mapNotNull { it.locationName?.trim()?.ifBlank { null }?.let(::cleanStopName) }
-        Departure(
+        fun train(at: Instant) = Departure(
             lineId = railLineId(operator, service.operatorCode),
             // Named as a rider knows it, here where the feed's name comes in (SPEC *Line pill colors*).
             lineName = riderLineName(operator, NATIONAL_RAIL_MODE),
@@ -100,6 +99,24 @@ fun DarwinBoardDto.toDepartures(warn: (String) -> Unit = {}): List<Departure> {
             expectedArrival = at,
             mode = NATIONAL_RAIL_MODE,
         )
+        if (canceled || etd == "Delayed") {
+            // Placed by its schedule, never counted down.
+            val at = parseClock(service.std.orEmpty().trim())?.let { instantNear(now, it) }
+            if (at == null) unscheduled++ else untimed += UntimedTrain(train(at), canceled)
+            continue
+        }
+        val expected = when (etd) {
+            // A missing time (no estimate, or "On time" with no schedule) is unreadable, not skipped.
+            "On time" -> service.std.orEmpty()
+            else -> etd.orEmpty()
+        }
+        timed++
+        val time = parseClock(expected.trim()) ?: run {
+            unreadable++
+            continue
+        }
+        val at = instantNear(now, time) ?: continue
+        departures += train(at)
     }
     if (unreadable > 0) {
         // Every timed train unreadable is a failed board (the caller reports it), not an empty one,
@@ -107,7 +124,8 @@ fun DarwinBoardDto.toDepartures(warn: (String) -> Unit = {}): List<Departure> {
         check(unreadable < timed) { "board times unreadable" }
         warn("national rail board: $unreadable train(s) with unreadable times left out")
     }
-    return departures
+    if (unscheduled > 0) warn("national rail board: $unscheduled canceled or delayed train(s) with unreadable schedules left out")
+    return RailBoard(departures, untimed)
 }
 
 /**

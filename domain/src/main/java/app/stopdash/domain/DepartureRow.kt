@@ -104,6 +104,11 @@ data class DepartureRow(
     // all, the union does. Empty for a stop in no hub, or when the hub lookup failed. Resolved per
     // refresh alongside [hubName]; not persisted (like the disruption itself).
     val placeAliases: List<String> = emptyList(),
+    // The trains of this row's line and way its station's National Rail board listed with no time
+    // ([UntimedTrain]: canceled, or delayed with no estimate), soonest scheduled first: drawn in the
+    // row's countdowns in their place, never timed (SPEC *National Rail*). Only the in-app list has
+    // them ([StopArrivals.untimed]); empty everywhere else.
+    val untimed: List<UntimedTrain> = emptyList(),
 )
 
 /**

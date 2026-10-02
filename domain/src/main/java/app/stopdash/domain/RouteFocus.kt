@@ -49,3 +49,17 @@ fun routeDepartures(row: DepartureRow, focus: RouteFocus?, topology: RouteTopolo
             topology.grouping(row.lineId, row.stopId, it.destination, it.branch).mergeKey == route
     }
 }
+
+/**
+ * The trains with no time ([DepartureRow.untimed]) on the route [routeDepartures] lists: the followed
+ * train's destination and topology route, as the card groups them ([DepartureRows.destinationLines]).
+ * Empty for a status row.
+ */
+fun routeUntimed(row: DepartureRow, focus: RouteFocus?, topology: RouteTopology = RouteTopology.EMPTY): List<UntimedTrain> {
+    val followed = followedDeparture(row, focus, topology) ?: return emptyList()
+    val route = topology.grouping(row.lineId, row.stopId, followed.destination, followed.branch).mergeKey
+    return row.untimed.filter {
+        it.train.destination == followed.destination &&
+            topology.grouping(row.lineId, row.stopId, it.train.destination, it.train.branch).mergeKey == route
+    }
+}

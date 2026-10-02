@@ -68,6 +68,23 @@ class ArrivalsCacheTest {
     }
 
     @Test
+    fun `a stop's trains with no time are kept with its arrivals`() = runBlocking {
+        val cache = ArrivalsCache()
+        val canceled = UntimedTrain(departure(4), canceled = true)
+        val tfl = object : TflClient {
+            override suspend fun arrivals(stopId: String): List<Departure> = listOf(departure(3))
+            override fun untimed(stopId: String): List<UntimedTrain> = listOf(canceled)
+            override suspend fun lineStatuses(lineIds: Collection<String>): List<LineStatus> = emptyList()
+            override suspend fun stopDisruptions(stopId: String): List<StopDisruption> = emptyList()
+        }
+        val client = CachingTflClient(tfl, cache, clock = { now })
+        assertEquals(listOf(departure(3)), client.arrivals("910GEXAMPLE"))
+        assertEquals(listOf(canceled), client.untimed("910GEXAMPLE"))
+        assertEquals(listOf(canceled), cache.get("910GEXAMPLE", now)?.untimed)
+        assertEquals(listOf(departure(3)), cache.get("910GEXAMPLE", now)?.departures)
+    }
+
+    @Test
     fun `an entry dated after the clock, set back since, is never handed out`() {
         val cache = ArrivalsCache()
         cache.put("940GZZLUOXC", listOf(departure(3)), now)

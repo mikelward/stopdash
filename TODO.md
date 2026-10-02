@@ -2349,8 +2349,20 @@ Builds on Phase 1's minimal line-status marking.
   - [ ] **Check the board parser against a live response** and record a real fixture (a public
         station, no key in the fixture). The endpoint in `KtorDarwinClient` matches the Rail Data
         Marketplace's own for the Live Departure Board product (maintainer, 2026-09-24).
-  - [ ] **Show delays and cancellations honestly**: a "Delayed" train with no estimate as "?",
-        a cancelled one as cancelled, rather than leaving them out.
+  - [x] **Show delays and cancellations honestly**: a "Delayed" train with no estimate as "Delayed",
+        a canceled one as canceled, rather than leaving them out. Done for the in-app list and a
+        route's page (maintainer, 2026-10-02): such a train comes apart from the timed ones
+        (`RailBoard.untimed`, its own `UntimedTrain` type, never a `Departure` in a list of them),
+        rides beside a stop's arrivals (`TflClient.untimed`, `StopArrivals.untimed`, never saved),
+        and joins its line's row and destination line in its place (`DepartureRows.withUntimed`,
+        `Countdown.entries`).
+    - [ ] **A line or destination whose every train has no time**: one isn't drawn on its own
+          yet. A row with no timed train reads as a status row in about twenty places
+          (`upcoming.isEmpty()`), and a route row tapped with no timed train follows another
+          route's, so it needs a row and a focus of its own.
+    - [ ] **On a trip's boards, the widget and the watch**: each leaves them out, as before. A
+          trip's board and route timing read only the timed trains; the widget and the watch draw
+          from the saved snapshot, which doesn't carry them (a schema change).
   - [x] **Say why a rail line has no times** (maintainer, 2026-09-24): a status row says "No key"
         (opening Settings) with no key set, "No data" when the board failed or none covers it,
         and a dash when its source answered with no trains — TfL lines included.

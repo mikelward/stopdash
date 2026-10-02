@@ -2361,9 +2361,18 @@ surface.)
   oldest part, so a board read from the cache keeps its own age. A
   station whose own board the service refuses takes the board its trains come on: St Pancras's
   low-level Thameslink platforms (SPL) read St Pancras's (STP).
-  Only times National Rail gives are shown: a cancelled train, or one "Delayed" with no estimate,
-  is left out, and the TfL-run services it also lists (Overground, Elizabeth line, and tube trains
-  on shared platforms, such as the District at Richmond) come from TfL alone. A board's train
+  Only times National Rail gives are counted down. A canceled train, or one "Delayed" with no
+  estimate, has none, so the in-app list shows it as a word in its place among its line's times,
+  by when it was scheduled: "Canceled" ("Cancelled" in British English, which most riders see), or
+  "Delayed" for one with no estimate (maintainer, 2026-10-02; it used to be left out). A word, not
+  "?", which already means a countdown too stale to show. "5 min · Canceled"
+  is the next two trains, the cap of a row's few times counting both. A canceled train goes at its
+  scheduled time, as a timed one does; one delayed with no estimate stays while its board lists it,
+  since it hasn't left (and a stale stop withholds it as any). It joins the row and
+  destination its timed trains are in, so a line or destination whose every train has no time
+  isn't drawn yet, and nothing that times a journey sees it: a trip, the widget and the watch
+  leave it out, as before. The TfL-run services a board also lists (Overground, Elizabeth line,
+  and tube trains on shared platforms, such as the District at Richmond) come from TfL alone. A board's train
   joins TfL's line by the **operator's code**, mapped to TfL's own line id, not by its brand name
   (maintainer, 2026-09-26): West Midlands Trains runs as two brands TfL has no line for, and
   "Northern" would take the tube line's id. A line TfL has no entry for at all (the Caledonian
