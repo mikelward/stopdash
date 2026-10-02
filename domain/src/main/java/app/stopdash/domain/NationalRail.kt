@@ -366,4 +366,7 @@ val NATIONAL_RAIL_LINE_IDS: Set<String> = TFL_RAIL_LINE_IDS.values.toSet()
  */
 fun railLineId(operator: String, operatorCode: String? = null): String =
     operatorCode?.uppercase()?.let { TFL_RAIL_LINE_IDS[it] }
-        ?: operator.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
+        ?: operator.lowercase().replace(NOT_SLUG, "-").trim('-')
+
+/** What a line-id slug leaves out ([railLineId]): compiled once, as it's asked per departure. */
+private val NOT_SLUG = Regex("[^a-z0-9]+")

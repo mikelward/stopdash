@@ -90,7 +90,7 @@ fun resolveDisruption(
 // [pattern] is a regex, matched in [cased] where given: [text] before it was lowercased, the same
 // length for every alphabet TfL writes in, so a match there is negated or not as in [text].
 private fun saidOutright(text: String, pattern: String, cased: String = text): Boolean =
-    Regex(pattern).findAll(cased).any { match ->
+    Patterns.of(pattern).findAll(cased).any { match ->
         !NEGATED_JUST_BEFORE.containsMatchIn(text.substring(0, minOf(match.range.first, text.length))) &&
             !ENDED.containsMatchIn(clauseAfter(text, match.range.last + 1))
     }
