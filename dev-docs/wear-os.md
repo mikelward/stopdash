@@ -287,7 +287,9 @@ the watch app ships would break pairing between old and new installs.
   while its check is live turns into its ⚠ at that midnight in London, so the tile's timeline, the
   app's ticker and the complication's timeline break there too (as the widget's redraw does). Each planned
   alert's `dismissed` flag is set by the phone, as the status's is, and the watch keeps its
-  identity because that is what the flag marks.
+  identity because that is what the flag marks. So is each status's `behind` (the stops and ways
+  the app found its bus alert wholly behind, `DeparturesSnapshot.withAlertsBehind`): the watch has
+  no routes, so a row there carries no ⚠ only where the phone placed the alert.
   A line with no live check (never checked, the lookup failed, the check aged out) turns the
   tile's and the app's note to "Couldn't check for disruptions" and the tile's foot to Refresh.
   Stop closures still stay off: they have no age-stamped rendering.

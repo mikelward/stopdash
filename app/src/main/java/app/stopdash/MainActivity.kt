@@ -62,6 +62,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import app.stopdash.data.AndroidLocationProvider
+import app.stopdash.data.DataStoreAlertsBehindStore
 import app.stopdash.data.DataStoreAppSettings
 import app.stopdash.data.DataStoreDismissedAlertsStore
 import app.stopdash.data.DataStoreFavoritePlacesStore
@@ -169,6 +170,8 @@ import app.stopdash.ui.LocalHideUndoCarrier
 import app.stopdash.ui.LocalOnTheWay
 import app.stopdash.ui.LocalOnTheWayBanner
 import app.stopdash.ui.LocalRouteStops
+import app.stopdash.ui.LocalAlertsBehind
+import app.stopdash.ui.AlertsBehindRecorder
 import app.stopdash.ui.LocalRouteTopology
 import app.stopdash.ui.LocationBanner
 import app.stopdash.ui.LocationGate
@@ -1890,6 +1893,10 @@ class MainActivity : ComponentActivity() {
             CompositionLocalProvider(
                 LocalRouteTopology provides routeTopology.value,
                 LocalRouteStops provides routeStops(appContext),
+                // The near-me list keeps its verdicts on alerts behind a stop for the widget and the watch.
+                LocalAlertsBehind provides remember(appContext) {
+                    AlertsBehindRecorder(DataStoreAlertsBehindStore.from(appContext, warn = ::logDepartureWarning), ::logDepartureWarning)
+                },
             ) {
                 MainScreen(
                     listState = listState,

@@ -262,9 +262,14 @@ object WatchEnvelopes {
                     directions = status.directions.map { it.copy(fingerprint = null) },
                 )
             }
+        // Each status's verdicts on alerts behind a stop, too, only for the stops sent: a stop trimmed
+        // from the envelope isn't named by its verdict either (Codex, PR #471).
         fun statusesFor(kept: List<PersistedStop>): List<PersistedLineStatus> {
             val lines = linesOfPersisted(kept)
+            val ids = kept.mapTo(HashSet()) { it.stopId }
+            fun List<PersistedStopWay>.at() = filter { it.stopId in ids }
             return allStatuses.filter { it.lineId in lines }
+                .map { status -> status.copy(behind = status.behind.at(), directions = status.directions.map { it.copy(behind = it.behind.at()) }) }
         }
         // Kept whatever stops go: a few KB at most, and only while TfL's routes differ from the asset.
         val lines = routeLines.toSortedMap().mapValues { (_, patterns) -> patterns.map(PersistedRoutePattern::of) }

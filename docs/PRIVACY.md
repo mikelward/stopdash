@@ -73,7 +73,7 @@ can show it too: the widget's stops (their names and IDs, and the nearby stops e
 against, which are worked out from your phone's last location), their departures, TfL's public
 service status for their lines (such as "Severe Delays") and the work TfL has announced on them
 for a later day (such as a weekend closure), for each direction where TfL says an
-alert only affects one way, and whether you dismissed it in the app, which rows you've starred, and which kinds of transport you've hidden, plus TfL's current routes for a branching line where they differ from the ones built into the app (public data, the same for everyone). It never sends your coordinates or your API keys, and the watch never contacts TfL,
+alert only affects one way, whether you dismissed it in the app, and which of those stops a bus alert is wholly behind (worked out on the phone from TfL's routes), which rows you've starred, and which kinds of transport you've hidden, plus TfL's current routes for a branching line where they differ from the ones built into the app (public data, the same for everyone). It never sends your coordinates or your API keys, and the watch never contacts TfL,
 National Rail or anything else itself. In the other direction, the watch sends the phone its
 requests to refresh, which carry only a random request number, and the row each StopDash complication shows (its stop ID, line and direction), so the phone keeps those rows in what it sends. This goes through **Google Play
 services' Wearable Data Layer**: over Bluetooth when the watch is near, but when it isn't (a watch

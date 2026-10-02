@@ -94,6 +94,20 @@ data class DeparturesSnapshot(
     fun withDismissals(dismissed: Set<DismissedAlert>): DeparturesSnapshot = withDismissals(Dismissals(dismissed))
 
     /**
+     * This snapshot as a glance surface shows it, given the app's [verdicts] that a bus alert lies
+     * wholly behind a stop ([LineStatusCheck.withAlertsBehind]): applied where the snapshot is read,
+     * as [withDismissals] is, never stored with it, so a check the widget's own refresh makes takes
+     * the verdicts too. Only those at the stops it carries: a verdict says something about the stop it
+     * names and nothing else, and the watch is sent no stop beyond the ones it shows (Codex, PR #471).
+     */
+    fun withAlertsBehind(verdicts: Set<AlertBehind>): DeparturesSnapshot {
+        val carried = stops.mapTo(HashSet()) { it.stopId }
+        val byLine = verdicts.filter { it.stopId in carried }.groupBy { it.lineId }
+        val placed = lineStatuses.mapValues { (line, check) -> check.withAlertsBehind(byLine[line].orEmpty()) }
+        return if (placed == lineStatuses) this else copy(lineStatuses = placed)
+    }
+
+    /**
      * The next instant after [now] at which what this snapshot shows changes on its own: its
      * staleness boundary, or a line check's expiry (a disruption's mark goes, or a line becomes
      * unchecked). Null when none is left. A static surface schedules its redraw here, so a mark
@@ -172,6 +186,26 @@ data class LineStatusCheck(
     // alert, put away on its own, and only while it's still to come ([shown]).
     val dismissedPlanned: Set<String> = emptySet(),
 ) {
+    /**
+     * This check with [verdicts] placing its alerts ([LineStatus.behindAt]): each status, the line's
+     * and each direction's, takes the stops and ways its own alert, by its full words ([fingerprint],
+     * [directionFingerprints]), was found behind. Only while it's the line's sole alert, as when the
+     * verdict was reached ([RouteDisruption.scopable]): with another under way since, the one shown
+     * no longer speaks for the rest.
+     */
+    fun withAlertsBehind(verdicts: Collection<AlertBehind>): LineStatusCheck {
+        fun ways(status: LineStatus, fingerprint: String): Set<StopWay> =
+            if (!known || !status.soleAlert) emptySet()
+            else verdicts.filter { it.lineId == status.lineId && it.fingerprint == fingerprint }.mapTo(HashSet()) { it.way }
+        val placed = status.copy(
+            behindAt = ways(status, fingerprint),
+            byDirection = status.byDirection.mapValues { (direction, it) ->
+                it.copy(behindAt = ways(it, directionFingerprints[direction] ?: lineAlertFingerprint(it)))
+            },
+        )
+        return if (placed == status) this else copy(status = placed)
+    }
+
     /** Whether [alerts] holds a dismissal of exactly this alert, full reason included. */
     fun dismissedBy(alerts: Set<DismissedAlert>): Boolean =
         known && dismissedLine(alerts, status.lineId, fingerprint)

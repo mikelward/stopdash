@@ -833,6 +833,41 @@ class DepartureRowsTest {
     }
 
     @Test
+    fun `the verdicts reached are the alerts moved off rows, by their words, stop and way, of those weighed`() {
+        val rows = DepartureRows.across(listOf(busStop("b4"), busStop("b2")), now, mapOf("99" to busDiversion))
+        val fingerprint = lineAlertFingerprint(busDiversion)
+        // Both rows' alerts are weighed; only the one past the stretch is behind its stop.
+        assertEquals(
+            AlertPlacement(
+                behind = setOf(AlertBehind("99", fingerprint, "b4", "inbound")),
+                weighed = setOf(AlertBehind("99", fingerprint, "b4", "inbound"), AlertBehind("99", fingerprint, "b2", "inbound")),
+                stops = setOf("b4", "b2"),
+                alerts = setOf("99" to fingerprint),
+            ),
+            DepartureRows.alertsBehind(rows, mapOf("99" to busRoute)),
+        )
+        // Nothing is weighed without the route, though the stops and alerts are still the rows'.
+        assertEquals(
+            AlertPlacement(emptySet(), emptySet(), setOf("b4", "b2"), setOf("99" to fingerprint)),
+            DepartureRows.alertsBehind(rows, emptyMap()),
+        )
+    }
+
+    @Test
+    fun `a status carrying a verdict for a stop and way moves its alert off that row only`() {
+        val placed = busDiversion.copy(behindAt = setOf(StopWay("b4", "inbound")))
+        val rows = DepartureRows.across(listOf(busStop("b4"), busStop("b2")), now, mapOf("99" to placed)).associateBy { it.stopId }
+        // The row the verdict names shows no mark, its alert kept for its page, as in the app.
+        assertNull(rows.getValue("b4").status)
+        assertEquals(placed, rows.getValue("b4").statusBehind)
+        // Another stop flags as before.
+        assertEquals(placed, rows.getValue("b2").status)
+        // As does the named stop for buses going the other way.
+        val outbound = StopArrivals("b4", "Stop", listOf(departure("99", "99", "outbound", "Bank", 120, mode = "bus")), now)
+        assertEquals(placed, DepartureRows.across(listOf(outbound), now, mapOf("99" to placed)).single().status)
+    }
+
+    @Test
     fun `the bus lines whose routes to load are those with an alert that might be placed`() {
         val stops = listOf(busStop("b4"), StopArrivals("t1", "Station", listOf(departure("tube1", "Tube", "inbound", "Far", 60)), now))
         val statuses = mapOf(

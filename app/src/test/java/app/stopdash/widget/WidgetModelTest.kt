@@ -2,6 +2,7 @@ package app.stopdash.widget
 
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import app.stopdash.domain.AlertBehind
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DeparturesSnapshot
@@ -14,6 +15,7 @@ import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.WidgetJourney
+import app.stopdash.domain.lineAlertFingerprint
 import java.time.Instant
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
@@ -554,6 +556,23 @@ class WidgetModelTest {
         // The journey's buses first (soonest first), then the nearby stop; the Dale bus isn't shown.
         assertEquals(listOf("b2", "b1", "victoria"), rows.map { it.lineId })
         assertTrue(rows.flatMap { it.upcoming }.none { it.destination == "Dale" })
+    }
+
+    @Test
+    fun `a bus alert the app found behind a stop doesn't flag the widget's row there`() {
+        val diversion = LineStatus("b1", 5, "Diversion", "Not serving stops between 'Bank Station' and 'Moorgate Station'.", soleAlert = true)
+        val bus = departure("b1", 120).copy(mode = "bus")
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(stop("490000001A", listOf(bus), now)),
+            fetchedAt = now,
+            lineStatuses = mapOf("b1" to LineStatusCheck(diversion, now)),
+        )
+        assertEquals(diversion.description, widgetModel(snapshot, now).rows.single().row.status?.description)
+        val placed = snapshot.withAlertsBehind(setOf(AlertBehind("b1", lineAlertFingerprint(diversion), "490000001A", "inbound")))
+        val row = widgetModel(placed, now).rows.single().row
+        assertNull(row.status)
+        // Its line still counts as checked, so the widget doesn't say it couldn't check.
+        assertTrue(placed.statusKnown("b1", now))
     }
 
     @Test

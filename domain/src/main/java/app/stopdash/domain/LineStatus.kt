@@ -59,6 +59,11 @@ data class LineStatus(
     // several are, only the worst's words are kept, so its words don't speak for the rest
     // ([RouteDisruption.offRide]; Codex, PR #455). False where not known.
     val soleAlert: Boolean = false,
+    // Where this alert lies wholly behind the stop for a row going that way, as the app found on the
+    // line's routes ([AlertBehind]): the widget and the watch, which have no routes, move it off such
+    // a row as the app does ([DepartureRows.withAlertsBehind]). Empty in the app, which places alerts
+    // itself, and wherever nothing was placed.
+    val behindAt: Set<StopWay> = emptySet(),
 ) {
     /** True when TfL reports anything other than a good service on this line. */
     val disrupted: Boolean get() = severity != GOOD_SERVICE
@@ -91,7 +96,7 @@ data class LineStatus(
      * rider is told of there, whatever TfL ranks above it.
      */
     fun naming(closure: PartClosure): LineStatus =
-        copy(severity = closure.severity, description = closure.description, fullText = closure.fullText, isFallback = false, byDirection = emptyMap())
+        copy(severity = closure.severity, description = closure.description, fullText = closure.fullText, isFallback = false, byDirection = emptyMap(), behindAt = emptySet())
 
     /**
      * This status as of [today] in London: planned work whose day has come counts as under way,
@@ -119,6 +124,8 @@ data class LineStatus(
             // The one alert under way only while nothing else is: work that has started is another
             // (Codex, PR #455).
             soleAlert = (soleAlert || !disrupted) && now.map { it.severity to it.fullText }.distinct().size == 1,
+            // Placed as the alert shown before: work that has started is one nothing placed.
+            behindAt = emptySet(),
         )
     }
 

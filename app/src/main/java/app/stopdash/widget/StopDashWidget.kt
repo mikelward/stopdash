@@ -46,6 +46,7 @@ import app.stopdash.R
 import app.stopdash.shared.R as SharedR
 import app.stopdash.StopdashDebugLog
 import app.stopdash.data.HiddenModesSetting
+import app.stopdash.data.DataStoreAlertsBehindStore
 import app.stopdash.data.DataStoreDismissedAlertsStore
 import app.stopdash.domain.Dismissals
 import app.stopdash.data.DataStoreSnapshotStore
@@ -154,7 +155,18 @@ class StopDashWidget : GlanceAppWidget() {
             logWidgetSnapshotWarning("widget dismissed read failed: ${e::class.simpleName}")
             Dismissals.NONE
         }
-        val shown = snapshot?.withDismissals(dismissals)
+        // The app's verdicts that a bus alert lies wholly behind a stop ([DeparturesSnapshot.withAlertsBehind]),
+        // which the widget, with no routes, can't reach itself. An unreadable set counts as none: the
+        // alert flags rather than going unmarked (SPEC principle 2).
+        val verdicts = try {
+            DataStoreAlertsBehindStore.from(context, warn = ::logWidgetSnapshotWarning).verdicts().first()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logWidgetSnapshotWarning("widget alerts-behind read failed: ${e::class.simpleName}")
+            emptySet()
+        }
+        val shown = snapshot?.withDismissals(dismissals)?.withAlertsBehind(verdicts)
         val now = Instant.now()
         // Arm the one-shot staleness-boundary redraw from the snapshot we're about to render, on
         // the render path itself: first add, host rebind, and the app's updateAll after a fetch

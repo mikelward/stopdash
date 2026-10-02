@@ -1,5 +1,6 @@
 package app.stopdash.data
 
+import app.stopdash.domain.AlertBehind
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DeparturesSnapshot
@@ -14,13 +15,16 @@ import app.stopdash.domain.RoutePattern
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopArrivals
+import app.stopdash.domain.StopWay
 import app.stopdash.domain.Terminating
+import app.stopdash.domain.lineAlertFingerprint
 import app.stopdash.domain.plannedAlertFingerprint
 import java.time.Instant
 import java.time.LocalDate
 import kotlin.time.Duration.Companion.minutes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -473,6 +477,63 @@ class WatchEnvelopeTest {
         assertTrue(envelope.lineStatuses.single().dismissed)
         assertTrue(envelope.liveLineStatuses(now).isEmpty())
         assertTrue(envelope.statusKnown("victoria", now))
+    }
+
+    @Test
+    fun `the app's verdict that a bus alert is behind a stop reaches the watch, which then doesn't flag it`() {
+        val diversion = LineStatus(
+            "99", 5, "Diversion", "Buses are not serving stops between 'Bank Station' and 'Moorgate Station'.", soleAlert = true,
+        )
+        val bus = departure(3, line = "99", destination = "North End", mode = "bus")
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(stop("490GEXAMPLE1", listOf(bus)), stop("490GEXAMPLE2", listOf(bus))),
+            fetchedAt = now,
+            lineStatuses = mapOf("99" to LineStatusCheck(diversion, now)),
+        ).withAlertsBehind(
+            setOf(
+                AlertBehind("99", lineAlertFingerprint(diversion), "490GEXAMPLE1", "inbound"),
+                // A stop the snapshot doesn't carry: its verdict goes nowhere, the watch least of all.
+                AlertBehind("99", lineAlertFingerprint(diversion), "490GELSEWHERE", "inbound"),
+            ),
+        )
+        val envelope = decoded(WatchEnvelopes.build(snapshot, emptySet(), now = now))
+        assertEquals(listOf(PersistedStopWay("490GEXAMPLE1", "inbound")), envelope.lineStatuses.single().behind)
+        val rows = DepartureRows.across(envelope.stops.map { it.toDomain() }, now, envelope.liveLineStatuses(now)).associateBy { it.stopId }
+        assertNull(rows.getValue("490GEXAMPLE1").status)
+        assertEquals("Diversion", rows.getValue("490GEXAMPLE2").status?.description)
+    }
+
+    @Test
+    fun `a stop trimmed from an envelope over its budget isn't named by a verdict either`() {
+        val diversion = LineStatus("99", 5, "Diversion", "Not serving 'A' to 'B'.", soleAlert = true)
+        val stops = (1..30).map { i -> stop("490GEXAMPLE$i", (1..6).map { departure(it.toLong(), line = "99", destination = "Far End $i", mode = "bus") }) }
+        val snapshot = DeparturesSnapshot(stops = stops, fetchedAt = now, lineStatuses = mapOf("99" to LineStatusCheck(diversion, now)))
+            .withAlertsBehind(stops.mapTo(HashSet()) { AlertBehind("99", lineAlertFingerprint(diversion), it.stopId, "inbound") })
+        val full = WatchEnvelopes.build(snapshot, emptySet(), now = now).bytes.size
+        val trimmed = decoded(WatchEnvelopes.build(snapshot, emptySet(), dataItemBudget = 100, transferCeiling = full / 2, now = now))
+        val sent = trimmed.stops.map { it.stopId }.toSet()
+        assertTrue(sent.size < stops.size)
+        assertEquals(sent, trimmed.lineStatuses.single().behind.map { it.stopId }.toSet())
+    }
+
+    @Test
+    fun `the phone keeps whether an alert is the line's only one, never a verdict applied to it`() {
+        val diversion = LineStatus("99", 5, "Diversion", "Not serving 'A' to 'B'.", soleAlert = true)
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(stop("490GEXAMPLE1", listOf(departure(3, line = "99", mode = "bus")))),
+            fetchedAt = now,
+            lineStatuses = mapOf("99" to LineStatusCheck(diversion, now)),
+        )
+        val placed = snapshot.withAlertsBehind(setOf(AlertBehind("99", lineAlertFingerprint(diversion), "490GEXAMPLE1", "inbound")))
+        val stored = placed.toPersisted().toDomain()!!.lineStatuses.getValue("99").status
+        assertTrue(stored.soleAlert)
+        assertEquals(emptySet<StopWay>(), stored.behindAt)
+        // So a verdict applied as it's read again places it again.
+        assertEquals(
+            setOf(StopWay("490GEXAMPLE1", "inbound")),
+            placed.toPersisted().toDomain()!!.withAlertsBehind(setOf(AlertBehind("99", lineAlertFingerprint(diversion), "490GEXAMPLE1", "inbound")))
+                .lineStatuses.getValue("99").status.behindAt,
+        )
     }
 
     @Test
