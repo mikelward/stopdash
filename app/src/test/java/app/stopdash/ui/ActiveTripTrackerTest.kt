@@ -5,6 +5,7 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.OnTheWay.Step
 import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.TflException
+import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripRoute
@@ -224,6 +225,21 @@ class ActiveTripTrackerTest {
         onDisruptionDone = { disruptionAlerts += "done" },
         disruptionsShown = { disruptionsShowing },
     ).also { current = it }
+
+    @Test
+    fun `a started trip keeps its destination as chosen`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        val destinations = listOf(TripDestination.Stop("C"), TripDestination.Stop("C2"))
+        val ids = mapOf("C" to "C", "C2" to "C2", "C2a" to "C2")
+        tracker.start(route, "C", readyAt = now, destinations = destinations, destinationIds = ids)
+        assertEquals(destinations, kept?.destinations)
+        assertEquals(ids, kept?.destinationIds)
+        // So does one started with a walk to its first stop first.
+        tracker.end()
+        tracker.start(route, "C", readyAt = now.plusSeconds(120), destinations = destinations, destinationIds = ids)
+        assertEquals(destinations, kept?.destinations)
+        assertEquals(ids, kept?.destinationIds)
+    }
 
     @Test
     fun `a ride is followed on another of its lines when that train comes first and takes the rider`() = runTest {

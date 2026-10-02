@@ -35,6 +35,11 @@ import java.time.Instant
  * was due at the boarding stop before a call there was first taken as the same one only because the
  * rider was seen still at the stop ([OnTheWay.atBoarding]): held there until then, and no later, so
  * a rider still there after it may have missed the train, however late each call since has run.
+ * [destinations] and [destinationIds] are where the trip goes as the rider chose it, as the trip list
+ * planned to it: every stop of a station complex (a stop id each, to the stop it stands for), or a
+ * place. The route ends at only one of them, so a trip planned again from partway along asks for them
+ * all, and doesn't call a connection missed that another of the complex's stops still makes. Empty for
+ * a trip kept before they were.
  * Kept on the device only: where a rider is going is theirs (SPEC *Privacy*).
  */
 data class ActiveTrip(
@@ -59,6 +64,8 @@ data class ActiveTrip(
     val disruptionsHeard: Set<String> = emptySet(),
     val vehicleLeg: TripLeg? = null,
     val heldFrom: Instant? = null,
+    val destinations: List<TripDestination> = emptyList(),
+    val destinationIds: Map<String, String> = emptyMap(),
 ) {
     /** The leg the rider is on, or null once they've arrived. */
     val leg: TripLeg? get() = route.legs.getOrNull(legIndex)

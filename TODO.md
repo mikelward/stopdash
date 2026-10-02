@@ -1194,10 +1194,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               connections the rider has already made or missed. Until that lands, the re-plan tier
               is out and the alert opens the trip without offering to plan again. Once it lands, a
               re-plan with no usable location starts from the stop the trip has the rider at next.
-              It also waits on the trip on the way keeping its destination as chosen: `ActiveTrip`
-              keeps only the route and the destination's name, so a re-plan from it (after a
-              restart, say) would ask for the one stop the route ends at, and could call a
-              connection missed that another stop of a station complex still makes.
+              It also waited on the trip on the way keeping its destination as chosen, done:
+              `ActiveTrip.destinations` and `destinationIds` keep every stop of a station complex
+              (or the place) the trip list planned to, so a re-plan asks for them all, not the one
+              stop the route ends at. A trip kept before they were has none.
               Kept quiet: one notification per trip, updated in place as signals change, and taken
               down as soon as no signal remains, the trip ends, or it stops being followed (the app
               leaving the foreground, until the foreground service below lands), so it never
@@ -1265,8 +1265,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 part closures, map the path's areas to the route's poles (its line sequence, as
                 the trip's cards already load) before `coversRide`.
           - [ ] **Planning again from where the rider is** (the re-plan tier, and the alert
-                offering it): waits on *Explore how a trip recalculates mid-route* and on the trip
-                keeping its destination as chosen, above.
+                offering it): waits on *Explore how a trip recalculates mid-route* (the trip now
+                keeps its destination as chosen, above).
         - [ ] **Not to merge until the maintainer's Play declarations:** the ongoing notification
               with the app closed (a foreground service, which replaces the old *Step by step*
               item), and live location to see the train boarded and follow a bus.

@@ -2,6 +2,7 @@ package app.stopdash.data
 
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.riderLineName
@@ -10,8 +11,8 @@ import java.io.IOException
 import java.time.Duration
 import java.time.Instant
 import java.time.format.DateTimeParseException
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -278,6 +279,10 @@ private data class PersistedActiveTrip(
     // Absent from a trip kept before it was stored: no call yet taken only because the rider was seen
     // at the stop, so the next such reading starts the hold from the train's due time then.
     val heldFrom: String? = null,
+    // Absent from a trip kept before they were: where to as chosen is unknown, so a re-plan asks for
+    // the stop the route ends at.
+    val destinations: List<PersistedTripDestination> = emptyList(),
+    val destinationIds: Map<String, String> = emptyMap(),
 ) {
     fun toTrip() = ActiveTrip(
         route = TripRoute(legs.map { it.toLeg() }),
@@ -300,6 +305,9 @@ private data class PersistedActiveTrip(
         disruptionsHeard = disruptionsHeard.toSet(),
         vehicleLeg = vehicleLeg?.toLeg(),
         heldFrom = heldFrom?.let(Instant::parse),
+        // One this build can't read (a kind a later one added) is dropped rather than failing the trip.
+        destinations = destinations.mapNotNull { it.toDestination() },
+        destinationIds = destinationIds,
     )
 
     companion object {
@@ -324,7 +332,40 @@ private data class PersistedActiveTrip(
             disruptionsHeard = trip.disruptionsHeard.sorted(),
             vehicleLeg = trip.vehicleLeg?.let { PersistedTripLeg.of(it) },
             heldFrom = trip.heldFrom?.toString(),
+            destinations = trip.destinations.map { PersistedTripDestination.of(it) },
+            destinationIds = trip.destinationIds,
         )
+    }
+}
+
+/** A [TripDestination]: a stop by [id], or a place at [latitude], [longitude] named [name]. */
+@Serializable
+internal data class PersistedTripDestination(
+    val kind: String,
+    val id: String = "",
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val name: String = "",
+) {
+    fun toDestination(): TripDestination? = when (kind) {
+        STOP -> id.takeIf { it.isNotBlank() }?.let { TripDestination.Stop(it) }
+        PLACE -> if (latitude != null && longitude != null) TripDestination.Place(Coordinates(latitude, longitude), name) else null
+        else -> null
+    }
+
+    companion object {
+        const val STOP = "stop"
+        const val PLACE = "place"
+
+        fun of(destination: TripDestination) = when (destination) {
+            is TripDestination.Stop -> PersistedTripDestination(STOP, id = destination.id)
+            is TripDestination.Place -> PersistedTripDestination(
+                PLACE,
+                latitude = destination.coordinate.latitude,
+                longitude = destination.coordinate.longitude,
+                name = destination.name,
+            )
+        }
     }
 }
 
