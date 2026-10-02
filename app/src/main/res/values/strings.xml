@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The en-US base (tools:locale): en-GB overrides only what differs, in values-en-rGB. -->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
-    <string name="app_name">StopDash</string>
+    <string name="app_name">Routemo</string>
 
     <string name="stale_stamp">Tap to refresh</string>
     <!-- Pending stamp shown before the first snapshot is available (cold start, while the
@@ -134,7 +134,7 @@
          that one item again. -->
     <string name="action_undo">Undo</string>
     <!-- Snackbar when a change of hidden modes couldn't be saved: it holds until the app restarts. -->
-    <string name="hidden_modes_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
+    <string name="hidden_modes_write_failed">Couldn\'t save that; it resets when Routemo restarts</string>
     <!-- The near-me list's empty state while modes are hidden, instead of "no departures": the
          hidden modes may be running. The argument lists them ("Bus, Tram"). -->
     <string name="modes_hidden_empty">Nothing else to show with %1$s hidden</string>
@@ -157,19 +157,19 @@
     <string name="error_key_rejected">TfL rejected your API key</string>
     <string name="clear_api_key">Clear key</string>
     <!-- A change to the TfL key (a Clear, or a paste) didn't save: it holds until a restart. -->
-    <string name="api_key_write_failed">Couldn\'t save your API key change; it resets when StopDash restarts</string>
+    <string name="api_key_write_failed">Couldn\'t save your API key change; it resets when Routemo restarts</string>
 
     <!-- Location gate: the nearby-stops search (SPEC Finding stops). The rationale is
          honest about the location leaving the device, since it does — it's sent to TfL to
          find nearby stops (SPEC Privacy). -->
     <string name="location_title">Departures near you</string>
-    <string name="location_rationale">StopDash shows the stops nearest you. Your location is sent to TfL only to find them.</string>
+    <string name="location_rationale">Routemo shows the stops nearest you. Your location is sent to TfL only to find them.</string>
     <string name="location_allow">Allow location</string>
     <string name="location_finding">Finding stops near you…</string>
     <string name="location_no_fix">Couldn\'t get your location</string>
     <string name="location_no_stops">No stops found nearby</string>
     <!-- Under location_no_stops: TfL's stops are London's, so this is the usual reason none are near. -->
-    <string name="location_london_only">StopDash only shows stops in and around London.</string>
+    <string name="location_london_only">Routemo only shows stops in and around London.</string>
     <string name="try_again">Try again</string>
     <!-- Shown after a permanent permission denial, where re-requesting can't prompt again. -->
     <string name="location_denied">Turn on location access in Settings to see nearby stops.</string>
@@ -449,11 +449,11 @@
     <string name="settings_text_size_value">%1$d%%</string>
     <string name="settings_text_size_reset">Reset</string>
     <string name="settings_text_size_content_description">Text size, %1$d percent</string>
-    <string name="settings_telemetry_title">Help make StopDash better</string>
+    <string name="settings_telemetry_title">Help make Routemo better</string>
     <string name="settings_telemetry_summary">Share crash reports and usage stats. Never your stops, journeys or precise location.</string>
     <!-- The same question put once atop the near-me list to an install that never answered it
          (SPEC *Privacy*): either button stores the answer, so it isn't asked again. -->
-    <string name="telemetry_invite_title">Help make StopDash better?</string>
+    <string name="telemetry_invite_title">Help make Routemo better?</string>
     <string name="telemetry_invite_body">Share crash reports and usage stats so bugs get fixed? Never your stops, journeys or precise location.</string>
     <string name="telemetry_invite_accept">Yes please</string>
     <string name="telemetry_invite_decline">No thanks</string>
@@ -465,17 +465,17 @@
     <string name="settings_distance_units_meters">Meters</string>
     <string name="settings_distance_units_yards">Yards</string>
     <string name="settings_distance_units_feet">Feet</string>
-    <string name="settings_distance_units_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
+    <string name="settings_distance_units_write_failed">Couldn\'t save that; it resets when Routemo restarts</string>
     <!-- How fast the rider walks, for a trip's walks: Settings' row and the dropdown atop a trip's routes. -->
     <string name="walking_speed_title">Walking speed</string>
     <string name="walking_speed_slow">Slow</string>
     <string name="walking_speed_average">Medium</string>
     <string name="walking_speed_fast">Fast</string>
-    <string name="settings_walking_speed_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
+    <string name="settings_walking_speed_write_failed">Couldn\'t save that; it resets when Routemo restarts</string>
     <!-- The longest walk a trip's routes may take: the dropdown atop a trip's routes. -->
     <string name="max_walk_title">Max walk</string>
     <string name="max_walk_minutes">%1$d min</string>
-    <string name="max_walk_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
+    <string name="max_walk_write_failed">Couldn\'t save that; it resets when Routemo restarts</string>
     <!-- How step-free a trip's routes must be: the dropdown atop a trip's routes and in Settings.
          Station: step-free from the street to the platform; Fully: to the train as well. -->
     <string name="step_free_title">Step-free</string>
@@ -484,8 +484,8 @@
     <string name="step_free_fully">Fully</string>
     <string name="step_free_station_detail">Street to platform, for luggage or a stroller</string>
     <string name="step_free_fully_detail">Onto the train too, for a wheelchair</string>
-    <string name="step_free_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
-    <string name="trip_modes_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
+    <string name="step_free_write_failed">Couldn\'t save that; it resets when Routemo restarts</string>
+    <string name="trip_modes_write_failed">Couldn\'t save that; it resets when Routemo restarts</string>
 
     <!-- Optional user TfL app_key (SPEC D7). StopDash works keyless; a user's own free key raises
          the request budget. The key is a credential, kept on-device and never logged. -->
@@ -575,9 +575,9 @@
     <string name="bug_report_consent_continue">Continue</string>
     <string name="action_cancel">Cancel</string>
     <!-- Subject line and share-sheet / clipboard labels for the report. -->
-    <string name="bug_report_subject">StopDash bug report</string>
+    <string name="bug_report_subject">Routemo bug report</string>
     <string name="bug_report_chooser_title">Send bug report</string>
-    <string name="bug_report_clipboard_label">StopDash bug report</string>
+    <string name="bug_report_clipboard_label">Routemo bug report</string>
     <!-- Toasts when the share sheet didn't open (the report is on the clipboard) or nothing landed. -->
     <string name="bug_report_copied">Bug report copied to clipboard</string>
     <string name="bug_report_failed">Couldn\'t share the bug report</string>

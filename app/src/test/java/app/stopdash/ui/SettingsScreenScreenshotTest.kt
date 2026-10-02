@@ -228,7 +228,7 @@ class SettingsScreenScreenshotTest {
         telemetry = false
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("telemetrySwitch").assertIsOff()
-        composeRule.onNodeWithText("Help make StopDash better").performClick()
+        composeRule.onNodeWithText("Help make Routemo better").performClick()
         composeRule.runOnIdle { assert(latest == true) }
     }
 

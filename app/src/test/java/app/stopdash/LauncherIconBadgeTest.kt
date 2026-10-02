@@ -11,7 +11,7 @@ import org.w3c.dom.Element
 
 /**
  * Guards what tells a debug StopDash from the Play one on the same phone: the
- * launcher icon's "DEBUG" bar and the "StopDash Debug" label, both keyed on the
+ * launcher icon's "DEBUG" bar and the "Routemo Debug" label, both keyed on the
  * build type. The bar sits below the full-size mark rather than shrinking it, so
  * it must clear the mark; and a badge a launcher mask crops looks like the real
  * icon — a crop that only shows on a device — so the lettering is checked
@@ -45,7 +45,7 @@ class LauncherIconBadgeTest {
             """val releaseLauncherIcon = "@mipmap/ic_launcher"""",
             """val debugLauncherIcon = "@mipmap/ic_launcher_debug"""",
             """val releaseAppLabel = "@string/app_name"""",
-            """val debugAppLabel = "StopDash Debug"""",
+            """val debugAppLabel = "Routemo Debug"""",
         ).forEach { assertTrue("build.gradle.kts no longer declares: $it", build.contains(it)) }
 
         fun block(name: String): String {
@@ -65,7 +65,7 @@ class LauncherIconBadgeTest {
         // The header reads @string/app_name and is baked into recorded screenshots.
         assertTrue(
             File("src/main/res/values/strings.xml").readText()
-                .contains("""<string name="app_name">StopDash</string>"""),
+                .contains("""<string name="app_name">Routemo</string>"""),
         )
     }
 

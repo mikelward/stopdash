@@ -290,7 +290,7 @@ class LocationGateScreenshotTest {
             )
         }
         composeRule.onNodeWithText("No stops found nearby").assertExists()
-        composeRule.onNodeWithText("StopDash only shows stops in and around London.").assertExists()
+        composeRule.onNodeWithText("Routemo only shows stops in and around London.").assertExists()
         composeRule.onNodeWithText("Find a station").performClick()
         assertTrue(found)
     }
