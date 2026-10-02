@@ -133,7 +133,7 @@ class RouteSequenceTest {
             expectSuccess = true
             install(ContentNegotiation) { json(json) }
         }
-        val sequence = KtorTflClient(http, baseUrl = "https://tfl.example").routeSequence("northern", "outbound")
+        val sequence = KtorTflClient(http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode).routeSequence("northern", "outbound")
         assertEquals("/Line/northern/Route/Sequence/outbound", path)
         assertEquals(8, sequence.routes.size)
         assertEquals("Waterloo", sequence.stopNames["940GZZLUWLO"])
@@ -160,7 +160,7 @@ class RouteSequenceTest {
             install(HttpTimeout)
             install(ContentNegotiation) { json(json) }
         }
-        KtorTflClient(http, baseUrl = "https://tfl.example").routeSequence("northern", "outbound")
+        KtorTflClient(http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode).routeSequence("northern", "outbound")
         assertEquals(KtorTflClient.SLOW_SOCKET_TIMEOUT_MILLIS, timeout)
         // No overall cap: a bare install(HttpTimeout) has no default request timeout, so a slow start
         // followed by a slow 600 KB transfer runs until 30 s pass without data, not to a total limit.

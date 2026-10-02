@@ -325,7 +325,7 @@ class KtorTflClientTest {
                 if (acquires > 1) throw TflException.RateLimited(null)
             }
         }
-        val client = KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", rateLimiterFor = { limiter })
+        val client = KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, rateLimiterFor = { limiter })
 
         client.arrivals("940GZZLUVIC")
         assertEquals("the granted request hit the network", 1, requests)
@@ -359,7 +359,7 @@ class KtorTflClientTest {
         }
         val client = KtorTflClient(
             httpClient = http,
-            baseUrl = "https://tfl.example",
+            baseUrl = "https://tfl.example", decodeDispatcher = serialDecode,
             appKey = { "EXAMPLE" },
             rateLimiterFor = { key ->
                 limiterKey = key
@@ -396,7 +396,7 @@ class KtorTflClientTest {
             if (httpTimeout) install(HttpTimeout)
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
-        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", appKey = { appKey }, warn = warn, keyAnswered = keyAnswered)
+        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, appKey = { appKey }, warn = warn, keyAnswered = keyAnswered)
     }
 
     @Test
@@ -428,7 +428,7 @@ class KtorTflClientTest {
         }
         val client = KtorTflClient(
             httpClient = http,
-            baseUrl = "https://tfl.example",
+            baseUrl = "https://tfl.example", decodeDispatcher = serialDecode,
             alertDirections = LineAlertDirections(),
             alertDirectionScope = CoroutineScope(lookups),
             alertDirectionDispatcher = StandardTestDispatcher(testScheduler),
@@ -492,7 +492,7 @@ class KtorTflClientTest {
         }
         val client = KtorTflClient(
             httpClient = http,
-            baseUrl = "https://tfl.example",
+            baseUrl = "https://tfl.example", decodeDispatcher = serialDecode,
             alertDirections = LineAlertDirections(),
             alertDirectionScope = CoroutineScope(lookups),
             alertDirectionDispatcher = StandardTestDispatcher(testScheduler),
@@ -557,7 +557,7 @@ class KtorTflClientTest {
         }
         val client = KtorTflClient(
             httpClient = http,
-            baseUrl = "https://tfl.example",
+            baseUrl = "https://tfl.example", decodeDispatcher = serialDecode,
             alertDirections = LineAlertDirections(),
             alertDirectionScope = CoroutineScope(lookups),
             alertDirectionDispatcher = StandardTestDispatcher(testScheduler),
@@ -693,7 +693,7 @@ class KtorTflClientTest {
             expectSuccess = true
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
-        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", appKey = { null })
+        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode, appKey = { null })
     }
 
     private fun goodService(ids: List<String>) = ids.joinToString(",", "[", "]") { id ->
@@ -1110,7 +1110,7 @@ class KtorTflClientTest {
             expectSuccess = true
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
-        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example")
+        return KtorTflClient(httpClient = http, baseUrl = "https://tfl.example", decodeDispatcher = serialDecode)
     }
 
     // A trimmed /StopPoint/Search response: public station names only. The second match repeats the
