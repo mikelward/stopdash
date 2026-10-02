@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.core.content.edit
 import android.content.SharedPreferences
 import app.stopdash.StopdashDebugLog
+import app.stopdash.data.DataStoreAlertsBehindStore
 import app.stopdash.data.DataStoreDismissedAlertsStore
 import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.data.WatchComplicationRows
@@ -12,6 +13,7 @@ import app.stopdash.data.HiddenModesSetting
 import app.stopdash.data.RouteTopologyStore
 import app.stopdash.data.WatchPayload
 import app.stopdash.data.WatchSyncContract
+import app.stopdash.domain.AlertBehind
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.Dismissals
 import app.stopdash.domain.StarredRow
@@ -211,13 +213,21 @@ internal fun Flow<Dismissals>.asPublishCue(
     retryMs: Long = DISMISSED_RETRY_MS,
     maxRetryMs: Long = DISMISSED_RETRY_MAX_MS,
     log: (String?) -> Unit,
-): Flow<Dismissals> = flow {
+): Flow<Dismissals> = asPublishCue(Dismissals.NONE, retryMs, maxRetryMs, log)
+
+/** [asPublishCue] for any stored set, a failed read giving [none] (the app's verdicts, for one). */
+internal fun <T> Flow<T>.asPublishCue(
+    none: T,
+    retryMs: Long = DISMISSED_RETRY_MS,
+    maxRetryMs: Long = DISMISSED_RETRY_MAX_MS,
+    log: (String?) -> Unit,
+): Flow<T> = flow {
     var failures = 0
     emitAll(
         onEach { failures = 0 }.retryWhen { e, _ ->
             if (e is CancellationException) return@retryWhen false
             log(e::class.simpleName)
-            if (failures == 0) emit(Dismissals.NONE)
+            if (failures == 0) emit(none)
             delay((retryMs shl failures.coerceAtMost(6)).coerceAtMost(maxRetryMs))
             failures++
             true
@@ -260,8 +270,10 @@ object WatchSync {
         return publishing.withLock {
             val (snapshot, stars) = try {
                 // Dismissals are applied here, where the envelope is built, rather than stored with
-                // the snapshot ([DeparturesSnapshot.withDismissals]).
-                snapshots(appContext).first()?.withDismissals(dismissals(appContext).first()) to starred(appContext).first()
+                // the snapshot ([DeparturesSnapshot.withDismissals]); so are the app's verdicts on
+                // alerts behind a stop ([DeparturesSnapshot.withAlertsBehind]).
+                snapshots(appContext).first()?.withDismissals(dismissals(appContext).first())
+                    ?.withAlertsBehind(alertsBehind(appContext).first()) to starred(appContext).first()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -321,6 +333,25 @@ object WatchSync {
     fun dismissedChanges(context: Context): Flow<Dismissals> =
         dismissedStore(context).dismissals().asPublishCue { StopdashDebugLog.warning("watch: dismissed alerts unreadable, retrying: %s", it) }
 
+    private fun alertsBehindStore(context: Context) =
+        DataStoreAlertsBehindStore.from(context.applicationContext, warn = { StopdashDebugLog.warning("watch: %s", it) })
+
+    /**
+     * The app's verdicts that a bus alert lies behind a stop, for one publish. An unreadable set counts
+     * as none: the watch then flags the alert rather than leave it unmarked (SPEC principle 2).
+     */
+    fun alertsBehind(context: Context): Flow<Set<AlertBehind>> =
+        alertsBehindStore(context).verdicts()
+            .catch { e ->
+                if (e is CancellationException) throw e
+                StopdashDebugLog.warning("watch: alerts behind unreadable: %s", e::class.simpleName)
+                emit(emptySet())
+            }
+
+    /** The verdicts as a publish cue, retried as [dismissedChanges] is. */
+    fun alertsBehindChanges(context: Context): Flow<Set<AlertBehind>> =
+        alertsBehindStore(context).verdicts().asPublishCue(emptySet()) { StopdashDebugLog.warning("watch: alerts behind unreadable, retrying: %s", it) }
+
     /** Starts publishing for the life of the process. */
     fun start(context: Context, scope: CoroutineScope) {
         val appContext = context.applicationContext
@@ -344,6 +375,7 @@ object WatchSync {
                     HiddenModesSetting.changes,
                     dismissedChanges(appContext),
                     RouteTopologyStore.refreshedChanges,
+                    alertsBehindChanges(appContext),
                 ).collect {
                     if (publishCurrent(appContext, force = false) == WatchPublisher.Outcome.Failed) {
                         WatchPublishWorker.enqueue(appContext, force = false)

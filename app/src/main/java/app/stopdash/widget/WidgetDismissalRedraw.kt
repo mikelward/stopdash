@@ -2,6 +2,7 @@ package app.stopdash.widget
 
 import android.content.Context
 import androidx.glance.appwidget.updateAll
+import app.stopdash.data.DataStoreAlertsBehindStore
 import app.stopdash.data.DataStoreDismissedAlertsStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -14,7 +15,8 @@ import kotlinx.coroutines.launch
  * Redraws the widget whenever the user's dismissed alerts change, for the life of the process.
  * The widget applies them when it draws ([app.stopdash.domain.DeparturesSnapshot.withDismissals]),
  * so a dismissal from any screen, or one a refresh forgets, shows on it at once. Nothing is
- * stored with the snapshot, so there is nothing else to update.
+ * stored with the snapshot, so there is nothing else to update. The same for the app's verdicts that
+ * a bus alert lies behind a stop ([app.stopdash.domain.DeparturesSnapshot.withAlertsBehind]).
  */
 object WidgetDismissalRedraw {
     /** The first wait before re-reading a failed dismissed set; doubled each time, to [MAX_RETRY_MS]. */
@@ -34,6 +36,10 @@ object WidgetDismissalRedraw {
         val store = DataStoreDismissedAlertsStore.from(appContext, warn = ::logWidgetSnapshotWarning)
         scope.launch(Dispatchers.IO) {
             redrawOnChange({ store.dismissals() }) { StopDashWidget().updateAll(appContext) }
+        }
+        val behind = DataStoreAlertsBehindStore.from(appContext, warn = ::logWidgetSnapshotWarning)
+        scope.launch(Dispatchers.IO) {
+            redrawOnChange({ behind.verdicts() }) { StopDashWidget().updateAll(appContext) }
         }
     }
 

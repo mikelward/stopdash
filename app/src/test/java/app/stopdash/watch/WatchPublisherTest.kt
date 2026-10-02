@@ -3,6 +3,7 @@ package app.stopdash.watch
 import app.stopdash.data.WatchDecode
 import app.stopdash.data.WatchEnvelopes
 import app.stopdash.data.WatchPayload
+import app.stopdash.domain.AlertBehind
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.DismissedAlert
@@ -192,6 +193,21 @@ class WatchPublisherTest {
         advanceTimeBy(2_001)
         assertEquals(1, requests.size)
         dismissed.value = Dismissals(setOf(DismissedAlert.ofLineStatus(LineStatus("victoria", 6, "Severe Delays"))))
+        advanceTimeBy(2_001)
+        assertEquals(2, requests.size)
+        job.cancel()
+    }
+
+    @Test
+    fun `a new verdict on an alert behind a stop is a request, since the envelope applies it`() = runTest {
+        val snapshots = MutableStateFlow<DeparturesSnapshot?>(snapshot(minutes = 1))
+        val stars = MutableStateFlow<Set<StarredRow>>(emptySet())
+        val verdicts = MutableStateFlow<Set<AlertBehind>>(emptySet())
+        val requests = mutableListOf<Pair<DeparturesSnapshot?, Set<StarredRow>>>()
+        val job = launch { WatchPublisher.requests(snapshots, stars, alertsBehind = verdicts, window = 2.seconds).collect { requests += it } }
+        advanceTimeBy(2_001)
+        assertEquals(1, requests.size)
+        verdicts.value = setOf(AlertBehind("99", "abc1234", "490GEXAMPLE1", "inbound"))
         advanceTimeBy(2_001)
         assertEquals(2, requests.size)
         job.cancel()

@@ -1892,8 +1892,17 @@ yet, a route through the stop the alert gives no stretch on, or one of several a
 carries no ⚠, and the route's page tells it muted, where it is and its prose ("Diversion before this
 stop: Bank to Moorgate"), never claiming the line is clean. The routes come from the route page's
 own cache: one request a day for each bus line at the shown stops with an alert that could be placed.
-This applies to the in-app list, a platform view, the journey cards and the route page. The widget
-and watch have no routes, so they still flag it (`TODO.md`).
+This applies to the in-app list, a platform view, the journey cards and the route page, and to the
+widget and the watch too, which have no routes: the near-me list keeps each verdict it reaches (the
+line, the alert by its full words, the stop and the way) for them, and they apply it where they read
+their stored departures, as they do a dismissal. The verdicts kept mirror the list as it is: one at a
+stop it no longer shows goes, so the app never keeps where the rider has been, and so does one on an
+alert no longer on its rows, so the same words back later flag until the app places them again. A
+surface applies, and the watch is sent, verdicts only for the stops it carries. A verdict counts only for the alert it was reached
+on, and only while that's the line's sole alert. It goes as soon as the app weighs that alert at that
+stop again and no longer finds it behind (a refreshed route, say); one the app doesn't weigh again
+stands a day after it was last reached, the life of the routes behind it. So until the app has placed an alert at a stop, those surfaces flag it,
+as before.
 **Work that hasn't started yet is noted, not flagged** (maintainer, 2026-09-28): a closure next
 month says nothing about today's buses, and a ⚠ for it trains the rider to ignore the ⚠. Neither of
 TfL's fields can tell: `isNow` reads `false` even for planned closures in effect (it marks

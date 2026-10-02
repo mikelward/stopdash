@@ -2,6 +2,7 @@ package app.stopdash.watch
 
 import app.stopdash.data.WatchEnvelopes
 import app.stopdash.data.WatchPayload
+import app.stopdash.domain.AlertBehind
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.Dismissals
 import app.stopdash.domain.RoutePattern
@@ -130,7 +131,8 @@ class WatchPublisher(
 
         /**
          * One publish request per settled change to the stored [snapshots], the [starred] rows, the
-         * [hiddenModes], the [dismissed] alerts or the refreshed [routeLines]: every write, from any
+         * [hiddenModes], the [dismissed] alerts, the refreshed [routeLines] or the app's verdicts on
+         * alerts behind a stop ([alertsBehind]): every write, from any
          * writer, with bursts coalesced to the latest inside [window]. The first value is the state
          * at start, which the durable marker compares against.
          */
@@ -145,8 +147,12 @@ class WatchPublisher(
             // The route lines a refresh took over the asset: the envelope carries them, so a refresh
             // that changes them is a cue even when nothing else moves.
             routeLines: Flow<Map<String, List<RoutePattern>>> = flowOf(emptyMap()),
+            // The app's verdicts that a bus alert lies behind a stop: applied to the envelope as
+            // dismissals are ([DeparturesSnapshot.withAlertsBehind]), so a change is a cue too.
+            alertsBehind: Flow<Set<AlertBehind>> = flowOf(emptySet()),
             window: Duration = COALESCE,
         ): Flow<Pair<DeparturesSnapshot?, Set<StarredRow>>> =
-            combine(snapshots, starred, hiddenModes, dismissed, routeLines) { snapshot, stars, _, _, _ -> snapshot to stars }.debounce(window)
+            combine(combine(snapshots, starred, ::Pair), hiddenModes, dismissed, routeLines, alertsBehind) { state, _, _, _, _ -> state }
+                .debounce(window)
     }
 }

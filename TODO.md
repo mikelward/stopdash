@@ -2214,9 +2214,15 @@ Builds on Phase 1's minimal line-status marking.
         wholly behind a row's stop no longer flags it (`DepartureRows.withAlertsBehind`), and its
         page tells it muted, named from the whole route; a stop quoted as its sign reads ("Bank
         Station/King William Street") now matches the route's cleaned name.
-        - [ ] **The widget and watch still flag an alert behind the stop**: they have no routes.
-              Placing it there means sending the verdict with the rows (the phone has the routes),
-              not loading routes on the watch.
+        - [x] **The widget and watch place an alert behind the stop too** (2026-10-02): the near-me
+              list keeps its verdicts, by the alert's words, and they apply them as they read the
+              stored departures, as they do a dismissal.
+          - [ ] **An alert that appears while the app is closed** flags on the widget and watch until
+                the app next shows that stop: the widget's own refresh has TfL's words but places
+                nothing. It could, from the routes the app already holds for the day, with no new
+                request.
+          - [ ] **Planned work whose day has come** isn't placed on those surfaces: they read the alert
+                as of the day, and a verdict is on the alert the app was shown, so it flags there.
         - [ ] **Behind the rider on a tube or rail line**: not attempted, as its delays spread
               along the line; a part closure TfL places itself might be, as a trip places one.
         A status-only line page (a

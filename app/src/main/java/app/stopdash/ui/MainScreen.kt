@@ -542,6 +542,21 @@ fun MainScreen(
         loadSequences(routeStopsRepository ?: return@LaunchedEffect, alertLineIds)
     }
     val alertSequences = sequencesFor(alertLineIds)
+    // The verdicts those routes give, kept for the widget and the watch, which have no routes to reach
+    // them (SPEC *Disruptions*). Keyed on the alerts and routes, not the clock: a verdict says where an
+    // alert is, not when.
+    val alertsBehind = LocalAlertsBehind.current
+    val alertVerdicts = remember(loaded?.stops, loaded?.lineStatuses, alertDay, alertSequences) {
+        loaded?.let { ld ->
+            DepartureRows.alertsBehind(DepartureRows.across(ld.stops, now, ld.lineStatuses), alertSequences)
+                // Every stop shown, placed or not: the store keeps verdicts at these alone.
+                .copy(stops = ld.stops.mapTo(HashSet()) { it.stopId })
+        }
+    }
+    // Nothing until the list has stops: an empty first frame says nothing of where the rider is.
+    LaunchedEffect(alertsBehind, alertVerdicts) {
+        alertVerdicts?.let { alertsBehind?.record(it) }
+    }
     // The poles beside each bus journey's origin that board a line reaching its far end, fetched
     // alongside the origin (one arrivals request each) and shown on its card under their letter.
     val journeySiblings = remember(cardJourneys, journeySegments, journeyPoles, journeySequences) {

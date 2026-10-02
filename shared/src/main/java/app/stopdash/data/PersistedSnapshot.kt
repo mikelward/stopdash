@@ -13,6 +13,7 @@ import app.stopdash.domain.RailFeed
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopArrivals
+import app.stopdash.domain.StopWay
 import app.stopdash.domain.Terminating
 import app.stopdash.domain.WidgetJourney
 import app.stopdash.domain.normalizeBranch
@@ -158,7 +159,18 @@ data class PersistedLineStatus(
     // field: the line then shows no calendar until the next check. Defaulted, and ignored by an
     // older build.
     val planned: List<PersistedPlannedAlert> = emptyList(),
+    // Whether the alert shown is the line's only one under way ([LineStatus.soleAlert]): only then may
+    // the app's verdict that it lies behind a stop be applied to it ([LineStatusCheck.withAlertsBehind]).
+    // False in a check written before this field, so none is applied to it. Defaulted.
+    val soleAlert: Boolean = false,
+    // The stops and ways this alert lies wholly behind ([LineStatus.behindAt]). Carried only by the watch
+    // envelope, which the phone builds with the app's verdicts applied, as [dismissed] is. Defaulted.
+    val behind: List<PersistedStopWay> = emptyList(),
 )
+
+/** A stop and a way its rows go ([StopWay]), within [PersistedLineStatus.behind]. */
+@Serializable
+data class PersistedStopWay(val stopId: String, val direction: String = "")
 
 /** One direction's status within a [PersistedLineStatus]: the chip label, as for the line's. */
 @Serializable
@@ -173,6 +185,10 @@ data class PersistedDirectionStatus(
     val dismissed: Boolean = false,
     // As [PersistedLineStatus.planned], for this direction's status.
     val planned: List<PersistedPlannedAlert> = emptyList(),
+    // As [PersistedLineStatus.soleAlert], for this direction's status.
+    val soleAlert: Boolean = false,
+    // As [PersistedLineStatus.behind], for this direction's status. Only in the watch envelope.
+    val behind: List<PersistedStopWay> = emptyList(),
 )
 
 /**
@@ -215,19 +231,32 @@ fun LineStatusCheck.toPersisted(): PersistedLineStatus =
             PersistedDirectionStatus(
                 direction, it.severity, it.description, directionFingerprints[direction], direction in dismissedDirections,
                 planned = it.planned.map { alert -> alert.toPersisted(dismissedPlanned) },
+                soleAlert = it.soleAlert,
+                behind = it.behindAt.toPersisted(),
             )
         },
         awaitingDirections = status.awaitingDirections,
         planned = status.planned.map { it.toPersisted(dismissedPlanned) },
+        soleAlert = status.soleAlert,
+        behind = status.behindAt.toPersisted(),
     )
+
+// In a stable order, so an unchanged set writes the same.
+private fun Set<StopWay>.toPersisted(): List<PersistedStopWay> =
+    sortedWith(compareBy({ it.stopId }, { it.direction })).map { PersistedStopWay(it.stopId, it.direction) }
+
+private fun List<PersistedStopWay>.toDomain(): Set<StopWay> = mapTo(HashSet()) { StopWay(it.stopId, it.direction) }
 
 fun PersistedLineStatus.toDomain(): LineStatusCheck {
     val byDirection = directions.associate {
-        it.direction to LineStatus(lineId, it.severity, it.description, planned = it.planned.mapNotNull { alert -> alert.toDomain() })
+        it.direction to LineStatus(
+            lineId, it.severity, it.description, planned = it.planned.mapNotNull { alert -> alert.toDomain() },
+            soleAlert = it.soleAlert, behindAt = it.behind.toDomain(),
+        )
     }
     val status = LineStatus(
         lineId, severity, description, byDirection = byDirection, awaitingDirections = awaitingDirections,
-        planned = planned.mapNotNull { it.toDomain() },
+        planned = planned.mapNotNull { it.toDomain() }, soleAlert = soleAlert, behindAt = behind.toDomain(),
     )
     return LineStatusCheck(
         status, Instant.ofEpochMilli(checkedAtMillis), known, dismissed, fingerprint ?: lineAlertFingerprint(status),
@@ -237,13 +266,18 @@ fun PersistedLineStatus.toDomain(): LineStatusCheck {
     )
 }
 
-/** This line status with no dismissal marked, on the line, any direction, or any planned alert. */
+/**
+ * This line status with no dismissal marked, on the line, any direction, or any planned alert, and no
+ * verdict of the app's applied ([PersistedLineStatus.behind]): both are applied where the phone's
+ * snapshot is read, never stored with it.
+ */
 private fun PersistedLineStatus.undismissed(): PersistedLineStatus {
     fun List<PersistedPlannedAlert>.undismissed() = map { it.copy(dismissed = false) }
     return copy(
         dismissed = false,
-        directions = directions.map { it.copy(dismissed = false, planned = it.planned.undismissed()) },
+        directions = directions.map { it.copy(dismissed = false, planned = it.planned.undismissed(), behind = emptyList()) },
         planned = planned.undismissed(),
+        behind = emptyList(),
     )
 }
 
@@ -446,7 +480,8 @@ fun DeparturesSnapshot.toPersisted(): PersistedSnapshot =
         journeyOnlyStopIds = journeyOnlyStopIds.sorted(),
         missingStopIds = missingStopIds.sorted(),
         // Dismissals are judged where the snapshot is read ([DeparturesSnapshot.withDismissals]),
-        // never stored, so a stored flag can't outlive the dismissal it came from.
+        // never stored, so a stored flag can't outlive the dismissal it came from; so are the app's
+        // verdicts on alerts behind a stop ([DeparturesSnapshot.withAlertsBehind]).
         lineStatuses = lineStatuses.toPersistedStatuses().map { it.undismissed() },
     )
 

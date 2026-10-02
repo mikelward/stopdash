@@ -82,6 +82,14 @@ object DepartureRows {
             }
             .map { (key, platform, group, mode) ->
                 val soonest = group.first()
+                // Marks the row only when the line is actually disrupted — a good-service (or
+                // unlooked-up) line leaves it null, so a non-null status always means "flag this"
+                // (SPEC *Disruptions* / D3). The row's own direction's alerts only: a diversion the
+                // other way round doesn't touch these buses (TfL's affected-route direction,
+                // [LineStatus.forDirection]). One the app found wholly behind this stop for buses
+                // going this way ([LineStatus.behindAt]) doesn't flag them either, as in the app.
+                val status = lineStatuses[key.lineId]?.forDirection(soonest.direction)?.takeIf(LineStatus::disrupted)
+                val behind = status?.takeIf { StopWay(stopId, soonest.direction) in it.behindAt }
                 DepartureRow(
                     stopId = stopId,
                     stopName = stopName,
@@ -98,12 +106,8 @@ object DepartureRows {
                     mode = mode,
                     upcoming = group,
                     fetchedAt = fetchedAt,
-                    // Marks the row only when the line is actually disrupted — a
-                    // good-service (or unlooked-up) line leaves it null, so a non-null
-                    // status always means "flag this" (SPEC *Disruptions* / D3).
-                    // The row's own direction's alerts only: a diversion the other way round
-                    // doesn't touch these buses (TfL's affected-route direction, [LineStatus.forDirection]).
-                    status = lineStatuses[key.lineId]?.forDirection(soonest.direction)?.takeIf(LineStatus::disrupted),
+                    status = status.takeIf { behind == null },
+                    statusBehind = behind,
                     plannedAlerts = lineStatuses[key.lineId]?.forDirection(soonest.direction)?.planned.orEmpty(),
                 )
             }
@@ -663,12 +667,42 @@ object DepartureRows {
      * dismissed.
      */
     fun withAlertsBehind(rows: List<DepartureRow>, sequences: Map<String, LineSequence?>): List<DepartureRow> =
-        rows.map { row ->
-            val status = row.status
-            val sequence = sequences[row.lineId]
-            if (status == null || sequence == null || !row.hasTrains || !row.mode.equals(BUS_MODE, ignoreCase = true)) return@map row
-            if (RouteDisruption.behind(row.stopId, status, sequence, row.direction)) row.copy(status = null, statusBehind = status) else row
+        rows.map { row -> if (alertBehind(row, sequences)) row.copy(status = null, statusBehind = row.status) else row }
+
+    /**
+     * What [withAlertsBehind] finds on [rows], for the widget and the watch to apply
+     * ([LineStatus.behindAt]): each alert it could place, by its full words, with the row's stop and way
+     * ([AlertPlacement.weighed]), and of those the ones it moves off the row ([AlertPlacement.behind]).
+     * Before [withoutDismissed], so a dismissal doesn't keep the verdict from the widget, which applies
+     * the dismissal itself.
+     */
+    fun alertsBehind(rows: List<DepartureRow>, sequences: Map<String, LineSequence?>): AlertPlacement {
+        val weighed = HashSet<AlertBehind>()
+        val behind = HashSet<AlertBehind>()
+        val alerts = HashSet<Pair<String, String>>()
+        for (row in rows) {
+            val status = row.status ?: continue
+            val fingerprint = lineAlertFingerprint(status)
+            alerts += row.lineId to fingerprint
+            val sequence = placeable(row, sequences) ?: continue
+            val verdict = AlertBehind(row.lineId, fingerprint, row.stopId, row.direction)
+            weighed += verdict
+            if (RouteDisruption.behind(row.stopId, status, sequence, row.direction)) behind += verdict
         }
+        return AlertPlacement(behind, weighed, rows.mapTo(HashSet()) { it.stopId }, alerts)
+    }
+
+    // Whether [row]'s alert lies wholly behind its stop on its line's routes in [sequences]
+    // ([RouteDisruption.behind]).
+    private fun alertBehind(row: DepartureRow, sequences: Map<String, LineSequence?>): Boolean {
+        val status = row.status ?: return false
+        val sequence = placeable(row, sequences) ?: return false
+        return RouteDisruption.behind(row.stopId, status, sequence, row.direction)
+    }
+
+    // The route [row]'s alert can be placed on: a bus row with buses to take, its line's route loaded.
+    private fun placeable(row: DepartureRow, sequences: Map<String, LineSequence?>): LineSequence? =
+        sequences[row.lineId]?.takeIf { row.hasTrains && row.mode.equals(BUS_MODE, ignoreCase = true) }
 
     /**
      * The bus lines at [stops] whose alert [withAlertsBehind] might find behind a stop: whose routes to
