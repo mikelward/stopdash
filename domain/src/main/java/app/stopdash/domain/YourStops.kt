@@ -4,7 +4,8 @@ package app.stopdash.domain
  * The stops "Find a station" knows without asking TfL (SPEC *Finding stops → Find a station*):
  * the user's [recent] picks from the search, most recent first, and their [favorites] not picked
  * lately (the ends of starred journeys, and the stops holding a starred row), both listed before
- * anything is typed, the recent first; and [known], the
+ * anything is typed, the recent first ([recentPicks], with the places a To… search picked among
+ * them); and [known], the
  * stops the app has lately shown near the user. All of them match as the user types, alongside the
  * bundled stations, so a starred bus stop is found at once rather than after TfL's search. Read
  * from the device and kept there: nothing here is sent anywhere or logged.
@@ -16,6 +17,9 @@ data class YourStops(
     // Starred stops the device couldn't name — starred before places were recorded, and not shown
     // lately. [namedFrom] names the stations among them from the bundled list.
     val unnamedStarred: List<String> = emptyList(),
+    // What's listed under Recent, most recent first: [recent]'s stops and the geocoded places picked
+    // among them, in the order they were picked. Only the stops match as the user types.
+    val recentPicks: List<SearchEntry> = recent.map(SearchEntry::Stop),
 ) {
     /** Every stop here once, the user's own first. */
     val all: List<StationMatch> get() = (recent + favorites + known).distinctBy { it.id }
@@ -41,7 +45,8 @@ data class YourStops(
         val EMPTY = YourStops()
 
         /**
-         * Gathers the lists from what the device holds: the [recent] picks, most recent first; then
+         * Gathers the lists from what the device holds: the [recent] picks, stops and places, most
+         * recent first; then
          * [journeys]' ends in their saved order and the [starred] rows' stops by name, as the
          * favorites, less any picked lately; and every [known] stop. Names are cleaned the way the
          * rest of the app shows them.
@@ -49,7 +54,7 @@ data class YourStops(
         fun of(
             journeys: List<StarredJourney>,
             starred: List<StationMatch>,
-            recent: List<StationMatch>,
+            recent: List<SearchEntry>,
             known: List<StationMatch>,
             unnamedStarred: List<String> = emptyList(),
         ): YourStops {
@@ -57,13 +62,21 @@ data class YourStops(
                 val modes = listOf(journey.mode).filter { it.isNotBlank() }
                 listOf(journey.from, journey.to).map { StationMatch(it.areaId.ifBlank { it.stopId }, it.name, modes) }
             }
-            val picked = recent.cleaned()
+            val picks = recent.mapNotNull { pick ->
+                when (pick) {
+                    is SearchEntry.Stop -> pick.match.copy(name = cleanStopName(pick.match.name))
+                        .takeIf { it.name.isNotBlank() }?.let(SearchEntry::Stop)
+                    is SearchEntry.Place -> pick.takeIf { it.hit.name.isNotBlank() }
+                }
+            }.distinctBy { it.key }
+            val picked = picks.filterIsInstance<SearchEntry.Stop>().map { it.match }
             val pickedIds = picked.mapTo(HashSet()) { it.id }
             return YourStops(
                 favorites = (journeyEnds + starred.sortedBy { cleanStopName(it.name) }).cleaned().filter { it.id !in pickedIds },
                 recent = picked,
                 known = known.cleaned(),
                 unnamedStarred = unnamedStarred,
+                recentPicks = picks,
             )
         }
 
@@ -91,4 +104,12 @@ object RecentStations {
     /** [current] with [opened] moved (or added) to the front, capped at [max]. */
     fun add(current: List<StationMatch>, opened: StationMatch, max: Int = MAX): List<StationMatch> =
         (listOf(opened) + current.filter { it.id != opened.id }).take(max)
+
+    /**
+     * [current] with [picked], a stop or a geocoded place, moved (or added) to the front, capped at
+     * [max]: one list, so a place picked last reads above a stop picked before it. A place is the same
+     * pick again by its name and coordinate ([SearchEntry.key]).
+     */
+    fun add(current: List<SearchEntry>, picked: SearchEntry, max: Int = MAX): List<SearchEntry> =
+        (listOf(picked) + current.filter { it.key != picked.key }).take(max)
 }

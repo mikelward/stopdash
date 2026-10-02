@@ -110,6 +110,9 @@ fun StationSearchScreen(
     // list, each routed to as a coordinate (SPEC D9). Null elsewhere (a plain station browse has no
     // trip to route), which hides the section.
     onOpenPlace: ((TripDestination.Place) -> Unit)? = null,
+    // Told of a geocoded place picked here, from the results or from Recent, before it's routed to
+    // ([onOpenPlace]), so it's remembered with the recent stops. A saved place's chip isn't one.
+    onPlacePicked: (PlaceHit) -> Unit = {},
     // Re-reads the saved places, for the Retry shown when their read failed. Null hides the retry.
     onRetryPlaces: (() -> Unit)? = null,
     // Set where the search picks where a trip starts (From…): "Here", behind the crosshair, heads the
@@ -228,7 +231,8 @@ fun StationSearchScreen(
                     // "Here" needs nothing read, so a From… search lists it at once and the rest follow.
                     state.query.isBlank() && !state.yoursRead && onPickHere == null -> Unit
                     state.query.isBlank() && (
-                        onPickHere != null || state.favorites.isNotEmpty() || state.recent.isNotEmpty() ||
+                        onPickHere != null || state.favorites.isNotEmpty() ||
+                            state.recent.any { onOpenPlace != null || it is SearchEntry.Stop } ||
                             (onOpenPlace != null && (state.favoritePlaces.isNotEmpty() || state.favoritePlacesFailed))
                         ) ->
                         YourStopsList(
@@ -238,6 +242,7 @@ fun StationSearchScreen(
                             recent = state.recent,
                             onOpenStation = onOpenStation,
                             onOpenPlace = onOpenPlace,
+                            onPlacePicked = onPlacePicked,
                             onRetryPlaces = onRetryPlaces,
                             onPickHere = onPickHere,
                             onEditPlaces = onEditPlaces,
@@ -274,7 +279,7 @@ fun StationSearchScreen(
                                 is SearchEntry.Stop -> MatchRow(entry.match, onClick = { onOpenStation(entry.match) })
                                 is SearchEntry.Place -> PlaceHitRow(
                                     entry.hit,
-                                    onClick = { onOpenPlace?.invoke(TripDestination.Place(entry.hit.coordinate, entry.hit.name)) },
+                                    onClick = { openPlaceHit(entry.hit, onPlacePicked, onOpenPlace) },
                                 )
                             }
                             HorizontalDivider()
@@ -317,19 +322,29 @@ fun StationSearchScreen(
 /** The search field's value for [query] on arrival: the text, with the cursor after it. */
 internal fun queryFieldValue(query: String): TextFieldValue = TextFieldValue(query, TextRange(query.length))
 
+// A geocoded place tapped, in the results or under Recent: remembered, then routed to as a coordinate
+// (SPEC D9). Only a To… picker routes to one.
+private fun openPlaceHit(hit: PlaceHit, onPicked: (PlaceHit) -> Unit, onOpenPlace: ((TripDestination.Place) -> Unit)?) {
+    val route = onOpenPlace ?: return
+    onPicked(hit)
+    route(TripDestination.Place(hit.coordinate, hit.name))
+}
+
 /**
  * Before anything is typed: the user's saved [favoritePlaces] (a To… picker only — [onOpenPlace] set),
- * then their recent picks, then their starred stops not picked lately, each under its heading. Places
- * lead so a rider routing home taps once without typing (maintainer, 2026-09-27).
+ * then their recent picks, stops and the places a To… search picked among them, then their starred
+ * stops not picked lately, each under its heading. Places lead so a rider routing home taps once
+ * without typing (maintainer, 2026-09-27).
  */
 @Composable
 private fun YourStopsList(
     favoritePlaces: List<FavoritePlace>,
     favoritePlacesFailed: Boolean,
     favorites: List<StationMatch>,
-    recent: List<StationMatch>,
+    recent: List<SearchEntry>,
     onOpenStation: (StationMatch) -> Unit,
     onOpenPlace: ((TripDestination.Place) -> Unit)?,
+    onPlacePicked: (PlaceHit) -> Unit,
     onRetryPlaces: (() -> Unit)?,
     onPickHere: (() -> Unit)? = null,
     onEditPlaces: (() -> Unit)? = null,
@@ -371,11 +386,19 @@ private fun YourStopsList(
                 HorizontalDivider()
             }
         }
-        listOf(R.string.station_search_recent to recent, R.string.station_search_starred to favorites).forEach { (heading, stops) ->
-            if (stops.isEmpty()) return@forEach
+        // A place is routed to only where a trip can go to one, so elsewhere Recent lists stops alone.
+        val recentShown = if (onOpenPlace != null) recent else recent.filterIsInstance<SearchEntry.Stop>()
+        listOf(
+            R.string.station_search_recent to recentShown,
+            R.string.station_search_starred to favorites.map(SearchEntry::Stop),
+        ).forEach { (heading, entries) ->
+            if (entries.isEmpty()) return@forEach
             item(key = "heading-$heading") { SectionHeading(stringResource(heading)) }
-            items(stops, key = { "$heading-${it.id}" }) { match ->
-                MatchRow(match, onClick = { onOpenStation(match) })
+            items(entries, key = { "$heading-${it.key}" }) { entry ->
+                when (entry) {
+                    is SearchEntry.Stop -> MatchRow(entry.match, onClick = { onOpenStation(entry.match) })
+                    is SearchEntry.Place -> PlaceHitRow(entry.hit, onClick = { openPlaceHit(entry.hit, onPlacePicked, onOpenPlace) })
+                }
                 HorizontalDivider()
             }
         }

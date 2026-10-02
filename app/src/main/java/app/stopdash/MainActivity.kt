@@ -2503,6 +2503,8 @@ class MainActivity : ComponentActivity() {
                         loadPlaces = { loadFavoritePlaces(appContext) },
                         searchPlaces = stationFinder::searchPlaces,
                         recordOpen = { recents.add(it) },
+                        // A geocoded place picked is remembered with the stops, where only To… lists it.
+                        recordPlace = { recents.addPlace(it) },
                         warn = ::logDepartureWarning,
                     )
                 }
@@ -2573,6 +2575,7 @@ class MainActivity : ComponentActivity() {
                         route(place)
                     }
                 },
+                onPlacePicked = search::onPlaceOpened,
                 // Re-reads the saved places for the Retry when their read failed (offered only where the
                 // picker shows them).
                 onRetryPlaces = onOpenPlace?.let { { search.refreshYours() } },
@@ -3774,7 +3777,7 @@ private suspend fun loadYourStops(context: Context, recents: FileRecentStationsS
     return YourStops.of(
         journeys = journeys.map { it.copy(from = it.from.withArea(), to = it.to.withArea()) },
         starred = starred.map { it.second }.distinctBy { it.id },
-        recent = recents.load(),
+        recent = recents.loadPicks(),
         known = known.map { it.second },
         unnamedStarred = unnamed,
     )

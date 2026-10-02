@@ -6,6 +6,7 @@ import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.IndexedStation
 import app.stopdash.domain.PlaceCandidate
+import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.PlaceKind
 import app.stopdash.domain.SearchEntry
 import app.stopdash.domain.LineRef
@@ -420,7 +421,7 @@ class StationViewModelsTest {
         advanceUntilIdle()
         assertTrue(vm.state.value.yoursRead)
         assertEquals(listOf(favoriteStop), vm.state.value.favorites)
-        assertEquals(listOf(recent), vm.state.value.recent)
+        assertEquals(listOf(SearchEntry.Stop(recent)), vm.state.value.recent)
     }
 
     @Test
@@ -479,7 +480,55 @@ class StationViewModelsTest {
         advanceUntilIdle()
         vm.onOpened(oxford)
         advanceUntilIdle()
-        assertEquals(listOf(oxford), vm.state.value.recent)
+        assertEquals(listOf(SearchEntry.Stop(oxford)), vm.state.value.recent)
+    }
+
+    @Test
+    fun `picking a place remembers it, and lists it under Recent above the stop picked before it`() = runTest {
+        val picks = mutableListOf<SearchEntry>()
+        val gallery = PlaceHit("Example Gallery", Coordinates(51.5, -0.12), PlaceKind.PLACE)
+        val vm = StationSearchViewModel(
+            FakeFinder(),
+            loadYours = {
+                YourStops(
+                    recent = picks.filterIsInstance<SearchEntry.Stop>().map { it.match },
+                    recentPicks = picks.toList(),
+                )
+            },
+            recordOpen = { picks.add(0, SearchEntry.Stop(it)) },
+            recordPlace = { picks.add(0, SearchEntry.Place(it)) },
+            io = dispatcher,
+        )
+        advanceUntilIdle()
+        vm.onOpened(oxford)
+        vm.onPlaceOpened(gallery)
+        advanceUntilIdle()
+        assertEquals(listOf(SearchEntry.Place(gallery), SearchEntry.Stop(oxford)), vm.state.value.recent)
+        // And kept when the search closes, as the stops are.
+        vm.clear()
+        assertEquals(listOf(SearchEntry.Place(gallery), SearchEntry.Stop(oxford)), vm.state.value.recent)
+    }
+
+    @Test
+    fun `picks are written in the order tapped, however long each write takes`() = runTest {
+        // The first write is slow (the gate holds it); the second, tapped after it, must still land after it.
+        val gate = CompletableDeferred<Unit>()
+        val written = mutableListOf<SearchEntry>()
+        val gallery = PlaceHit("Example Gallery", Coordinates(51.5, -0.12), PlaceKind.PLACE)
+        val vm = StationSearchViewModel(
+            FakeFinder(),
+            recordOpen = { written.add(0, SearchEntry.Stop(it)) },
+            recordPlace = { if (it == gallery) gate.await(); written.add(0, SearchEntry.Place(it)) },
+            io = dispatcher,
+        )
+        advanceUntilIdle()
+        vm.onPlaceOpened(gallery)
+        vm.onOpened(oxford)
+        runCurrent()
+        gate.complete(Unit)
+        advanceUntilIdle()
+        // The last tapped leads the recent list.
+        assertEquals(listOf(SearchEntry.Stop(oxford), SearchEntry.Place(gallery)), written)
     }
 
     @Test

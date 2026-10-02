@@ -88,7 +88,8 @@ documentation, and the form re-checked, before the watch app is released.
 stop search, once you pause typing, and then the chosen station's id to look up its stops and
 departures, and the station's own position (a public place, not yours) to find the stops around it (for *To…*, the stops and the routes of the lines leaving where you start from; a *To…* from the near-me list starts from the location the near-me list was found from, which goes to TfL's Journey Planner as the trip's start — see **Trips with a change** — and refreshing it or coming back to the app finds your location again, exactly as the near-me list does). The name isn't saved,
 logged or sent anywhere else. The last eight stations you open from *From…*, and separately the last eight
-destinations you pick in *To…*, are remembered on the device to list under *Recent*, in app storage
+destinations you pick in *To…* (a stop, or a place or postcode with the name and map position TfL
+gave it), are remembered on the device to list under *Recent*, in app storage
 that Android never backs up or transfers; they are
 never logged or sent anywhere, and clearing the app's data removes them. So that a starred stop
 can be listed by name there, the place each starred row belongs to (its stop area or station, as

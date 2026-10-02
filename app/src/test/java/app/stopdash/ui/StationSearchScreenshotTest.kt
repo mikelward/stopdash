@@ -16,6 +16,7 @@ import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.PlaceHit
 import app.stopdash.domain.PlaceKind
+import app.stopdash.domain.SearchEntry
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.TripDestination
 import app.stopdash.ui.theme.StopDashTheme
@@ -122,7 +123,7 @@ class StationSearchScreenshotTest {
                                 icon = FavoritePlaceIcon.WORK, chipShows = ChipLabel.ICON,
                             ),
                         ),
-                        recent = listOf(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))),
+                        recent = listOf(SearchEntry.Stop(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube")))),
                         yoursRead = true,
                     ),
                     onQueryChange = {},
@@ -153,6 +154,71 @@ class StationSearchScreenshotTest {
     }
 
     @Test
+    fun station_search_to_recent_place() {
+        // A place picked from an earlier To… search is listed under Recent with the stops, in the order
+        // picked, tagged as a place; a tap routes to it again and moves it to the front. Synthetic
+        // coordinates and a generic name — no user data.
+        val gallery = PlaceHit("Example Gallery", Coordinates(51.5, -0.12), PlaceKind.PLACE)
+        var routed: TripDestination.Place? = null
+        var picked: PlaceHit? = null
+        composeRule.setContent {
+            StopDashTheme {
+                StationSearchScreen(
+                    state = StationSearchViewModel.State(
+                        recent = listOf(
+                            SearchEntry.Place(gallery),
+                            SearchEntry.Stop(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))),
+                        ),
+                        yoursRead = true,
+                    ),
+                    onQueryChange = {},
+                    onOpenStation = {},
+                    onRetry = {},
+                    onBack = {},
+                    autoFocus = false,
+                    hint = "To station or stop",
+                    onOpenPlace = { routed = it },
+                    onPlacePicked = { picked = it },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        val placeTop = composeRule.onNodeWithText("Example Gallery").fetchSemanticsNode().boundsInRoot.top
+        assertTrue(placeTop < composeRule.onNodeWithText("Oxford Circus").fetchSemanticsNode().boundsInRoot.top)
+        composeRule.onNodeWithText("Place").assertIsDisplayed()
+        captureSnapshot("station-search-to-recent-place.png")
+        composeRule.onNodeWithText("Example Gallery").performClick()
+        assertEquals(gallery, picked)
+        assertEquals(TripDestination.Place(Coordinates(51.5, -0.12), "Example Gallery"), routed)
+    }
+
+    @Test
+    fun station_search_recent_place_not_listed_where_no_place_can_be_routed() {
+        // A search that routes to no place (From…, a station browse) lists the recent stops alone.
+        composeRule.setContent {
+            StopDashTheme {
+                StationSearchScreen(
+                    state = StationSearchViewModel.State(
+                        recent = listOf(
+                            SearchEntry.Place(PlaceHit("Example Gallery", Coordinates(51.5, -0.12), PlaceKind.PLACE)),
+                            SearchEntry.Stop(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))),
+                        ),
+                        yoursRead = true,
+                    ),
+                    onQueryChange = {},
+                    onOpenStation = {},
+                    onRetry = {},
+                    onBack = {},
+                    autoFocus = false,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Oxford Circus").assertIsDisplayed()
+        composeRule.onNodeWithText("Example Gallery").assertDoesNotExist()
+    }
+
+    @Test
     fun station_search_from_offers_here() {
         // The From… search heads its list with "Here", the rider's own position, above the recent stops
         // (maintainer, 2026-09-28). Public station names only.
@@ -161,7 +227,7 @@ class StationSearchScreenshotTest {
             StopDashTheme {
                 StationSearchScreen(
                     state = StationSearchViewModel.State(
-                        recent = listOf(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))),
+                        recent = listOf(SearchEntry.Stop(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube")))),
                         yoursRead = true,
                     ),
                     onQueryChange = {},
@@ -215,7 +281,7 @@ class StationSearchScreenshotTest {
             StopDashTheme {
                 StationSearchScreen(
                     state = StationSearchViewModel.State(
-                        recent = listOf(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))),
+                        recent = listOf(SearchEntry.Stop(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube")))),
                         yoursRead = true,
                     ),
                     onQueryChange = {},
@@ -247,7 +313,7 @@ class StationSearchScreenshotTest {
                             FavoritePlace("home", FavoriteKind.HOME, "Home", Coordinates(51.5, -0.12)),
                             FavoritePlace("work", FavoriteKind.WORK, "Work", Coordinates(51.51, -0.10)),
                         ),
-                        recent = listOf(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))),
+                        recent = listOf(SearchEntry.Stop(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube")))),
                         yoursRead = true,
                     ),
                     onQueryChange = { typed = it },
@@ -326,7 +392,7 @@ class StationSearchScreenshotTest {
                 StationSearchScreen(
                     state = StationSearchViewModel.State(
                         favoritePlacesFailed = true,
-                        recent = listOf(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))),
+                        recent = listOf(SearchEntry.Stop(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube")))),
                         yoursRead = true,
                     ),
                     onQueryChange = {},
@@ -419,7 +485,7 @@ class StationSearchScreenshotTest {
         show(
             StationSearchViewModel.State(
                 favorites = listOf(StationMatch("490G00000001", "King's Cross Station", listOf("bus"))),
-                recent = listOf(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube"))),
+                recent = listOf(SearchEntry.Stop(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube")))),
                 yoursRead = true,
             ),
             onOpen = { opened = it },
