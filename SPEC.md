@@ -125,7 +125,9 @@ The app finds stops two ways:
     banner, and GPS is **asked again** for a few more seconds. A precise fix within 100 m confirms
     the list and clears the banner; a farther one **moves the list** to it, re-picked as a refresh
     does. None in time, and the banner stays, with its Try again. "No stops found nearby" from a
-    coarse fix says "Approximate location" too, and looks again from any different precise fix. The ask is foreground-only: it
+    coarse fix says "Approximate location" too, and looks again from any different precise fix.
+    "No stops found nearby" says why it most often happens (maintainer, 2026-10-02): "StopDash only
+    shows stops in and around London." The ask is foreground-only: it
     stops when the list is left or the app backgrounded, and is made again on return while the
     banner still shows. The list is a
   **useful, scannable spread, not a raw nearest-N**:
@@ -1144,7 +1146,9 @@ is available, "Update available", "Send bug report" and About — so a problem s
 reported from it (maintainer, 2026-09-26). So does **every other screen** with no menu of its own —
 On the way, a route's page, a station's page, the From…/To… search, Settings, the saved places and
 the licenses (maintainer, 2026-09-29): a problem is reported from where it is seen, and the report's
-screenshot shows that screen. The location gate keeps its own "Send bug report" button instead.
+screenshot shows that screen. The location gate has it too (maintainer, 2026-10-02), in every state,
+with From… and Settings as well, since both work before any stop is found; its stuck states keep their
+own "Send bug report" button beside it.
 Settings masks both API keys again as its menu opens, so a key revealed with Show is never in a
 report's screenshot: a credential is not one of the things the report discloses.
 
@@ -2209,10 +2213,8 @@ JVM/Robolectric-renderable without touching Android services.
 About — and so the license attribution — is reachable in **every** state that can last,
 including the location gate when permission is denied and departures never resolve: it is
 hosted above the gate, not inside the departures view, so a user who never grants location can
-still open it. The gate's "Finding stops near you…" spinner leaves it off: finding a fix and its
-stops is time-bounded, and every state it ends in offers About.
-Settings shares that top-level hosting, but is reached only from the departures overflow menu
-for now (the gate's own menu offers About alone). Opening either takes the departures view
+still open it, from the gate's overflow, in every state. Settings shares that top-level hosting, and
+the gate's overflow offers it too (maintainer, 2026-10-02). Opening either takes the departures view
 (and its background refresh) out of the picture, so nothing polls TfL behind the static
 screen.
 
@@ -2265,9 +2267,8 @@ does the download and install. It is a lightweight nudge, not a banner: a dot co
 or top-bar width, and there is no in-app update flow to shoehorn a download/restart UI into.
 The loading screens also surface the same nudge as an outlined **Update available** button
 at the bottom of the screen — its room kept whether or not an update is pending, so the
-spinner and everything else stay where they are either way. On the **location gate** ("finding stops") this is the only update
-affordance — the gate has no overflow menu. On the departures **cold-load** spinner the
-overflow (with its dot) is already there, so the button is a more **direct** prompt than a dot
+spinner and everything else stay where they are either way. On the **location gate** ("finding stops") and the departures
+**cold-load** spinner alike, the overflow (with its dot) is there too, so the button is a more **direct** prompt than a dot
 the user may not notice while waiting, not the only path to it. Either way a user sitting on a
 slow fix or a cold load can act on the update without hunting a menu, and it stays a secondary
 offer (outlined, at the bottom), not the screen's main action.

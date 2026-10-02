@@ -142,6 +142,7 @@ import app.stopdash.telemetry.TelemetryConsent
 import app.stopdash.telemetry.UsageEvents
 import app.stopdash.ui.ARRIVALS_REUSE
 import app.stopdash.ui.ActiveTripTracker
+import app.stopdash.ui.AboutDialog
 import app.stopdash.ui.AppMenuActions
 import app.stopdash.ui.HideUndoCarrier
 import app.stopdash.ui.BugReportConsentDialog
@@ -500,6 +501,9 @@ class MainActivity : ComponentActivity() {
                 // own Back closes it.
                 var licensesOpen by rememberSaveable { mutableStateOf(false) }
                 var settingsOpen by rememberSaveable { mutableStateOf(false) }
+                // The location gate's About dialog, hosted here rather than in the gate: a lookup that
+                // finishes while it's open replaces the gate, and would close it under the reader (Codex, #470).
+                var gateAboutOpen by rememberSaveable { mutableStateOf(false) }
                 // The favorite-places editor (SPEC D9), opened from Settings and layered above it, so
                 // its Back returns to Settings.
                 var favoritePlacesOpen by rememberSaveable { mutableStateOf(false) }
@@ -1278,6 +1282,12 @@ class MainActivity : ComponentActivity() {
                                             UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SEARCH))
                                             stationSearchOpen = true
                                         },
+                                        // Settings is hosted above the gate, as on the list's overflow.
+                                        onOpenStopDashSettings = {
+                                            UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SETTINGS))
+                                            settingsOpen = true
+                                        },
+                                        onOpenAbout = { gateAboutOpen = true },
                                         places = gatePlaces,
                                         onRouteToPlace = routeToPlace,
                                         // A long press on a chip edits the places, as on the list.
@@ -1286,6 +1296,16 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         },
+                    )
+                }
+
+                if (gateAboutOpen) {
+                    AboutDialog(
+                        onOpenLicenses = {
+                            gateAboutOpen = false
+                            openLicenses()
+                        },
+                        onDismiss = { gateAboutOpen = false },
                     )
                 }
 

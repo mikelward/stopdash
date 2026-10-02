@@ -1418,9 +1418,9 @@ fun MainScreen(
 /** A stop's station identity for the whole-station view: its StopArea cluster, else the stop alone. */
 private fun stationClusterOf(clusterId: String, stopId: String): String = clusterId.ifBlank { "\u0000$stopId" }
 
-/** The app's mark at the start of the departures app bar. */
+/** The app's mark at the start of the departures app bar, and the location gate's. */
 @Composable
-private fun AppBarMark() {
+internal fun AppBarMark() {
     // The app's route-lines mark on a themed tile — white in light, black in
     // dark — so it sits on the app bar without a fixed dark box. The arrow is a
     // separate, tintable layer flipped to contrast the tile (dark on white, white
@@ -4828,7 +4828,7 @@ private fun Centered(modifier: Modifier, content: @Composable () -> Unit) {
  * says which app this is, so the name is left out rather than cut; a screen reader still hears it.
  */
 @Composable
-private fun AppTitle() {
+internal fun AppTitle() {
     var fits by remember { mutableStateOf(true) }
     Text(
         stringResource(R.string.app_name),
