@@ -2377,8 +2377,9 @@ reads the base. TfL's own line and place names stay as TfL spells them.
   which rows and headers fit a fixed number of lines, so the watch tile shows what the widget
   would. Compose UI, the widget and the stores stay in `:app`.
 - A **`:wear` Wear OS app** (a companion: it shows only what the phone sends, over the Wearable
-  Data Layer, and never calls TfL). It shares the phone's application ID, so it can't be released
-  before the package rename; its release build fails until the maintainer lifts that gate.
+  Data Layer, and never calls TfL). It shares the phone's application ID and upload key, as the
+  Data Layer requires, and ships in the same Play listing on its Wear OS track (launched
+  2026-10-02, once the package rename had landed).
 - The **TfL client** (Ktor/OkHttp + kotlinx.serialization models) sits behind a
   domain interface, so the decision logic is tested against recorded fixtures, not the
   live network.

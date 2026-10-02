@@ -9,6 +9,59 @@ plugins {
 // app takes the phone's.
 val watchApplicationId = "app.stopdash"
 
+// The watch app ships in the phone's Play listing, and every bundle in one listing needs a
+// versionCode of its own. The watch takes main's commit count, as the phone does, plus this
+// offset, so the two never collide and both rise with every merge. Kept in step with
+// app/build.gradle.kts, which reads the history the same way.
+val watchVersionCodeOffset = 100_000_000
+
+fun gitOutput(vararg args: String): String? =
+    try {
+        val output = providers.exec {
+            commandLine("git", *args)
+        }.standardOutput.asText.get().trim()
+        output.ifEmpty { null }
+    } catch (e: Exception) {
+        // A source archive with no .git: fine for a debug build, refused for a release one below.
+        logger.warn("git ${args.joinToString(" ")} failed (${e.message}); using a fallback version")
+        null
+    }
+
+val gitCommitCount: Int? = gitOutput("rev-list", "--count", "HEAD")?.toIntOrNull()
+val gitShortSha: String? = gitOutput("rev-parse", "--short", "HEAD")
+val gitShallow: Boolean = gitOutput("rev-parse", "--is-shallow-repository") == "true"
+
+// As for the phone: a shipped build's versionCode must come from main's full history, or Play
+// rejects it (or it lands under a real-looking number it doesn't deserve).
+val releaseVersionProblem: String? = when {
+    gitCommitCount == null || gitShortSha == null ->
+        "git couldn't read the history (a source archive, or git missing)"
+    gitShallow -> "the clone is shallow, so its commit count is short (run git fetch --unshallow)"
+    else -> null
+}
+val releaseVersionCheck = tasks.register("checkReleaseVersion") {
+    description = "Fails a release build whose versionCode didn't come from the full git history."
+    val problem = releaseVersionProblem
+    doLast {
+        check(problem == null) { "A release build needs its versionCode from the full git history: $problem." }
+    }
+}
+tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(releaseVersionCheck) }
+
+// The phone's upload key: the Data Layer pairs only apps signed alike, and Play App Signing
+// re-signs both. All four variables, or none (an unsigned local release build).
+fun releaseKeystoreEnv(name: String): String? =
+    providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
+
+val releaseKeystorePath = releaseKeystoreEnv("RELEASE_KEYSTORE_FILE")
+val releaseKeystorePassword = releaseKeystoreEnv("RELEASE_KEYSTORE_PASSWORD")
+val releaseKeyAlias = releaseKeystoreEnv("RELEASE_KEY_ALIAS")
+val releaseKeyPassword = releaseKeystoreEnv("RELEASE_KEY_PASSWORD")
+val anyReleaseKeystoreVarSet = releaseKeystorePath != null || releaseKeystorePassword != null ||
+    releaseKeyAlias != null || releaseKeyPassword != null
+val releaseSigningConfigured = releaseKeystorePath != null && releaseKeystorePassword != null &&
+    releaseKeyAlias != null && releaseKeyPassword != null
+
 android {
     namespace = "app.stopdash.wear"
     compileSdk = 37
@@ -18,8 +71,30 @@ android {
         // Wear OS 5 (Android 14), the fleet's API floor.
         minSdk = 34
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = watchVersionCodeOffset + (gitCommitCount ?: 1)
+        versionName = "0.1.${gitCommitCount ?: 1}+${gitShortSha ?: "unknown"}"
+    }
+
+    signingConfigs {
+        create("release") {
+            if (anyReleaseKeystoreVarSet && !releaseSigningConfigured) {
+                error(
+                    "Partial release-keystore configuration. Set all of RELEASE_KEYSTORE_FILE, " +
+                        "RELEASE_KEYSTORE_PASSWORD, RELEASE_KEY_ALIAS, RELEASE_KEY_PASSWORD — or none, " +
+                        "to build unsigned.",
+                )
+            }
+            if (releaseSigningConfigured) {
+                val keystore = file(releaseKeystorePath!!)
+                check(keystore.exists()) {
+                    "RELEASE_KEYSTORE_FILE is set but does not exist: ${keystore.path}"
+                }
+                storeFile = keystore
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
     }
 
     buildTypes {
@@ -27,6 +102,9 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
         debug {
             // Matches the phone's debug suffix, so a debug phone build pairs with a debug watch build.
@@ -72,25 +150,6 @@ tasks.withType<Test>().configureEach {
         jvmArgs("-Droborazzi.test.verify=true")
     }
 }
-
-// Release gate (maintainer, 2026-09-24; TODO Phase 6). The package is renamed; the watch app still
-// waits on the launch decision, so nothing here may be released by accident: every release
-// packaging task fails unless the build is run with -Pstopdash.wearRelease=approved. CI never
-// passes the flag, and asserts that :wear:bundleRelease fails without it. Lift it only in the PR
-// that releases the watch app.
-val wearReleaseApproved = providers.gradleProperty("stopdash.wearRelease").orNull == "approved"
-val releaseGate = tasks.register("checkWearReleaseGate") {
-    description = "Fails a Wear OS release build until the maintainer lifts the release gate."
-    val approved = wearReleaseApproved
-    doLast {
-        check(approved) {
-            "The Wear OS app isn't released yet (TODO Phase 6): build it with " +
-                "-Pstopdash.wearRelease=approved only once the maintainer has decided to launch."
-        }
-    }
-}
-// On the release variant's first task, so a release build stops before compiling anything.
-tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(releaseGate) }
 
 dependencies {
     implementation(project(":shared"))

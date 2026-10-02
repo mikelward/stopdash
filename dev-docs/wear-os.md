@@ -1,10 +1,10 @@
 # Wear OS support
 
-**Status: in progress, not released.** A developer-facing plan for putting StopDash's
+**Status: built; release in progress (maintainer, 2026-10-02).** A developer-facing plan for putting StopDash's
 departures on a Wear OS watch, so the design and its open questions aren't re-derived each time.
 The work is tracked in `TODO.md` (*Phase 6 — Wear OS*), which points here. *Suggested order*
 marks which steps are built; the rest of this document describes the design, built or not. The
-watch app can't be released until the release gate (*Distribution*) is lifted.
+watch app is released alongside the phone app (*Distribution*).
 
 ## Why a watch
 
@@ -435,7 +435,9 @@ it before committing to the design.
   - The Play Data Safety answers are checked for whether that counts as data shared or
     collected, before the watch release.
   - At implementation, confirm how the Data Layer actually routes, so the disclosure describes
-    it accurately.
+    it accurately. Confirmed at launch (2026-10-02) from Google's Data Layer overview: an
+    encrypted Bluetooth channel when connected, otherwise routed through Google Cloud, where
+    "all data transferred … is end-to-end encrypted". `docs/PRIVACY.md` now says so.
 - No coordinates, no key and no location permission on the watch (option A).
 - The watch app's diagnostics follow the same rules as the phone's: on-device only unless the
   user opts in (SPEC *Privacy*). Whether the phone's crash-report opt-in also covers the watch
@@ -547,11 +549,11 @@ it before committing to the design.
 
 - A **Wear OS release** in the same Play listing and package, on its own form-factor track. The
   Wear AAB is built by `:wear` in the same CI, signed with the same key.
-- **Release gate (maintainer, 2026-09-24):** the watch code is built ahead of the launch
-  decision, so nothing ships by accident. `:wear`'s release tasks fail unless the build passes
-  `-Pstopdash.wearRelease=approved` (until the package rename it also refused the old
-  `app.stopcast` ID). CI never passes the flag, and a CI step asserts the release build fails
-  without it. It's lifted only after the launch decision.
+- **Released (maintainer, 2026-10-02).** The release gate that kept `:wear`'s release build
+  from running until the launch decision is gone. CI builds and signs the watch bundle with the
+  phone's, and uploads it to the Wear OS internal track once Play Console is set up for it
+  (`dev-docs/play-store-internal-track.md`, *The Wear OS app*). Its versionCode is main's commit
+  count plus 100,000,000, since every bundle in one listing needs its own.
 - It must meet Play's Wear OS app-quality requirements: watch screenshots and a tile that works
   on round screens and at large font scales. The watch honors the system font size; StopDash's
   own text-size factor stays a phone setting unless the maintainer wants it synced.
@@ -586,7 +588,9 @@ it before committing to the design.
    with its foreground ticker and its screenshots (`WatchHomeScreenshotTest`, already in CI's
    allow-list).
 9. Play: the Wear OS track, screenshots, app-quality review, and filing the Data Safety answers
-   decided in step 4.
+   decided in step 4. **The repo side is done** (gate lifted, the watch bundle built, signed and
+   uploaded by CI); the Play Console side is the maintainer's
+   (`dev-docs/play-store-internal-track.md`, *The Wear OS app*).
 
 Each step is its own PR with its own tests. Steps 2 and 3 are useful even if the watch work
 stops there.
