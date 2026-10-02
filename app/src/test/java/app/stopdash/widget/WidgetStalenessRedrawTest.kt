@@ -131,4 +131,13 @@ class WidgetStalenessRedrawTest {
         assertEquals(1, enqueuedCount())
         assertEquals(1, wm().getWorkInfosForUniqueWork(WIDGET_STALENESS_WORK).get().count { it.state == WorkInfo.State.ENQUEUED })
     }
+
+    @Test
+    fun `a render that must look again redraws by then, or at the snapshot's own boundary if sooner`() {
+        val minute = kotlin.time.Duration.parse("1m")
+        org.junit.Assert.assertEquals(minute, redrawIn(kotlin.time.Duration.ZERO, minute))
+        org.junit.Assert.assertEquals(minute, redrawIn(kotlin.time.Duration.parse("4m"), minute))
+        org.junit.Assert.assertEquals(kotlin.time.Duration.parse("20s"), redrawIn(kotlin.time.Duration.parse("20s"), minute))
+        org.junit.Assert.assertEquals(kotlin.time.Duration.parse("4m"), redrawIn(kotlin.time.Duration.parse("4m"), null))
+    }
 }

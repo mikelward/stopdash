@@ -6,6 +6,7 @@ import android.content.SharedPreferences
 import app.stopdash.StopdashDebugLog
 import app.stopdash.data.DataStoreAlertsBehindStore
 import app.stopdash.data.DataStoreDismissedAlertsStore
+import app.stopdash.data.DataStoreNearbySetStore
 import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.data.WatchComplicationRows
 import app.stopdash.data.DataStoreStarredRowsStore
@@ -32,6 +33,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
@@ -272,7 +274,7 @@ object WatchSync {
                 // Dismissals are applied here, where the envelope is built, rather than stored with
                 // the snapshot ([DeparturesSnapshot.withDismissals]); so are the app's verdicts on
                 // alerts behind a stop ([DeparturesSnapshot.withAlertsBehind]).
-                snapshots(appContext).first()?.withDismissals(dismissals(appContext).first())
+                shownSnapshots(appContext).first()?.withDismissals(dismissals(appContext).first())
                     ?.withAlertsBehind(alertsBehind(appContext).first()) to starred(appContext).first()
             } catch (e: CancellationException) {
                 throw e
@@ -300,6 +302,18 @@ object WatchSync {
 
     fun snapshots(context: Context): Flow<DeparturesSnapshot?> =
         DataStoreSnapshotStore.from(context.applicationContext, warn = ::logWidgetSnapshotWarning).snapshots()
+
+    /**
+     * [snapshots] as the widget shows them: only the stops the app last found near the rider
+     * ([DeparturesSnapshot.scopedTo]), re-emitted when either changes. The watch is sent what the
+     * widget shows. A refresh works from [snapshots] itself, since its write is checked against the
+     * stops stored.
+     */
+    fun shownSnapshots(context: Context): Flow<DeparturesSnapshot?> =
+        combine(
+            snapshots(context),
+            DataStoreNearbySetStore.from(context.applicationContext, warn = ::logWidgetSnapshotWarning).nearby(),
+        ) { snapshot, nearby -> nearby?.let { snapshot?.scopedTo(it) } ?: snapshot }
 
     /** The starred rows; a set this build can't read counts as none, never as a reason not to publish. */
     fun starred(context: Context): Flow<Set<StarredRow>> =
@@ -370,7 +384,8 @@ object WatchSync {
             WatchPublisher.keepCollecting(log = { StopdashDebugLog.warning("watch: %s", it) }) {
                 // Each settled change is a cue; the publish itself reads the latest stored state.
                 WatchPublisher.requests(
-                    snapshots(appContext),
+                    // A new nearby set is a cue too: it changes what the watch is sent.
+                    shownSnapshots(appContext),
                     starred(appContext),
                     HiddenModesSetting.changes,
                     dismissedChanges(appContext),

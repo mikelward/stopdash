@@ -736,3 +736,21 @@ internal fun StopLocation.toStopRef() =
         id = id, name = name, lines = lines, clusterId = clusterId, hubId = hubId,
         stopLetter = stopLetter, bearing = bearing, towards = towards,
     )
+
+/**
+ * The nearby stops the widget and the watch should show from the stored departures, for this state:
+ * the stops fetched at once ([NearbyStopsViewModel.State.Ready.eagerStops], the set the departures
+ * view saves), and none where the app has no stops for where the rider is: TfL found none, the lookup
+ * failed, there's no fix, or location isn't allowed ([locationAllowed] false). Leaving the old set
+ * there would show the place the rider may have left as live (Codex on #474). Null — leave the stored
+ * set as it is — only while a locate is under way, or before the first one, when permission is held.
+ */
+internal fun NearbyStopsViewModel.State.widgetNearbySet(locationAllowed: Boolean): Set<String>? = when (this) {
+    is NearbyStopsViewModel.State.Ready -> eagerStops.mapTo(HashSet()) { it.id }
+    is NearbyStopsViewModel.State.Empty,
+    is NearbyStopsViewModel.State.Failed,
+    NearbyStopsViewModel.State.NoLocation -> emptySet()
+    // Also the state before the first locate, permission held or not: only no permission means no stops.
+    NearbyStopsViewModel.State.PermissionRequired -> if (locationAllowed) null else emptySet()
+    NearbyStopsViewModel.State.Locating -> null
+}
