@@ -156,10 +156,10 @@ private fun stripLeadingPlaceName(
         //      end of text) is boundary enough — "X Underground Station\n<body>".
         // A newline never satisfies the intra-name whitespace, so a bare name line with no type or
         // separator ("Victoria\nStation closed") matches neither and is left intact.
-        val end = Regex(
+        val end = Patterns.of(
             "^$H*$namePattern(?:$H+(?:$types))?$H*[$SEPARATORS]+\\s*" +
                 "|^$H*$namePattern$H+(?:$types)$H*(?:\\r?\\n\\s*|$)",
-            RegexOption.IGNORE_CASE,
+            ignoreCase = true,
         ).find(text)?.let { it.range.last + 1 }
             ?: colonLabelStripEnd(text, letterKey(name))
             ?: continue
@@ -199,6 +199,9 @@ private fun colonLabelStripEnd(text: String, nameKey: String): Int? {
 private fun letterKey(name: String): String =
     TYPE_WORD.replace(name, " ").filter { it.isLetterOrDigit() }.uppercase()
 
+/** A name's alphanumeric word tokens, for [flexibleNamePattern]. */
+private val WORD_TOKEN = Regex("[A-Za-z0-9]+")
+
 /** The station-type words dropped by [letterKey] before comparing a label to a name. */
 private val TYPE_WORD =
     Regex("(?i)\\b(?:underground|overground|dlr|rail|coach|tram|station)\\b")
@@ -210,7 +213,7 @@ private val TYPE_WORD =
  * tokens (nothing to anchor on).
  */
 private fun flexibleNamePattern(name: String): String? {
-    val tokens = Regex("[A-Za-z0-9]+").findAll(name).map { Regex.escape(it.value) }.toList()
+    val tokens = WORD_TOKEN.findAll(name).map { Regex.escape(it.value) }.toList()
     if (tokens.isEmpty()) return null
     return tokens.joinToString(NAME_TOKEN_SEP)
 }

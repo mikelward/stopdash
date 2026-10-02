@@ -32,13 +32,17 @@ object AlertStops {
         val capped = all.fold(haystack) { acc, name ->
             place(name).replace(acc) { match -> match.value.map(Char::uppercaseChar).joinToString("") }
         }
+        // Where each name is in the text, searched once: a name inside a longer one ("Bank" in "Bank
+        // Station") is checked against these, rather than every longer name on the route being searched
+        // again for every match, which grew with the square of the route's length.
+        val spans = all.associateWith { name -> place(name).findAll(haystack).map { it.range }.toList() }
         return stops.filterTo(LinkedHashSet()) { stop ->
             aliases.getValue(stop).any { name ->
-                named(haystack, capped, name, longer = all.filter { it.length > name.length })
+                named(haystack, capped, name, spans)
             } || crossNames(stop.name).any { name ->
                 // Only with its letter: "Moorgate Station (L)" is a stop, a bare "Moorgate Station" may
                 // be the road or the station, not the stop listed under another street's name.
-                Regex("""${place(name).pattern}$STATION'?$LETTER""", RegexOption.IGNORE_CASE).findAll(haystack)
+                Patterns.of("""${place(name).pattern}$STATION'?$LETTER""", ignoreCase = true).findAll(haystack)
                     .any { haystack[it.range.first].isUpperCase() }
             }
         }.mapTo(LinkedHashSet(), RouteStop::id)
@@ -137,7 +141,7 @@ object AlertStops {
             if (stop.id !in named) continue
             val name = ref(stop.name)
             for ((pattern, after) in CUT_SHORT) {
-                val matches = Regex(pattern.replace("STOP", name), RegexOption.IGNORE_CASE).findAll(haystack).filter { affirmed(haystack, it) }.toList()
+                val matches = Patterns.of(pattern.replace("STOP", name), ignoreCase = true).findAll(haystack).filter { affirmed(haystack, it) }.toList()
                 if (matches.isEmpty()) continue
                 matches.mapTo(read) { it.range }
                 (if (after) stops.subList(k + 1, stops.size) else stops.subList(0, k)).mapTo(marked) { it.id }
@@ -151,7 +155,7 @@ object AlertStops {
         if (text == null) return emptySet()
         val haystack = normalize(text).replace(CITY_LINES, "CITYLINE")
         return stops.filter { it.id in named }.mapNotNullTo(HashSet()) { stop ->
-            val matches = MISSED.flatMap { Regex(it.replace("STOP", ref(stop.name)), RegexOption.IGNORE_CASE).findAll(haystack).filter { affirmed(haystack, it) } }
+            val matches = MISSED.flatMap { Patterns.of(it.replace("STOP", ref(stop.name)), ignoreCase = true).findAll(haystack).filter { affirmed(haystack, it) } }
             matches.mapTo(read) { it.range }
             stop.id.takeIf { matches.isNotEmpty() }
         }
@@ -189,11 +193,11 @@ object AlertStops {
             val from = ref(x)
             val to = ref(y)
             if (affecting) {
-                SKIPPED.map { Regex(it.replace("FROM", from).replace("TO", to), RegexOption.IGNORE_CASE) }
+                SKIPPED.map { Patterns.of(it.replace("FROM", from).replace("TO", to), ignoreCase = true) }
             } else {
                 listOf(
-                    Regex("""\bbetween\s+$from\s+and\s+$to""", RegexOption.IGNORE_CASE),
-                    Regex("""${ref(x, quoted = false)}\s+to\s+$to""", RegexOption.IGNORE_CASE),
+                    Patterns.of("""\bbetween\s+$from\s+and\s+$to""", ignoreCase = true),
+                    Patterns.of("""${ref(x, quoted = false)}\s+to\s+$to""", ignoreCase = true),
                 )
             }
         }
@@ -254,14 +258,14 @@ object AlertStops {
 
     // Whether [name] appears in [haystack] as a place — not as part of one of the [longer] names of
     // the page's other stations ("Stratford" inside "Stratford International").
-    private fun named(haystack: String, capped: String, name: String, longer: List<String>): Boolean =
-        place(name).findAll(haystack).any { match ->
-            val at = match.range.first
-            val end = match.range.last + 1
+    private fun named(haystack: String, capped: String, name: String, spans: Map<String, List<IntRange>>): Boolean =
+        spans.getValue(name).any { range ->
+            val at = range.first
+            val end = range.last + 1
             val rest = haystack.substring(end)
             when {
                 haystack[at].isLowerCase() -> false
-                longer.any { other -> place(other).findAll(haystack).any { at in it.range } } -> false
+                spans.any { (other, at2) -> other.length > name.length && at2.any { at in it } } -> false
                 NOT_A_PLACE.containsMatchIn(rest) -> false
                 (LIST_OF_LINES.containsMatchIn(rest) || inTowardsList(capped, at)) &&
                     !shouting(capped, at) -> false
@@ -274,10 +278,10 @@ object AlertStops {
     // "'s" straight after it still ends the phrase ("Victoria's platforms"). A quote opening it
     // counts as a break ("between 'Bank Station' and 'Moorgate Station'", as bus alerts quote their
     // stops), an apostrophe inside a word doesn't.
-    private fun place(name: String): Regex = Regex(
+    private fun place(name: String): Regex = Patterns.of(
         """(?<![\p{L}\p{N}])(?<![\p{L}\p{N}]')""" + name.map { Regex.escape(it.toString()) }.joinToString("'?") +
             """(?=(?:'s)?(?![\p{L}\p{N}]))""",
-        RegexOption.IGNORE_CASE,
+        ignoreCase = true,
     )
 
     // One spelling for the variants TfL mixes within a single alert: curly and straight apostrophes,
@@ -287,17 +291,23 @@ object AlertStops {
     // separates clauses with one and no punctuation ("Buses towards London Bridge\nLondon Bridge
     // Station is closed"). It is kept as "; " rather than a space, so every check that stops at a
     // clause end — the "towards" list behind a name, the list of lines after it — stops there too.
+    private val LINE_BREAK = Regex("""\s*\n\s*""")
+    private val AMPERSAND = Regex("""\s+&\s+""")
+    private val SLASH = Regex("""\s*/\s*""")
+    private val SAINT = Regex("""\b(St)\.""", RegexOption.IGNORE_CASE)
+    private val SPACES = Regex("""\s+""")
+
     private fun normalize(s: String): String = s
         .replace("\\n", "\n")
-        .replace(Regex("""\s*\n\s*"""), "; ")
+        .replace(LINE_BREAK, "; ")
         .replace('’', '\'')
-        .replace(Regex("""\s+&\s+"""), " and ")
+        .replace(AMPERSAND, " and ")
         // A stop and its cross street, however spaced ("Bank Station/King William Street"), read as
         // TfL lists the stop ("Bank Station / King William Street").
-        .replace(Regex("""\s*/\s*"""), " / ")
+        .replace(SLASH, " / ")
         // Any case, keeping the letters' own: an all-caps alert writes "ST. PAUL'S".
-        .replace(Regex("""\b(St)\.""", RegexOption.IGNORE_CASE), "$1")
-        .replace(Regex("""\s+"""), " ")
+        .replace(SAINT, "$1")
+        .replace(SPACES, " ")
         .trim()
 
     // Whether the clause around [at] is written all in capitals. That loses the signal that tells a
