@@ -557,6 +557,10 @@ it before committing to the design.
 - It must meet Play's Wear OS app-quality requirements: watch screenshots and a tile that works
   on round screens and at large font scales. The watch honors the system font size; StopDash's
   own text-size factor stays a phone setting unless the maintainer wants it synced.
+- **Offered from the phone** (maintainer, 2026-10-02): a one-time near-me card and a Settings row
+  open the Play page on a connected watch without the app (SPEC *On the watch*, *Getting the
+  watch app*). The phone tells which watches lack it from the `stopdash_watch` capability the
+  watch app declares, against the connected nodes, and opens the page with `RemoteActivityHelper`.
 - **Minimum version:** Wear OS 5, the Android 14 / API 34 base that matches the fleet floor. To
   be confirmed against the tile and complication APIs this plan relies on.
 

@@ -140,6 +140,9 @@ fun SettingsScreen(
     onStopAvoiding: (String) -> Unit = {},
     avoidedWriteFailed: Boolean = false,
     onDismissAvoidedError: () -> Unit = {},
+    // Opens StopDash's Play Store page on a connected watch that doesn't have it (SPEC *Wear OS*),
+    // the near-me card's offer kept here for good; null (no such watch) shows no row.
+    onInstallOnWatch: (() -> Unit)? = null,
 ) {
     // Counts the overflow's openings: each re-masks both keys ([ApiKeyRow]) before "Send bug report"
     // can be picked, since the report's screenshot is of this screen and a revealed key would be
@@ -288,6 +291,14 @@ fun SettingsScreen(
                     SettingErrorRow(
                         text = stringResource(R.string.settings_live_widget_refresh_failed),
                         onDismiss = onDismissLiveWidgetRefreshError,
+                    )
+                }
+                onInstallOnWatch?.let { install ->
+                    SettingNavRow(
+                        title = stringResource(R.string.settings_watch_install_title),
+                        summary = stringResource(R.string.settings_watch_install_summary),
+                        onClick = install,
+                        testTag = "watchInstallRow",
                     )
                 }
                 SettingSwitchRow(

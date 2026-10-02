@@ -374,6 +374,9 @@ fun MainScreen(
     // Answers the "Help make StopDash better" question from its card atop the near-me list
     // ([TelemetryInviteCard]); null (answered, or still loading) shows no card.
     onTelemetryInviteAnswer: ((Boolean) -> Unit)? = null,
+    // Offers StopDash to a connected watch without it ([WatchInstallCard]), where the telemetry
+    // question isn't being asked: one question at a time. Null (no such watch, or dismissed) shows none.
+    watchInstall: WatchInstallActions? = null,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     // A long press's hide offers Undo for a moment, which shows that one item again as ticking its
@@ -1397,6 +1400,9 @@ fun MainScreen(
                         onRouteToPlace = onRouteToPlace,
                         onEditFavoritePlaces = onEditFavoritePlaces,
                         onTelemetryInviteAnswer = onTelemetryInviteAnswer.takeIf { platformRows == null && stationTitle == null },
+                        watchInstall = watchInstall.takeIf {
+                            onTelemetryInviteAnswer == null && platformRows == null && stationTitle == null
+                        },
                     )
                 }
 
@@ -1539,6 +1545,8 @@ private fun LoadedContent(
     onEditFavoritePlaces: (() -> Unit)? = null,
     // The telemetry question's answer (see [MainScreen]); null shows no card.
     onTelemetryInviteAnswer: ((Boolean) -> Unit)? = null,
+    // The watch install offer (see [MainScreen]); null shows no card.
+    watchInstall: WatchInstallActions? = null,
 ) {
     // Hiding a mode applies to the loading cards too, as to the loaded rows.
     val shownPending = remember(pending, hiddenModes) { visiblePending(pending, hiddenModes) }
@@ -1626,6 +1634,9 @@ private fun LoadedContent(
                     // a first run with nothing near has it asked all the same.
                     onTelemetryInviteAnswer.takeIf { !journeyView }?.let { answer ->
                         TelemetryInviteCard(onAnswer = answer, modifier = Modifier.padding(bottom = 16.dp))
+                    }
+                    watchInstall.takeIf { !journeyView }?.let { actions ->
+                        WatchInstallCard(actions, modifier = Modifier.padding(bottom = 16.dp))
                     }
                     // No list to lead, so the place chips head the empty state, inside its scroller so
                     // they move with it (Codex): nothing near has departures, just when a route
@@ -1717,6 +1728,7 @@ private fun LoadedContent(
                     onEditFavoritePlaces = onEditFavoritePlaces,
                     // Not in a journey's own view, which is about that journey.
                     onTelemetryInviteAnswer = onTelemetryInviteAnswer.takeIf { !journeyView },
+                    watchInstall = watchInstall.takeIf { !journeyView },
                     nearbyEmptyNote = if (rows.isEmpty() && !journeyView && !nearbyShownAbove && shownPending.isEmpty() && dismissedClosures.isEmpty()) {
                         // With modes hidden, say so rather than "no departures": they may be running.
                         if (hiddenModes.isNotEmpty()) {
@@ -1895,6 +1907,8 @@ private fun DepartureList(
     onEditFavoritePlaces: (() -> Unit)? = null,
     // Answers the telemetry question from its card, first in the list; null shows no card.
     onTelemetryInviteAnswer: ((Boolean) -> Unit)? = null,
+    // The watch install offer, first in the list too; null shows no card.
+    watchInstall: WatchInstallActions? = null,
     modifier: Modifier,
 ) {
     // The units near-me distances are written in: the Settings choice, resolved against the locale;
@@ -2146,6 +2160,9 @@ private fun DepartureList(
         // first, as the one card that asks something of the rider, and gone once answered.
         onTelemetryInviteAnswer?.let { answer ->
             item(key = "telemetry-invite") { TelemetryInviteCard(onAnswer = answer) }
+        }
+        watchInstall?.let { actions ->
+            item(key = "watch-install") { WatchInstallCard(actions) }
         }
         if (favoritePlaces.isNotEmpty()) {
             item(key = "favorite-chips") { FavoriteChips(favoritePlaces, onRouteToPlace, contentPadding = PaddingValues(0.dp), onEditPlaces = onEditFavoritePlaces) }

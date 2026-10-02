@@ -168,6 +168,15 @@ class DataStoreAppSettingsTest {
     }
 
     @Test
+    fun `the watch install card shows until dismissed, apart from the journey tip`() = runTest {
+        val store = DataStoreAppSettings(FakeDataStore(null))
+        assertFalse(store.watchInstallCardDismissed().first())
+        store.setWatchInstallCardDismissed(true)
+        assertTrue(store.watchInstallCardDismissed().first())
+        assertFalse(store.journeyTipDismissed().first())
+    }
+
+    @Test
     fun `the documented consent default is to ask every time`() {
         assertEquals(false, DataStoreAppSettings.DEFAULT_SKIP_BUG_REPORT_CONSENT)
     }

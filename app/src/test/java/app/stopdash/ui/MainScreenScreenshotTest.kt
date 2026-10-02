@@ -324,6 +324,57 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `the near-me list offers StopDash for a watch without it, and either button answers it`() {
+        var installs = 0
+        var dismissals = 0
+        capture("main-watch-install.png") {
+            MainScreen(
+                DeparturesUiState.Loaded(stops(now.minusSeconds(60)), now.minusSeconds(60), lineStatuses = statuses()),
+                now,
+                {},
+                favoritePlaces = places,
+                watchInstall = WatchInstallActions(onInstall = { installs++ }, onDismiss = { dismissals++ }),
+            )
+        }
+        composeRule.onNodeWithText("StopDash for your watch").assertExists()
+        composeRule.onNodeWithText("Install").performClick()
+        composeRule.onNodeWithText("Not now").performClick()
+        assertEquals(1, installs)
+        assertEquals(1, dismissals)
+    }
+
+    @Test
+    fun `the watch offer waits while the telemetry question is asked`() {
+        composeRule.setContent {
+            MainScreen(
+                DeparturesUiState.Loaded(stops(now.minusSeconds(60)), now.minusSeconds(60), lineStatuses = statuses()),
+                now,
+                {},
+                onTelemetryInviteAnswer = {},
+                watchInstall = WatchInstallActions(onInstall = {}, onDismiss = {}),
+            )
+        }
+        composeRule.onNodeWithTag("telemetryInvite").assertExists()
+        composeRule.onNodeWithTag("watchInstall").assertDoesNotExist()
+    }
+
+    @Test
+    fun `the watch offer is put where nothing near has departures too`() {
+        var installs = 0
+        composeRule.setContent {
+            MainScreen(
+                DeparturesUiState.Loaded(emptyList(), now.minusSeconds(30)),
+                now,
+                {},
+                watchInstall = WatchInstallActions(onInstall = { installs++ }, onDismiss = {}),
+            )
+        }
+        composeRule.onNodeWithTag("watchInstall").assertExists()
+        composeRule.onNodeWithText("Install").performClick()
+        assertEquals(1, installs)
+    }
+
+    @Test
     fun `the telemetry question is put where nothing near has departures too`() {
         var answer: Boolean? = null
         composeRule.setContent {

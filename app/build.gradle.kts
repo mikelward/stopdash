@@ -317,6 +317,8 @@ dependencies {
     // The Wear OS sync (dev-docs/wear-os.md): the Data Layer, and awaiting its Tasks.
     implementation(libs.play.services.wearable)
     implementation(libs.kotlinx.coroutines.play.services)
+    // Opens StopDash's Play Store page on a watch that doesn't have it yet (WatchInstall).
+    implementation(libs.androidx.wear.remote.interactions)
 
     // The shared on-device debug log, mikelward/androidlog — resolved from the
     // Maven repository declared in settings.gradle.kts. `logging-android`

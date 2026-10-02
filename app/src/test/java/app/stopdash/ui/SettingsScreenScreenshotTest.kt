@@ -81,6 +81,38 @@ class SettingsScreenScreenshotTest {
     }
 
     @Test
+    fun settings_installOnWatch() {
+        var installs = 0
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(
+                    liveWidgetRefresh = false,
+                    onLiveWidgetRefreshChange = {},
+                    onBack = {},
+                    onInstallOnWatch = { installs++ },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        // Below the fold, among the widget and telemetry rows.
+        composeRule.onNodeWithTag("watchInstallRow").performScrollTo()
+        composeRule.onNodeWithText("Install on watch").assertIsDisplayed()
+        captureSnapshot("settings-install-on-watch.png", heightPx = 2400)
+        composeRule.onNodeWithTag("watchInstallRow").performClick()
+        assertEquals(1, installs)
+    }
+
+    @Test
+    fun settings_noWatchToInstallOn() {
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {})
+            }
+        }
+        composeRule.onNodeWithTag("watchInstallRow").assertDoesNotExist()
+    }
+
+    @Test
     fun settings_on() {
         composeRule.setContent {
             StopDashTheme {
