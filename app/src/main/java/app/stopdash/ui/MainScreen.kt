@@ -17,7 +17,7 @@ import androidx.compose.ui.text.withStyle
 import app.stopdash.domain.AlertLinks
 import app.stopdash.domain.AlertStart
 import app.stopdash.domain.AlertsBehind
-import app.stopdash.domain.AlertStops
+import app.stopdash.domain.AlertMarks
 import app.stopdash.domain.RouteStop
 import app.stopdash.domain.RouteStops
 import app.stopdash.domain.RouteStopsRepository
@@ -101,6 +101,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -4139,6 +4143,12 @@ private fun CollapsibleStatus(
 
 /** The stable identity of the route a [DepartureRow] represents — its stop, line, and direction —
  *  used as the saveable key for the open route-detail page so it re-resolves against live rows. */
+/**
+ * Where a line's page reads its alert's marks ([AlertMarks]): off the main thread. A screenshot test
+ * provides the main one, so the marks are in its first settled frame rather than racing it.
+ */
+internal val LocalAlertWorker = staticCompositionLocalOf<CoroutineDispatcher> { Dispatchers.Default }
+
 internal fun DepartureRow.detailKey(): String = "$stopId|$lineId|$directionKey|$platform"
 
 /**
@@ -4230,36 +4240,36 @@ internal fun RouteDetailScreen(
             else -> false
         },
     )
-    val alertStops = remember(alertText, stops, lineStops) {
-        val listed = (stops as? RouteStopsUi.Loaded)?.stops ?: lineStops
-        val ids = AlertStops.mentioned(alertText, listed)
-        listed.filter { it.id in ids }
-    }
-    // The train's stops the alert touches, for their ⚠s: those it names and, on the train's own list
-    // (in route order), the ones between two named ends of a stretch it gives ("between Moorgate and
-    // Monument"). Beside the chip it stays the stations the alert names, as the alert names them. None
-    // for an alert behind the stop, which flags nothing.
-    val alertStretchIds = remember(row.status?.fullText, stops, alertStops) {
-        when {
-            row.status == null -> emptySet()
-            stops is RouteStopsUi.Loaded -> AlertStops.affected(row.status?.fullText, stops.stops)
-            else -> alertStops.mapTo(HashSet()) { it.id }
-        }
-    }
     // The whole route the train's list is part of, from its first stop: the list starts at this stop,
     // so a stretch the alert gives before it is named from here (maintainer, 2026-10-02).
     val wholeRoute = remember(stops) {
         (stops as? RouteStopsUi.Loaded)?.let { loaded -> loaded.sequence?.let { RouteStops.wholeRouteOf(it, loaded.stops) } }.orEmpty()
     }
-    // Beside the chip, where the alert is ([AlertStops.runs]): on the train's list, else on its whole
-    // route, else the stations it names. Each name once: a bus line's stops on both sides of the road
-    // are separate ids under one name, and both are matched.
-    val alertPlaces = remember(alertText, stops, alertStops, alertStretchIds, wholeRoute) {
-        val shortName: (RouteStop) -> String = { stop -> stop.name.substringBefore(" / ").trim().ifBlank { stop.name.ifBlank { stop.id } } }
-        val onList = (stops as? RouteStopsUi.Loaded)?.let { AlertStops.runs(alertStretchIds, it.stops, shortName) }.orEmpty()
-        onList.ifEmpty { AlertStops.runs(AlertStops.affected(alertText, wholeRoute), wholeRoute, shortName) }
-            .ifEmpty { alertStops.map(shortName).distinct() }
+    // What the alert marks ([AlertMarks]): the stations its prose names (SPEC *Disruptions*), the
+    // train's stops it touches, for their ⚠s (those it names and, on the train's own list, in route
+    // order, the ones between two named ends of a stretch it gives, "between Moorgate and Monument"),
+    // and where it is, beside the chip (on the train's list, else its whole route, else the stations
+    // it names; each name once, as a bus line's stops on both sides of the road share one). None for
+    // an alert behind the stop, which flags nothing. Read off the main thread: matching builds a
+    // pattern per station and per pair of them, which froze the page on a long bus route. The page
+    // shows at once, unmarked, and the marks follow.
+    val trainStops = (stops as? RouteStopsUi.Loaded)?.stops
+    val statusText = row.status?.fullText
+    val hasStatus = row.status != null
+    // A new alert's marks clear the old ones at once, so a reworded or cleared alert never shows the
+    // last one's ⚠s or places while its own are read; a stop list refreshed under the same alert keeps
+    // them, so an ordinary refresh doesn't make them blink.
+    val alertWorker = LocalAlertWorker.current
+    val readAlert by produceState<Pair<Any?, AlertMarks>>(null to AlertMarks.NONE, alertText, statusText, hasStatus, trainStops, lineStops, wholeRoute, alertWorker) {
+        val alert = Triple(alertText, statusText, hasStatus)
+        if (value.first != alert) value = alert to AlertMarks.NONE
+        value = alert to AlertMarks.of(alertText, statusText, hasStatus, trainStops, lineStops, wholeRoute, shortName = { stop ->
+            stop.name.substringBefore(" / ").trim().ifBlank { stop.name.ifBlank { stop.id } }
+        }, worker = alertWorker)
     }
+    val alertMarks = readAlert.second
+    val alertStretchIds = alertMarks.stretch
+    val alertPlaces = alertMarks.places
     // Every upcoming train on the followed route, not the card's first few — TfL predicts ~30 min
     // ahead, and the page has the room (SPEC *Route detail*).
     val topology = LocalRouteTopology.current
