@@ -22,7 +22,9 @@ a trip you plan from it —
 **precise** if you grant precise and a precise fix is available, otherwise approximate (if you grant
 only approximate, or if no precise fix can be obtained) — or the stop or line you're after) and, if
 you've set an optional TfL API key (`app_key`), that key as your own credential, sent with your own
-TfL calls and nowhere else. Location is **sent only on demand**, never in the background. The one
+TfL calls and nowhere else. Location is **sent only on demand**, never in the background: when
+you open the near-me list, refresh it, or come back to the app, and while the list is on screen,
+when you've walked 100 m or more since it was found (at most once a minute), so it follows you. The one
 use beyond that is a trip you start: it's checked on the phone while you walk to a stop you're
 boarding at, while you wait there, just after you board, and as your train nears the station you get
 off at, app open or closed, and never sent (see *On the way*, below).
@@ -251,7 +253,8 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   fix was used instead of a fresh one, and coarse timing; for each fix the app uses, **which
   location provider** supplied it (e.g. `network`, `gps`), the **accuracy radius** that provider
   reported (or "unknown"), and **how old** it was; when a remembered precise fix is weighed
-  against a rough network one, **how far apart** the two are — **never a coordinate**,
+  against a rough network one, **how far apart** the two are; when the list moves because you
+  walked off, **how far** from where it was found — **never a coordinate**,
 - for each nearby-stops lookup, **how many stops it found** (a count only: several stops'
   distances would pin down where you were),
 - on a trip on the way, **what a location fix saw you at** when it moved the trip on — the stop's

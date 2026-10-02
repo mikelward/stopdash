@@ -67,16 +67,14 @@ The app finds stops two ways:
   re-resolve the nearby set as well as re-fetching departures, and reopening the app after it was
   backgrounded does the same, so a user walking from stop to stop sees the set follow them without
   a manual pull (the common "walk to the next stop and check" case). It stays **foreground and
-  user-adjacent** — the fix is bounded to the user's own refreshes and app opens, never a
-  background send or a timer (the on-screen auto-refresh keeps departures live but does **not**
-  relocate). Sending the location on a foreground return is the deliberate trade for that UX. Its
+  user-adjacent** — the fix is bounded to the user's own refreshes, app opens, and the list
+  following them while it's on screen (below), never a background send (the on-screen
+  auto-refresh keeps departures live but does **not** relocate). Sending the location on a foreground return is the deliberate trade for that UX. Its
   cost is **one extra forced fix and one extra `/StopPoint` request per app-open** (on top of each
   refresh's): a small, bounded **battery** draw on the locator for the ~1–2 s fix, and one more
   keyless TfL request (**£0**, well within the ~50 req/min budget). It adds **no new Play Data
   Safety surface** — the same precise-location-to-TfL the near-me action already declares, on the
-  same foreground, user-adjacent path, not a new recipient, category, or background collection. A
-  distance-triggered version that relocates as the user moves ~100 m *while the screen is open* is
-  still a later enhancement, with the parameters and battery trade-offs in `TODO.md`. The re-locate
+  same foreground, user-adjacent path, not a new recipient, category, or background collection. The re-locate
   **forces a fresh fix** (it does not take the
   recent-cached fast path a first open may use): a rider who has walked since the last fix
   must not be re-resolved against the old position, so a cached fix is only a bounded fallback
@@ -99,6 +97,23 @@ The app finds stops two ways:
   station for the near-me list. The
   one-minute auto-refresh keeps departures live, and pull-to-refresh still refreshes (re-locating
   near me), so no separate refresh control is needed.
+
+  **While the list is on screen, it follows the rider** (maintainer, 2026-10-02): a rider who
+  walked off with the app open kept the old stops until they pulled. Location updates are asked
+  for every ~12 s while the near-me list (or a trip from here) is on screen and the app is in the
+  foreground, and stop the moment it isn't — including while a failure or "no location" is shown,
+  which has no list to move. "No stops nearby" counts as a list here, as it does for the precise
+  follow-up: it was found from a position, and walking on from a stopless patch is exactly when
+  moving finds stops. An update moves the list, through the same path a
+  precise follow-up takes (below), when it is **sure** (a fresh fix reporting accuracy within
+  50 m, so an underground network fix placing the rider at the wrong station never moves it),
+  **100 m or more** from where the list was found, and **a minute or more** after it was found, so
+  a brisk walk costs TfL one lookup a minute at most. A move that comes inside that minute waits
+  it out rather than being dropped, so a rider who stops at the next stop still has the list moved;
+  if the wait has left it older than the freshness bound, one fresh precise fix is taken instead. A trip on the way's own fixes count too, at
+  no extra battery. Its cost is the locator running while the list is open (the interval is the
+  battery lever; the distance only gates callbacks) and up to one `/StopPoint` request a minute
+  while moving (**£0**, well inside the budget); no new Data Safety surface.
 
   A fix the device can't refresh — the fresh attempt failed and a **bounded last-known** fix is
   used instead (no GPS underground, where a station's Wi-Fi also places the network provider at a

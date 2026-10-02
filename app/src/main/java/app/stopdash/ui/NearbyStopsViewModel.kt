@@ -8,6 +8,7 @@ import app.stopdash.domain.FixRefinement
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LocationFix
 import app.stopdash.domain.LocationProvider
+import app.stopdash.domain.MoveFollow
 import app.stopdash.domain.NearbySelection
 import app.stopdash.domain.NearestStops
 import app.stopdash.domain.StopFinder
@@ -18,11 +19,22 @@ import java.time.Duration
 import kotlin.math.roundToLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -79,8 +91,12 @@ class NearbyStopsViewModel(
     // Usage events, categories and counts only (UsageEvent): how a fix went, how many stops of each
     // mode were found. Near me only; a searched station's area reports none.
     private val usage: (UsageEvent) -> Unit = {},
-    // A monotonic clock in milliseconds, timing a fix for [usage].
+    // A monotonic clock in milliseconds, timing a fix for [usage] and how long a shown set has stood.
     private val elapsedMillis: () -> Long = { System.nanoTime() / 1_000_000 },
+    // Location updates while the list is on screen, to follow a rider who walks off ([MoveFollow]):
+    // started when the surface is, stopped with it, so they never outlive the foreground. None by
+    // default (tests, a searched station's area, which stands where the station is).
+    private val moves: () -> Flow<LocationFix> = { emptyFlow() },
 ) : ViewModel() {
     sealed interface State {
         /** The location permission isn't held yet — the screen asks for it. */
@@ -248,6 +264,13 @@ class NearbyStopsViewModel(
     // Inactive until the surface first composes: a locate can run with an overlay restored on top.
     private var surfaceActive = false
 
+    // Following the rider's moves while the surface is active ([followMoves]); null while it isn't.
+    private var followJob: Job? = null
+
+    // When the shown set was found from a fix (on [elapsedMillis]), so a move follows at most once a
+    // minute ([MoveFollow.MIN_GAP_MILLIS]). A refilter keeps the same fix, so it keeps this too.
+    private var foundAtMillis = 0L
+
     // The in-flight resolve, canceled before a new one starts so a superseded lookup can't
     // finish last and overwrite the newer result (e.g. a quick double-tap on Try again).
     private var locateJob: Job? = null
@@ -314,6 +337,7 @@ class NearbyStopsViewModel(
             }
             val next = resolveFrom(fix.coordinates)
             _state.value = next
+            foundAtMillis = elapsedMillis()
             // The rider's fix for the new outcome, replaced as the outcome is applied — not when the
             // attempt starts: the old set stays on screen meanwhile and still stands on its own (Codex).
             _riderFix.value = riderFixFor(next, fix)
@@ -414,6 +438,7 @@ class NearbyStopsViewModel(
                     // recreate the departures ViewModel (its store is keyed on the whole cluster
                     // set), so this is a plain recompose plus an in-place reconcile, not a rebuild.
                     _state.value = next
+                    foundAtMillis = elapsedMillis()
                     // Replaced with this fix's outcome, as in [locate].
                     _riderFix.value = riderFixFor(next, fix)
                     _locationBanner.value = bannerFor(next, fix)
@@ -516,6 +541,8 @@ class NearbyStopsViewModel(
         surfaceActive = false
         refineJob?.cancel()
         refineJob = null
+        followJob?.cancel()
+        followJob = null
         _refinement.value?.let { offered ->
             _refinement.value = null
             refineFrom = offered.from
@@ -528,9 +555,134 @@ class NearbyStopsViewModel(
      */
     fun resumeRefining() {
         surfaceActive = true
+        if (followJob?.isActive != true) followJob = followMoves()
         if (refineJob?.isActive == true || _refinement.value != null) return
         val from = refineFrom ?: return
         if (shownLocation(_state.value) == from) refine(from)
+    }
+
+    /**
+     * Follows the rider while the list is on screen (SPEC *Finding stops*): a location update far
+     * enough from where the shown list was found, sure enough and at most once a minute
+     * ([MoveFollow]), is offered as a [Refinement], which the departures view applies as it does a
+     * precise follow-up, through the same cancel-then-re-pick path a refresh takes. Nothing is
+     * offered while a resolve is under way (its own fix supersedes), while a precise follow-up is
+     * owed (it is asking already), or while a move is on offer but not yet applied.
+     *
+     * Updates are asked for only while a list is shown: a failure or "no location" has nothing to
+     * move, so the GPS request would cost battery for nothing. Asking afresh each time a list
+     * appears also picks up a permission granted since the last ask, which a request that closed
+     * for want of it never would. A fix that came within the minute waits it out; a newer sure fix
+     * replaces it, or cancels it if the rider is back near the list.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun followMoves(): Job = viewModelScope.launch {
+        try {
+            _state.map { shownLocation(it) != null }
+                .distinctUntilChanged()
+                .flatMapLatest { shown -> if (shown) moves() else emptyFlow() }
+                // Each one in the bug report's recent-positions window (memory only, never the
+                // log), so a report about the list not following shows what it was given.
+                .onEach { fix -> position(movementLabel(fix), fix.coordinates) }
+                // Only a sure fix replaces one waiting out the minute: a far one takes its place, a
+                // near one (the rider came back) cancels it, and an unsure one leaves it be.
+                .filter(MoveFollow::isSure)
+                .collectLatest { fix ->
+                    // Its age runs from here, through every wait below (Codex, #485).
+                    val arrived = elapsedMillis()
+                    // Busy with a resolve, or with a move on offer: the newest sure fix waits it out
+                    // and is judged against what it leaves, rather than being dropped. The request
+                    // has already counted it toward its delivery distance, so a rider who stops
+                    // might send no other (Codex, #485).
+                    awaitNotBusy()
+                    // Past the freshness bound after waiting, it no longer says where the rider is
+                    // now, so a fresh precise fix is asked for in its place: a rider who stopped
+                    // sends no update of their own.
+                    var current = fix.agedSince(arrived).takeIf(MoveFollow::isSure)
+                        ?: freshFix() ?: return@collectLatest
+                    // A precise follow-up owed to the shown set is answered by a sure update, as its
+                    // own fix would have answered it: one still asking is cancelled (this fix is as
+                    // good, and a replayed one may never come again), and one that gave up no longer
+                    // shuts updates out.
+                    val owed = refineFrom
+                    if (owed != null && shownLocation(_state.value) == owed) {
+                        refineJob?.cancel()
+                        refineJob = null
+                        answerRefinement(owed, current)
+                        return@collectLatest
+                    }
+                    val waitFrom = elapsedMillis()
+                    val wait = followAfter(current) ?: return@collectLatest
+                    if (wait > 0) {
+                        delay(wait)
+                        current = current.agedSince(waitFrom).takeIf(MoveFollow::isSure)
+                            ?: freshFix() ?: return@collectLatest
+                    }
+                    // Again after the wait: a pull or a resolve may have moved the list meanwhile.
+                    if (followAfter(current) != 0L) return@collectLatest
+                    offerMove(current)
+                }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Updates that failed to start leave the list where it is; a pull still moves it.
+            warn("location updates failed: ${e::class.simpleName}")
+        }
+    }
+
+    // [this] as it stands now, having waited since [sinceMillis] on [elapsedMillis].
+    private fun LocationFix.agedSince(sinceMillis: Long): LocationFix =
+        copy(ageMillis = (ageMillis ?: 0) + (elapsedMillis() - sinceMillis))
+
+    /** A fresh precise fix for a move that waited too long on its own, or null with none. */
+    private suspend fun freshFix(): LocationFix? = try {
+        withContext(io) { location.preciseWithAccuracy() }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        // The move waits for the next update instead; following carries on.
+        warn("location for a move failed: ${e::class.simpleName}")
+        null
+    }
+
+    // How a movement update reads in the recent-positions window: no coordinate (that's alongside).
+    private fun movementLabel(fix: LocationFix): String =
+        "movement update" + (fix.accuracyMeters?.let { " ±${it.roundToLong()} m" } ?: "")
+
+    /** Returns once no resolve is under way and no move is on offer. */
+    private suspend fun awaitNotBusy() {
+        while (true) {
+            val resolving = locateJob
+            if (resolving?.isActive == true) {
+                resolving.join()
+                continue
+            }
+            if (_refinement.value != null) {
+                _refinement.first { it == null }
+                continue
+            }
+            return
+        }
+    }
+
+    /** [MoveFollow.followAfterMillis] for the list shown now, or null with none or one busy. */
+    private fun followAfter(fix: LocationFix): Long? {
+        val shownFrom = shownLocation(_state.value) ?: return null
+        if (locateJob?.isActive == true || refineFrom != null || _refinement.value != null) return null
+        return MoveFollow.followAfterMillis(shownFrom, fix, elapsedMillis() - foundAtMillis)
+    }
+
+    private fun offerMove(fix: LocationFix) {
+        val shownFrom = shownLocation(_state.value) ?: return
+        // Coarse facts only, never a coordinate (SPEC Privacy).
+        val moved = NearestStops.distanceMeters(shownFrom.latitude, shownFrom.longitude, fix.coordinates.latitude, fix.coordinates.longitude)
+        warn("following a move: ${moved.roundToLong()} m from where the list was found")
+        _refinement.value = Refinement(
+            maxOf(System.nanoTime(), (_refinement.value?.id ?: 0) + 1),
+            from = shownFrom,
+            precise = fix.coordinates,
+            preciseAccuracyMeters = fix.accuracyMeters,
+        )
     }
 
     private fun stopRefining() {
@@ -561,30 +713,39 @@ class NearbyStopsViewModel(
                 warn("precise fix failed: ${e::class.simpleName}")
                 null
             } ?: return@launch
-            val precise = preciseFix.coordinates
             if (shownLocation(_state.value) != shownFrom) return@launch
-            // Answered either way: confirmed, or offered as a move (which relocates).
-            refineFrom = null
-            // An empty outcome has no list to confirm: any better fix is worth a new lookup, since
-            // near the edge of the radius even a short move can bring a stop into range.
-            val emptyShown = _state.value is State.Empty
-            if (FixRefinement.shouldMove(shownFrom, precise) || (emptyShown && precise != shownFrom)) {
-                _refinement.value = Refinement(
-                    maxOf(System.nanoTime(), (_refinement.value?.id ?: 0) + 1),
-                    from = shownFrom,
-                    precise = precise,
-                    preciseAccuracyMeters = preciseFix.accuracyMeters,
-                )
-            } else if (_locationBanner.value == LocationBanner.COARSE) {
-                // Where the rider is, per the precise fix that confirmed the set in place — accurate
-                // only on its own reported accuracy, as GPS can answer vaguely too (Codex).
-                _riderFix.value = RiderFix(
-                    from = shownFrom,
-                    at = precise,
-                    accurate = FavoriteShortcuts.isAccurate(preciseFix.accuracyMeters),
-                )
-                _locationBanner.value = null
-            }
+            answerRefinement(shownFrom, preciseFix)
+        }
+    }
+
+    /**
+     * Settles the precise follow-up owed to the outcome shown from [shownFrom] with [preciseFix]:
+     * confirmed in place (the coarse banner clears), or offered as a move. From the follow-up's own
+     * fix, or from a sure movement update once that follow-up has given up (Codex, #485).
+     */
+    private fun answerRefinement(shownFrom: Coordinates, preciseFix: LocationFix) {
+        val precise = preciseFix.coordinates
+        // Answered either way: confirmed, or offered as a move (which relocates).
+        refineFrom = null
+        // An empty outcome has no list to confirm: any better fix is worth a new lookup, since
+        // near the edge of the radius even a short move can bring a stop into range.
+        val emptyShown = _state.value is State.Empty
+        if (FixRefinement.shouldMove(shownFrom, precise) || (emptyShown && precise != shownFrom)) {
+            _refinement.value = Refinement(
+                maxOf(System.nanoTime(), (_refinement.value?.id ?: 0) + 1),
+                from = shownFrom,
+                precise = precise,
+                preciseAccuracyMeters = preciseFix.accuracyMeters,
+            )
+        } else if (_locationBanner.value == LocationBanner.COARSE) {
+            // Where the rider is, per the precise fix that confirmed the set in place — accurate
+            // only on its own reported accuracy, as GPS can answer vaguely too (Codex).
+            _riderFix.value = RiderFix(
+                from = shownFrom,
+                at = precise,
+                accurate = FavoriteShortcuts.isAccurate(preciseFix.accuracyMeters),
+            )
+            _locationBanner.value = null
         }
     }
 

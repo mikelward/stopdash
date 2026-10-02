@@ -114,6 +114,8 @@ import app.stopdash.domain.FixedLocation
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.Journeys
 import app.stopdash.domain.ModeGroups
+import app.stopdash.domain.MoveFollow
+import app.stopdash.domain.askedAgainWhenEnded
 import app.stopdash.domain.NearbySelection
 import app.stopdash.domain.NearbyStopsCache
 import app.stopdash.domain.PlanTargets
@@ -243,8 +245,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -366,6 +370,19 @@ class MainActivity : ComponentActivity() {
                     // what the user hid rather than fetching it until the next re-locate.
                     hiddenModes = { HiddenModesSetting.loaded() },
                     usage = UsageEvents::log,
+                    // Following the rider while the list is on screen (SPEC *Finding stops*): updates
+                    // of its own, plus a trip on the way's fixes when it's taking them, which cost
+                    // nothing more. Nothing remembered or logged per fix, as for the trip's.
+                    moves = {
+                        merge(
+                            // Asked again if they end while the list is still shown: the provider can
+                            // go away and come back with nothing on screen changing.
+                            askedAgainWhenEnded(MoveFollow.UPDATE_EVERY) {
+                                onTheWayLocation.preciseUpdates(MoveFollow.UPDATE_EVERY, MoveFollow.UPDATE_DISTANCE_METERS)
+                            },
+                            tripFixes.latest.filterNotNull().map(tripFixes::aged),
+                        )
+                    },
                 )
             }
         }
