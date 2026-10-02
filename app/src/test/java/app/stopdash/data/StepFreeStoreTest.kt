@@ -1,5 +1,6 @@
 package app.stopdash.data
 
+import app.stopdash.domain.LiftStop
 import app.stopdash.domain.StepFreeAccess
 import app.stopdash.domain.StepFreeLevel
 import app.stopdash.domain.StepFreePlatform
@@ -36,6 +37,42 @@ class StepFreeStoreTest {
         // King's Cross: every National Rail platform by ramp, under the one line id TfL gives them.
         assertEquals(StepFreeLevel.RAMP, access.level("910GKNGX", StepFreeAccess.NATIONAL_RAIL))
         assertTrue(access.platforms("910GKNGX", StepFreeAccess.NATIONAL_RAIL).size > 5)
+    }
+
+    @Test
+    fun `the bundled table takes a platform off while the lifts its route needs are out`() {
+        val access = StepFreeStore.parse(asset.readText())
+        // Earls Court: one lift takes the street to the eastbound District platforms.
+        assertTrue(access.byLift("940GZZLUECT"))
+        val earlsCourt = access.withLiftsOut(setOf("940GZZLUECT-Lift-5"))
+        assertEquals(StepFreeLevel.NONE, earlsCourt.level("940GZZLUECT", "district", "1"))
+        assertEquals(StepFreeLevel.LEVEL, earlsCourt.level("940GZZLUECT", "district", "3"))
+        // Bank: with the King William Street entrance's lift out, the Cannon Street one still gets a
+        // rider to the Northern line.
+        assertEquals(StepFreeLevel.LEVEL, access.withLiftsOut(setOf("HUBBAN-Lift-7")).level("940GZZLUBNK", "northern"))
+        // Green Park's Victoria line: either of two lifts reaches it, so it takes both out.
+        assertEquals(StepFreeLevel.LEVEL, access.withLiftsOut(setOf("940GZZLUGPK-Lift-5")).level("940GZZLUGPK", "victoria"))
+        assertEquals(
+            StepFreeLevel.NONE,
+            access.withLiftsOut(setOf("940GZZLUGPK-Lift-5", "940GZZLUGPK-Lift-6")).level("940GZZLUGPK", "victoria"),
+        )
+    }
+
+    @Test
+    fun `a platform reached only by lift keeps its place in the station's lift map`() {
+        val warnings = mutableListOf<String>()
+        val access = StepFreeStore.parse(
+            """{"version":1,"stops":{"940GZZEXMPA":{"victoria":[
+              {"platform":"3","level":"level","station":"HUBEXM","node":1},
+              {"platform":"4","level":"level","station":"HUBNONE","node":1}]}},
+              "stations":{"HUBEXM":{"walks":[],"lifts":{"HUBEXM-Lift-1":[0,1]}}}}""",
+        ) { warnings += it }
+        assertEquals(LiftStop("HUBEXM", 1), access.platforms("940GZZEXMPA", "victoria")[0].byLift)
+        val out = access.withLiftsOut(setOf("HUBEXM-Lift-1"))
+        assertEquals(StepFreeLevel.NONE, out.level("940GZZEXMPA", "victoria", "3"))
+        // A platform naming a map the table doesn't hold can't be walked again: it keeps its level, and says so.
+        assertEquals(StepFreeLevel.LEVEL, out.level("940GZZEXMPA", "victoria", "4"))
+        assertEquals(1, warnings.size)
     }
 
     @Test

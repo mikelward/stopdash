@@ -109,6 +109,10 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.snapshotFlow
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -4548,13 +4552,34 @@ internal fun RouteDetailScreen(
                 }.toMap()
             }
             // Each listed station's step-free level for this line, from TfL's bundled table (SPEC
-            // *Step-free access*); nothing until the table is read.
+            // *Step-free access*); nothing until the table is read. Where a station is step-free only
+            // by a lift, TfL's lift outages are asked for once the list is up, and again when that
+            // answer ages out (it may be another screen's, from minutes ago) while the page is in the
+            // foreground, so a mark comes off while a lift its route needs is out and comes back with
+            // it, without reopening the page. An answer stands until the next replaces it: it only
+            // ever takes marks off, so holding it through its refresh errs toward "not step-free".
             val stepFreeTable = LocalStepFree.current
-            val stepFree = remember(stepFreeTable, stops, row.lineId, rowMode) {
-                val table = stepFreeTable ?: return@remember emptyMap()
-                (stops as? RouteStopsUi.Loaded)?.stops.orEmpty()
-                    .mapNotNull { stop -> table.levelFor(stop.id, row.lineId, rowMode)?.let { stop.id to it } }
-                    .toMap()
+            val liftOutages = LocalLiftsOut.current
+            val lifecycleOwner = LocalLifecycleOwner.current
+            val listed = (stops as? RouteStopsUi.Loaded)?.stops.orEmpty()
+            val byLift = remember(stepFreeTable, listed) { stepFreeTable != null && listed.any { stepFreeTable.byLift(it.id) } }
+            // The first frame draws from TfL's last answer, held in memory, so a page opened (or
+            // turned) while a lift is out never shows its mark, even before the fresh ask returns.
+            var liftsOut by remember(liftOutages) { mutableStateOf(liftOutages?.known.orEmpty()) }
+            LaunchedEffect(liftOutages, byLift, lifecycleOwner) {
+                if (!byLift || liftOutages == null) return@LaunchedEffect
+                lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    while (true) {
+                        val answer = liftOutages.current()
+                        liftsOut = answer.ids
+                        // At least a second apart, whatever an answer says, so nothing can spin.
+                        delay(answer.askAgainIn.toMillis().coerceAtLeast(1_000))
+                    }
+                }
+            }
+            val stepFree = remember(stepFreeTable, liftsOut, listed, row.lineId, rowMode) {
+                val table = stepFreeTable?.withLiftsOut(liftsOut) ?: return@remember emptyMap()
+                listed.mapNotNull { stop -> table.levelFor(stop.id, row.lineId, rowMode)?.let { stop.id to it } }.toMap()
             }
             // Every station from here to where the soonest train terminates (SPEC *Route detail*).
             RouteStopsSection(

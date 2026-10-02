@@ -810,6 +810,36 @@ class KtorTflClientTest {
         assertEquals("true", req.url.parameters["includeRouteBlockedStops"])
     }
 
+    @Test
+    fun `lifts out of service are read from TfL's lift disruptions, every station's in one request`() = runTest {
+        // The /Disruptions/Lifts/v2 shape, trimmed; big interchanges, with a lift id that has a space.
+        val json = """
+            [{"stationUniqueId": "HUBBAN", "disruptedLiftUniqueIds": ["HUBBAN-Lift-7"], "message": "Bank: ..."},
+             {"stationUniqueId": "940GZZLUECT", "disruptedLiftUniqueIds": ["940GZZLUECT-Lift-5", " HUBBAN-Lift 10 "]},
+             {"stationUniqueId": "HUBKGX", "disruptedLiftUniqueIds": []}]
+        """.trimIndent()
+        var captured: HttpRequestData? = null
+        val out = client(json, capture = { captured = it }).liftsOut()
+        assertEquals("/Disruptions/Lifts/v2", checkNotNull(captured).url.encodedPath)
+        assertEquals(setOf("HUBBAN-Lift-7", "940GZZLUECT-Lift-5", "HUBBAN-Lift 10"), out)
+    }
+
+    @Test
+    fun `a lift disruption without its lifts fails to read rather than reading as none out`() = runTest {
+        // A renamed field: the entry no longer says which lifts are out.
+        val json = """[{"stationUniqueId": "HUBBAN", "liftIds": ["HUBBAN-Lift-7"]}]"""
+        val error = runCatching { client(json).liftsOut() }.exceptionOrNull()
+        assertTrue(error.toString(), error is TflException.Unreachable)
+        // No disruptions anywhere is still an answer.
+        assertEquals(emptySet<String>(), client("[]").liftsOut())
+    }
+
+    @Test
+    fun `a failed lift disruptions request throws TfL's error rather than reading as no lifts out`() = runTest {
+        val error = runCatching { client("{}", status = HttpStatusCode.ServiceUnavailable).liftsOut() }.exceptionOrNull()
+        assertTrue(error.toString(), error is TflException.Unreachable)
+    }
+
     // The multi-stop /StopPoint/{ids}/Disruption shape (no getFamily): a flat array, each entry
     // naming its stop. Trimmed from a recorded response; the ids are example poles.
     private val poleClosuresJson = """

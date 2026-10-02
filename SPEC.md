@@ -733,7 +733,15 @@ onto the train without a step, a blue wheelchair on a white disc where they can 
 need a step or the staff's ramp onto the train, as TfL's map draws them. Nothing marks a station with
 no step-free route, or one TfL's data doesn't describe. A station whose platforms for the line differ
 (Cannon Street on the District) is marked only as far as all of them reach, since the rider may need
-either. A screen reader reads the symbol as its words ("Step-free to the train"). The list is headed only by the **direction** the train runs ("Southbound") — read off its
+either. **A mark comes off while a lift its route needs is out** (maintainer, 2026-09-26: "a
+step-free-access outage notice should then read against it"): where a station listed is step-free
+only by a lift, the page asks for TfL's live lift outages once its list is up, and again when that
+answer is 5 minutes old while the page is in the foreground; a platform the street no longer reaches
+without the lifts that are out loses its mark until they're back. A station another lift still serves
+keeps it. Until TfL first answers, the marks are the bundled table's; after that, TfL's last answer
+stands until it gives another, through a refresh and through one that fails, and a page opened later
+draws its first frame from it: it only ever takes marks off, so holding it errs toward "not
+step-free" rather than putting marks back on lifts TfL never said were working. A screen reader reads the symbol as its words ("Step-free to the train"). The list is headed only by the **direction** the train runs ("Southbound") — read off its
 rail platform, or a bus pole's compass bearing, and left off when neither names one — not by "From" or
 "Stops to": the list opens on the boarding stop and the app bar already names the destination. Only
 while no list is shown (a status row, or a list loading, failed, unavailable, or withheld) does the
@@ -2462,9 +2470,21 @@ surface.)
   fits is marked, as is an entrance it must start at. A platform TfL gives no route information for
   is left out: unknown, never assumed either way. The table is built by
   `scripts/build_step_free.py`, bundled beside the station list and rebuilt with it weekly; the app
-  reads it by stop and line (`StepFreeAccess`). **Cost: £0**, no request from the app; the build
-  downloads ~200 KB once a week. Shown on the route page's stop list (*Route detail*); the stop and
-  station views and a trip's legs come next (TODO).
+  reads it by stop and line (`StepFreeAccess`). **Cost: £0**, no request from the app for the table;
+  the build downloads ~200 KB once a week. Shown on the route page's stop list (*Route detail*); the
+  stop and station views and a trip's legs come next (TODO).
+  - **Lifts out of service.** A platform only a lift reaches carries its place in its station's map,
+    bundled cut down to what an outage can change (the street, those platforms, each lift's stops,
+    and the lift-free ways between them), with each lift under the id TfL's live lift disruptions
+    (`/Disruptions/Lifts/v2`) name it by. The app walks the map again without the lifts that are out.
+    Exact rather than per-lift: a platform two lifts serve stays step-free while either works. One
+    keyless request answers for every station; it's held for 5 minutes whichever screen asks, and
+    asked only for a list with a station that depends on a lift (*Route detail*). **Cost: £0**, at
+    most one request per 5 minutes (a failed one included) while such a page is in the foreground,
+    through the shared rate budget; no location or user data in it. If TfL can't answer, its last
+    answer stands (none before its first), and the failure is logged as a coarse class. TfL's map is
+    TfL's: at one station in nine checked (2026-10-02) its live notice and its own map disagreed, the
+    map having a one-way path the notice didn't allow for.
 - **Reliability:** one required dependency, so if TfL is down or throttling, stopdash shows
   stamped last-good data and an offline/rate-limited notice (never a blank or an
   unlabeled stale number). Added latency lives off every render path (snapshot-render,

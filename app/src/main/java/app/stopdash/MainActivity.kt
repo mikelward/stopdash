@@ -130,6 +130,7 @@ import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StopClosureCache
 import app.stopdash.domain.StopMap
 import app.stopdash.domain.TflClient
+import app.stopdash.domain.LiftOutages
 import app.stopdash.domain.OriginChange
 import app.stopdash.domain.SavedTrip
 import app.stopdash.domain.ToChoice
@@ -176,6 +177,7 @@ import app.stopdash.ui.LocalHideUndoCarrier
 import app.stopdash.ui.LocalOnTheWay
 import app.stopdash.ui.LocalOnTheWayBanner
 import app.stopdash.ui.LocalRouteStops
+import app.stopdash.ui.LocalLiftsOut
 import app.stopdash.ui.LocalStepFree
 import app.stopdash.ui.LocalAlertsBehind
 import app.stopdash.ui.AlertsBehindRecorder
@@ -461,7 +463,7 @@ class MainActivity : ComponentActivity() {
                 val stepFree by produceState<StepFreeAccess?>(null) {
                     value = withContext(Dispatchers.IO) { StepFreeStore.load(applicationContext) }
                 }
-                CompositionLocalProvider(LocalStepFree provides stepFree) {
+                CompositionLocalProvider(LocalStepFree provides stepFree, LocalLiftsOut provides liftOutages) {
                 val nearby by nearbyViewModel.state.collectAsStateWithLifecycle()
 
                 // True once a request has come back denied with the rationale suppressed —
@@ -3091,6 +3093,23 @@ class MainActivity : ComponentActivity() {
             )
         }
 
+        // TfL's lift outages, one request for every station, held for a few minutes whichever screen
+        // asks: a route page asks when a station it lists is step-free only by a lift, never the
+        // refresh path (SPEC *Step-free access*). A failed ask keeps the last answer and is logged.
+        // The cache is cheap to build at the composition root; its client is built on first ask.
+        private val liftOutagesClient by lazy {
+            KtorTflClient(
+                httpClient,
+                appKey = { UserApiKeySetting.current },
+                rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
+                requestPool = SharedTflRequestPool.pool,
+                keyAnswered = RejectedApiKey.SHARED::record,
+            )
+        }
+        private val liftOutages by lazy {
+            LiftOutages(source = { liftOutagesClient.liftsOut() }, warn = ::logStepFreeWarning)
+        }
+
         // A trip with a change's planner (SPEC *Trips with a change*): on demand while a trip is on
         // screen, never on the refresh path of the list. One per process.
         private val journeyPlannerLock = Any()
@@ -3746,6 +3765,8 @@ private fun recordPosition(what: String, at: Coordinates) {
 }
 
 private fun logRouteStopsWarning(message: String) = StopdashDebugLog.warning("route stops: %s", message)
+
+private fun logStepFreeWarning(message: String) = StopdashDebugLog.warning("step-free: %s", message)
 
 private fun logTopologyWarning(message: String) = StopdashDebugLog.warning("route topology: %s", message)
 

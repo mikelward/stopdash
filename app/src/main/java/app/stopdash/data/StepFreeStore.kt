@@ -2,6 +2,8 @@ package app.stopdash.data
 
 import android.content.Context
 import android.util.Log
+import app.stopdash.domain.LiftMap
+import app.stopdash.domain.LiftStop
 import app.stopdash.domain.StepFreeAccess
 import app.stopdash.domain.StepFreeLevel
 import app.stopdash.domain.StepFreePlatform
@@ -14,7 +16,8 @@ import kotlinx.serialization.json.Json
  * data by `scripts/build_step_free.py`) once per process, off the main thread. Fails safe to
  * [StepFreeAccess.EMPTY]: a missing, corrupt or newer-format asset means no step-free marks, never
  * a crash or a guess. A platform whose level this build doesn't know (a newer builder's) is left
- * out, so it reads as undescribed rather than as any level.
+ * out, so it reads as undescribed rather than as any level. A station's lift map comes with the
+ * platforms only a lift reaches, so a lift outage can take their marks off ([StepFreeAccess.withLiftsOut]).
  */
 object StepFreeStore {
     private const val ASSET = "stations/step_free.json"
@@ -53,12 +56,24 @@ object StepFreeStore {
                         unknown++
                         return@mapNotNull null
                     }
-                    StepFreePlatform(level, p.platform, p.direction, p.where, p.limitedLift, p.entrance)
+                    val byLift = if (p.station.isNotEmpty() && p.node != null) LiftStop(p.station, p.node) else null
+                    StepFreePlatform(level, p.platform, p.direction, p.where, p.limitedLift, p.entrance, byLift)
                 }
             }.filterValues { it.isNotEmpty() }
         }.filterValues { it.isNotEmpty() }
         if (unknown > 0) warn("step-free table: $unknown platforms of an unknown level left out")
-        return StepFreeAccess(stops)
+        val stations = file.stations.mapValues { (_, map) ->
+            LiftMap(
+                walks = map.walks.filter { it.size == 2 }.groupBy({ it[0] }, { it[1] }).mapValues { it.value.toSet() },
+                lifts = map.lifts.mapValues { it.value.toSet() },
+            )
+        }
+        val unmapped = stops.values.sumOf { lines ->
+            lines.values.sumOf { platforms -> platforms.count { p -> p.byLift?.let { it.station !in stations } == true } }
+        }
+        // Such a platform keeps its mark through any outage: there's no map to walk it again by.
+        if (unmapped > 0) warn("step-free table: $unmapped platforms name a lift map it doesn't hold")
+        return StepFreeAccess(stops, stations)
     }
 
     private val LEVELS = mapOf(
@@ -69,7 +84,14 @@ object StepFreeStore {
     )
 
     @Serializable
-    private data class TableFile(val version: Int = 0, val stops: Map<String, Map<String, List<PlatformEntry>>> = emptyMap())
+    private data class TableFile(
+        val version: Int = 0,
+        val stops: Map<String, Map<String, List<PlatformEntry>>> = emptyMap(),
+        val stations: Map<String, LiftMapEntry> = emptyMap(),
+    )
+
+    @Serializable
+    private data class LiftMapEntry(val walks: List<List<Int>> = emptyList(), val lifts: Map<String, List<Int>> = emptyMap())
 
     @Serializable
     private data class PlatformEntry(
@@ -79,5 +101,7 @@ object StepFreeStore {
         val where: String = "",
         val limitedLift: Boolean = false,
         val entrance: String = "",
+        val station: String = "",
+        val node: Int? = null,
     )
 }

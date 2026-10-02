@@ -805,10 +805,18 @@ class RouteDetailScreenScreenshotTest {
         ).map { (id, name) -> RouteStop(id, name, victoriaLineConnections[name].orEmpty()) }
     }
 
-    private fun stepFreeVictoriaLine(dark: Boolean) {
+    // TfL's lift outages as a test hands them to the route page: what's known at once, and each ask.
+    private class FakeLiftOutages(
+        override val known: Set<String> = emptySet(),
+        private val answer: suspend () -> app.stopdash.domain.LiftsOut,
+    ) : app.stopdash.domain.LiftOutageCache {
+        override suspend fun current() = answer()
+    }
+
+    private fun stepFreeVictoriaLine(dark: Boolean, liftsOut: app.stopdash.domain.LiftOutageCache? = null) {
         composeRule.setContent {
             StopDashTheme(darkTheme = dark, dynamicColor = false) {
-                CompositionLocalProvider(LocalStepFree provides stepFreeTable) {
+                CompositionLocalProvider(LocalStepFree provides stepFreeTable, LocalLiftsOut provides liftsOut) {
                     RouteDetailScreen(
                         row = healthyRow(platform = "Northbound - Platform 5"),
                         isStarred = false,
@@ -836,6 +844,53 @@ class RouteDetailScreenScreenshotTest {
         composeRule.onNodeWithText("Oxford Circus", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithText("Euston", useUnmergedTree = true).assertExists()
         captureSnapshot("route-detail-step-free.png")
+    }
+
+    @Test
+    fun stopList_takesAMarkOffWhileALiftItsRouteNeedsIsOut() {
+        // One of the two lifts to King's Cross's Victoria line platforms, and one of Green Park's
+        // two, each of which reaches the platforms on its own.
+        stepFreeVictoriaLine(dark = false, liftsOut = FakeLiftOutages {
+            app.stopdash.domain.LiftsOut(setOf("HUBKGX-Lift-8", "940GZZLUGPK-Lift-5"), app.stopdash.domain.LiftOutages.MAX_AGE)
+        })
+        composeRule.onNodeWithText("King's Cross St. Pancras", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("King's Cross St. Pancras Step-free to the train", useUnmergedTree = true).assertDoesNotExist()
+        composeRule.onNodeWithText("Green Park Step-free to the train", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("Victoria Step-free to the train", useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun stopList_drawsItsFirstFrameFromTheLiftOutagesAlreadyKnown() {
+        // TfL said a lift to King's Cross's Victoria line was out when another page asked; this
+        // page's own ask hasn't come back.
+        stepFreeVictoriaLine(
+            dark = false,
+            liftsOut = FakeLiftOutages(known = setOf("HUBKGX-Lift-8")) { kotlinx.coroutines.awaitCancellation() },
+        )
+        composeRule.onNodeWithText("King's Cross St. Pancras", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("King's Cross St. Pancras Step-free to the train", useUnmergedTree = true).assertDoesNotExist()
+        composeRule.onNodeWithText("Green Park Step-free to the train", useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun stopList_asksForLiftOutagesAgainWhenTheAnswerAgesOut() {
+        // A lift to King's Cross's Victoria line out at first, in an answer another screen got four
+        // minutes ago (a minute left), and back by the next ask.
+        val answers = ArrayDeque(
+            listOf(
+                app.stopdash.domain.LiftsOut(setOf("HUBKGX-Lift-6"), java.time.Duration.ofMinutes(1)),
+                app.stopdash.domain.LiftsOut(emptySet(), app.stopdash.domain.LiftOutages.MAX_AGE),
+            ),
+        )
+        var asks = 0
+        stepFreeVictoriaLine(dark = false, liftsOut = FakeLiftOutages { asks++; answers.removeFirst() })
+        composeRule.onNodeWithText("King's Cross St. Pancras Step-free to the train", useUnmergedTree = true).assertDoesNotExist()
+        assertEquals(1, asks)
+        // Asked again when that answer ages out, not a whole five minutes after it came.
+        composeRule.mainClock.advanceTimeBy(java.time.Duration.ofMinutes(1).toMillis() + 1_000)
+        composeRule.waitForIdle()
+        assertEquals(2, asks)
+        composeRule.onNodeWithText("King's Cross St. Pancras Step-free to the train", useUnmergedTree = true).assertExists()
     }
 
     @Test

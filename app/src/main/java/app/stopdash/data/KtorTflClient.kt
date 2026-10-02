@@ -7,6 +7,7 @@ import app.stopdash.domain.JourneyPlanner
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusBatch
+import app.stopdash.domain.LiftOutageSource
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.PlaceCandidate
@@ -119,7 +120,8 @@ class KtorTflClient(
     // line) and mapping a plan (which reads the bundled station index) froze the screen for seconds
     // when it ran on a caller's main thread, as a screen's own loads do. A test swaps in its own.
     private val decodeDispatcher: CoroutineDispatcher = Dispatchers.Default,
-) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, JourneyPlanner, PostcodeResolver, PlaceSearch, VehicleSource {
+) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, JourneyPlanner, PostcodeResolver, PlaceSearch, VehicleSource,
+    LiftOutageSource {
     override suspend fun journeys(
         from: TripOrigin,
         to: TripDestination,
@@ -542,6 +544,14 @@ class KtorTflClient(
                 warn("stop disruption for stop $stopId: unparseable date (${raw.length} chars), window left open")
             }
         }
+
+    override suspend fun liftsOut(): Set<String> =
+        tflRequest { key ->
+            // One request for every station TfL describes, each naming its lifts out of service.
+            httpClient.get("$baseUrl/Disruptions/Lifts/v2") {
+                applyAppKey(key)
+            }.body<List<TflLiftDisruptionDto>>()
+        }.flatMap { it.disruptedLiftUniqueIds }.map { it.trim() }.filter { it.isNotEmpty() }.toSet()
 
     override suspend fun poleDisruptions(stopIds: List<String>): Map<String, List<StopDisruption>> {
         if (stopIds.isEmpty()) return emptyMap()

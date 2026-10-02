@@ -20,6 +20,12 @@ limited-capacity lift, one not every wheelchair fits, is marked `limitedLift`; a
 step-free route needs a particular entrance names it (`entrance`). A platform TfL has no route
 information for is left out, so the app shows nothing rather than guessing.
 
+A platform the street reaches only by lift also names its station (`station`) and its place in
+that station's lift map (`node`), kept under `stations`: the map cut down to the places that
+matter (node 0 the street, the platforms, the lifts' stops), the walks between them (`walks`, one
+way each), and each lift by the id TfL's live lift disruptions name it by (`lifts`). The app walks
+that map again without the lifts TfL says are out, so a mark drops while one its route needs is out.
+
 A failed download, or a table that's short (under MIN_STOPS stops) or missing a line it always
 has, stops the build, so the committed table stays rather than a partial one replacing it. Run
 by the `station-index` workflows beside the station index; the sandboxed dev environment may not
@@ -91,25 +97,36 @@ def number(value):
         return None
 
 
+def lift_stops(lift):
+    """The areas [lift] stops at, in the order TfL lists them."""
+    return [area.strip() for column in ("FromAreas", "IntermediateAreas", "IntermediateAreas2", "ToAreas")
+            for area in (lift.get(column) or "").split("|") if area.strip()]
+
+
+def walks_of(feed):
+    """The step-free paths that aren't lifts: on one level, and ramps, one way each as TfL lists them."""
+    paths = collections.defaultdict(set)
+    for row in feed.get("SameLevelPaths", []) + feed.get("RampRoutes", []):
+        paths[row["From"]].add(row["To"])
+    return paths
+
+
+def joined(paths, lifts):
+    """[paths] with each of [lifts] joining every area it stops at."""
+    out = collections.defaultdict(set, {a: set(b) for a, b in paths.items()})
+    for lift in lifts:
+        stops = lift_stops(lift)
+        for a in stops:
+            out[a].update(b for b in stops if b != a)
+    return out
+
+
 def walking_map(feed, limited_lifts=True):
     """Which areas (and platforms) a rider can move between without a step: paths on one level,
     ramps, and lifts (each lift joins every area it stops at). [limited_lifts] False leaves out
     the lifts not every wheelchair fits."""
-    paths = collections.defaultdict(set)
-    for row in feed.get("SameLevelPaths", []):
-        paths[row["From"]].add(row["To"])
-    for row in feed.get("RampRoutes", []):
-        paths[row["From"]].add(row["To"])
-    for lift in feed.get("Lifts", []):
-        if not limited_lifts and flag(lift.get("LimitedCapacityLift")):
-            continue
-        stops = [area for column in ("FromAreas", "IntermediateAreas", "IntermediateAreas2", "ToAreas")
-                 for area in (lift.get(column) or "").split("|") if area.strip()]
-        for a in stops:
-            for b in stops:
-                if a != b:
-                    paths[a.strip()].add(b.strip())
-    return paths
+    lifts = [lift for lift in feed.get("Lifts", []) if limited_lifts or not flag(lift.get("LimitedCapacityLift"))]
+    return joined(walks_of(feed), lifts)
 
 
 def reachable(paths, start):
@@ -121,6 +138,58 @@ def reachable(paths, start):
                 seen.add(nxt)
                 queue.append(nxt)
     return seen
+
+
+def lift_graph(walks, lifts, outside, targets):
+    """A station's lift map, cut down to what the app needs to walk it again without the lifts that
+    are out: the street ([outside]), each of [targets] (the platforms only lifts reach) and each
+    lift's stops, as nodes; the walks between them that need no lift; and the lifts by id. Places
+    that reach each other without a lift share a node, so it stays small. Returns the map and each
+    target's node. A lift TfL gives no id can't be reported out, so it joins its stops as a walk."""
+    lifts_by_id = {}
+    local = collections.defaultdict(set, {a: set(b) for a, b in walks.items()})
+    for lift in lifts:
+        stops = lift_stops(lift)
+        lift_id = (lift.get("LiftUniqueId") or "").strip()
+        if lift_id:
+            lifts_by_id[lift_id] = stops
+        else:
+            for a in stops:
+                local[a].update(b for b in stops if b != a)
+    places = [outside] + sorted(set(targets)) + sorted({a for stops in lifts_by_id.values() for a in stops})
+    places = list(dict.fromkeys(places))
+    reach = {place: reachable(local, place) for place in places}
+    # Places that walk to each other both ways are one node; the street is node 0.
+    groups = []
+    for place in places:
+        for group in groups:
+            if place in reach[group[0]] and group[0] in reach[place]:
+                group.append(place)
+                break
+        else:
+            groups.append([place])
+    groups = [groups[0]] + sorted(groups[1:], key=min)
+    node = {place: i for i, group in enumerate(groups) for place in group}
+    walk_edges = sorted({(node[a], node[b]) for a in places for b in places
+                         if node[a] != node[b] and b in reach[a]})
+    graph_lifts = {}
+    for lift_id, stops in sorted(lifts_by_id.items()):
+        nodes = sorted({node[a] for a in stops})
+        if len(nodes) > 1:
+            graph_lifts[lift_id] = nodes
+    return {"walks": [list(e) for e in walk_edges], "lifts": graph_lifts}, {t: node[t] for t in targets}
+
+
+def reaches(graph, node, out=()):
+    """Whether [graph]'s street (node 0) reaches [node] without the lifts in [out]."""
+    edges = collections.defaultdict(set)
+    for a, b in graph["walks"]:
+        edges[a].add(b)
+    for lift_id, nodes in graph["lifts"].items():
+        if lift_id not in out:
+            for a in nodes:
+                edges[a].update(b for b in nodes if b != a)
+    return node in reachable(edges, 0)
 
 
 def boarding(service):
@@ -146,9 +215,13 @@ def platform_sort_key(entry):
 def build(feed):
     platforms = {p["UniqueId"]: p for p in feed.get("Platforms", [])}
     stations = {s["UniqueId"]: s for s in feed.get("Stations", [])}
-    paths, full = walking_map(feed), walking_map(feed, limited_lifts=False)
-    reach, reach_unlimited = {}, {}
+    walks = walks_of(feed)
+    all_lifts = feed.get("Lifts", [])
+    paths, full = joined(walks, all_lifts), walking_map(feed, limited_lifts=False)
+    reach, reach_unlimited, reach_walking = {}, {}, {}
     stops = collections.defaultdict(lambda: collections.defaultdict(list))
+    # The platforms only a lift reaches, by station: those a lift outage can cut off.
+    by_lift = collections.defaultdict(list)
     for service in feed.get("PlatformServices", []):
         platform = platforms.get(service["PlatformUniqueId"])
         stop, line = (service.get("StopAreaNaptanCode") or "").strip(), (service.get("Line") or "").strip()
@@ -160,26 +233,42 @@ def build(feed):
         station = stations.get(platform["StationUniqueId"])
         if station is None:
             continue
-        outside = station.get("OutsideStationUniqueId") or f"{station['UniqueId']}-Outside"
-        if station["UniqueId"] not in reach:
-            reach[station["UniqueId"]] = reachable(paths, outside)
-            reach_unlimited[station["UniqueId"]] = reachable(full, outside)
+        sid = station["UniqueId"]
+        outside = station.get("OutsideStationUniqueId") or f"{sid}-Outside"
+        if sid not in reach:
+            reach[sid] = reachable(paths, outside)
+            reach_unlimited[sid] = reachable(full, outside)
+            reach_walking[sid] = reachable(walks, outside)
         entry = {}
         if platform.get("PlatformNumber", "").strip():
             entry["platform"] = platform["PlatformNumber"].strip()
         if platform.get("CardinalDirection", "").strip():
             entry["direction"] = platform["CardinalDirection"].strip()
-        if platform["UniqueId"] in reach[station["UniqueId"]]:
+        if platform["UniqueId"] in reach[sid]:
             entry["level"] = boarding(service)
             if entry["level"] == "level" and (service.get("LocationOfLevelAccess") or "").strip():
                 entry["where"] = service["LocationOfLevelAccess"].strip().rstrip(".")
-            if platform["UniqueId"] not in reach_unlimited[station["UniqueId"]]:
+            if platform["UniqueId"] not in reach_unlimited[sid]:
                 entry["limitedLift"] = True
             if (platform.get("AccessibleEntranceName") or "").strip():
                 entry["entrance"] = platform["AccessibleEntranceName"].strip()
+            if platform["UniqueId"] not in reach_walking[sid]:
+                by_lift[(sid, outside)].append((platform["UniqueId"], entry))
         else:
             entry["level"] = "none"
         stops[stop][line].append(entry)
+    graphs = {}
+    for (sid, outside), entries in sorted(by_lift.items()):
+        area = reach[sid]
+        lifts = [lift for lift in all_lifts if any(a in area for a in lift_stops(lift))]
+        graph, nodes = lift_graph(walks, lifts, outside, [uid for uid, _ in entries])
+        for uid, entry in entries:
+            if not reaches(graph, nodes[uid]):
+                raise SystemExit(f"lift map for {sid} doesn't reach {uid}; not writing")
+            # On the street's own node, only lifts that can't be reported out lead there: never cut off.
+            if nodes[uid] != 0:
+                entry["station"], entry["node"] = sid, nodes[uid]
+                graphs[sid] = graph
     if len(stops) < MIN_STOPS:
         raise SystemExit(f"only {len(stops)} stops (want at least {MIN_STOPS}); not writing")
     missing = REQUIRED_LINES - {line for lines in stops.values() for line in lines}
@@ -194,6 +283,7 @@ def build(feed):
             stop: {line: sorted(entries, key=platform_sort_key) for line, entries in sorted(lines.items())}
             for stop, lines in sorted(stops.items())
         },
+        "stations": graphs,
     }
 
 
