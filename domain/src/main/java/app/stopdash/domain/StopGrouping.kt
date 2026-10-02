@@ -37,6 +37,17 @@ package app.stopdash.domain
 object StopGrouping {
 
     /**
+     * The rows every platform view of [groups]' stops shows beside its own platform's: each status row
+     * (no trains, timed or not) in a group with no platform to split on. A suspended line with no
+     * predictions names no platform, so which one it would run from is unknown, and leaving it out of a
+     * platform's view would hide a known suspension (SPEC principle 1). Only those rows: a line of trains
+     * naming no platform beside them (one whose every train has no time, say) is no platform's, and
+     * never keeps them out (Codex).
+     */
+    fun unplacedStatusRows(groups: List<StopGroup>): List<DepartureRow> =
+        groups.filter { it.splitKey.isEmpty() }.flatMap { group -> group.rows.filter { !it.hasTrains } }
+
+    /**
      * The flat [rows] clustered into one [StopGroup] per place (stops sharing a display name).
      * Order is preserved: places come out in the order they first appear in [rows]. Because
      * [rows] arrive already ordered (soonest-first, or closest-stop-first near me, with warnings
@@ -229,7 +240,7 @@ object StopGrouping {
      * exactly as the headers do.
      */
     internal fun warnedStopsOf(listRows: List<DepartureRow>): Set<String> =
-        listRows.filter { it.upcoming.isEmpty() }.mapTo(HashSet()) { it.stopId }
+        listRows.filter { !it.hasTrains }.mapTo(HashSet()) { it.stopId }
 
     /**
      * The clustering identity: [DepartureRow.clusterId] — TfL's `stationNaptan` where it gives one
@@ -319,10 +330,10 @@ object StopGrouping {
             row.bearing.trim().ifEmpty { null }?.let { return RowSplit.Bearing(it) }
             return RowSplit.None
         }
-        val numberedPlatforms = row.upcoming
+        val numberedPlatforms = row.placed
             .mapNotNull { it.platform?.let(PlatformDirection::platformNumber) }
             .distinct()
-        val compasses = row.upcoming.mapNotNull { PlatformDirection.of(it.platform) }.distinct()
+        val compasses = row.placed.mapNotNull { PlatformDirection.of(it.platform) }.distinct()
         // Claim a platform only when the row is UNAMBIGUOUS: exactly one numbered platform AND no
         // conflicting direction across its predictions. A direction-only prediction that disagrees (a
         // bare "Westbound" beside "Eastbound - Platform 2") would otherwise file that Westbound
@@ -362,16 +373,22 @@ object StopGrouping {
      */
     private fun platformDirectionOf(rows: List<DepartureRow>): String? =
         rows.asSequence()
-            .flatMap { it.upcoming.asSequence() }
+            .flatMap { it.placed.asSequence() }
             .mapNotNull { PlatformDirection.of(it.platform) }
             .distinct()
             .singleOrNull()
+
+    // The trains that place [this] row at a platform: its timed ones, else (every train has no time)
+    // those, which name their platform as a timed train does.
+    private val DepartureRow.placed: List<Departure>
+        get() = upcoming.ifEmpty { untimed.map { it.train } }
 
     // Matches DepartureRows' row ordering: a stop-closure warning outranks a no-prediction
     // status row, which outranks a timed departure.
     private fun rowPriority(row: DepartureRow): Int = when {
         row.stopDisruption != null -> 0
-        row.upcoming.isEmpty() -> 1
+        !row.hasTrains -> 1
+        row.upcoming.isEmpty() -> 3
         else -> 2
     }
 }

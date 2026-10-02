@@ -12,8 +12,9 @@ package app.stopdash.domain
  */
 data class RouteFocus(val destination: String, val branch: String?) {
     companion object {
-        /** The focus for a card's route row. */
-        fun of(group: DestinationGroup) = RouteFocus(group.destination, group.times.firstOrNull()?.branch)
+        /** The focus for a card's route row: its soonest timed train's, else (every train has no time) its soonest's. */
+        fun of(group: DestinationGroup) =
+            RouteFocus(group.destination, (group.times.firstOrNull() ?: group.untimed.firstOrNull()?.train)?.branch)
     }
 }
 
@@ -23,16 +24,19 @@ data class RouteFocus(val destination: String, val branch: String?) {
  * else, once that route has no trains left, the row's soonest. The page's title follows the same
  * train, so the title and the stop list always agree. It never slips to another route row's trains
  * (the same destination on a branch the card shows as its own row).
+ *
+ * A route whose every train has no time ([DepartureRow.untimed]) follows its soonest by schedule,
+ * which places the route as a timed train would (destination, branch, platform), never another
+ * route's train. Nothing reads a time off the train it follows.
  */
 fun followedDeparture(row: DepartureRow, focus: RouteFocus?, topology: RouteTopology = RouteTopology.EMPTY): Departure? {
     if (focus != null) {
         val route = topology.grouping(row.lineId, row.stopId, focus.destination, focus.branch).mergeKey
-        row.upcoming.firstOrNull {
-            it.destination == focus.destination &&
-                topology.grouping(row.lineId, row.stopId, it.destination, it.branch).mergeKey == route
-        }?.let { return it }
+        fun onRoute(it: Departure) = it.destination == focus.destination &&
+            topology.grouping(row.lineId, row.stopId, it.destination, it.branch).mergeKey == route
+        (row.upcoming.firstOrNull(::onRoute) ?: row.untimed.firstOrNull { onRoute(it.train) }?.train)?.let { return it }
     }
-    return row.upcoming.firstOrNull()
+    return row.upcoming.firstOrNull() ?: row.untimed.firstOrNull()?.train
 }
 
 /**

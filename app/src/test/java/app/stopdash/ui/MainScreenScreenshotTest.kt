@@ -660,6 +660,37 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithContentDescription("delayed, no estimate, 5 min, cancelled").assertExists()
     }
 
+    @Test
+    fun `a National Rail line or destination whose every train has no time still shows, after the coming trains`() {
+        fun train(destination: String, minutes: Long, platform: String = "Platform 4") = Departure(
+            "great-northern", "Great Northern", "", destination, platform, now.plusSeconds(minutes * 60), "national-rail",
+        )
+        // Platform 4: a coming train to Cambridge, and only a canceled one to Peterborough, scheduled
+        // sooner. Platform 1: the line's only train there, delayed with no estimate.
+        val stop = StopArrivals(
+            "910GEXAMPLE",
+            "Example",
+            departures = listOf(train("Cambridge", 6)),
+            fetchedAt = now.minusSeconds(30),
+            lines = listOf(LineRef("great-northern", "Great Northern", "national-rail")),
+            railFeed = RailFeed.LIVE,
+            untimed = listOf(
+                UntimedTrain(train("Peterborough", 2), canceled = true),
+                UntimedTrain(train("Moorgate", 1, "Platform 1"), canceled = false),
+            ),
+        )
+        capture("main-rail-untimed-alone.png") {
+            MainScreen(DeparturesUiState.Loaded(listOf(stop), now.minusSeconds(30)), now, {})
+        }
+        // Each a route line of its own, never a "No departures" row, below the train that's coming.
+        val cambridge = composeRule.onNodeWithText("Cambridge").fetchSemanticsNode().boundsInRoot.top
+        val peterborough = composeRule.onNodeWithText("Peterborough").fetchSemanticsNode().boundsInRoot.top
+        val moorgate = composeRule.onNodeWithText("Moorgate").fetchSemanticsNode().boundsInRoot.top
+        assertTrue(cambridge < peterborough && peterborough < moorgate)
+        composeRule.onNodeWithText("Cancelled").assertExists()
+        composeRule.onNodeWithText("Delayed").assertExists()
+    }
+
     // The busiest interchange on the network: King's Cross St. Pancras, six Underground lines both
     // ways. Real line ids, termini, and TfL's own `direction` values — recorded from the live
     // `/StopPoint/940GZZLUKSX/Arrivals` feed (2026-09-22). The headers group on the **platform**

@@ -112,10 +112,31 @@ data class DepartureRow(
 )
 
 /**
+ * Whether [this] row has trains to show — timed ([DepartureRow.upcoming]) or with no time
+ * ([DepartureRow.untimed]: a line whose every train its board lists is canceled or delayed) — rather
+ * than being a status row, which has neither.
+ */
+val DepartureRow.hasTrains: Boolean get() = upcoming.isNotEmpty() || untimed.isNotEmpty()
+
+/**
+ * When [this] row's soonest train leaves, for ordering rows: its soonest timed train, else, for a row
+ * whose every train has no time, its soonest by schedule. Null for a status row.
+ */
+val DepartureRow.soonestAt: Instant? get() = upcoming.firstOrNull()?.expectedArrival ?: untimed.firstOrNull()?.train?.expectedArrival
+
+/**
+ * Whether [this] row holds every train of [other], timed and with no time alike, so showing [this]
+ * shows all of [other]'s. Read both lists here rather than [DepartureRow.upcoming] alone: a row's
+ * trains with no time can make lines of their own ([DepartureRows.destinationLines]).
+ */
+fun DepartureRow.covers(other: DepartureRow): Boolean =
+    upcoming.containsAll(other.upcoming) && untimed.containsAll(other.untimed)
+
+/**
  * A line's status with no departures to go with it: a suspension's own row, drawn as the status
  * alone. It lasts only as long as the check behind it (SPEC D3/D4).
  */
-val DepartureRow.isStatusOnly: Boolean get() = upcoming.isEmpty() && status != null
+val DepartureRow.isStatusOnly: Boolean get() = !hasTrains && status != null
 
 /**
  * The [DepartureRow.directionKey] a status row carries — a fixed sentinel, since a status

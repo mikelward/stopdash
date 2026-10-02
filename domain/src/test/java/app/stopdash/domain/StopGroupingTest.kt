@@ -89,6 +89,41 @@ class StopGroupingTest {
     }
 
     @Test
+    fun `a line whose every train has no time heads its own platform, never a warned stop`() {
+        val canceled = UntimedTrain(
+            Departure("great-example", "Great Example", "", "Far", "Platform 3", now.plusSeconds(120), "national-rail"),
+            canceled = true,
+        )
+        val stop = StopArrivals("910GEXAMPLE", "Example", emptyList(), fetchedAt = now, untimed = listOf(canceled))
+        val rows = DepartureRows.across(listOf(stop), now)
+
+        assertEquals(listOf(StopQualifier.Platform("3", null)), StopGrouping.groupByStop(rows).map { it.qualifier })
+        // Not a "No departures" warning: its stop doesn't head a group of its own for one.
+        assertEquals(emptySet<String>(), StopGrouping.warnedStopsOf(rows))
+    }
+
+    @Test
+    fun `every platform's view keeps a suspended line beside a platformless line of untimed trains`() {
+        // A suspended line with no predictions, and another line whose only train is canceled and names
+        // no platform: neither has a platform to show under, so they group together.
+        val canceled = UntimedTrain(
+            Departure("great-example", "Great Example", "", "Far", null, now.plusSeconds(120), "national-rail"),
+            canceled = true,
+        )
+        val timed = Departure("other-example", "Other Example", "", "Near", "Platform 3", now.plusSeconds(300), "national-rail")
+        val stop = StopArrivals(
+            "910GEXAMPLE", "Example", listOf(timed), fetchedAt = now,
+            lines = listOf(LineRef("suspended-example", "Suspended Example", "national-rail")),
+            untimed = listOf(canceled),
+        )
+        val suspended = LineStatus("suspended-example", 2, "Suspended")
+        val groups = StopGrouping.groupByStop(DepartureRows.across(listOf(stop), now, mapOf("suspended-example" to suspended)))
+        val unplaced = StopGrouping.unplacedStatusRows(groups)
+        assertEquals(listOf("suspended-example"), unplaced.map { it.lineId })
+        assertTrue(unplaced.single().isStatusOnly)
+    }
+
+    @Test
     fun `a direction served by two platforms heads each platform separately`() {
         // Camden Town: one southbound TfL direction from Platforms 2 and 4, northbound from 1 and 3.
         fun northern(direction: String, destination: String, platform: String, offset: Long) =

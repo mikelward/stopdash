@@ -191,6 +191,7 @@ import app.stopdash.domain.PlatformDirection
 import app.stopdash.domain.routeDepartures
 import app.stopdash.domain.routeUntimed
 import app.stopdash.domain.UntimedTrain
+import app.stopdash.domain.hasTrains
 import app.stopdash.ui.theme.LocalStarredBorderColor
 import java.time.Instant
 
@@ -861,11 +862,9 @@ fun MainScreen(
         // group beside a station's platforms) opens the whole stop: matching only its blank split
         // would show the warning without the stop's live departures (Codex).
         val matched = if (platformKey.isEmpty()) groups else groups.filter { it.splitKey == platformKey }
-        // Plus the stops' directionless line-status rows (a suspended line with no predictions names
-        // no platform, so it groups apart): which platform it would run from is unknown, so every
-        // platform view of the stop shows it rather than hide a known suspension (SPEC principle 1).
-        val groupRows = (matched + groups.filter { it.splitKey.isEmpty() && it.rows.all { r -> r.upcoming.isEmpty() } })
-            .flatMapTo(HashSet()) { it.rows }
+        // Plus the stops' directionless line-status rows ([StopGrouping.unplacedStatusRows]): which
+        // platform a suspended line would run from is unknown, so every platform view shows it.
+        val groupRows = (matched.flatMap { it.rows } + StopGrouping.unplacedStatusRows(groups)).toHashSet()
         // A whole-station view, or a whole-stop view spanning several groups, is titled by the bare
         // place, never by whichever platform happens to come first (Codex); a single group opened
         // from its own header keeps its full header text.
@@ -3296,14 +3295,7 @@ internal sealed interface JourneyCardState {
             get() = (rows + changes.map { it.row })
                 .groupBy { listOf(it.stopId, it.lineId, it.directionKey, it.platform) }
                 .values
-                .map { parts ->
-                    if (parts.size == 1) {
-                        parts.single()
-                    } else {
-                        val upcoming = parts.flatMap { it.upcoming }.distinct().sortedBy { it.expectedArrival }
-                        parts.first().copy(upcoming = upcoming, destination = upcoming.first().destination)
-                    }
-                }
+                .map { parts -> parts.singleOrNull() ?: DepartureRows.joined(parts) }
     }
 }
 
@@ -3525,7 +3517,7 @@ internal fun StopGroupCard(
             group.rows.forEach { row ->
                 val stale = Staleness.isStale(row.fetchedAt, now)
                 val isStarred = StarredRow.of(row) in starred
-                if (row.upcoming.isEmpty()) {
+                if (!row.hasTrains) {
                     // A status row: the line is suspended (its reason shown) and returned no
                     // predictions (SPEC *Departures*). Tappable to the detail view, but not starrable
                     // — a no-departures row has nothing to rank.
@@ -3590,10 +3582,11 @@ internal fun StopGroupCard(
                     }
                     return@forEach
                 }
-                // Timed rows: grouped by destination *and branch* (the shared `destinationLines`, so
-                // the widget can't drift), each destination its own route row with its own merged
+                // Rows with trains: grouped by destination *and branch* (the shared `destinationLines`,
+                // so the widget can't drift), each destination its own route row with its own merged
                 // countdown — a countdown is never read under the wrong destination or branch (SPEC
                 // D8). A branching row (Northern to Morden and to Battersea) shows its pill on each.
+                // A row whose every train has no time ("Cancelled") isn't starrable: no train to rank.
                 val starrable = starringAvailable && row.stopDisruption == null && row.upcoming.isNotEmpty()
                 val destinationLines = DepartureRows.destinationLines(row, MAX_TIMES, topology)
                 destinationLines.forEach { group2 ->
@@ -4157,7 +4150,7 @@ internal fun RouteDetailScreen(
     // withheld rather than shown as current (SPEC D4); it returns as soon as a refresh lands.
     val stops = when {
         // Only a row with a train to follow: a status row has no list to withhold.
-        stale && row.upcoming.isNotEmpty() && row.lineId.isNotBlank() -> RouteStopsUi.Stale
+        stale && row.hasTrains && row.lineId.isNotBlank() -> RouteStopsUi.Stale
         routeStops != null -> routeStops
         loadRouteStops != null -> loadRouteStops(routeStopsRetry)
         else -> rememberRouteStops(row, followed, routeStopsRetry)
@@ -4207,7 +4200,7 @@ internal fun RouteDetailScreen(
         .filter { Countdown.stillShown(it, now) }
     // The terminus(es) this service runs to, from its own departures — empty for a status row
     // (no predictions), which then shows only the line and its disruption.
-    val destinations = if (row.upcoming.isEmpty()) {
+    val destinations = if (!row.hasTrains) {
         emptyList()
     } else if (focus != null && followed != null) {
         // A tapped route names just that route, matching the stop list below it.
@@ -4337,7 +4330,7 @@ internal fun RouteDetailScreen(
             // only, but across the page's full width so more fit; the ones that don't ellipsize off
             // the end, keeping the soonest. Left out while stale — the stale caveat below says why —
             // so an old prediction is never shown as live (SPEC D4).
-            if (departures.isNotEmpty() && !stale) {
+            if ((departures.isNotEmpty() || untimed.isNotEmpty()) && !stale) {
                 val entries = Countdown.entries(departures, untimed)
                 // A train with no time is read aloud in full ("delayed, no estimate"), as the card's
                 // is ([CountdownLabel]).

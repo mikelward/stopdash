@@ -45,13 +45,35 @@ object DepartureRows {
         // Each line's mode as the stop advertises it: a row whose predictions all leave the mode
         // blank (TfL can omit `modeName`) takes it from here, so hidden modes and line colors hold.
         lineModes: Map<String, String> = emptyMap(),
+    ): List<DepartureRow> =
+        // upcoming() drops departed services and sorts soonest-first. Directions are inferred over the
+        // whole snapshot, before departed services drop, so a blank train keeps its inferred row (and a
+        // star pinned to it) after the tagged ones leave. The client already infers at fetch time; this
+        // covers a snapshot saved before it did.
+        rowsOf(
+            stopId, stopName, Countdown.upcoming(inferDirections(departures), now), lineStatuses, fetchedAt,
+            clusterId, stopLetter, bearing, towards, splitPlatforms, lineModes,
+        )
+
+    /**
+     * [forStop]'s rows for [live], departures already live and soonest-first: one per (line,
+     * direction) and, split, per platform. [across] builds the rows of a line whose every train has no
+     * time with it too, so they group and are stamped as a timed row of theirs would be.
+     */
+    private fun rowsOf(
+        stopId: String,
+        stopName: String,
+        live: List<Departure>,
+        lineStatuses: Map<String, LineStatus>,
+        fetchedAt: Instant,
+        clusterId: String,
+        stopLetter: String,
+        bearing: String,
+        towards: String,
+        splitPlatforms: Boolean,
+        lineModes: Map<String, String>,
     ): List<DepartureRow> {
-        // upcoming() has already dropped departed services and sorted soonest-first;
-        // groupBy preserves that encounter order within each group.
-        // Directions are inferred over the whole snapshot, before departed services drop, so a
-        // blank train keeps its inferred row (and a star pinned to it) after the tagged ones leave.
-        // The client already infers at fetch time; this covers a snapshot saved before it did.
-        val live = Countdown.upcoming(inferDirections(departures), now)
+        // groupBy preserves the soonest-first encounter order within each group.
         val folded = foldedUnknownPlatforms(live)
         return live.groupBy { RowKey(it.lineId, directionKeyOf(it)) }
             .flatMap { (key, directionGroup) ->
@@ -122,14 +144,24 @@ object DepartureRows {
             // nowhere for the rider either. One canceled goes at its scheduled time ([Countdown.stillShown]).
             val untimed = Terminating.drop(stop.untimed.map { it.train }, stop.nearer).toHashSet()
                 .let { kept -> stop.untimed.filter { it.train in kept && Countdown.stillShown(it, now) } }
+            val lineModes = stop.lines.associate { it.id to it.mode }
             val timed = withUntimed(
                 forStop(
                     stop.stopId, stop.stopName, shown, now, lineStatuses, stop.fetchedAt,
                     stop.clusterId, stop.stopLetter, stop.bearing, stop.towards, splitPlatforms,
-                    lineModes = stop.lines.associate { it.id to it.mode },
+                    lineModes = lineModes,
                 ),
                 untimed,
-            )
+            ) { alone ->
+                // A line or way whose every train has no time: rows of its own, grouped and stamped as
+                // a timed row of theirs would be, the trains in [DepartureRow.untimed] alone.
+                rowsOf(
+                    stop.stopId, stop.stopName, alone.map { it.train }.sortedBy { it.expectedArrival }, lineStatuses,
+                    stop.fetchedAt, stop.clusterId, stop.stopLetter, stop.bearing, stop.towards, splitPlatforms, lineModes,
+                ).map { row ->
+                    row.copy(upcoming = emptyList(), untimed = alone.filter { it.train in row.upcoming }.sortedBy { it.train.expectedArrival })
+                }
+            }
             // A line whose every live prediction was hidden has departures, just none that help: it
             // mustn't surface as a "No departures" status row. Counted over live predictions only,
             // like the timed rows, so an expired onward one doesn't make it look shown.
@@ -165,7 +197,7 @@ object DepartureRows {
      *
      * Groups come back soonest-first: [row]'s upcoming is soonest-first and `groupBy` keeps
      * first-encounter order, so the soonest departure's group leads and the rest follow by their
-     * own soonest.
+     * own soonest. A destination whose every train has no time ([DepartureRow.untimed]) follows them.
      *
      * **The via-branch is grouped by [topology], not by its raw string** (SPEC D8). One terminus
      * reached by two trunks (Edgware via Bank and via Charing Cross) is split into two labeled
@@ -185,10 +217,10 @@ object DepartureRows {
     ): List<DestinationGroup> {
         fun keyOf(departure: Departure) =
             departure.destination to topology.grouping(row.lineId, row.stopId, departure.destination, departure.branch).mergeKey
-        // A train with no time joins its destination's line among the timed trains, and only that:
-        // one with none there isn't drawn on its own (TODO, *Show delays and cancellations honestly*).
+        // A train with no time joins its destination's line among the timed trains; a destination
+        // whose every train has none is a line of its own.
         val untimed = row.untimed.groupBy { keyOf(it.train) }
-        return row.upcoming
+        val timed = row.upcoming
             .map { it to topology.grouping(row.lineId, row.stopId, it.destination, it.branch) }
             .groupBy { (departure, grouping) -> departure.destination to grouping.mergeKey }
             .map { (key, entries) ->
@@ -205,24 +237,50 @@ object DepartureRows {
                     shown.mapNotNull { (it as? Countdown.Entry.Untimed)?.train },
                 )
             }
+        // After the timed lines, by schedule ([DepartureRow.untimed] is soonest first): none has a
+        // train known to be coming, so the next one to leave stays at the top.
+        val timedKeys = row.upcoming.mapTo(HashSet(), ::keyOf)
+        return timed + untimed.filterKeys { it !in timedKeys }.map { (key, trains) ->
+            val soonest = trains.first().train
+            DestinationGroup(
+                key.first,
+                topology.grouping(row.lineId, row.stopId, soonest.destination, soonest.branch).label,
+                emptyList(),
+                trains.take(maxTimes),
+            )
+        }
     }
 
     /**
      * [rows] (one stop's timed rows, soonest first) each with the trains of its line and way that [untimed]
      * holds: those its row's direction key names ([directionKeyOf], a platform or a destination), else the
-     * soonest row of the line with a timed train to the same destination. One with neither isn't drawn
-     * (TODO, *Show delays and cancellations honestly*).
+     * soonest row of the line with a timed train to the same destination. Either way a train that names
+     * its platform goes only to a row on it: one whose platform it is, or, a row naming none, one with a
+     * timed train there. So it's never drawn under another platform's header, nor hidden in a row whose
+     * trains say no platform. Those with neither are [rowsOfTheirOwn] (a line, platform or way whose
+     * every train has no time), added after.
      */
-    internal fun withUntimed(rows: List<DepartureRow>, untimed: List<UntimedTrain>): List<DepartureRow> {
+    internal fun withUntimed(
+        rows: List<DepartureRow>,
+        untimed: List<UntimedTrain>,
+        rowsOfTheirOwn: (List<UntimedTrain>) -> List<DepartureRow>,
+    ): List<DepartureRow> {
         if (untimed.isEmpty()) return rows
-        val joined = untimed.groupBy { train ->
-            rows.indexOfFirst { it.lineId == train.train.lineId && it.directionKey == directionKeyOf(train.train) }
+        fun fits(row: DepartureRow, train: Departure): Boolean {
+            if (row.lineId != train.lineId) return false
+            val platform = PlatformDirection.platformNumber(train.platform) ?: return true
+            if (row.platform.isNotBlank()) return row.platform == platform
+            // A row not split by platform (or whose trains name none): only where one of its trains is.
+            return row.upcoming.any { PlatformDirection.platformNumber(it.platform) == platform }
+        }
+        val joined = untimed.groupBy { (train) ->
+            rows.indexOfFirst { fits(it, train) && it.directionKey == directionKeyOf(train) }
                 .takeIf { it >= 0 }
-                ?: rows.indexOfFirst { row -> row.lineId == train.train.lineId && row.upcoming.any { it.destination == train.train.destination } }
+                ?: rows.indexOfFirst { row -> fits(row, train) && row.upcoming.any { it.destination == train.destination } }
         }
         return rows.mapIndexed { i, row ->
             joined[i]?.let { row.copy(untimed = it.sortedBy { train -> train.train.expectedArrival }) } ?: row
-        }
+        } + joined[-1]?.let(rowsOfTheirOwn).orEmpty()
     }
 
     /**
@@ -475,8 +533,11 @@ object DepartureRows {
                 .thenBy { it.stopId }
                 // A no-countdown line-status alert sorts to MAX, so it trails its stop's timed
                 // departures rather than leading them — the alert rides with the stop, with no
-                // special order for being an alert (maintainer, 2026-09-22).
-                .thenBy { it.upcoming.firstOrNull()?.expectedArrival ?: Instant.MAX }
+                // special order for being an alert (maintainer, 2026-09-22). A row whose every train
+                // has no time comes between, by schedule: none is known to be coming, as on the
+                // watched list ([rank]).
+                .thenBy { if (it.upcoming.isNotEmpty()) 0 else if (it.untimed.isNotEmpty()) 1 else 2 }
+                .thenBy { it.soonestAt ?: Instant.MAX }
                 .thenBy { it.lineName }
                 .thenBy { it.direction }
                 .thenBy { it.directionKey }
@@ -528,7 +589,7 @@ object DepartureRows {
                 // Warnings (closures, no-prediction status) lead only where warnings are meant to —
                 // the watched list. On the near-me list (warningsLead=false) an unstarred alert is
                 // not hoisted; a starred alert still lifts with the starred band.
-                warningsLead && (row.stopDisruption != null || row.upcoming.isEmpty()) -> 0
+                warningsLead && (row.stopDisruption != null || !row.hasTrains) -> 0
                 StarredRow.of(row) in starred -> 1
                 else -> 2
             }
@@ -537,8 +598,8 @@ object DepartureRows {
 
     /**
      * [rows] without any timed row [shown] above them already covers in full: the same stop and line,
-     * with every one of its departures among the shown row's — a journey card's row repeated in the
-     * near-me list below it. A row the card shows only in part (some of its trains don't reach the
+     * with every one of its trains, timed or not, among the shown row's ([covers]) — a journey card's
+     * row repeated in the near-me list below it. A row the card shows only in part (some of its trains don't reach the
      * journey's far end) stays, as does a status-only row or a closure, so nothing is lost.
      */
     fun withoutShownAbove(rows: List<DepartureRow>, shown: List<DepartureRow>): List<DepartureRow> {
@@ -546,8 +607,20 @@ object DepartureRows {
         val byStopLine = shown.groupBy { it.stopId to it.lineId }
         return rows.filterNot { row ->
             row.upcoming.isNotEmpty() && row.stopDisruption == null &&
-                byStopLine[row.stopId to row.lineId].orEmpty().any { it.upcoming.containsAll(row.upcoming) }
+                byStopLine[row.stopId to row.lineId].orEmpty().any { it.covers(row) }
         }
+    }
+
+    /**
+     * [parts] of one row (the same stop, line, direction and platform), split apart as a journey card's
+     * direct trains and those to change from, joined again: every train of each, timed and with no
+     * time alike, soonest first.
+     */
+    fun joined(parts: List<DepartureRow>): DepartureRow {
+        val upcoming = parts.flatMap { it.upcoming }.distinct().sortedBy { it.expectedArrival }
+        val untimed = parts.flatMap { it.untimed }.distinct().sortedBy { it.train.expectedArrival }
+        val first = parts.first()
+        return first.copy(upcoming = upcoming, untimed = untimed, destination = upcoming.firstOrNull()?.destination ?: first.destination)
     }
 
     /**
@@ -573,7 +646,7 @@ object DepartureRows {
                     // A no-prediction row goes with its alert, unless planned work it carries is still
                     // undismissed: that stays reachable (Codex, PR #337).
                     null -> row.copy(status = null, statusDismissed = true).withoutDismissedPlanned(dismissed)
-                        .takeIf { it.upcoming.isNotEmpty() || it.plannedAlerts.isNotEmpty() }
+                        .takeIf { it.hasTrains || it.plannedAlerts.isNotEmpty() }
                     else -> row.copy(status = shown).withoutDismissedPlanned(dismissed)
                 }
                 else -> row.withoutDismissedPlanned(dismissed)
@@ -633,14 +706,16 @@ object DepartureRows {
      * cross-stop stable and keeps it from colliding with a timed row of the same line.
      */
     private fun dedupeKeyOf(row: DepartureRow): RowKey {
-        if (row.upcoming.isEmpty()) return RowKey(row.lineId, row.directionKey)
+        if (!row.hasTrains) return RowKey(row.lineId, row.directionKey)
         // Dedupe across stops only with a real cross-stop identity — both a line and TfL's
         // direction. A blank `lineId` (TfL omits it on some predictions, and `lineName` alone
         // can name a different route) or a blank `direction` has no cross-stop discriminator, so
         // the row stays stop-specific — keyed on its own stop — and is never merged across stops,
         // rather than colliding with an unrelated route (blank line) or the opposite direction
         // (blank direction) at an adjacent stop and silently dropping the farther one (Codex).
-        if (row.lineId.isBlank() || row.direction.isBlank()) {
+        // A row whose every train has no time stays its own stop's too: it must never stand in for
+        // a farther stop's trains that are actually coming, nor be dropped for them.
+        if (row.lineId.isBlank() || row.direction.isBlank() || row.upcoming.isEmpty()) {
             return RowKey(row.lineId, "\u0000${row.stopId}:${row.directionKey}")
         }
         return RowKey(row.lineId, row.direction)
@@ -802,26 +877,31 @@ object DepartureRows {
 
     /**
      * Rows ordered by **rank** first — stop-status rows (a whole stop disrupted), then
-     * line-status rows (a line disrupted with no countdown), then timed rows — since a
-     * disruption is the most important thing to see and has no departure time to sort by.
-     * Within timed rows: soonest departure, ties broken by line, direction, then the
-     * resolved direction key. A total, input-order-independent order shared by [forStop]
+     * line-status rows (a line disrupted with no countdown), then timed rows, then rows whose
+     * every train has no time (canceled or delayed with no estimate) — since a disruption is the
+     * most important thing to see and has no departure time to sort by.
+     * Within timed rows: soonest departure (within the last rank, soonest scheduled), ties broken
+     * by line, direction, then the resolved direction key. A total, input-order-independent order shared by [forStop]
      * and [across] so a stop's rows sort the same alone or merged; stop is the final
      * tie-break so status rows for the same line/stop-status across stops stay stable.
      */
     private val rowOrder: Comparator<DepartureRow> =
         compareBy<DepartureRow> { rank(it) }
-            .thenBy { it.upcoming.firstOrNull()?.expectedArrival ?: Instant.MIN }
+            .thenBy { it.soonestAt ?: Instant.MIN }
             .thenBy { it.lineName }
             .thenBy { it.direction }
             .thenBy { it.directionKey }
             .thenBy { it.platform }
             .thenBy { it.stopName }
 
-    /** 0 = stop-status row, 1 = line-status row (no countdown), 2 = timed row. */
+    /**
+     * 0 = stop-status row, 1 = line-status row (no train at all), 2 = timed row, 3 = a row whose every
+     * train has no time: none is known to be coming, so it follows those that are, by schedule.
+     */
     private fun rank(row: DepartureRow): Int = when {
         row.stopDisruption != null -> 0
-        row.upcoming.isEmpty() -> 1
+        !row.hasTrains -> 1
+        row.upcoming.isEmpty() -> 3
         else -> 2
     }
 

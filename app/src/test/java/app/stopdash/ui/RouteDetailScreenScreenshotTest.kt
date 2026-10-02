@@ -169,6 +169,45 @@ class RouteDetailScreenScreenshotTest {
     }
 
     @Test
+    fun aRouteWhoseEveryTrainHasNoTime_followsItsOwnTrains() {
+        fun train(destination: String, minutes: Long) = Departure(
+            "great-northern", "Great Northern", "", destination, "Platform 4", now.plusSeconds(minutes * 60), "national-rail",
+        )
+        // One platform: a coming train to Cambridge, and the tapped route, to Peterborough, with only a canceled one.
+        val stop = StopArrivals(
+            stopId = "910GEXAMPLE",
+            stopName = "Example",
+            departures = listOf(train("Cambridge", 5)),
+            fetchedAt = now,
+            untimed = listOf(app.stopdash.domain.UntimedTrain(train("Peterborough", 8), canceled = true)),
+        )
+        val row = DepartureRows.across(listOf(stop), now).single()
+        val focus = RouteFocus.of(DepartureRows.destinationLines(row, 3).single { it.destination == "Peterborough" })
+        composeRule.setContent {
+            StopDashTheme {
+                RouteDetailScreen(
+                    row = row,
+                    isStarred = false,
+                    starrable = true,
+                    disruptionUnknown = false,
+                    stale = false,
+                    now = now,
+                    onToggleStar = {},
+                    onBack = {},
+                    routeStops = RouteStopsUi.Loading,
+                    focus = focus,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        // Its own train and name, never the Cambridge train it shares a platform with.
+        composeRule.onNodeWithText("Cancelled").assertIsDisplayed()
+        composeRule.onNodeWithText("5 min").assertDoesNotExist()
+        composeRule.onNodeWithText("Peterborough", substring = true).assertExists()
+        composeRule.onNodeWithText("Cambridge", substring = true).assertDoesNotExist()
+    }
+
+    @Test
     fun aTappedBranchRoute_namesItsBranchInTheTitle() {
         // A loop line whose two routes share a terminus: the card splits them by branch
         // ("Hainault/Newbury Park"), so the page opened from one names the branch too, not just

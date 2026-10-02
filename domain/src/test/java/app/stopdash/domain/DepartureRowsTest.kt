@@ -51,13 +51,13 @@ class DepartureRowsTest {
         departure("great-example", "Great Example", "", destination, offsetSeconds, platform, mode = "national-rail")
 
     @Test
-    fun `a train with no time joins its line's row by platform, else by destination, never as a departure`() {
+    fun `a train with no time joins its line's row by platform, else by destination, else a row of its own, never as a departure`() {
         val timed = rail("Far", 300, "Platform 4")
         val unplatformed = rail("Farther", 600)
         val samePlatform = UntimedTrain(rail("Far", 120, "Platform 4"), canceled = true)
         // No platform yet: it joins the line's row that has a timed train to the same place.
         val noPlatform = UntimedTrain(rail("Far", 900), canceled = false)
-        // Nowhere a timed train of its line goes: not drawn.
+        // Nowhere a timed train of its line goes: a row of its own.
         val elsewhere = UntimedTrain(rail("Nowhere", 200), canceled = true)
         val stop = StopArrivals(
             "910GEXAMPLE", "Example", listOf(timed, unplatformed), fetchedAt = now,
@@ -69,9 +69,48 @@ class DepartureRowsTest {
         // Soonest scheduled first.
         assertEquals(listOf(samePlatform, noPlatform), far.untimed)
         assertEquals(emptyList<UntimedTrain>(), rows.single { it.directionKey == "Farther" }.untimed)
-        assertTrue(rows.none { elsewhere in it.untimed })
+        // Its own row, with trains (never a status row), after the timed rows since none is coming.
+        val alone = rows.single { elsewhere in it.untimed }
+        assertEquals(listOf(elsewhere), alone.untimed)
+        assertEquals(emptyList<Departure>(), alone.upcoming)
+        assertTrue(alone.hasTrains)
+        assertFalse(alone.isStatusOnly)
+        assertEquals(alone, rows.last())
         // Never among a row's departures, which everything that times a train reads.
         assertTrue(rows.all { row -> row.upcoming.none { d -> stop.untimed.any { it.train == d } } })
+    }
+
+    @Test
+    fun `a train with no time named for another platform goes in that platform's row, never its destination's`() {
+        val timed = rail("Far", 300, "Platform 4")
+        val canceled = UntimedTrain(rail("Far", 120, "Platform 2"), canceled = true)
+        val stop = StopArrivals("910GEXAMPLE", "Example", listOf(timed), fetchedAt = now, untimed = listOf(canceled))
+        val rows = DepartureRows.across(listOf(stop), now)
+        assertEquals(emptyList<UntimedTrain>(), rows.single { it.directionKey == "Platform 4" }.untimed)
+        val platform2 = rows.single { canceled in it.untimed }
+        assertEquals("Platform 2", platform2.directionKey)
+        assertEquals("2", platform2.platform)
+
+        // A direction split by platform: it joins its own platform's row, not the sooner one's.
+        fun outbound(platform: String, offsetSeconds: Long) =
+            departure("great-example", "Great Example", "outbound", "Far", offsetSeconds, platform, mode = "national-rail")
+        val split = StopArrivals(
+            "910GEXAMPLE", "Example", listOf(outbound("Platform 4", 300), outbound("Platform 2", 500)), fetchedAt = now,
+            untimed = listOf(canceled),
+        )
+        val splitRows = DepartureRows.across(listOf(split), now)
+        assertEquals(listOf(canceled), splitRows.single { it.platform == "2" }.untimed)
+        assertEquals(emptyList<UntimedTrain>(), splitRows.single { it.platform == "4" }.untimed)
+
+        // A timed train with no platform yet: the canceled one's named platform is its own row, not
+        // hidden in the platformless one.
+        val unplatformed = StopArrivals("910GEXAMPLE", "Example", listOf(rail("Far", 300)), fetchedAt = now, untimed = listOf(canceled))
+        val unplatformedRows = DepartureRows.across(listOf(unplatformed), now)
+        assertEquals(emptyList<UntimedTrain>(), unplatformedRows.single { it.upcoming.isNotEmpty() }.untimed)
+        assertEquals("2", unplatformedRows.single { canceled in it.untimed }.platform)
+        // Unsplit, a row takes it where one of its own trains is on that platform.
+        val unsplit = DepartureRows.across(listOf(split), now, splitPlatforms = false)
+        assertEquals(listOf(canceled), unsplit.single().untimed)
     }
 
     @Test
@@ -96,6 +135,86 @@ class DepartureRowsTest {
     }
 
     @Test
+    fun `a line whose every train has no time gets a row at its platform, carrying the line's status alone`() {
+        val delayed = UntimedTrain(rail("Far", 300, "Platform 2"), canceled = false)
+        val canceled = UntimedTrain(rail("Far", 120, "Platform 2"), canceled = true)
+        val line = LineRef("great-example", "Great Example", "national-rail")
+        val stop = StopArrivals("910GEXAMPLE", "Example", emptyList(), fetchedAt = now, lines = listOf(line), untimed = listOf(delayed, canceled))
+        val disrupted = LineStatus("great-example", 6, "Severe Delays")
+        // The line's status rides on its trains' row; no "No departures" row beside it says otherwise.
+        val row = DepartureRows.across(listOf(stop), now, mapOf("great-example" to disrupted)).single()
+        assertEquals("Platform 2", row.directionKey)
+        assertEquals(listOf(canceled, delayed), row.untimed)
+        assertEquals(emptyList<Departure>(), row.upcoming)
+        assertEquals(disrupted, row.status)
+        assertFalse(row.isStatusOnly)
+        // Dismissing the alert leaves the trains.
+        val kept = DepartureRows.withoutDismissed(listOf(row), setOf(DismissedAlert.ofLineStatus(disrupted))).single()
+        assertNull(kept.status)
+        assertEquals(listOf(canceled, delayed), kept.untimed)
+    }
+
+    @Test
+    fun `nearbyDeduped never lets a row whose every train has no time stand in for a farther stop's trains`() {
+        fun outbound(offsetSeconds: Long) =
+            departure("great-example", "Great Example", "outbound", "Far", offsetSeconds, mode = "national-rail")
+        val rows = DepartureRows.across(
+            listOf(
+                StopArrivals("A", "Stop A", emptyList(), fetchedAt = now, untimed = listOf(UntimedTrain(outbound(120), canceled = true))),
+                StopArrivals("B", "Stop B", listOf(outbound(300)), fetchedAt = now),
+            ),
+            now,
+        )
+        val deduped = DepartureRows.nearbyDeduped(rows, mapOf("A" to 100.0, "B" to 300.0))
+        // The nearer stop's canceled train and the farther one's coming train both stay.
+        assertEquals(listOf("A", "B"), deduped.map { it.stopId }.sorted())
+    }
+
+    @Test
+    fun `byStopDistance puts a stop's rows whose every train has no time after its coming trains, by schedule`() {
+        fun train(lineId: String, platform: String, offsetSeconds: Long) =
+            departure(lineId, lineId, "", "Far", offsetSeconds, platform, mode = "national-rail")
+        val rows = DepartureRows.across(
+            listOf(
+                StopArrivals(
+                    "A", "Stop A", listOf(train("c-line", "Platform 3", 900)), fetchedAt = now,
+                    // Line names in the opposite order to their schedules, so neither breaks the tie.
+                    untimed = listOf(
+                        UntimedTrain(train("a-line", "Platform 1", 600), canceled = true),
+                        UntimedTrain(train("b-line", "Platform 2", 120), canceled = false),
+                    ),
+                ),
+            ),
+            now,
+        )
+        // Fed in reverse, so the order comes from the sort, not from [DepartureRows.across].
+        val ordered = DepartureRows.byStopDistance(rows.reversed(), mapOf("A" to 100.0))
+        assertEquals(listOf("c-line", "b-line", "a-line"), ordered.map { it.lineId })
+    }
+
+    @Test
+    fun `parts of one row joined again keep every part's trains, timed and with no time`() {
+        val base = rowWith(rail("Far", 300, "Platform 4"))
+        val toNear = UntimedTrain(rail("Near", 120, "Platform 4"), canceled = true)
+        val toFar = UntimedTrain(rail("Far", 600, "Platform 4"), canceled = false)
+        // A journey card's direct train with its own canceled one, and a train to change from with its.
+        val direct = base.copy(untimed = listOf(toFar))
+        val change = base.copy(upcoming = listOf(rail("Near", 400, "Platform 4")), untimed = listOf(toNear))
+        val joined = DepartureRows.joined(listOf(direct, change))
+        assertEquals(listOf(now.plusSeconds(300), now.plusSeconds(400)), joined.upcoming.map { it.expectedArrival })
+        assertEquals(listOf(toNear, toFar), joined.untimed)
+        assertEquals("Far", joined.destination)
+    }
+
+    @Test
+    fun `a row the card above shows without some of its trains with no time stays in the list`() {
+        val row = rowWith(rail("Far", 300)).copy(untimed = listOf(UntimedTrain(rail("Elsewhere", 120), canceled = true)))
+        // The card's copy keeps the timed train but not the one to Elsewhere, a line of its own here.
+        assertEquals(listOf(row), DepartureRows.withoutShownAbove(listOf(row), listOf(row.copy(untimed = emptyList()))))
+        assertEquals(emptyList<DepartureRow>(), DepartureRows.withoutShownAbove(listOf(row), listOf(row)))
+    }
+
+    @Test
     fun `a destination line puts its trains with no time among its times, capped together`() {
         val row = rowWith(rail("Far", 300), rail("Far", 600), rail("Far", 900)).copy(
             untimed = listOf(
@@ -104,13 +223,18 @@ class DepartureRowsTest {
                 UntimedTrain(rail("Elsewhere", 200), canceled = true),
             ),
         )
-        val line = DepartureRows.destinationLines(row, maxTimes = 3).single()
+        val lines = DepartureRows.destinationLines(row, maxTimes = 3)
+        val line = lines.first()
         // The canceled one before the first time and the delayed one after it fill the cap of three, so
         // the later times are past it.
         assertEquals(listOf(now.plusSeconds(300)), line.times.map { it.expectedArrival })
         assertEquals(listOf(true, false), line.untimed.map { it.canceled })
-        // One for a destination no timed train goes to isn't drawn on its own.
         assertTrue(line.untimed.none { it.train.destination == "Elsewhere" })
+        // A destination no timed train goes to is a line of its own, after the timed one though it was
+        // scheduled sooner: none of its trains is coming.
+        assertEquals(listOf("Far", "Elsewhere"), lines.map { it.destination })
+        assertEquals(emptyList<Departure>(), lines[1].times)
+        assertEquals(listOf(true), lines[1].untimed.map { it.canceled })
     }
 
     @Test
