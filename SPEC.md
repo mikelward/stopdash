@@ -726,7 +726,14 @@ are made, an email address isn't treated as one, and with no browser the tap say
 terminates** (a short-working ends where it does, not at the line's end), on a rail in the line's
 color. The boarding stop is marked with a blue "you are here" dot (map-location blue, ringed to
 stand off a blue line's rail), announced to a screen reader as "Your stop"; every other stop, the terminus included, is hollow,
-so the one filled dot is the rider's (the terminus keeps a bold name). The list is headed only by the **direction** the train runs ("Southbound") — read off its
+so the one filled dot is the rider's (the terminus keeps a bold name). **A station step-free for the line
+carries TfL's own symbol after its name** (maintainer, 2026-10-02), from the bundled table (*Data
+source → Step-free access*): a white wheelchair on a blue disc where the rider can get from the street
+onto the train without a step, a blue wheelchair on a white disc where they can reach the platform but
+need a step or the staff's ramp onto the train, as TfL's map draws them. Nothing marks a station with
+no step-free route, or one TfL's data doesn't describe. A station whose platforms for the line differ
+(Cannon Street on the District) is marked only as far as all of them reach, since the rider may need
+either. A screen reader reads the symbol as its words ("Step-free to the train"). The list is headed only by the **direction** the train runs ("Southbound") — read off its
 rail platform, or a bus pole's compass bearing, and left off when neither names one — not by "From" or
 "Stops to": the list opens on the boarding stop and the app bar already names the destination. Only
 while no list is shown (a status row, or a list loading, failed, unavailable, or withheld) does the
@@ -2456,8 +2463,8 @@ surface.)
   is left out: unknown, never assumed either way. The table is built by
   `scripts/build_step_free.py`, bundled beside the station list and rebuilt with it weekly; the app
   reads it by stop and line (`StepFreeAccess`). **Cost: £0**, no request from the app; the build
-  downloads ~200 KB once a week. *Built, not yet shown*: the marks on the route page's stop list and
-  elsewhere come next (TODO).
+  downloads ~200 KB once a week. Shown on the route page's stop list (*Route detail*); the stop and
+  station views and a trip's legs come next (TODO).
 - **Reliability:** one required dependency, so if TfL is down or throttling, stopdash shows
   stamped last-good data and an offline/rate-limited notice (never a blank or an
   unlabeled stale number). Added latency lives off every render path (snapshot-render,

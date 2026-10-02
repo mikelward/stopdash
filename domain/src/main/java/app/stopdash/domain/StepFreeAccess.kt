@@ -57,6 +57,14 @@ class StepFreeAccess(private val stops: Map<String, Map<String, List<StepFreePla
     fun level(stopId: String, lineId: String, platform: String): StepFreeLevel? =
         platforms(stopId, lineId).filter { it.platform.equals(platform.trim(), ignoreCase = true) }.minOfOrNull { it.level }
 
+    /**
+     * [level] for a train of [lineId] at [stopId]: TfL's own line where it describes it, else, for a
+     * National Rail train ([mode] `national-rail`, whose line ids are its operators'), the station's
+     * National Rail platforms. Null when TfL describes neither.
+     */
+    fun levelFor(stopId: String, lineId: String, mode: String): StepFreeLevel? =
+        level(stopId, lineId) ?: if (mode.equals(NATIONAL_RAIL, ignoreCase = true)) level(stopId, NATIONAL_RAIL) else null
+
     /** The lines TfL describes at [stopId]. */
     fun lines(stopId: String): Set<String> = stops[stopId]?.keys.orEmpty()
 

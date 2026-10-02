@@ -487,10 +487,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           station list): per platform and line, none / to the platform / by ramp / level onto the
           train, read by `StepFreeAccess` (SPEC *Data source → Step-free access*). Grading is per
           platform and line, not per station.
-    - [ ] **The marks**: wheelchair icons on the route page's stop list first, then the stop/station
-          view and a trip's legs. *To decide* with the maintainer: the icon for each level (to the
-          platform, by ramp, level), and what a platform-less view (a station header) shows when its
-          platforms differ.
+    - [x] **The marks on the route page's stop list** (maintainer, 2026-10-02: TfL's own symbols): a
+          white wheelchair on a blue disc for level onto the train, a blue one on a white disc for
+          step-free to the platform (a ramp or a step onto the train), nothing otherwise; a station
+          whose platforms for the line differ is marked as far as all of them reach.
+    - [ ] **The marks elsewhere**: the stop/station view and a trip's legs. Open: what a
+          platform-less view (a station header) shows when its lines differ, and whether a trip leg,
+          which knows its platform and direction, marks that platform's own level.
     - [ ] **Lifts out of service**: TfL's live lift disruptions (`/Disruptions/Lifts/v2`) name the
           lifts the bundled routes use, so a mark could drop while one is out.
   - [x] **Tap a route row → all stops for that route** (maintainer, 2026-09-22). Extends the

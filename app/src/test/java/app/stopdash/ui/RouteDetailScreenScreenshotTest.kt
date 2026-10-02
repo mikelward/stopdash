@@ -791,6 +791,127 @@ class RouteDetailScreenScreenshotTest {
         captureSnapshot("route-detail-stops.png")
     }
 
+    // TfL's bundled step-free table, as the app ships it (SPEC *Step-free access*).
+    private val stepFreeTable by lazy {
+        app.stopdash.data.StepFreeStore.parse(java.io.File("src/main/assets/stations/step_free.json").readText())
+    }
+
+    // The Victoria line northbound from Victoria to King's Cross, by TfL's station ids: big central
+    // stations and interchanges.
+    private val victoriaLineNorthbound by lazy {
+        listOf(
+            "940GZZLUVIC" to "Victoria", "940GZZLUGPK" to "Green Park", "940GZZLUOXC" to "Oxford Circus",
+            "940GZZLUEUS" to "Euston", "940GZZLUKSX" to "King's Cross St. Pancras",
+        ).map { (id, name) -> RouteStop(id, name, victoriaLineConnections[name].orEmpty()) }
+    }
+
+    private fun stepFreeVictoriaLine(dark: Boolean) {
+        composeRule.setContent {
+            StopDashTheme(darkTheme = dark, dynamicColor = false) {
+                CompositionLocalProvider(LocalStepFree provides stepFreeTable) {
+                    RouteDetailScreen(
+                        row = healthyRow(platform = "Northbound - Platform 5"),
+                        isStarred = false,
+                        starrable = false,
+                        disruptionUnknown = false,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                        routeStops = RouteStopsUi.Loaded(victoriaLineNorthbound),
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+    }
+
+    @Test
+    fun stopList_marksStationsStepFreeToTheTrain() {
+        stepFreeVictoriaLine(dark = false)
+        // Level onto the train (TfL's blue symbol), read out as its words after the name.
+        composeRule.onNodeWithText("Green Park Step-free to the train", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("King's Cross St. Pancras Step-free to the train", useUnmergedTree = true).assertExists()
+        // No step-free route: no mark, the name alone.
+        composeRule.onNodeWithText("Oxford Circus", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("Euston", useUnmergedTree = true).assertExists()
+        captureSnapshot("route-detail-step-free.png")
+    }
+
+    @Test
+    fun stopList_marksStationsStepFreeToTheTrain_dark() {
+        stepFreeVictoriaLine(dark = true)
+        composeRule.onNodeWithText("Victoria Step-free to the train", useUnmergedTree = true).assertExists()
+        captureSnapshot("route-detail-step-free-dark.png")
+    }
+
+    @Test
+    fun stopList_marksStationsStepFreeToThePlatform() {
+        // Interchanges and big stations along the District line eastbound from Victoria (the stations
+        // between left out): TfL's staff ramp onto the train at Victoria, Westminster and Tower Hill
+        // (its white symbol), level at Blackfriars and West Ham.
+        val stops = listOf(
+            "940GZZLUVIC" to "Victoria", "940GZZLUWSM" to "Westminster", "940GZZLUEMB" to "Embankment",
+            "940GZZLUBKF" to "Blackfriars", "940GZZLUCST" to "Cannon Street", "940GZZLUMMT" to "Monument",
+            "940GZZLUTWH" to "Tower Hill", "940GZZLUWPL" to "Whitechapel", "940GZZLUWHM" to "West Ham",
+        ).map { (id, name) -> RouteStop(id, name) }
+        val stop = StopArrivals(
+            stopId = "940GZZLUVIC",
+            stopName = "Victoria",
+            departures = listOf(
+                Departure("district", "District", "eastbound", "Upminster", "Eastbound - Platform 2", now.plusSeconds(180), "tube"),
+            ),
+            fetchedAt = now,
+        )
+        val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalStepFree provides stepFreeTable) {
+                    RouteDetailScreen(
+                        row = row,
+                        isStarred = false,
+                        starrable = false,
+                        disruptionUnknown = false,
+                        stale = false,
+                        now = now,
+                        onToggleStar = {},
+                        onBack = {},
+                        routeStops = RouteStopsUi.Loaded(stops),
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        // A staff ramp onto the train, or a step: step-free to the platform (TfL's white symbol).
+        composeRule.onNodeWithText("Westminster Step-free to the platform", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("Whitechapel Step-free to the platform", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("Blackfriars Step-free to the train", useUnmergedTree = true).assertExists()
+        // One platform step-free and the other not: no mark, since the rider may need either.
+        composeRule.onNodeWithText("Cannon Street", useUnmergedTree = true).assertExists()
+        captureSnapshot("route-detail-step-free-platform.png")
+    }
+
+    @Test
+    fun stopList_marksNothingWithoutTheTable() {
+        composeRule.setContent {
+            StopDashTheme {
+                RouteDetailScreen(
+                    row = healthyRow(platform = "Northbound - Platform 5"),
+                    isStarred = false,
+                    starrable = false,
+                    disruptionUnknown = false,
+                    stale = false,
+                    now = now,
+                    onToggleStar = {},
+                    onBack = {},
+                    routeStops = RouteStopsUi.Loaded(victoriaLineNorthbound),
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Green Park", useUnmergedTree = true).assertExists()
+    }
+
     @Test
     fun stationsTheAlertNames_andTheStretchBetween_carryAWarning() {
         // Synthetic alert wording over public station names: it names two stations on this list, the

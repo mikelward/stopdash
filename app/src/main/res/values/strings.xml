@@ -547,6 +547,9 @@
     <!-- Screen-reader state of a station on a route page that the line's alert names, or that lies
          in a stretch it names ("between X and Y"). -->
     <string name="route_stop_in_alert">In the service alert</string>
+    <!-- Read out where a route page's stop list shows TfL's step-free symbol after a station's name. -->
+    <string name="route_stop_step_free_train">Step-free to the train</string>
+    <string name="route_stop_step_free_platform">Step-free to the platform</string>
     <string name="map_open_failed">No maps app to open</string>
     <string name="action_done">Done</string>
     <string name="action_close">Close</string>

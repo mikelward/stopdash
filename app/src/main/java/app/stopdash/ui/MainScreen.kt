@@ -4547,6 +4547,15 @@ internal fun RouteDetailScreen(
                     placed?.let { j to it }
                 }.toMap()
             }
+            // Each listed station's step-free level for this line, from TfL's bundled table (SPEC
+            // *Step-free access*); nothing until the table is read.
+            val stepFreeTable = LocalStepFree.current
+            val stepFree = remember(stepFreeTable, stops, row.lineId, rowMode) {
+                val table = stepFreeTable ?: return@remember emptyMap()
+                (stops as? RouteStopsUi.Loaded)?.stops.orEmpty()
+                    .mapNotNull { stop -> table.levelFor(stop.id, row.lineId, rowMode)?.let { stop.id to it } }
+                    .toMap()
+            }
             // Every station from here to where the soonest train terminates (SPEC *Route detail*).
             RouteStopsSection(
                 state = stops,
@@ -4561,6 +4570,7 @@ internal fun RouteDetailScreen(
                 // across the road — so any of those pages shows (and toggles) the same star.
                 starredStopIds = journeysHere.values.flatMapTo(mutableSetOf()) { it },
                 alertStopIds = alertStretchIds,
+                stepFree = stepFree,
                 onDismissJourneyTip = onDismissJourneyTip,
                 onToggleJourneyTo = onToggleJourney
                     ?.takeIf { row.lineId.isNotBlank() && (Connections.isRail(rowMode, row.lineId) || rowMode.equals("bus", ignoreCase = true)) }
