@@ -186,8 +186,8 @@ class OnTheWayScreenScreenshotTest {
 
     @Test
     fun the_location_gate_pins_the_trip_card_at_the_top() {
-        // While near me is being found: at the top, where the near-me list pins it (maintainer,
-        // 2026-09-29), not centered with the spinner.
+        // While near me is being found: at the top under the app bar, where the near-me list pins it
+        // (maintainer, 2026-09-29), not centered with the spinner.
         val state = OnTheWayBannerState(trip, TripProgress.Waiting(mildmay, at(4)), now) {}
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -199,7 +199,7 @@ class OnTheWayScreenScreenshotTest {
         captureSnapshot("on-the-way-gate-locating.png")
         val card = composeRule.onNodeWithText("To Canary Wharf").getUnclippedBoundsInRoot()
         val finding = composeRule.onNodeWithText("Finding stops near you…").getUnclippedBoundsInRoot()
-        assertTrue(card.top < androidx.compose.ui.unit.Dp(64f))
+        assertTrue(card.top < androidx.compose.ui.unit.Dp(64f + 16f))
         // The gate's own content stays centered in the room below it.
         assertTrue(finding.top > androidx.compose.ui.unit.Dp(300f))
     }

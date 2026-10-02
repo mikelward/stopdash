@@ -12,8 +12,7 @@ import app.stopdash.R
 /**
  * The "Update available" call to action shown on the loading screens — the departures spinner
  * ([DeparturesUiState.Loading]) and the location gate's Locating spinner — when Google Play reports
- * a newer version (SPEC *Update indicator*). The location gate has no overflow menu, so this is its
- * only update affordance; on the departures spinner the overflow (with its dot) is already present,
+ * a newer version (SPEC *Update indicator*). On both, the overflow (with its dot) is already present,
  * so this is a more direct prompt than a dot the user may not notice while waiting. Opens the Play
  * listing via [onClick]. Outlined, not filled, so it stays a secondary offer — the "action" of a
  * loading screen is still to wait for the content.

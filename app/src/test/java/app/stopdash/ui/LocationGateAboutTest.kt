@@ -3,6 +3,7 @@ package app.stopdash.ui
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import app.stopdash.ui.theme.StopDashTheme
@@ -45,7 +46,8 @@ class LocationGateAboutTest {
         }
 
         // Even with the permission permanently denied — the state that otherwise strands the
-        // user — About is present and opens the dialog, whose one action opens the licenses.
+        // user — About is in the overflow and opens the dialog, whose one action opens the licenses.
+        composeRule.onNodeWithContentDescription("More options").performClick()
         composeRule.onNodeWithText("About").performClick()
         composeRule.onNodeWithText("Open source licenses").assertIsDisplayed()
         composeRule.onNodeWithText("Open source licenses").performClick()

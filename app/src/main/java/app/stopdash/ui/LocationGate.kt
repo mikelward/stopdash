@@ -14,9 +14,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,10 +46,15 @@ import java.time.Instant
  * - [PermissionRequired][NearbyStopsViewModel.State.PermissionRequired] — the rationale
  *   (honest that the position is sent to TfL) and an **Allow location** button.
  * - [Locating][NearbyStopsViewModel.State.Locating] — a spinner, shown at once (SPEC 5), plus an
- *   **Update available** button at the bottom when [updateAvailable] (the overflow that carries it
- *   is past the gate). No **About**: every state it ends in offers that.
+ *   **Update available** button at the bottom when [updateAvailable], a more direct prompt than the
+ *   overflow's dot, as on the departures cold load.
  * - [NoLocation][NearbyStopsViewModel.State.NoLocation] / [Empty][NearbyStopsViewModel.State.Empty]
- *   / [Failed][NearbyStopsViewModel.State.Failed] — the reason and a **Try again**.
+ *   / [Failed][NearbyStopsViewModel.State.Failed] — the reason and a **Try again**; Empty also says
+ *   StopDash shows only London's stops, the usual reason there are none.
+ *
+ * Every state has the app bar every screen has (maintainer, 2026-10-02): the mark, the name, and
+ * the overflow with what makes sense before any stop is found — From…, Settings, Send bug report and
+ * About, and "Update available" when there is one.
  *
  * Pure: renders only [state], with no I/O, so the same function drives the app and the
  * screenshot tests.
@@ -75,8 +83,16 @@ fun LocationGate(
     // Open the Play Store listing (from the "Update available" button). Default no-op.
     onOpenAppListing: () -> Unit = {},
     // Open "Find a station" (SPEC *Finding stops*), which needs no location — so a user who denied
-    // it, or whose fix or lookup failed, can still look a station up. Null hides the button.
+    // it, or whose fix or lookup failed, can still look a station up. The overflow's From… too. Null
+    // hides both.
     onFindStation: (() -> Unit)? = null,
+    // Open StopDash's own Settings, from the overflow ([onOpenSettings] is the system's app settings,
+    // for the permission). Null offers no item.
+    onOpenStopDashSettings: (() -> Unit)? = null,
+    // Open About from the overflow, hosted by the caller above the gate, so a lookup finishing while
+    // it's open (the gate giving way to departures) doesn't close it (Codex, #470). Null shows the
+    // gate's own dialog, as a test does.
+    onOpenAbout: (() -> Unit)? = null,
     // "No stops found nearby" was worked out from a coarse (network) fix, which can be hundreds of
     // meters out, so it says so until a precise fix confirms or replaces it (SPEC *Finding stops*).
     approximate: Boolean = false,
@@ -111,8 +127,16 @@ fun LocationGate(
         // Only where that leaves the gate most of the height: on a short window or with large text the
         // card could squeeze the gate's actions out of reach, so there it scrolls with them, at the top
         // of the gate's content (Codex on #385).
-        val pinned = maxHeight >= PINNED_CARD_ROOM * LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val pinned = maxHeight - GATE_BAR_HEIGHT >= PINNED_CARD_ROOM * LocalDensity.current.fontScale.coerceAtLeast(1f)
         Column(Modifier.fillMaxSize()) {
+            GateTopBar(
+                updateAvailable = updateAvailable,
+                onOpenAppListing = onOpenAppListing,
+                onFindStation = onFindStation,
+                onOpenStopDashSettings = onOpenStopDashSettings,
+                onSendBugReport = onSendBugReport,
+                onOpenAbout = onOpenAbout ?: { showAbout = true },
+            )
             if (pinned && banner != null) OnTheWayBanner(banner, now, Modifier.padding(start = 16.dp, top = 8.dp, end = 16.dp))
             Column(
                 modifier = Modifier
@@ -169,6 +193,8 @@ fun LocationGate(
                             }
                             Body(stringResource(R.string.location_no_stops))
                             if (approximate) Body(stringResource(R.string.location_coarse))
+                            // Most often, nowhere near London (maintainer, 2026-10-02).
+                            Body(stringResource(R.string.location_london_only))
                             Action(stringResource(R.string.try_again), onRetry)
                         }
 
@@ -202,16 +228,8 @@ fun LocationGate(
                             Text(stringResource(R.string.menu_find_station))
                         }
                     }
-                    // Below the state's own action: the one way to reach the app version and open-source
-                    // attribution while stuck on the gate. Not on the Locating spinner, which is passing (the
-                    // fix and the lookup are both time-bounded) and ends in a state that offers it.
-                    if (!locating) {
-                        TextButton(onClick = { showAbout = true }, modifier = Modifier.padding(top = 24.dp)) {
-                            Text(stringResource(R.string.menu_about))
-                        }
-                    }
                 }
-                // The gate has no overflow menu, so this button is the only update affordance here.
+                // A more direct prompt than the overflow's dot while the user waits, as on the cold load.
                 if (locating) UpdateAvailableButton(onClick = onOpenAppListing, modifier = Modifier.padding(top = 24.dp), shown = updateAvailable)
             }
         }
@@ -231,6 +249,65 @@ fun LocationGate(
 // card of a few lines at the top still leaves a phone's portrait gate room to center in, where a
 // landscape phone, a split screen or a large text size gets the card scrolling with the gate.
 private val PINNED_CARD_ROOM = 480.dp
+
+// The app bar's height above it all ([GateTopBar]): Material's small top bar, whatever the text size.
+private val GATE_BAR_HEIGHT = 64.dp
+
+// The gate's app bar: the mark, the name, and the app's overflow with what makes sense before any
+// stop is found. The gate already sits inside the system bars, so the bar adds no insets of its own.
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GateTopBar(
+    updateAvailable: Boolean,
+    onOpenAppListing: () -> Unit,
+    onFindStation: (() -> Unit)?,
+    onOpenStopDashSettings: (() -> Unit)?,
+    onSendBugReport: () -> Unit,
+    onOpenAbout: () -> Unit,
+) {
+    TopAppBar(
+        title = { AppTitle() },
+        navigationIcon = { AppBarMark() },
+        windowInsets = WindowInsets(0, 0, 0, 0),
+        actions = {
+            AppOverflowMenu(updateAvailable, onOpenAppListing) { close ->
+                // From… needs no location, so it works whatever kept the stops from being found.
+                if (onFindStation != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_from)) },
+                        onClick = {
+                            close()
+                            onFindStation()
+                        },
+                    )
+                }
+                if (onOpenStopDashSettings != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_settings)) },
+                        onClick = {
+                            close()
+                            onOpenStopDashSettings()
+                        },
+                    )
+                }
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.menu_send_bug_report)) },
+                    onClick = {
+                        close()
+                        onSendBugReport()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.menu_about)) },
+                    onClick = {
+                        close()
+                        onOpenAbout()
+                    },
+                )
+            }
+        },
+    )
+}
 
 @Composable
 private fun Title(text: String) {

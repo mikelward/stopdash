@@ -168,6 +168,8 @@
     <string name="location_finding">Finding stops near you…</string>
     <string name="location_no_fix">Couldn\'t get your location</string>
     <string name="location_no_stops">No stops found nearby</string>
+    <!-- Under location_no_stops: TfL's stops are London's, so this is the usual reason none are near. -->
+    <string name="location_london_only">StopDash only shows stops in and around London.</string>
     <string name="try_again">Try again</string>
     <!-- Shown after a permanent permission denial, where re-requesting can't prompt again. -->
     <string name="location_denied">Turn on location access in Settings to see nearby stops.</string>
