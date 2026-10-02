@@ -174,14 +174,40 @@ object RouteDisruption {
         val text = status.fullText ?: return false
         // Every way a route could run the ride, its ends matched as bus placement matches them
         // ([ridesOf]): the stop, its pair, or a stand of the same name (Codex, PR #455).
-        val rides = ridesOf(leg, sequence)
-        if (rides.isEmpty()) return false
-        return rides.all { (route, ride) ->
+        return clearOf(text, sequence, ridesOf(leg, sequence))
+    }
+
+    /**
+     * Whether a bus line's alert ([status], its own words) lies wholly behind the stop [stopId], on its
+     * line's routes ([sequence]): a diversion a bus from the stop has already left behind, which
+     * shouldn't flag the stop's departures (maintainer, 2026-10-02). What [offRide] asks of a ride, for
+     * a rider whose ride isn't known: each route through the stop, from there to its end, stands in for
+     * it, as a bus from the stop may take them anywhere along it. So unknown is ahead, as there: a stop no
+     * route calls at, a route the alert gives no stretch on, or one whose stretch is at the stop or after
+     * it. The caller says it's a bus; a tube or rail line's delays spread along it. Only routes going
+     * [direction] (TfL's `inbound`/`outbound`, blank for either) count, as [status] is that way's: a
+     * stop both ways call at would otherwise read the stretch the other way round (Codex, PR #469).
+     */
+    fun behind(stopId: String, status: LineStatus, sequence: LineSequence, direction: String = ""): Boolean {
+        if (!scopable(status)) return false
+        val text = status.fullText ?: return false
+        val routes = sequence.routes.filter { direction.isBlank() || it.direction.isBlank() || it.direction.equals(direction, ignoreCase = true) }
+        // Every time a route calls at the stop (a loop may call twice), and everywhere it goes after.
+        val rides = routes.flatMap { route ->
+            route.stopIds.indices.filter { route.stopIds[it] == stopId }.map { route to route.stopIds.subList(it, route.stopIds.size) }
+        }
+        return clearOf(text, sequence, rides)
+    }
+
+    // Whether [text] keeps clear of every one of [rides] (a route of [sequence], and the stops of it the
+    // rider may call at): it gives a stretch on the route ([AlertStops.stretched]) and the ride calls at
+    // none of it. No rides is unknown, so not clear.
+    private fun clearOf(text: String, sequence: LineSequence, rides: List<Pair<LineRoute, List<String>>>): Boolean =
+        rides.isNotEmpty() && rides.all { (route, ride) ->
             val stops = route.stopIds.map { RouteStop(it, sequence.stopNames[it].orEmpty()) }
             val affected = AlertStops.stretched(text, stops)
             affected.isNotEmpty() && ride.none { it in affected }
         }
-    }
 
     /**
      * Whether [status], as an alert, could be left out of a ride it doesn't reach ([offRide]): its

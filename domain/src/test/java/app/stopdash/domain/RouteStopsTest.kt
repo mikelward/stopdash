@@ -29,6 +29,24 @@ class RouteStopsTest {
     }
 
     @Test
+    fun `the whole route a stop list runs on is the longest route holding it, from its first stop`() {
+        val routes = LineSequence(
+            routes = listOf(
+                LineRoute("Short", listOf("B", "C")),
+                LineRoute("Long", listOf("Z", "A", "B", "C")),
+                LineRoute("Other way", listOf("C", "B", "A")),
+            ),
+            stopNames = mapOf("Z" to "Zeta", "A" to "Hammersmith", "B" to "Hyde Park Corner", "C" to "Victoria Bus"),
+        )
+        val ahead = listOf(RouteStop("B", "Hyde Park Corner"), RouteStop("C", "Victoria Bus"))
+        assertEquals(listOf("Z", "A", "B", "C"), RouteStops.wholeRouteOf(routes, ahead).map { it.id })
+        assertEquals("Zeta", RouteStops.wholeRouteOf(routes, ahead).first().name)
+        // A list no route runs in that order, or none at all, has no whole route.
+        assertEquals(emptyList<RouteStop>(), RouteStops.wholeRouteOf(routes, listOf(RouteStop("A", ""), RouteStop("C", ""))))
+        assertEquals(emptyList<RouteStop>(), RouteStops.wholeRouteOf(routes, emptyList()))
+    }
+
+    @Test
     fun `two downstream stops sharing the destination's name are ambiguous, not cut at the first`() {
         val loop = LineSequence(
             routes = listOf(LineRoute("A &harr; D", listOf("A", "X1", "B", "X2", "D"))),

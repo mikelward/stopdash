@@ -654,6 +654,48 @@ object DepartureRows {
         }
     }
 
+    /**
+     * [rows] with each bus row's line alert that lies wholly behind its stop ([RouteDisruption.behind]),
+     * on its line's routes in [sequences], moved to [DepartureRow.statusBehind]: a diversion its buses
+     * from here have already left behind doesn't flag them, and the row's page still shows it, muted
+     * (SPEC *Disruptions*). Every other row keeps its alert: one with no route loaded, or no bus to take
+     * (a status row says only what the alert does). After [withoutDismissed], so a dismissed alert stays
+     * dismissed.
+     */
+    fun withAlertsBehind(rows: List<DepartureRow>, sequences: Map<String, LineSequence?>): List<DepartureRow> =
+        rows.map { row ->
+            val status = row.status
+            val sequence = sequences[row.lineId]
+            if (status == null || sequence == null || !row.hasTrains || !row.mode.equals(BUS_MODE, ignoreCase = true)) return@map row
+            if (RouteDisruption.behind(row.stopId, status, sequence, row.direction)) row.copy(status = null, statusBehind = status) else row
+        }
+
+    /**
+     * The bus lines at [stops] whose alert [withAlertsBehind] might find behind a stop: whose routes to
+     * load. A line is a bus by the mode its rows carry ([resolvedMode]: its predictions', else the stop's
+     * advertised one), and its alerts are read as rows read them at [now] ([LineStatus.asOf]), so planned
+     * work whose day has come counts. An alert the rider [dismissed] flags nothing to unflag, so it
+     * costs no request (Codex, PR #469).
+     */
+    fun linesWithAlertsToPlace(
+        stops: List<StopArrivals>,
+        lineStatuses: Map<String, LineStatus>,
+        now: Instant,
+        dismissed: Set<DismissedAlert> = emptySet(),
+    ): Set<String> {
+        val statuses = LineStatus.asOf(lineStatuses, now)
+        return stops.flatMapTo(LinkedHashSet()) { stop ->
+            val lineModes = stop.lines.associate { it.id to it.mode }
+            stop.departures.groupBy { it.lineId }
+                .filter { (id, services) -> resolvedMode(services, lineModes[id]).equals(BUS_MODE, ignoreCase = true) }
+                .keys
+        }.filterTo(LinkedHashSet()) { id ->
+            statuses[id]?.allStatuses.orEmpty().any {
+                it.disrupted && DismissedAlert.ofLineStatus(it) !in dismissed && RouteDisruption.scopable(it)
+            }
+        }
+    }
+
     // [this] less the planned alerts the user dismissed: each is its own alert, dismissed on its own.
     fun DepartureRow.withoutDismissedPlanned(dismissed: Set<DismissedAlert>): DepartureRow {
         if (plannedAlerts.isEmpty()) return this
@@ -1090,6 +1132,9 @@ object DepartureRows {
      */
     private fun resolvedMode(services: List<Departure>, lineMode: String?): String =
         services.firstOrNull { it.mode.isNotBlank() }?.mode ?: lineMode.orEmpty()
+
+    // TfL's mode for a bus, whose alerts [withAlertsBehind] places.
+    private const val BUS_MODE = "bus"
 
     private data class RowKey(val lineId: String, val directionKey: String)
 

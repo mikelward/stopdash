@@ -786,6 +786,84 @@ class DepartureRowsTest {
         assertNull(acrossRows.getValue("northern").status)
     }
 
+    // A bus route north from Bank (made-up stops past Moorgate), listed as TfL's route data lists it,
+    // and an alert in TfL's words on a stretch at its south end.
+    private val busRoute = LineSequence(
+        listOf(LineRoute("Bank - North End", listOf("b1", "b2", "b3", "b4", "b5"), "inbound")),
+        mapOf("b1" to "Bank / King William Street", "b2" to "Example Street", "b3" to "Moorgate", "b4" to "Alpha Road", "b5" to "North End"),
+    )
+    private val busDiversion = LineStatus(
+        "99", 5, "Diversion",
+        "Buses are not serving stops between 'Bank Station/King William Street' and 'Moorgate Station'.",
+        soleAlert = true,
+    )
+
+    private fun busStop(stopId: String) = StopArrivals(stopId, "Stop", listOf(departure("99", "99", "inbound", "North End", 120, mode = "bus")), now)
+
+    @Test
+    fun `a bus alert wholly behind a row's stop moves off the row, ahead of it stays`() {
+        val rows = DepartureRows.across(listOf(busStop("b4"), busStop("b2")), now, mapOf("99" to busDiversion))
+        val placed = DepartureRows.withAlertsBehind(rows, mapOf("99" to busRoute)).associateBy { it.stopId }
+        // Past the stretch: nothing flags the row, and its page keeps the alert to show muted.
+        assertNull(placed.getValue("b4").status)
+        assertEquals(busDiversion, placed.getValue("b4").statusBehind)
+        // Inside it: flagged as before.
+        assertEquals(busDiversion, placed.getValue("b2").status)
+        assertNull(placed.getValue("b2").statusBehind)
+        // No route loaded keeps the alert.
+        assertEquals(rows, DepartureRows.withAlertsBehind(rows, mapOf("99" to null)))
+        assertEquals(rows, DepartureRows.withAlertsBehind(rows, emptyMap()))
+    }
+
+    @Test
+    fun `only a bus row with buses to take has its alert placed`() {
+        // A tube line's delays spread along it, whatever stations its alert names.
+        val tube = DepartureRows.across(
+            listOf(StopArrivals("b4", "Stop", listOf(departure("99", "99", "inbound", "North End", 120, mode = "tube")), now)),
+            now, mapOf("99" to busDiversion),
+        )
+        assertEquals(tube, DepartureRows.withAlertsBehind(tube, mapOf("99" to busRoute)))
+        // A status row has no bus to vouch for: it says what the alert does.
+        val status = DepartureRows.across(
+            listOf(StopArrivals("b4", "Stop", emptyList(), now, lines = listOf(LineRef("99", "99", "bus")))),
+            now, mapOf("99" to busDiversion),
+        ).filter { it.lineId == "99" }
+        assertTrue(status.single().isStatusOnly)
+        assertEquals(status, DepartureRows.withAlertsBehind(status, mapOf("99" to busRoute)))
+    }
+
+    @Test
+    fun `the bus lines whose routes to load are those with an alert that might be placed`() {
+        val stops = listOf(busStop("b4"), StopArrivals("t1", "Station", listOf(departure("tube1", "Tube", "inbound", "Far", 60)), now))
+        val statuses = mapOf(
+            "99" to LineStatus("99", LineStatus.GOOD_SERVICE, "Good Service", byDirection = mapOf("inbound" to busDiversion)),
+            "tube1" to busDiversion.copy(lineId = "tube1"),
+        )
+        assertEquals(setOf("99"), DepartureRows.linesWithAlertsToPlace(stops, statuses, now))
+        // An alert that can't be placed (one of several) costs no request, nor does one the rider dismissed.
+        assertEquals(emptySet<String>(), DepartureRows.linesWithAlertsToPlace(stops, mapOf("99" to busDiversion.copy(soleAlert = false)), now))
+        assertEquals(emptySet<String>(), DepartureRows.linesWithAlertsToPlace(stops, statuses, now, setOf(DismissedAlert.ofLineStatus(busDiversion))))
+    }
+
+    @Test
+    fun `a bus by its stop's advertised mode, and planned work whose day has come, have routes to load`() {
+        // TfL left the mode off every prediction; the stop's lines say it's a bus, as its rows do.
+        val unmoded = StopArrivals(
+            "b4", "Stop", listOf(departure("99", "99", "inbound", "North End", 120, mode = "")), now,
+            lines = listOf(LineRef("99", "99", "bus")),
+        )
+        assertEquals("bus", DepartureRows.across(listOf(unmoded), now).single().mode)
+        assertEquals(setOf("99"), DepartureRows.linesWithAlertsToPlace(listOf(unmoded), mapOf("99" to busDiversion), now))
+        // A diversion planned for today is under way, as the rows read it; one for tomorrow isn't yet.
+        val today = now.atZone(AlertStart.ZONE).toLocalDate()
+        fun plannedFor(day: java.time.LocalDate) = LineStatus(
+            "99", LineStatus.GOOD_SERVICE, "Good Service",
+            planned = listOf(PlannedAlert("Diversion", busDiversion.fullText.orEmpty(), day)),
+        )
+        assertEquals(setOf("99"), DepartureRows.linesWithAlertsToPlace(listOf(busStop("b4")), mapOf("99" to plannedFor(today)), now))
+        assertEquals(emptySet<String>(), DepartureRows.linesWithAlertsToPlace(listOf(busStop("b4")), mapOf("99" to plannedFor(today.plusDays(1))), now))
+    }
+
     @Test
     fun `a row carries only the alerts for its own direction`() {
         // TfL scopes the line's diversion to buses heading in: the outbound row stays clean, the

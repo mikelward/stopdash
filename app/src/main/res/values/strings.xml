@@ -50,6 +50,10 @@
     <string name="route_stop_current">Your stop</string>
     <string name="route_detail_no_disruption">No disruptions reported</string>
     <string name="route_detail_alert_dismissed">Service alert dismissed</string>
+    <!-- A line alert wholly before the rider's stop, which a bus from there has passed: %1$s is its label ("Diversion"). -->
+    <string name="route_detail_alert_behind">%1$s before this stop</string>
+    <!-- As route_detail_alert_behind, %2$s being where it is ("Bank to Moorgate"). -->
+    <string name="route_detail_alert_behind_at">%1$s before this stop: %2$s</string>
     <!-- Beside a planned alert's chip on a route's page: the day the work starts ("From 13 Oct"). -->
     <string name="planned_alert_from">From %1$s</string>
     <!-- Read out for the calendar icon on a route row: the planned alert and the day it starts. -->

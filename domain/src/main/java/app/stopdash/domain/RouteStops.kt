@@ -150,6 +150,20 @@ data class RouteMiss(val lineId: String, val stopId: String, val reason: RouteSt
 object RouteStops {
     private val DIRECTIONS = listOf("inbound", "outbound")
 
+    /**
+     * The whole of the route in [sequence] that [stops] (a stop list from where the rider boards on, as
+     * [resolve] gives it) is part of, from its first stop: where a line's alert can name the stretch it
+     * touches before the boarding stop, which the list leaves off (maintainer, 2026-10-02). The longest
+     * where several routes run it; empty where none does.
+     */
+    fun wholeRouteOf(sequence: LineSequence, stops: List<RouteStop>): List<RouteStop> {
+        if (stops.isEmpty()) return emptyList()
+        val ids = stops.map(RouteStop::id)
+        val route = sequence.routes.filter { java.util.Collections.indexOfSubList(it.stopIds, ids) >= 0 }
+            .maxByOrNull { it.stopIds.size } ?: return emptyList()
+        return route.stopIds.map { RouteStop(it, sequence.stopNames[it].orEmpty()) }
+    }
+
     /** The TfL directions to fetch for a row: its own when TfL gave one, else both. */
     fun directionsFor(direction: String): List<String> =
         if (direction in DIRECTIONS) listOf(direction) else DIRECTIONS

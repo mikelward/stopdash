@@ -2210,8 +2210,16 @@ Builds on Phase 1's minimal line-status marking.
         (2026-10-01): the stations *between* two named ends where the text says "between X and Y" /
         "X to Y" get one too, on the train's stop list (`AlertStops.affected`), every stretch the
         alert gives, even one it says still runs (maintainer, 2026-10-01: telling them apart from
-        prose was open-ended). **Next:** use the marked stations to judge relevance to the rider's
-        own journey. A status-only line page (a
+        prose was open-ended). **Third step landed** (2026-10-02): a bus alert whose stretch lies
+        wholly behind a row's stop no longer flags it (`DepartureRows.withAlertsBehind`), and its
+        page tells it muted, named from the whole route; a stop quoted as its sign reads ("Bank
+        Station/King William Street") now matches the route's cleaned name.
+        - [ ] **The widget and watch still flag an alert behind the stop**: they have no routes.
+              Placing it there means sending the verdict with the rows (the phone has the routes),
+              not loading routes on the watch.
+        - [ ] **Behind the rider on a tube or rail line**: not attempted, as its delays spread
+              along the line; a part closure TfL places itself might be, as a trip places one.
+        A status-only line page (a
         suspension, no predictions) names the alert's stations beside the chip too — see *Decisions
         needing review*.
       - [x] **Only on rows going the affected way** (maintainer, 2026-09-28): an alert TfL

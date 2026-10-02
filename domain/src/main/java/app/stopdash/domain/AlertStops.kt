@@ -207,12 +207,24 @@ object AlertStops {
     // street ("Camomile Street / Bishopsgate") where an alert names only the stop's own part, so the
     // part before the slash counts too — but not the part after, which names another road. A place
     // TfL qualifies in brackets ("Stratford (London)") is written without them in an alert, so the
-    // name before the bracket counts too.
+    // name before the bracket counts too. And a bus stop as its sign reads, the way an alert quotes
+    // one ([signed]).
     private fun names(name: String): Set<String> {
         val primary = name.substringBefore(" / ").trim()
         val unqualified = cleanStopName(primary).substringBefore(" (").trim()
-        return setOf(name, cleanStopName(name), primary, cleanStopName(primary), unqualified)
+        return (setOf(name, cleanStopName(name), primary, cleanStopName(primary), unqualified) + signed(name))
             .map { normalize(it).replace("'", "") }.filterTo(LinkedHashSet()) { it.length >= MIN_NAME }
+    }
+
+    // A bus stop listed with its cross street, as its sign reads and an alert quotes it: a route lists
+    // "Bank / King William Street" ([cleanStopName] takes "Station" off each part), where TfL's alert
+    // has "'Bank Station/King William Street'" (maintainer, 2026-10-02). Each part with "Station" or
+    // without, the slash spaced or not.
+    private fun signed(name: String): List<String> {
+        val parts = name.split(" / ").map(String::trim)
+        if (parts.size != 2 || parts.any(String::isEmpty)) return emptyList()
+        val (own, cross) = parts.map { listOf(it, "$it Station") }
+        return own.flatMap { a -> cross.flatMap { b -> listOf("$a/$b", "$a / $b") } }
     }
 
     // The part of a bus stop's listed name after its slash ("Finsbury Square / Moorgate Station"):

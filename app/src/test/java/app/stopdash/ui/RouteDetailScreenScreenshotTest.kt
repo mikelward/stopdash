@@ -390,6 +390,54 @@ class RouteDetailScreenScreenshotTest {
     }
 
     @Test
+    fun anAlertBehindABusStop_isToldMutedWithWhereItIs_notFlagged() {
+        // A bus route north from Bank (made-up stops past Moorgate), as TfL's route data lists it, and
+        // a diversion in TfL's words wholly before the rider's stop: a bus from here has passed it.
+        val sequence = LineSequence(
+            listOf(LineRoute("Bank - North End", listOf("b1", "b2", "b3", "b4", "b5"), "inbound")),
+            mapOf("b1" to "Bank / King William Street", "b2" to "Example Street", "b3" to "Moorgate", "b4" to "Alpha Road", "b5" to "North End"),
+        )
+        val diversion = LineStatus(
+            "99", 5, "Diversion",
+            "ROUTE 99 is on diversion northbound via Example Street. Buses are not serving stops between " +
+                "'Bank Station/King William Street' and 'Moorgate Station'. Please allow extra time.",
+            soleAlert = true,
+        )
+        val stop = StopArrivals(
+            "b4", "Alpha Road", listOf(Departure("99", "99", "inbound", "North End", null, now.plusSeconds(240), "bus")), now,
+        )
+        val row = DepartureRows.withAlertsBehind(
+            DepartureRows.across(listOf(stop), now, mapOf("99" to diversion)),
+            mapOf("99" to sequence),
+        ).single()
+        composeRule.setContent {
+            StopDashTheme {
+                RouteDetailScreen(
+                    row = row,
+                    isStarred = false,
+                    starrable = true,
+                    disruptionUnknown = false,
+                    stale = false,
+                    now = now,
+                    onToggleStar = {},
+                    onBack = {},
+                    routeStops = RouteStopsUi.Loaded(listOf(RouteStop("b4", "Alpha Road"), RouteStop("b5", "North End")), emptyMap(), sequence),
+                    onDismissAlert = null,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        // Where it is, named from the whole route though the stop list starts here.
+        composeRule.onNodeWithText("Diversion before this stop: Bank to Moorgate").assertIsDisplayed()
+        // No chip flags it, and the line isn't called clean.
+        composeRule.onNodeWithText("Diversion").assertDoesNotExist()
+        composeRule.onNodeWithText("No disruptions reported").assertDoesNotExist()
+
+        captureSnapshot("route-detail-alert-behind.png")
+    }
+
+    @Test
     fun dismissedAlert_showsBesideAnUnknownStopCheck() {
         // The stop's own disruption lookup failed but the line's was dismissed: two independent facts,
         // so both notes show (SPEC principle 1).
