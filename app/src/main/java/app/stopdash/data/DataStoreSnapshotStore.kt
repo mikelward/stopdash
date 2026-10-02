@@ -144,6 +144,8 @@ class DataStoreSnapshotStore internal constructor(
                 // Line checks per line, newest wins: the app may have checked a line since this
                 // caller loaded, and an older verdict mustn't replace it.
                 lineStatuses = newestStatuses(current.lineStatuses, desired.lineStatuses, desired.stops, now),
+                // So is the stops' nearest-first order, for the same reason as the nearer places.
+                nearestFirst = current.nearestFirst,
             )
         }
         val written = update(now) { current ->
@@ -163,6 +165,29 @@ class DataStoreSnapshotStore internal constructor(
                 stop.copy(nearerIds = n.ids.sorted(), nearerNames = n.names.sorted())
             }
             if (stops == current.stops) current else current.copy(stops = stops)
+        }
+    }
+
+    override suspend fun updateNearestFirst(order: List<String>) {
+        // A pure function of `current` and the immutable list, atomic under the write lock like
+        // [updateNearer]. Only stops the snapshot holds take a place in it.
+        update { current ->
+            if (current == null) return@update null
+            // A newer build's file isn't this one's to rewrite piecemeal (as [updateLineStatuses]).
+            if (current.version !in PersistedSnapshot.READABLE_VERSIONS) return@update current
+            val nearby = current.stops.map { it.stopId }.filterTo(HashSet()) { it !in current.journeyOnlyStopIds }
+            // The stops [order] ranks take its order; the rest keep their stored order after them.
+            // After a move whose first save hasn't landed, the snapshot is shown scoped to the new set
+            // ([app.stopdash.domain.DeparturesSnapshot.scopedTo]), so a stop both sets share is
+            // folded by where the rider is now, and one only the old set held isn't shown at all
+            // (Codex on #473: neither dropping the old ranking nor keeping it whole was right).
+            // A held stop [order] names is ranked even if stored as journey-only: it's a journey's
+            // origin the rider is now near, and [scopedTo] shows it as nearby again (Codex on #473).
+            val held = current.stops.mapTo(HashSet()) { it.stopId }
+            val ranked = order.filter { it in held }
+            val rankedIds = ranked.toHashSet()
+            val next = ranked + current.nearestFirst.filter { it in nearby && it !in rankedIds }
+            if (next == current.nearestFirst) current else current.copy(nearestFirst = next)
         }
     }
 
@@ -208,6 +233,8 @@ class DataStoreSnapshotStore internal constructor(
                     journeyOnlyStopIds = (current.journeyOnlyStopIds + demoted).distinct(),
                     // A departed stop's lines go with it, unless a kept stop shows them too.
                     lineStatuses = linesOfPersisted(kept).let { lines -> current.lineStatuses.filter { it.lineId in lines } },
+                    // A departed stop is no longer nearby, so it leaves the order, a demoted origin too.
+                    nearestFirst = current.nearestFirst.filterNot { it in departed },
                 )
             }
         }

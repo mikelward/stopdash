@@ -369,9 +369,8 @@ internal fun widgetModel(
     // partial refresh doesn't spend every slot on `?`-withheld stale rows and drop a trustworthy
     // later one — stable, preserving `across`'s soonest-first order within each group), then pin
     // the user's starred services to the top (SPEC D8), so a starred service past the cap isn't
-    // dropped. Warnings still lead (pinStarred keeps them above even a starred row). Distance
-    // ordering (nearbyDeduped / byStopDistance) stays a deferred follow-up — moot once Phase 2's
-    // watched stops replace the interim nearby source (TODO).
+    // dropped. Warnings still lead (pinStarred keeps them above even a starred row). A line served
+    // by several nearby stops shows once, from its nearest, as in the app (below).
     // One row per direction, not per platform: a split row costs a line and a header of the widget's
     // tight budget. A merged row names its platform in the header only when every train agrees on it.
     // With the line statuses still young enough to stand behind (SPEC D3/D4): a disrupted line's
@@ -387,7 +386,19 @@ internal fun widgetModel(
     // an oversized *first* row too (it shows at most `maxLines` groups) rather than exempting
     // it. Groups within a row keep destinationLines' soonest-first order and per-line time cap.
     val journeyRows = pinJourneys(ordered, snapshot, now)
-    val nearby = withoutJourneys(ordered, snapshot)
+    // A line two nearby stops both serve shows once, from the nearer, as the in-app list does, so it
+    // doesn't take two of the widget's few slots (Codex P2 on #44). Folded before a journey's
+    // departures are lifted out, so a journey from the nearer stop still drops the farther stop's
+    // copy rather than leave it as the line's only row below the journey (Codex on #473). By the
+    // nearest-first order the app saved: a snapshot with none (an older one) keeps every stop's rows.
+    // The fold re-sorts, so fresh rows are ranked ahead of stale ones again.
+    val ranks = snapshot.nearestFirstDistances()
+    val folded = if (ranks.isEmpty()) {
+        ordered
+    } else {
+        DepartureRows.freshFirst(DepartureRows.nearbyDeduped(ordered, ranks)) { Staleness.isStale(it.fetchedAt, now) }
+    }
+    val nearby = withoutJourneys(folded, snapshot)
     val shownNearby = HiddenModes.rows(nearby, hiddenModes)
     val pinned = journeyRows + DepartureRows.pinStarred(shownNearby, starred)
     val onlyHidden = hiddenModes.takeIf { pinned.isEmpty() && nearby.isNotEmpty() }?.let(::hiddenGroupsLabel)

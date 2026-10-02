@@ -73,6 +73,12 @@ class WidgetSnapshotStore(context: Context) : SnapshotStore {
         pokeWidget()
     }
 
+    override suspend fun updateNearestFirst(order: List<String>) {
+        // The widget folds a line to its nearest stop by this order, so re-render once it's stored.
+        delegate.updateNearestFirst(order)
+        pokeWidget()
+    }
+
     override suspend fun updateLineStatuses(checks: Map<String, LineStatusCheck>) {
         // Re-rendered even when the write fails (its failure still reaches the caller): a caller with
         // no arrivals to save still needs the widget to age, or old countdowns would read as live.

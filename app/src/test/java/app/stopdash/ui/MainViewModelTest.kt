@@ -4551,6 +4551,108 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `the widget's snapshot keeps the nearby stops' order nearest first, never their distances`() = runTest(dispatcher) {
+        val store = FakeStore(restores = false)
+        MainViewModel(
+            ReuseCountingClient(), seeds, clock = { now }, io = dispatcher, snapshotStore = store,
+            stopDistanceMeters = mapOf(oxcId to 900.0, ksxId to 100.0),
+        )
+        advanceUntilIdle()
+        assertEquals(listOf(ksxId, oxcId), store.saves.last().nearestFirst)
+    }
+
+    @Test
+    fun `a move that changes which stop is nearer stores the new order for the widget at once`() = runTest(dispatcher) {
+        val orders = mutableListOf<List<String>>()
+        val store = object : SnapshotStore by SnapshotStore.NONE {
+            override suspend fun updateNearestFirst(order: List<String>) {
+                orders += order
+            }
+        }
+        val vm = MainViewModel(
+            ReuseCountingClient(), seeds, clock = { now }, io = dispatcher, snapshotStore = store,
+            stopDistanceMeters = mapOf(oxcId to 100.0, ksxId to 900.0),
+        )
+        advanceUntilIdle()
+        // The order it starts from is stored at once, before any refresh saves it.
+        assertEquals(listOf(listOf(oxcId, ksxId)), orders)
+        orders.clear()
+        // A fix that keeps the order stores nothing.
+        vm.remeasure(mapOf(oxcId to 120.0, ksxId to 880.0))
+        advanceUntilIdle()
+        assertEquals(emptyList<List<String>>(), orders)
+        // The rider walks: King's Cross is now the nearer one, before any refetch.
+        vm.remeasure(mapOf(oxcId to 900.0, ksxId to 100.0))
+        advanceUntilIdle()
+        assertEquals(listOf(listOf(ksxId, oxcId)), orders)
+    }
+
+    @Test
+    fun `of two fixes in quick succession, the later order is the one stored`() = runTest(dispatcher) {
+        val orders = mutableListOf<List<String>>()
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val store = object : SnapshotStore by SnapshotStore.NONE {
+            override suspend fun updateNearestFirst(order: List<String>) {
+                // The first write is slow: the second fix arrives while it's still going.
+                if (orders.isEmpty()) gate.await()
+                orders += order
+            }
+        }
+        val vm = MainViewModel(
+            ReuseCountingClient(), seeds, clock = { now }, io = dispatcher, snapshotStore = store,
+            stopDistanceMeters = mapOf(oxcId to 100.0, ksxId to 900.0),
+        )
+        vm.remeasure(mapOf(oxcId to 900.0, ksxId to 100.0))
+        vm.remeasure(mapOf(oxcId to 100.0, ksxId to 900.0))
+        gate.complete(Unit)
+        advanceUntilIdle()
+        // Only the latest is written: the orders a newer fix superseded are skipped, not written late.
+        assertEquals(listOf(listOf(oxcId, ksxId)), orders)
+    }
+
+    @Test
+    fun `a replaced model's order still on its way doesn't land over its successor's`() = runTest(dispatcher) {
+        val orders = mutableListOf<List<String>>()
+        val store = object : SnapshotStore by SnapshotStore.NONE {
+            override suspend fun updateNearestFirst(order: List<String>) {
+                orders += order
+            }
+        }
+        MainViewModel(
+            ReuseCountingClient(), seeds, clock = { now }, io = dispatcher, snapshotStore = store,
+            stopDistanceMeters = mapOf(oxcId to 900.0, ksxId to 100.0),
+        )
+        // A move makes another model before the first one's write has run.
+        MainViewModel(
+            ReuseCountingClient(), seeds, clock = { now }, io = dispatcher, snapshotStore = store,
+            stopDistanceMeters = mapOf(oxcId to 100.0, ksxId to 900.0),
+        )
+        advanceUntilIdle()
+        assertEquals(listOf(listOf(oxcId, ksxId)), orders)
+    }
+
+    @Test
+    fun `a model that doesn't feed the widget doesn't supersede one that does`() = runTest(dispatcher) {
+        val orders = mutableListOf<List<String>>()
+        val store = object : SnapshotStore by SnapshotStore.NONE {
+            override suspend fun updateNearestFirst(order: List<String>) {
+                orders += order
+            }
+        }
+        MainViewModel(
+            ReuseCountingClient(), seeds, clock = { now }, io = dispatcher, snapshotStore = store,
+            stopDistanceMeters = mapOf(oxcId to 100.0, ksxId to 900.0),
+        )
+        // A farther card made as the rider moves stores nothing for the widget.
+        MainViewModel(
+            ReuseCountingClient(), seeds, clock = { now }, io = dispatcher,
+            stopDistanceMeters = mapOf(oxcId to 900.0, ksxId to 100.0),
+        )
+        advanceUntilIdle()
+        assertEquals(listOf(listOf(oxcId, ksxId)), orders)
+    }
+
+    @Test
     fun `a stop carried over after the rider moves takes the new nearer places`() = runTest(dispatcher) {
         val client = ReuseCountingClient()
         val stored = mutableListOf<Map<String, app.stopdash.domain.Terminating.Nearer>>()

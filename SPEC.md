@@ -2496,9 +2496,11 @@ divergent trains each keep their own countdown — and the user's **starred** se
 pinned to the top (D8), sharing the domain's grouping and pinning so the two surfaces can't
 drift. It shows the via-branch in the same normalized short form as the app ("Charing X"):
 the label is one short form per trunk on every surface, so neither has to measure a fuller
-name. (Reordering the nearby set closest-first is
-not yet mirrored — it needs per-stop distances the snapshot doesn't carry and is moot once
-Phase 2's watched stops replace the interim nearby source.) The app pushes an update whenever it fetches, so the
+name. As in the app, a line two nearby stops both serve shows once, from the nearer: the app
+saves the nearby stops' order nearest first with the snapshot — the order, never the distances,
+which together would pin down where the rider was. Without the distances a route's two
+directions are each shown from their own nearest stop rather than kept together at one a few
+steps farther. (Reordering the widget's rows closest-first is not mirrored.) The app pushes an update whenever it fetches, so the
 widget follows the app's last refresh rather than waking on the OS's periodic schedule
 (battery). Because the widget's host never re-renders it on its own (no periodic update),
 the widget also schedules **one render-only redraw at its staleness boundary**, so a widget
