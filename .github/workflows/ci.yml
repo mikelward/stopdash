@@ -53,20 +53,6 @@ jobs:
         run: ./gradlew test
       - name: Lint
         run: ./gradlew lint
-      - name: The Wear OS app can't be released yet
-        # Its release build must fail until the maintainer renames the package and decides to
-        # launch (TODO Phase 6, the release gate in wear/build.gradle.kts). This fails if anyone
-        # removes the gate, and never passes -Pstopdash.wearRelease=approved.
-        run: |
-          if ./gradlew :wear:bundleRelease > wear-release.log 2>&1; then
-            echo "::error::The Wear OS release build succeeded; its release gate is gone."
-            exit 1
-          fi
-          grep -q "The Wear OS app isn't released yet" wear-release.log || {
-            cat wear-release.log
-            echo "::error::The Wear OS release build failed, but not at its release gate."
-            exit 1
-          }
       - name: A release build refuses a versionCode not from the full history
         # A release build's first task fails when git can't read the history (a source archive:
         # GIT_DIR pointing nowhere) or the clone is shallow (a depth-1 copy of this one), rather
@@ -575,8 +561,9 @@ jobs:
         # RELEASE_KEYSTORE_* variables are set, which `release-build` does and
         # this job does not. Build-time only; runtime reflection still needs a
         # device check.
-        # Scoped to the phone app: the Wear OS app's release is gated (below).
-        run: ./gradlew :app:assembleRelease
+        # The watch app too: it ships from main's release-build, so its own R8,
+        # shrinking and packaging must fail here first rather than after merge.
+        run: ./gradlew :app:assembleRelease :wear:assembleRelease
 
   release-build:
     name: Build the release AAB
@@ -714,8 +701,9 @@ jobs:
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
         run: |
-          # Only the phone app: the Wear OS app isn't released yet (TODO Phase 6).
-          ./gradlew :app:bundleRelease
+          # The phone app and the Wear OS app: one Play listing, a bundle each, signed alike
+          # (the Data Layer pairs only apps with the same key).
+          ./gradlew :app:bundleRelease :wear:bundleRelease
           # Read by `deploy` as needs.release-build.outputs.signed. Set
           # after the build, so it means "a signed AAB exists" rather
           # than "the keystore decoded".
@@ -729,6 +717,15 @@ jobs:
         with:
           name: app-release-aab
           path: app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload signed Wear OS AAB as workflow artifact
+        if: env.RELEASE_KEYSTORE_FILE != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: wear-release-aab
+          path: wear/build/outputs/bundle/release/wear-release.aab
           if-no-files-found: error
           retention-days: 30
 
@@ -784,6 +781,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
+    outputs:
+      # For `deploy-wear`: whether this run's phone bundle reached Play, and its "What's new".
+      phone_uploaded: ${{ steps.play_upload.outcome == 'success' }}
+      whatsnew: ${{ steps.whatsnew.outputs.notes }}
     env:
       # Secret *presence* flags, evaluated at job level. A step's `if:`
       # cannot read a variable defined in that same step's `env:` block, so
@@ -1276,7 +1277,8 @@ jobs:
       - name: Compose Play Store release notes
         # The upload action takes a directory of whatsnew-<locale> files;
         # this writes the list built by "Build release notes" in the layout
-        # the action expects.
+        # the action expects, and hands the same list to `deploy-wear`.
+        id: whatsnew
         if: |
           needs.release-build.outputs.signed == 'true' &&
           env.HAS_PLAY_SA == 'true' &&
@@ -1288,8 +1290,15 @@ jobs:
           printf '%s' "${RELEASE_NOTES}" \
             > "${RUNNER_TEMP}/whatsnew/whatsnew-en-US"
           echo "PLAY_WHATSNEW_DIR=${RUNNER_TEMP}/whatsnew" >> "${GITHUB_ENV}"
+          delim="WHATSNEW_$(openssl rand -hex 16)"
+          {
+            printf 'notes<<%s\n' "$delim"
+            printf '%s\n' "${RELEASE_NOTES}"
+            printf '%s\n' "$delim"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Upload to Play Store internal track
+        id: play_upload
         # Runs only with both the upload key and service account configured,
         # and skipped when RELEASE_NOTES_SKIP=true — no Play-worthy "What's
         # new" entry exists, so shipping would be redundant. Skipped too on
@@ -1312,3 +1321,55 @@ jobs:
           status: completed
           whatsNewDirectory: ${{ env.PLAY_WHATSNEW_DIR }}
 
+  deploy-wear:
+    name: Release the Wear OS app
+    # The same listing's Wear OS form-factor track, uploaded only once the phone's bundle from the
+    # same run reached Play. A job of its own rather than a step after the phone's upload: a
+    # failed watch upload (a transient Play error, say) is then retried with "Re-run failed
+    # jobs", which re-runs only this job. As a step in `deploy`, a re-run would start with the
+    # phone upload again, which Play refuses as a reused versionCode, so the watch release could
+    # only ever be recovered by another commit. It also keeps a watch-only problem from marking
+    # the phone release failed.
+    #
+    # Play refuses uploads to the Wear OS track until the listing has Wear OS added as a form
+    # factor (Play Console, maintainer only), so this also waits on the repository variable
+    # PLAY_WEAR_TRACK_READY, set once that's done: before then it skips rather than failing
+    # every release (dev-docs/play-store-internal-track.md).
+    concurrency:
+      group: deploy-wear-release
+      cancel-in-progress: false
+    if: |
+      needs.deploy.outputs.phone_uploaded == 'true' &&
+      vars.PLAY_WEAR_TRACK_READY == 'true'
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    permissions:
+      # Downloads this run's artifact; writes nothing to the repository.
+      actions: read
+    steps:
+      - name: Download the Wear OS release AAB
+        uses: actions/download-artifact@v4
+        with:
+          name: wear-release-aab
+          path: wear/build/outputs/bundle/release
+
+      - name: Write the release notes
+        # The phone's "What's new", as `deploy` composed it for the same run.
+        env:
+          RELEASE_NOTES: ${{ needs.deploy.outputs.whatsnew }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/whatsnew"
+          printf '%s' "${RELEASE_NOTES}" > "${RUNNER_TEMP}/whatsnew/whatsnew-en-US"
+
+      - name: Upload to Play's Wear OS internal track
+        uses: r0adkll/upload-google-play@a80b0bcdcfdfcc2d026f2bc73f726760b2cbc967  # post-v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: app.stopdash
+          releaseFiles: wear/build/outputs/bundle/release/wear-release.aab
+          tracks: wear:internal
+          status: completed
+          whatsNewDirectory: ${{ runner.temp }}/whatsnew

@@ -2786,9 +2786,9 @@ and these carry the rest as their own PRs:
       version). The staleness rules carry over (D4): the tile's countdowns tick from a timeline
       and turn stale at the shared threshold, with no polling. The plan, the standalone
       alternative, privacy, battery and testing are in **`dev-docs/wear-os.md`**. The code is
-      being built now (maintainer, 2026-09-24), but **the watch app must not be released
-      until the maintainer has renamed the package to `app.stopdash` and decided to launch**:
-      the watch and phone apps share one application ID, and a Play listing can't be renamed.
+      being built now (maintainer, 2026-09-24). The package rename to `app.stopdash` landed,
+      and the maintainer decided to launch on 2026-10-02: the watch and phone apps share one
+      application ID and one listing.
       Decided by the maintainer (2026-09-24):
       - a companion app for the first version, with a standalone watch left for later;
       - the watch shows the widget's stops, with no separate watch-only choice;
@@ -2801,8 +2801,8 @@ and these carry the rest as their own PRs:
         unless the build is run with `-Pstopdash.wearRelease=approved` (it also refused the
         pre-rename `app.stopcast` ID until the rename). CI builds only `:app`'s release and never
         passes the flag, so a deploy can't ship the watch app by accident, and a CI step asserts
-        that `:wear:bundleRelease` fails without it. Lift it only after the launch decision, in
-        the same PR as the Play step below.
+        that `:wear:bundleRelease` fails without it. *Lifted 2026-10-02 at the launch decision
+        (Release the watch app, below).*
   - [x] **Package rename:** the application ID and every Kotlin package are `app.stopdash`
         (phone and watch together, as the Data Layer pairs by ID), and the app is named
         StopDash everywhere (display name, strings, class and file names, Data Layer paths,
@@ -2899,9 +2899,20 @@ and these carry the rest as their own PRs:
           allow-list.
         - [ ] **Device check:** rotary scrolling and the tile's All stops launch need a watch
               or emulator.
-  - [ ] Play (**maintainer only, after the rename and the launch decision**): lift the release
-        gate, file the Data Safety answers decided with the publisher, then a Wear OS release
-        track with screenshots and the app-quality review.
+  - [x] **Release the watch app** (maintainer, 2026-10-02): the release gate is lifted, and CI
+        builds, signs and uploads the watch bundle to the Wear OS internal track (versionCode =
+        main's commit count + 100,000,000, so it never collides with the phone's).
+  - [ ] Play Console (**maintainer only**): add Wear OS as a form factor, upload the Wear OS
+        screenshots (`app/src/test/snapshots/images/wear_*.png`), re-check the Data Safety answers
+        against the watch sync, confirm the hosted privacy policy carries its *Your Wear OS
+        watch* section (this release updates it), and only then set
+        `PLAY_WEAR_TRACK_READY=true`, then the Wear OS review
+        (`dev-docs/play-store-internal-track.md`, *The Wear OS app*).
+  - [ ] **Offer the watch app from the phone:** a card when a paired watch doesn't have StopDash
+        yet, opening its Play page on the watch (`RemoteActivityHelper`).
+  - [ ] **Trip view on the watch** (maintainer, 2026-10-02): the current step of a trip on the
+        way, with previous/next buttons to page through steps, plus departures for the next leg
+        when they fit.
 
 ## Beyond MVP (not planned)
 

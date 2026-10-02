@@ -90,8 +90,41 @@ RELEASE_KEY_ALIAS=stopdash \
 ./gradlew :app:bundleRelease
 ```
 
-Scope it to `:app`: a root `bundleRelease` also runs `:wear`'s, which fails at the watch
-app's release gate (TODO Phase 6).
+The Wear OS app builds the same way with `./gradlew :wear:bundleRelease`, signed with the same
+key (the Data Layer pairs only apps signed alike). Its versionCode is main's commit count plus
+100,000,000, so the two bundles in one listing never share a number.
+
+## The Wear OS app
+
+The watch app ships in the phone's listing, on Play's Wear OS form-factor track (`wear:internal`
+to the API). The `deploy-wear` job uploads it once `deploy` has put the same run's phone bundle
+on Play, and only once the repository variable `PLAY_WEAR_TRACK_READY` is `true`, because Play
+refuses uploads to that track until the listing has Wear OS added. Until then the job skips, and
+the signed watch bundle is still kept as the run's `wear-release-aab` artifact. It's a job of its
+own so that a failed watch upload is retried with *Re-run failed jobs* alone; re-running `deploy`
+would try the phone's already-used versionCode again and fail before reaching the watch.
+
+One-time setup in Play Console (maintainer only):
+
+1. **Test and release → Advanced settings → Form factors → Add form factor → Wear OS.** Accept
+   the Wear OS program terms.
+2. **Grow → Store presence → Main store listing → Wear OS screenshots:** at least one square
+   screenshot, 384×384 or larger. The screenshot tests render 454×454 ones from fixture data
+   (`app/src/test/snapshots/images/wear_*.png`, from `WatchHomeScreenshotTest`).
+3. **App content → Data safety:** re-check the form against the watch sync, as `docs/PRIVACY.md`
+   (*Your Wear OS watch*) and `dev-docs/wear-os.md` (*Privacy and Play Data Safety*) describe it:
+   the phone sends the widget's departures to the user's own watch through Google Play services,
+   which may relay them, end-to-end encrypted, through Google's servers. The published privacy
+   policy must already describe the watch before step 4: it does from this release on, so check
+   the hosted copy is current.
+4. Set the repository variable `PLAY_WEAR_TRACK_READY` to `true` (GitHub → Settings → Secrets
+   and variables → Actions → Variables). The next release-worthy push to `main` uploads the watch
+   bundle. Or upload the run's `wear-release-aab` artifact by hand to the Wear OS internal track.
+5. The first Wear OS release goes through Play's Wear OS review against its app-quality
+   guidelines (round screens, large fonts, a working tile); later ones are reviewed as usual.
+
+Once the watch app is on the listing, the phone's Play page offers it to anyone with a paired
+watch ("Available on watch").
 
 No `CI=true` needed. Release minification is unconditional
 (`isMinifyEnabled = true` in `app/build.gradle.kts`), so a local `bundleRelease`
@@ -213,8 +246,8 @@ Play App Signing.
 
 ## Required secrets
 
-Add these in repo Settings → Environments → `production` (the `deploy` and
-`release-build` jobs run in that environment; restrict its deployment branches to
+Add these in repo Settings → Environments → `production` (the `deploy`,
+`deploy-wear` and `release-build` jobs run in that environment; restrict its deployment branches to
 `main`).
 
 **Environment scope only — never as repository secrets.** A repository secret is
