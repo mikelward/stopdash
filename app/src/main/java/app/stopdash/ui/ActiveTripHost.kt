@@ -10,6 +10,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.LocationFix
+import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripFixes
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.awaitRefresh
@@ -25,13 +26,13 @@ import kotlinx.coroutines.flow.emptyFlow
 /**
  * Starts a trip on the way (SPEC *On the way*), for a screen several layers down (a trip's open route)
  * without each layer passing it on: [start] a route to a destination, the rider at its first stop by
- * the given time. While one is already on the way ([active]), [open] opens it instead: one trip at a
+ * the given time, with where to as chosen ([ActiveTrip.destinations]). While one is already on the way ([active]), [open] opens it instead: one trip at a
  * time. Provided by the activity ([LocalOnTheWay]); null (a test) offers no Start.
  */
 class OnTheWayActions(
     val active: Boolean = false,
     val open: () -> Unit = {},
-    val start: (route: TripRoute, destinationName: String, readyAt: Instant) -> Unit,
+    val start: (route: TripRoute, destinationName: String, readyAt: Instant, destinations: List<TripDestination>, destinationIds: Map<String, String>) -> Unit,
 )
 
 val LocalOnTheWay = compositionLocalOf<OnTheWayActions?> { null }

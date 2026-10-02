@@ -131,7 +131,9 @@ in memory only, never saved or logged beyond coarse diagnostics (a stop id, an H
 nothing runs once you leave the trip.
 
 **A trip on the way** (after you tap *Start* on a route) is kept on the device until you arrive or
-end it: the route's stops and lines, the leg you're on and the train followed, in app storage that
+end it: the route's stops and lines, the leg you're on and the train followed, and where you chose to
+go (the destination's stops, or the position of the place you picked: a favorite, a place or a
+postcode), in app storage that
 Android never backs up or transfers, so the trip survives the app being closed. It's never logged
 beyond coarse diagnostics (a line id, an error kind) or sent anywhere. While a trip is on the way, app
 open or closed, stopdash asks TfL about every 30 seconds (with the app open, as often as every 10

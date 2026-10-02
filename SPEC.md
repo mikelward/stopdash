@@ -1735,7 +1735,9 @@ them there:
   with them). On a short window or with large text, where pinned it could crowd out the prompt's
   buttons, it scrolls with the prompt instead, at its top. And the notifications below; each opens
   the trip.
-- **Kept on the device** while on the way (the route, the leg, the train followed), in app storage
+- **Kept on the device** while on the way (the route, the leg, the train followed, and the destination
+  as chosen: every stop of a station complex, or a place, so the trip can be planned again from
+  partway along to any of them, not just the stop the route ends at), in app storage
   that is never backed up, so it survives the app being closed; where a rider is going is theirs
   (*Privacy*), and it's forgotten when the trip ends.
 

@@ -1,6 +1,8 @@
 package app.stopdash.data
 
 import app.stopdash.domain.ActiveTrip
+import app.stopdash.domain.Coordinates
+import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
 import java.io.File
@@ -56,6 +58,9 @@ class FileActiveTripStoreTest {
             headings = emptyList(), fromAt = null, toAt = null,
         ),
         heldFrom = Instant.parse("2026-09-26T08:01:30Z"),
+        // Waterloo as the trip list planned to it: the station complex's stops, each to the stop it stands for.
+        destinations = listOf(TripDestination.Stop("940GZZLUWLO"), TripDestination.Stop("910GWLOO")),
+        destinationIds = mapOf("940GZZLUWLO" to "940GZZLUWLO", "910GWLOO" to "910GWLOO", "490000254W" to "910GWLOO"),
     )
 
     @Test
@@ -346,5 +351,29 @@ class FileActiveTripStoreTest {
         FileActiveTripStore(file).save(trip.copy(heldFrom = null))
         assertEquals(false, file.readText().contains("heldFrom"))
         assertEquals(trip.copy(heldFrom = null), FileActiveTripStore(file).load())
+    }
+
+    @Test
+    fun `a place chosen as the destination is kept across a reload`() {
+        val file = File(tmp.root, "active-trip.json")
+        val toPlace = trip.copy(destinations = listOf(TripDestination.Place(Coordinates(51.5, -0.12), "Work")), destinationIds = emptyMap())
+        FileActiveTripStore(file).save(toPlace)
+        assertEquals(toPlace, FileActiveTripStore(file).load())
+    }
+
+    @Test
+    fun `a trip saved before its destination was kept has none, and loads`() {
+        val file = File(tmp.root, "active-trip.json")
+        FileActiveTripStore(file).save(trip.copy(destinations = emptyList(), destinationIds = emptyMap()))
+        assertFalse(file.readText().contains("destinations"))
+        assertEquals(trip.copy(destinations = emptyList(), destinationIds = emptyMap()), FileActiveTripStore(file).load())
+    }
+
+    @Test
+    fun `a destination of a kind this build doesn't know is dropped, not the trip`() {
+        val file = File(tmp.root, "active-trip.json")
+        FileActiveTripStore(file).save(trip)
+        file.writeText(file.readText().replaceFirst("\"kind\":\"stop\"", "\"kind\":\"future\""))
+        assertEquals(trip.destinations.drop(1), FileActiveTripStore(file).load()!!.destinations)
     }
 }

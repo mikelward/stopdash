@@ -11,6 +11,7 @@ import app.stopdash.domain.StationPlaces
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.TflException
+import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripRoute
@@ -342,9 +343,16 @@ class ActiveTripTracker(
 
     /**
      * Start [route] to [destinationName], the rider at its first stop by [readyAt]: its first ride's
-     * train is picked on the next [refresh].
+     * train is picked on the next [refresh]. [destinations] and [destinationIds] are the destination as
+     * chosen ([ActiveTrip.destinations]).
      */
-    suspend fun start(route: TripRoute, destinationName: String, readyAt: Instant) = lock.withLock {
+    suspend fun start(
+        route: TripRoute,
+        destinationName: String,
+        readyAt: Instant,
+        destinations: List<TripDestination> = emptyList(),
+        destinationIds: Map<String, String> = emptyMap(),
+    ) = lock.withLock {
         // One trip at a time: a kept one not read yet, or one on the way, stays. One that couldn't be
         // read may be on the way, so none is started over it; the failure is said ([failed]).
         if (!restoreLocked()) return@withLock
@@ -357,9 +365,9 @@ class ActiveTripTracker(
         val first = route.legs.firstOrNull()
         val trip = if (first != null && readyAt.isAfter(now)) {
             val toStop = TripLeg(TripLeg.WALKING, "", "", "", "", first.fromId, first.fromName, now, readyAt)
-            ActiveTrip(TripRoute(listOf(toStop) + route.legs), destinationName, startedAt = now, legStartedAt = now)
+            ActiveTrip(TripRoute(listOf(toStop) + route.legs), destinationName, startedAt = now, legStartedAt = now, destinations = destinations, destinationIds = destinationIds)
         } else {
-            ActiveTrip(route, destinationName, startedAt = now, legIndex = 0, legStartedAt = readyAt)
+            ActiveTrip(route, destinationName, startedAt = now, legIndex = 0, legStartedAt = readyAt, destinations = destinations, destinationIds = destinationIds)
         }
         _updatedAt.value = null
         boardSeenRide = null
@@ -374,11 +382,18 @@ class ActiveTripTracker(
     val starting: StateFlow<Int> = _starting.asStateFlow()
 
     /** [start] in [scope], counted in [starting] at once, before the trip is saved. */
-    fun launchStart(scope: CoroutineScope, route: TripRoute, destinationName: String, readyAt: Instant): Job {
+    fun launchStart(
+        scope: CoroutineScope,
+        route: TripRoute,
+        destinationName: String,
+        readyAt: Instant,
+        destinations: List<TripDestination> = emptyList(),
+        destinationIds: Map<String, String> = emptyMap(),
+    ): Job {
         _starting.update { it + 1 }
         return scope.launch {
             try {
-                start(route, destinationName, readyAt)
+                start(route, destinationName, readyAt, destinations, destinationIds)
             } finally {
                 _starting.update { it - 1 }
             }

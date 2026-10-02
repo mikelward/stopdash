@@ -780,10 +780,10 @@ class MainActivity : ComponentActivity() {
                         onSendBugReport = requestBugReport,
                         onOpenLicenses = openLicenses,
                     ),
-                    LocalOnTheWay provides OnTheWayActions(active = onTheWayTrip != null, open = { onTheWayOpen = true }) { route, destinationName, readyAt ->
+                    LocalOnTheWay provides OnTheWayActions(active = onTheWayTrip != null, open = { onTheWayOpen = true }) { route, destinationName, readyAt, destinations, destinationIds ->
                         // Its first refresh is [FollowActiveTrip]'s, once the trip is on the way.
                         // In the app's scope, so recreating the activity can't cut the save short.
-                        tracker.launchStart((application as? StopdashApp)?.applicationScope ?: onTheWayScope, route, destinationName, readyAt)
+                        tracker.launchStart((application as? StopdashApp)?.applicationScope ?: onTheWayScope, route, destinationName, readyAt, destinations, destinationIds)
                         // Started now, while the app is in the foreground: the rider may leave before
                         // the trip is kept, and the service waits for the start ([ActiveTripTracker.starting]).
                         OnTheWayService.start(applicationContext)
@@ -2759,8 +2759,9 @@ class MainActivity : ComponentActivity() {
             onDismissAlert = trip::dismissAlert,
             dismissWriteFailed = trip.dismissWriteFailed.collectAsStateWithLifecycle().value,
             onDismissWriteFailureShown = trip::dismissWriteFailureShown,
-            // Start: followed from here to [toName], the rider at the first stop once they've walked there.
-            onStart = LocalOnTheWay.current?.let { onTheWay -> { route -> onTheWay.start(route, toName, Instant.now().plus(access)) } },
+            // Start: followed from here to [toName], the rider at the first stop once they've walked there,
+            // keeping where to as chosen, so the trip can be planned again from partway along.
+            onStart = LocalOnTheWay.current?.let { onTheWay -> { route -> onTheWay.start(route, toName, Instant.now().plus(access), destinations, destinationIds) } },
             onOpenTrip = LocalOnTheWay.current?.takeIf { it.active }?.open,
             onWithheld = trip::noteWithheld,
             onShownStops = trip::checkShownStops,
