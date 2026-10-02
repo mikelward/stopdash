@@ -2087,7 +2087,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       Planner at Medium. The reachability filter above takes the same setting when it's built. Still open: don't plan the first leg from when the
       rider reaches the stop — at an assumed pace that would drop the best options for a fast walker
       (maintainer, 2026-09-28: think more before doing that for the first plan).
-- [ ] **Explore how a trip recalculates mid-route** (maintainer, 2026-09-28). A re-plan (the
+- [ ] **Explore how a trip recalculates mid-route** (maintainer, 2026-09-28). For a trip on the way
+      it starts from the station still ahead on the route nearest the rider (maintainer,
+      2026-10-02; `ReplanOrigin`, SPEC *On the way*); the re-plan itself is *Planning again from
+      where the rider is*, above. The trip list's own re-plan, below, is still open. A re-plan (the
       15-minute reuse, or 5 minutes while an arrival is withheld) asks the Planner from the trip's
       first stop at "now", however long ago the trip was opened or wherever the rider has got to.
       Explore re-planning from where the rider is and when they'll be ready there, so a trip

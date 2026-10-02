@@ -1726,7 +1726,11 @@ them there:
   swiped away) isn't brought back short of something new. Each refresh asks TfL for the coming lines' statuses, one batched
   request, and the stops still to reach through the closure lookups the trip's screen and the list
   share, each reused for five minutes, and a change's board as above. Planning again from where the
-  rider is is still to come (`TODO.md`).
+  rider is is still to come (`TODO.md`). When it comes, it plans **from the station still ahead on
+  the route that's nearest the rider** (maintainer, 2026-10-02), not their raw position: a stop of a
+  ride they can still board or get off at, never one their train has passed; with no usable fix,
+  the stop the trip has them at next. The Planner then picks up from somewhere the trip already
+  goes, rather than from a pavement beside a moving train.
 - **Where it shows:** the trip's own screen (the next step over the route), a **card pinned at the
   top of the main view** (the near-me list, under the top bar, not scrolling with it; a station's
   page, and a station, platform or starred journey opened from the list, are each their own view),
