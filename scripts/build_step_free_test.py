@@ -23,7 +23,10 @@ COLUMNS = {
     ],
     "SameLevelPaths": ["From", "To"],
     "RampRoutes": ["From", "To"],
-    "Lifts": ["StationUniqueId", "FromAreas", "IntermediateAreas", "IntermediateAreas2", "ToAreas", "LimitedCapacityLift"],
+    "Lifts": [
+        "StationUniqueId", "LiftUniqueId", "FromAreas", "IntermediateAreas", "IntermediateAreas2", "ToAreas",
+        "LimitedCapacityLift",
+    ],
 }
 
 
@@ -100,15 +103,71 @@ class BuildTest(unittest.TestCase):
             "PlatformServices": [service(a, "1", "victoria", gap="85", step="50"), service(a, "2", "victoria", gap="86", step="50")],
             # Street, ticket hall, a lift down to the platform level; platform 2 by stairs only.
             "SameLevelPaths": path(f"{a}-Outside", "hall") + path("low", f"{a}-Plat1"),
-            "Lifts": [{"StationUniqueId": a, "FromAreas": "hall", "ToAreas": "low", "LimitedCapacityLift": "False"}],
+            "Lifts": [{"StationUniqueId": a, "LiftUniqueId": f"{a}-Lift-1", "FromAreas": "hall", "ToAreas": "low",
+                       "LimitedCapacityLift": "False"}],
         })
         self.assertEqual(
             {"victoria": [
-                {"platform": "1", "direction": "Northbound", "level": "level"},
+                {"platform": "1", "direction": "Northbound", "level": "level", "station": a, "node": 1},
                 {"platform": "2", "direction": "Southbound", "level": "none"},
             ]},
             table["stops"][a],
         )
+
+    def test_a_platform_only_lifts_reach_is_cut_off_while_every_lift_that_gets_there_is_out(self):
+        a = "940GZZEXMPF"
+        lift = lambda n, frm, to: {"StationUniqueId": a, "LiftUniqueId": f"{a}-Lift-{n}", "FromAreas": frm,
+                                   "ToAreas": to, "LimitedCapacityLift": "False"}
+        table = build({
+            "Stations": [station(a)],
+            "Platforms": [platform(a, n) for n in ("1", "2", "3")],
+            "PlatformServices": [service(a, n, "district", designated="TRUE") for n in ("1", "2", "3")],
+            # The street and its ticket hall; lifts A and B down to platform 1's level, C to platform
+            # 2's; platform 3 on the street's own level.
+            "SameLevelPaths": (path(f"{a}-Outside", "hall") + path("deep", f"{a}-Plat1") + path("mid", f"{a}-Plat2")
+                               + path("hall", f"{a}-Plat3")),
+            "Lifts": [lift("A", "hall", "deep"), lift("B", "hall", "deep"), lift("C", "hall", "mid")],
+        })
+        entries = {e["platform"]: e for e in table["stops"][a]["district"]}
+        graph = table["stations"][a]
+        self.assertNotIn("node", entries["3"])
+        self.assertEqual({f"{a}-Lift-A", f"{a}-Lift-B", f"{a}-Lift-C"}, set(graph["lifts"]))
+        reaches = build_step_free.reaches
+        self.assertTrue(reaches(graph, entries["1"]["node"], {f"{a}-Lift-A"}))
+        self.assertFalse(reaches(graph, entries["1"]["node"], {f"{a}-Lift-A", f"{a}-Lift-B"}))
+        self.assertFalse(reaches(graph, entries["2"]["node"], {f"{a}-Lift-C"}))
+        self.assertTrue(reaches(graph, entries["2"]["node"], {f"{a}-Lift-A"}))
+        # The street and its hall walk to each other, so they're the one node, and every lift leaves it.
+        self.assertTrue(all(0 in nodes for nodes in graph["lifts"].values()))
+
+    def test_a_lift_map_keeps_one_way_paths_one_way(self):
+        a = "940GZZEXMPG"
+        table = build({
+            "Stations": [station(a)],
+            "Platforms": [platform(a, "1")],
+            "PlatformServices": [service(a, "1", "jubilee", designated="TRUE")],
+            # A way down by lift, and a one-way exit from the platform's level back to the street.
+            "SameLevelPaths": [{"From": "low", "To": f"{a}-Outside"}] + path("low", f"{a}-Plat1"),
+            "Lifts": [{"StationUniqueId": a, "LiftUniqueId": f"{a}-Lift-1", "FromAreas": f"{a}-Outside",
+                       "ToAreas": "low", "LimitedCapacityLift": "False"}],
+        })
+        entry = table["stops"][a]["jubilee"][0]
+        graph = table["stations"][a]
+        self.assertEqual([[entry["node"], 0]], graph["walks"])
+        self.assertFalse(build_step_free.reaches(graph, entry["node"], {f"{a}-Lift-1"}))
+
+    def test_a_lift_tfl_gives_no_id_is_never_out(self):
+        a = "940GZZEXMPH"
+        table = build({
+            "Stations": [station(a)],
+            "Platforms": [platform(a, "1")],
+            "PlatformServices": [service(a, "1", "central", designated="TRUE")],
+            "SameLevelPaths": path("low", f"{a}-Plat1"),
+            "Lifts": [{"StationUniqueId": a, "FromAreas": f"{a}-Outside", "ToAreas": "low", "LimitedCapacityLift": "False"}],
+        })
+        # The lift joins the street and the platform as a walk would: nothing can cut it off.
+        self.assertNotIn("node", table["stops"][a]["central"][0])
+        self.assertNotIn(a, table["stations"])
 
     def test_onto_the_train_level_at_a_marked_spot_by_ramp_or_by_a_step(self):
         a = "940GZZEXMPB"
@@ -141,11 +200,12 @@ class BuildTest(unittest.TestCase):
             "Platforms": [platform(a, "1", entrance="Example Road")],
             "PlatformServices": [service(a, "1", "national-rail", ramp="TRUE")],
             "SameLevelPaths": path(f"{a}-Outside", "street") + path("deck", f"{a}-Plat1"),
-            "Lifts": [{"StationUniqueId": a, "FromAreas": "street", "IntermediateAreas": "mid",
-                       "ToAreas": "deck", "LimitedCapacityLift": "TRUE"}],
+            "Lifts": [{"StationUniqueId": a, "LiftUniqueId": f"{a}-Lift-1", "FromAreas": "street",
+                       "IntermediateAreas": "mid", "ToAreas": "deck", "LimitedCapacityLift": "TRUE"}],
         })
         self.assertEqual(
-            [{"platform": "1", "direction": "Northbound", "level": "ramp", "limitedLift": True, "entrance": "Example Road"}],
+            [{"platform": "1", "direction": "Northbound", "level": "ramp", "limitedLift": True, "entrance": "Example Road",
+              "station": a, "node": 1}],
             table["stops"][a]["national-rail"],
         )
 

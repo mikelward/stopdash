@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
+import app.stopdash.domain.LiftOutageCache
 import app.stopdash.domain.StepFreeAccess
 import app.stopdash.domain.StepFreeLevel
 
@@ -20,6 +21,14 @@ import app.stopdash.domain.StepFreeLevel
  * off the main thread. Null (the default, and until it's read) marks nothing — never a guess.
  */
 val LocalStepFree = staticCompositionLocalOf<StepFreeAccess?> { null }
+
+/**
+ * TfL's lift outages, so a station's mark comes off while a lift its step-free route needs is out
+ * (SPEC *Step-free access*): the last answer, to draw a first frame from, and a fresh one when it's
+ * due. Asked only for a list with a station only a lift makes step-free. Null (a test, a preview)
+ * asks nothing, and the bundled marks stand.
+ */
+val LocalLiftsOut = staticCompositionLocalOf<LiftOutageCache?> { null }
 
 /** TfL's corporate blue, the color of its step-free symbols. */
 private val TflStepFreeBlue = Color(0xFF0019A8)

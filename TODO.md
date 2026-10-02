@@ -494,8 +494,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
     - [ ] **The marks elsewhere**: the stop/station view and a trip's legs. Open: what a
           platform-less view (a station header) shows when its lines differ, and whether a trip leg,
           which knows its platform and direction, marks that platform's own level.
-    - [ ] **Lifts out of service**: TfL's live lift disruptions (`/Disruptions/Lifts/v2`) name the
-          lifts the bundled routes use, so a mark could drop while one is out.
+    - [x] **Lifts out of service**: TfL's live lift disruptions (`/Disruptions/Lifts/v2`) name lifts
+          by the station data's ids, so the table carries each lift-only platform's place in its
+          station's cut-down lift map, and the route page walks it again without the lifts that are
+          out (SPEC *Step-free access → Lifts out of service*).
+      - [ ] **Say why a mark came off**: today it just goes. TfL's notice names the lift and often
+            another entrance; a line under the station could carry it.
   - [x] **Tap a route row → all stops for that route** (maintainer, 2026-09-22). Extends the
         route-detail tap to show the route's full stop sequence, not just star + disruption text.
         *Done: the route page lists every station from the boarding stop to where the soonest train
