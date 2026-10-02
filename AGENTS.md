@@ -60,6 +60,11 @@ contract, and jank-free UI**:
 - **Jank-free UI**: render from snapshot/in-memory state; no I/O in composition; usual
   Compose discipline (`remember`/`derivedStateOf`/stable types). A screen appears at
   once, with a stamp/placeholder if content isn't ready, never a delayed first frame.
+- **Main-safe by default**: the main thread is for UI only. A data or domain function that
+  does I/O or work that grows with its input (decoding, mapping, a bundled index) moves off
+  it itself, behind an injectable dispatcher, so any caller can call it from the main
+  thread; "it's usually fast" is no exemption (a 600 KB route froze the screen, #483). Each
+  gets a test calling it from a single-thread caller that checks the work ran elsewhere.
 
 When you can't verify something locally (no emulator, no lock-screen host, no real
 device), say so in the chat update — "verified by unit test; the lock-screen placement
