@@ -109,6 +109,10 @@ class ActiveTripTrackerTest {
     private var sequenceTakes = 0L
     // A line's own route read time, where it's not [sequenceTakes].
     private val sequenceTakesFor = mutableMapOf<String, Long>()
+    // Each line whose route was read, in order.
+    private val sequencesRead = mutableListOf<String>()
+    // The routes read before each "route disruption" post.
+    private val routesReadAtPost = mutableListOf<List<String>>()
     // How long a train's calls take to read, on the monotonic clock.
     private var vehicleTakes = 0L
     // Each stop area's poles, and how often they were asked for (a TfL request each).
@@ -175,6 +179,7 @@ class ActiveTripTrackerTest {
             entrancesAt[stop] ?: app.stopdash.domain.StationPlaces()
         },
         lineSequence = { lineId ->
+            sequencesRead += lineId
             ticks += sequenceTakesFor[lineId] ?: sequenceTakes
             if (routeFails) throw TflException.Offline(null)
             sequences[lineId]
@@ -219,6 +224,7 @@ class ActiveTripTrackerTest {
         },
         onDisruption = { _, signals, how, until ->
             disruptionAlerts += "${how.name.lowercase()} ${signals.joinToString(",") { it.key }}"
+            routesReadAtPost += sequencesRead.toList()
             disruptionUntil += until
             if (how == ActiveTripTracker.DisruptionPost.KEEP) disruptionShowing && disruptionPosts else disruptionPosts
         },
@@ -333,6 +339,143 @@ class ActiveTripTrackerTest {
         assertEquals("4", tracker.trip.value?.vehicleId)
         assertNull(tracker.trip.value?.vehicleLeg)
         assertEquals(listOf("4/blue", "4/red"), askedOn)
+    }
+
+    @Test
+    fun `while something is known wrong ahead, the trip says where it would be planned again from`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertNull(tracker.replanFrom.value)
+        known = listOf(line(0, 6, "Severe Delays"))
+        tracker.refresh()
+        // Waiting at A with no fix: the next stop ahead, as the route names it.
+        assertEquals(app.stopdash.domain.ReplanOrigin.Stop("A", "A"), tracker.replanFrom.value)
+        known = emptyList()
+        tracker.refresh()
+        assertNull(tracker.replanFrom.value)
+    }
+
+    @Test
+    fun `with no fix to place the rider, where the trip is planned again from asks for no route`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "D", "D", at(15), at(18))
+        val blue = TripLeg("tube", "blue", "Blue", "D", "D", "F", "F", at(20), at(30), path = listOf("E", "F"))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(TripRoute(listOf(ride, walkOn, blue)), "F", readyAt = now)
+        known = listOf(line(2, 6, "Severe Delays"))
+        tracker.refresh()
+        assertEquals("A", tracker.replanFrom.value?.id)
+        // Only a fix would have the later ride's line placed (Codex on #479).
+        assertFalse("blue" in sequencesRead)
+    }
+
+    @Test
+    fun `a disruption is posted before the routes placing where it's planned again from are read`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "D", "D", at(15), at(18))
+        val blue = TripLeg("tube", "blue", "Blue", "D", "D", "F", "F", at(20), at(30), path = listOf("E", "F"))
+        sequences["red"] = redLine
+        sequences["blue"] = blueLine
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(TripRoute(listOf(ride, walkOn, blue)), "F", readyAt = now)
+        known = listOf(line(2, 6, "Severe Delays"))
+        tracker.refresh(fixAt(51.61))
+        assertEquals("E", tracker.replanFrom.value?.id)
+        // Out before the later ride's route was read for it (Codex on #479).
+        assertFalse(routesReadAtPost.single().contains("blue"))
+    }
+
+    @Test
+    fun `a fix that grew too old while the routes were read places no one`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "D", "D", at(15), at(18))
+        val blue = TripLeg("tube", "blue", "Blue", "D", "D", "F", "F", at(20), at(30), path = listOf("E", "F"))
+        sequences["red"] = redLine
+        sequences["blue"] = blueLine
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(TripRoute(listOf(ride, walkOn, blue)), "F", readyAt = now)
+        known = listOf(line(2, 6, "Severe Delays"))
+        // 1 s old when given, then 10 s reading the blue line's route: too old to say where the rider is
+        // (Codex on #479), so the next stop ahead.
+        sequenceTakesFor["blue"] = 10_000
+        tracker.refresh(fixAt(51.61))
+        assertEquals("A", tracker.replanFrom.value?.id)
+    }
+
+    @Test
+    fun `a fix that waited for another refresh is aged once for where the trip is planned again from`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "D", "D", at(15), at(18))
+        val blue = TripLeg("tube", "blue", "Blue", "D", "D", "F", "F", at(20), at(30), path = listOf("E", "F"))
+        sequences["red"] = redLine
+        sequences["blue"] = blueLine
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(TripRoute(listOf(ride, walkOn, blue)), "F", readyAt = now)
+        known = listOf(line(0, 6, "Severe Delays"))
+        tracker.refresh()
+        assertEquals("A", tracker.replanFrom.value?.id)
+        // One refresh holds the lock for 5 s; the next brings a fix 1 s old near E and takes 1 s itself:
+        // 7 s old when used, not counted twice (Codex on #479).
+        val slow = kotlinx.coroutines.CompletableDeferred<Unit>()
+        gate = slow
+        vehicleTakes = 1_000
+        val first = backgroundScope.launch { tracker.refresh() }
+        runCurrent()
+        val second = backgroundScope.launch { tracker.refresh(fixAt(51.61)) }
+        runCurrent()
+        ticks += 4_000
+        gate = null
+        slow.complete(Unit)
+        first.join()
+        second.join()
+        assertEquals(app.stopdash.domain.ReplanOrigin.Stop("E", "E"), tracker.replanFrom.value)
+    }
+
+    @Test
+    fun `a route planned again takes the place of the trip on the way`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(route, "C", readyAt = now)
+        val other = TripRoute(listOf(ride.copy(fromId = "B", fromName = "B", path = listOf("C"))))
+        tracker.launchStart(this, other, "C", readyAt = now, destinationStopId = "C", replacing = true).join()
+        assertEquals(other, tracker.trip.value?.route)
+        assertEquals("C", kept?.destinationStopId)
+        // Without replacing, one trip at a time: the one on the way stays.
+        tracker.launchStart(this, route, "C", readyAt = now).join()
+        assertEquals(other, tracker.trip.value?.route)
+    }
+
+    @Test
+    fun `a route planned again replaces a kept trip not read yet`() = runTest {
+        // A restart left the old trip on the device only (Codex on #479).
+        val saved = ActiveTrip(route, "C", startedAt = t0, vehicleId = "3", boarded = true)
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { saved })
+        var ended = 0
+        val other = TripRoute(listOf(ride.copy(fromId = "B", fromName = "B", path = listOf("C"))))
+        tracker.launchStart(this, other, "C", readyAt = now, replacing = true, onEnded = { ended++ }).join()
+        assertEquals(other, tracker.trip.value?.route)
+        assertEquals(other, kept?.route)
+        assertEquals(1, ended)
+    }
+
+    @Test
+    fun `a trip that can't be ended isn't replaced, and its alert stays`() = runTest {
+        val saved = ActiveTrip(route, "C", startedAt = t0, vehicleId = "3", boarded = true)
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { saved })
+        tracker.restore()
+        saves = false
+        var ended = 0
+        val other = TripRoute(listOf(ride.copy(fromId = "B", fromName = "B", path = listOf("C"))))
+        tracker.launchStart(this, other, "C", readyAt = now, replacing = true, onEnded = { ended++ }).join()
+        assertEquals(saved, tracker.trip.value)
+        assertTrue(tracker.endFailed.value)
+        assertEquals(0, ended)
     }
 
     @Test
@@ -1076,6 +1219,13 @@ class ActiveTripTrackerTest {
         stopNames = mapOf("A" to "A", "B" to "B", "C" to "C"),
         stopPositions = mapOf("A" to (51.5 to -0.12), "B" to (51.51 to -0.12), "C" to (51.52 to -0.12)),
     )
+    // Synthetic stops, well clear of the red line.
+    private val blueLine = app.stopdash.domain.LineSequence(
+        routes = listOf(app.stopdash.domain.LineRoute("D ↔ F", listOf("D", "E", "F"))),
+        stopNames = mapOf("D" to "D", "E" to "E", "F" to "F"),
+        stopPositions = mapOf("D" to (51.6 to -0.12), "E" to (51.61 to -0.12), "F" to (51.62 to -0.12)),
+    )
+
     private fun fixAt(latitude: Double, longitude: Double = -0.12) =
         app.stopdash.domain.LocationFix(app.stopdash.domain.Coordinates(latitude, longitude), isFallback = false, accuracyMeters = 20f, ageMillis = 1_000L)
 

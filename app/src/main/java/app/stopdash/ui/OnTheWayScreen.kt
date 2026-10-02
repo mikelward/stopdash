@@ -52,6 +52,7 @@ import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Countdown
 import app.stopdash.domain.Departure
 import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RouteDisruption
 import app.stopdash.RouteDisruptionAlert
 import app.stopdash.domain.SteadyClock
@@ -101,6 +102,11 @@ internal fun OnTheWayScreen(
     // What's wrong on the route ahead ([ActiveTripTracker.routeDisruptions]), worst first: what the
     // route disruption alert says, here in full, so tapping it finds where and how (maintainer, 2026-10-01).
     disruptions: List<RouteDisruption.Signal> = emptyList(),
+    // While something is known wrong ahead, the station still ahead nearest the rider
+    // ([ActiveTripTracker.replanFrom]), and the trip list from there to where they chose to go
+    // ([onPlanAgain], maintainer 2026-10-02). Null leaves it out.
+    replanFrom: ReplanOrigin.Stop? = null,
+    onPlanAgain: ((ReplanOrigin.Stop) -> Unit)? = null,
 ) {
     BackHandler(onBack = onBack)
     val destination = trip?.destinationName
@@ -190,6 +196,19 @@ internal fun OnTheWayScreen(
                 // Each thing known once, as the alert has it: two legs on one line read as one.
                 disruptions.distinctBy { DisruptionKey.of(it) }.forEach { signal ->
                     item(key = "disruption/${signal.key}") { DisruptionCard(signal, trip.route.legs.getOrNull(signal.legIndex)?.let { RouteDisruption.rideAt(trip, signal.legIndex, it) }) }
+                }
+                // Only while it's still ahead of the trip as shown: worked out by the last check, it can lag
+                // a step the trip has since taken, and a stop now behind the rider is never offered (Codex on #479).
+                val planFrom = replanFrom?.takeIf { it.id in ReplanOrigin.stopsAhead(trip, ReplanOrigin.rideAhead(trip, progress)) }
+                if (disruptions.isNotEmpty() && planFrom != null && onPlanAgain != null) {
+                    item(key = "planAgain") {
+                        OutlinedButton(
+                            onClick = { onPlanAgain(planFrom) },
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("onTheWayPlanAgain"),
+                        ) {
+                            Text(stringResource(R.string.on_the_way_plan_again, planFrom.name))
+                        }
+                    }
                 }
             }
             // The next ride's trains go under its own row below (maintainer, 2026-09-28); here only

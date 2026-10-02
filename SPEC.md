@@ -1729,12 +1729,17 @@ them there:
   or the trip arrives or ends. Like "time to board", one gone (taken down, or
   swiped away) isn't brought back short of something new. Each refresh asks TfL for the coming lines' statuses, one batched
   request, and the stops still to reach through the closure lookups the trip's screen and the list
-  share, each reused for five minutes, and a change's board as above. Planning again from where the
-  rider is is still to come (`TODO.md`). When it comes, it plans **from the station still ahead on
-  the route that's nearest the rider** (maintainer, 2026-10-02), not their raw position: a stop of a
-  ride they can still board or get off at, never one their train has passed; with no usable fix,
-  the stop the trip has them at next. The Planner then picks up from somewhere the trip already
-  goes, rather than from a pavement beside a moving train.
+  share, each reused for five minutes, and a change's board as above.
+- **Plan again:** while something is known wrong ahead, the trip's screen offers **Plan again from
+  ‹station›**: the trip list from **the station still ahead on the route that's nearest the rider**
+  (maintainer, 2026-10-02), not their raw position, to where they chose to go (a station complex
+  whole, or the place). It's a stop of a ride they can still board or get off at, never one their
+  train has passed; with no fix sure and recent enough, the stop the trip has them at next. The
+  Planner then picks up from somewhere the trip already goes, rather than from a pavement beside a
+  moving train, and the rider's position never leaves the device for it. Start there takes the trip
+  on the way's place (one trip at a time otherwise opens the one on the way). The list plans from
+  now, not from when the rider reaches that station, so a route leaving before then is theirs to
+  pass over (`TODO.md`).
 - **Where it shows:** the trip's own screen (the next step over the route), a **card pinned at the
   top of the main view** (the near-me list, under the top bar, not scrolling with it; a station's
   page, and a station, platform or starred journey opened from the list, are each their own view),

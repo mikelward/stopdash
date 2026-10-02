@@ -35,5 +35,16 @@ data class ToChoice(
 
     companion object {
         val NONE = ToChoice()
+
+        /**
+         * Where [trip] on the way goes, as the rider chose it, for planning it again from partway
+         * along: its place, or the stop or station picked ([ActiveTrip.destinationStopId]). A trip kept
+         * before that was stored goes to the stop its route ends at, by the destination's name.
+         */
+        fun of(trip: ActiveTrip): ToChoice {
+            trip.destinations.filterIsInstance<TripDestination.Place>().firstOrNull()?.let { return ToChoice(name = it.name, place = it) }
+            val stopId = trip.destinationStopId.ifBlank { trip.route.legs.lastOrNull { !it.isWalk }?.toId.orEmpty() }
+            return if (stopId.isBlank()) NONE else ToChoice(stopId = stopId, name = trip.destinationName)
+        }
     }
 }

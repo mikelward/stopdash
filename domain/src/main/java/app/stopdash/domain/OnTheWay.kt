@@ -39,7 +39,9 @@ import java.time.Instant
  * planned to it: every stop of a station complex (a stop id each, to the stop it stands for), or a
  * place. The route ends at only one of them, so a trip planned again from partway along asks for them
  * all, and doesn't call a connection missed that another of the complex's stops still makes. Empty for
- * a trip kept before they were.
+ * a trip kept before they were. [destinationStopId] is the stop or station (an interchange's `HUB…`
+ * included) the rider picked, to open the trip list to again; blank for a place, or a trip kept
+ * before it was.
  * Kept on the device only: where a rider is going is theirs (SPEC *Privacy*).
  */
 data class ActiveTrip(
@@ -66,6 +68,7 @@ data class ActiveTrip(
     val heldFrom: Instant? = null,
     val destinations: List<TripDestination> = emptyList(),
     val destinationIds: Map<String, String> = emptyMap(),
+    val destinationStopId: String = "",
 ) {
     /** The leg the rider is on, or null once they've arrived. */
     val leg: TripLeg? get() = route.legs.getOrNull(legIndex)

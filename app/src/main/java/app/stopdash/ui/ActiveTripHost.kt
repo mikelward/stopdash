@@ -26,13 +26,22 @@ import kotlinx.coroutines.flow.emptyFlow
 /**
  * Starts a trip on the way (SPEC *On the way*), for a screen several layers down (a trip's open route)
  * without each layer passing it on: [start] a route to a destination, the rider at its first stop by
- * the given time, with where to as chosen ([ActiveTrip.destinations]). While one is already on the way ([active]), [open] opens it instead: one trip at a
- * time. Provided by the activity ([LocalOnTheWay]); null (a test) offers no Start.
+ * the given time, with where to as chosen ([ActiveTrip.destinations]). While one is already on the
+ * way ([active]), [open] opens it instead: one trip at a time. A trip list opened to plan the trip on
+ * the way again ([OnTheWayScreen]'s Plan again) is given one not [active] whose [start] takes that
+ * trip's place. Provided by the activity ([LocalOnTheWay]); null (a test) offers no Start.
  */
 class OnTheWayActions(
     val active: Boolean = false,
     val open: () -> Unit = {},
-    val start: (route: TripRoute, destinationName: String, readyAt: Instant, destinations: List<TripDestination>, destinationIds: Map<String, String>) -> Unit,
+    val start: (
+        route: TripRoute,
+        destinationName: String,
+        readyAt: Instant,
+        destinations: List<TripDestination>,
+        destinationIds: Map<String, String>,
+        destinationStopId: String,
+    ) -> Unit,
 )
 
 val LocalOnTheWay = compositionLocalOf<OnTheWayActions?> { null }

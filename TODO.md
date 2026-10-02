@@ -1265,9 +1265,16 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 "Special Service", whose inferred label is never placed. If TfL starts wording bus
                 part closures, map the path's areas to the route's poles (its line sequence, as
                 the trip's cards already load) before `coversRide`.
-          - [ ] **Planning again from where the rider is** (the re-plan tier, and the alert
-                offering it): waits on *Explore how a trip recalculates mid-route* (the trip now
-                keeps its destination as chosen, above).
+          - [x] **Planning again from where the rider is** (the re-plan tier, and the alert
+                offering it): the trip's screen offers **Plan again from ‹station›** while something
+                is known wrong ahead (`ActiveTripTracker.replanFrom`, `ReplanOrigin`), the trip list
+                from there to the destination as chosen, its Start replacing the trip on the way.
+                Needs a device check of the station chosen on a moving train.
+            - [ ] **Plan from when the rider gets there**: the list plans from now, so a route
+                  leaving that station before the rider reaches it is offered too. Plan from the
+                  trip's own time there (its train's call, or the walk's end) instead.
+            - [ ] **"Planning again can't make the connection"** (the High signal above): plan again
+                  in the background on a signal, and raise it when no route keeps the connection.
         - [ ] **Not to merge until the maintainer's Play declarations:** the ongoing notification
               with the app closed (a foreground service, which replaces the old *Step by step*
               item), and live location to see the train boarded and follow a bus.

@@ -50,6 +50,43 @@ object ReplanOrigin {
         return accuracy <= OnTheWay.AT_STOP_WITHIN_METERS && age <= OnTheWay.FIX_FRESH_WITHIN_MILLIS
     }
 
+    /** A stop to plan again from, by [id], named [name] as the route names it. */
+    data class Stop(val id: String, val name: String)
+
+    /** [of] with the stop's name, as [trip]'s route names it. */
+    fun stopOf(trip: ActiveTrip, rider: LocationFix?, positions: Map<String, Coordinates>, rideAhead: Int?): Stop? =
+        of(trip, rider, positions, rideAhead)?.let { Stop(it, nameOf(trip, it)) }
+
+    /**
+     * [id]'s name as [trip]'s route names it: where a leg boards or gets off, or a stop it calls at on
+     * the way. The id itself when the route doesn't name it.
+     */
+    fun nameOf(trip: ActiveTrip, id: String): String {
+        val legs = listOfNotNull(OnTheWay.ridden(trip)) + trip.route.legs
+        for (leg in legs) {
+            if (leg.fromId == id && leg.fromName.isNotBlank()) return leg.fromName
+            if (leg.toId == id && leg.toName.isNotBlank()) return leg.toName
+            val at = leg.path.indexOf(id)
+            leg.pathNames.getOrNull(at)?.takeIf { at >= 0 && it.isNotBlank() }?.let { return it }
+        }
+        return id
+    }
+
+    /**
+     * How far along the ride [trip]'s rider is, for [of]: while they ride with the stops left counted
+     * ([TripProgress.Riding.stopsLeft], the stop they get off at included), the index into the ride's
+     * path ([OnTheWay.ridden]) of the next stop it calls at. Null otherwise: not riding yet, or riding
+     * with the count unknown.
+     */
+    fun rideAhead(trip: ActiveTrip, progress: TripProgress?): Int? {
+        val riding = progress as? TripProgress.Riding ?: return null
+        val left = riding.stopsLeft ?: return null
+        val on = OnTheWay.ridden(trip) ?: return null
+        // As [OnTheWay.advance] counts them: from the next call, through where they get off.
+        val off = on.path.indexOf(on.toId).takeIf { it >= 0 } ?: on.path.lastIndex
+        return (off - left + 1).coerceIn(0, on.path.size)
+    }
+
     /** The stops ahead on [trip]'s route, in route order, each once ([of]). */
     fun stopsAhead(trip: ActiveTrip, rideAhead: Int?): List<String> {
         val stops = LinkedHashSet<String>()
