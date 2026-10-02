@@ -19,7 +19,7 @@ import org.robolectric.annotation.GraphicsMode
  * so CI's one screenshot pipeline records, diffs and commits them. Synthetic stops only.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36], qualifiers = "w227dp-h227dp-round-watch-xhdpi")
+@Config(sdk = [36], qualifiers = "en-rGB-w227dp-h227dp-round-watch-xhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class WatchHomeScreenshotTest {
     @get:Rule

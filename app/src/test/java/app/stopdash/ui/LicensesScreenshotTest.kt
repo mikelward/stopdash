@@ -28,7 +28,7 @@ import org.robolectric.annotation.GraphicsMode
  * asynchronously via `rememberLibraries`). Public component names only — no user route data.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36], qualifiers = "w411dp-h914dp-420dpi")
+@Config(sdk = [36], qualifiers = "en-rGB-w411dp-h914dp-420dpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LicensesScreenshotTest {
     @get:Rule
@@ -43,7 +43,7 @@ class LicensesScreenshotTest {
         }
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("Open source licenses").assertExists()
+        composeRule.onNodeWithText("Open source licences").assertExists()
         captureSnapshot("licenses.png")
     }
 

@@ -38,7 +38,7 @@ import org.robolectric.annotation.GraphicsMode
  * example. No user data (SPEC *Privacy*).
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36], qualifiers = "w411dp-h914dp-420dpi")
+@Config(sdk = [36], qualifiers = "en-rGB-w411dp-h914dp-420dpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class FavoritePlacesScreenshotTest {
     @get:Rule

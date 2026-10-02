@@ -98,7 +98,7 @@ import org.robolectric.annotation.GraphicsMode
  * delay are made up. No user data.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36], qualifiers = "w411dp-h914dp-420dpi")
+@Config(sdk = [36], qualifiers = "en-rGB-w411dp-h914dp-420dpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class TripScreenScreenshotTest {
     @get:Rule
@@ -364,7 +364,7 @@ class TripScreenScreenshotTest {
         StepFree.entries.forEach { composeRule.onNodeWithTag("stepFree-${it.name}").assertExists() }
         composeRule.onNodeWithTag("stepFree-ANY").assertTextEquals("Any")
         composeRule.onNodeWithTag("stepFree-STATION")
-            .assertTextEquals("Station", "Street to platform, for luggage or a stroller")
+            .assertTextEquals("Station", "Street to platform, for luggage or a buggy")
         composeRule.onNodeWithTag("stepFree-FULLY").assertTextEquals("Fully", "Onto the train too, for a wheelchair")
         composeRule.onNodeWithTag("stepFree-FULLY").performClick()
         assertEquals(StepFree.FULLY, chosenStepFree)
@@ -629,7 +629,7 @@ class TripScreenScreenshotTest {
     // Three rides whose Planner train on the last is missed with no live one known, on a narrow
     // screen: the pills leave room beside them for a word of the arrival, not all of it.
     @Test
-    @Config(qualifiers = "w411dp-h720dp-420dpi")
+    @Config(qualifiers = "en-rGB-w411dp-h720dp-420dpi")
     fun a_route_arrival_that_does_not_fit_beside_its_pills_is_shown_whole() {
         val threeRides = TripRoute(
             listOf(

@@ -13,7 +13,7 @@ import org.robolectric.annotation.GraphicsMode
 
 /** The complication row picker on a round watch; captures land beside the phone's, as the app's do. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36], qualifiers = "w227dp-h227dp-round-watch-xhdpi")
+@Config(sdk = [36], qualifiers = "en-rGB-w227dp-h227dp-round-watch-xhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ComplicationPickerScreenshotTest {
     @get:Rule

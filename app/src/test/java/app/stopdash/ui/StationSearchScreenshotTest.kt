@@ -39,7 +39,7 @@ import org.robolectric.annotation.GraphicsMode
  * Public station names only, no user data.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36], qualifiers = "w411dp-h914dp-420dpi")
+@Config(sdk = [36], qualifiers = "en-rGB-w411dp-h914dp-420dpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class StationSearchScreenshotTest {
     @get:Rule
