@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Resources the shrinker can't see used, kept by name. The capability array is read by Play
+     services, never by this app's code, so without this the release build drops it: the watch then
+     advertises nothing, the phone never sees a watch with StopDash, and sends it nothing. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@array/android_wear_capabilities"
+    tools:shrinkMode="strict" />
