@@ -1908,8 +1908,10 @@ else is the app's to keep or drop, so a refresh that runs while the app moves th
 line again, can't undo the app's verdicts. A verdict counts only for the alert it was reached
 on, and only while that's the line's sole alert. It goes as soon as the app weighs that alert at that
 stop again and no longer finds it behind (a refreshed route, say); one the app doesn't weigh again
-stands a day after it was last reached, the life of the routes behind it. So until the app has placed an alert at a stop, those surfaces flag it,
-as before.
+stands a day after it was last reached, the life of the routes behind it. Work whose day has come
+counts as the alert the app placed, on its own words, where it's all that's under way; beside another
+alert it flags, as it does in the app. So until the app has placed an alert at a stop, those surfaces
+flag it, as before.
 **Work that hasn't started yet is noted, not flagged** (maintainer, 2026-09-28): a closure next
 month says nothing about today's buses, and a ⚠ for it trains the rider to ignore the ⚠. Neither of
 TfL's fields can tell: `isNow` reads `false` even for planned closures in effect (it marks

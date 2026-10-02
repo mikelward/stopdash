@@ -194,13 +194,20 @@ data class LineStatusCheck(
      * no longer speaks for the rest.
      */
     fun withAlertsBehind(verdicts: Collection<AlertBehind>): LineStatusCheck {
+        fun matching(lineId: String, fingerprint: String): Set<StopWay> =
+            verdicts.filter { it.lineId == lineId && it.fingerprint == fingerprint }.mapTo(HashSet()) { it.way }
         fun ways(status: LineStatus, fingerprint: String): Set<StopWay> =
-            if (!known || !status.soleAlert) emptySet()
-            else verdicts.filter { it.lineId == status.lineId && it.fingerprint == fingerprint }.mapTo(HashSet()) { it.way }
+            if (!known || !status.soleAlert) emptySet() else matching(status.lineId, fingerprint)
+        // Its work to come, each on the words it shows once its day comes, for [LineStatus.asOf] to take
+        // where it's then the only alert.
+        fun planned(status: LineStatus): List<PlannedAlert> =
+            if (!known) status.planned
+            else status.planned.map { it.copy(behindAt = matching(status.lineId, plannedShownFingerprint(it))) }
         val placed = status.copy(
             behindAt = ways(status, fingerprint),
+            planned = planned(status),
             byDirection = status.byDirection.mapValues { (direction, it) ->
-                it.copy(behindAt = ways(it, directionFingerprints[direction] ?: lineAlertFingerprint(it)))
+                it.copy(behindAt = ways(it, directionFingerprints[direction] ?: lineAlertFingerprint(it)), planned = planned(it))
             },
         )
         return if (placed == status) this else copy(status = placed)

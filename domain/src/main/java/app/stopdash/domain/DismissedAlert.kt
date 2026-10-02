@@ -253,6 +253,14 @@ fun lineAlertFingerprint(status: LineStatus): String = fingerprint(DismissedAler
 fun plannedAlertFingerprint(alert: PlannedAlert): String =
     alert.fingerprint ?: fingerprint(DismissedAlert.ofPlanned("", alert).contentSignature)
 
+/**
+ * The full identity ([lineAlertFingerprint]) of a line's status once [alert] is the alert it shows:
+ * its day come and nothing else under way ([LineStatus.asOf]), the one the app's verdicts on it are
+ * reached on. Stored with it ([PlannedAlert.shownFingerprint]) where its prose is left out.
+ */
+fun plannedShownFingerprint(alert: PlannedAlert): String =
+    alert.shownFingerprint ?: lineAlertFingerprint(LineStatus("", alert.severity, alert.label, alert.fullText.ifBlank { null }))
+
 /** Whether [alerts] holds a dismissal of the line alert whose fingerprint is [fingerprint]. */
 fun dismissedLine(alerts: Set<DismissedAlert>, lineId: String, fingerprint: String): Boolean =
     alerts.any { it.alertKey == lineAlertKey(lineId) && fingerprint(it.contentSignature) == fingerprint }

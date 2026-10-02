@@ -111,6 +111,7 @@ data class LineStatus(
         val now = due.map { ResolvedDisruption(it.label, it.severity, isFallback = it.isFallback, fullText = it.fullText) } +
             listOfNotNull(if (disrupted) ResolvedDisruption(description, severity, isFallback = isFallback, fullText = fullText.orEmpty()) else null)
         val worst = mostSevereDisruption(now) ?: return this
+        val sole = (soleAlert || !disrupted) && now.map { it.severity to it.fullText }.distinct().size == 1
         return copy(
             severity = worst.severity,
             description = worst.label,
@@ -123,9 +124,15 @@ data class LineStatus(
             planned = planned - due.toSet(),
             // The one alert under way only while nothing else is: work that has started is another
             // (Codex, PR #455).
-            soleAlert = (soleAlert || !disrupted) && now.map { it.severity to it.fullText }.distinct().size == 1,
-            // Placed as the alert shown before: work that has started is one nothing placed.
-            behindAt = emptySet(),
+            soleAlert = sole,
+            // Work that has started is an alert the app placed on its own words, not the one shown
+            // before: placed as it was ([PlannedAlert.behindAt]) where it's all that's under way and
+            // nothing was before it, else nowhere.
+            behindAt = if (sole && !disrupted && due.map(::plannedShownFingerprint).distinct().size == 1) {
+                due.map { it.behindAt }.reduce { a, b -> a intersect b }
+            } else {
+                emptySet()
+            },
         )
     }
 
@@ -222,6 +229,13 @@ data class PlannedAlert(
     val isFallback: Boolean = false,
     val fingerprint: String? = null,
     val closure: PartClosure? = null,
+    // The line's status's full identity once this is the alert it shows ([plannedShownFingerprint]),
+    // kept, like [fingerprint], where the prose is left out.
+    val shownFingerprint: String? = null,
+    // Where this alert, once its day comes, lies wholly behind the stop for a row going that way, as
+    // the app found on its words ([LineStatus.behindAt]); [LineStatus.asOf] takes it as the status's
+    // where nothing else is under way. Set only where a stored snapshot is read.
+    val behindAt: Set<StopWay> = emptySet(),
 ) {
     companion object {
         /** TfL's severity for a part closure: planned work's usual grade. */
