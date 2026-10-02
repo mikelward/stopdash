@@ -65,6 +65,10 @@ data class PersistedSnapshot(
     // Defaulted: an older snapshot, or one from a process that couldn't tell its boot, reads as the
     // wall clock's; an older build ignores it and reads the stamps as the wall clock's too.
     val stampFrame: PersistedFrame? = null,
+    // The nearby stops, nearest the rider first, at the app's last save
+    // ([DeparturesSnapshot.nearestFirst]). Defaulted: an older snapshot reads back with none (every
+    // stop's rows shown, as before), and an older build ignores it.
+    val nearestFirst: List<String> = emptyList(),
 ) {
     companion object {
         /**
@@ -498,6 +502,7 @@ fun DeparturesSnapshot.toPersisted(): PersistedSnapshot =
         // never stored, so a stored flag can't outlive the dismissal it came from; so are the app's
         // verdicts on alerts behind a stop ([DeparturesSnapshot.withAlertsBehind]).
         lineStatuses = lineStatuses.toPersistedStatuses().map { it.undismissed() },
+        nearestFirst = nearestFirst,
     )
 
 /**
@@ -519,6 +524,7 @@ fun PersistedSnapshot.toDomain(): DeparturesSnapshot? {
         missingStopIds = missingStopIds.toSet(),
         // A flag an earlier build stored is ignored, as [toPersisted] no longer writes one.
         lineStatuses = lineStatuses.associate { it.lineId to it.undismissed().toDomain() },
+        nearestFirst = nearestFirst,
     )
 }
 

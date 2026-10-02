@@ -71,6 +71,61 @@ class WidgetModelTest {
     }
 
     @Test
+    fun `a line two nearby stops serve shows once, from the nearer stop`() {
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(
+                stop("490000001A", listOf(departure("73", 60).copy(mode = "bus")), now.minusSeconds(30)),
+                stop("490000001B", listOf(departure("73", 240).copy(mode = "bus")), now.minusSeconds(30)),
+            ),
+            fetchedAt = now.minusSeconds(30),
+            nearestFirst = listOf("490000001B", "490000001A"),
+        )
+        // The farther stop's bus is sooner, but the nearer stop is the one the rider would walk to.
+        assertEquals(listOf("490000001B"), widgetModel(snapshot, now).rows.map { it.row.stopId })
+    }
+
+    @Test
+    fun `a journey from the nearer stop still drops the farther stop's copy of its line`() {
+        val bus = departure("73", 60).copy(mode = "bus")
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(
+                stop("490000001A", listOf(departure("73", 240).copy(mode = "bus")), now.minusSeconds(30)),
+                stop("490000001B", listOf(bus), now.minusSeconds(30)),
+            ),
+            fetchedAt = now.minusSeconds(30),
+            journeys = listOf(WidgetJourney("490000001B", setOf(JourneyCall.of(bus)))),
+            nearestFirst = listOf("490000001B", "490000001A"),
+        )
+        // The line once, as the journey's row from the nearer stop; not again from the farther one.
+        assertEquals(listOf("490000001B"), widgetModel(snapshot, now).rows.map { it.row.stopId })
+    }
+
+    @Test
+    fun `without a saved nearest-first order every stop's rows are shown`() {
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(
+                stop("490000001A", listOf(departure("73", 60).copy(mode = "bus")), now.minusSeconds(30)),
+                stop("490000001B", listOf(departure("73", 240).copy(mode = "bus")), now.minusSeconds(30)),
+            ),
+            fetchedAt = now.minusSeconds(30),
+        )
+        assertEquals(listOf("490000001A", "490000001B"), widgetModel(snapshot, now).rows.map { it.row.stopId })
+    }
+
+    @Test
+    fun `different lines at two nearby stops are both kept`() {
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(
+                stop("490000001A", listOf(departure("73", 60).copy(mode = "bus")), now.minusSeconds(30)),
+                stop("490000001B", listOf(departure("38", 240).copy(mode = "bus")), now.minusSeconds(30)),
+            ),
+            fetchedAt = now.minusSeconds(30),
+            nearestFirst = listOf("490000001B", "490000001A"),
+        )
+        assertEquals(setOf("73", "38"), widgetModel(snapshot, now).rows.mapTo(HashSet()) { it.row.lineId })
+    }
+
+    @Test
     fun `a mode hidden from the near-me list is left out of the widget too`() {
         val bus = departure("73", 60).copy(mode = "bus")
         val snapshot = DeparturesSnapshot(

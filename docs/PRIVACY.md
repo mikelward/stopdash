@@ -53,7 +53,7 @@ usage stats** you can opt in to (see below): off unless you turn them on, they s
 details, app interactions, device details and identifiers, and the approximate region Google
 derives from your IP address, but never your location, stops or journeys. The second is **your
 own Android backup and device-to-device transfer**, if you have it enabled: like any app's data, your saved stopdash
-data (your settings and its last-good departures snapshot) rides it, so a phone swap keeps your
+data (your settings and its last-good departures snapshot, which lists the widget's nearby stops nearest first but never how far each was) rides it, so a phone swap keeps your
 setup — all but the crash-report opt-in, which stays with the install, the rows your watch's complications show, which the phone relearns from the watch, and the stops the app last found near you, which say where you are now and are kept on the phone only. That is Android's channel, tied to your Google account — not something stopdash sends.
 The third is a **bug report you choose to send** (see *Sending a bug report* below): it hands
 the app you pick a diagnostic report that, unlike everything else here, **includes your exact

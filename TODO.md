@@ -2546,13 +2546,23 @@ and these carry the rest as their own PRs:
       catch it. Deferred with the rest of this family (the snapshot deliberately carries only
       honest last-good + age); the per-row withhold + age stamp are the honesty floor until
       then, and it's moot once Phase 2's stable watched stops make the expected set known.
-- [ ] **Deduplicate the widget's nearby set before the cap (own PR, Codex P2 on #44).** The
+- [x] **Deduplicate the widget's nearby set before the cap (own PR, Codex P2 on #44).** The
       in-app view calls `DepartureRows.nearbyDeduped(stopDistanceMeters)` so a line served by
       several adjacent stops collapses to its nearest stop; the widget renders from the
       persisted snapshot, which carries no distances, so it can't. Fix needs persisting the
       distances (or a widget-ready deduplicated selection) alongside the snapshot — a
       selection/schema decision, and moot once Phase 2's watched stops replace the interim
       nearby source. Until then adjacent stops can double up a line/direction in the six slots.
+      *Done: the app saves the nearby stops' order nearest first (not their distances, which would
+      put the rider's position in the backed-up snapshot), and the widget folds by it. Without the
+      distances a route's directions aren't kept together at a slightly farther stop, so the widget
+      can show them from two stops where the app shows one.*
+  - [ ] **The watch folds a line to its nearest stop too** (Codex on #473). The tile, the watch app
+        and the default complication mirror the widget's rows but still render
+        `DepartureRows.across` unfolded, so they can show a farther stop's copy of a line the widget
+        folded away. Carry `nearestFirst` through `WatchEnvelope` and apply the same fold in
+        `TileTimeline` and `ComplicationTimeline` (both sides of the phone/watch build, so an older
+        watch build ignores the field).
 - [x] **Scope the widget snapshot to its nearby set (own PR, Codex P1 on #44).** The widget
       snapshot is written only on an *authoritative* arrivals cycle, so if the user moves and
       the new set's fetch fails (offline/rate-limited), the previous location's departures stay

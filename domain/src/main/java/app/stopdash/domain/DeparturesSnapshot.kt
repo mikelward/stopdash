@@ -48,6 +48,12 @@ data class DeparturesSnapshot(
     // Each line's last status check (good or disrupted), by line id, for the lines the stops show.
     // Empty when none was checked, which renders as before: no line marked.
     val lineStatuses: Map<String, LineStatusCheck> = emptyMap(),
+    // The nearby stops, nearest the rider first, as the app last measured them, so the widget can
+    // show a line once, from its nearest stop, as the in-app list does ([nearestFirstDistances]).
+    // An order, never the distances: several stops' distances would pin down where the rider was
+    // (SPEC *Privacy*). Only the app knows where the rider is, so only its saves set this; a
+    // journey-only stop isn't in it. Empty when unknown, which shows every stop's rows.
+    val nearestFirst: List<String> = emptyList(),
 ) {
     /**
      * The alerts to mark at [now]: the lines disrupted, or with work still to come
@@ -113,6 +119,19 @@ data class DeparturesSnapshot(
             journeyOnlyStopIds = journeyOnly,
             missingStopIds = missing,
         )
+    }
+
+    /**
+     * [nearestFirst] as stand-in distances for [DepartureRows.nearbyDeduped]: only the order is kept,
+     * so each step is wider than [DepartureRows.TOGETHER_SLACK_METERS], and a route's two directions
+     * are each shown from their own nearest stop rather than kept together at one a little farther.
+     * Empty when the order is unknown.
+     */
+    fun nearestFirstDistances(): Map<String, Double> =
+        nearestFirst.withIndex().associate { (rank, id) -> id to (rank + 1) * RANK_STEP_METERS }
+
+    private companion object {
+        val RANK_STEP_METERS = 2 * DepartureRows.TOGETHER_SLACK_METERS
     }
 
     /** [withDismissals] for [dismissed] active dismissals, none ended. */
@@ -440,6 +459,8 @@ object WidgetJourneys {
             missingStopIds = stored?.missingStopIds.orEmpty() - nextIds,
             // The line checks ride along, less any only a dropped stop showed.
             lineStatuses = stored?.lineStatuses.orEmpty().filterKeys { it in LineStatusCheck.linesOf(next) },
+            // The app's nearest-first order rides along too, for the stops still held.
+            nearestFirst = stored?.nearestFirst.orEmpty().filter { it in nextIds },
         )
     }
 

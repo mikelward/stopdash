@@ -297,6 +297,9 @@ class MainViewModel(
             // Each kept line's last determined status, stamped with when TfL gave it, so the widget
             // marks a disrupted service and withholds the mark at the staleness threshold (SPEC D3/D4).
             lineStatuses = widgetLineChecks(kept),
+            // Nearest the rider now first, so the widget shows a line once, from its nearest stop, as
+            // this list does. The nearby stops only: a journey-only origin isn't one the rider is near.
+            nearestFirst = nearestFirstOf(kept.map { it.stopId }.filter { it in nearIds }, stopDistanceMeters),
         )
     }
 
@@ -637,6 +640,10 @@ class MainViewModel(
     private var initLoadJob: Job? = null
 
     init {
+        // The order this model starts from, stored at once: a model made after a move (a new process,
+        // say) starts from the new distances, and its first refresh may fail before saving. The store
+        // writes only a change ([SnapshotStore.updateNearestFirst]).
+        nearestFirstOf(nearStops.map { it.id }, stopDistanceMeters).takeIf { it.isNotEmpty() }?.let(::updateWidgetNearestFirst)
         viewModelScope.launch {
             departureSourceChanges.drop(1).collect {
                 arrivalsFetchedAt.clear()
@@ -1790,6 +1797,11 @@ class MainViewModel(
      * [reconcile] runs it; so does an opened farther card's model when the rider moves.
      */
     fun remeasure(newDistanceMeters: Map<String, Double>) {
+        val near = nearStops.map { it.id }
+        val order = nearestFirstOf(near, newDistanceMeters)
+        // Stored when it changes, so the widget folds by where the rider is now whether or not the
+        // refresh that follows succeeds (Codex on #473); the distances themselves are never stored.
+        if (order != nearestFirstOf(near, stopDistanceMeters)) updateWidgetNearestFirst(order)
         stopDistanceMeters = newDistanceMeters
         (_state.value as? DeparturesUiState.Loaded)?.let { loaded ->
             val places = nearbyPlaces()
@@ -1828,6 +1840,27 @@ class MainViewModel(
                 throw e
             } catch (e: Exception) {
                 warn("widget snapshot nearer update failed: ${reason(e)}")
+            }
+        }
+    }
+
+    /** Store [order] in the widget snapshot, off this ViewModel's lifecycle, like [updateWidgetNearer]. */
+    private fun updateWidgetNearestFirst(order: List<String>) {
+        // A model that doesn't feed the widget (a farther card, a station's page) stores nothing, so it
+        // takes no number: one would supersede the near-me model's write and write nothing itself.
+        if (snapshotStore === SnapshotStore.NONE) return
+        val asked = NearestFirstWrites.asked.incrementAndGet()
+        viewModelScope.launch {
+            try {
+                withContext(NonCancellable + io) {
+                    NearestFirstWrites.lock.withLock {
+                        if (asked == NearestFirstWrites.asked.get()) snapshotStore.updateNearestFirst(order)
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                warn("widget snapshot order update failed: ${reason(e)}")
             }
         }
     }
@@ -2178,3 +2211,17 @@ private fun byDistance(
         .filter { it.value.name.isNotBlank() }
         .sortedBy { distanceMeters[it.key] ?: Double.MAX_VALUE }
         .associateTo(LinkedHashMap()) { it.key to it.value }
+
+/** [ids] that have a distance in [distanceMeters], nearest first (a tie by id, so the order is stable). */
+internal fun nearestFirstOf(ids: Collection<String>, distanceMeters: Map<String, Double>): List<String> =
+    ids.filter { it in distanceMeters }.sortedWith(compareBy<String> { distanceMeters.getValue(it) }.thenBy { it })
+
+/**
+ * Every nearest-first order asked for in this process, numbered, and the lock their writes take in turn:
+ * a write a newer one has superseded is skipped, so an older order can't land last, from this model or
+ * one cleared on a move whose write outlived it (Codex on #473). Process-wide because those writes are.
+ */
+private object NearestFirstWrites {
+    val asked = java.util.concurrent.atomic.AtomicLong()
+    val lock = Mutex()
+}

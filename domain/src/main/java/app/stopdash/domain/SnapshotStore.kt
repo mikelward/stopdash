@@ -95,6 +95,15 @@ interface SnapshotStore {
     suspend fun updateNearer(nearer: Map<String, Terminating.Nearer>) {}
 
     /**
+     * Store [order] (stop ids, nearest the rider first) as the stored nearby stops' order
+     * ([DeparturesSnapshot.nearestFirst]), for the stops it holds as nearby. Like [updateNearer] it
+     * follows the rider whether or not a refresh succeeds, so a move that makes another stop the
+     * nearer doesn't wait on TfL to reach the widget. A no-op when nothing is stored. A stored stop
+     * [order] doesn't rank (one only the previous place had) keeps its stored place after the rest.
+     */
+    suspend fun updateNearestFirst(order: List<String>) {}
+
+    /**
      * Merge [checks] into the stored line statuses, the newer check per line winning, for the lines
      * the stored stops show, leaving the arrivals as stored. A status check that landed while every
      * arrivals fetch failed has no arrivals to save beside it, and would otherwise reach the widget

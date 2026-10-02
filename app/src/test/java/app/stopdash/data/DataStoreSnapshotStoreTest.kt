@@ -339,6 +339,78 @@ class DataStoreSnapshotStoreTest {
     }
 
     @Test
+    fun `the nearest-first order round-trips`() = runTest {
+        val store = DataStoreSnapshotStore(FakeDataStore(null))
+        val ordered = twoStopSnapshot().copy(nearestFirst = listOf("940GZZLUKSX", "940GZZLUOXC"))
+        store.save(ordered)
+        assertEquals(ordered, store.load())
+    }
+
+    @Test
+    fun `saveIfStopsMatch keeps the app's nearest-first order`() = runTest {
+        // Only the app knows where the rider is: a worker's result, with an order from an older load
+        // (or none), must not replace the one the app saved since.
+        val store = DataStoreSnapshotStore(FakeDataStore(twoStopSnapshot().copy(nearestFirst = listOf("940GZZLUKSX", "940GZZLUOXC")).toPersisted()))
+        val refreshed = twoStopSnapshot().copy(fetchedAt = now.plusSeconds(60), nearestFirst = listOf("940GZZLUOXC", "940GZZLUKSX"))
+        assertEquals(true, store.saveIfStopsMatch(refreshed, listOf("940GZZLUOXC", "940GZZLUKSX")))
+        assertEquals(listOf("940GZZLUKSX", "940GZZLUOXC"), store.load()!!.nearestFirst)
+    }
+
+    @Test
+    fun `saveKeepingJourneys takes the caller's nearest-first order`() = runTest {
+        val store = DataStoreSnapshotStore(FakeDataStore(twoStopSnapshot().copy(nearestFirst = listOf("940GZZLUOXC", "940GZZLUKSX")).toPersisted()))
+        store.saveKeepingJourneys(twoStopSnapshot().copy(nearestFirst = listOf("940GZZLUKSX", "940GZZLUOXC")))
+        assertEquals(listOf("940GZZLUKSX", "940GZZLUOXC"), store.load()!!.nearestFirst)
+    }
+
+    @Test
+    fun `updateNearestFirst stores the order for the nearby stops held`() = runTest {
+        val store = DataStoreSnapshotStore(FakeDataStore(twoStopSnapshot().copy(nearestFirst = listOf("940GZZLUOXC", "940GZZLUKSX")).toPersisted()))
+        store.updateNearestFirst(listOf("940GZZLUGONE", "940GZZLUKSX", "940GZZLUOXC"))
+        assertEquals(listOf("940GZZLUKSX", "940GZZLUOXC"), store.load()!!.nearestFirst)
+    }
+
+    @Test
+    fun `an order for another set ranks the stops it shares, the rest after`() = runTest {
+        val stored = twoStopSnapshot().copy(nearestFirst = listOf("940GZZLUOXC", "940GZZLUKSX"))
+        val store = DataStoreSnapshotStore(FakeDataStore(stored.toPersisted()))
+        // A move to a set sharing only one of the stored stops, before its first save: the shared
+        // stop goes first, as it's nearer now; the other keeps its place after it.
+        store.updateNearestFirst(listOf("940GZZLUKSX", "940GZZLUVIC"))
+        assertEquals(listOf("940GZZLUKSX", "940GZZLUOXC"), store.load()!!.nearestFirst)
+        // Nothing shared: the stored order stands.
+        store.updateNearestFirst(listOf("940GZZLUVIC"))
+        assertEquals(listOf("940GZZLUKSX", "940GZZLUOXC"), store.load()!!.nearestFirst)
+    }
+
+    @Test
+    fun `a journey-only stop the new order names is ranked`() = runTest {
+        // The rider moved to a pinned journey's origin before the new set's first save.
+        val stored = twoStopSnapshot().copy(
+            journeyOnlyStopIds = setOf("940GZZLUOXC"),
+            nearestFirst = listOf("940GZZLUKSX"),
+        )
+        val store = DataStoreSnapshotStore(FakeDataStore(stored.toPersisted()))
+        store.updateNearestFirst(listOf("940GZZLUOXC", "940GZZLUKSX"))
+        assertEquals(listOf("940GZZLUOXC", "940GZZLUKSX"), store.load()!!.nearestFirst)
+    }
+
+    @Test
+    fun `updateNearestFirst leaves a newer build's snapshot alone`() = runTest {
+        val newer = twoStopSnapshot().toPersisted().copy(version = PersistedSnapshot.CURRENT_VERSION + 1)
+        val backing = FakeDataStore(newer)
+        DataStoreSnapshotStore(backing).updateNearestFirst(listOf("940GZZLUKSX", "940GZZLUOXC"))
+        assertEquals(newer, backing.state.value)
+    }
+
+    @Test
+    fun `a pruned stop leaves the nearest-first order`() = runTest {
+        val store = DataStoreSnapshotStore(FakeDataStore(twoStopSnapshot().copy(nearestFirst = listOf("940GZZLUOXC", "940GZZLUKSX")).toPersisted()))
+        store.pruneStops(listOf("940GZZLUOXC"))
+        assertEquals(listOf("940GZZLUKSX"), store.load()!!.nearestFirst)
+    }
+
+    @Test
     fun `saveIfStopsMatch discards and keeps the stored snapshot when the set differs`() = runTest {
         // The store now holds a different (relocated) set than the one the caller worked from.
         val store = DataStoreSnapshotStore(FakeDataStore(relocated().toPersisted()))
