@@ -79,6 +79,58 @@ class WatchPublisher(
         routeLines: Map<String, List<RoutePattern>> = emptyMap(),
         force: Boolean = false,
         emptyIfNone: Boolean = false,
+    ): Outcome = attempt(snapshot, starred, hiddenModes, selected, routeLines, force, emptyIfNone).also(::report)
+
+    /** The last link state [report] logged, so a state that holds isn't logged on every publish. */
+    private var reported: String? = null
+
+    /**
+     * Logs where the watch link stands: whether a paired watch has the app, and whether the latest
+     * snapshot was queued for it. Without this a link that never forms (the watch keeps saying
+     * "Open StopDash on your phone") leaves no trace in a bug report. A put only queues the item for
+     * the Data Layer to sync, so it says "queued", never "delivered".
+     *
+     * A queue is logged every time: it happens only when there's something new to send, so it costs
+     * a line per change, and no earlier line can hide it. The states that hold without anything
+     * happening (no watch, nothing stored, nothing new) are logged when they change. An unchanged
+     * envelope still says a watch has the app, so a process that starts with nothing new to send
+     * isn't silent about it. Failures go through [failed], which forgets the last state.
+     */
+    @Synchronized
+    private fun report(outcome: Outcome) {
+        val line = when (outcome) {
+            Outcome.Published -> QUEUED
+            // After a queue, nothing new is no news.
+            Outcome.Unchanged -> if (reported == QUEUED) return else "a paired watch has the app, nothing new to queue"
+            Outcome.NoWatch -> "no paired watch has the app"
+            Outcome.NothingStored -> "nothing stored to send yet"
+            Outcome.Failed -> return
+        }
+        if (line == reported && outcome != Outcome.Published) return
+        reported = line
+        log(line)
+    }
+
+    /**
+     * Logs a failed publish ([reason]: the failure, as a type name, never user data) and forgets the
+     * last state, so whatever follows (a retry that queues, or finds nothing new) is logged and the
+     * log never ends on a failure that was recovered from. Every failure path goes through here, the
+     * caller's own (a stored state it couldn't read) as well as this class's.
+     */
+    @Synchronized
+    fun failed(reason: String) {
+        reported = null
+        log(reason)
+    }
+
+    private suspend fun attempt(
+        snapshot: DeparturesSnapshot?,
+        starred: Set<StarredRow>,
+        hiddenModes: Set<String>,
+        selected: Set<StarredRow>,
+        routeLines: Map<String, List<RoutePattern>>,
+        force: Boolean,
+        emptyIfNone: Boolean,
     ): Outcome {
         val snapshot = snapshot ?: if (emptyIfNone) DeparturesSnapshot(emptyList(), SteadyClock.stamp(now())) else return Outcome.NothingStored
         return try {
@@ -94,12 +146,14 @@ class WatchPublisher(
             throw e
         } catch (e: Exception) {
             // The failure type only: the payload is the user's stops, never logged.
-            log("watch publish failed: ${e::class.simpleName}")
+            failed("watch publish failed: ${e::class.simpleName}")
             Outcome.Failed
         }
     }
 
     companion object {
+        private const val QUEUED = "queued for the watch"
+
         /** A burst of writes (one refresh saves several times) publishes once, at most this often. */
         val COALESCE: Duration = 2.seconds
 

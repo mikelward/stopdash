@@ -258,7 +258,7 @@ object WatchSync {
                 WatchPublisher(
                     DataLayerWatchChannel(appContext, WriteGenerations(prefs)),
                     PrefsPublishMarker(prefs),
-                    log = { StopdashDebugLog.warning("watch: %s", it) },
+                    log = StopdashDebugLog::watchStatus,
                 ).also { publisher = it }
             }
         }
@@ -280,7 +280,7 @@ object WatchSync {
                 throw e
             } catch (e: Exception) {
                 // A store read failed: a failed publish, which the worker retries, never a crash.
-                StopdashDebugLog.warning("watch: stored state unreadable: %s", e::class.simpleName)
+                publisher(appContext).failed("stored state unreadable: ${e::class.simpleName}")
                 return@withLock WatchPublisher.Outcome.Failed
             }
             // The branching lines a refresh took over the asset (usually none), which the widget

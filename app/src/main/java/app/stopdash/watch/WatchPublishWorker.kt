@@ -2,6 +2,8 @@ package app.stopdash.watch
 
 import android.content.Context
 import app.stopdash.StopdashDebugLog
+import com.mikelward.androidlog.DebugLog
+import com.mikelward.androidlog.safe
 import androidx.work.BackoffPolicy
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
@@ -76,12 +78,7 @@ class WatchPublishWorker(appContext: Context, params: WorkerParameters) : Corout
 class PhoneWearListenerService : WearableListenerService() {
     /** A watch asking for a refresh ([WatchRefreshWorker]); it carries only a request id. */
     override fun onMessageReceived(event: MessageEvent) {
-        if (event.path != WatchSyncContract.REFRESH_PATH) return
-        val requestId = WatchRefreshReply.decodeRequest(event.data)
-        if (requestId == null) {
-            StopdashDebugLog.warning("watch: refresh request unreadable")
-            return
-        }
+        val requestId = WatchListenerEvents.refreshRequest(event.path, event.data, ::logWatch) ?: return
         WatchRefreshWorker.enqueue(this, event.sourceNodeId, requestId)
         // Acknowledged at once, so the watch knows the phone is in reach while the refresh queues.
         Wearable.getMessageClient(this)
@@ -99,8 +96,43 @@ class PhoneWearListenerService : WearableListenerService() {
     }
 
     override fun onCapabilityChanged(info: CapabilityInfo) {
-        if (info.name == WatchSyncContract.WATCH_CAPABILITY && info.nodes.isNotEmpty()) {
+        if (WatchListenerEvents.capabilityChanged(info.name, info.nodes.size, ::logWatch)) {
             WatchPublishWorker.enqueue(this, force = true)
         }
+    }
+
+    private fun logWatch(line: String) = StopdashDebugLog.watchStatus(line)
+}
+
+/**
+ * Logs a watch-link [line] ("queued for the watch", "app on 1 paired watch(es)"), marked safe for
+ * the off-device rendering: every one is fixed text, a count or an exception class name, never a
+ * stop, a node id or anything the watch sent, so Crashlytics sees the state rather than `•••`.
+ */
+internal fun DebugLog.watchStatus(line: String) = warning("watch: %s", safe(line))
+
+/**
+ * What [PhoneWearListenerService] makes of a Data Layer event, and the line it logs, apart from
+ * Play services so it's testable. Each logs so a bug report shows whether the watch's side of the
+ * link reaches the phone at all; never a node id or anything the watch sent beyond a request id.
+ */
+internal object WatchListenerEvents {
+    /** The request id of a watch's refresh request at [path], or null to ignore the message. */
+    fun refreshRequest(path: String, data: ByteArray, log: (String) -> Unit): Long? {
+        if (path != WatchSyncContract.REFRESH_PATH) return null
+        val requestId = WatchRefreshReply.decodeRequest(data)
+        log(if (requestId == null) "refresh request unreadable" else "refresh requested")
+        return requestId
+    }
+
+    /**
+     * Whether a capability change named [name], now on [nodes] paired watches, calls for a forced
+     * republish: only StopDash's own, and only when some watch has it. Logs the count, which tells a
+     * watch the phone never sees from one it lost.
+     */
+    fun capabilityChanged(name: String, nodes: Int, log: (String) -> Unit): Boolean {
+        if (name != WatchSyncContract.WATCH_CAPABILITY) return false
+        log("app on $nodes paired watch(es)")
+        return nodes > 0
     }
 }

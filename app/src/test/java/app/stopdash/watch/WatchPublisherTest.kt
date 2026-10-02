@@ -143,6 +143,62 @@ class WatchPublisherTest {
     }
 
     @Test
+    fun `each queue is logged, and a state that holds only when it changes`() = runTest {
+        // A link that never forms left no trace: the watch kept asking for the phone and the
+        // phone's log said nothing about the watch at all.
+        val channel = FakeChannel(installed = false)
+        val publisher = WatchPublisher(channel, FakeMarker(), logged::add) { now }
+        publisher.publish(snapshot(), emptySet())
+        publisher.publish(snapshot(minutes = 4), emptySet())
+        assertEquals(listOf("no paired watch has the app"), logged)
+        channel.installed = true
+        publisher.publish(snapshot(), emptySet())
+        publisher.publish(snapshot(), emptySet())
+        publisher.publish(snapshot(minutes = 5), emptySet())
+        assertEquals(listOf("no paired watch has the app", "queued for the watch", "queued for the watch"), logged)
+        publisher.publish(null, emptySet())
+        assertEquals("nothing stored to send yet", logged.last())
+    }
+
+    @Test
+    fun `a restarted process with nothing new to send still says a watch has the app`() = runTest {
+        // The marker survives the restart, so the first publish is Unchanged: without its own line
+        // the log would be as silent as before.
+        val marker = FakeMarker()
+        WatchPublisher(FakeChannel(), marker, {}) { now }.publish(snapshot(), emptySet())
+        val restarted = WatchPublisher(FakeChannel(), marker, logged::add) { now }
+        assertEquals(WatchPublisher.Outcome.Unchanged, restarted.publish(snapshot(), emptySet()))
+        restarted.publish(snapshot(), emptySet())
+        assertEquals(listOf("a paired watch has the app, nothing new to queue"), logged)
+    }
+
+    @Test
+    fun `a queue that succeeds after a failure is logged, so the log doesn't end on the failure`() = runTest {
+        val channel = FakeChannel()
+        val publisher = WatchPublisher(channel, FakeMarker(), logged::add) { now }
+        publisher.publish(snapshot(), emptySet())
+        channel.failing = true
+        publisher.publish(snapshot(minutes = 4), emptySet())
+        channel.failing = false
+        publisher.publish(snapshot(minutes = 4), emptySet())
+        assertEquals(listOf("queued for the watch", "watch publish failed: IOException", "queued for the watch"), logged)
+    }
+
+    @Test
+    fun `a caller's own failure resets the state, so the recovery after it is logged`() = runTest {
+        // The stored state couldn't be read before publishing: the retry finds nothing new, and
+        // that is logged rather than hidden behind the queue before the failure.
+        val publisher = WatchPublisher(FakeChannel(), FakeMarker(), logged::add) { now }
+        publisher.publish(snapshot(), emptySet())
+        publisher.failed("stored state unreadable: IOException")
+        publisher.publish(snapshot(), emptySet())
+        assertEquals(
+            listOf("queued for the watch", "stored state unreadable: IOException", "a paired watch has the app, nothing new to queue"),
+            logged,
+        )
+    }
+
+    @Test
     fun `a failed write is logged without user data and retried by the next attempt`() = runTest {
         val channel = FakeChannel(failing = true)
         val marker = FakeMarker()
