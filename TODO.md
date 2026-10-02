@@ -217,11 +217,15 @@ exercises the whole spine the widget later renders from.
   - [x] **Log recent process-exit reasons at startup** into the shared log
         (`ActivityManager.getHistoricalProcessExitReasons`), as the siblings do
         (`ProcessExitReasons`), so a silent kill or native crash leaves a coarse cause in the
-        next run's diagnostics. Coarse reason / importance / status only — never the platform's
+        next run's diagnostics. Coarse reason / importance / status — never the platform's
         free-text description. *Done through androidlog's shared `ProcessExits` (2.3.72), off the
         main thread at startup: the last five exits and the package's install/update times, as
         pinned lines. The bug report reads the log with `boundedSnapshot`, so pinned lines a busy
-        run pushed out of the ring still reach it, ahead of the ring.*
+        run pushed out of the ring still reach it, ahead of the ring. Since androidlog 3.1.74, after
+        an ANR it also pins where the main thread was stuck: up to 14 frames (class, method, file,
+        line; never a value) read from the platform's trace, on the device's copy and the
+        consent-gated report, with a placeholder for Crashlytics. Alongside it, StrictMode notes
+        the main thread's disk reads and writes (`MainThreadViolations`).*
 - [x] **Persist the last-good snapshot; show a stamped placeholder at once and fill it
       in when the async read completes** (SPEC snapshot-render — never block the first
       frame on the DataStore read; the intro says the first deliverable exercises

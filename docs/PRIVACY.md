@@ -282,7 +282,10 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   for the last five, the reason (e.g. `crash`, `anr`, `lowMemory`), how important Android
   counted the app at the time, the exit status and when it happened, plus when the app was
   installed and last updated — **never** Android's free-text description of an exit, which can
-  name another app.
+  name another app. After the most recent time the app stopped responding (an "ANR"), where
+  it was stuck: a few lines of the frozen screen's code, each a place in the app's or a
+  library's code (a class, method, file and line number), read from Android's own record of
+  that freeze. Never a value the code was working on.
 - **the app's own code reading or writing the disk on the screen's thread**, which can make
   the screen stutter: the kind (e.g. `DiskReadViolation`) and the place in the app's code that
   did it, once each per run, at most 20 — never what was read or written.
