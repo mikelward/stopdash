@@ -114,6 +114,8 @@ open class StopdashApp : Application() {
         // file keeps the full crash, Crashlytics gets the redacted copy.
         installCrashRedaction()
         installDiagnosticLog()
+        // Right after the log, so the main thread's disk use from here on is said there.
+        installMainThreadWatch()
         // Next, so its log sink sees startup's lines; it holds them until the stored choice loads.
         installTelemetry()
         logProcessExits()
@@ -122,6 +124,16 @@ open class StopdashApp : Application() {
         warmSharedState()
         installWatchSync()
         installWidgetDismissalRedraw()
+    }
+
+    /**
+     * Says in the debug log when the main thread reads or writes the disk
+     * ([MainThreadViolations]). `open` so the test [Application] can skip it: Robolectric runs
+     * everything on its main thread, so a test would report its own setup.
+     */
+    protected open fun installMainThreadWatch() {
+        // The code's package, not packageName: a debug build's applicationId ends in ".debug".
+        MainThreadViolations.install(StopdashDebugLog, StopdashApp::class.java.name.substringBeforeLast('.'))
     }
 
     /**

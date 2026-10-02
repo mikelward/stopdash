@@ -283,6 +283,9 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   counted the app at the time, the exit status and when it happened, plus when the app was
   installed and last updated — **never** Android's free-text description of an exit, which can
   name another app.
+- **the app's own code reading or writing the disk on the screen's thread**, which can make
+  the screen stutter: the kind (e.g. `DiskReadViolation`) and the place in the app's code that
+  did it, once each per run, at most 20 — never what was read or written.
 
 The log **never** carries:
 
