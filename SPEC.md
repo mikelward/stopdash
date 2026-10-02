@@ -2441,6 +2441,23 @@ surface.)
   user's own key for that service, sent at their request; `docs/PRIVACY.md` names National Rail as
   a recipient, and the Data Safety form and privacy-policy link are re-checked before the release
   that ships it.
+- **Step-free access (bundled; maintainer, 2026-10-02).** How far each platform is step-free comes
+  from TfL's open station data, not its live API: a StopPoint's `accessibilitySummary` is empty, and
+  its "access via lift" flag is one answer per station, missing at many (Victoria, Warren Street).
+  The station data maps each station: its areas, the level paths, ramps and lifts between them,
+  joined to the street and to every platform, plus the gap and step from each platform onto each
+  line's trains. A platform is step-free from the street when that map reaches it without a stair,
+  and its level, per line, is **none** (no step-free route), **to the platform** (a step or gap onto
+  the train), **by ramp** (staff put one down) or **level** onto the train (within TfL's 85 mm gap
+  and 50 mm step, at least at a marked spot, which TfL names). TfL grades **per platform and line**,
+  not per station: Westminster is level onto the Jubilee line and by ramp onto the District; Bank's
+  Northern line is step-free and its Central line isn't. A route needing a lift not every wheelchair
+  fits is marked, as is an entrance it must start at. A platform TfL gives no route information for
+  is left out: unknown, never assumed either way. The table is built by
+  `scripts/build_step_free.py`, bundled beside the station list and rebuilt with it weekly; the app
+  reads it by stop and line (`StepFreeAccess`). **Cost: £0**, no request from the app; the build
+  downloads ~200 KB once a week. *Built, not yet shown*: the marks on the route page's stop list and
+  elsewhere come next (TODO).
 - **Reliability:** one required dependency, so if TfL is down or throttling, stopdash shows
   stamped last-good data and an offline/rate-limited notice (never a blank or an
   unlabeled stale number). Added latency lives off every render path (snapshot-render,

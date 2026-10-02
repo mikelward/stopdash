@@ -1,25 +1,28 @@
 name: station-index
 
 # Builds the bundled station index (app/src/main/assets/stations/station_index.json) from TfL,
-# and the National Rail station codes beside it (crs_codes.json) from NaPTAN, and commits both to
-# the pull request's branch — the list "Find a station" searches on the device (SPEC *Finding
-# stops*) and the codes National Rail boards are asked for by. It runs when a pull request changes
-# either builder or this workflow. The weekly refresh is station-index-refresh.yml, which opens a
-# pull request of its own.
+# the National Rail station codes beside it (crs_codes.json) from NaPTAN, and the step-free access
+# table (step_free.json) from TfL's station data, and commits them to the pull request's branch —
+# the list "Find a station" searches on the device (SPEC *Finding stops*), the codes National Rail
+# boards are asked for by, and how far each platform is step-free (SPEC *Step-free access*). It
+# runs when a pull request changes a builder or this workflow. The weekly refresh is
+# station-index-refresh.yml, which opens a pull request of its own.
 #
 # Split like ci.yml's screenshot sync: the build job runs PR code (the scripts) with a read-only
 # token, and the shared ci-commit-artifact workflow does the commit with its own credential,
 # never running PR code.
 #
 # Cost and reliability (AGENTS.md): 0 pounds — a few keyless TfL requests, one keyless NaPTAN
-# download and a minute of Actions time per run; nothing the app sends, so no Play Data Safety or
-# battery change. If TfL or NaPTAN is down or answers oddly the script refuses to write, the run
-# fails, and the committed files stay as they were.
+# download, one keyless TfL station data download (~200 KB) and a minute of Actions time per run;
+# nothing the app sends, so no Play Data Safety or battery change. If TfL or NaPTAN is down or
+# answers oddly the script refuses to write, the run fails, and the committed files stay as they
+# were.
 on:
   pull_request:
     paths:
       - scripts/build_station_index.py
       - scripts/build_crs_index.py
+      - scripts/build_step_free.py
       - .github/workflows/station-index.yml
 permissions: {}
 concurrency:
@@ -43,6 +46,10 @@ jobs:
         run: python3 scripts/build_crs_index_test.py
       - name: Build the station codes from NaPTAN
         run: python3 scripts/build_crs_index.py --stations build/stations/station_index.json --out build/stations/crs_codes.json
+      - name: Test the step-free builder
+        run: python3 scripts/build_step_free_test.py
+      - name: Build step-free access from TfL's station data
+        run: python3 scripts/build_step_free.py --out build/stations/step_free.json
       - name: Upload the index
         uses: actions/upload-artifact@v4
         with:
@@ -64,7 +71,7 @@ jobs:
     with:
       artifact-name: station-index
       dest-path: app/src/main/assets/stations
-      commit-message: 'Refresh the list of stations search finds'
+      commit-message: 'Refresh station details from TfL'
       branch-ref: ${{ github.event.pull_request.head.ref }}
       expected-head-sha: ${{ github.event.pull_request.head.sha }}
     # The commit credential is an environment secret, which reaches a called workflow only this way.

@@ -478,9 +478,21 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         multi-row card (keep long-press-to-star and tap-to-detail per row).
   - [ ] **Show step-free / accessibility status** (maintainer, 2026-09-26). Wheelchair icons (and
         similar) on the route detail's stop list and on the stop/station view, so a rider who needs
-        step-free access can see which stations have it. TfL's StopPoint data carries accessibility
-        properties; whether they're per station or per platform, and how current they are, is to
-        check. A step-free-access outage notice should then read against it.
+        step-free access can see which stations have it. A step-free-access outage notice should
+        then read against it.
+    - [x] **The data** (maintainer, 2026-10-02: "build the data first"). TfL's live StopPoint data
+          won't do (`accessibilitySummary` empty; an "access via lift" flag per station, missing at
+          Victoria, Warren Street, Highbury & Islington), so the app bundles TfL's open station data
+          as `assets/stations/step_free.json` (`scripts/build_step_free.py`, rebuilt weekly with the
+          station list): per platform and line, none / to the platform / by ramp / level onto the
+          train, read by `StepFreeAccess` (SPEC *Data source → Step-free access*). Grading is per
+          platform and line, not per station.
+    - [ ] **The marks**: wheelchair icons on the route page's stop list first, then the stop/station
+          view and a trip's legs. *To decide* with the maintainer: the icon for each level (to the
+          platform, by ramp, level), and what a platform-less view (a station header) shows when its
+          platforms differ.
+    - [ ] **Lifts out of service**: TfL's live lift disruptions (`/Disruptions/Lifts/v2`) name the
+          lifts the bundled routes use, so a mark could drop while one is out.
   - [x] **Tap a route row → all stops for that route** (maintainer, 2026-09-22). Extends the
         route-detail tap to show the route's full stop sequence, not just star + disruption text.
         *Done: the route page lists every station from the boarding stop to where the soonest train
@@ -1061,10 +1073,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   `StepFreeToVehicle`), with a line under Station and Fully saying what each is for.
             - [ ] The "Accessible" header: the legs' `obstacles` list stairs, lifts and ramps, so a
                   route can be judged; *to decide:* what it means with "Any" chosen.
-            - [ ] The wheelchair icons: TfL's live StopPoint data leaves `accessibilitySummary`
-                  empty, so they need another source (likely TfL's station-facilities data,
-                  bundled); *to decide* by the maintainer. Also how TfL grades a station with some
-                  platforms step-free and some not.
+            - [ ] The wheelchair icons: the data is bundled now (TfL's station data, per platform
+                  and line; *Show step-free / accessibility status*); the marks themselves are
+                  tracked there.
       - [x] **Move bus stop placement into `:domain`** (Codex, #398): which pole of a stop pair, or
             which stand of a bus station, a bus leg boards and gets off at is product logic, so
             `polesOf`, `onPoles`, `placedOnPoles`, `endPole`, `placedStands`, `PlacedStand`,

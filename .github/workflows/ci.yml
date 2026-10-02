@@ -131,6 +131,8 @@ jobs:
         run: python3 scripts/build_station_index_test.py
       - name: Test the National Rail station code builder
         run: python3 scripts/build_crs_index_test.py
+      - name: Test the step-free access builder
+        run: python3 scripts/build_step_free_test.py
       - name: Assemble debug APK
         run: ./gradlew assembleDebug
       - name: Upload debug APK
