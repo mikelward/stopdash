@@ -1898,7 +1898,14 @@ line, the alert by its full words, the stop and the way) for them, and they appl
 their stored departures, as they do a dismissal. The verdicts kept mirror the list as it is: one at a
 stop it no longer shows goes, so the app never keeps where the rider has been, and so does one on an
 alert no longer on its rows, so the same words back later flag until the app places them again. A
-surface applies, and the watch is sent, verdicts only for the stops it carries. A verdict counts only for the alert it was reached
+surface applies, and the watch is sent, verdicts only for the stops it carries. The widget's own
+refresh places the alerts it fetches the same way, at the stops the widget then shows, with the routes
+the app already holds and no request of its own, so one that comes up while the app is closed needn't
+flag where it lies behind a stop. It counts as checked only the lines it asked TfL about, those TfL
+left out of its answer included, and when it keeps what it found it speaks only for the stops it placed
+at that are still shown, and for the lines whose stored check is still its answer: a verdict anywhere
+else is the app's to keep or drop, so a refresh that runs while the app moves the list on, or checks a
+line again, can't undo the app's verdicts. A verdict counts only for the alert it was reached
 on, and only while that's the line's sole alert. It goes as soon as the app weighs that alert at that
 stop again and no longer finds it behind (a refreshed route, say); one the app doesn't weigh again
 stands a day after it was last reached, the life of the routes behind it. So until the app has placed an alert at a stop, those surfaces flag it,

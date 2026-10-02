@@ -3124,7 +3124,8 @@ class MainActivity : ComponentActivity() {
         private val routeStopsLock = Any()
         private var routeStopsInstance: RouteStopsRepository? = null
 
-        private fun routeStops(context: Context): RouteStopsRepository = synchronized(routeStopsLock) {
+        // Internal for the widget's refresh, which reads only what's held ([placeWidgetAlerts]).
+        internal fun routeStops(context: Context): RouteStopsRepository = synchronized(routeStopsLock) {
             routeStopsInstance ?: RouteStopsRepository(
                 source = KtorTflClient(
                     httpClient,

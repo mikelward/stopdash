@@ -28,7 +28,13 @@ data class AlertBehind(val lineId: String, val fingerprint: String, val stopId: 
  * One weighed and not behind is a verdict disproved: the route or the rows have changed since it was
  * reached. [stops] are every stop the rows were at, and [alerts] every alert on them by line and full
  * words ([lineAlertFingerprint]), placed or not: the store keeps verdicts on these alone, so it mirrors
- * the list as it is, never a place the rider has left or an alert since gone (Codex, PR #471).
+ * the list as it is, never a place the rider has left or an alert since gone (Codex, PR #471). [lines]
+ * are the lines whose alerts this placement checked, when it wasn't all of them: the widget's refresh
+ * speaks only for the lines it asked TfL about whose answer is still the one stored, and an alert on
+ * another line isn't gone for being unseen. [everyStop] says [stops] are every stop the list shows, so
+ * a verdict at any other is at a place left behind; the widget's refresh speaks only for the stops it
+ * placed at, as the app may have moved the list on while it ran, and a verdict elsewhere is the app's to
+ * drop (Codex, PR #472). A placement adds and drops verdicts only on its own [lines] at its own [stops].
  */
 data class AlertPlacement(
     val behind: Set<AlertBehind>,
@@ -36,6 +42,9 @@ data class AlertPlacement(
     val stops: Set<String> = emptySet(),
     // Each as (line id, fingerprint).
     val alerts: Set<Pair<String, String>> = emptySet(),
+    // Null: every line at [stops].
+    val lines: Set<String>? = null,
+    val everyStop: Boolean = true,
 ) {
     companion object {
         val NONE = AlertPlacement(emptySet(), emptySet())
@@ -78,20 +87,40 @@ object AlertsBehind {
     val MAX_AGE: Duration = RouteStopsRepository.MAX_AGE
     val RESTAMP: Duration = Duration.ofHours(1)
 
+    /**
+     * What placing the alerts in [statuses] at [stops] finds, with the routes in [sequences]: the rows
+     * as [DepartureRows.across] builds them, placed by [DepartureRows.alertsBehind], at every one of
+     * [stops], checking [lines] (null: all of them).
+     */
+    fun placement(
+        stops: List<StopArrivals>,
+        statuses: Map<String, LineStatus>,
+        sequences: Map<String, LineSequence?>,
+        now: Instant,
+        lines: Set<String>? = null,
+    ): AlertPlacement =
+        DepartureRows.alertsBehind(DepartureRows.across(stops, now, statuses), sequences)
+            .copy(stops = stops.mapTo(HashSet()) { it.stopId }, lines = lines)
+
     /** The verdicts in [stored] still standing at [now]; one stamped ahead of [now] (the clock went back) isn't. */
     fun standing(stored: Map<AlertBehind, Instant>, now: Instant): Set<AlertBehind> =
         stored.filterValues { fresh(it, now) }.keys
 
     /**
-     * [stored] with [placement]'s verdicts added or stamped [now], and those no longer standing dropped:
-     * lapsed, at a stop [placement] wasn't at, on an alert not on its rows, or weighed by it and not found
-     * behind. Null when that changes nothing worth a write: every one reached is held and younger than
-     * [RESTAMP], and none has gone.
+     * [stored] with [placement]'s verdicts on its lines at its stops added or stamped [now], and those
+     * no longer standing dropped: lapsed, at a stop [placement] wasn't at (when it was at
+     * [AlertPlacement.everyStop]), or on a line it checked and either on an alert not on its rows or
+     * weighed by it and not found behind. Null when that changes nothing worth a write: every one reached
+     * is held and younger than [RESTAMP], and none has gone.
      */
     fun recorded(stored: Map<AlertBehind, Instant>, placement: AlertPlacement, now: Instant): Map<AlertBehind, Instant>? {
-        val reached = placement.behind
+        fun checked(verdict: AlertBehind) = placement.lines?.contains(verdict.lineId) ?: true
+        val reached = placement.behind.filterTo(HashSet()) { it.stopId in placement.stops && checked(it) }
         val kept = stored.filter { (verdict, at) ->
-            fresh(at, now) && verdict.stopId in placement.stops && (verdict.lineId to verdict.fingerprint) in placement.alerts &&
+            if (!fresh(at, now)) return@filter false
+            if (verdict.stopId !in placement.stops) return@filter !placement.everyStop
+            if (!checked(verdict)) return@filter true
+            (verdict.lineId to verdict.fingerprint) in placement.alerts &&
                 (verdict in reached || verdict !in placement.weighed)
         }
         val due = reached.filter { verdict -> kept[verdict]?.let { Duration.between(it, now) >= RESTAMP } ?: true }
