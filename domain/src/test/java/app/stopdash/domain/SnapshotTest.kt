@@ -69,6 +69,22 @@ class SnapshotTest {
     }
 
     @Test
+    fun `a stop's trains with no time come with its arrivals, kept with the prior when they are`() {
+        val delayed = UntimedTrain(departure("great-example", 60), canceled = false)
+        val fresh = Snapshot.mergeStop(
+            "910GEXAMPLE", "Example", "", emptyList(), emptyList(), emptyList(), prior = null, now = now,
+            freshUntimed = listOf(delayed),
+        )
+        assertEquals(listOf(delayed), fresh?.untimed)
+        // Arrivals failed: the prior departures and their untimed trains stand together.
+        val kept = Snapshot.mergeStop("910GEXAMPLE", "Example", "", emptyList(), null, emptyList(), prior = fresh, now = now)
+        assertEquals(listOf(delayed), kept?.untimed)
+        // Fresh arrivals with none drop them.
+        val cleared = Snapshot.mergeStop("910GEXAMPLE", "Example", "", emptyList(), emptyList(), emptyList(), prior = fresh, now = now)
+        assertEquals(emptyList<UntimedTrain>(), cleared?.untimed)
+    }
+
+    @Test
     fun `fresh arrivals and disruptions are stamped now`() {
         val result = merge(
             freshDepartures = listOf(departure("victoria", 120)),

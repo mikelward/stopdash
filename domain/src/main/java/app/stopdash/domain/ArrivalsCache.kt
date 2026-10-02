@@ -16,9 +16,16 @@ import kotlin.time.toKotlinDuration
 class ArrivalsCache {
     /**
      * One stop's last arrivals, when they were fetched, its National Rail feed then ([TflClient.railFeed]),
-     * and the source they came from ([TflClient.arrivalsSource]).
+     * the source they came from ([TflClient.arrivalsSource]), and the trains its board listed with no
+     * time ([TflClient.untimed]).
      */
-    data class Entry(val departures: List<Departure>, val fetchedAt: Instant, val railFeed: RailFeed? = null, val source: Any? = null)
+    data class Entry(
+        val departures: List<Departure>,
+        val fetchedAt: Instant,
+        val railFeed: RailFeed? = null,
+        val source: Any? = null,
+        val untimed: List<UntimedTrain> = emptyList(),
+    )
 
     private val entries = LinkedHashMap<String, Entry>()
 
@@ -58,12 +65,13 @@ class ArrivalsCache {
         railFeed: RailFeed? = null,
         generation: Long = this.generation,
         source: Any? = null,
+        untimed: List<UntimedTrain> = emptyList(),
     ) {
         if (generation != this.generation) return
         val held = entries[stopId]
         if (held != null && held.source == source && held.fetchedAt.isAfter(at)) return
         entries.remove(stopId)
-        entries[stopId] = Entry(departures, at, railFeed, source)
+        entries[stopId] = Entry(departures, at, railFeed, source, untimed)
         while (entries.size > MAX) entries.remove(entries.keys.first())
     }
 
@@ -92,7 +100,11 @@ class ArrivalsCache {
      * others to ask afresh. For what several screens' clients each ask for, such as a station's
      * National Rail board; a kept answer keeps its age, as any stop's does.
      */
-    suspend fun fetchOnce(key: String, now: Instant, source: Any?, fetch: suspend () -> List<Departure>?): Entry? {
+    suspend fun fetchOnce(key: String, now: Instant, source: Any?, fetch: suspend () -> List<Departure>?): Entry? =
+        fetchBoardOnce(key, now, source) { fetch()?.let(::RailBoard) }
+
+    /** [fetchOnce] for a National Rail board, its trains with no time ([RailBoard.untimed]) kept with it. */
+    suspend fun fetchBoardOnce(key: String, now: Instant, source: Any?, fetch: suspend () -> RailBoard?): Entry? {
         val pending = CompletableDeferred<Fetch>()
         val (askedIn, running) = synchronized(this) {
             // What's kept and what's under way are read together: a fetch keeps its answer before
@@ -106,15 +118,15 @@ class ArrivalsCache {
         if (running != null) {
             return when (val outcome = running.await()) {
                 is Fetch.Done -> outcome.entry
-                Fetch.Abandoned -> fetchOnce(key, now, source, fetch)
+                Fetch.Abandoned -> fetchBoardOnce(key, now, source, fetch)
             }
         }
         var outcome: Fetch = Fetch.Abandoned
         try {
             // Stamped when asked, as [CachingTflClient] stamps a stop's.
             val askedAt = SteadyClock.stamp(now)
-            val entry = fetch()?.let { Entry(it, askedAt, source = source) }
-            if (entry != null) put(key, entry.departures, askedAt, generation = askedIn, source = source)
+            val entry = fetch()?.let { Entry(it.departures, askedAt, source = source, untimed = it.untimed) }
+            if (entry != null) put(key, entry.departures, askedAt, generation = askedIn, source = source, untimed = entry.untimed)
             outcome = Fetch.Done(entry)
             return entry
         } finally {
@@ -167,7 +179,7 @@ class CachingTflClient(
         val source = tfl.arrivalsSource()
         return fetch().also {
             if (shareable && tfl.shareable(stopId) && tfl.arrivalsSource() == source) {
-                cache.put(stopId, it, tfl.stampOf(stopId, askedAt), tfl.railFeed(stopId), generation, source)
+                cache.put(stopId, it, tfl.stampOf(stopId, askedAt), tfl.railFeed(stopId), generation, source, tfl.untimed(stopId))
             }
         }
     }

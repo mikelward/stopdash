@@ -131,6 +131,44 @@ class RouteDetailScreenScreenshotTest {
     }
 
     @Test
+    fun aRailTrainWithNoTime_listsInItsPlaceAmongTheTimes() {
+        fun train(minutes: Long) = Departure(
+            "great-northern", "Great Northern", "", "Cambridge", "Platform 4", now.plusSeconds(minutes * 60), "national-rail",
+        )
+        val stop = StopArrivals(
+            stopId = "910GEXAMPLE",
+            stopName = "Example",
+            departures = listOf(train(5), train(12)),
+            fetchedAt = now,
+            untimed = listOf(
+                app.stopdash.domain.UntimedTrain(train(8), canceled = true),
+                app.stopdash.domain.UntimedTrain(train(15), canceled = false),
+            ),
+        )
+        val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
+        composeRule.setContent {
+            StopDashTheme {
+                RouteDetailScreen(
+                    row = row,
+                    isStarred = false,
+                    starrable = true,
+                    disruptionUnknown = false,
+                    stale = false,
+                    now = now,
+                    onToggleStar = {},
+                    onBack = {},
+                    routeStops = RouteStopsUi.Loading,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        // Uncapped here, so every one; the base strings' US spelling under the test's default locale.
+        composeRule.onNodeWithText("5 · Canceled · 12 min · Delayed").assertIsDisplayed()
+        // Read aloud in full, a train with no time says what it is (Codex, PR #466).
+        composeRule.onNodeWithContentDescription("5 min, canceled, 12 min, delayed, no estimate").assertExists()
+    }
+
+    @Test
     fun aTappedBranchRoute_namesItsBranchInTheTitle() {
         // A loop line whose two routes share a terminus: the card splits them by branch
         // ("Hainault/Newbury Park"), so the page opened from one names the branch too, not just

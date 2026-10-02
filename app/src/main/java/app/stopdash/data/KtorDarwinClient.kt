@@ -1,6 +1,7 @@
 package app.stopdash.data
 
 import app.stopdash.domain.Departure
+import app.stopdash.domain.RailBoard
 import app.stopdash.domain.RailBoardSource
 import app.stopdash.domain.TflException
 import io.ktor.client.HttpClient
@@ -33,13 +34,15 @@ class KtorDarwinClient(
 ) : RailBoardSource {
     override val available: Boolean get() = !apiKey().isNullOrBlank()
 
-    override suspend fun departures(crs: String): List<Departure> {
-        val key = apiKey()?.trim()?.ifBlank { null } ?: return emptyList()
+    override suspend fun departures(crs: String): List<Departure> = board(crs).departures
+
+    override suspend fun board(crs: String): RailBoard {
+        val key = apiKey()?.trim()?.ifBlank { null } ?: return RailBoard(emptyList())
         return try {
             httpClient.get("$baseUrl/GetDepartureBoard/$crs") {
                 header("x-apikey", key)
                 parameter("numRows", ROWS)
-            }.body<DarwinBoardDto>().toDepartures(warn)
+            }.body<DarwinBoardDto>().toBoard(warn)
         } catch (e: CancellationException) {
             throw e
         } catch (e: ClientRequestException) {

@@ -77,6 +77,9 @@ object Snapshot {
         // Why the fresh arrivals carry no National Rail times ([TflClient.railFeed]); kept from
         // [prior] when the arrivals are.
         freshRailFeed: RailFeed? = null,
+        // The trains its board listed with no time ([TflClient.untimed]); kept from [prior] when the
+        // arrivals are, as they share an age.
+        freshUntimed: List<UntimedTrain> = emptyList(),
     ): StopArrivals? {
         val departures = freshDepartures ?: prior?.departures ?: emptyList()
         // A failed disruption fetch drops the notice (no `?: prior`), rather than aging a
@@ -117,6 +120,7 @@ object Snapshot {
             // departures"; a kept-prior or disruption-only stop has no fetched arrivals.
             arrivalsFresh = freshDepartures != null,
             railFeed = if (freshDepartures != null) freshRailFeed else prior?.railFeed,
+            untimed = if (freshDepartures != null) freshUntimed else prior?.untimed.orEmpty(),
         )
     }
 }

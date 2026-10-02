@@ -306,6 +306,14 @@
          there: minutes to the train, then whether it can be caught. Joined with ", ". -->
     <string name="countdown_time_description">%1$s min</string>
     <string name="countdown_time_unusable_description">%1$s min, can\'t catch</string>
+    <!-- A National Rail train its board lists as canceled, in a countdown in place of its minutes. -->
+    <string name="countdown_canceled">Canceled</string>
+    <!-- A National Rail train its board lists as delayed with no estimate, in a countdown in place of
+         its minutes. A word, not "?", which is a stale countdown. -->
+    <string name="countdown_delayed">Delayed</string>
+    <!-- The two read aloud, as one time in a countdown. -->
+    <string name="countdown_canceled_description">canceled</string>
+    <string name="countdown_delayed_description">delayed, no estimate</string>
     <string name="trip_change">%1$d min to change</string>
     <!-- The rider's walk to the trip's first stop, estimated on the phone. -->
     <string name="trip_walk_first">Walk to %1$s (~%2$d min)</string>

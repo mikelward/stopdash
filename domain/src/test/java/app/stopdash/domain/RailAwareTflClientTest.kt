@@ -42,6 +42,35 @@ class RailAwareTflClientTest {
     private val codes = RailStationCodes(mapOf("EXAMPLE" to "EXA"))
 
     @Test
+    fun `a board's trains with no time come apart from the arrivals, kept with the board`() = runTest {
+        val canceled = UntimedTrain(Departure("great-example", "Great Example", "", "Far", null, now, "national-rail"), canceled = true)
+        var untimed = listOf(canceled)
+        val board = object : RailBoardSource {
+            override val available = true
+            override suspend fun departures(crs: String) = error("the whole board is asked for")
+            override suspend fun board(crs: String) =
+                RailBoard(listOf(Departure("great-example", "Great Example", "", "Far", "Platform 1", now.plusSeconds(300), "national-rail")), untimed)
+        }
+        val boards = ArrivalsCache()
+        val client = RailAwareTflClient(tfl, board, { codes }, boards = boards, clock = { now })
+        // Never among the arrivals, which a trip or a countdown times; only through [untimed].
+        assertEquals(listOf("overground-example", "great-example"), client.arrivals("910GEXAMPLE").map { it.lineId })
+        assertEquals(listOf(canceled), client.untimed("910GEXAMPLE"))
+        // Kept with the board: read from it within its age, they come back with it.
+        untimed = emptyList()
+        client.arrivals("910GEXAMPLE")
+        assertEquals(listOf(canceled), client.untimed("910GEXAMPLE"))
+        // A stop with no board has none, and neither has one whose board isn't asked for.
+        assertEquals(emptyList<UntimedTrain>(), client.untimed("940GZZLUEXA"))
+        client.arrivals("910GEXAMPLE", railBoard = false)
+        assertEquals(emptyList<UntimedTrain>(), client.untimed("910GEXAMPLE"))
+        // A fresh board with none leaves none.
+        boards.clear()
+        client.arrivals("910GEXAMPLE")
+        assertEquals(emptyList<UntimedTrain>(), client.untimed("910GEXAMPLE"))
+    }
+
+    @Test
     fun `a rail station's National Rail departures join TfL's`() = runTest {
         val board = Board()
         val client = RailAwareTflClient(tfl, board, { codes })

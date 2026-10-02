@@ -29,11 +29,30 @@ class DarwinBoardDtoTest {
     }
 
     @Test
-    fun `a cancelled train, one delayed with no estimate, and a TfL-run service are left out`() {
+    fun `a canceled train, one delayed with no estimate, and a TfL-run service have no time to count down`() {
         val destinations = board().toDepartures().map { it.destination }
         assertTrue("Woking" !in destinations)
         assertTrue(destinations.none { it.startsWith("Windsor") })
         assertTrue("Somewhere" !in destinations)
+        // The canceled and the delayed train come apart from the timed ones, at their scheduled 23:50
+        // and 23:55 (UK time, BST), never as departures; the TfL-run one not at all.
+        val untimed = board().toBoard().untimed
+        assertEquals(listOf("Woking" to false, "Windsor & Eton Riverside" to true), untimed.map { it.train.destination to it.canceled })
+        assertEquals(listOf(Instant.parse("2026-09-24T22:50:00Z"), Instant.parse("2026-09-24T22:55:00Z")), untimed.map { it.train.expectedArrival })
+        assertTrue(untimed.all { it.train.lineId == "south-western-railway" && it.train.mode == "national-rail" })
+        // Canceled by its estimate alone, too.
+        val canceledByEtd = board().trainServices!!.first().copy(etd = "Cancelled")
+        assertEquals(listOf(true), board().copy(trainServices = listOf(canceledByEtd)).toBoard().untimed.map { it.canceled })
+    }
+
+    @Test
+    fun `a canceled or delayed train with no schedule to place it is left out and reported`() {
+        val delayed = board().trainServices!!.first().copy(etd = "Delayed", std = null)
+        val warnings = mutableListOf<String>()
+        val read = board().copy(trainServices = board().trainServices!! + delayed).toBoard { warnings += it }
+        assertEquals(2, read.untimed.size)
+        assertEquals(3, read.departures.size)
+        assertEquals(listOf("national rail board: 1 canceled or delayed train(s) with unreadable schedules left out"), warnings)
     }
 
     @Test

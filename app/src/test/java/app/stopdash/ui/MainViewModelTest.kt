@@ -26,6 +26,7 @@ import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.TflException
+import app.stopdash.domain.UntimedTrain
 import app.stopdash.domain.WidgetJourney
 import app.stopdash.domain.WidgetJourneyCheck
 import app.stopdash.domain.WidgetJourneys
@@ -414,6 +415,22 @@ class MainViewModelTest {
         assertTrue(kept.partialRefresh)
         assertEquals(DeparturesUiState.Error.Kind.SERVER, kept.refreshFailure)
         assertEquals(DeparturesUiState.Error.Kind.SERVER, kept.partialReason)
+    }
+
+    @Test
+    fun `a stop's trains with no time reach the list with its arrivals, never among them`() = runTest(dispatcher) {
+        val canceled = UntimedTrain(departure("victoria", "Victoria", 240), canceled = true)
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String): List<Departure> = listOf(departure("victoria", "Victoria", 300))
+            override fun untimed(stopId: String): List<UntimedTrain> = listOf(canceled)
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
+        }
+        val vm = viewModel(client)
+        advanceUntilIdle()
+        val stops = (vm.state.value as DeparturesUiState.Loaded).stops
+        assertTrue(stops.isNotEmpty())
+        assertTrue(stops.all { it.untimed == listOf(canceled) && canceled.train !in it.departures })
     }
 
     /** Answers every stop at once except [slowStop], whose arrivals wait on [gate]; line status waits on [statusGate]. */

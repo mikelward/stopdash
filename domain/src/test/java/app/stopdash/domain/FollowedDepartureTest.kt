@@ -118,6 +118,23 @@ class FollowedDepartureTest {
         assertEquals(listOf("Edgware", "Edgware"), routeDepartures(after, focus, topology).map { it.destination })
     }
 
+    @Test
+    fun `the route's trains with no time go with its times, not another route's`() {
+        // One platform, so one row with two destination lines.
+        val toFar = Departure("great-example", "Great Example", "", "Far", "Platform 1", now.plusSeconds(300), "national-rail")
+        val toNear = toFar.copy(destination = "Near", expectedArrival = now.plusSeconds(120))
+        val farCanceled = UntimedTrain(toFar.copy(expectedArrival = now.plusSeconds(60)), canceled = true)
+        val nearDelayed = UntimedTrain(toNear.copy(expectedArrival = now.plusSeconds(30)), canceled = false)
+        val row = DepartureRows.across(
+            listOf(StopArrivals("910GEXAMPLE", "Example", listOf(toFar, toNear), now, untimed = listOf(farCanceled, nearDelayed))),
+            now,
+        ).single()
+        val far = RouteFocus.of(DepartureRows.destinationLines(row, 3).first { it.destination == "Far" })
+        assertEquals(listOf(farCanceled), routeUntimed(row, far))
+        // No focus follows the soonest train, to Near, and its route's own.
+        assertEquals(listOf(nearDelayed), routeUntimed(row, null))
+    }
+
     private companion object {
         const val HBT = "940GZZLUHBT"
         const val HGT = "940GZZLUHGT"

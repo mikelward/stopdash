@@ -48,6 +48,13 @@ interface TflClient {
     fun fetchedAt(stopId: String): Instant? = null
 
     /**
+     * The trains [stopId]'s National Rail board listed in its last [arrivals] with no time to count
+     * down ([UntimedTrain]: canceled, or delayed with no estimate), never among the arrivals
+     * themselves. Empty with no board. Read after [arrivals] returns, as [railFeed] is.
+     */
+    fun untimed(stopId: String): List<UntimedTrain> = emptyList()
+
+    /**
      * Whether [stopId]'s [arrivals] are the same whichever client asked, so another screen may show
      * them ([ArrivalsCache]). Not so where a client decides between stops: two stops sharing one
      * National Rail station show its board under only the one that client picked ([RailAwareTflClient]).

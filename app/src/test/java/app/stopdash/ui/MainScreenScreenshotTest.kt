@@ -83,6 +83,7 @@ import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripDestination
+import app.stopdash.domain.UntimedTrain
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import java.time.Duration
@@ -634,6 +635,30 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithText("No data").assertDoesNotExist()
         composeRule.onNodeWithText("No key").performClick()
         assertTrue(openedSettings)
+    }
+
+    @Test
+    fun `a National Rail train with no time shows in its place among the times`() {
+        fun train(minutes: Long) = Departure(
+            "great-northern", "Great Northern", "", "Cambridge", "Platform 4", now.plusSeconds(minutes * 60), "national-rail",
+        )
+        // A train canceled between the 5 and the 12, and one delayed with no estimate, due 1 min ago.
+        val stop = StopArrivals(
+            "910GEXAMPLE",
+            "Example",
+            departures = listOf(train(5), train(12)),
+            fetchedAt = now.minusSeconds(30),
+            lines = listOf(LineRef("great-northern", "Great Northern", "national-rail")),
+            railFeed = RailFeed.LIVE,
+            untimed = listOf(UntimedTrain(train(8), canceled = true), UntimedTrain(train(-1), canceled = false)),
+        )
+        capture("main-rail-untimed.png") {
+            MainScreen(DeparturesUiState.Loaded(listOf(stop), now.minusSeconds(30)), now, {})
+        }
+        // The next three trains in order, the cap counting all three, so the 12 is past it. The base
+        // strings' US spelling under the test's default locale; en-GB has "Cancelled".
+        composeRule.onNodeWithText("Delayed · 5 min · Canceled").assertExists()
+        composeRule.onNodeWithContentDescription("delayed, no estimate, 5 min, canceled").assertExists()
     }
 
     // The busiest interchange on the network: King's Cross St. Pancras, six Underground lines both

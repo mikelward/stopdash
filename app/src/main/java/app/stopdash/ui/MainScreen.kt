@@ -189,6 +189,8 @@ import app.stopdash.domain.RouteFocus
 import app.stopdash.domain.followedDeparture
 import app.stopdash.domain.PlatformDirection
 import app.stopdash.domain.routeDepartures
+import app.stopdash.domain.routeUntimed
+import app.stopdash.domain.UntimedTrain
 import app.stopdash.ui.theme.LocalStarredBorderColor
 import java.time.Instant
 
@@ -3612,7 +3614,11 @@ internal fun StopGroupCard(
                         onHideMode = onHideMode,
                         destination = { modifier -> DestinationLabelContent(label = label, branch = group2.branch, modifier = modifier) },
                         times = {
-                            if (timesInstead != null) timesInstead(row) else CountdownLabel(group2.times, stale, now, grayBefore = grayBefore)
+                            if (timesInstead != null) {
+                                timesInstead(row)
+                            } else {
+                                CountdownLabel(group2.times, stale, now, grayBefore = grayBefore, untimed = group2.untimed)
+                            }
                         },
                     )
                 }
@@ -4195,6 +4201,10 @@ internal fun RouteDetailScreen(
     val topology = LocalRouteTopology.current
     val departures = remember(row, focus, topology) { routeDepartures(row, focus, topology) }
         .filterNot { Countdown.hasDeparted(it, now) }
+    // The route's trains its board lists with no time, among its countdowns in their place; a
+    // canceled one gone at its time, as a timed one is ([Countdown.stillShown]).
+    val untimed = remember(row, focus, topology) { routeUntimed(row, focus, topology) }
+        .filter { Countdown.stillShown(it, now) }
     // The terminus(es) this service runs to, from its own departures — empty for a status row
     // (no predictions), which then shows only the line and its disruption.
     val destinations = if (row.upcoming.isEmpty()) {
@@ -4328,14 +4338,24 @@ internal fun RouteDetailScreen(
             // the end, keeping the soonest. Left out while stale — the stale caveat below says why —
             // so an old prediction is never shown as live (SPEC D4).
             if (departures.isNotEmpty() && !stale) {
+                val entries = Countdown.entries(departures, untimed)
+                // A train with no time is read aloud in full ("delayed, no estimate"), as the card's
+                // is ([CountdownLabel]).
+                val spoken = if (untimed.isEmpty()) null else spokenCountdown(entries, now)
                 Text(
-                    text = Countdown.mergedLabel(departures, now),
+                    text = Countdown.mergedLabel(
+                        entries,
+                        now,
+                        stringResource(R.string.countdown_canceled),
+                        stringResource(R.string.countdown_delayed),
+                    ),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     softWrap = false,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth().padding(top = if (showFrom || service != null) 8.dp else 0.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = if (showFrom || service != null) 8.dp else 0.dp)
+                        .let { if (spoken != null) it.semantics { contentDescription = spoken } else it },
                 )
             }
             val status = row.status
@@ -4628,8 +4648,11 @@ private fun RowScope.DestinationLabelContent(label: String, branch: String?, mod
 
 /**
  * A service's merged countdown — "0 · 3 · 6 min" (SPEC D8, one line per destination).
- * Withheld as "—" once the stop is stale, since the underlying predictions are likely
- * wrong and a live-looking number would misrepresent them (SPEC D4).
+ * Withheld as "?" once the stop is stale, since the underlying predictions are likely
+ * wrong and a live-looking number would misrepresent them (SPEC D4). A National Rail train
+ * its board lists with no time ([untimed]) takes its place among them as a word: "Canceled",
+ * or "Delayed" for one with no estimate: a word, since "?" is a stale countdown
+ * ([Countdown.entries]).
  */
 @Composable
 internal fun CountdownLabel(
@@ -4640,32 +4663,36 @@ internal fun CountdownLabel(
     // A time due before the rider can be there (a trip on the way, still walking) is grayed: listed,
     // but not one they can catch. Null grays none.
     grayBefore: Instant? = null,
+    untimed: List<UntimedTrain> = emptyList(),
 ) {
-    val label = Countdown.mergedLabel(departures, now)
+    val entries = Countdown.entries(departures, untimed)
+    val canceled = stringResource(R.string.countdown_canceled)
+    val delayed = stringResource(R.string.countdown_delayed)
     val gray = MaterialTheme.colorScheme.outline
-    val early = grayBefore?.let { ready -> departures.map { it.expectedArrival.isBefore(ready) } }
-    // The label's times in order, as [Countdown.mergedLabel] joins them.
-    val times = label.removeSuffix(" min").split(" · ")
+    val early = grayBefore?.let { ready ->
+        entries.map { (it as? Countdown.Entry.Timed)?.departure?.expectedArrival?.isBefore(ready) == true }
+    }
+    // Each entry's own text, the "min" unit written once after the last number, as
+    // [Countdown.mergedLabel] writes them.
+    val last = entries.indexOfLast { it is Countdown.Entry.Timed }
+    val parts = entries.map { entry ->
+        when (entry) {
+            is Countdown.Entry.Timed -> Countdown.minutes(entry.departure.expectedArrival, now).toString()
+            is Countdown.Entry.Untimed -> if (entry.train.canceled) canceled else delayed
+        }
+    }
     // Gray alone doesn't reach a screen reader: each time too soon to catch says so, as a trip's
     // list card says it of its trains.
-    val spoken = if (stale || early == null || early.none { it }) {
-        null
-    } else {
-        times.mapIndexed { i, part ->
-            stringResource(if (early.getOrNull(i) == true) R.string.countdown_time_unusable_description else R.string.countdown_time_description, part)
-        }.joinToString(", ")
-    }
+    val spoken = if (stale || ((early == null || early.none { it }) && untimed.isEmpty())) null else spokenCountdown(entries, now, early)
     Text(
         text = when {
             stale -> AnnotatedString(WITHHELD)
-            early == null || early.none { it } -> AnnotatedString(label)
-            // The label's times in order, as [Countdown.mergedLabel] joins them.
             else -> buildAnnotatedString {
-                times.forEachIndexed { i, part ->
+                parts.forEachIndexed { i, part ->
                     if (i > 0) append(" · ")
-                    if (early.getOrNull(i) == true) withStyle(SpanStyle(color = gray)) { append(part) } else append(part)
+                    if (early?.getOrNull(i) == true) withStyle(SpanStyle(color = gray)) { append(part) } else append(part)
+                    if (i == last) append(" min")
                 }
-                append(" min")
             }
         },
         style = MaterialTheme.typography.titleMedium,
@@ -4686,6 +4713,25 @@ internal fun CountdownLabel(
         modifier = if (spoken != null) modifier.semantics { contentDescription = spoken } else modifier,
     )
 }
+
+/**
+ * [entries] read aloud, one by one: a time's minutes, and whether it can be caught where [early] says
+ * it leaves too soon; and what a train with no time is, in full ("delayed, no estimate"; SPEC
+ * *National Rail*).
+ */
+@Composable
+internal fun spokenCountdown(entries: List<Countdown.Entry>, now: Instant, early: List<Boolean>? = null): String =
+    entries.mapIndexed { i, entry ->
+        when (entry) {
+            is Countdown.Entry.Timed -> stringResource(
+                if (early?.getOrNull(i) == true) R.string.countdown_time_unusable_description else R.string.countdown_time_description,
+                Countdown.minutes(entry.departure.expectedArrival, now).toString(),
+            )
+            is Countdown.Entry.Untimed -> stringResource(
+                if (entry.train.canceled) R.string.countdown_canceled_description else R.string.countdown_delayed_description,
+            )
+        }
+    }.joinToString(", ")
 
 /**
  * Marks a row whose line is disrupted (SPEC D3). A small error-toned chip carrying TfL's
