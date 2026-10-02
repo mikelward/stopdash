@@ -113,7 +113,7 @@ import org.robolectric.shadows.ShadowToast
  * rather than varying with the host's wallpaper.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36], qualifiers = "w411dp-h914dp-420dpi")
+@Config(sdk = [36], qualifiers = "en-rGB-w411dp-h914dp-420dpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class MainScreenScreenshotTest {
 
@@ -403,7 +403,7 @@ class MainScreenScreenshotTest {
         // TalkBack offers the long press by name.
         chip.assert(
             SemanticsMatcher("long press labeled") {
-                it.config.getOrNull(SemanticsActions.OnLongClick)?.label == "Edit favorite places"
+                it.config.getOrNull(SemanticsActions.OnLongClick)?.label == "Edit favourite places"
             },
         )
         chip.performTouchInput { longClick() }
@@ -655,10 +655,9 @@ class MainScreenScreenshotTest {
         capture("main-rail-untimed.png") {
             MainScreen(DeparturesUiState.Loaded(listOf(stop), now.minusSeconds(30)), now, {})
         }
-        // The next three trains in order, the cap counting all three, so the 12 is past it. The base
-        // strings' US spelling under the test's default locale; en-GB has "Cancelled".
-        composeRule.onNodeWithText("Delayed · 5 min · Canceled").assertExists()
-        composeRule.onNodeWithContentDescription("delayed, no estimate, 5 min, canceled").assertExists()
+        // The next three trains in order, the cap counting all three, so the 12 is past it.
+        composeRule.onNodeWithText("Delayed · 5 min · Cancelled").assertExists()
+        composeRule.onNodeWithContentDescription("delayed, no estimate, 5 min, cancelled").assertExists()
     }
 
     // The busiest interchange on the network: King's Cross St. Pancras, six Underground lines both
@@ -2157,14 +2156,14 @@ class MainScreenScreenshotTest {
         }
         composeRule.waitForIdle()
 
-        // Collapsed to a "Faraway favorites" button at the foot: no heading, no card, origin not fetched.
-        composeRule.onNodeWithText("Faraway favorites").assertExists()
+        // Collapsed to a "Faraway favourites" button at the foot: no heading, no card, origin not fetched.
+        composeRule.onNodeWithText("Faraway favourites").assertExists()
         composeRule.onNodeWithText("Victoria ➔ Warren Street", substring = true).assertDoesNotExist()
         assertTrue(origins.all { refs -> refs.none { it.id == "940GZZLUVIC" } })
         captureSnapshot("main-journey-far.png")
 
         // Revealing it shows its card, headed with its distance, and fetches its origin.
-        composeRule.onNodeWithText("Faraway favorites").performClick()
+        composeRule.onNodeWithText("Faraway favourites").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Victoria ➔ Warren Street", substring = true).assertExists()
         composeRule.onNodeWithText("(2.4 km)", substring = true).assertExists()
@@ -2196,19 +2195,19 @@ class MainScreenScreenshotTest {
                 }
             }
         }
-        composeRule.onNodeWithText("Faraway favorites").performClick()
+        composeRule.onNodeWithText("Faraway favourites").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Victoria ➔ Warren Street", substring = true).assertExists()
 
         nearbyKey = "940GZZLUSVS"
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Victoria ➔ Warren Street", substring = true).assertDoesNotExist()
-        composeRule.onNodeWithText("Faraway favorites").assertExists()
+        composeRule.onNodeWithText("Faraway favourites").assertExists()
         // Back to the first set: the tap was forgotten on leaving it.
         nearbyKey = "940GZZLUMRH"
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Victoria ➔ Warren Street", substring = true).assertDoesNotExist()
-        composeRule.onNodeWithText("Faraway favorites").assertExists()
+        composeRule.onNodeWithText("Faraway favourites").assertExists()
     }
 
     @Test
@@ -2234,7 +2233,7 @@ class MainScreenScreenshotTest {
                 }
             }
         }
-        composeRule.onNodeWithText("Faraway favorites").performClick()
+        composeRule.onNodeWithText("Faraway favourites").performClick()
         composeRule.waitForIdle()
 
         // Same set: the reveal survives.
@@ -2245,7 +2244,7 @@ class MainScreenScreenshotTest {
         restoreKey = "940GZZLUSVS"
         restoration.emulateSavedInstanceStateRestore()
         composeRule.onNodeWithText("Victoria ➔ Warren Street", substring = true).assertDoesNotExist()
-        composeRule.onNodeWithText("Faraway favorites").assertExists()
+        composeRule.onNodeWithText("Faraway favourites").assertExists()
     }
 
     @Test
@@ -2272,7 +2271,7 @@ class MainScreenScreenshotTest {
                 }
             }
         }
-        composeRule.onNodeWithText("Faraway favorites").performClick()
+        composeRule.onNodeWithText("Faraway favourites").performClick()
         composeRule.waitForIdle()
 
         // An overlay opens and closes again.
@@ -4223,7 +4222,7 @@ class MainScreenScreenshotTest {
     }
 
     @Test
-    @Config(qualifiers = "w731dp-h240dp-420dpi")
+    @Config(qualifiers = "en-rGB-w731dp-h240dp-420dpi")
     fun `on a short screen the loading screen scrolls to its update button rather than clip it`() {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {

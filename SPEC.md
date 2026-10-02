@@ -2710,7 +2710,8 @@ Mirrors the sibling fleet:
   first. Never data captured from the maintainer's or a user's own device, location or
   reports, and no set of examples that together single out where someone lives.
 - Compose screens and Glance widget layouts get Robolectric + Roborazzi screenshot
-  tests, wired into CI's screenshot allow-list.
+  tests, wired into CI's screenshot allow-list, rendered in British English (en-GB), as the
+  app's users see it (maintainer, 2026-10-02).
 - `./gradlew test` and `./gradlew lint` green before every push.
 - CI mirrors the sibling `ci.yml` (build + unit tests + lint, a screenshot job, a
   Play-internal-track deploy job with release notes built from commit subjects) plus

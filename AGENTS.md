@@ -138,7 +138,8 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   neighborhood-level needs the maintainer's OK first (*Privacy*).
 - Compose screens and Glance widget layouts get Robolectric + Roborazzi screenshot tests
   wired into `.github/workflows/ci.yml` — a new `*ScreenshotTest` class needs its own
-  step in the CI `--tests` allow-list or it records nothing.
+  step in the CI `--tests` allow-list or it records nothing. They render under `en-rGB` (in
+  every `qualifiers`, a method's too, since it replaces the class's), as the app's users see it.
 - Run `./gradlew test` and `./gradlew lint` before pushing when the environment can;
   otherwise say clearly what was verified by inspection only.
 - **Fix any preexisting test failure as the first commit of the series.** Don't stack new

@@ -45,7 +45,7 @@ import org.robolectric.annotation.GraphicsMode
  * data (SPEC *Privacy*); dynamic color off for deterministic schemes.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36], qualifiers = "w411dp-h914dp-420dpi")
+@Config(sdk = [36], qualifiers = "en-rGB-w411dp-h914dp-420dpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LocationGateScreenshotTest {
 

@@ -45,7 +45,7 @@ import org.robolectric.annotation.GraphicsMode
  * Public infrastructure/line names only in the fixtures — no user route data (SPEC *Privacy*).
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36], qualifiers = "w411dp-h914dp-420dpi")
+@Config(sdk = [36], qualifiers = "en-rGB-w411dp-h914dp-420dpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class WidgetScreenshotTest {
     private val now: Instant = Instant.parse("2026-09-18T08:00:00Z")

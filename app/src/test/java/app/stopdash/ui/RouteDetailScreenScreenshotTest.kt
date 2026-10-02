@@ -57,7 +57,7 @@ import org.robolectric.annotation.GraphicsMode
  * behavior.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36], qualifiers = "w411dp-h914dp-420dpi")
+@Config(sdk = [36], qualifiers = "en-rGB-w411dp-h914dp-420dpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class RouteDetailScreenScreenshotTest {
     @get:Rule
@@ -162,10 +162,10 @@ class RouteDetailScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        // Uncapped here, so every one; the base strings' US spelling under the test's default locale.
-        composeRule.onNodeWithText("5 · Canceled · 12 min · Delayed").assertIsDisplayed()
+        // Uncapped here, so every one.
+        composeRule.onNodeWithText("5 · Cancelled · 12 min · Delayed").assertIsDisplayed()
         // Read aloud in full, a train with no time says what it is (Codex, PR #466).
-        composeRule.onNodeWithContentDescription("5 min, canceled, 12 min, delayed, no estimate").assertExists()
+        composeRule.onNodeWithContentDescription("5 min, cancelled, 12 min, delayed, no estimate").assertExists()
     }
 
     @Test

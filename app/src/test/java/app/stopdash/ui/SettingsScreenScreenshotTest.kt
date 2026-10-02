@@ -45,7 +45,7 @@ import org.robolectric.annotation.GraphicsMode
  * the caller's job — so it renders under Robolectric with no Android services and no user data.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36], qualifiers = "w411dp-h914dp-420dpi")
+@Config(sdk = [36], qualifiers = "en-rGB-w411dp-h914dp-420dpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class SettingsScreenScreenshotTest {
     @get:Rule

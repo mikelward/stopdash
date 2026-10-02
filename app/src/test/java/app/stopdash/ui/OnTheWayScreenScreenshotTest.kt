@@ -51,7 +51,7 @@ import org.robolectric.annotation.GraphicsMode
  * A trip between well-known stations; the times are made up. No user data.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36], qualifiers = "w411dp-h914dp-420dpi")
+@Config(sdk = [36], qualifiers = "en-rGB-w411dp-h914dp-420dpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class OnTheWayScreenScreenshotTest {
     @get:Rule

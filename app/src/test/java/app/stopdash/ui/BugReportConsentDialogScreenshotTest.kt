@@ -25,7 +25,7 @@ import org.robolectric.annotation.GraphicsMode
  * user data), so it renders under Robolectric with nothing wired.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36], qualifiers = "w411dp-h914dp-420dpi")
+@Config(sdk = [36], qualifiers = "en-rGB-w411dp-h914dp-420dpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class BugReportConsentDialogScreenshotTest {
     @get:Rule
