@@ -2908,8 +2908,11 @@ and these carry the rest as their own PRs:
         watch* section (this release updates it), and only then set
         `PLAY_WEAR_TRACK_READY=true`, then the Wear OS review
         (`dev-docs/play-store-internal-track.md`, *The Wear OS app*).
-  - [ ] **Offer the watch app from the phone:** a card when a paired watch doesn't have StopDash
-        yet, opening its Play page on the watch (`RemoteActivityHelper`).
+  - [x] **Offer the watch app from the phone** (maintainer, 2026-10-02: both a card and a
+        Settings row): a one-time near-me card and a Settings row while a connected watch doesn't
+        have StopDash, opening its Play page on the watch (`RemoteActivityHelper`).
+    - [ ] **Device check:** a watch without the app shows the offer, Install opens Play on it,
+          and the offer goes once the app is installed.
   - [ ] **Trip view on the watch** (maintainer, 2026-10-02): the current step of a trip on the
         way, with previous/next buttons to page through steps, plus departures for the next leg
         when they fit.

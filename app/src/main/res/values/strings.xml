@@ -457,6 +457,14 @@
     <string name="telemetry_invite_body">Share crash reports and usage stats so bugs get fixed? Never your stops, journeys or precise location.</string>
     <string name="telemetry_invite_accept">Yes please</string>
     <string name="telemetry_invite_decline">No thanks</string>
+    <string name="watch_install_title">StopDash for your watch</string>
+    <string name="watch_install_body">Your watch can show your stops and departures too.</string>
+    <string name="watch_install_accept">Install</string>
+    <string name="watch_install_dismiss">Not now</string>
+    <string name="watch_install_opened">Check your watch</string>
+    <string name="watch_install_failed">Couldn\'t reach your watch</string>
+    <string name="settings_watch_install_title">Install on watch</string>
+    <string name="settings_watch_install_summary">Open StopDash\'s Play Store page on your watch</string>
     <string name="settings_pinch_title">Pinch to resize text</string>
     <string name="settings_pinch_summary">Spread or pinch two fingers anywhere in the app to change the text size.</string>
     <!-- Settings: the units near-me distances are written in. "Auto" follows the phone's language. -->

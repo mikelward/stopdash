@@ -2141,6 +2141,56 @@
             ]
         },
         {
+            "uniqueId": "androidx.wear:wear-core",
+            "artifactVersion": "1.0.0",
+            "name": "Android Wear Core",
+            "description": "Low-level utilities for building apps and libraries for Wear OS.",
+            "website": "https://developer.android.com/jetpack/androidx/releases/wear#1.0.0",
+            "developers": [
+                {
+                    "name": "The Android Open Source Project"
+                }
+            ],
+            "organization": {
+                "name": "The Android Open Source Project"
+            },
+            "scm": {
+                "connection": "scm:git:https://android.googlesource.com/platform/frameworks/support",
+                "url": "https://cs.android.com/androidx/platform/frameworks/support"
+            },
+            "licenses": [
+                "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
+            "uniqueId": "androidx.wear:wear-remote-interactions",
+            "artifactVersion": "1.2.0",
+            "name": "Android Wear Remote Interactions",
+            "description": "Android Wear Remote Interactions",
+            "website": "https://developer.android.com/jetpack/androidx/releases/wear#1.2.0",
+            "developers": [
+                {
+                    "name": "The Android Open Source Project"
+                }
+            ],
+            "organization": {
+                "name": "The Android Open Source Project"
+            },
+            "scm": {
+                "connection": "scm:git:https://android.googlesource.com/platform/frameworks/support",
+                "url": "https://cs.android.com/androidx/platform/frameworks/support"
+            },
+            "licenses": [
+                "Apache-2.0"
+            ],
+            "funding": [
+                
+            ]
+        },
+        {
             "uniqueId": "androidx.window:window",
             "artifactVersion": "1.5.0",
             "name": "WindowManager",

@@ -2681,6 +2681,16 @@ location-free fetch as a widget refresh and sends the result the usual way. Why 
 - **Robust to the watch being killed**: an unanswered request and a failure's notice outlive the
   watch app's process, and the tile shows the switch to "Phone out of reach" on time without it.
 
+**Getting the watch app** (maintainer, 2026-10-02): a watch app is otherwise found only by
+searching Play on the watch, so the phone offers it to a connected watch that doesn't have it, in
+two places. A card atop the near-me list asks once ("Install" or "Not now"; either answer puts it
+away for good, and it waits while the telemetry question is being asked, one question at a time).
+Settings keeps an **Install on watch** row for as long as such a watch is connected. Install opens
+StopDash's Play page on the watch, and the phone says whether it reached it ("Check your watch", or
+"Couldn't reach your watch"), since nothing happens on the phone itself. Which watches lack the app
+is read from the phone's paired devices each time the app comes to the front: nothing new leaves
+the phone, and a phone with no watch (or no Wear OS app) never sees the offer.
+
 ## Privacy
 
 StopDash handles location and the set of stops the user watches — which together reveal

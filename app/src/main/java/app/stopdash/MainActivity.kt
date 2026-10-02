@@ -65,6 +65,8 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import app.stopdash.data.AndroidLocationProvider
 import app.stopdash.data.DataStoreAlertsBehindStore
 import app.stopdash.data.DataStoreAppSettings
+import app.stopdash.ui.WatchInstallActions
+import app.stopdash.watch.WatchInstall
 import app.stopdash.data.DataStoreDismissedAlertsStore
 import app.stopdash.data.DataStoreFavoritePlacesStore
 import app.stopdash.data.DataStoreNearbySetStore
@@ -523,6 +525,49 @@ class MainActivity : ComponentActivity() {
                 // the ViewModel and its resolved state survive — doesn't relocate over a
                 // working (or in-flight) result and re-hit TfL (Codex).
                 val lifecycleOwner = LocalLifecycleOwner.current
+                // StopDash for a connected watch without it (SPEC *Wear OS*): which watches lack it is
+                // re-read each time the app comes to the front, so a watch paired, or the app installed
+                // on it, since is picked up. Play services answers asynchronously, off the main thread.
+                val watchOffer = remember { WatchInstall.offer(applicationContext) }
+                val watchInstallAvailable by watchOffer.available.collectAsStateWithLifecycle()
+                LaunchedEffect(lifecycleOwner, watchOffer) {
+                    lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { watchOffer.refresh() }
+                }
+                val watchCardSettings = remember { DataStoreAppSettings.from(applicationContext, warn = ::logAppSettingsWarning) }
+                // Hidden (true) until read, so the card never flashes at someone who dismissed it.
+                val watchCardStored by remember(watchCardSettings) { watchCardSettings.watchInstallCardDismissed() }
+                    .collectAsStateWithLifecycle(initialValue = true)
+                var watchCardClosed by rememberSaveable { mutableStateOf(false) }
+                val appScope = (application as? StopdashApp)?.applicationScope
+                val watchScope = rememberCoroutineScope()
+                // On the application scope, so leaving the screen can't cancel the remote open mid-way.
+                // Says how it went: the page opens on the watch, not here, so the phone has to say so.
+                val installOnWatch: () -> Unit = {
+                    (appScope ?: watchScope).launch {
+                        val opened = watchOffer.install()
+                        Toast.makeText(
+                            applicationContext,
+                            if (opened) R.string.watch_install_opened else R.string.watch_install_failed,
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                }
+                // Either answer closes the card for good; Settings keeps "Install on watch".
+                val closeWatchCard: () -> Unit = {
+                    watchCardClosed = true
+                    (appScope ?: watchScope).launch {
+                        try {
+                            watchCardSettings.setWatchInstallCardDismissed(true)
+                        } catch (e: IOException) {
+                            // Closed for now already; it shows again after a restart.
+                            logAppSettingsWarning("watch install card dismissal not saved: ${e::class.simpleName}")
+                        }
+                    }
+                }
+                val watchInstallCard = WatchInstallActions(
+                    onInstall = { closeWatchCard(); installOnWatch() },
+                    onDismiss = closeWatchCard,
+                ).takeIf { watchInstallAvailable && !watchCardStored && !watchCardClosed }
                 LaunchedEffect(lifecycleOwner) {
                     lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
                         if (nearbyViewModel.state.value is NearbyStopsViewModel.State.PermissionRequired) {
@@ -1163,6 +1208,7 @@ class MainActivity : ComponentActivity() {
                                     stepFreeWriteFailed = stepFreeWriteFailed,
                                     onDismissStepFreeError = StepFreeSetting::writeFailureShown,
                                     onOpenFavoritePlaces = { favoritePlacesOpen = true },
+                                    onInstallOnWatch = installOnWatch.takeIf { watchInstallAvailable },
                                     // One item shown again at a time; the lists showing nearby stops
                                     // re-pick for it as they come back into view.
                                     hiddenModes = hiddenNow,
@@ -1335,6 +1381,7 @@ class MainActivity : ComponentActivity() {
                                         listState = departuresListState,
                                         farReveal = farReveal,
                                         pendingTracker = departuresTracker,
+                                        watchInstall = watchInstallCard,
                                     )
                                 }
                                 // A place chip on "No stops found nearby" opens the trip from where the
@@ -1686,6 +1733,9 @@ class MainActivity : ComponentActivity() {
         refinement: StateFlow<NearbyStopsViewModel.Refinement?> = MutableStateFlow(null),
         applyRefinement: (NearbyStopsViewModel.Refinement, (NearbyStopsViewModel.State.Ready) -> Unit) -> Unit =
             { _, _ -> },
+        // The offer of StopDash for a connected watch without it, atop the near-me list
+        // ([WatchInstallCard]); null (none, or dismissed, or a station's page) shows no card.
+        watchInstall: WatchInstallActions? = null,
     ) {
         // Each nearby set gets its own MainViewModel, and the previous one is CLEARED when
         // the set changes (the user moved and re-located) rather than left keyed in the
@@ -2164,6 +2214,7 @@ class MainActivity : ComponentActivity() {
                     onEditFavoritePlaces = onEditFavoritePlaces,
                     // Stored as the Settings switch stores it, so the two never disagree.
                     onTelemetryInviteAnswer = if (telemetryUnanswered) TelemetryConsent::set else null,
+                    watchInstall = watchInstall,
                     // Hiding filters the list at once; the hidden mode's stops stop being fetched
                     // from the next re-locate. Showing them again re-picks the set from the same
                     // fix, so they come back now (SPEC *Finding stops → Hiding a mode*).

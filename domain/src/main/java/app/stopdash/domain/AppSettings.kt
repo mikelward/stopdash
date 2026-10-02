@@ -60,6 +60,15 @@ interface AppSettings {
     suspend fun setJourneyTipDismissed(dismissed: Boolean) {}
 
     /**
+     * Whether the user has dismissed the near-me card offering StopDash for a watch without it
+     * (SPEC *Wear OS*). Off by default; a store that keeps no settings never shows the card.
+     */
+    fun watchInstallCardDismissed(): Flow<Boolean> = flowOf(true)
+
+    /** Set [watchInstallCardDismissed]. Suspending, off the main thread; best-effort. */
+    suspend fun setWatchInstallCardDismissed(dismissed: Boolean) {}
+
+    /**
      * The user's own free TfL `app_key`, pasted in Settings for the higher request budget
      * (SPEC D7), or null when keyless — the default. StopDash ships no baked-in key; a
      * per-user key raises the limit ~50→~500 req/min. Blank is normalized to null on write,
