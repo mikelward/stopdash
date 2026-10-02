@@ -90,6 +90,31 @@ data class DeparturesSnapshot(
         return if (marked == lineStatuses) this else copy(lineStatuses = marked)
     }
 
+    /**
+     * This snapshot as it stands for the nearby stops the app last found around the rider, [nearby]:
+     * a stop it holds that isn't among them is from somewhere the rider has left, so it goes (or
+     * keeps only its journey's departures, if a pinned journey starts there), and one of them it
+     * doesn't hold yet is missing, so the rest isn't taken for the whole picture. Without this, a
+     * move whose first fetch failed left the last place's trains on the widget, read as live until
+     * they aged (Codex P1 on #44). Decided where the snapshot is read rather than by clearing the
+     * stored file, which raced the app's own writes (PR #53).
+     */
+    fun scopedTo(nearby: Set<String>): DeparturesSnapshot {
+        val origins = journeys.mapTo(HashSet()) { it.originId }
+        val kept = stops.filter { it.stopId in nearby || it.stopId in journeyOnlyStopIds || it.stopId in origins }
+        val keptIds = kept.mapTo(HashSet()) { it.stopId }
+        // Kept but not near is journey-only; a journey-only origin the rider is now near is nearby again.
+        val journeyOnly = keptIds - nearby
+        val missing = nearby - (keptIds - journeyOnly)
+        if (kept.size == stops.size && journeyOnly == journeyOnlyStopIds && missing == missingStopIds) return this
+        return copy(
+            stops = kept,
+            fetchedAt = kept.maxOfOrNull { it.fetchedAt } ?: fetchedAt,
+            journeyOnlyStopIds = journeyOnly,
+            missingStopIds = missing,
+        )
+    }
+
     /** [withDismissals] for [dismissed] active dismissals, none ended. */
     fun withDismissals(dismissed: Set<DismissedAlert>): DeparturesSnapshot = withDismissals(Dismissals(dismissed))
 

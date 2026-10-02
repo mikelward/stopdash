@@ -3,10 +3,13 @@
      report / usage stats opt-in and the Firebase SDKs' own collection flags: consent is per
      install, so a restored install starts off and asks again (docs/PRIVACY.md). Nor the rows each
      paired watch's complications show: kept per watch, they're relearned from the watches still
-     paired, and a restored copy would keep a gone watch's picks forever. -->
+     paired, and a restored copy would keep a gone watch's picks forever. Nor the stops the app
+     last found near the rider, which the widget shows from: where they are now, and wrong on
+     another phone. -->
 <full-backup-content>
     <exclude domain="sharedpref" path="telemetry.xml" />
     <exclude domain="sharedpref" path="com.google.firebase.crashlytics.xml" />
     <exclude domain="sharedpref" path="com.google.android.gms.measurement.prefs.xml" />
     <exclude domain="sharedpref" path="watch_complication_rows.xml" />
+    <exclude domain="file" path="datastore/widget-nearby-set.json" />
 </full-backup-content>

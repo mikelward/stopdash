@@ -49,6 +49,7 @@ import app.stopdash.data.HiddenModesSetting
 import app.stopdash.data.DataStoreAlertsBehindStore
 import app.stopdash.data.DataStoreDismissedAlertsStore
 import app.stopdash.domain.Dismissals
+import app.stopdash.data.DataStoreNearbySetStore
 import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.data.DataStoreStarredRowsStore
 import app.stopdash.data.RouteTopologyStore
@@ -166,13 +167,19 @@ class StopDashWidget : GlanceAppWidget() {
             logWidgetSnapshotWarning("widget alerts-behind read failed: ${e::class.simpleName}")
             emptySet()
         }
-        val shown = snapshot?.withDismissals(dismissals)?.withAlertsBehind(verdicts)
+        // Only the stops the app last found near the rider, so a place they've left isn't shown as
+        // live while the new one's first fetch hasn't landed ([DeparturesSnapshot.scopedTo]). No set
+        // stored yet (the app not opened since this shipped) shows the snapshot as it is.
+        val (scoped, nearbyUnreadable) = scopedToNearby(context, snapshot)
+        val shown = scoped?.withDismissals(dismissals)?.withAlertsBehind(verdicts)
         val now = Instant.now()
         // Arm the one-shot staleness-boundary redraw from the snapshot we're about to render, on
         // the render path itself: first add, host rebind, and the app's updateAll after a fetch
         // all go through here, so each arms the flip from the snapshot it just drew — and a host
         // with no widget never runs this, so a widgetless user is never scheduled for (SPEC D4).
-        scheduleStalenessRedrawFor(context, shown, now)
+        // A nearby set it couldn't read showed no stops; nothing else redraws the widget when the file
+        // is readable again, so it looks again in a minute (sooner at a boundary), until it can.
+        scheduleStalenessRedrawFor(context, shown, now, within = NEARBY_SET_RETRY.takeIf { nearbyUnreadable })
         // A widget render means a widget exists, so resume the opt-in live-refresh chain if the
         // setting is on and it isn't already running — the worker retires the chain when the last
         // widget is removed, and this restarts it after one is re-added (SPEC D5, Codex P1 on #56).
@@ -1042,6 +1049,17 @@ internal val WIDGET_SURFACE_NIGHT = Color(0xFF1C1B1F)
  * A top-level function so both [StopDashWidget.provideGlance] and [WidgetSnapshotStore] can
  * wire it into `DataStoreSnapshotStore.from`, which keeps the first caller's sink.
  */
+/**
+ * [snapshot] for the nearby set the app last stored ([DataStoreNearbySetStore]), read off the render
+ * path, and whether that read failed. A set that can't be read shows no nearby stops rather than the
+ * whole snapshot, which may be a place the rider has left; a journey pinned keeps its rows.
+ */
+internal suspend fun scopedToNearby(context: Context, snapshot: DeparturesSnapshot?): Pair<DeparturesSnapshot?, Boolean> {
+    val read = DataStoreNearbySetStore.from(context, warn = ::logWidgetSnapshotWarning).read()
+    val scoped = snapshot?.let { s -> read.stopIds?.let(s::scopedTo) ?: s }
+    return scoped to read.failed
+}
+
 internal fun logWidgetSnapshotWarning(message: String) = StopdashDebugLog.warning("widget: %s", message)
 
 /**

@@ -56,6 +56,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.lifecycleScope
+import androidx.work.WorkManager
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -66,6 +67,7 @@ import app.stopdash.data.DataStoreAlertsBehindStore
 import app.stopdash.data.DataStoreAppSettings
 import app.stopdash.data.DataStoreDismissedAlertsStore
 import app.stopdash.data.DataStoreFavoritePlacesStore
+import app.stopdash.data.DataStoreNearbySetStore
 import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.data.DataStoreStarredJourneysStore
 import app.stopdash.data.DataStoreStarredRowsStore
@@ -181,6 +183,7 @@ import app.stopdash.ui.tripStartId
 import app.stopdash.ui.MainScreen
 import app.stopdash.ui.MainViewModel
 import app.stopdash.ui.NearbyStopsViewModel
+import app.stopdash.ui.widgetNearbySet
 import app.stopdash.ui.OnTheWayActions
 import app.stopdash.ui.OnTheWayBannerState
 import app.stopdash.ui.OnTheWayScreen
@@ -213,6 +216,7 @@ import app.stopdash.widget.StopDashWidget
 import app.stopdash.widget.WidgetSnapshotStore
 import app.stopdash.widget.applyLiveWidgetRefresh
 import app.stopdash.widget.logWidgetSnapshotWarning
+import app.stopdash.widget.redrawWidgetNow
 import app.stopdash.widget.syncLiveWidgetRefreshSchedule
 import com.mikelward.androidlog.DebugLog
 import com.mikelward.androidlog.android.DebugReport
@@ -231,6 +235,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -415,6 +420,23 @@ class MainActivity : ComponentActivity() {
             val refreshed = withContext(Dispatchers.IO) { RouteTopologyStore.use(applicationContext, current) }
             // Unchanged (the usual case) puts nothing new in place, so nothing re-renders for it.
             if (refreshed.patternsByLine != routeTopology.value.patternsByLine) routeTopology.value = refreshed
+        }
+        // Keep the widget's and the watch's idea of "near the rider" in step with the app's: each
+        // nearby set the app resolves is stored on its own ([DataStoreNearbySetStore]), and the two
+        // show only those stops from the stored departures, so a move whose first fetch fails
+        // doesn't leave the last place's trains up as if live (SPEC *Widget*). One collector, so the
+        // last resolve is the last write.
+        lifecycleScope.launch {
+            val nearbySet = DataStoreNearbySetStore.from(applicationContext, warn = ::logWidgetSnapshotWarning)
+            // The store writes from the process's own scope, so a write still retrying outlives this
+            // screen, and a newer set replaces one still retrying. The redraw goes through WorkManager,
+            // which retries a redraw that fails rather than leave the place the rider left up.
+            val workManager = WorkManager.getInstance(applicationContext)
+            nearbyViewModel.state.map { it.widgetNearbySet(locationAllowed = hasLocationPermission()) }.distinctUntilChanged().collect { ids ->
+                if (ids == null) return@collect
+                // A redraw that can't be queued throws, and the store asks again ([saveUntilStored]).
+                nearbySet.keep(ids) { redrawWidgetNow(workManager) }
+            }
         }
         setContent {
             // TfL refused the key in force: one bar atop every screen says so and clears it (SPEC D7).

@@ -2553,7 +2553,7 @@ and these carry the rest as their own PRs:
       distances (or a widget-ready deduplicated selection) alongside the snapshot — a
       selection/schema decision, and moot once Phase 2's watched stops replace the interim
       nearby source. Until then adjacent stops can double up a line/direction in the six slots.
-- [ ] **Scope the widget snapshot to its nearby set (own PR, Codex P1 on #44).** The widget
+- [x] **Scope the widget snapshot to its nearby set (own PR, Codex P1 on #44).** The widget
       snapshot is written only on an *authoritative* arrivals cycle, so if the user moves and
       the new set's fetch fails (offline/rate-limited), the previous location's departures stay
       on the widget — and because the widget shows no stop name, they read as live for the new
@@ -2573,6 +2573,12 @@ and these carry the rest as their own PRs:
       rounds all traced to the same shape (an activity effect clearing the shared store
       concurrently with the per-set writers), which is a design signal, not seven bugs. Revisit
       as a render-path scoping (the redesign option below), not as more race patches.**
+      *Done as the render-path scoping (maintainer, 2026-10-02): the app stores each resolved
+      nearby set in a file of its own (`DataStoreNearbySetStore`), written by one collector in
+      the activity and never by the departures writers, and the widget and the watch show only
+      those stops from the snapshot (`DeparturesSnapshot.scopedTo`), a new one unfetched counting
+      as missing. The background refreshes still refetch the stored stops, so a live-refresh
+      widget refreshes the old place's stops (hidden) until the app saves the new set's.*
 - [x] **Size-aware row cap (Codex P2 on #44, landed with the header row).** The fixed six-line
       cap overflowed even the default 240x180dp cell. The widget now uses `SizeMode.Responsive`
       height buckets and derives its line budget from the bucket's height (`widgetLineBudget`,
@@ -3197,6 +3203,8 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
   still routes through `reconcile`), and `fetchedStops`/`declaredLineIds` derive from it. So a
   changed name/line now refreshes in place and a newly-served line's disruption surfaces. No
   `NearbyDeparturesStores` re-keying was needed.
+- **Resolved 2026-10-02: the maintainer chose the render-path scoping (option 2 below), now
+  landed (Phase 4 *Scope the widget snapshot*). Kept for its reasoning.**
 - **Widget-snapshot-scope (Codex P1 from #44) deferred: PR #53 closed unmerged; aging stamp
   is the honesty floor and the render-path scoping stays an open task (not closed by Phase 2)**
   (autopilot, maintainer said "defer 53"). The gap is

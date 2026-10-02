@@ -14,6 +14,7 @@ import java.time.Duration as JavaDuration
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.toKotlinDuration
 import kotlinx.coroutines.CancellationException
 
@@ -53,14 +54,31 @@ internal var runningStalenessSlot: String? = null
  * once stale (the boundary redraw re-renders, finds the snapshot already stale, and cancels) —
  * negligible battery, not a polling cadence (a live *refresh* cadence stays deferred, SPEC D5).
  */
-internal fun scheduleStalenessRedrawFor(context: Context, snapshot: DeparturesSnapshot?, now: Instant) {
+internal fun scheduleStalenessRedrawFor(
+    context: Context,
+    snapshot: DeparturesSnapshot?,
+    now: Instant,
+    // A redraw due no later than this whatever the snapshot does: a render that needs to look again
+    // (the nearby set it couldn't read). Null for none.
+    within: Duration? = null,
+) {
     // The snapshot's next change on its own: its staleness boundary, or a line check's expiry
     // (a disruption's mark goes, or a line turns unchecked), whichever is first. The redraw there
     // re-renders and arms the next one, until none is left.
     val boundary = snapshot?.nextBoundary(now)
     val remaining = boundary?.let { JavaDuration.between(now, it).toKotlinDuration() } ?: Duration.ZERO
-    applyStalenessRedrawPlan(WorkManager.getInstance(context.applicationContext), remaining)
+    applyStalenessRedrawPlan(WorkManager.getInstance(context.applicationContext), redrawIn(remaining, within))
 }
+
+/** The sooner of the snapshot's own boundary ([remaining], zero for none) and [within], when given. */
+internal fun redrawIn(remaining: Duration, within: Duration?): Duration = when {
+    within == null -> remaining
+    remaining == Duration.ZERO -> within
+    else -> minOf(remaining, within)
+}
+
+/** How soon the widget looks again after a nearby set it couldn't read. */
+internal val NEARBY_SET_RETRY: Duration = 1.minutes
 
 /** The arrivals-only form of [scheduleStalenessRedrawFor]: the boundary of a snapshot fetched at [snapshotFetchedAt]. */
 internal fun scheduleStalenessRedrawFor(context: Context, snapshotFetchedAt: Instant?, now: Instant) {

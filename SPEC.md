@@ -2509,7 +2509,14 @@ widget stays deferred, D5). A setting of the device's clock redraws a placed wid
 since its countdowns and age are drawn against the clock as it read then (*Freshness*). The snapshot also records which of the stops it should show a
 refresh asked for but couldn't get, with nothing earlier to fall back on; while any is missing
 the widget says its stops are partly out of date, so a first refresh where one stop failed never
-reads as complete (principle 1). **Disruptions reach the widget too** (D3): the snapshot keeps each
+reads as complete (principle 1). **The widget shows only the stops the app last found near the
+rider**: each nearby set the app resolves is stored on its own, apart from the departures (which
+are saved only once a fetch succeeds), and the widget and the watch show only those stops from
+the stored departures, counting a new one not fetched yet as missing. So after a move whose
+first fetch fails, the last place's trains come off at once instead of reading as live until
+they age (principle 1); a pinned journey from the old place keeps its own rows. Deciding this
+where the snapshot is read, not by clearing the stored file, keeps it from racing the app's own
+saves. **Disruptions reach the widget too** (D3): the snapshot keeps each
 shown line's last status check, stamped with when TfL gave it, so a delayed or suspended line's
 rows carry the same "⚠ Severe Delays" mark as in the app, and a disrupted line with no countdown
 shows as its status alone, saying "No key" or "No data" where its times would be when that's why
