@@ -19,6 +19,19 @@ class AlertStopsTest {
     }
 
     @Test
+    fun `a stop quoted as its sign reads is the route's stop listed without "Station"`() {
+        // A route lists its stops cleaned ("Bank / King William Street"), where the alert quotes the
+        // sign: "Station" on the stop's part, no spaces round the slash (maintainer, 2026-10-02).
+        val route = stops("Bank / King William Street", "Bank / Second Street", "Middle Road", "Moorgate", "Old Street")
+        val alert = "Buses are not serving stops between 'Bank Station/King William Street' and 'Moorgate Station'."
+        assertEquals(setOf("S0", "S1", "S2", "S3"), AlertStops.stretched(alert, route))
+        // The other stop at Bank is only between the ends, never named by the quoted one's "Bank".
+        assertEquals(setOf("S0", "S3"), AlertStops.mentioned(alert, route))
+        // Its cross street named "Station" instead, or the slash spaced, reads the same.
+        assertEquals(setOf("S0", "S3"), AlertStops.mentioned(alert.replace("Bank Station/King William Street", "Bank / King William Street Station"), route))
+    }
+
+    @Test
     fun `a stop the alert quotes is named, an apostrophe inside a word isn't a break`() {
         // Bus alerts quote their stops ('Moorgate Station'), slash and all (maintainer, 2026-10-01).
         assertEquals(

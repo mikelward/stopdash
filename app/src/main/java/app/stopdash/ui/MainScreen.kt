@@ -15,9 +15,11 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import app.stopdash.domain.AlertLinks
+import app.stopdash.domain.AlertStart
 import app.stopdash.domain.AlertStops
 import app.stopdash.domain.RouteStop
 import app.stopdash.domain.RouteStops
+import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.ClosedNotice
 import app.stopdash.domain.NoticePlan
 import app.stopdash.domain.isPole
@@ -503,29 +505,43 @@ fun MainScreen(
     val journeyLineIds = remember(journeyStarLines, originLines, siblingLines) {
         (journeyStarLines + originLines + siblingLines).filter { it.isNotBlank() }.distinct()
     }
-    LaunchedEffect(routeStopsRepository, journeyLineIds, journeyRouteRetry, routeRecheck) {
-        val repository = routeStopsRepository ?: return@LaunchedEffect
-        // Every line at once, so one slow route doesn't hold up the rest.
-        coroutineScope {
-            for (lineId in journeyLineIds) {
-                val held = loadedSequences[lineId]
-                if (held != null && repository.cached(lineId, "") != null) continue
-                if (held == null) loadedSequences.remove(lineId)
-                launch {
-                    loadedSequences[lineId] = try {
-                        repository.load(lineId, "")
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: TflException) {
-                        // Logged (sanitized) by the repository; null marks the failure for the card,
-                        // unless an expired copy is held: route data a day old beats none.
-                        held
-                    }
+    // Loads [lineIds]' routes into [loadedSequences], each line at once, so one slow route doesn't hold
+    // up the rest.
+    suspend fun loadSequences(repository: RouteStopsRepository, lineIds: Collection<String>) = coroutineScope {
+        for (lineId in lineIds) {
+            val held = loadedSequences[lineId]
+            if (held != null && repository.cached(lineId, "") != null) continue
+            if (held == null) loadedSequences.remove(lineId)
+            launch {
+                loadedSequences[lineId] = try {
+                    repository.load(lineId, "")
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: TflException) {
+                    // Logged (sanitized) by the repository; null marks the failure for the card,
+                    // unless an expired copy is held: route data a day old beats none.
+                    held
                 }
             }
         }
     }
+    LaunchedEffect(routeStopsRepository, journeyLineIds, journeyRouteRetry, routeRecheck) {
+        loadSequences(routeStopsRepository ?: return@LaunchedEffect, journeyLineIds)
+    }
     val journeySequences = sequencesFor(journeyLineIds)
+    // The routes of the shown stops' bus lines whose alert may lie wholly behind a stop, so a
+    // diversion a bus from there never reaches doesn't flag it ([DepartureRows.withAlertsBehind]):
+    // one request per such line a day, the route page's own. Until one is in, or where it failed, the
+    // alert stays on, as it was.
+    // Read again each London day, as planned work whose day has come counts ([LineStatus.asOf]).
+    val alertDay = now.atZone(AlertStart.ZONE).toLocalDate()
+    val alertLineIds = remember(loaded?.stops, loaded?.lineStatuses, alertDay, dismissed) {
+        loaded?.let { DepartureRows.linesWithAlertsToPlace(it.stops, it.lineStatuses, now, dismissed) }.orEmpty()
+    }
+    LaunchedEffect(routeStopsRepository, alertLineIds, routeRecheck) {
+        loadSequences(routeStopsRepository ?: return@LaunchedEffect, alertLineIds)
+    }
+    val alertSequences = sequencesFor(alertLineIds)
     // The poles beside each bus journey's origin that board a line reaching its far end, fetched
     // alongside the origin (one arrivals request each) and shown on its card under their letter.
     val journeySiblings = remember(cardJourneys, journeySegments, journeyPoles, journeySequences) {
@@ -563,13 +579,14 @@ fun MainScreen(
     val journeyCards = remember(
         loaded?.stops, loaded?.lineStatuses, loaded?.unavailableStopIds, now, cardJourneys, journeySegments,
         journeySequences, dismissed, journeyAreas, journeyPoles, journeySiblings, journeyDestinationStops,
-        journeyDestinationIds, journeyDestinationsUnknown,
+        journeyDestinationIds, journeyDestinationsUnknown, alertSequences,
     ) {
         val ld = loaded
-        // Dismissals apply here as on the list, so an alert dismissed anywhere is gone from the card.
-        val across = DepartureRows.withoutDismissed(
-            ld?.let { DepartureRows.across(it.stops, now, it.lineStatuses) }.orEmpty(),
-            dismissed,
+        // Dismissals apply here as on the list, so an alert dismissed anywhere is gone from the card,
+        // and an alert behind the origin flags it no more than the list.
+        val across = DepartureRows.withAlertsBehind(
+            DepartureRows.withoutDismissed(ld?.let { DepartureRows.across(it.stops, now, it.lineStatuses) }.orEmpty(), dismissed),
+            alertSequences,
         )
         cardJourneys.map { journey ->
             val segment = journeySegments[journey.key]
@@ -773,8 +790,11 @@ fun MainScreen(
     }
     val nearbyOrdered = nearbyComputed.first
     val sharedNotices = nearbyComputed.second
-    // Hide the service alerts the user has dismissed (until their content changes).
-    val nearbyRows = remember(nearbyOrdered, dismissed) { DepartureRows.withoutDismissed(nearbyOrdered, dismissed) }
+    // Hide the service alerts the user has dismissed (until their content changes), and unflag a bus
+    // alert wholly behind its stop.
+    val nearbyRows = remember(nearbyOrdered, dismissed, alertSequences) {
+        DepartureRows.withAlertsBehind(DepartureRows.withoutDismissed(nearbyOrdered, dismissed), alertSequences)
+    }
     // The near-me closures the user dismissed: a closed place with nothing else to show keeps its
     // heading and "Closed" chip in place (SPEC *Disruptions*).
     val dismissedClosures = remember(nearbyOrdered, nearbyRows, stopDistanceMeters) {
@@ -842,7 +862,7 @@ fun MainScreen(
     // carries a line-status row (Codex). The saved stop ids already pin the place. Dismissals and
     // stars still apply, as on the full list. The title is resolved from the matched group each time, since a letterless bus
     // pole's qualifier (its shared terminus) can change with the departures (Codex).
-    val platformView = remember(loaded?.stops, loaded?.lineStatuses, now, platformStopIds, platformKey, platformIsStation, starred, dismissed, rows, hiddenModes) {
+    val platformView = remember(loaded?.stops, loaded?.lineStatuses, now, platformStopIds, platformKey, platformIsStation, starred, dismissed, rows, hiddenModes, alertSequences) {
         val ids = platformStopIds?.split(',')?.toSet() ?: return@remember null
         val ld = loaded ?: return@remember emptyList<DepartureRow>() to null
         // A station view saved its clusters, not stop ids, so each snapshot re-resolves its members —
@@ -851,9 +871,12 @@ fun MainScreen(
             if (platformIsStation) ld.stops.filter { stationClusterOf(it.clusterId, it.stopId) in ids }
             else ld.stops.filter { it.stopId in ids }
         val stopRows = DepartureRows.pinStarred(
-            DepartureRows.withoutDismissed(
-                HiddenModes.rows(DepartureRows.across(platformStops, now, ld.lineStatuses), hiddenModes),
-                dismissed,
+            DepartureRows.withAlertsBehind(
+                DepartureRows.withoutDismissed(
+                    HiddenModes.rows(DepartureRows.across(platformStops, now, ld.lineStatuses), hiddenModes),
+                    dismissed,
+                ),
+                alertSequences,
             ),
             starred,
         )
@@ -960,9 +983,9 @@ fun MainScreen(
     }
     // And, last, among every loaded stop's rows: a page opened from a journey card stays open when
     // that journey is unstarred from the page itself, while its origin's departures are still loaded.
-    val loadedRows = remember(loaded?.stops, loaded?.lineStatuses, now, dismissed) {
+    val loadedRows = remember(loaded?.stops, loaded?.lineStatuses, now, dismissed, alertSequences) {
         val ld = loaded ?: return@remember emptyList()
-        DepartureRows.withoutDismissed(DepartureRows.across(ld.stops, now, ld.lineStatuses), dismissed)
+        DepartureRows.withAlertsBehind(DepartureRows.withoutDismissed(DepartureRows.across(ld.stops, now, ld.lineStatuses), dismissed), alertSequences)
     }
     val detailRow = detailKey?.let { key ->
         shownRows.firstOrNull { it.detailKey() == key }
@@ -4160,34 +4183,48 @@ internal fun RouteDetailScreen(
     // A page with no stop list to show — a status row (no train to follow), or a stale one whose
     // train-specific list is withheld — loads the line's stations just to name them; they aren't
     // listed, since which direction or branch to list is a guess (and a stale train may be gone).
+    // The alert the page tells of: the one flagging the row, else one wholly behind its stop
+    // ([DepartureRow.statusBehind]), told muted.
+    val alertText = (row.status ?: row.statusBehind)?.fullText
     val lineStops = rememberLineStops(
         row.lineId,
         // Not for a line TfL doesn't know: its route request already failed, and asking again can't
         // name anything.
-        wanted = row.status?.fullText != null && when (stops) {
+        wanted = alertText != null && when (stops) {
             RouteStopsUi.Hidden, RouteStopsUi.Stale -> true
             is RouteStopsUi.Unavailable -> stops.reason != RouteStops.Resolution.UnknownLine
             else -> false
         },
     )
-    val alertStops = remember(row.status?.fullText, stops, lineStops) {
+    val alertStops = remember(alertText, stops, lineStops) {
         val listed = (stops as? RouteStopsUi.Loaded)?.stops ?: lineStops
-        val ids = AlertStops.mentioned(row.status?.fullText, listed)
+        val ids = AlertStops.mentioned(alertText, listed)
         listed.filter { it.id in ids }
     }
     // The train's stops the alert touches, for their ⚠s: those it names and, on the train's own list
     // (in route order), the ones between two named ends of a stretch it gives ("between Moorgate and
-    // Monument"). Beside the chip it stays the stations the alert names, as the alert names them.
+    // Monument"). Beside the chip it stays the stations the alert names, as the alert names them. None
+    // for an alert behind the stop, which flags nothing.
     val alertStretchIds = remember(row.status?.fullText, stops, alertStops) {
-        (stops as? RouteStopsUi.Loaded)?.let { AlertStops.affected(row.status?.fullText, it.stops) }
-            ?: alertStops.mapTo(HashSet()) { it.id }
+        when {
+            row.status == null -> emptySet()
+            stops is RouteStopsUi.Loaded -> AlertStops.affected(row.status?.fullText, stops.stops)
+            else -> alertStops.mapTo(HashSet()) { it.id }
+        }
     }
-    // Beside the chip, where the alert is ([AlertStops.runs]). Each name once: a bus line's stops on both
-    // sides of the road are separate ids under one name, and both are matched.
-    val alertPlaces = remember(stops, alertStops, alertStretchIds) {
+    // The whole route the train's list is part of, from its first stop: the list starts at this stop,
+    // so a stretch the alert gives before it is named from here (maintainer, 2026-10-02).
+    val wholeRoute = remember(stops) {
+        (stops as? RouteStopsUi.Loaded)?.let { loaded -> loaded.sequence?.let { RouteStops.wholeRouteOf(it, loaded.stops) } }.orEmpty()
+    }
+    // Beside the chip, where the alert is ([AlertStops.runs]): on the train's list, else on its whole
+    // route, else the stations it names. Each name once: a bus line's stops on both sides of the road
+    // are separate ids under one name, and both are matched.
+    val alertPlaces = remember(alertText, stops, alertStops, alertStretchIds, wholeRoute) {
         val shortName: (RouteStop) -> String = { stop -> stop.name.substringBefore(" / ").trim().ifBlank { stop.name.ifBlank { stop.id } } }
-        (stops as? RouteStopsUi.Loaded)?.let { AlertStops.runs(alertStretchIds, it.stops, shortName) }
-            ?: alertStops.map(shortName).distinct()
+        val onList = (stops as? RouteStopsUi.Loaded)?.let { AlertStops.runs(alertStretchIds, it.stops, shortName) }.orEmpty()
+        onList.ifEmpty { AlertStops.runs(AlertStops.affected(alertText, wholeRoute), wholeRoute, shortName) }
+            .ifEmpty { alertStops.map(shortName).distinct() }
     }
     // Every upcoming train on the followed route, not the card's first few — TfL predicts ~30 min
     // ahead, and the page has the room (SPEC *Route detail*).
@@ -4394,6 +4431,30 @@ internal fun RouteDetailScreen(
                     )
                 }
             }
+            // A line alert wholly behind this stop (a bus diversion a bus from here has passed): told,
+            // muted, with where it is, but never flagged as this row's (SPEC *Disruptions*).
+            val behind = row.statusBehind
+            if (status == null && behind != null) {
+                Text(
+                    text = if (alertPlaces.isEmpty()) {
+                        stringResource(R.string.route_detail_alert_behind, behind.description)
+                    } else {
+                        stringResource(R.string.route_detail_alert_behind_at, behind.description, alertPlaces.joinToString(", "))
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+                behind.fullText?.let { fullText ->
+                    CollapsibleStatus(
+                        text = fullText,
+                        title = null,
+                        modifier = Modifier.padding(top = 8.dp),
+                        container = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             // Work still to come, after any disruption now: each with the day it starts, so a
             // closure next month reads as notice, not as today's trouble (SPEC *Disruptions*).
             row.plannedAlerts.forEach { planned ->
@@ -4427,7 +4488,7 @@ internal fun RouteDetailScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 12.dp),
                 )
-            } else if (status == null && !row.statusDismissed && row.stopDisruption == null && !stale) {
+            } else if (status == null && !row.statusDismissed && row.statusBehind == null && row.stopDisruption == null && !stale) {
                 // Nor with a notice in force at its stop (a closure, a moved stop): not a clean stop.
                 Text(
                     text = stringResource(R.string.route_detail_no_disruption),

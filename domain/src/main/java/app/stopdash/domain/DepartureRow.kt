@@ -77,6 +77,11 @@ data class DepartureRow(
     val fetchedAt: Instant,
     val status: LineStatus? = null,
     val statusDismissed: Boolean = false,
+    // The line's alert for this row's way when it lies wholly behind the row's stop
+    // ([DepartureRows.withAlertsBehind]): a bus diversion before here, which a bus from here never
+    // reaches. [status] is then null, so nothing flags the row, and its page shows this one muted,
+    // never claiming the line is clean. Null otherwise.
+    val statusBehind: LineStatus? = null,
     // The line's work that hasn't started yet, for the way this row goes ([LineStatus.planned]):
     // noted on the row and spelled out on its page, never flagged as a disruption.
     val plannedAlerts: List<PlannedAlert> = emptyList(),

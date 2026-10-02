@@ -1647,7 +1647,10 @@ them there:
   before it, on every route of the line, so it can only keep an alert). A stop is named as the route
   lists it, give or take "Station" and a cross street before a slash in the alert ("King William Street
   / Monument Station (G)" for "Monument"), or by the part of its listed name after the slash where the
-  alert gives the stop's letter ("Moorgate Station (L)" for "Finsbury Square / Moorgate"). Any other wording places
+  alert gives the stop's letter ("Moorgate Station (L)" for "Finsbury Square / Moorgate"), or as its
+  sign reads, the slash unspaced and either part with "Station" ("'Bank Station/King William Street'"
+  for "Bank / King William Street"; maintainer, 2026-10-02: a route lists its stops without
+  "Station", so no stop quoted with its cross street had matched). Any other wording places
   nothing, and so does an alert that also says stops are missed in other words, since reading free prose for where service is affected kept
   misreading it, and a stop merely named may be an aside. And only when every stretch the alert
   gives is one of these, only while it's the line's one alert under way (TfL's
@@ -1873,8 +1876,20 @@ the two apart from TfL's prose is open-ended, and one marked too many costs a gl
 2026-10-01). Not where an end isn't on the page, since what lies between off it isn't known. Every
 stop a trip reads as not served (*Route disruption*: a bus alert's stretch, the stops it misses one by
 one, the stops a curtailment leaves out) carries a ⚠ too, so the page and the trip read an alert the
-same way (maintainer, 2026-10-01). The
+same way (maintainer, 2026-10-01). Where the train's list marks no stop, the run beside the chip is
+named from the whole route the list is part of (maintainer, 2026-10-02): the list starts at the
+boarding stop, so a stretch before it would otherwise go unnamed. The
 compact chip is a follow-up (`TODO.md` Phase 3).
+**A bus alert wholly behind the stop flags nothing** (maintainer, 2026-10-02): a diversion a bus
+from here has already passed says nothing of the buses here. It's read as a trip reads an alert off
+a ride (*Route disruption*), with each route through the stop, from there to its end, standing in
+for the ride, since where the rider gets off isn't known. So unknown keeps it on: no route loaded
+yet, a route through the stop the alert gives no stretch on, or one of several alerts. Its row
+carries no ⚠, and the route's page tells it muted, where it is and its prose ("Diversion before this
+stop: Bank to Moorgate"), never claiming the line is clean. The routes come from the route page's
+own cache: one request a day for each bus line at the shown stops with an alert that could be placed.
+This applies to the in-app list, a platform view, the journey cards and the route page. The widget
+and watch have no routes, so they still flag it (`TODO.md`).
 **Work that hasn't started yet is noted, not flagged** (maintainer, 2026-09-28): a closure next
 month says nothing about today's buses, and a ⚠ for it trains the rider to ignore the ⚠. Neither of
 TfL's fields can tell: `isNow` reads `false` even for planned closures in effect (it marks

@@ -482,6 +482,47 @@ class RouteDisruptionTest {
     }
 
     @Test
+    fun `a bus alert whose stretch is all before a stop is behind it, on any route through it`() {
+        assertTrue(RouteDisruption.behind("b4", sole(diversion), busRoute))
+        assertTrue(RouteDisruption.behind("b6", sole(diversion), busRoute))
+        // At the stretch's far end, inside it, or before it, a bus from the stop may still run it.
+        assertFalse(RouteDisruption.behind("b3", sole(diversion), busRoute))
+        assertFalse(RouteDisruption.behind("b2", sole(diversion), busRoute))
+        assertFalse(RouteDisruption.behind("b1", sole(diversion), busRoute))
+        // Unknown is ahead: a stop no route calls at, an alert giving no stretch, one of several alerts.
+        assertFalse(RouteDisruption.behind("elsewhere", sole(diversion), busRoute))
+        assertFalse(RouteDisruption.behind("b4", sole("Buses are diverted near Moorgate Station."), busRoute))
+        assertFalse(RouteDisruption.behind("b4", sole(diversion).copy(soleAlert = false), busRoute))
+        // A second route through the stop that the alert gives no stretch on: where it applies isn't known.
+        val shortWorking = busRoute.copy(routes = busRoute.routes + LineRoute("Alpha Road - Far End", listOf("b4", "b5", "x1")))
+        assertFalse(RouteDisruption.behind("b4", sole(diversion), shortWorking))
+        // The way back calls at the stop too, with the stretch after it: only the row's own way counts.
+        val bothWays = busRoute.copy(
+            routes = listOf(
+                busRoute.routes.single().copy(direction = "inbound"),
+                LineRoute("North End - Bank", listOf("b6", "b5", "b4", "b3", "b2", "b1"), "outbound"),
+            ),
+        )
+        assertTrue(RouteDisruption.behind("b4", sole(diversion), bothWays, "inbound"))
+        assertFalse(RouteDisruption.behind("b4", sole(diversion), bothWays, "outbound"))
+        assertFalse(RouteDisruption.behind("b4", sole(diversion), bothWays))
+        // A loop back through the stretch after the stop has it ahead.
+        val loop = busRoute.copy(routes = listOf(LineRoute("Loop", listOf("b1", "b2", "b3", "b4", "b5", "b6", "b1", "b2"))))
+        assertFalse(RouteDisruption.behind("b4", sole(diversion), loop))
+    }
+
+    @Test
+    fun `a bus alert behind a stop is found on a route listing its stops as TfL's route data does`() {
+        // Route stops come cleaned ("Bank / King William Street", "Moorgate"), the alert quoting signs.
+        val listed = busRoute.copy(
+            stopNames = busRoute.stopNames + mapOf("b1" to "Bank / King William Street", "b3" to "Moorgate"),
+        )
+        assertTrue(RouteDisruption.behind("b4", sole(diversion), listed))
+        assertTrue(RouteDisruption.offRide(bus("b4", "b6"), sole(diversion), listed))
+        assertFalse(RouteDisruption.offRide(bus("b2", "b6"), sole(diversion), listed))
+    }
+
+    @Test
     fun `a ride inside a quoted stretch is on it, though it calls at neither end`() {
         // The stretch's ends quoted, the ride between them (Codex, PR #455).
         val route = LineSequence(
