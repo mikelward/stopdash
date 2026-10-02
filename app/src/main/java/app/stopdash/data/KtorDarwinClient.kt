@@ -15,6 +15,9 @@ import io.ktor.http.HttpStatusCode
 import java.io.IOException
 import java.net.UnknownHostException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * National Rail's live departure boards (Darwin) from the Rail Data Marketplace, with the user's
@@ -31,6 +34,9 @@ class KtorDarwinClient(
     private val baseUrl: String = DEFAULT_BASE_URL,
     // Sink for a board's oddities (a train with an unreadable time), sanitized: no key, no payload.
     private val warn: (String) -> Unit = {},
+    // Where a board's answer is read, as for TfL's ([KtorTflClient]): off the caller's thread, which
+    // is a screen's main thread when it loads its own. A test swaps in its own.
+    private val decodeDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : RailBoardSource {
     override val available: Boolean get() = !apiKey().isNullOrBlank()
 
@@ -39,10 +45,12 @@ class KtorDarwinClient(
     override suspend fun board(crs: String): RailBoard {
         val key = apiKey()?.trim()?.ifBlank { null } ?: return RailBoard(emptyList())
         return try {
-            httpClient.get("$baseUrl/GetDepartureBoard/$crs") {
-                header("x-apikey", key)
-                parameter("numRows", ROWS)
-            }.body<DarwinBoardDto>().toBoard(warn)
+            withContext(decodeDispatcher) {
+                httpClient.get("$baseUrl/GetDepartureBoard/$crs") {
+                    header("x-apikey", key)
+                    parameter("numRows", ROWS)
+                }.body<DarwinBoardDto>().toBoard(warn)
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: ClientRequestException) {
