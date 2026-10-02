@@ -5,9 +5,9 @@ import kotlin.math.pow
 import kotlin.math.roundToInt
 
 /**
- * How big StopDash's own text is (SPEC *Display size*): a factor applied on top of whatever the
+ * How big LDN Go's own text is (SPEC *Display size*): a factor applied on top of whatever the
  * system's font scale already is, so an accessibility setting made in Android is respected and
- * this only says how much bigger or smaller StopDash should be than everything else.
+ * this only says how much bigger or smaller LDN Go should be than everything else.
  *
  * Pure, so the clamping and the pinch math are testable without a Compose host or a device; the
  * Android side is `ui/FontSize.kt` in the app.
@@ -24,17 +24,17 @@ const val MIN_FONT_SCALE = 0.8f
 const val MAX_FONT_SCALE = 1.6f
 
 /**
- * The size StopDash starts at: the system's own (100%). StopDash respects the platform font-size
+ * The size LDN Go starts at: the system's own (100%). LDN Go respects the platform font-size
  * setting by default and only departs from it once the user pinches or drags to their own size,
  * which is then stored like any other choice. Reversible — one constant. Only the *starting*
  * point; anything already stored is read back unchanged.
  */
 const val DEFAULT_FONT_SCALE = 1.0f
 
-/** The settings that decide how StopDash's text is sized, read as one value. */
+/** The settings that decide how LDN Go's text is sized, read as one value. */
 data class FontSizeSettings(
     val scale: Float = DEFAULT_FONT_SCALE,
-    /** Whether a two-finger pinch anywhere in StopDash adjusts [scale]. */
+    /** Whether a two-finger pinch anywhere in LDN Go adjusts [scale]. */
     val pinchEnabled: Boolean = true,
 )
 

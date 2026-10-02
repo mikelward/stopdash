@@ -9,7 +9,7 @@ import java.time.Instant
  * valid-looking departures you can't actually catch there (SPEC *Disruptions* / D3, the
  * quietly-wrong failure by a different path).
  *
- * [description] is TfL's own human-readable text. StopDash surfaces any stop disruption
+ * [description] is TfL's own human-readable text. LDN Go surfaces any stop disruption
  * rather than trying to tell a full closure from a lift outage — TfL's closure fields are
  * coarse and the data is often absent, so surfacing what it does report beats hiding it;
  * classifying severity is left to the full disruptions work (Phase 3).

@@ -14,7 +14,7 @@ data class HeadedCard(val index: Int, val header: RouteLabel?)
  * The label over each of a trip's cards, given each card's best route in the order shown ([cards],
  * best first), or null for a card with none.
  *
- * - **Fastest** is the first card, since the list is already ordered by the arrival StopDash can
+ * - **Fastest** is the first card, since the list is already ordered by the arrival LDN Go can
  *   stand behind: never on a lone card (fastest of one says nothing) nor one whose arrival is
  *   withheld, which can't be called fastest.
  * - **Simplest** is the card with the fewest rides, the earliest shown where several tie, and only

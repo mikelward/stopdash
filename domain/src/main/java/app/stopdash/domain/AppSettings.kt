@@ -61,7 +61,7 @@ interface AppSettings {
 
     /**
      * The user's own free TfL `app_key`, pasted in Settings for the higher request budget
-     * (SPEC D7), or null when keyless — the default. StopDash ships no baked-in key; a
+     * (SPEC D7), or null when keyless — the default. LDN Go ships no baked-in key; a
      * per-user key raises the limit ~50→~500 req/min. Blank is normalized to null on write,
      * so the accessor emits either a non-blank key or null, never an empty string. It is a
      * credential: sent only with the user's own TfL requests (its purpose), persisted in a

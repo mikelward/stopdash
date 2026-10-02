@@ -20,7 +20,7 @@ import app.stopdash.ui.LocalFontSizeState
 import app.stopdash.ui.pinchFontSize
 import app.stopdash.ui.rememberFontSizeState
 
-// StopDash's brand accent is red — a nod to the London transit palette — applied the
+// LDN Go's brand accent is red — a nod to the London transit palette — applied the
 // Material way: it seeds `primary` (and its container/secondary/tertiary partners), so it
 // surfaces as an accent on buttons, the refresh and progress indicators, and selection,
 // over otherwise-neutral surfaces. It is deliberately *not* the app-bar container, to keep
@@ -69,7 +69,7 @@ private val DarkStarredBorder = Color(0xFFE7C34C)
 val LocalStarredBorderColor = staticCompositionLocalOf { LightStarredBorder }
 
 /**
- * The app theme. Uses the stopdash red-accent scheme (light or dark by the system setting), and
+ * The app theme. Uses the LDN Go red-accent scheme (light or dark by the system setting), and
  * sizes the whole app from the user's chosen text size (SPEC *Display size*).
  *
  * Dynamic color (Material You) is **off by default**: it would let the device wallpaper

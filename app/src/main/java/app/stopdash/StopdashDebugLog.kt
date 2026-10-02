@@ -7,7 +7,7 @@ import com.mikelward.androidlog.android.DebugReport
 import com.mikelward.androidlog.android.ProcessExits
 
 /**
- * StopDash's process-wide diagnostic log — the shared `mikelward/androidlog` buffer that
+ * LDN Go's process-wide diagnostic log — the shared `mikelward/androidlog` buffer that
  * `docs/PRIVACY.md` describes. A named subclass rather than the base [DebugLog] directly, so
  * it reads as one log at every call site while a test can still build a fresh instance.
  *

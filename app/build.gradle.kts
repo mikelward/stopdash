@@ -110,7 +110,7 @@ val releaseSigningConfigured = releaseKeystorePath != null && releaseKeystorePas
 val releaseLauncherIcon = "@mipmap/ic_launcher"
 val debugLauncherIcon = "@mipmap/ic_launcher_debug"
 val releaseAppLabel = "@string/app_name"
-val debugAppLabel = "StopDash Debug"
+val debugAppLabel = "LDN Go Debug"
 
 android {
     namespace = "app.stopdash"

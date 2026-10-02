@@ -9,7 +9,7 @@ import org.junit.Test
 
 /**
  * The route detail's stop list for a bus, against a recorded `/Line/24/Route/Sequence/inbound`
- * (trimmed to the fields stopdash reads; public network data only). Its arrivals' recorded
+ * (trimmed to the fields LDN Go reads; public network data only). Its arrivals' recorded
  * `destinationName` is "Pimlico", which is neither a stop on the route (the nearest reads "St
  * George's Square / Pimlico" once cleaned) nor the route's named end ("Grosvenor Road") — the
  * mismatch that left most buses without a list.

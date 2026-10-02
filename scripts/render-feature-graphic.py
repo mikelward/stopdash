@@ -71,7 +71,7 @@ for x, y in [(77, 47), (77, 61), (64, 54)]:
     d.ellipse([mx(x) - r, my(y) - r, mx(x) + r, my(y) + r], fill="#000000")
 
 # Wordmark and tagline.
-d.text((s(64), s(208)), "StopDash", font=font(700, 72), fill=INK)
+d.text((s(64), s(208)), "LDN Go", font=font(700, 72), fill=INK)
 tag = font(500, 30)
 d.text((s(64), s(308)), "Live London departures,", font=tag, fill=INK_MUTED)
 d.text((s(64), s(348)), "at a glance", font=tag, fill=INK_MUTED)

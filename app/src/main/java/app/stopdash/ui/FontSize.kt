@@ -252,7 +252,7 @@ class FontSizeState internal constructor(
 }
 
 /**
- * A two-finger pinch anywhere in StopDash resizes its text (SPEC *Display size*), tracking the
+ * A two-finger pinch anywhere in LDN Go resizes its text (SPEC *Display size*), tracking the
  * fingers as they move and persisting where they stopped once they lift.
  *
  * Handled in the **Initial** pointer pass, and only once a second finger is down: single-finger
@@ -371,7 +371,7 @@ internal fun FontSizeWindow(content: @Composable () -> Unit) {
 }
 
 /**
- * The pinch, for a surface inside a window the app opens. "Two fingers anywhere in StopDash" is
+ * The pinch, for a surface inside a window the app opens. "Two fingers anywhere in LDN Go" is
  * what the setting promises, so a window that opens its own composition (a popup, a dialog) hosts
  * its own gesture — a pointer handler no more crosses the boundary than a density does. Apply it to
  * the surface *containing* the text so one pinch spans the whole window. No-op outside the theme;

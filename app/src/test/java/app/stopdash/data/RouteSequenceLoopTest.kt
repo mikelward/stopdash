@@ -15,7 +15,7 @@ import org.junit.Test
 
 /**
  * Trains whose path the route can't pick from their destination alone, against recorded
- * `/Line/{id}/Route/Sequence/{inbound,outbound}` responses (trimmed to the fields stopdash reads;
+ * `/Line/{id}/Route/Sequence/{inbound,outbound}` responses (trimmed to the fields LDN Go reads;
  * public network data only) and recorded arrivals' platform, direction and destination fields.
  *
  * The Circle line is a loop ending at Edgware Road, so from King's Cross or Embankment a train "to

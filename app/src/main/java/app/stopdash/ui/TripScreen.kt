@@ -131,7 +131,7 @@ import kotlin.coroutines.cancellation.CancellationException
 /**
  * The live trains [leg] can use (SPEC *Trips with a change*): its line's upcoming trains at its
  * boarding stop whose route calls at its alighting stop ([DirectTrips.filter], so a train for another
- * branch never counts). Null when StopDash can't vouch for them: no arrivals yet, or stale ones (D4).
+ * branch never counts). Null when LDN Go can't vouch for them: no arrivals yet, or stale ones (D4).
  * A train whose route is still loading, or can't be followed, is left out rather than guessed.
  */
 internal fun legTrains(
@@ -1848,7 +1848,7 @@ internal fun destinationsLadder(names: List<String>): List<String> = listOf(
 
 /**
  * "3 · 11 min" in time order, trains the rider can't use grayed; "Loading" while the boarding stop's
- * arrivals haven't been fetched yet ([loading]); "–" with none StopDash can vouch for.
+ * arrivals haven't been fetched yet ([loading]); "–" with none LDN Go can vouch for.
  */
 @Composable
 private fun trainTimes(shown: List<Pair<Departure, Boolean>>, now: Instant, loading: Boolean) = buildAnnotatedString {

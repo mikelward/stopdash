@@ -13,7 +13,7 @@ import org.junit.Test
 
 /**
  * A Heathrow Express train from Paddington, as National Rail's board lists it, checked against a
- * recorded `/Line/heathrow-express/Route/Sequence/outbound` (trimmed to the fields stopdash reads;
+ * recorded `/Line/heathrow-express/Route/Sequence/outbound` (trimmed to the fields LDN Go reads;
  * public network data only). The board names the airport stations "(Rail Station Only)", where
  * TfL's route has "… Rail Station": both must clean to one name, or no train can be checked.
  */

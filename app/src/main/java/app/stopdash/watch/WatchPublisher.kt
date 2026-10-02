@@ -55,7 +55,7 @@ class WatchPublisher(
         /** The same envelope was already published. */
         data object Unchanged : Outcome
 
-        /** No snapshot has been stored yet: the watch keeps saying "Open StopDash on your phone". */
+        /** No snapshot has been stored yet: the watch keeps saying "Open LDN Go on your phone". */
         data object NothingStored : Outcome
 
         /** No paired watch has the app: nothing leaves the phone. */

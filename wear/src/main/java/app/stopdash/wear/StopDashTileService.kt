@@ -44,7 +44,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * The StopDash tile (dev-docs/wear-os.md *Surfaces*): the widget's rows, favorites first, as many as
+ * The LDN Go tile (dev-docs/wear-os.md *Surfaces*): the widget's rows, favorites first, as many as
  * fit, with their age, as a timeline the system steps through on its own ([TileTimeline]). It
  * renders only from the stored envelope, never the network; a new envelope asks for a re-render.
  */

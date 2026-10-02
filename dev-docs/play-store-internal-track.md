@@ -57,7 +57,7 @@ every release build, not only in CI.
 
 https://play.google.com/console → "Create app":
 
-- **App name**: `StopDash`
+- **App name**: `LDN Go`
 - **Default language**: English (United States)
 - **App or game**: App; **Free or paid**: Free
 - **Package name**: `app.stopdash` (must match `applicationId` in
@@ -124,7 +124,7 @@ roles needed) → Keys tab → Add key → JSON. The downloaded JSON becomes the
 ### 6. Grant the service account access in Play Console
 
 Play Console → Users and permissions → Invite new users → the service account
-email. On "App permissions", add StopDash and grant **Releases: Release to
+email. On "App permissions", add LDN Go and grant **Releases: Release to
 testing tracks** — the minimum for an internal-track upload. Propagation can
 take a few minutes.
 
@@ -141,7 +141,7 @@ revises these forms periodically).
 - **Privacy policy**: the published copy of `docs/PRIVACY.md` (confirm the
   hosted URL before submitting — e.g. a GitHub Pages copy at
   `https://mikelward.github.io/stopdash/PRIVACY.html`).
-- **What stopdash sends off the device** (`docs/PRIVACY.md`, SPEC *Privacy*):
+- **What LDN Go sends off the device** (`docs/PRIVACY.md`, SPEC *Privacy*):
   - **Approximate or precise location → Transport for London**, on demand only,
     when the user asks for "near me now": the device coordinates are sent to
     TfL's `/StopPoint` lookup to find nearby stops. Precise where the user
@@ -152,14 +152,14 @@ revises these forms periodically).
   - **The typed stop-name or line query → TfL**, for stop/line search (Phase 2).
   - **An optional user-supplied TfL `app_key`**, if the user sets one, sent as
     their own credential with their own TfL calls and nowhere else.
-  - **Nothing else leaves the device to stopdash** unless the user opts in to *Help
-    make StopDash better* (off by default): then crash reports and usage stats go to
+  - **Nothing else leaves the device to LDN Go** unless the user opts in to *Help
+    make LDN Go better* (off by default): then crash reports and usage stats go to
     Firebase, with the Data Safety categories listed in `docs/PRIVACY.md` and
     `dev-docs/firebase.md`. Otherwise no Firebase, no analytics, no crash reporter, no
-    third-party tracker, no server of stopdash's own. (The
+    third-party tracker, no server of LDN Go's own. (The
     user's own Android backup / device-to-device transfer carries their saved
     config; that is a platform feature under the user's control, not data
-    stopdash collects or transmits — no Data Safety change, `docs/PRIVACY.md`.)
+    LDN Go collects or transmits — no Data Safety change, `docs/PRIVACY.md`.)
 - **On-device diagnostic log**: coarse stop/line IDs, HTTP status, and location
   fix outcomes — **never a raw coordinate or the `app_key`** (`docs/PRIVACY.md`).
   Stays on the device; a future shareable export redacts travel data.

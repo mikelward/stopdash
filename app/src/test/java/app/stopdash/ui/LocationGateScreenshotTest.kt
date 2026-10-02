@@ -278,7 +278,7 @@ class LocationGateScreenshotTest {
     }
 
     @Test
-    fun `no stops nearby says StopDash shows only London's, and keeps Find a station`() {
+    fun `no stops nearby says LDN Go shows only London's, and keeps Find a station`() {
         var found = false
         capture("location-empty.png") {
             LocationGate(
@@ -290,7 +290,7 @@ class LocationGateScreenshotTest {
             )
         }
         composeRule.onNodeWithText("No stops found nearby").assertExists()
-        composeRule.onNodeWithText("StopDash only shows stops in and around London.").assertExists()
+        composeRule.onNodeWithText("LDN Go only shows stops in and around London.").assertExists()
         composeRule.onNodeWithText("Find a station").performClick()
         assertTrue(found)
     }

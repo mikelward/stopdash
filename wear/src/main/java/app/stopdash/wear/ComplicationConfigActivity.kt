@@ -82,7 +82,7 @@ object ComplicationChoices {
 }
 
 /**
- * Picks the row a StopDash complication shows (opened from the watch face's complication editor).
+ * Picks the row an LDN Go complication shows (opened from the watch face's complication editor).
  * Picking one saves it and syncs it to the phone ([ComplicationSelections]); "Top row" goes back to
  * the default. Renders from the stored envelope at once; the read runs off the main thread.
  */

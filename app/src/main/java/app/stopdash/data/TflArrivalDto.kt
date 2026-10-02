@@ -11,7 +11,7 @@ import kotlinx.serialization.Serializable
 
 /**
  * One prediction from TfL's `/StopPoint/{id}/Arrivals` response. Only the fields
- * stopdash maps are declared; the client's `Json { ignoreUnknownKeys = true }`
+ * LDN Go maps are declared; the client's `Json { ignoreUnknownKeys = true }`
  * drops the rest (TfL returns ~20 per prediction), so the DTO stays small and
  * tolerant of fields TfL adds later.
  *

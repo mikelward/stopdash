@@ -7,13 +7,13 @@ scratch each time it comes up. It is not a commitment or a scope — see the
 product decision for the maintainer, with cost and Play Data Safety consequences,
 before a line of it is built.
 
-StopDash is TfL-specific today: the data layer talks only to the TfL Unified API, and
+LDN Go is TfL-specific today: the data layer talks only to the TfL Unified API, and
 line colors/codes are TfL's. The question this doc answers is *what it would take* to
 show departures for a city TfL doesn't cover.
 
 ## Why London stays on the TfL Unified API
 
-This is the load-bearing point: **even if stopdash supported other cities, London would
+This is the load-bearing point: **even if LDN Go supported other cities, London would
 keep using the TfL Unified API, not GTFS.** The reasons:
 
 - **TfL gives a direct per-stop arrivals endpoint.** `/StopPoint/{id}/Arrivals` returns
@@ -30,8 +30,8 @@ keep using the TfL Unified API, not GTFS.** The reasons:
   (`lineStatuses`/`stopDisruptions`), and the line-color scheme all map to TfL's model.
   Switching London to GTFS would be pure regression risk for no user-visible gain.
 - **It's free and keyless.** ~50 req/min without a key, ~500 with a user `app_key` — well
-  inside stopdash's usage (SPEC *Cost and reliability*).
-- **It keeps stopdash client-only.** No backend is needed to serve London. GTFS on a network
+  inside LDN Go's usage (SPEC *Cost and reliability*).
+- **It keeps LDN Go client-only.** No backend is needed to serve London. GTFS on a network
   London's size pushes toward a backend (see *The core fork* below), which London simply
   doesn't need.
 
@@ -54,7 +54,7 @@ source):
     trip by the Schedule's stop/route/trip IDs. This is the "live" data.
   - **Vehicle positions** — where vehicles are (not needed for a departures board).
   - **Service alerts** — disruptions. **Optional**, and some operators publish them through a
-    separate alerts API instead. StopDash's honesty floor (warn about a closed line or stop
+    separate alerts API instead. LDN Go's honesty floor (warn about a closed line or stop
     even with no predictions — `lineStatuses`/`stopDisruptions`, SPEC principle 1) needs a
     disruption source; a provider lacking one needs an honest fallback, never
     unverified-shown-as-clean.
@@ -64,7 +64,7 @@ so **Realtime alone can't supply the catalog** — you always need the Schedule 
 
 ## Live vs scheduled
 
-**v1 would show live predictions only, never a scheduled fallback** — matching stopdash's
+**v1 would show live predictions only, never a scheduled fallback** — matching LDN Go's
 current behavior (the TfL Arrivals API already returns only predictions, not the timetable)
 and its honesty floor (SPEC principle 1: never present scheduled as live).
 
@@ -81,7 +81,7 @@ and its honesty floor (SPEC principle 1: never present scheduled as live).
   prediction — resolve the inherited delay before applying the live-only filter, or valid live
   departures at downstream stops are dropped. Only a stop with no update and no delay to
   inherit is scheduled-only — shown in v1 as nothing. A candidate is `LIVE` only when it
-  clears the same honesty floor stopdash already applies to a stale TfL snapshot — a
+  clears the same honesty floor LDN Go already applies to a stale TfL snapshot — a
   **boardable stop, a usable prediction, a trip that is running, from a fresh feed**:
   - a **boardable target stop** — the rider can actually catch this service here, so a
     drop-off-only or reservation-only stop (`pickup_type`) is not a departure to count down;
@@ -111,7 +111,7 @@ and its honesty floor (SPEC principle 1: never present scheduled as live).
     Scheduled = a **wall-clock time** ("14:32"), never a countdown. A counting-down number must
     only ever mean a live prediction, never the timetable.
   - **Muted and marked.** Scheduled rows grayed / lower-contrast with a small "scheduled" (or
-    timetable "~") marker, sorted **below** the live rows — reusing stopdash's existing
+    timetable "~") marker, sorted **below** the live rows — reusing LDN Go's existing
     not-live vocabulary (it already withholds a stale countdown as "—" rather than showing a
     stale number as live).
   - **Domain:** a `source: LIVE | SCHEDULED` flag on `Departure` drives the render. In v1 it
@@ -122,7 +122,7 @@ and its honesty floor (SPEC principle 1: never present scheduled as live).
 GTFS gives no "departures at this stop" endpoint, so the central architectural decision is
 **where the stop-level query happens.** This is the decision that shapes everything else:
 
-1. **Client-only** (matches stopdash today, no backend). Download the static Schedule to build
+1. **Client-only** (matches LDN Go today, no backend). Download the static Schedule to build
    an on-device stop index (SQLite), poll the RT trip-updates feed, and filter to the watched
    stops on device.
    - *Cost:* £0 infrastructure.
@@ -132,28 +132,28 @@ GTFS gives no "departures at this stop" endpoint, so the central architectural d
    - *Privacy / Data Safety:* the Schedule and RT feed downloads leave the device and reach
      each agency's servers, but a **full-feed** download carries no selected stops and no
      location — the filtering is on device — so it adds no collected user-data *type* to
-     stopdash's Play Data Safety declaration (Data Safety is about data types collected or
+     LDN Go's Play Data Safety declaration (Data Safety is about data types collected or
      shared, not "network access", which is just the `INTERNET` manifest permission); the
-     provider sees only the request and its network metadata. **Baseline:** stopdash is not
+     provider sees only the request and its network metadata. **Baseline:** LDN Go is not
      "location-stays-on-device" today — nearby lookup already sends coordinates to TfL and
      arrivals send watched stop IDs (SPEC *Privacy*). Against that baseline this is the least
      revealing of the three forks: the recipient is each agency's feed host (not TfL), and a
      full-feed download reveals **no per-stop interest** — unlike the per-stop queries in
-     forks #2/#3, and unlike stopdash's existing TfL calls.
-2. **Add a backend.** Ingest GTFS + RT server-side and expose stopdash's own per-stop arrivals
+     forks #2/#3, and unlike LDN Go's existing TfL calls.
+2. **Add a backend.** Ingest GTFS + RT server-side and expose LDN Go's own per-stop arrivals
    API (what Transit / Citymapper do).
    - *Cost:* hosting (a server to run and maintain) — a recurring $/month, not £0.
    - *Reliability:* a new point of failure and latency; the app is down for a city if the
      backend is.
    - *Privacy / Data Safety:* a **new recipient** — a server we run — now sees which stops
-     users query (and, for nearby, coordinates). stopdash already sends that data to TfL, but
+     users query (and, for nearby, coordinates). LDN Go already sends that data to TfL, but
      routing it to our own server is a **Play Data Safety change** and a departure from
-     stopdash's **client-only** posture (a server we operate, not just a third-party API we
+     LDN Go's **client-only** posture (a server we operate, not just a third-party API we
      call).
 3. **Use an aggregator API** (e.g. Transitland, or a paid transit API) that already exposes
    per-stop departures across many agencies through one API.
    - *Cost:* per-call or subscription pricing, and a third-party dependency.
-   - *Reliability:* their uptime and rate limits become stopdash's.
+   - *Reliability:* their uptime and rate limits become LDN Go's.
    - *Privacy / Data Safety:* like the backend, each per-stop request reveals the queried stop
      to a **new recipient** — here the **vendor** rather than a server we run — and the same
      departure from the client-only posture. But the Data Safety consequence is **not**
@@ -162,7 +162,7 @@ GTFS gives no "departures at this stop" endpoint, so the central architectural d
      Play's terms — a stricter declaration whose answer turns on the vendor's role and
      contract, decided when a vendor is actually chosen.
 
-The honest summary: fork #1 keeps stopdash a **client-only app**; forks #2 and #3 make it a
+The honest summary: fork #1 keeps LDN Go a **client-only app**; forks #2 and #3 make it a
 **client that depends on a server** (ours or a vendor's). That is the decision to put to the
 maintainer first — everything below is downstream of it.
 
@@ -189,13 +189,13 @@ interface:
 - London: TfL's API portal issues a free `app_key`; but per *Why London stays on the TfL
   Unified API*, London would use the Unified API, not TfL's GTFS export.
 
-## What stopdash would not do
+## What LDN Go would not do
 
 - **No crowd-sourced live locations.** Some apps blend their own users' reported positions
   ("I'm on this bus") to sharpen or invent predictions where the agency feed is poor. That is a
   different product: it **continuously broadcasts the user's live position** to a shared
-  collection service, a far heavier Play Data Safety profile than stopdash's on-demand,
-  one-shot coordinate to TfL (see the baseline above — stopdash is not "location stays on the
+  collection service, a far heavier Play Data Safety profile than LDN Go's on-demand,
+  one-shot coordinate to TfL (see the baseline above — LDN Go is not "location stays on the
   device", but it also never streams location to a crowd-sourcing backend). Out of scope
   regardless of city.
 

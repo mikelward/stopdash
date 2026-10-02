@@ -170,7 +170,7 @@ internal object WatchSurfaces {
         }
     }
 
-    /** Asks the tile and every StopDash complication to re-render from the stored envelope. */
+    /** Asks the tile and every LDN Go complication to re-render from the stored envelope. */
     fun requestUpdate(context: Context) {
         StopDashTileService.requestUpdate(context)
         StopDashComplicationService.requestUpdate(context)

@@ -20,8 +20,8 @@ import androidx.compose.ui.unit.dp
 import app.stopdash.R
 
 /**
- * The "Help make StopDash better" question, put atop the near-me list to an install that never
- * answered it (SPEC *Privacy*), as the sibling apps do: stopdash has no onboarding to ask it in, and
+ * The "Help make LDN Go better" question, put atop the near-me list to an install that never
+ * answered it (SPEC *Privacy*), as the sibling apps do: LDN Go has no onboarding to ask it in, and
  * the Settings switch alone is one a rider may never find. Off stays the default.
  *
  * Both buttons give an answer ([onAnswer]), stored like the switch's, because a question that can

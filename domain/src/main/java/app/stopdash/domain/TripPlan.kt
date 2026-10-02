@@ -6,7 +6,7 @@ import java.time.Instant
 /**
  * One leg of a planned trip (SPEC *Trips with a change*): a ride on one line from [fromId] to [toId],
  * or a walk between them ([isWalk]). The times are TfL Journey Planner's timetable view — the lines
- * and changes are its, the live times are StopDash's own ([TripTiming]).
+ * and changes are its, the live times are LDN Go's own ([TripTiming]).
  *
  * [path] is the stop ids the leg calls at after boarding, through [toId], and [pathNames] their names
  * (cleaned; empty when not known), as TfL can name a station by another id; [changeAfter] is the time

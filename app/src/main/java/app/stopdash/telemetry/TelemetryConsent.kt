@@ -13,7 +13,7 @@ import java.nio.file.InvalidPathException
 import java.nio.file.NoSuchFileException
 import java.nio.file.StandardCopyOption
 
-/** Where the "Help make StopDash better" choice is kept. */
+/** Where the "Help make LDN Go better" choice is kept. */
 interface ConsentStore {
     /** The stored choice, or null if the user has never answered. Blocking. */
     fun read(): Boolean?

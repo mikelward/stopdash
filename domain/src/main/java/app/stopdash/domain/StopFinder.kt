@@ -28,7 +28,7 @@ interface StopFinder {
         /**
          * The default NaPTAN stop types for [nearbyStops]: tube/DLR/Overground metro
          * stations, national-rail stations, bus/coach/tram stops, and river-bus piers
-         * (`NaptanFerryPort`) — the modes stopdash shows departures for (river bus is in
+         * (`NaptanFerryPort`) — the modes LDN Go shows departures for (river bus is in
          * TfL's arrivals coverage, SPEC). The port level, not a berth/entrance. Callers can
          * narrow it (e.g. a rail-only search).
          */

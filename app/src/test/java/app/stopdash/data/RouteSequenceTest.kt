@@ -24,7 +24,7 @@ import org.junit.Test
 
 /**
  * The route detail's stop list against a recorded `/Line/northern/Route/Sequence/outbound`
- * (trimmed to the fields stopdash reads; public network data only) — the Northern line's two
+ * (trimmed to the fields LDN Go reads; public network data only) — the Northern line's two
  * central trunks, its Battersea extension, and its three northern termini make it the hard case.
  */
 class RouteSequenceTest {

@@ -5,7 +5,7 @@ import java.time.Instant
 import kotlin.math.ceil
 
 /**
- * When a planned route gets the rider there, and how far StopDash stands behind that (SPEC *Trips
+ * When a planned route gets the rider there, and how far LDN Go stands behind that (SPEC *Trips
  * with a change*). TfL's Journey Planner chose the lines and changes; the times come from live
  * trains, worked out leg by leg: the first train the rider can reach on a leg, plus the Planner's
  * run time, plus its change time, gives when the rider can board the next leg.
@@ -21,7 +21,7 @@ import kotlin.math.ceil
  * they'd take.
  */
 object TripTiming {
-    /** How far StopDash stands behind a route's arrival, best first. */
+    /** How far LDN Go stands behind a route's arrival, best first. */
     enum class Basis { LIVE, ESTIMATED, UNKNOWN }
 
     /**
@@ -75,7 +75,7 @@ object TripTiming {
         /** Its line isn't running now. */
         NOT_RUNNING,
 
-        /** No live trains StopDash can vouch for: not fetched yet, stale (D4), or none whose route can be followed. */
+        /** No live trains LDN Go can vouch for: not fetched yet, stale (D4), or none whose route can be followed. */
         NO_LIVE,
 
         /** Its arrivals' last refresh failed: the held ones don't vouch the line is still running. */
@@ -125,7 +125,7 @@ object TripTiming {
     /**
      * Times [route] from [now], the rider [access] away from its first stop. [live] gives, for each
      * leg by index, the upcoming trains at its boarding stop that call at its alighting stop, or null
-     * when there are none StopDash can vouch for (the arrivals failed, went stale, or the route
+     * when there are none LDN Go can vouch for (the arrivals failed, went stale, or the route
      * couldn't be checked). [notRunning] is the lines not running now; [unknown] the lines whose
      * status couldn't be checked, with none known; [stops] how the route stands by its stops' closure
      * checks ([TripClosures.standing]), which ranks it as its lines' would. A ride another line can
@@ -339,7 +339,7 @@ object TripTiming {
 
     /**
      * [estimates] without a route another beats on both counts (maintainer, 2026-09-28): one with
-     * fewer changes that gets there no later, and that StopDash stands behind at least as far: usable,
+     * fewer changes that gets there no later, and that LDN Go stands behind at least as far: usable,
      * then unchecked, then blocked; then live, estimated, withheld. Stricter than [rank], which lifts
      * an unchecked route with a live train among the checked: a route checked open is never left off
      * for one that couldn't be checked. A route with more changes is worth offering only when it's
@@ -359,7 +359,7 @@ object TripTiming {
 
     /**
      * [estimates] without a route that rides a leg the Planner didn't plan ([planned], every leg of
-     * its routes) on anything but a live train StopDash vouches for: a train through a change
+     * its routes) on anything but a live train LDN Go vouches for: a train through a change
      * ([RideLines.through]) is offered only when one is predicted, never on the Planner times it
      * carries as a placeholder, which belong to other lines.
      */
@@ -370,7 +370,7 @@ object TripTiming {
             }
         }
 
-    // How far StopDash stands behind a route: checked and open, then unchecked, then blocked; within
+    // How far LDN Go stands behind a route: checked and open, then unchecked, then blocked; within
     // each, live before estimated before withheld.
     private val STANDING = compareBy<Estimate>({ it.blocked }, { it.unchecked }, { it.basis })
 

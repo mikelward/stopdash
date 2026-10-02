@@ -22,7 +22,7 @@ import kotlinx.coroutines.withContext
 /**
  * National Rail's live departure boards (Darwin) from the Rail Data Marketplace, with the user's
  * own key ([apiKey], read per request so a key pasted in Settings applies on the next refresh).
- * With no key it's unavailable and asks nothing: stopdash ships no key of its own.
+ * With no key it's unavailable and asks nothing: LDN Go ships no key of its own.
  *
  * Only the station's CRS code and the key are sent: never a location (SPEC *Privacy*). Failures map
  * to the same [TflException] kinds as TfL's client (offline, rate-limited, unreachable), sanitized to

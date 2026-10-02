@@ -149,7 +149,7 @@ internal fun AppMenuOverflow(
 }
 
 /**
- * Every StopDash dropdown menu (the overflow menu, a row's or a trip card's long-press menu), styled
+ * Every LDN Go dropdown menu (the overflow menu, a row's or a trip card's long-press menu), styled
  * alike (maintainer, 2026-09-27, as in the sibling Clothescast): Material 3's surface with
  * corners rounded to [MENU_CORNER] rather than its near-square 4dp, and its items' text one step
  * up, `bodyLarge` rather than `labelLarge`, so they read a little larger. The menu opens its own
