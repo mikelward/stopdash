@@ -289,6 +289,10 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   it was stuck: a few lines of the frozen screen's code, each a place in the app's or a
   library's code (a class, method, file and line number), read from Android's own record of
   that freeze. Never a value the code was working on.
+- **where the link to a paired watch stands**, when it changes: whether any paired watch has
+  StopDash, how many do (a count only), whether the latest departures were queued for it or had
+  already been, that a watch asked for a refresh, and the failure type if a send failed —
+  never which watch, its name or id, or what was sent.
 - **the app's own code reading or writing the disk on the screen's thread**, which can make
   the screen stutter: the kind (e.g. `DiskReadViolation`) and the place in the app's code that
   did it, once each per run, at most 20 — never what was read or written.
