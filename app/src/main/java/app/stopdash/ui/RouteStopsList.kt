@@ -1,5 +1,9 @@
 package app.stopdash.ui
 
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -37,6 +41,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import app.stopdash.R
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
@@ -45,6 +50,7 @@ import app.stopdash.domain.LineSequence
 import app.stopdash.domain.RouteStop
 import app.stopdash.domain.RouteStops
 import app.stopdash.domain.RouteStopsRepository
+import app.stopdash.domain.StepFreeLevel
 import app.stopdash.domain.TflException
 import kotlinx.coroutines.CancellationException
 
@@ -185,6 +191,9 @@ internal fun RouteStopsSection(
     starredStopIds: Set<String> = emptySet(),
     // Stations the line's service alert names ([app.stopdash.domain.AlertStops]); each shows a ⚠.
     alertStopIds: Set<String> = emptySet(),
+    // Each station's step-free level for this line (SPEC *Step-free access*); a station marked
+    // step-free shows TfL's symbol, and one missing or not step-free shows none.
+    stepFree: Map<String, StepFreeLevel> = emptyMap(),
     // Stars or unstars the journey from the boarding stop to a tapped station (SPEC *Journeys*);
     // null leaves the stations inert.
     onToggleJourneyTo: ((RouteStop) -> Unit)? = null,
@@ -221,6 +230,7 @@ internal fun RouteStopsSection(
                     last = index == state.stops.lastIndex,
                     starred = index > 0 && stop.id in starredStopIds,
                     inAlert = stop.id in alertStopIds,
+                    stepFree = stepFree[stop.id],
                     onClick = if (index > 0) onToggleJourneyTo?.let { toggle -> { toggle(stop) } } else null,
                 )
             }
@@ -285,6 +295,9 @@ private fun StopOnRail(
     // The line's service alert names this station, or a stretch it's in: the name carries a ⚠, and
     // the row says so too.
     inAlert: Boolean = false,
+    // How far the station is step-free for this line: TfL's symbol after the name ([StepFreeMark]),
+    // read out as its words. None, or null, shows nothing.
+    stepFree: StepFreeLevel? = null,
     // Stars or unstars the journey to this station; null leaves the row inert.
     onClick: (() -> Unit)? = null,
 ) {
@@ -294,6 +307,11 @@ private fun StopOnRail(
     val starColor = MaterialTheme.colorScheme.primary
     val alertColor = MaterialTheme.colorScheme.error
     val alertLabel = stringResource(R.string.route_stop_in_alert)
+    val stepFreeLabel = when (stepFree) {
+        StepFreeLevel.LEVEL -> stringResource(R.string.route_stop_step_free_train)
+        StepFreeLevel.PLATFORM, StepFreeLevel.RAMP -> stringResource(R.string.route_stop_step_free_platform)
+        StepFreeLevel.NONE, null -> null
+    }
     val railStroke = Modifier.fillMaxSize()
     // The blue dot is drawn, so it says nothing to a screen reader: the boarding stop is read as one
     // node with "Your stop" as its state, so TalkBack users hear which stop is theirs too.
@@ -326,9 +344,15 @@ private fun StopOnRail(
             },
             {
                 Text(
-                    text = if (starred || inAlert) {
+                    text = if (starred || inAlert || stepFreeLabel != null) {
                         buildAnnotatedString {
                             append(name)
+                            if (stepFreeLabel != null) {
+                                append(" ")
+                                // The symbol's words are its text, so a screen reader reads the
+                                // level where the eye sees the mark.
+                                appendInlineContent(STEP_FREE_MARK, alternateText = stepFreeLabel)
+                            }
                             // The same glyph and color as a disrupted departure row's warning.
                             if (inAlert) withStyle(SpanStyle(color = alertColor)) { append(" \u26A0") }
                             if (starred) withStyle(SpanStyle(color = starColor)) { append(" \u2605") }
@@ -338,6 +362,15 @@ private fun StopOnRail(
                     },
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = if (first || last) FontWeight.SemiBold else FontWeight.Normal,
+                    inlineContent = if (stepFree != null && stepFreeLabel != null) {
+                        mapOf(
+                            STEP_FREE_MARK to InlineTextContent(Placeholder(1.15.em, 1.15.em, PlaceholderVerticalAlign.TextCenter)) {
+                                StepFreeMark(stepFree, Modifier.fillMaxSize())
+                            },
+                        )
+                    } else {
+                        emptyMap()
+                    },
                 )
             },
             { connections.forEach { line -> LinePill(lineName = line.name, lineId = line.id, mode = line.mode) } },
@@ -420,6 +453,9 @@ private fun StopOnRail(
         }
     }
 }
+
+/** The inline content id of a station name's step-free mark. */
+private const val STEP_FREE_MARK = "stepFree"
 
 /** A rail segment down the middle of this box, its full height. */
 private fun DrawScope.drawRail(color: Color) {

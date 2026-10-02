@@ -88,6 +88,7 @@ import app.stopdash.data.KtorTflClient
 import app.stopdash.data.LineAlertDirections
 import app.stopdash.data.RailApiKeySetting
 import app.stopdash.data.RailStationCodesStore
+import app.stopdash.data.StepFreeStore
 import app.stopdash.data.RecentSearches
 import app.stopdash.data.RejectedApiKey
 import app.stopdash.data.RouteTopologyStore
@@ -123,6 +124,7 @@ import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.StarredJourney
+import app.stopdash.domain.StepFreeAccess
 import app.stopdash.domain.StarredRowSet
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StopClosureCache
@@ -174,6 +176,7 @@ import app.stopdash.ui.LocalHideUndoCarrier
 import app.stopdash.ui.LocalOnTheWay
 import app.stopdash.ui.LocalOnTheWayBanner
 import app.stopdash.ui.LocalRouteStops
+import app.stopdash.ui.LocalStepFree
 import app.stopdash.ui.LocalAlertsBehind
 import app.stopdash.ui.AlertsBehindRecorder
 import app.stopdash.ui.LocalRouteTopology
@@ -453,6 +456,12 @@ class MainActivity : ComponentActivity() {
                 keySaveFailed = keySaveFailed,
                 onRetryKeySave = { UserApiKeySetting.set(UserApiKeySetting.current) },
             ) {
+                // TfL's step-free table, read once off the main thread: the route page marks its
+                // stations from it (SPEC *Step-free access*), and nothing until it's read.
+                val stepFree by produceState<StepFreeAccess?>(null) {
+                    value = withContext(Dispatchers.IO) { StepFreeStore.load(applicationContext) }
+                }
+                CompositionLocalProvider(LocalStepFree provides stepFree) {
                 val nearby by nearbyViewModel.state.collectAsStateWithLifecycle()
 
                 // True once a request has come back denied with the rationale suppressed —
@@ -1425,6 +1434,7 @@ class MainActivity : ComponentActivity() {
                         },
                         onDismiss = { bugReportConsent.open = false },
                     )
+                }
                 }
             }
         }

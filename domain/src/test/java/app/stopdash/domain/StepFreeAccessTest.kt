@@ -46,6 +46,25 @@ class StepFreeAccessTest {
     }
 
     @Test
+    fun `a National Rail train takes the station's National Rail platforms, any other line only its own`() {
+        val rail = StepFreeAccess(
+            mapOf(
+                "910GEXAMPLE" to mapOf(
+                    StepFreeAccess.NATIONAL_RAIL to listOf(StepFreePlatform(StepFreeLevel.RAMP, platform = "1")),
+                    "elizabeth" to listOf(StepFreePlatform(StepFreeLevel.LEVEL, platform = "A")),
+                ),
+            ),
+        )
+        // An operator's line id TfL's station data doesn't use, on a National Rail train.
+        assertEquals(StepFreeLevel.RAMP, rail.levelFor("910GEXAMPLE", "thameslink", "national-rail"))
+        // A line TfL describes keeps its own level.
+        assertEquals(StepFreeLevel.LEVEL, rail.levelFor("910GEXAMPLE", "elizabeth", "elizabeth-line"))
+        // Another mode's unknown line doesn't borrow National Rail's.
+        assertNull(rail.levelFor("910GEXAMPLE", "weaver", "overground"))
+        assertNull(rail.levelFor("940GZZEXMPB", "thameslink", "national-rail"))
+    }
+
+    @Test
     fun `levels run worst to best`() {
         assertEquals(
             listOf(StepFreeLevel.NONE, StepFreeLevel.PLATFORM, StepFreeLevel.RAMP, StepFreeLevel.LEVEL),
