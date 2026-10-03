@@ -76,9 +76,16 @@ class TripViewModelTest {
     private val dispatcher = StandardTestDispatcher()
     private var now: Instant = Instant.parse("2026-09-26T08:00:00Z")
 
-    @Before fun setUp() = Dispatchers.setMain(dispatcher)
+    // The trip page's helpers are called directly here, with no worker to judge trains ahead: judged in place.
+    @Before fun setUp() {
+        Dispatchers.setMain(dispatcher)
+        TripVerdicts.onMiss = TripVerdicts::compute
+    }
 
-    @After fun tearDown() = Dispatchers.resetMain()
+    @After fun tearDown() {
+        Dispatchers.resetMain()
+        TripVerdicts.onMiss = null
+    }
 
     private fun at(minutes: Long) = Instant.parse("2026-09-26T08:00:00Z").plus(Duration.ofMinutes(minutes))
 
