@@ -2814,6 +2814,8 @@ class MainActivity : ComponentActivity() {
                         dismissedStore = DataStoreDismissedAlertsStore.from(appContext, warn = ::logDepartureWarning),
                         writeFailures = writeFailures,
                         destinationIds = destinationIds,
+                        // Which walks are changes on foot, as a trip started on a route decides them.
+                        stations = { StationIndexStore.load(appContext) },
                         origin = { latestHere?.let(TripOrigin::Here) ?: TripOrigin.Stop(fromId) },
                         walkingSpeed = WalkingSpeedSetting.changes.value,
                         maxWalk = MaxWalkSetting.changes.value,
@@ -3227,6 +3229,9 @@ class MainActivity : ComponentActivity() {
                     rideLines = rideLineChecks(context.applicationContext)::running,
                     // A bus stop pair's other pole isn't read for a line the rider hides.
                     hidden = { HiddenModesSetting.current },
+                    // The bundled index, for which walks are changes on foot when a trip starts: where a
+                    // stop is, and its interchange, by its station's id or a platform's.
+                    stations = { StationIndexStore.load(context.applicationContext) },
                     warn = ::logDepartureWarning,
                     onGetOffSoon = { trip, riding ->
                         GetOffSoonAlert.post(context.applicationContext, trip, riding, Instant.now(), ::logDepartureWarning)

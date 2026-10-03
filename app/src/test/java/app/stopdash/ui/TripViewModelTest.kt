@@ -54,6 +54,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -200,6 +202,57 @@ class TripViewModelTest {
         planner, client, "A", toIds.map { TripDestination.Stop(it) },
         clock = { now }, plans = plans, io = dispatcher, arrivals = arrivals, closureCache = closures,
     )
+
+    // A ride, a walk between two named stations the Planner doesn't place, and a ride on.
+    private val onFootWalk = TripLeg(TripLeg.WALKING, "", "", "B1", "B (North)", "B2", "B (South)", at(15), at(18))
+    private val onFootRoute = TripRoute(listOf(leg("red", "A", "B1", 5, 15), onFootWalk, leg("blue", "B2", "C", 20, 30)))
+
+    // An index placing the walk's two ends [meters] apart.
+    private fun onFootIndex(meters: Double) = app.stopdash.domain.StationIndex(
+        listOf(
+            app.stopdash.domain.IndexedStation("B1", "B (North)", latitude = 51.5, longitude = -0.12),
+            app.stopdash.domain.IndexedStation("B2", "B (South)", latitude = 51.5 + meters / 111_195.0, longitude = -0.12),
+        ),
+    )
+
+    @Test
+    fun `a route's changes on foot are decided with the station index`() = runTest(dispatcher) {
+        // About 150 m apart by the index: a change on foot. Both directions: about 400 m, a walk.
+        for ((meters, expected) in listOf(150.0 to setOf(onFootWalk), 400.0 to emptySet())) {
+            val trip = TripViewModel(
+                FakePlanner(listOf(onFootRoute)), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+                clock = { now }, plans = TripPlans(), io = dispatcher, stations = { onFootIndex(meters) },
+            )
+            trip.refresh()
+            advanceUntilIdle()
+            assertEquals(listOf(onFootRoute), trip.state.value.routes)
+            assertEquals(expected, trip.state.value.changesOnFoot)
+        }
+    }
+
+    @Test
+    fun `a route's changes on foot are decided off the caller's thread`() = runTest(dispatcher) {
+        // AGENTS.md *Main-safe by default*: the index is read and the walks measured on the worker,
+        // not the main thread the model's updates run on.
+        val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }.asCoroutineDispatcher()
+        try {
+            val threads = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val trip = TripViewModel(
+                FakePlanner(listOf(onFootRoute)), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+                clock = { now }, plans = TripPlans(), io = worker,
+                stations = {
+                    threads += Thread.currentThread().name.substringBefore(" @")
+                    onFootIndex(150.0)
+                },
+            )
+            trip.refresh()
+            assertEquals(setOf(onFootWalk), trip.state.first { it.changesOnFoot.isNotEmpty() }.changesOnFoot)
+            assertTrue(threads.isNotEmpty())
+            assertEquals(setOf("worker"), threads.toSet())
+        } finally {
+            worker.close()
+        }
+    }
 
     @Test
     fun `the open route outlasts the process and is forgotten with the trip`() {

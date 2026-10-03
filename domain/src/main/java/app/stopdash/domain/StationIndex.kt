@@ -157,6 +157,22 @@ class StationIndex(
     }
 
     /**
+     * Where the stop [id] is: a listed station's own point ([positionOf]), or that of the station a
+     * platform is listed under ([stationOf]). Null for a stop the index doesn't place.
+     */
+    fun placeOf(id: String): Coordinates? = positionOf(id) ?: stationOf(id)?.let(::positionOf)
+
+    /**
+     * The interchange the stop [id] belongs to: a listed station's ([IndexedStation.hubId]), or that
+     * of the station a platform is listed under, or [id] itself when it names an interchange. Null
+     * for a stop in none, or one the index doesn't hold.
+     */
+    fun interchangeOf(id: String): String? {
+        val station = id.takeIf { it in byId } ?: stationOf(id) ?: return null
+        return hubOf[station] ?: station.takeIf { byId[it]?.isHub == true }
+    }
+
+    /**
      * This index with [yours] added (SPEC *Finding stops → Find a station*): the user's starred,
      * opened and lately shown stops that the bundled list lacks — bus stops, mostly — so they match
      * as the user types instead of after TfL's search, and the user's own stops lead their tier.

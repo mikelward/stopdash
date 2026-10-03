@@ -62,7 +62,7 @@ internal object WatchTrips {
         poleOf: (Departure) -> Pole?,
         stepText: (leg: TripLeg, onBoard: Boolean) -> String,
     ): WatchTrip {
-        val steps = OnTheWay.steps(trip.route)
+        val steps = OnTheWay.steps(trip)
         val legs = trip.route.legs
         // An arrival kept because forgetting the trip failed is past the last step: shown at the last.
         val current = OnTheWay.stepsDone(trip).coerceAtMost(steps.lastIndex).coerceAtLeast(0)

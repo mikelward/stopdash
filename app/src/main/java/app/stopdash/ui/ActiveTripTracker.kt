@@ -9,6 +9,7 @@ import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RideLines
 import app.stopdash.domain.RouteDisruption
+import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StationPlaces
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopLocation
@@ -70,6 +71,10 @@ class ActiveTripTracker(
     private val rideLines: suspend (TripRoute, TripLeg, Map<String, List<Departure>>) -> RideLinesNow = { _, ride, _ -> RideLinesNow(listOf(ride)) },
     // The modes and lines the rider hides: a pair's other pole isn't read for a hidden line's sake alone.
     private val hidden: () -> Set<String> = { emptySet() },
+    // The bundled station index, for placing a walk's ends the Planner didn't and telling whether
+    // they're in one interchange when a trip starts ([OnTheWay.changesOnFoot]). Getting it may read
+    // the asset, so it's called on [io].
+    private val stations: () -> StationIndex = { StationIndex.EMPTY },
     private val clock: () -> Instant = Instant::now,
     // A monotonic clock in ms, for timing a wait the wall clock could be set back during.
     private val elapsed: () -> Long = { System.nanoTime() / 1_000_000 },
@@ -389,6 +394,10 @@ class ActiveTripTracker(
             ActiveTrip(TripRoute(listOf(toStop) + route.legs), destinationName, startedAt = now, legStartedAt = now, destinations = destinations, destinationIds = destinationIds, destinationStopId = destinationStopId)
         } else {
             ActiveTrip(route, destinationName, startedAt = now, legIndex = 0, legStartedAt = readyAt, destinations = destinations, destinationIds = destinationIds, destinationStopId = destinationStopId)
+        }.let { planned ->
+            // Which walks are changes on foot, decided once now and kept with the trip, so its steps
+            // never change on the way. Off the caller's thread: it may read the station index.
+            planned.copy(onFootChanges = withContext(io) { OnTheWay.changesOnFoot(planned.route, stations()) })
         }
         _updatedAt.value = null
         boardSeenRide = null
