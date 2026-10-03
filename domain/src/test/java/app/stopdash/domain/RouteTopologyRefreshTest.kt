@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 
@@ -124,6 +125,8 @@ class RouteTopologyRefreshTest {
                     return sequenceOf(*extended.toTypedArray())
                 }
             },
+            // Both directions on the test's own thread: [asked] isn't safe to add to from two.
+            compute = StandardTestDispatcher(testScheduler),
         )
         val warnings = mutableListOf<String>()
         val current = currentPatterns(bundled, routes) { warnings += it }
@@ -141,6 +144,7 @@ class RouteTopologyRefreshTest {
             source = object : RouteSequenceSource {
                 override suspend fun routeSequence(lineId: String, direction: String) = answer()
             },
+            compute = StandardTestDispatcher(testScheduler),
         )
         val cases = listOf(
             repository { throw TflException.RateLimited(null) } to "not fetched (RateLimited)",
