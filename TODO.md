@@ -25,6 +25,12 @@ exercises the whole spine the widget later renders from.
 
 ### Phase 0 — remaining (follow-up PRs)
 
+- [ ] Trip page: work out its per-tick values off the main thread too. Trains are judged on their
+      routes on the worker (`TripVerdicts`), but each tick still passes over a leg's board on the main
+      thread: the upcoming trains (`Countdown.upcoming`), their verdicts gathered (`legFilter`), and
+      the routes timed (`tripEstimates`, the card helpers). Move them to the trip's view model,
+      published with the data they come from, so the page only reads.
+
 - [ ] Screenshot job — record + upload landed; **drift-refresh + visual-diff apparatus
       wired**, awaiting one operator step. The `screenshot-tests` job now checks out the PR
       head branch, enforces the `--tests` allow-list against every `*ScreenshotTest`, clears
