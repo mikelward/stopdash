@@ -1444,6 +1444,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 when the rider is taken to be moving (on board, or walking) and no fresh fix has come
                 in for a while (underground, indoors, a fix refused).
           - [ ] Following a bus above ground by location (get off soon from where the bus is).
+        - [ ] **No line wrapping for the next action at all** (maintainer, 2026-10-03): the trip card's
+              step ("Walk to …", "Board 43 at …") now takes its places' common abbreviations to stay on one
+              line and wraps to a second only if those don't fit. Consider never wrapping it: one line,
+              shortened to the floor and then cut with "…", trading a fuller name for a card that never
+              grows or shifts.
       - [x] **One-tap trips**: the near-me top bar's Directions button opens *To…* in one tap, with
             room freed by shortening the freshness stamp to "1 min ago" (maintainer, 2026-09-26).
       - [ ] **Better than a bare "est."** (maintainer, 2026-09-26): a leg past its live predictions

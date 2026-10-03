@@ -16,6 +16,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import app.stopdash.domain.DestinationAbbreviations
 
 /**
@@ -107,5 +108,41 @@ private fun SplitName(text: String, full: String, style: TextStyle, color: Color
                 modifier = Modifier.weight(1f, fill = false),
             )
         }
+    }
+}
+
+/**
+ * As [ShortenedText], over up to [maxLines] lines, shortening before it wraps (maintainer,
+ * 2026-10-03): each of [forms] but the last (the floor, which drops words to initials) on one line,
+ * longest first; then each of [forms] over [maxLines]; else the last, eliding with a single "…". So a
+ * step's title takes its common abbreviations to stay on one line, wraps only if even those don't
+ * fit, and is cut only as a last resort. The first form stays the screen-reader label when another
+ * shows.
+ */
+@Composable
+internal fun ShortenedLines(forms: List<String>, style: TextStyle, maxLines: Int, modifier: Modifier = Modifier) {
+    val distinct = forms.distinct()
+    val full = distinct.first()
+    BoxWithConstraints(modifier = modifier) {
+        val measurer = rememberTextMeasurer()
+        val fontScale = LocalDensity.current.fontScale
+        val width = constraints.maxWidth
+        // Each try: a form, and the lines it may take.
+        // The forms before the floor, as given: the floor can be the very form that shortens a word, so
+        // it's dropped before de-duplicating, never the abbreviation itself.
+        val tries = remember(forms, maxLines) { forms.dropLast(1).distinct().map { it to 1 } + distinct.map { it to maxLines } }
+        val chosen = remember(tries, style, fontScale, width) {
+            tries.firstOrNull { (form, lines) ->
+                !measurer.measure(form, style, maxLines = lines, constraints = Constraints(maxWidth = width)).hasVisualOverflow
+            }?.first
+        }
+        val display = chosen ?: distinct.last()
+        Text(
+            text = display,
+            style = style,
+            maxLines = maxLines,
+            overflow = TextOverflow.Ellipsis,
+            modifier = if (display != full) Modifier.semantics { contentDescription = full } else Modifier,
+        )
     }
 }
