@@ -532,6 +532,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         a merged direction row runs from exactly one ("Oxford Circus – Platform 3"). Still open: a
         direction split across platforms stays one row under the bare compass, where the app shows a
         card per platform; splitting it on the widget costs lines its budget may not have.
+  - [ ] **Qualify a place's name only where it isn't unique** (maintainer, 2026-10-03). Try naming
+        a stop and platform "Hammersmith (Dist&Picc) – Platform 1" when the clean name doesn't tell it
+        apart: several buildings share it (Hammersmith's H&C and District/Piccadilly stations), or the
+        same platform number is in more than one (both have a Platform 1). Use TfL's own name for the
+        qualifier, with no special cases (no stripping "Line" or other words): where it must be
+        shortened, truncate or elide each part evenly, which should land close to
+        "Hammersmith (Dist&Picc)". Everywhere else the clean name stays as it is.
   - [ ] **Revisit the header grain for a busy interchange** (maintainer, 2026-09-21). The rail
         platform split and the bus letter split (above) already break a hub into per-platform/per-pole
         blocks. Still open: whether a dense hub wants a *finer* grain still (per-line dividers within
