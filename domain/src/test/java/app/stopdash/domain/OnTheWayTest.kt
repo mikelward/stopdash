@@ -639,6 +639,55 @@ class OnTheWayTest {
     // Synthetic positions: the boarding stop, a rider still on its platform, and one 1 km down the line.
     private val platform = Coordinates(51.5, -0.12)
     private fun fix(at: Coordinates, accuracyMeters: Float = 5f) = LocationFix(at, isFallback = false, accuracyMeters = accuracyMeters, ageMillis = 1_000L)
+
+    // A walk to the destination placed at a synthetic point, the trip's last leg.
+    private val destination = Coordinates(51.5, -0.12)
+    // As TfL's answer gives it: a walk's end unplaced (Codex, PR #359), the destination placed as chosen.
+    private val lastWalk = TripLeg(TripLeg.WALKING, "", "", "C", "C", "", "Destination", at(15), at(20))
+    private val walkingHome = ActiveTrip(
+        TripRoute(listOf(ride, lastWalk)), "Destination", startedAt = t0, legIndex = 1, legStartedAt = at(15),
+        destinations = listOf(TripDestination.Place(destination, "Destination")),
+    )
+
+    @Test
+    fun `the walk to the destination ends when the rider is seen there, not on its time`() {
+        // Past its time, not seen there: still walking, and a fix still asked for (maintainer, 2026-10-03).
+        assertEquals(TripProgress.Walking(lastWalk, at(20)), OnTheWay.advance(walkingHome, null, at(29)).second)
+        assertTrue(OnTheWay.wantsFix(walkingHome, at(29)))
+        // As sure as a walk to a stop asks: one that could see them there.
+        assertTrue(OnTheWay.sureEnoughFor(walkingHome, at(29))(fix(destination, accuracyMeters = 50f)))
+        // Never seen there: it ends 10 minutes past its time, and asks for no more fixes.
+        assertEquals(TripProgress.Arrived, OnTheWay.advance(walkingHome, null, at(30)).second)
+        assertFalse(OnTheWay.wantsFix(walkingHome, at(30)))
+        // A clock set back to before the walk began: no wait, and no fixes, kept running from it (Codex, PR #521).
+        assertFalse(OnTheWay.walksToEnd(walkingHome, at(10)))
+        assertFalse(OnTheWay.wantsFix(walkingHome, at(10)))
+        // Seen 450 m short: still walking, that far left.
+        val short = fix(Coordinates(51.504, -0.12))
+        assertEquals(walkingHome, OnTheWay.seen(walkingHome, short, at(21)))
+        assertEquals(445.0, OnTheWay.metersLeft(walkingHome, short)!!, 5.0)
+        // Seen there: arrived.
+        val there = OnTheWay.seen(walkingHome, fix(Coordinates(51.5003, -0.12)), at(21))
+        assertEquals(TripProgress.Arrived, OnTheWay.advance(there, null, at(21)).second)
+        assertEquals(SeenAt.POINT, OnTheWay.seenAtStop(walkingHome, fix(Coordinates(51.5003, -0.12)), at(21)))
+        // A fix too vague to say they're within reach of it: not there.
+        assertEquals(walkingHome, OnTheWay.seen(walkingHome, fix(Coordinates(51.5003, -0.12), accuracyMeters = 90f), at(21)))
+        // Off the ride while away, past the walk's time: on the walk, not arrived.
+        val riding = OnTheWay.follow(walkingHome.copy(legIndex = 0, legStartedAt = t0), train("9", 5)).copy(boarded = true, dueOffAt = at(15))
+        assertEquals(TripProgress.Walking(lastWalk, at(20)), OnTheWay.advance(riding, emptyList(), at(25)).second)
+        // An unplaced destination can't be seen: the walk ends on its time, as before.
+        val unplaced = walkingHome.copy(destinations = listOf(TripDestination.Stop("940GZZLUKSX")))
+        assertEquals(TripProgress.Arrived, OnTheWay.advance(unplaced, null, at(21)).second)
+        assertNull(OnTheWay.metersLeft(walkingHome, fix(destination).copy(isFallback = true)))
+        // A walk to a ride whose stop the Planner leaves unplaced: the station's own point, read for it.
+        val toStation = walkingHome.copy(route = TripRoute(listOf(lastWalk, ride)), legIndex = 0, destinations = emptyList())
+        assertNull(OnTheWay.metersLeft(toStation, short))
+        assertEquals(445.0, OnTheWay.metersLeft(toStation, short, StationPlaces(point = destination))!!, 5.0)
+        // A placed stop, but an entrance nearer the rider: the nearest place that ends the walk (Codex, PR #521).
+        val placedStop = toStation.copy(route = TripRoute(listOf(lastWalk, ride.copy(fromAt = destination))))
+        assertEquals(445.0, OnTheWay.metersLeft(placedStop, short)!!, 5.0)
+        assertEquals(0.0, OnTheWay.metersLeft(placedStop, short, StationPlaces(entrances = listOf(Coordinates(51.504, -0.12))))!!, 1.0)
+    }
     private val stillThere = fix(Coordinates(51.5005, -0.12))
     private val downTheLine = fix(Coordinates(51.509, -0.12))
     private val placed = trip.copy(route = TripRoute(listOf(ride.copy(fromAt = platform), walk, second)))

@@ -64,6 +64,7 @@ import app.stopdash.domain.Countdown
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.StopDistance
 import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RouteDisruption
 import app.stopdash.RouteDisruptionAlert
@@ -531,8 +532,15 @@ internal fun etaText(resources: Resources, eta: OnTheWay.Eta, now: Instant): Str
 private fun NextStep(destination: String?, eta: OnTheWay.Eta?, progress: TripProgress?, now: Instant, current: Boolean) {
     val detail = nextStepText(progress, now, current).second
     val at = stepTime(progress, current, now)
-    // Timed, the step's time stands in for its own words, which say the same; a ride's stops stay beside it.
-    val words = if (at == null) {
+    // Timed, the step's time stands in for its own words, which say the same; a ride's stops stay beside
+    // it, as a walk's distance left does, where a fix has placed the rider (maintainer, 2026-10-03).
+    // Not until the rider's distance units are known (null while their choice loads): never a moment in
+    // the wrong ones (Codex, PR #521).
+    val system = LocalDistanceSystem.current
+    val walkLeft = (progress as? TripProgress.Walking)?.metersLeft
+    val words = if (walkLeft != null && system != null) {
+        StopDistance.label(walkLeft, system)
+    } else if (at == null) {
         detail
     } else if (progress is TripProgress.Riding) {
         LocalConfiguration.current // Read again on a configuration change (locale, font scale).
@@ -697,8 +705,9 @@ internal fun nextStepText(
             rideStopsText(resources, progress, progress.getOffAt?.let { Countdown.minutes(it, now).toInt() })
         is TripProgress.Changing -> resources.getString(R.string.on_the_way_change, progress.leg.lineName, place(progress.leg.fromName)) to
             resources.getString(R.string.on_the_way_change_time, minutesUntil(now, progress.until))
+        // The walk to the destination can run past its time ([OnTheWay.walksToEnd]): no "About 0 min" then.
         is TripProgress.Walking -> resources.getString(R.string.on_the_way_walk, place(progress.leg.toName)) to
-            resources.getString(R.string.on_the_way_walk_time, minutesUntil(now, progress.until))
+            (if (progress.until.isAfter(now)) resources.getString(R.string.on_the_way_walk_time, minutesUntil(now, progress.until)) else "")
         is TripProgress.Lost -> resources.getString(Vehicle.of(progress.leg).lost) to resources.getString(finding(progress.leg))
         TripProgress.Arrived -> resources.getString(R.string.on_the_way_arrived) to ""
         null -> resources.getString(R.string.on_the_way) to resources.getString(R.string.on_the_way_finding)

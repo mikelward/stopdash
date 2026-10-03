@@ -113,8 +113,13 @@ sealed interface TripProgress {
      */
     data class Changing(val leg: TripLeg, val until: Instant) : TripProgress
 
-    /** On foot along [leg] (a walk to a change or the destination), until about [until]. */
-    data class Walking(val leg: TripLeg, val until: Instant) : TripProgress
+    /**
+     * On foot along [leg] (a walk to a change or the destination), until about [until]: the walk to
+     * the destination can run past it, as it ends only when the rider is seen there ([walkingToEnd]).
+     * [metersLeft] is how far its end is, straight, from where the rider was last seen on it; null
+     * with no fix yet, or none that places them.
+     */
+    data class Walking(val leg: TripLeg, val until: Instant, val metersLeft: Double? = null) : TripProgress
 
     /**
      * The train followed can't be placed on [leg] — it doesn't call at the boarding stop or where
@@ -207,7 +212,7 @@ object OnTheWay {
      * left-behind check keeps [sureEnough]'s tighter bound.
      */
     fun sureEnoughFor(trip: ActiveTrip, now: Instant): (LocationFix) -> Boolean = when {
-        seesWalkEnd(trip, now) || stationRiddenTo(trip, now) != null -> ::sureEnoughToArrive
+        walksToEnd(trip, now) || seesWalkEnd(trip, now) || stationRiddenTo(trip, now) != null -> ::sureEnoughToArrive
         // Just after the train left, a rider only taken to be on it is also still awaited ([watchesWait]),
         // but a vague fix then can't tell the train from the platform it just left: the tighter bound holds.
         mayBeLeftBehind(trip, now) -> ::sureEnough
@@ -569,7 +574,9 @@ object OnTheWay {
             val until = trip.legStartedAt.plus(leg.run)
             // A walk within one place is no step of its own: straight on to boarding the ride after it.
             if (changesOnFoot(trip, trip.legIndex)) return advanceAlong(pastChange(trip, trip.legStartedAt), calls, now, atBoarding)
-            return if (now.isBefore(until)) trip to TripProgress.Walking(leg, until) else nextLeg(trip, now)
+            // The walk to the destination ends when the rider is seen there ([seen]), not on its time,
+            // up to [END_WALK_GRACE] past it (maintainer, 2026-10-03).
+            return if (now.isBefore(until) || walksToEnd(trip, now)) trip to TripProgress.Walking(leg, until) else nextLeg(trip, now)
         }
         changeUntil(trip, now)?.let { return trip to TripProgress.Changing(leg, it) }
         if (trip.vehicleId.isBlank() || calls == null) {
@@ -674,6 +681,9 @@ object OnTheWay {
      * fix is asked for (battery): a walk is minutes, the other windows a few.
      */
     fun wantsFix(trip: ActiveTrip, now: Instant): Boolean {
+        // On the walk to the destination until seen there (maintainer, 2026-10-03): a fix about every
+        // refresh for the walk's length, and up to [END_WALK_GRACE] after it.
+        if (walksToEnd(trip, now)) return true
         if (seesWalkEnd(trip, now) || stationRiddenTo(trip, now) != null || watchesWait(trip, now)) return true
         if (watchesRide(trip, now)) return true
         return mayBeLeftBehind(trip, now)
@@ -1213,10 +1223,61 @@ object OnTheWay {
     /**
      * Where [trip]'s rider is walking to at [now], when that's a ride's boarding stop with a known
      * position: the walk from where they started, or one between rides. Null otherwise (a ride, or
-     * the walk to the destination, which ends the trip on its time), and once the walk's estimated
+     * the walk to the destination, which ends when they're seen there: [walksToEnd]), and once the walk's estimated
      * time is up at [now]: it ends on its time then, with no fix to wait for.
      */
     fun walkingTo(trip: ActiveTrip, now: Instant): Coordinates? = walkingToRide(trip, now)?.fromAt
+
+    /**
+     * Whether [trip]'s rider is on the walk to the destination at [now], the trip's last leg, with the
+     * destination placed ([walkEnd]): it ends when they're seen there ([seen]), not on its time, so the trip
+     * doesn't say they've arrived while they're still on their way; never seen there, it ends
+     * [END_WALK_GRACE] past its time (maintainer, 2026-10-03). Unplaced, it ends on its time.
+     */
+    fun walksToEnd(trip: ActiveTrip, now: Instant): Boolean {
+        val leg = trip.leg ?: return false
+        // A clock set back to before the walk began ends the wait rather than running it again, as the
+        // ride and wait windows do (Codex, PR #521): never GPS kept on past its bound.
+        return leg.isWalk && trip.legIndex == trip.route.legs.lastIndex && walkEnd(trip) != null &&
+            !now.isBefore(trip.legStartedAt) && now.isBefore(trip.legStartedAt.plus(leg.run).plus(END_WALK_GRACE))
+    }
+
+    /**
+     * Where the walk [trip]'s rider is on ends: its own end where the Planner places it (a stop's;
+     * a walk's end is never kept from TfL's answer, Codex PR #359), else for the walk to the
+     * destination the place the rider chose ([ActiveTrip.destinations], kept on the device with the
+     * trip; Codex, PR #521), else the boarding stop of the ride after it. Null off a walk, or unplaced.
+     */
+    fun walkEnd(trip: ActiveTrip): Coordinates? {
+        val leg = trip.leg?.takeIf { it.isWalk } ?: return null
+        leg.toAt?.let { return it }
+        if (trip.legIndex == trip.route.legs.lastIndex) {
+            return trip.destinations.filterIsInstance<TripDestination.Place>().singleOrNull()?.coordinate
+        }
+        return trip.route.legs.getOrNull(trip.legIndex + 1)?.fromAt
+    }
+
+    /**
+     * How long past its time the walk to the destination waits to see the rider there ([walksToEnd])
+     * before it ends anyway: a fix that never lands near it (indoors, a destination placed off its
+     * door) mustn't keep the trip, and GPS, running (maintainer, 2026-10-03).
+     */
+    val END_WALK_GRACE: Duration = Duration.ofMinutes(10)
+
+    /**
+     * How far, straight, the end of the walk [trip]'s rider is on is from [rider]: the nearest of
+     * [walkEnd] and the [station] walked to's own point and entrances. Null off a walk, with an unplaced end, or with a fix
+     * that doesn't place the rider (a fallback or coarse one).
+     */
+    fun metersLeft(trip: ActiveTrip, rider: LocationFix?, station: StationPlaces = StationPlaces()): Double? {
+        val fix = rider?.takeIf { !it.isFallback && !it.isCoarse } ?: return null
+        if (trip.leg?.isWalk != true) return null
+        // The nearest place that ends the walk, as [seen] ends it: the walk's end, and for a station walked
+        // to its own published point and each entrance (Codex, PR #521), so the rider nearing an entrance
+        // isn't told they're hundreds of meters off.
+        val ends = listOfNotNull(walkEnd(trip), station.point) + station.entrances
+        return ends.minOfOrNull { NearestStops.distanceMeters(fix.coordinates.latitude, fix.coordinates.longitude, it.latitude, it.longitude) }
+    }
 
     /**
      * Whether a fix can see [trip]'s rider at the end of their walk at [now]: its stop is placed by
@@ -1289,6 +1350,12 @@ object OnTheWay {
      * where they get off ([stationRiddenTo]), they're off when seen at that station the same way.
      */
     fun seen(trip: ActiveTrip, rider: LocationFix?, now: Instant, station: StationPlaces = StationPlaces()): ActiveTrip {
+        // On the walk to the destination: arrived once seen there (within [AT_STOP_WITHIN_METERS], the
+        // fix's uncertainty included), or once [END_WALK_GRACE] past its time (maintainer, 2026-10-03).
+        if (walksToEnd(trip, now)) {
+            val end = walkEnd(trip)
+            return if (rider != null && end != null && near(rider, end, AT_STOP_WITHIN_METERS)) walked(trip, now) else trip
+        }
         walkingToRide(trip, now)?.let { ride ->
             val there = rider != null && atStation(rider, ride.fromAt, station) != null
             return if (there) walked(trip, now) else trip
@@ -1334,6 +1401,7 @@ object OnTheWay {
      */
     fun seenAtStop(trip: ActiveTrip, rider: LocationFix?, now: Instant, station: StationPlaces = StationPlaces()): SeenAt? {
         rider ?: return null
+        if (walksToEnd(trip, now)) return walkEnd(trip)?.takeIf { near(rider, it, AT_STOP_WITHIN_METERS) }?.let { SeenAt.POINT }
         walkingToRide(trip, now)?.let { return atStation(rider, it.fromAt, station) }
         return stationRiddenTo(trip, now)?.let { atStation(rider, it.toAt, station) }
     }
@@ -1620,7 +1688,7 @@ object OnTheWay {
                 val ride = boarding.leg!!
                 return boarding to (changeUntil(boarding, now)?.let { TripProgress.Changing(ride, it) } ?: TripProgress.Waiting(ride, null))
             }
-            return if (now.isBefore(until)) next to TripProgress.Walking(onward, until) else nextLeg(next, now)
+            return if (now.isBefore(until) || walksToEnd(next, now)) next to TripProgress.Walking(onward, until) else nextLeg(next, now)
         }
         return next to (changeUntil(next, now)?.let { TripProgress.Changing(onward, it) } ?: TripProgress.Waiting(onward, null))
     }

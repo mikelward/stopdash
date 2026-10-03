@@ -145,7 +145,11 @@ class ActiveTripTrackerTest {
         leg, "red", "Red", app.stopdash.domain.LineStatus("red", severity, description), RouteDisruption.tierOf(severity)!!,
     )
 
-    private fun tracker(dispatcher: kotlinx.coroutines.CoroutineDispatcher, load: () -> ActiveTrip? = { null }) = ActiveTripTracker(
+    private fun tracker(
+        dispatcher: kotlinx.coroutines.CoroutineDispatcher,
+        compute: kotlinx.coroutines.CoroutineDispatcher = dispatcher,
+        load: () -> ActiveTrip? = { null },
+    ) = ActiveTripTracker(
         load = load,
         save = {
             if (cancelNextSave) {
@@ -212,6 +216,7 @@ class ActiveTripTrackerTest {
         clock = { now },
         elapsed = { ticks },
         io = dispatcher,
+        compute = compute,
         warn = { logged += it },
         onGetOffSoon = { _, riding ->
             warned += riding
@@ -3327,6 +3332,49 @@ class ActiveTripTrackerTest {
         advanceUntilIdle()
         assertEquals(0, tracker.starting.value)
         assertEquals(route, checkNotNull(tracker.trip.value).route)
+    }
+
+    @Test
+    fun `the walk to the destination waits for the rider to be seen there, saying how far is left`() = runTest {
+        // A synthetic destination point, and the rider about 450 m short of it, then there.
+        val end = app.stopdash.domain.Coordinates(51.5, -0.12)
+        // Unplaced, as TfL's answer gives a walk's end: the destination chosen places it.
+        val home = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "", "Destination", at(0), at(5))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(TripRoute(listOf(home)), "Destination", readyAt = now, destinations = listOf(app.stopdash.domain.TripDestination.Place(end, "Destination")))
+        now = at(12)
+        // Past its time, seen short of it: still walking, with how far is left (maintainer, 2026-10-03).
+        tracker.refresh(fixAt(51.504))
+        val walking = tracker.progress.value as TripProgress.Walking
+        assertEquals(445.0, checkNotNull(walking.metersLeft), 5.0)
+        // A refresh with no fix keeps the last distance rather than blanking it.
+        tracker.refresh()
+        assertEquals(walking.metersLeft, (tracker.progress.value as TripProgress.Walking).metersLeft)
+        // Seen there: arrived.
+        tracker.refresh(fixAt(51.5001))
+        assertEquals(TripProgress.Arrived, tracker.progress.value)
+    }
+
+    @Test
+    fun `a walk's distance is measured off the caller's thread`() = runTest {
+        // A station's entrances can be many: measured on the tracker's worker, never the caller's
+        // (main) thread (AGENTS.md *Main thread: read and dispatch only*; Codex, PR #521).
+        val end = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val home = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "", "Destination", at(0), at(5))
+        val test = StandardTestDispatcher(testScheduler)
+        var hops = 0
+        val worker = object : kotlinx.coroutines.CoroutineDispatcher() {
+            override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) {
+                hops++
+                test.dispatch(context, block)
+            }
+        }
+        val tracker = tracker(test, compute = worker)
+        tracker.start(TripRoute(listOf(home)), "Destination", readyAt = now, destinations = listOf(app.stopdash.domain.TripDestination.Place(end, "Destination")))
+        now = at(2)
+        tracker.refresh(fixAt(51.504))
+        assertTrue("$hops", hops > 0)
+        assertEquals(445.0, checkNotNull((tracker.progress.value as TripProgress.Walking).metersLeft), 5.0)
     }
 
     @Test

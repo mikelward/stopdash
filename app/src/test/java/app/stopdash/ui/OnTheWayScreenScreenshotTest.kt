@@ -543,6 +543,36 @@ class OnTheWayScreenScreenshotTest {
     }
 
     @Test
+    fun a_walk_says_how_far_is_left() {
+        // Where a stop count would be on a ride, the distance left to the walk's end (maintainer, 2026-10-03).
+        show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(3), metersLeft = 450.0))
+        onCard("450 m").assertIsDisplayed()
+        composeRule.onNodeWithText("3 min · 08:05").assertIsDisplayed()
+    }
+
+    @Test
+    fun a_walks_distance_waits_for_the_riders_units() {
+        // The units chosen still loading: no distance in the wrong ones (Codex, PR #521).
+        composeRule.setContent {
+            androidx.compose.runtime.CompositionLocalProvider(LocalDistanceSystem provides null) {
+                StopDashTheme(dynamicColor = false) {
+                    OnTheWayScreen(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(3), metersLeft = 450.0), false, now, {}, {}, onGoTo = { _, _ -> })
+                }
+            }
+        }
+        assertTrue(composeRule.onAllNodesWithText("450 m").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithText("3 min · 08:05").assertIsDisplayed()
+    }
+
+    @Test
+    fun a_walk_past_its_time_says_only_how_far_is_left() {
+        // The walk to the destination runs on until the rider is seen there: no "About 0 min".
+        show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(-2), metersLeft = 120.0))
+        onCard("120 m").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("About 0 min").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
     fun a_step_time_gone_by_isnt_shown() {
         // The walk's end has passed before the next update: its own words, not "0 min · 08:00".
         show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(-2)))
