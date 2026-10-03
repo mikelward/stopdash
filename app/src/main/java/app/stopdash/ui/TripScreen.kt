@@ -46,6 +46,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -127,6 +128,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 
 /**
@@ -144,10 +146,9 @@ internal fun legTrains(
     if (leg.isWalk) return null
     val stop = state.live[leg.fromId] ?: return null
     if (Staleness.isStale(stop.fetchedAt, now)) return null
-    val calling = legFilter(leg, stop, now, sequences)?.stops?.firstOrNull()?.departures.orEmpty()
     // On a loop or a reconverging line both ways can reach the alighting stop: only a train leaving
     // for the leg's next stop takes the Planner's path (and run time).
-    return calling.filter { leavesAlongLeg(it, leg, sequences) != false }
+    return legFilter(leg, stop, now, sequences)?.leaving.orEmpty()
 }
 
 /**
@@ -302,24 +303,92 @@ internal fun onPoles(state: TripViewModel.State, sequences: Map<String, LineSequ
     return if (placed == routes) state else state.copy(routes = placed)
 }
 
-// [leg]'s line's upcoming trains at [stop] judged on their routes; null when the line has none.
+/**
+ * Judges the live trains of each leg [state]'s routes and their other lines ([rideLines]) ride
+ * ([TripVerdicts.warm]); true when any was judged anew. Slow on a main-line railway: on a worker only.
+ */
+internal fun warmVerdicts(
+    state: TripViewModel.State,
+    sequences: Map<String, LineSequence?>,
+    rideLines: Map<TripLeg, RideLines>,
+    // False once the warm-up is superseded: it then stops, leaving the newer one's verdicts in place.
+    active: () -> Boolean = { true },
+): Boolean {
+    val legs = (state.routes.orEmpty().flatMap { it.legs } + rideLines.values.flatMap { it.legs }).filterNot { it.isWalk }.distinct()
+    if (!active()) return false
+    TripVerdicts.makeRoom(legs, active)
+    var warmed = false
+    for (leg in legs) {
+        val route = sequences[leg.lineId] ?: continue
+        val trains = state.live[leg.fromId]?.departures?.filter { it.lineId == leg.lineId }.orEmpty()
+        if (!active()) return false
+        if (TripVerdicts.warm(leg, route, trains, active)) warmed = true
+    }
+    return warmed
+}
+
+// The routes as loaded, renewed whenever more trains are judged on them: a key the page's derived
+// values are remembered under, so they're worked out again with the new verdicts.
+private class JudgedRoutes(routes: Map<String, LineSequence?>) : Map<String, LineSequence?> by routes
+
+// A leg's upcoming trains judged on its line's route ([legFilter]): the [result] as [DirectTrips.filter]
+// gives it, and of the trains it keeps, those [leaving] along the leg ([leavesAlongLeg]).
+private class LegJudgement(val result: DirectTrips.Result, val leaving: List<Departure>)
+
+private val CHECKING = LegJudgement(DirectTrips.Result(emptyList(), pending = true, unresolved = false), emptyList())
+
+// [leg]'s line's upcoming trains at [stop] judged on their routes; null when the line has none. Read
+// from [TripVerdicts], worked out off the main thread: while a train hasn't been judged, the leg reads
+// as its route still loading ([DirectTrips.Result.pending]).
 private fun legFilter(
     leg: TripLeg,
     stop: TripViewModel.StopLive,
     now: Instant,
     sequences: Map<String, LineSequence?>,
-): DirectTrips.Result? {
+): LegJudgement? {
     val line = Countdown.upcoming(stop.departures.filter { it.lineId == leg.lineId }, now)
     if (line.isEmpty()) return null
-    return DirectTrips.filter(
-        listOf(StopArrivals(leg.fromId, leg.fromName, line, stop.fetchedAt)),
-        listOf(DirectTrips.End(leg.toId, leg.toName)),
-        sequences,
+    // The origin itself is no destination: From and To the same station is no trip.
+    if (leg.fromId == leg.toId) return LegJudgement(DirectTrips.Result(emptyList(), pending = false, unresolved = false), emptyList())
+    // No line to follow: they may well call there, so never a silent "no".
+    if (leg.lineId.isBlank()) {
+        val miss = RouteMiss(leg.lineId, leg.fromId, RouteStops.Resolution.NoLine)
+        return LegJudgement(DirectTrips.Result(emptyList(), pending = false, unresolved = true, misses = setOf(miss)), emptyList())
+    }
+    if (leg.lineId !in sequences) return CHECKING
+    // A failed route can't tell: logged by its fetch.
+    val route = sequences[leg.lineId] ?: return LegJudgement(DirectTrips.Result(emptyList(), pending = false, unresolved = true), emptyList())
+    val judged = line.map { train -> train to (TripVerdicts.get(leg, route, train) ?: return CHECKING) }
+    var unresolved = false
+    val misses = LinkedHashSet<RouteMiss>()
+    val kept = judged.filter { (_, verdict) ->
+        when (val reach = verdict.reach) {
+            DirectTrips.Verdict.Reaches -> true
+            DirectTrips.Verdict.Misses -> false
+            is DirectTrips.Verdict.Unknown -> {
+                unresolved = true
+                reach.miss?.let { misses += it }
+                false
+            }
+        }
+    }
+    val stops = if (kept.isEmpty()) emptyList() else listOf(StopArrivals(leg.fromId, leg.fromName, kept.map { it.first }, stop.fetchedAt))
+    return LegJudgement(
+        DirectTrips.Result(stops, pending = false, unresolved = unresolved, misses = misses),
+        kept.filter { (_, verdict) -> verdict.leaves != false }.map { it.first },
     )
 }
 
 /**
- * While [leg]'s line's route is still loading (absent from [sequences]), its live trains at the
+ * Whether [leg]'s line's trains at its boarding stop are judged on its route: its route loaded (or
+ * failed) and each upcoming train worked out ([TripVerdicts]). Until then the leg reads as loading.
+ */
+private fun legChecked(leg: TripLeg, stop: TripViewModel.StopLive, now: Instant, sequences: Map<String, LineSequence?>): Boolean =
+    leg.lineId in sequences && legFilter(leg, stop, now, sequences) !== CHECKING
+
+/**
+ * While [leg]'s line's route is still loading (absent from [sequences]), or its trains are still
+ * being judged on it ([TripVerdicts]), its live trains at the
  * boarding stop as the main screen shows them, so the row isn't bare meanwhile (plain only when
  * [uncheckedPending] can't doubt it, grayed until checked otherwise): those heading for the
  * Planner's terminus and the rest of their direction, or, at a bus pole (one direction by nature),
@@ -333,11 +402,12 @@ internal fun pendingTrains(
     now: Instant,
     sequences: Map<String, LineSequence?>,
 ): List<Departure> {
-    if (leg.isWalk || leg.lineId in sequences) return emptyList()
+    if (leg.isWalk) return emptyList()
+    val stop = state.live[leg.fromId] ?: return emptyList()
+    if (legChecked(leg, stop, now, sequences)) return emptyList()
     // A bus stop the Planner named by its pair: which side the bus uses isn't known until its route
     // is, and the other side's buses run the other way.
     if (leg.fromArea.isNotEmpty()) return emptyList()
-    val stop = state.live[leg.fromId] ?: return emptyList()
     if (Staleness.isStale(stop.fetchedAt, now)) return emptyList()
     // A train with no destination couldn't be labeled but by the Planner's terminus, which the live
     // feed never said it runs to: left out until the route check vouches for it.
@@ -434,7 +504,7 @@ private fun legChecks(
     estimates.flatMap { it.route.rides }.distinct().flatMap { lines[it]?.legs ?: listOf(it) }.distinct().mapNotNull { leg ->
         val stop = state.live[leg.fromId] ?: return@mapNotNull null
         if (Staleness.isStale(stop.fetchedAt, now)) return@mapNotNull null
-        legFilter(leg, stop, now, sequences)
+        legFilter(leg, stop, now, sequences)?.result
     }
 
 /**
@@ -837,22 +907,22 @@ private fun TripContent(
             .distinct().also { settledLines[0] = it }
     }
     val loads = rememberLineLoads(lineIds, now)
-    val sequences = loads.sequences
+    val routeSequences = loads.sequences
     // Each bus leg at the poles its bus uses, once its route says which (the Planner's may be the
     // other side of the road); everything below reads the trip this way, with the routes a train
     // running through a change offers without it ([withThroughRoutes]).
-    val poled = remember(planned, sequences) { onPoles(planned, sequences) }
+    val poled = remember(planned, routeSequences) { onPoles(planned, routeSequences) }
     // A bus station's stand a bus boards at in place of the Planner's is placed only once the trip
     // has fetched it ([onPoles]), so it's handed to the trip to fetch ([placedStands]).
-    val stands = remember(planned, sequences, excluded, openRef) {
-        placedStands(TripViewModel.bestOf(planned.shownRoutes(excluded).orEmpty(), openRef?.keys.orEmpty()), sequences)
+    val stands = remember(planned, routeSequences, excluded, openRef) {
+        placedStands(TripViewModel.bestOf(planned.shownRoutes(excluded).orEmpty(), openRef?.keys.orEmpty()), routeSequences)
     }
     LaunchedEffect(stands) { onPlacedStands(stands) }
     // The open route as the plan offers it now ([OpenRoute.routeIn]): its walks at the current pace,
     // and a train through a change whether or not one is predicted. Null while no plan offers it.
     val opened = remember(poled, excluded, openRef) { openRef?.routeIn(poled.shownRoutes(excluded).orEmpty()) }
     val openKey = opened?.let(::routeKey)
-    val state = remember(poled, sequences, excluded, opened) { withThroughRoutes(poled, sequences, excluded, opened) }
+    val state = remember(poled, routeSequences, excluded, opened) { withThroughRoutes(poled, routeSequences, excluded, opened) }
     // Every leg the Planner planned: a leg it didn't (a train through a change) needs a live train.
     val plannedLegs = remember(poled) { poled.routes.orEmpty().flatMapTo(HashSet()) { it.legs } }
     val originUnconfirmed = relocating || locationBanner != null
@@ -867,7 +937,19 @@ private fun TripContent(
         )
     }
     // Each ride's lines ([rideLines]): worked out once per refresh and route load, not on every tick.
-    val rideLines = remember(state, sequences, excluded) { rideLines(state.routes.orEmpty(), state, sequences, excluded) }
+    val rideLines = remember(state, routeSequences, excluded) { rideLines(state.routes.orEmpty(), state, routeSequences, excluded) }
+    // Each leg's live trains judged on its line's route on the worker ([TripVerdicts]), on every
+    // refresh and route load; a train not judged yet reads as its route still loading. Once a warm-up
+    // ends, the same routes come anew ([JudgedRoutes]) so what reads the verdicts reads them again.
+    val worker = LocalWorker.current
+    var judged by remember { mutableIntStateOf(0) }
+    LaunchedEffect(state, routeSequences, rideLines) {
+        withContext(worker) { warmVerdicts(state, routeSequences, rideLines) { isActive } }
+        // Read again however the verdicts came: a warm-up superseded mid-way may have written the last
+        // of them after this composition looked, leaving this one nothing new to judge.
+        judged++
+    }
+    val sequences: Map<String, LineSequence?> = remember(routeSequences, judged) { JudgedRoutes(routeSequences) }
     val estimates = remember(state, now, access, sequences, excluded, originUnconfirmed, rideLines, plannedLegs, openKey) {
         tripEstimates(state, now, access, sequences, excluded, originUnconfirmed, rideLines, keep = openKey, planned = plannedLegs)
             // The open route stays, its arrival withheld while its train through a change isn't predicted.

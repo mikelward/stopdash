@@ -1179,6 +1179,8 @@ the Planner's terminus, whether or not a name adds a place such as "(London)") a
 does, timing nothing until the check vouches for them: only a bus to the terminus on no named branch
 shows plain meanwhile, and one that may skip the rider's stop (another terminus, a named branch such
 as "via Bank", or any rail service, which may run fast to the same terminus) grayed until then.
+Checking a line with many routes (a main-line railway's) never stalls the page: a train not yet
+checked reads as its line still being checked.
 The times read "Loading" until the
 boarding stop's arrivals arrive, and "–" when none can be vouched for (*Text is chosen to fit its
 space*). A bus stop the Planner names by its stop pair (a road's two poles) boards at the pole its

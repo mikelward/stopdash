@@ -10,9 +10,11 @@ import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTiming
 import java.time.Duration
 import java.time.Instant
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
 /**
@@ -21,6 +23,15 @@ import org.junit.Test
  */
 class TripThroughRoutesTest {
     private val now = Instant.parse("2026-09-28T14:00:00Z")
+
+    // The trip page's helpers are called directly here, with no worker to judge trains ahead: judged in place.
+    @Before fun judgeInPlace() {
+        TripVerdicts.onMiss = TripVerdicts::compute
+    }
+
+    @After fun stopJudgingInPlace() {
+        TripVerdicts.onMiss = null
+    }
 
     private fun at(minutes: Long): Instant = now.plus(Duration.ofMinutes(minutes))
 

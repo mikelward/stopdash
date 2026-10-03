@@ -82,6 +82,9 @@ import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import kotlinx.coroutines.asCoroutineDispatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -282,6 +285,46 @@ class TripScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
+    }
+
+    @Test
+    fun trains_are_judged_on_the_page_worker_never_in_composition() {
+        // A worker held shut: until it runs, no train can be judged, so the page can only say it's
+        // still checking. Had composition judged them on the main thread, the times would show anyway.
+        val gate = CountDownLatch(1)
+        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        threads.execute { gate.await() }
+        val worker = threads.asCoroutineDispatcher()
+        try {
+            composeRule.setContent {
+                StopDashTheme(dynamicColor = false) {
+                    CompositionLocalProvider(LocalWorker provides worker) {
+                        TripScreen(
+                            title = "To Canary Wharf",
+                            state = planned,
+                            now = now,
+                            access = Duration.ofMinutes(2),
+                            routeStops = RouteStopsRepository(source),
+                            onBack = {},
+                            onRetry = {},
+                        )
+                    }
+                }
+            }
+            composeRule.waitForIdle()
+            composeRule.onNodeWithText("Checking routes…").assertIsDisplayed()
+            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
+
+            gate.countDown()
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodesWithText("Checking routes…").fetchSemanticsNodes().isEmpty()
+            }
+            composeRule.onNodeWithText("27 min · ~08:29").assertIsDisplayed()
+        } finally {
+            // Opened whatever happened, so a failed check can't leave the worker's thread waiting.
+            gate.countDown()
+            worker.close()
+        }
     }
 
     @Test
