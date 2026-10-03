@@ -1094,7 +1094,13 @@ earliest shown on a tie), or **Fastest · Simplest** heads one card that is both
 card whose arrival is withheld, and Simplest only when the cards don't all ride as often. The cards
 headed so come first, Fastest then Simplest, and the rest follow in their own order under one
 **Other** header (maintainer, 2026-09-30), so a Simplest card arriving later moves up beside Fastest
-rather than splitting the rest in two. With neither header shown, no card is headed Other. Routes riding the
+rather than splitting the rest in two. **Least walking** (maintainer, 2026-10-03) heads the card
+walking least by the Planner's times (at the rider's pace), when it walks **5 minutes or more less**
+than the first card, after Simplest and sharing a header with it the same way ("Simplest · Least
+walking"): each plan also asks the Planner for its least-walking routes beside the quickest and the
+fewest changes, so the bus to the station is offered beside the long walk there. Such a route stays
+on the list though it changes more and arrives later (below), and is timed past the cap on routes
+timed. With none of these headers shown, no card is headed Other. Routes riding the
 same lines in turn but changing at a different stop are **cards of their own**, told apart by the
 stops their ride rows name (below) (maintainer, 2026-09-27). Routes whose first ride goes between the
 same two stops by the same mode and then ride the same lines — the 43 or the 134 to Highgate
@@ -1130,8 +1136,8 @@ while a train through is predicted: the Planner has no times for it, and the tim
 it replaces belong to other trains. Once opened it stays, as below, its arrival withheld while none
 is predicted. A walk between the
 rides is a change of station, so those stay as planned. **A route with more changes is listed only
-when it gets there sooner** (maintainer, 2026-09-28): one that another route with fewer changes
-beats or ties, while StopDash stands behind that route at least as far (usable, then unchecked, then
+when it gets there sooner or walks 5 minutes or more less** (maintainer, 2026-09-28; walking 2026-10-03): one that another route with fewer changes
+beats or ties, without walking that much more, while StopDash stands behind that route at least as far (usable, then unchecked, then
 not running; then live, estimated, withheld — stricter than the list's order, which ranks an
 unchecked route a live train times among the checked, so a route checked open is never left off for
 one that couldn't be checked), is left off the list, and of two arriving together the one with fewer changes comes first.
@@ -1453,19 +1459,20 @@ hidden lines: avoiding a line leaves it out of trips only, not the list, the wid
 the "hidden" banner never counts it. The settings wait takes it in too, so a route on an avoided line
 isn't shown first.
 
-**Two requests per plan.** The Planner answers with about three routes, often one route at three
-departures, so each plan asks it twice at once: for the quickest routes (its default) and for the
+**Three requests per plan.** The Planner answers with about three routes, often one route at three
+departures, so each plan asks it three times at once: for the quickest routes (its default), for the
 **fewest changes**, which finds the walk to a station or the one bus the whole way that the quickest
-three passed over (maintainer, 2026-09-30). The answers merge, the quickest's first, and a route both
-offer (the same lines between the same stops at the same times) appears once; the list then orders
-them as always (tiers, then arrival). Either answer alone still plans the trip, and says which
-request failed in the debug log; only both failing fails the plan.
+three passed over (maintainer, 2026-09-30), and for the **least walking**, which finds the bus to the
+station in place of a long walk there (maintainer, 2026-10-03). The answers merge in that order, and
+a route more than one offers (the same lines between the same stops at the same times) appears once;
+the list then orders them as always (tiers, then arrival). Any answer alone still plans the trip, and
+says which request failed in the debug log; only all failing fails the plan.
 
 **One ride to the fastest route's last stop.** To a **place** at a coordinate — a saved favorite, or
 a place or postcode picked in the *To…* search — the fewest changes can trade the one bus the whole way for a train and a long walk from the station, since a walk
 counts as no change, while the quickest routes change on to that same bus — so neither request offers
 the bus a short walk from the rider (maintainer's report, 2026-09-30). So when the route to a place
-arriving soonest by the Planner's times rides more than once, the Planner is asked a **third** time,
+arriving soonest by the Planner's times rides more than once, the Planner is asked a **fourth** time,
 for the fewest changes to the place **via** the stop that route gets off its last ride at; each
 route it offers riding fewer times joins the list as its own card, ranked like any other. The
 Planner builds the whole route, its walk on to the place included, so StopDash joins nothing: an
@@ -1511,10 +1518,11 @@ protected nothing TfL didn't already have, so it is not to be reinstated as a pr
 minutes old (the plan is held in memory only, so a trip reopened after process death re-plans), again
 every 15 minutes while the screen stays visible, on a re-locate to a new nearest stop or 150 m on from where it was planned, and once
 per tap of Retry or pull on the routes: about four plans an hour for a trip left open, plus one per re-locate, Retry or pull the
-rider makes, each **two** Planner calls (quickest and fewest changes, above), so about eight calls an hour;
-a trip to a place whose fastest route changes adds a **third** each time (above), about twelve.
-To a station complex each plan is that pair per station plus one pair for its bus stops
-(about six at King's Cross, two or three at a typical interchange): about 48 calls an hour at King's Cross. Ranking needs every listed route's live trains, so each refresh fetches arrivals
+rider makes, each **three** Planner calls (quickest, fewest changes and least walking, above), so about
+twelve calls an hour; a trip to a place whose fastest route changes adds a **fourth** each time (above),
+about sixteen. To a station complex each plan is those three per station plus three for its bus stops
+(about six targets at King's Cross, two or three at a typical interchange): about 72 calls an hour at
+King's Cross, within the keyless ~50 a minute. Ranking needs every listed route's live trains, so each refresh fetches arrivals
 at every stop where any listed route boards a ride (its first stop and each change), once per
 stop however many routes share it: the Planner offers a handful of routes, so a few requests,
 under ten in practice, plus one line-status call for all their lines. Closure checks at the stops

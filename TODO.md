@@ -28,7 +28,7 @@ exercises the whole spine the widget later renders from.
 - [ ] Trip page: work out its per-tick values off the main thread too. Trains are judged on their
       routes on the worker (`TripVerdicts`), but each tick still passes over a leg's board on the main
       thread: the upcoming trains (`Countdown.upcoming`), their verdicts gathered (`legFilter`), and
-      the routes timed (`tripEstimates`, the card helpers). Move them to the trip's view model,
+      the routes timed (`tripEstimates`, the card helpers, `headedCards`). Move them to the trip's view model,
       published with the data they come from, so the page only reads.
 
 - [ ] Screenshot job — record + upload landed; **drift-refresh + visual-diff apparatus
@@ -1138,6 +1138,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             - [x] **"Other" over the rest** (maintainer, 2026-09-30): one header over the cards
                   neither Fastest nor Simplest, after those two (`headedCards`), so Simplest moves
                   up beside Fastest; no Other where neither of those is shown.
+      - [x] **Least walking** (maintainer, 2026-10-03): a third Planner request per plan
+            (`journeyPreference=leastwalking`), merged; a "Least walking" header over the card
+            walking 5+ min less than the first, kept past the fewer-changes pruning and the timing
+            cap. Needs a device check that a trip with a long walk to its station now offers a bus.
       - [ ] **Step-free trips** (maintainer, 2026-09-30; after the intermediate work): a dropdown
             atop a trip, **Step-free: Any / Station / Fully** (Station: step-free from the street to
             the platform; Fully: to the train as well; the maintainer's names, 2026-09-30), planning

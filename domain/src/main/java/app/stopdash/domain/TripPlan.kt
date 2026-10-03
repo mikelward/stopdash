@@ -65,6 +65,9 @@ data class TripRoute(val legs: List<TripLeg>) {
     /** The legs ridden, walks left out: the line pills a route shows. */
     val rides: List<TripLeg> get() = legs.filterNot { it.isWalk }
 
+    /** The Planner's time on foot over the whole route: to the first stop, between rides and to the end. */
+    val walking: Duration get() = legs.filter { it.isWalk }.fold(Duration.ZERO) { sum, leg -> sum + leg.run }
+
     /**
      * Where the route reaches one of [destinations] and then rides on: the destination's ids it was
      * at (a stop, or a pole and its stop pair) when it rode through and out, or rode again after a

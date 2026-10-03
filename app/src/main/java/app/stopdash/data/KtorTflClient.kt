@@ -62,6 +62,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
@@ -134,32 +135,25 @@ class KtorTflClient(
     ): List<TripRoute> {
         val fromParam = from.plannerParam()
         val toParam = to.plannerParam()
-        // The Planner offers three routes, often one route at three departures, so it's asked twice
-        // at once: for the quickest (its default) and for the fewest changes, which finds a walk to a
-        // station, or one bus the whole way, that the quickest three passed over (SPEC *Trips with a
-        // change*). Either answer alone still plans the trip; only both failing fails it.
-        val (quickest, fewestChanges) = coroutineScope {
-            val quickest = async { attemptPlan { plan(fromParam, toParam, speed, maxWalk, stepFree, modes, preference = null) } }
-            val fewestChanges = async { attemptPlan { plan(fromParam, toParam, speed, maxWalk, stepFree, modes, preference = LEAST_INTERCHANGE) } }
-            quickest.await() to fewestChanges.await()
+        // The Planner offers three routes, often one route at three departures, so it's asked three
+        // times at once: for the quickest (its default); for the fewest changes, which finds a walk to
+        // a station, or one bus the whole way, that the quickest three passed over; and for the least
+        // walking, which finds the bus to the station in place of the walk there (SPEC *Trips with a
+        // change*). Any answer alone still plans the trip; only all failing fails it.
+        val answers = coroutineScope {
+            PREFERENCES.map { preference ->
+                async { attemptPlan { plan(fromParam, toParam, speed, maxWalk, stepFree, modes, preference = preference) } }
+            }.awaitAll()
         }
-        val routes = when {
-            quickest.isSuccess && fewestChanges.isSuccess -> mergedRoutes(quickest.getOrThrow(), fewestChanges.getOrThrow())
-            quickest.isSuccess -> {
-                warn("journey planner (fewest changes): ${fewestChanges.exceptionOrNull()?.let { it::class.simpleName }}")
-                quickest.getOrThrow()
-            }
-            fewestChanges.isSuccess -> {
-                warn("journey planner (quickest): ${quickest.exceptionOrNull()?.let { it::class.simpleName }}")
-                fewestChanges.getOrThrow()
-            }
-            else -> {
-                // Both failed: the quickest's failure fails the plan (the trip logs it), so the other's
-                // is logged here, as they can differ (offline and rate-limited, say).
-                warn("journey planner (fewest changes): ${fewestChanges.exceptionOrNull()?.let { it::class.simpleName }}")
-                throw checkNotNull(quickest.exceptionOrNull())
-            }
+        // Each failure is logged by which request it was, as they can differ (offline and rate-limited,
+        // say); with every one failed, the quickest's fails the plan (the trip logs it).
+        answers.forEachIndexed { index, answer ->
+            val failure = answer.exceptionOrNull() ?: return@forEachIndexed
+            val source = PREFERENCES[index]?.let { planSource(it, via = null) } ?: "journey planner (quickest)"
+            if (index > 0 || answers.any { it.isSuccess }) warn("$source: ${failure::class.simpleName}")
         }
+        if (answers.none { it.isSuccess }) throw checkNotNull(answers.first().exceptionOrNull())
+        val routes = answers.mapNotNull { it.getOrNull() }.reduce(::mergedRoutes)
         return routes.between(from, to)
     }
 
@@ -225,11 +219,7 @@ class KtorTflClient(
         // A stop every route passes ([FinalStop]); none for the plan's own two requests.
         via: String? = null,
     ): List<TripRoute> {
-        val source = when {
-            via != null -> "journey planner (fewest changes via a stop)"
-            preference == null -> "journey planner"
-            else -> "journey planner (fewest changes)"
-        }
+        val source = planSource(preference, via)
         return tflRequest { key ->
             val dto = try {
                 httpClient.get("$baseUrl/Journey/JourneyResults/$fromParam/to/$toParam") {
@@ -268,6 +258,14 @@ class KtorTflClient(
             }
             routes
         }
+    }
+
+    // What a Planner request is called in the log: which of a plan's requests it was.
+    private fun planSource(preference: String?, via: String?): String = when {
+        via != null -> "journey planner (fewest changes via a stop)"
+        preference == LEAST_INTERCHANGE -> "journey planner (fewest changes)"
+        preference == LEAST_WALKING -> "journey planner (least walking)"
+        else -> "journey planner"
     }
 
     // The route with its first leg's start unnamed when it starts at the rider's coordinate (no stop
@@ -700,6 +698,12 @@ class KtorTflClient(
 
         /** The Planner's `journeyPreference` for the routes with the fewest changes. */
         const val LEAST_INTERCHANGE: String = "leastinterchange"
+
+        /** The Planner's `journeyPreference` for the routes with the least walking. */
+        const val LEAST_WALKING: String = "leastwalking"
+
+        /** Each plan's requests, by `journeyPreference`: the quickest (the Planner's default), the fewest changes, the least walking. */
+        private val PREFERENCES: List<String?> = listOf(null, LEAST_INTERCHANGE, LEAST_WALKING)
 
         /**
          * The fixed, always-resolvable destination the postcode resolver plans to — King's Cross St

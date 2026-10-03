@@ -1378,6 +1378,10 @@ private fun RouteList(
     // A card's long press also offers to avoid each line it rides ([AvoidedLines]); null offers not.
     onAvoidLine: ((String) -> Unit)? = null,
 ) {
+    // Which card gets there soonest, which rides fewest and which walks least, over each, then
+    // the rest under "Other" (maintainer, 2026-09-30): worked out once per set of cards, not on
+    // every recomposition (off the main thread with the rest of the card work, TODO.md).
+    val shown = remember(cards) { headedCards(cards.map { it.first() }) }
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -1420,9 +1424,6 @@ private fun RouteList(
         if (cards.isEmpty()) {
             item(key = "none") { Text(stringResource(R.string.trip_no_routes), style = MaterialTheme.typography.bodyLarge) }
         }
-        // Which card gets there soonest and which rides fewest, over each, then the rest under
-        // "Other" (maintainer, 2026-09-30).
-        val shown = headedCards(cards.map { it.first() })
         // Routes sharing every stop but differing in their first line are one card: one header, a
         // row per ride, and the first ride's times for every line together. The card is one choice
         // (maintainer, 2026-09-27): tapping it opens the best of its routes, and a long press
@@ -1434,7 +1435,7 @@ private fun RouteList(
             val onLongPress = if (onHideMode != null && modes.isNotEmpty()) ({ menuOpen = true }) else null
             val moreLabel = stringResource(R.string.more_actions)
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                headed.header?.let { RouteLabelHeader(it) }
+                if (headed.header.isNotEmpty()) RouteLabelHeader(headed.header)
                 Box {
                     // Each row takes the card's tap and long press itself: a clickable card would merge
                     // its rows into one, and a screen reader would lose the rows' own times.
@@ -1496,18 +1497,24 @@ private fun RouteList(
     }
 }
 
-/** The bold header over a card: "Fastest", "Simplest", both, or "Other" ([headedCards]), read as a heading. */
+/**
+ * The bold header over a card: "Fastest", "Simplest", "Least walking", several of them ("Fastest ·
+ * Simplest"), or "Other" ([headedCards]), read as a heading.
+ */
 @Composable
-private fun RouteLabelHeader(label: RouteLabel) {
-    Text(
-        text = stringResource(
+private fun RouteLabelHeader(labels: List<RouteLabel>) {
+    val names = labels.map { label ->
+        stringResource(
             when (label) {
                 RouteLabel.FASTEST -> R.string.trip_label_fastest
                 RouteLabel.SIMPLEST -> R.string.trip_label_simplest
-                RouteLabel.FASTEST_AND_SIMPLEST -> R.string.trip_label_fastest_simplest
+                RouteLabel.LEAST_WALKING -> R.string.trip_label_least_walking
                 RouteLabel.OTHER -> R.string.trip_label_other
             },
-        ),
+        )
+    }
+    Text(
+        text = names.joinToString(stringResource(R.string.trip_label_separator)),
         style = MaterialTheme.typography.titleSmall,
         fontWeight = FontWeight.Bold,
         modifier = Modifier.semantics { heading() }.testTag("routeLabel"),

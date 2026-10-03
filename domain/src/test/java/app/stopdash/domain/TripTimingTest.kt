@@ -434,6 +434,41 @@ class TripTimingTest {
     }
 
     @Test
+    fun `a route with more changes is kept when it walks clearly less`() {
+        fun estimate(route: TripRoute, arrival: Long) = TripTiming.Estimate(route, TripTiming.Basis.LIVE, at(arrival), emptyList(), false, now)
+        // Twelve minutes on foot to a train straight there, or a bus to the station and the same train.
+        val walkThere = estimate(TripRoute(listOf(walk("X", "A", 0, 12), leg("blue", "A", "C", departs = 14, arrives = 30))), 30)
+        val busThere = estimate(
+            TripRoute(listOf(walk("X", "Q", 0, 2), leg("43", "Q", "A", departs = 4, arrives = 12, mode = "bus"), leg("blue", "A", "C", departs = 14, arrives = 34))),
+            34,
+        )
+        assertEquals(listOf(walkThere, busThere), TripTiming.withoutSlowerChanges(listOf(walkThere, busThere)))
+        // Four minutes less on foot buys nothing: the slower change is still left off.
+        val nearlyAsFar = estimate(
+            TripRoute(listOf(walk("X", "Q", 0, 8), leg("43", "Q", "A", departs = 9, arrives = 12, mode = "bus"), leg("blue", "A", "C", departs = 14, arrives = 34))),
+            34,
+        )
+        assertEquals(listOf(walkThere), TripTiming.withoutSlowerChanges(listOf(walkThere, nearlyAsFar)))
+        assertEquals(Duration.ofMinutes(12), walkThere.route.walking)
+        // A chain: each route walks four minutes less than the one before, and arrives later with a
+        // change more. The middle one is left off, but the last, eight minutes less than the first, stays.
+        val middle = estimate(
+            TripRoute(listOf(walk("X", "Q", 0, 8), leg("43", "Q", "A", departs = 9, arrives = 12, mode = "bus"), leg("blue", "A", "C", departs = 14, arrives = 32))),
+            32,
+        )
+        val least = estimate(
+            TripRoute(
+                listOf(
+                    walk("X", "R", 0, 4), leg("134", "R", "Q", departs = 5, arrives = 9, mode = "bus"),
+                    leg("43", "Q", "A", departs = 10, arrives = 13, mode = "bus"), leg("blue", "A", "C", departs = 15, arrives = 34),
+                ),
+            ),
+            34,
+        )
+        assertEquals(listOf(walkThere, least), TripTiming.withoutSlowerChanges(listOf(walkThere, middle, least)))
+    }
+
+    @Test
     fun `a route with more changes is kept only when it's faster`() {
         val direct = TripRoute(listOf(leg("blue", "A", "C", departs = 5, arrives = 30)))
         fun estimate(route: TripRoute, arrival: Long?, basis: TripTiming.Basis = TripTiming.Basis.LIVE, blocked: Boolean = false, unchecked: Boolean = false) =

@@ -338,24 +338,47 @@ object TripTiming {
     }
 
     /**
-     * [estimates] without a route another beats on both counts (maintainer, 2026-09-28): one with
-     * fewer changes that gets there no later, and that StopDash stands behind at least as far: usable,
-     * then unchecked, then blocked; then live, estimated, withheld. Stricter than [rank], which lifts
+     * [estimates] without a route another beats on every count (maintainer, 2026-09-28): one with
+     * fewer changes that gets there no later, that StopDash stands behind at least as far (usable,
+     * then unchecked, then blocked; then live, estimated, withheld), and whose walk it doesn't spare
+     * ([walksLess]; maintainer, 2026-10-03: a bus to the station instead of a long walk there is a
+     * change worth offering a rider who'd rather not walk). Stricter than [rank], which lifts
      * an unchecked route with a live train among the checked: a route checked open is never left off
      * for one that couldn't be checked. A route with more changes is worth offering only when it's
-     * faster. A withheld arrival can't be compared, so it neither beats nor is beaten. In
-     * [estimates]' order.
+     * faster or walks clearly less. A withheld arrival can't be compared, so it neither beats nor is
+     * beaten. The route walking least is always kept when it walks clearly less than the first
+     * ([walksLess]): a chain of routes each walking a little less than the last would otherwise drop
+     * it, though it's the one the *Least walking* header is for. In [estimates]' order.
      */
-    fun withoutSlowerChanges(estimates: List<Estimate>): List<Estimate> =
-        estimates.filter { route ->
+    fun withoutSlowerChanges(estimates: List<Estimate>): List<Estimate> {
+        // Of routes walking as little, the first: the one ranked best.
+        val leastWalking = estimates.minByOrNull { it.route.walking }
+            ?.takeIf { walksLess(it.route, estimates.first().route) }
+        return estimates.filter { route ->
+            if (route === leastWalking) return@filter true
             val arrival = route.arrival ?: return@filter true
             estimates.none { other ->
                 other !== route &&
                     other.route.rides.size < route.route.rides.size &&
                     other.arrival?.let { !it.isAfter(arrival) } == true &&
+                    !walksLess(route.route, other.route) &&
                     STANDING.compare(other, route) <= 0
             }
         }
+    }
+
+    /**
+     * Whether [route] spares the rider [than]'s walk: it walks at least [LESS_WALKING] less, by the
+     * Planner's times at the rider's own pace.
+     */
+    fun walksLess(route: TripRoute, than: TripRoute): Boolean =
+        route.walking.plus(LESS_WALKING) <= than.walking
+
+    /**
+     * The least walking a route has to save to be worth a change of its own, or the *Least walking*
+     * header ([routeLabels]) (maintainer, 2026-10-03): a minute or two is no reason to pick it.
+     */
+    val LESS_WALKING: Duration = Duration.ofMinutes(5)
 
     /**
      * [estimates] without a route that rides a leg the Planner didn't plan ([planned], every leg of
