@@ -398,6 +398,8 @@ class TripScreenScreenshotTest {
         // Every limit is offered, 60 minutes the longest.
         composeRule.onNodeWithTag("maxWalk").performClick()
         MaxWalk.entries.forEach { composeRule.onNodeWithTag("maxWalk-${it.name}").assertExists() }
+        // Open, styled as the overflow menu is (maintainer, 2026-10-03): the whole screen, its own window included.
+        if (capturing()) com.github.takahirom.roborazzi.captureScreenRoboImage("src/test/snapshots/images/trip-routes-max-walk-menu.png")
         composeRule.onNodeWithText("60 min").assertIsDisplayed()
         composeRule.onNodeWithTag("maxWalk-SIXTY").performClick()
         assertEquals(MaxWalk.SIXTY, chosenMaxWalk)

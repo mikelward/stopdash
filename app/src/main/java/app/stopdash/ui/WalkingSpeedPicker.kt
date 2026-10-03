@@ -12,7 +12,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.InputChip
@@ -262,7 +261,8 @@ private fun <T : Enum<T>> PickerRow(
                 Text(current)
                 Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
             }
-            DropdownMenu(expanded = expanded && enabled, onDismissRequest = { expanded = false }) {
+            // Styled as every StopDash menu is, the overflow menu's included (maintainer, 2026-10-03).
+            StopDashMenu(expanded = expanded && enabled, onDismissRequest = { expanded = false }) {
                 options.forEach { option ->
                     DropdownMenuItem(
                         text = {
