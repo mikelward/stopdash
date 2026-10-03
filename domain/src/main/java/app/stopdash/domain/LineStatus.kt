@@ -192,6 +192,18 @@ data class PartClosure(
     val sections: List<List<String>>,
 ) {
     /**
+     * The stops strictly inside one of its [sections] (not at either edge, where trains still run up
+     * to it), by where each first appears. Worked out once, as the closure is built off the main
+     * thread, so asking whether it shuts a stop ([EmptyTimes.notRunningAt]) is a lookup, not a scan.
+     */
+    val interior: Set<String> = buildSet {
+        for (section in sections) {
+            val seen = HashSet<String>()
+            section.forEachIndexed { i, stop -> if (seen.add(stop) && i > 0 && i < section.lastIndex) add(stop) }
+        }
+    }
+
+    /**
      * Whether it's placed on a ride calling at [calls] in order (where it boards, then each stop
      * through where it gets off): two calls in a row both in one of its [sections], the same way
      * round, so the ride runs through a section it names in the direction it's shut. A ride that only

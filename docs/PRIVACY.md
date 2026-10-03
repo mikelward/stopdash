@@ -272,6 +272,9 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   milliseconds only, no stop or place,
 - **which disruption/status lookup was unknown and why** (e.g. a line TfL returned no
   status for, or a prediction with no line id to check),
+- **a failed timetable lookup**: the line id and stop ID whose timetable couldn't be fetched
+  (asked only for a line with no live times, to tell "none coming" from "none known") and the
+  failure reason,
 - **which departure couldn't be checked against its line's route and why**, where a trip, a
   *To…* page or a journey card says some routes couldn't be checked — its line id, the stop ID
   it boards at and the reason (e.g. its destination matches no route) — and, by line id only,

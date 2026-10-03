@@ -770,6 +770,28 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
     - [x] **A trip's boards with National Rail hidden**: a trip drops routes riding a hidden line,
           so none it times rides National Rail then, and it asks for no board; a station fetched
           without one is fetched again once National Rail shows.
+- [x] **"?" where a line's times are unknown, a dash only when none is coming** (maintainer,
+      2026-10-03). TfL's live list for a station came back empty during a disruption while trains
+      ran, and the status row's dash read as "no trains". The dash now needs StopDash to be sure —
+      the line isn't running there, or its TfL timetable has nothing within 30 minutes — and is "?"
+      otherwise. The timetable is never shown as times.
+  - [ ] **The same marks on a place card that came back empty** (maintainer, 2026-10-03: status
+        rows first, cards after). Build each card's board (the lines it shows, at the stops that
+        serve them: an interchange's member stations, not its hub; a bus card's picked routes only;
+        no National Rail line) where the cards are built, off the main thread, with a revision, and
+        tie each mark to the revision it was worked out for. Working the board out in composition, as
+        PR #502 first did, drew review findings about stale marks and collection-sized Compose keys.
+  - [ ] **The scheduled frequency in place of a bare "?"** (maintainer, 2026-10-03): where the
+        timetable has departures due, show its interval with the "every" sign and the same interval
+        logic as a trip's future stops, a "?" after "min", likely in gray. Copy to agree first.
+  - [ ] **Build the departure rows off the main thread**: `DepartureRows.across` runs in
+        `MainScreen`'s composition, which grows with the stops and their predictions (maintainer,
+        2026-10-03: "you keep putting more work there").
+  - [ ] **The same marks off the phone's list**: the widget and the watch show no dash for a
+        line with nothing coming today, so they're unchanged; revisit if either ever shows one.
+  - [ ] **A good-service line with no live times gets no row** (only a disrupted one gets a
+        status row), so at a place with other lines it simply isn't listed. Consider a "?" row
+        where its timetable says it's due — a product call, since it adds rows to every night list.
 
 ## Phase 2 — Watched stops and settings
 

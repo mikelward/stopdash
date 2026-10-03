@@ -35,6 +35,8 @@ import app.stopdash.domain.VehicleSource
 import app.stopdash.domain.cleanStopName
 import app.stopdash.domain.mergedRoutes
 import app.stopdash.domain.TflException
+import app.stopdash.domain.StopTimetable
+import app.stopdash.domain.TimetableSource
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
@@ -121,7 +123,7 @@ class KtorTflClient(
     // when it ran on a caller's main thread, as a screen's own loads do. A test swaps in its own.
     private val decodeDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : TflClient, StopFinder, StationFinder, RouteSequenceSource, StopAreaSource, JourneyPlanner, PostcodeResolver, PlaceSearch, VehicleSource,
-    LiftOutageSource {
+    LiftOutageSource, TimetableSource {
     override suspend fun journeys(
         from: TripOrigin,
         to: TripDestination,
@@ -440,6 +442,30 @@ class KtorTflClient(
                 // TfL 4–15 s to start answering when it isn't cached, which failed the route page.
                 allowSlowAnswer()
             }.body<TflRouteSequenceDto>().toLineSequence(direction)
+        }
+
+    /**
+     * [lineId]'s timetable at [stopId]. TfL times a bus pole's route as asked, but a tube or rail
+     * line only by direction (asked plainly, it answers with no routes), so a plain answer with
+     * none asks both directions and keeps both's schedules. Any answer with a schedule it couldn't
+     * read leaves the whole unreadable ([StopTimetable.readable]): that schedule might be the one due.
+     */
+    override suspend fun timetable(lineId: String, stopId: String): StopTimetable {
+        val plain = timetableRequest(lineId, stopId, direction = null)
+        if (plain.schedules.isNotEmpty()) return plain
+        val directions = listOf("inbound", "outbound").map { timetableRequest(lineId, stopId, it) }
+        return StopTimetable(
+            directions.flatMap { it.schedules },
+            readable = plain.readable && directions.all { it.readable },
+        )
+    }
+
+    private suspend fun timetableRequest(lineId: String, stopId: String, direction: String?): StopTimetable =
+        tflRequest { key ->
+            httpClient.get("$baseUrl/Line/$lineId/Timetable/$stopId") {
+                applyAppKey(key)
+                if (direction != null) parameter("direction", direction)
+            }.body<TflTimetableResponseDto>().toStopTimetable()
         }
 
     override suspend fun stopAreaPoles(areaId: String): List<StopLocation> =
