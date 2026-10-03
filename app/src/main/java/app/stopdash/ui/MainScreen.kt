@@ -818,9 +818,21 @@ fun MainScreen(
     val sharedNotices = nearbyComputed.second
     // Hide the service alerts the user has dismissed (until their content changes), and unflag a bus
     // alert wholly behind its stop.
-    val nearbyRows = remember(nearbyOrdered, dismissed, alertSequences) {
-        DepartureRows.withAlertsBehind(DepartureRows.withoutDismissed(nearbyOrdered, dismissed), alertSequences)
+    val nearbyMarked = remember(nearbyOrdered, dismissed, alertSequences, now) {
+        RowsRevision(DepartureRows.withAlertsBehind(DepartureRows.withoutDismissed(nearbyOrdered, dismissed), alertSequences), now)
     }
+    // A line on good service whose times are missing shows as "?" where its timetable says a train
+    // is due, in the near-me list only (SPEC *Departures*); worked out off the main thread ([withQuietRows]).
+    // On the minute tick ([EmptyTimesState.now]), not the screen's own: a timetable's answer moves no
+    // faster, and a new input reruns the background work.
+    val quietTick = LocalEmptyTimes.current.now
+    val quietInputs = remember(loaded?.stops, loaded?.lineStatuses, loaded?.determinedLineIds, loaded?.pendingStops, loaded?.stopsDisruptionUnknown, quietTick, stopDistanceMeters, hiddenModes, dismissed) {
+        val ld = loaded
+        // Not while nearby stops are still loading: one of them may have trains for a line that
+        // would otherwise read "?" at a stop already in.
+        if (ld == null || stopDistanceMeters.isEmpty() || ld.pendingStops.isNotEmpty()) null else QuietInputs(ld.stops, ld.lineStatuses, ld.determinedLineIds, quietTick, stopDistanceMeters, hiddenModes, dismissed, ld.stopsDisruptionUnknown)
+    }
+    val nearbyRows = withQuietRows(nearbyMarked, quietInputs)
     // The near-me closures the user dismissed: a closed place with nothing else to show keeps its
     // heading and "Closed" chip in place (SPEC *Disruptions*).
     val dismissedClosures = remember(nearbyOrdered, nearbyRows, stopDistanceMeters) {
@@ -3593,7 +3605,9 @@ internal fun StopGroupCard(
                         isStarred = isStarred,
                         starrable = false,
                         onToggleStar = onToggleStar,
-                        onOpenDetail = onOpenDetail,
+                        // A "?" row opens nothing: its line's page has no times to show and no way yet to say why
+                        // they're missing, so it would read as a clean line (Codex, PR #505).
+                        onOpenDetail = onOpenDetail.takeUnless { row.quiet },
                         onHideMode = onHideMode,
                     ) {
                         LinePill(lineName = row.lineName, lineId = row.lineId, mode = row.mode, modifier = pillModifier)
@@ -3612,7 +3626,8 @@ internal fun StopGroupCard(
                         // Settings) for a National Rail line a key would give times.
                         val noTimes = NoTimes.of(row)
                         val noKey = noTimes == NoTimes.NO_KEY
-                        val unknown = noTimes == NoTimes.NO_TRAINS &&
+                        // A quiet row is only in the list once its mark is "?" ([withQuietRows]).
+                        val unknown = row.quiet || noTimes == NoTimes.NO_TRAINS &&
                             !row.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) &&
                             !row.notRunningHere &&
                             emptyTimesMark("line:${row.stopId}|${row.lineId}") {

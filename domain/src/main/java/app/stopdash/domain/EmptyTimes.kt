@@ -35,10 +35,34 @@ object EmptyTimes {
     }
 
     /**
-     * A board with no live times, as its mark is worked out: its lines' [keys], and whether its
-     * status already says nothing runs there ([notRunning]: a dash, with no timetable needed).
+     * A board with no live times, as its mark is worked out: its lines' [keys], whether its status
+     * already says nothing runs there ([notRunning]: a dash, with no timetable needed), and the mark
+     * for a line whose timetable can't settle it ([unsure]: a failed one, a day it doesn't cover) and
+     * for one whose timetable isn't in yet ([pending]).
      */
-    data class Board(val keys: List<Key>, val notRunning: Boolean = false)
+    data class Board(
+        val keys: List<Key>,
+        val notRunning: Boolean = false,
+        val unsure: Mark = Mark.UNKNOWN,
+        val pending: Mark = Mark.UNKNOWN,
+    )
+
+    /**
+     * The board of a [DepartureRow.quiet] row, a line on good service with no times: shown ("?",
+     * [Mark.UNKNOWN]) when its timetable has a train due, hidden ([Mark.NONE]) when it has none, so
+     * an infrequent service or a night bus by day adds no row. When the timetable can't say, a line
+     * of a [FREQUENT_MODES] mode is "?", since half an hour without a train is a fault there; any
+     * other is hidden, as it was before quiet rows. Until the timetable is in, hidden: a "?" shown
+     * while it loads would flash off when it says nothing's due.
+     */
+    fun quietBoard(stopId: String, lineId: String, mode: String): Board = Board(
+        listOf(Key(stopId, lineId)),
+        unsure = if (mode.lowercase() in FREQUENT_MODES) Mark.UNKNOWN else Mark.NONE,
+        pending = Mark.NONE,
+    )
+
+    /** The modes whose trains come every few minutes all day. */
+    val FREQUENT_MODES: Set<String> = setOf("tube", "elizabeth-line", "overground", "dlr", "tram")
 
     /** A dash ([NONE]) or "?" ([UNKNOWN]). */
     enum class Mark { NONE, UNKNOWN }
@@ -51,20 +75,38 @@ object EmptyTimes {
 
     /**
      * [keys]' mark at [now]: [Mark.NONE] when every one is [notRunning] or has a timetable with
-     * nothing leaving within [WINDOW] (and [MARK_LIFETIME], as long as the mark is shown for), else
-     * [Mark.UNKNOWN]. No keys at all is unknown too.
+     * nothing leaving within [WINDOW] (and [MARK_LIFETIME], as long as the mark is shown for);
+     * [Mark.UNKNOWN] when one has a train due; otherwise [pending] while some key's timetable isn't
+     * in yet, and [unsure] when one can't say. No keys at all is unknown.
      */
     fun mark(
         keys: Collection<Key>,
         lookups: Map<Key, Lookup>,
         now: Instant,
+        unsure: Mark = Mark.UNKNOWN,
+        pending: Mark = Mark.UNKNOWN,
         notRunning: (Key) -> Boolean = { false },
     ): Mark {
         if (keys.isEmpty()) return Mark.UNKNOWN
-        val sure = keys.all { key ->
-            notRunning(key) || (lookups[key] as? Lookup.Found)?.timetable?.departsWithin(now, WINDOW.plus(MARK_LIFETIME)) == false
+        var waiting = false
+        var unsettled = false
+        for (key in keys) {
+            if (notRunning(key)) continue
+            when (val lookup = lookups[key]) {
+                null -> waiting = true
+                is Lookup.Failed -> unsettled = true
+                is Lookup.Found -> when (lookup.timetable.departsWithin(now, WINDOW.plus(MARK_LIFETIME))) {
+                    true -> return Mark.UNKNOWN
+                    false -> Unit
+                    null -> unsettled = true
+                }
+            }
         }
-        return if (sure) Mark.NONE else Mark.UNKNOWN
+        return when {
+            waiting -> pending
+            unsettled -> unsure
+            else -> Mark.NONE
+        }
     }
 
     /**

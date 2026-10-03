@@ -99,4 +99,50 @@ class EmptyTimesTest {
         val loop = PartClosure(3, "Part Suspended", null, listOf(listOf("A", "B", "A")))
         assertEquals(setOf("B"), loop.interior)
     }
+
+    @Test
+    fun `a quiet line is shown only when its timetable has a train due, or a frequent one can't say`() {
+        val lookups = mapOf(day to EmptyTimes.Lookup.Found(dayOnly))
+        // A bus with a train due by day: shown as "?".
+        val bus = EmptyTimes.quietBoard(day.stopId, day.lineId, "bus")
+        assertEquals(EmptyTimes.Mark.UNKNOWN, EmptyTimes.mark(bus.keys, lookups, noon, unsure = bus.unsure))
+        // Its timetable says nothing's due at night: hidden.
+        assertEquals(EmptyTimes.Mark.NONE, EmptyTimes.mark(bus.keys, lookups, night, unsure = bus.unsure))
+        // Its timetable failed: a bus is hidden, as before quiet rows; a tube line is "?".
+        val failed = mapOf(day to EmptyTimes.Lookup.Failed)
+        assertEquals(EmptyTimes.Mark.NONE, EmptyTimes.mark(bus.keys, failed, noon, unsure = bus.unsure, pending = bus.pending))
+        val tube = EmptyTimes.quietBoard("940GZZLUKSX", "victoria", "tube")
+        assertEquals(EmptyTimes.Mark.UNKNOWN, tube.unsure)
+        val tubeFailed = mapOf(tube.keys.single() to EmptyTimes.Lookup.Failed)
+        assertEquals(EmptyTimes.Mark.UNKNOWN, EmptyTimes.mark(tube.keys, tubeFailed, noon, unsure = tube.unsure, pending = tube.pending))
+        listOf("elizabeth-line", "overground", "dlr", "tram", "Tube").forEach {
+            assertEquals(it, EmptyTimes.Mark.UNKNOWN, EmptyTimes.quietBoard("s", "l", it).unsure)
+        }
+        listOf("bus", "river-bus", "cable-car", "national-rail").forEach {
+            assertEquals(it, EmptyTimes.Mark.NONE, EmptyTimes.quietBoard("s", "l", it).unsure)
+        }
+    }
+
+    @Test
+    fun `a line due outweighs one that can't say, and one that can't say outweighs none`() {
+        val lookups = mapOf(day to EmptyTimes.Lookup.Found(dayOnly), nightBus to EmptyTimes.Lookup.Failed)
+        assertEquals(EmptyTimes.Mark.UNKNOWN, EmptyTimes.mark(listOf(day, nightBus), lookups, noon, unsure = EmptyTimes.Mark.NONE))
+        assertEquals(EmptyTimes.Mark.NONE, EmptyTimes.mark(listOf(day, nightBus), lookups, night, unsure = EmptyTimes.Mark.NONE))
+        assertEquals(EmptyTimes.Mark.UNKNOWN, EmptyTimes.mark(listOf(day, nightBus), lookups, night))
+    }
+
+    @Test
+    fun `a quiet line waits for its timetable, but one that failed still reads unknown if frequent`() {
+        val tube = EmptyTimes.quietBoard("940GZZLUKSX", "victoria", "tube")
+        val key = tube.keys.single()
+        // Not in yet: hidden, so a "?" never flashes up before the timetable rules it out.
+        assertEquals(EmptyTimes.Mark.NONE, EmptyTimes.mark(tube.keys, emptyMap(), noon, unsure = tube.unsure, pending = tube.pending))
+        // Failed: unsure, and a frequent line's unsure is "?".
+        assertEquals(
+            EmptyTimes.Mark.UNKNOWN,
+            EmptyTimes.mark(tube.keys, mapOf(key to EmptyTimes.Lookup.Failed), noon, unsure = tube.unsure, pending = tube.pending),
+        )
+        // A status row's board still reads "?" while its timetable loads.
+        assertEquals(EmptyTimes.Mark.UNKNOWN, EmptyTimes.mark(tube.keys, emptyMap(), noon))
+    }
 }

@@ -1,6 +1,8 @@
 package app.stopdash.ui
 
+import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.EmptyTimes
+import app.stopdash.domain.STATUS_DIRECTION_KEY
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -40,5 +42,71 @@ class EmptyTimesMarksTest {
         assertEquals(EmptyTimes.Mark.UNKNOWN, freshMark(at("12:01:00Z"), shown, tick))
         // A row shown "since" a time the clock has gone back past still takes marks worked out now.
         assertEquals(EmptyTimes.Mark.NONE, freshMark(at("11:01:10Z"), Instant.parse("2026-10-06T12:00:00Z"), tick))
+    }
+
+    @Test
+    fun `a list keeps only the quiet rows freshly marked unknown`() {
+        val now = Instant.parse("2026-10-06T11:01:00Z")
+        fun row(lineId: String, quiet: Boolean) = DepartureRow(
+            stopId = "940GZZLUKSX", stopName = "King's Cross St. Pancras", lineId = lineId, lineName = lineId,
+            direction = "", directionKey = STATUS_DIRECTION_KEY, destination = "", mode = "tube",
+            upcoming = emptyList(), fetchedAt = now, quiet = quiet,
+        )
+        val shown = row("victoria", true)
+        val ruledOut = row("northern", true)
+        val stale = row("piccadilly", true)
+        val pending = row("circle", true)
+        val suspended = row("hammersmith-city", false)
+        val marks = mapOf(
+            quietId(shown) to EmptyTimes.Marked(EmptyTimes.Mark.UNKNOWN, now),
+            quietId(ruledOut) to EmptyTimes.Marked(EmptyTimes.Mark.NONE, now),
+            quietId(stale) to EmptyTimes.Marked(EmptyTimes.Mark.UNKNOWN, now.minusSeconds(3_600)),
+            // From before the clock was set back an hour.
+            quietId(pending) to EmptyTimes.Marked(EmptyTimes.Mark.UNKNOWN, now.plusSeconds(3_600)),
+        )
+        val timed = row("jubilee", false)
+        val distances = mapOf("940GZZLUKSX" to 100.0)
+        val rows = resolveQuietRows(listOf(timed, suspended), listOf(shown, ruledOut, stale, pending), marks, now, distances)
+        // Only the freshly confirmed "?" is added, after its stop's other rows.
+        assertEquals(listOf(timed, suspended, shown).toSet(), rows.toSet())
+        assertEquals(3, rows.size)
+        assertEquals(shown, rows.last())
+    }
+
+    @Test
+    fun `a line's "?" comes from the nearest stop whose timetable has a train due`() {
+        val now = Instant.parse("2026-10-06T11:01:00Z")
+        fun row(stopId: String) = DepartureRow(
+            stopId = stopId, stopName = stopId, lineId = "northern", lineName = "Northern",
+            direction = "", directionKey = STATUS_DIRECTION_KEY, destination = "", mode = "tube",
+            upcoming = emptyList(), fetchedAt = now, quiet = true,
+        )
+        val nearest = row("940GZZLUKSX")
+        val middle = row("940GZZLUEUS")
+        val farthest = row("940GZZLUWRR")
+        val distances = mapOf("940GZZLUKSX" to 100.0, "940GZZLUEUS" to 600.0, "940GZZLUWRR" to 900.0)
+        // Nothing due from the nearest by its timetable; due from both others.
+        val marks = mapOf(
+            quietId(nearest) to EmptyTimes.Marked(EmptyTimes.Mark.NONE, now),
+            quietId(middle) to EmptyTimes.Marked(EmptyTimes.Mark.UNKNOWN, now),
+            quietId(farthest) to EmptyTimes.Marked(EmptyTimes.Mark.UNKNOWN, now),
+        )
+        assertEquals(listOf(middle), resolveQuietRows(emptyList(), listOf(nearest, middle, farthest), marks, now, distances))
+    }
+
+    @Test
+    fun `a quiet row goes as soon as its stop's arrivals go stale, between minute ticks`() {
+        val tick = Instant.parse("2026-10-06T11:01:00Z")
+        val row = DepartureRow(
+            stopId = "940GZZLUKSX", stopName = "King's Cross St. Pancras", lineId = "victoria", lineName = "Victoria",
+            direction = "", directionKey = STATUS_DIRECTION_KEY, destination = "", mode = "tube",
+            upcoming = emptyList(), fetchedAt = tick.minusSeconds(4 * 60 + 30), quiet = true,
+        )
+        val marks = mapOf(quietId(row) to EmptyTimes.Marked(EmptyTimes.Mark.UNKNOWN, tick))
+        val distances = mapOf("940GZZLUKSX" to 100.0)
+        // At the tick, the arrivals are four and a half minutes old: shown.
+        assertEquals(listOf(row), resolveQuietRows(emptyList(), listOf(row), marks, tick, distances, tick))
+        // Forty seconds on, still within the minute, they're past five: gone.
+        assertEquals(emptyList<DepartureRow>(), resolveQuietRows(emptyList(), listOf(row), marks, tick, distances, tick.plusSeconds(40)))
     }
 }

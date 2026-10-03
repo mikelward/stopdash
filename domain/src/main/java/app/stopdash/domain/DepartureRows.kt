@@ -133,6 +133,10 @@ object DepartureRows {
         // stays marked until its check expires rather than until the arrivals do. The in-app list
         // doesn't: its status row asserts "No departures", which needs current arrivals.
         statusRowsWhenStale: Boolean = false,
+        // Also a row for each TfL line a stop serves, on good service, with no times ([DepartureRow.quiet]).
+        // Only the in-app near-me list asks: it decides from the timetable which to show, and a glance
+        // surface has no timetable to decide with.
+        quietRows: Boolean = false,
     ): List<DepartureRow> {
         // Planned work whose day has come shows as under way, however long ago it was fetched.
         val lineStatuses = LineStatus.asOf(lineStatuses, now)
@@ -180,7 +184,7 @@ object DepartureRows {
             // fresh stop-status closure still show.
             val status =
                 if (statusRowsWhenStale || (stop.arrivalsFresh && !isStale(stop.fetchedAt, now))) {
-                    statusRows(stop, timed, lineStatuses, hiddenLines)
+                    statusRows(stop, timed, lineStatuses, hiddenLines, quietRows)
                 } else {
                     emptyList()
                 }
@@ -354,6 +358,44 @@ object DepartureRows {
         val kept = lineRows.filter { nearestStopByKey[dedupeKeyOf(it)] == it.stopId }
         return (foldedStopStatus(stopStatus, ::distanceOf) + kept).sortedWith(rowOrder)
     }
+
+    /**
+     * The [DepartureRow.quiet] rows a near-me list of [stops] could add: one per stop for each TfL
+     * line on good service that [stops] serve with no times, nearest first, less any line with
+     * trains at another of [stops] (its trains say more) or whose mode is [hiddenModes]. Only a line whose good service TfL confirmed ([determinedLineIds]): one with no
+     * status yet, or whose lookup failed, may be suspended. Planned work the user [dismissed] stays
+     * dismissed on them, as on the rest of the list. None at a stop with a notice in force (a
+     * closure, a moved stop, a lift out): its notice is already on the list, and TfL's free text
+     * can't be told apart reliably into the notices that explain missing times and those that don't,
+     * so the row is kept for a gap nothing explains. Nor at a stop whose notices couldn't be checked
+     * ([disruptionUnknown]): one may be closed for all StopDash knows. Off the main thread: it builds every stop's rows
+     * again to find them. Each stop's is kept: the nearest may have nothing due by its timetable
+     * while a farther one has a train, so which shows is chosen once their marks are in.
+     */
+    fun quietCandidates(
+        stops: List<StopArrivals>,
+        now: Instant,
+        lineStatuses: Map<String, LineStatus>,
+        determinedLineIds: Set<String>,
+        stopDistanceMeters: Map<String, Double>,
+        hiddenModes: Set<String> = emptySet(),
+        dismissed: Set<DismissedAlert> = emptySet(),
+        disruptionUnknown: Set<String> = emptySet(),
+    ): List<DepartureRow> {
+        val rows = across(stops, now, lineStatuses, quietRows = true)
+        val quiet = HiddenModes.rows(rows.filter { it.quiet && it.lineId in determinedLineIds }, hiddenModes)
+        if (quiet.isEmpty()) return emptyList()
+        val withTrains = rows.filter { it.hasTrains }.mapTo(HashSet()) { it.lineId }
+        val noticed = rows.filter { it.stopDisruption != null }.mapTo(HashSet()) { it.stopId }
+        fun distanceOf(stopId: String): Double = stopDistanceMeters[stopId] ?: Double.MAX_VALUE
+        return quiet.filter { it.lineId !in withTrains && it.stopId !in noticed && it.stopId !in disruptionUnknown }
+            .sortedWith(compareBy<DepartureRow> { distanceOf(it.stopId) }.thenBy { it.stopId })
+            .map { it.withoutDismissedPlanned(dismissed) }
+    }
+
+    /** [rows], a near-me list, with [quiet] rows added in their stops' places ([byStopDistance]). */
+    fun withQuietRows(rows: List<DepartureRow>, quiet: List<DepartureRow>, stopDistanceMeters: Map<String, Double>): List<DepartureRow> =
+        if (quiet.isEmpty()) rows else byStopDistance(rows + quiet, stopDistanceMeters)
 
     /**
      * How much farther a place's stop may be than a direction's nearest for the route's directions to
@@ -540,7 +582,8 @@ object DepartureRows {
                 // special order for being an alert (maintainer, 2026-09-22). A row whose every train
                 // has no time comes between, by schedule: none is known to be coming, as on the
                 // watched list ([rank]).
-                .thenBy { if (it.upcoming.isNotEmpty()) 0 else if (it.untimed.isNotEmpty()) 1 else 2 }
+                // And a quiet "?" row ([DepartureRow.quiet]) last of all: it warns of nothing.
+                .thenBy { if (it.upcoming.isNotEmpty()) 0 else if (it.untimed.isNotEmpty()) 1 else if (!it.quiet) 2 else 3 }
                 .thenBy { it.soonestAt ?: Instant.MAX }
                 .thenBy { it.lineName }
                 .thenBy { it.direction }
@@ -593,7 +636,7 @@ object DepartureRows {
                 // Warnings (closures, no-prediction status) lead only where warnings are meant to —
                 // the watched list. On the near-me list (warningsLead=false) an unstarred alert is
                 // not hoisted; a starred alert still lifts with the starred band.
-                warningsLead && (row.stopDisruption != null || !row.hasTrains) -> 0
+                warningsLead && (row.stopDisruption != null || (!row.hasTrains && !row.quiet)) -> 0
                 StarredRow.of(row) in starred -> 1
                 else -> 2
             }
@@ -911,20 +954,26 @@ object DepartureRows {
      * failure the model exists to avoid). Only the stop's declared [StopArrivals.lines]
      * can name such a line, since the predictions don't. A line that *does* have
      * prediction rows is already marked on them (its [DepartureRow.status]) and gets no
-     * separate status row; a good-service line gets none either.
+     * separate status row. A good-service line gets none, unless [quiet]: then a TfL line gets a
+     * [DepartureRow.quiet] row, since a feed that has gone quiet empties a board as a suspension does,
+     * with nothing in the status to say so. A National Rail line gets none: its board lists every
+     * train it runs, so an empty one is an answer, and a hub's infrequent services would otherwise
+     * fill it with rows.
      */
     private fun statusRows(
         stop: StopArrivals,
         timed: List<DepartureRow>,
         lineStatuses: Map<String, LineStatus>,
         hiddenLines: Set<String> = emptySet(),
+        quiet: Boolean = false,
     ): List<DepartureRow> {
         val timedLineIds = timed.mapTo(mutableSetOf()) { it.lineId }
         return stop.lines
             .filter { it.id !in timedLineIds && it.id !in hiddenLines }
             .mapNotNull { line ->
                 val status = lineStatuses[line.id]?.takeIf(LineStatus::disrupted)
-                    ?: return@mapNotNull null
+                    ?: return@mapNotNull quietRow(stop, line, lineStatuses[line.id]?.planned.orEmpty())
+                        .takeIf { quiet && !line.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) }
                 DepartureRow(
                     stopId = stop.stopId,
                     stopName = stop.stopName,
@@ -953,6 +1002,29 @@ object DepartureRows {
     }
 
     /**
+     * [line]'s [DepartureRow.quiet] row at [stop]: a status row's shape, with no status, but with the
+     * line's work still to come ([planned]), as a timed row of it would note.
+     */
+    private fun quietRow(stop: StopArrivals, line: LineRef, planned: List<PlannedAlert>): DepartureRow = DepartureRow(
+        stopId = stop.stopId,
+        stopName = stop.stopName,
+        clusterId = stop.clusterId,
+        stopLetter = stop.stopLetter,
+        bearing = stop.bearing,
+        towards = stop.towards,
+        lineId = line.id,
+        lineName = line.name,
+        direction = "",
+        directionKey = STATUS_DIRECTION_KEY,
+        destination = "",
+        mode = line.mode,
+        upcoming = emptyList(),
+        fetchedAt = stop.fetchedAt,
+        plannedAlerts = planned,
+        quiet = true,
+    )
+
+    /**
      * Rows ordered by **rank** first — stop-status rows (a whole stop disrupted), then
      * line-status rows (a line disrupted with no countdown), then timed rows, then rows whose
      * every train has no time (canceled or delayed with no estimate) — since a disruption is the
@@ -973,9 +1045,11 @@ object DepartureRows {
 
     /**
      * 0 = stop-status row, 1 = line-status row (no train at all), 2 = timed row, 3 = a row whose every
-     * train has no time: none is known to be coming, so it follows those that are, by schedule.
+     * train has no time: none is known to be coming, so it follows those that are, by schedule. 4 = a
+     * [DepartureRow.quiet] row, last: nothing is known about it but that its times are missing.
      */
     private fun rank(row: DepartureRow): Int = when {
+        row.quiet -> 4
         row.stopDisruption != null -> 0
         !row.hasTrains -> 1
         row.upcoming.isEmpty() -> 3

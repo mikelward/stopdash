@@ -95,6 +95,14 @@ class TimetableRepository(
     }
 
     /**
+     * [watch]es each of the boards [boards] gives, the recipe too called off the main thread: a list
+     * of rows can be long, and scanning it for the boards it holds is work of its own.
+     */
+    fun watchEach(boards: () -> Map<String, EmptyTimes.Board>) {
+        scope.launch(io) { boards().forEach { (id, board) -> watch(id) { board } } }
+    }
+
+    /**
      * Drops what nothing on screen still needs, so memory doesn't grow with every stop a rider has
      * passed: timetables from before [today]'s service day (one still shown is fetched again), and
      * the boards and marks not watched for [FORGET_AFTER] (a shown board is watched each minute).
@@ -114,7 +122,7 @@ class TimetableRepository(
 
     private fun publish(id: String, board: EmptyTimes.Board) {
         val now = clock()
-        val mark = if (board.notRunning) EmptyTimes.Mark.NONE else EmptyTimes.mark(board.keys, _lookups.value, now)
+        val mark = if (board.notRunning) EmptyTimes.Mark.NONE else EmptyTimes.mark(board.keys, _lookups.value, now, unsure = board.unsure, pending = board.pending)
         _marks.update { it + (id to EmptyTimes.Marked(mark, now)) }
     }
 
