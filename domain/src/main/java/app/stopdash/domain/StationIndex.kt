@@ -201,7 +201,7 @@ class StationIndex(
         const val FOLD_RADIUS_METERS = 250.0
 
         /**
-         * [ranked] with each result dropped when a better-ranked one of the same cleaned name lies
+         * [ranked] with each result dropped when a better-ranked one of the same name ([matchStopName]) lies
          * within [FOLD_RADIUS_METERS] of it — TfL lists a place's bus stop areas one by one, so
          * "Archway" came back once per stand. The kept result opens the whole place: a From… page
          * lists the stops around it.
@@ -214,7 +214,7 @@ class StationIndex(
             for (match in ranked) {
                 val lat = match.latitude
                 val lon = match.longitude
-                val name = StationMatcher.normalize(match.name)
+                val name = StationMatcher.normalize(matchStopName(match.name))
                 val into = if (lat == null || lon == null) {
                     -1
                 } else {
@@ -222,7 +222,8 @@ class StationIndex(
                         val otherLat = other.latitude
                         val otherLon = other.longitude
                         otherLat != null && otherLon != null &&
-                            StationMatcher.normalize(other.name) == name &&
+                            StationMatcher.normalize(matchStopName(other.name)) == name &&
+                            !conflictingQualifiers(match.name, other.name) &&
                             NearestStops.distanceMeters(lat, lon, otherLat, otherLon) <= FOLD_RADIUS_METERS
                     }
                 }

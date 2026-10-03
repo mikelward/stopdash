@@ -54,6 +54,16 @@ class TerminatingTest {
     }
 
     @Test
+    fun `a station's line qualifier doesn't part its name from a destination without one`() {
+        // TfL brackets Hammersmith by its line in a stop's name; a destination may name it either way.
+        val station = listOf(Terminating.Place("940GZZLUHSC", "940GZZLUHSC", "Hammersmith (H&C Line) Underground Station", 50.0))
+        val bare = Departure("circle", "Circle", "inbound", "Hammersmith", null, now, "tube")
+        val shortened = Departure("circle", "Circle", "inbound", cleanStopName("Hammersmith (H&C Line) Underground Station"), null, now, "tube")
+        val onward = Departure("circle", "Circle", "inbound", "Edgware Road (Circle)", null, now, "tube")
+        assertEquals(listOf(onward), Terminating.drop(listOf(bare, shortened, onward), "940GZZLUHSC", station))
+    }
+
+    @Test
     fun `a destination id that isn't a nearer place keeps the service, whatever its name`() {
         // Another "Example Road" farther away: TfL's id says it isn't the one nearby.
         val elsewhere = dep("Example Road", destinationId = "490000000077Q")

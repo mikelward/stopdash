@@ -150,6 +150,26 @@ class OnTheWayTest {
         assertEquals(2, (OnTheWay.advance(following, calls, at(6)).second as TripProgress.Riding).stopsLeft)
     }
 
+    @Test
+    fun `a line-qualified stop isn't taken for another of the ride's stops of its name`() {
+        // A Circle train calls at both Paddingtons, the plain one on its way: the one named for the H&C
+        // is the rider's, though the Planner gave it by another id.
+        val station = ride.copy(
+            toId = "940GZZLUXXX", toName = cleanStopName("Paddington (H&C Line) Underground Station"),
+            path = listOf("940GZZLUPAC", "940GZZLUXXX"),
+        )
+        val following = trip.copy(route = TripRoute(listOf(station)), vehicleId = "8")
+        val calls = listOf(
+            VehicleCall("940GZZLUPAC", cleanStopName("Paddington Underground Station"), null, at(9)),
+            VehicleCall("940GZZLUPAH", cleanStopName("Paddington (H&C Line) Underground Station"), null, at(14)),
+        )
+        assertEquals(2, (OnTheWay.advance(following, calls, at(6)).second as TripProgress.Riding).stopsLeft)
+        // A source that drops the qualifier, by an id the ride doesn't otherwise know, is still that
+        // station under another of its ids (Codex, PR #499).
+        val bare = listOf(calls[0], VehicleCall("940GZZLUPAH", cleanStopName("Paddington Underground Station"), null, at(14)))
+        assertEquals(2, (OnTheWay.advance(following, bare, at(6)).second as TripProgress.Riding).stopsLeft)
+    }
+
     // The ride as another of its lines runs it ([RideLines]): from the same stop to the same stop, by
     // its own stop X between rather than the Planner's B.
     private val blueRide = ride.copy(lineId = "blue", lineName = "Blue", path = listOf("X", "C"))
@@ -1244,6 +1264,21 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `a walk between Hammersmith's two stations is within one place`() {
+        // Their names now keep TfL's line qualifier ([cleanStopName]), but compare without it.
+        val from = cleanStopName("Hammersmith (Dist&Picc Line) Underground Station")
+        val to = cleanStopName("Hammersmith (H&C Line) Underground Station")
+        val within = TripLeg(TripLeg.WALKING, "", "", "940GZZLUHSD", from, "940GZZLUHSC", to, at(15), at(19))
+        // No positions for either end, so the same-name fallback decides, as for a trip kept by an older build.
+        val route = TripRoute(listOf(ride, within, second))
+        assertEquals(setOf(1), OnTheWay.changesOnFoot(route))
+        assertTrue(OnTheWay.changesOnFoot(ActiveTrip(route, "E", startedAt = t0), 1))
+        // Another station is still another name.
+        val elsewhere = within.copy(toId = "940GZZLUERC", toName = cleanStopName("Edgware Road (Circle Line) Underground Station"))
+        assertEquals(emptySet<Int>(), OnTheWay.changesOnFoot(TripRoute(listOf(ride, elsewhere, second))))
+    }
+
+    @Test
     fun `a walk within one place onto a ride is no step, and reads as the change`() {
         // "C" to "C" (two platforms, or a station and its bus stop) with a ride straight after: no step
         // of its own, the rider at the ride's boarding step meanwhile (maintainer, 2026-10-03).
@@ -1452,7 +1487,10 @@ class OnTheWayTest {
         assertFalse(OnTheWay.Step(1) in OnTheWay.steps(changing))
         // A trip kept by an older build, with no decision, goes by the names as it was shown then.
         assertTrue(OnTheWay.changesOnFoot(started.copy(onFootChanges = null), 1))
-        assertFalse(OnTheWay.changesOnFoot(changing.copy(onFootChanges = null), 1))
+        // The names compare without a line qualifier, so the two Hammersmiths are one name there too.
+        assertTrue(OnTheWay.changesOnFoot(changing.copy(onFootChanges = null), 1))
+        val apart = change("Euston", "King's Cross St. Pancras", here, north(156.0))
+        assertFalse(OnTheWay.changesOnFoot(ActiveTrip(apart, "E", startedAt = t0), 1))
     }
 
     @Test

@@ -11,6 +11,19 @@ class AlertStopsTest {
         AlertStops.mentioned(text, stops(*names)).map { id -> names[id.removePrefix("S").toInt()] }.toSet()
 
     @Test
+    fun `a station kept with its line qualifier is still found by its bare name`() {
+        // The route lists "Hammersmith (H&C)" ([cleanStopName]); an alert writes "Hammersmith".
+        val hammersmith = cleanStopName("Hammersmith (H&C Line) Underground Station")
+        val paddington = cleanStopName("Paddington (H&C Line)-Underground")
+        assertEquals(
+            setOf(hammersmith, paddington),
+            mentioned("No service between Hammersmith and Paddington.", hammersmith, "Edgware Road (Circle)", paddington),
+        )
+        // And by the shortened qualifier, too.
+        assertEquals(setOf(hammersmith), mentioned("Hammersmith (H&C) is closed.", hammersmith, "Edgware Road (Circle)"))
+    }
+
+    @Test
     fun `marks every station the alert names`() {
         assertEquals(
             setOf("Moorgate", "Monument"),

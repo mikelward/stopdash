@@ -276,7 +276,12 @@ object Journeys {
         val area = sequence.stopAreas[end.stopId]?.takeIf { it.isNotBlank() }
         val byArea = if (area == null) emptyList() else ids.indices.filter { sequence.stopAreas[ids[it]] == area }
         if (byArea.isNotEmpty() || tier == 1) return byArea
-        val byName = ids.indices.filter { sequence.stopNames[ids[it]]?.equals(end.name, ignoreCase = true) == true }
+        // A qualified name ("Paddington (H&C)") takes its exact stop where the line has one, else any
+        // stop of its name ([isLineQualified]).
+        val exactly = isLineQualified(end.name) && sequence.stopNames.values.any { exactStopName(it, end.name) }
+        val byName = ids.indices.filter {
+            if (exactly) exactStopName(sequence.stopNames[ids[it]], end.name) else sameStopName(sequence.stopNames[ids[it]], end.name)
+        }
         if (byName.isNotEmpty() || tier == 2) return byName
         val (lat, lon) = (end.latitude?.let { la -> end.longitude?.let { la to it } })
             ?: sequence.stopPositions[end.stopId] ?: return emptyList()
@@ -566,6 +571,8 @@ object Journeys {
     ): Boolean {
         val rootA = nameA?.let(::placeRoot)?.takeIf { it.isNotEmpty() } ?: return false
         if (rootA != nameB?.let(::placeRoot)) return false
+        // One name, but two stations its line qualifiers tell apart ([conflictingQualifiers]).
+        if (conflictingQualifiers(nameA.substringBefore("/"), nameB.substringBefore("/"))) return false
         val (latA, lonA) = positionA ?: return false
         val (latB, lonB) = positionB ?: return false
         return NearestStops.distanceMeters(latA, lonA, latB, lonB) <= SAME_PLACE_RADIUS_METERS
@@ -574,7 +581,7 @@ object Journeys {
     private val WHITESPACE = Regex("\\s+")
 
     private fun placeRoot(name: String): String =
-        cleanStopName(name.substringBefore("/")).lowercase().split(WHITESPACE).filter { it.isNotEmpty() }.joinToString(" ")
+        matchStopName(name.substringBefore("/")).lowercase().split(WHITESPACE).filter { it.isNotEmpty() }.joinToString(" ")
 }
 
 /**

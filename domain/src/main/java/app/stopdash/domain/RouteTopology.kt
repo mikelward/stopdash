@@ -51,13 +51,25 @@ data class BranchGrouping(val mergeKey: String, val label: String?)
  * never a wrong merge.
  */
 class RouteTopology(val patternsByLine: Map<String, List<RoutePattern>>) {
-    // Endpoint names pre-cleaned once, so matching a (cleaned) arrival destination is plain
-    // equality rather than a trim on every lookup.
-    private class Pattern(val branch: String?, val stops: List<String>, val endA: String, val endB: String)
+    // Endpoint names pre-cleaned once, as shown ([cleanStopName], lowercased) and in the matching
+    // form ([matchStopName]) a destination falls back to, so each lookup is plain equality.
+    private class Pattern(
+        val branch: String?,
+        val stops: List<String>,
+        val endA: String,
+        val endB: String,
+        val exactA: String,
+        val exactB: String,
+    )
 
     private val byLine: Map<String, List<Pattern>> =
         patternsByLine.mapValues { (_, patterns) ->
-            patterns.map { Pattern(it.branch, it.stops, cleanStopName(it.endA), cleanStopName(it.endB)) }
+            patterns.map {
+                Pattern(
+                    it.branch, it.stops, matchStopName(it.endA), matchStopName(it.endB),
+                    cleanStopName(it.endA).lowercase(), cleanStopName(it.endB).lowercase(),
+                )
+            }
         }
 
     /**
@@ -93,8 +105,12 @@ class RouteTopology(val patternsByLine: Map<String, List<RoutePattern>>) {
         // matches exactly).
         val segments = ArrayList<Set<String>>(patterns.size)
         var mine: Set<String>? = null
+        // A qualified destination ("Paddington (H&C)") takes the ends of that exact name where any
+        // pattern calling here has one, else every end of its name ([isLineQualified]).
+        val exact = cleanStopName(destination).lowercase()
+        val exactly = isLineQualified(destination) && here.any { it.exactA == exact || it.exactB == exact }
         for (pattern in patterns) {
-            val segment = segment(pattern, stopId, destination) ?: continue
+            val segment = segment(pattern, stopId, destination, exactly) ?: continue
             segments += segment
             if (pattern.branch == branch) mine = segment
         }
@@ -120,14 +136,18 @@ class RouteTopology(val patternsByLine: Map<String, List<RoutePattern>>) {
      * Crescent), so their segments differ there and both stay labeled. Only once past the
      * junction — where the approach is shared too — do the segments match and the rows merge.
      */
-    private fun segment(pattern: Pattern, stopId: String, destination: String): Set<String>? {
+    private fun segment(pattern: Pattern, stopId: String, destination: String, exactly: Boolean): Set<String>? {
         val i = pattern.stops.indexOf(stopId)
         if (i < 0) return null
-        return when (destination) {
+        val name = if (exactly) cleanStopName(destination).lowercase() else matchStopName(destination)
+        val (endA, endB) = if (exactly) pattern.exactA to pattern.exactB else pattern.endA to pattern.endB
+        // Loosely, an end its line qualifier names as another station isn't this one ([conflictingQualifiers]).
+        fun reaches(end: String, shown: String) = name == end && (exactly || !conflictingQualifiers(destination, shown))
+        return when {
             // Toward the last endpoint: this stop through the end, plus the one before it.
-            pattern.endB -> pattern.stops.subList((i - 1).coerceAtLeast(0), pattern.stops.size).toHashSet()
+            reaches(endB, pattern.exactB) -> pattern.stops.subList((i - 1).coerceAtLeast(0), pattern.stops.size).toHashSet()
             // Toward the first endpoint: the start through this stop, plus the one after it.
-            pattern.endA -> pattern.stops.subList(0, (i + 2).coerceAtMost(pattern.stops.size)).toHashSet()
+            reaches(endA, pattern.exactA) -> pattern.stops.subList(0, (i + 2).coerceAtMost(pattern.stops.size)).toHashSet()
             else -> null
         }
     }

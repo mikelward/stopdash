@@ -104,6 +104,16 @@ class RouteSequenceLoopTest {
         assertEquals(RouteStops.Resolution.NoDestination, toWimbledon.misses.single().reason)
     }
 
+    @Test
+    fun `a Circle train to Paddington (H&C) goes to that station, not the other Paddington`() {
+        // From Baker Street the Circle reaches Paddington (H&C) one way round and the plain
+        // Paddington the other: the qualified destination is the H&C station's alone.
+        val found = RouteStops.resolve(circle, BAKER_STREET, "Paddington (H&C)", null, "circle")
+        assertEquals(listOf(BAKER_STREET, EDGWARE_ROAD, PADDINGTON_HC), (found as RouteStops.Resolution.Found).stops.map { it.id })
+        // A bare "Paddington" names neither more than the other, as before the qualifier was kept.
+        assertEquals(RouteStops.Resolution.Ambiguous(2), RouteStops.resolve(circle, BAKER_STREET, "Paddington", null, "circle"))
+    }
+
     private companion object {
         const val CHECK = "Check Front of Train"
         const val KINGS_CROSS = "940GZZLUKSX"
@@ -115,5 +125,7 @@ class RouteSequenceLoopTest {
         const val EARLS_COURT = "940GZZLUECT"
         const val WIMBLEDON = "940GZZLUWIM"
         const val TEMPLE = "940GZZLUTMP"
+        const val BAKER_STREET = "940GZZLUBST"
+        const val PADDINGTON_HC = "940GZZLUPAH"
     }
 }

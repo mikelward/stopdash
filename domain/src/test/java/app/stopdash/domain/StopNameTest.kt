@@ -1,6 +1,8 @@
 package app.stopdash.domain
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -40,23 +42,59 @@ class StopNameTest {
     }
 
     @Test
-    fun `strips a trailing line-name parenthetical that only names the serving line`() {
-        // The line pill already shows the line, so "(H&C Line)" is noise; both Hammersmiths
-        // collapse to "Hammersmith" and the pill tells them apart.
-        assertEquals("Hammersmith", cleanStopName("Hammersmith (H&C Line)"))
-        assertEquals("Hammersmith", cleanStopName("Hammersmith (Dist&Picc Line)"))
-        assertEquals("Paddington", cleanStopName("Paddington (H&C Line)"))
+    fun `shortens a trailing line-name parenthetical to its lines`() {
+        // TfL brackets a station by its line only to tell two same-named stations apart, so the
+        // bracket stays wherever the station is named; only the word "Line" goes.
+        assertEquals("Hammersmith (H&C)", cleanStopName("Hammersmith (H&C Line)"))
+        assertEquals("Hammersmith (Dist&Picc)", cleanStopName("Hammersmith (Dist&Picc Line)"))
+        assertEquals("Paddington (H&C)", cleanStopName("Paddington (H&C Line)"))
+        assertEquals("Edgware Road (Circle)", cleanStopName("Edgware Road (Circle Line)"))
         // Plural "Lines" too.
-        assertEquals("Edgware Road", cleanStopName("Edgware Road (Circle Line)"))
+        assertEquals("Hammersmith (H&C and Circle)", cleanStopName("Hammersmith (H&C and Circle Lines)"))
     }
 
     @Test
-    fun `strips both the type suffix and the line parenthetical from a full commonName`() {
+    fun `shortens the line parenthetical in a full commonName`() {
         // TfL's raw commonName puts the type suffix last, after the parenthetical, so the
         // suffix must be stripped first for the parenthetical to reach the end.
-        assertEquals("Hammersmith", cleanStopName("Hammersmith (H&C Line) Underground Station"))
-        assertEquals("Hammersmith", cleanStopName("Hammersmith (Dist&Picc Line) Underground Station"))
-        assertEquals("Paddington", cleanStopName("Paddington (H&C Line) Underground Station"))
+        assertEquals("Hammersmith (H&C)", cleanStopName("Hammersmith (H&C Line) Underground Station"))
+        assertEquals("Hammersmith (Dist&Picc)", cleanStopName("Hammersmith (Dist&Picc Line) Underground Station"))
+        assertEquals("Edgware Road (Circle)", cleanStopName("Edgware Road (Circle Line) Underground Station"))
+        // TfL's hyphenated spelling of one Paddington.
+        assertEquals("Paddington (H&C)", cleanStopName("Paddington (H&C Line)-Underground"))
+    }
+
+    @Test
+    fun `display cleaning is idempotent on a shortened qualifier`() {
+        assertEquals("Hammersmith (H&C)", cleanStopName("Hammersmith (H&C)"))
+        assertEquals("Edgware Road (Circle)", cleanStopName(cleanStopName("Edgware Road (Circle Line) Underground Station")))
+    }
+
+    @Test
+    fun `the matching form drops a line qualifier, raw or already shortened`() {
+        // Sources disagree on whether to bracket a station by its line, so names pair by this.
+        assertEquals("Hammersmith", matchStopName("Hammersmith (H&C Line) Underground Station"))
+        assertEquals("Hammersmith", matchStopName("Hammersmith (Dist&Picc Line)"))
+        assertEquals("Hammersmith", matchStopName("Hammersmith (H&C)"))
+        assertEquals("Hammersmith", matchStopName("Hammersmith (Dist&Picc)"))
+        assertEquals("Hammersmith", matchStopName("Hammersmith (H&C and Circle Lines)"))
+        assertEquals("Hammersmith", matchStopName(cleanStopName("Hammersmith (H&C and Circle Lines)")))
+        assertEquals("Hammersmith", matchStopName("Hammersmith"))
+        assertEquals("Paddington", matchStopName("Paddington (H&C Line)-Underground"))
+        assertEquals("Edgware Road", matchStopName("Edgware Road (Circle)"))
+        assertEquals(matchStopName("Hammersmith (H&C Line)"), matchStopName("Hammersmith"))
+    }
+
+    @Test
+    fun `the matching form keeps a bracket that names no qualifying line`() {
+        // TfL's own "(Bakerloo)" has no "Line", and a place or a bus stop letter is not a line.
+        assertEquals("Edgware Road (Bakerloo)", matchStopName("Edgware Road (Bakerloo) Underground Station"))
+        assertEquals("Edgware Road (Bakerloo)", cleanStopName("Edgware Road (Bakerloo) Underground Station"))
+        assertEquals("Stratford (London)", matchStopName("Stratford (London)"))
+        assertEquals("Kensington (Olympia)", matchStopName("Kensington (Olympia)"))
+        assertEquals("Trafalgar Square (Stop A)", matchStopName("Trafalgar Square (Stop A)"))
+        assertEquals("Example Road (C)", matchStopName("Example Road (C)"))
+        assertEquals("Bank/King William Street", matchStopName("Bank Station / King William Street"))
     }
 
     @Test
@@ -85,7 +123,8 @@ class StopNameTest {
         // Synthetic names in TfL's shapes: the suffix before the slash, padded with extra spaces.
         assertEquals("Parkside/High Road", cleanStopName("Parkside Station   / High Road"))
         assertEquals("Hillview/Mill Lane", cleanStopName("Hillview Underground Station  / Mill Lane"))
-        assertEquals("Eastgate/Bridge Street", cleanStopName("Eastgate (Green Line) Underground Station / Bridge Street"))
+        assertEquals("Eastgate (Green)/Bridge Street", cleanStopName("Eastgate (Green Line) Underground Station / Bridge Street"))
+        assertEquals("Eastgate/Bridge Street", matchStopName("Eastgate (Green Line) Underground Station / Bridge Street"))
         // Either part: the place after the slash can be the station.
         assertEquals("Market Place/Riverside", cleanStopName("Market Place / Riverside Station"))
         // A road named for a station has no suffix to strip.
@@ -185,4 +224,24 @@ class StopNameTest {
         // Display only: cleanStopName keeps the full spelling, which disruption matching needs.
         assertEquals("St Pancras International", cleanStopName("St Pancras International"))
     }
+
+    @Test
+    fun `two names are one stop unless their line qualifiers name different lines`() {
+        // A qualifier on one side only is a source that left it off.
+        assertTrue(sameStopName("Hammersmith (H&C Line) Underground Station", "Hammersmith"))
+        assertTrue(sameStopName("Hammersmith (H&C)", "Hammersmith (H&C and Circle Lines)"))
+        assertTrue(sameStopName("Hammersmith (Hammersmith & City Line)", "Hammersmith (H&C)"))
+        assertTrue(sameStopName("Hammersmith (Dist&Picc Line)", "Hammersmith (District Line)"))
+        // Both qualified, no line in common: Hammersmith's two stations.
+        assertFalse(sameStopName("Hammersmith (H&C Line) Underground Station", "Hammersmith (Dist&Picc Line) Underground Station"))
+        assertFalse(sameStopName("Hammersmith (H&C)", "Hammersmith (Dist&Picc)"))
+        assertTrue(conflictingQualifiers("Hammersmith (H&C)", "Hammersmith (Dist&Picc)"))
+        assertFalse(conflictingQualifiers("Hammersmith (H&C)", "Hammersmith"))
+        assertEquals(setOf("district", "piccadilly"), qualifierLines("Hammersmith (Dist&Picc Line) Underground Station"))
+        assertEquals(setOf("hammersmith-city", "circle"), qualifierLines("Hammersmith (H&C and Circle Lines)"))
+        // A place in brackets or a bus stop's letter is no qualifier.
+        assertEquals(emptySet<String>(), qualifierLines("Stratford (London)"))
+        assertTrue(sameStopName("Stratford (London)", "Stratford (London)"))
+    }
+
 }

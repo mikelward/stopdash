@@ -330,7 +330,7 @@ object OnTheWay {
      * stop predicted after boarding is on the leg's path.
      */
     fun runsAlong(leg: TripLeg, calls: List<VehicleCall>, heading: String? = null): Boolean {
-        val on = calls.indexOfFirst { calls(it, leg.fromId, leg.fromName) }
+        val on = calls.indexOfFirst { callsFrom(it, leg) }
         if (on < 0) return false
         return runsOn(leg, calls.drop(on + 1), heading)
     }
@@ -341,7 +341,7 @@ object OnTheWay {
      * left the stop, and TfL drop its call there (Codex, PR #384).
      */
     fun runsOn(leg: TripLeg, calls: List<VehicleCall>, heading: String? = null): Boolean {
-        val off = calls.indexOfFirst { calls(it, leg.toId, leg.toName) }
+        val off = calls.indexOfFirst { callsTo(it, leg) }
         if (off >= 0) return keepsToLeg(leg, calls.take(off))
         if (calls.isEmpty()) return false
         // A leg whose stops can't be checked (a bus) looks the same as a short working or another
@@ -537,7 +537,7 @@ object OnTheWay {
                 // short ride's stop was last seen due: that's seen afresh from what follows the call,
                 // not taken for the train having got there (Codex, PR #384).
                 on = trip.copy(boardsAt = calls[boarding].expected, dueOffAt = null)
-                calls.drop(boarding + 1).dropWhile { calls(it, leg.fromId, leg.fromName) }
+                calls.drop(boarding + 1).dropWhile { callsFrom(it, leg) }
             } else {
                 calls
             }
@@ -603,7 +603,7 @@ object OnTheWay {
         // The stop again a lap later, after the rider was seen due there by now: they got off. A lap
         // is told from a delay by order, not time: the next lap reaches the stop only after coming
         // round through the boarding stop again, where a held train still has only the leg ahead.
-        if (off >= 0 && seenPast(trip, now) && calls.take(off).any { calls(it, on.fromId, on.fromName) }) {
+        if (off >= 0 && seenPast(trip, now) && calls.take(off).any { callsFrom(it, on) }) {
             return nextLeg(trip, now)
         }
         if (off < 0) {
@@ -640,7 +640,7 @@ object OnTheWay {
     // Whether [call] is where [trip]'s rider gets off [leg]: the stop the Planner named, or the other
     // pole of its pair that the followed train was found calling at ([ActiveTrip.vehicleOffId]).
     private fun arrivesAt(trip: ActiveTrip, leg: TripLeg, call: VehicleCall): Boolean =
-        calls(call, leg.toId, leg.toName) || (trip.vehicleOffId.isNotEmpty() && call.stopId == trip.vehicleOffId)
+        callsTo(call, leg) || (trip.vehicleOffId.isNotEmpty() && call.stopId == trip.vehicleOffId)
 
     /**
      * When the change onto [trip]'s ride ends, while the rider is still making it: a ride straight
@@ -657,9 +657,10 @@ object OnTheWay {
     }
 
     // A bus blind's place, however it was cleaned: the live feed turns "X Bus Station" into "X Bus"
-    // ([cleanStopName] drops only "Station"), the Planner's heading into "X".
+    // ([cleanStopName] drops only "Station"), the Planner's heading into "X". Compared, so without a
+    // line qualifier ([matchStopName]).
     private fun signed(name: String): String {
-        val clean = cleanStopName(name)
+        val clean = matchStopName(name)
         return if (clean.endsWith(BUS, ignoreCase = true) && clean.length > BUS.length) clean.dropLast(BUS.length).trim() else clean
     }
 
@@ -957,7 +958,7 @@ object OnTheWay {
         val left = train.expectedArrival.takeIf { !it.isAfter(now) } ?: now
         // Kept with the pole it calls at for the rider's stop, where that's the pair's other one, so
         // it's known there as their stop ([arrivesAt]).
-        val offId = calls.getOrNull(off)?.takeIf { !calls(it, leg.toId, leg.toName) }?.stopId.orEmpty()
+        val offId = calls.getOrNull(off)?.takeIf { !callsTo(it, leg) }?.stopId.orEmpty()
         val aboard = trip.copy(
             vehicleId = train.vehicleId, vehicleLeg = leg.takeIf { it != planned }, vehicleOffId = offId,
             boardsAt = train.expectedArrival, boarded = true, boardedAt = left, dueOffAt = null, onBoardSeen = true, seenAlongStop = -1, heldFrom = null,
@@ -1038,7 +1039,7 @@ object OnTheWay {
         val leg = on ?: trip.leg ?: return Twin.UNKNOWN
         if (calls.isEmpty()) return Twin.UNKNOWN
         val onRide = calls.any { call ->
-            calls(call, leg.toId, leg.toName) || call.stopId in alightingPoles || onPath(leg, call) >= 0 ||
+            callsTo(call, leg) || call.stopId in alightingPoles || onPath(leg, call) >= 0 ||
                 areas[call.stopId]?.let { it in leg.path || it == leg.toArea } == true
         }
         if (!onRide) return Twin.APART
@@ -1094,12 +1095,12 @@ object OnTheWay {
         atStop: Boolean,
     ): Placed? {
         val next = calls.firstOrNull() ?: return null
-        val off = calls.indexOfFirst { calls(it, leg.toId, leg.toName) || it.stopId in alightingPoles }
+        val off = calls.indexOfFirst { callsTo(it, leg) || it.stopId in alightingPoles }
         // Still to call at the boarding stop on its way there: not yet left it, so not the rider's.
-        if ((if (off >= 0) calls.take(off) else calls).any { calls(it, leg.fromId, leg.fromName) || it.stopId in boardingPoles }) return Placed.Behind
+        if ((if (off >= 0) calls.take(off) else calls).any { callsFrom(it, leg) || it.stopId in boardingPoles }) return Placed.Behind
         val at = if (checkable(leg)) {
             // Where it calls next along the ride: where the rider gets off, when the path leaves that out.
-            val at = onPath(leg, next).takeIf { it >= 0 } ?: if (calls(next, leg.toId, leg.toName)) leg.path.size else return null
+            val at = onPath(leg, next).takeIf { it >= 0 } ?: if (callsTo(next, leg)) leg.path.size else return null
             if (at < from) return Placed.Behind
             at
         } else {
@@ -1413,7 +1414,10 @@ object OnTheWay {
 
     private fun sameName(leg: TripLeg): Boolean {
         val from = leg.fromName.trim()
-        return from.isNotEmpty() && from.equals(leg.toName.trim(), ignoreCase = true)
+        // By the matching form alone, qualifiers and all: the two Hammersmiths are two stations
+        // ([sameStopName]) but one place to change at, a street apart, as the distance rule finds
+        // them ([matchStopName]).
+        return from.isNotEmpty() && matchStopName(from).equals(matchStopName(leg.toName.trim()), ignoreCase = true)
     }
 
     // [route]'s walk at [index] with the rides straight before and after it, or null when it isn't one.
@@ -1628,10 +1632,10 @@ object OnTheWay {
         // The first call there the rider can catch (from [ActiveTrip.legStartedAt]): one before it is
         // an earlier lap they couldn't, when a later lap's call there follows; with none, it's the
         // picked train revised to leave too soon.
-        val there = calls.indices.filter { calls(calls[it], leg.fromId, leg.fromName) }
+        val there = calls.indices.filter { callsFrom(calls[it], leg) }
         if (there.isEmpty()) return -1 to trip.heldFrom
         val boarding = there.firstOrNull { !calls[it].expected.isBefore(trip.legStartedAt) } ?: there.last()
-        val onLeg = calls.indexOfFirst { onPath(leg, it) >= 0 || calls(it, leg.toId, leg.toName) }
+        val onLeg = calls.indexOfFirst { onPath(leg, it) >= 0 || callsTo(it, leg) }
         if (onLeg < 0 || boarding < onLeg) return boarding to trip.heldFrom
         val boardsAt = trip.boardsAt ?: return (if (runsAlong(leg, calls.drop(boarding))) boarding else -1) to trip.heldFrom
         if (!calls[boarding].expected.isAfter(boardsAt.plus(LATE_BY))) return boarding to trip.heldFrom
@@ -1665,7 +1669,7 @@ object OnTheWay {
         val latest = if (seenPast(trip, now)) lastSeen ?: return -1 else listOfNotNull(since.plus(maxOf(leg.run, LATE_BY)), lastSeen).max()
         for (i in calls.indices) {
             val call = calls[i]
-            if (calls(call, leg.fromId, leg.fromName)) return if (call.expected.isAfter(latest)) -1 else i
+            if (callsFrom(call, leg)) return if (call.expected.isAfter(latest)) -1 else i
             if (call.expected.isAfter(since) && (onPath(leg, call) >= 0 || arrivesAt(trip, leg, call))) return -1
         }
         return -1
@@ -1696,16 +1700,34 @@ object OnTheWay {
     private fun onPath(leg: TripLeg, call: VehicleCall): Int {
         val byId = leg.path.indexOf(call.stopId)
         if (byId >= 0 || StopDisruptionBatch.isPole(call.stopId)) return byId
-        return leg.pathNames.indexOfFirst { it.isNotBlank() && it.equals(call.stopName, ignoreCase = true) }
+        return leg.pathNames.indexOfFirst { it.isNotBlank() && namesStop(call, it, leg) }
     }
+
+    // Whether [call] is at [leg]'s boarding or alighting stop.
+    private fun callsFrom(call: VehicleCall, leg: TripLeg): Boolean = calls(call, leg, leg.fromId, leg.fromName)
+    private fun callsTo(call: VehicleCall, leg: TripLeg): Boolean = calls(call, leg, leg.toId, leg.toName)
 
     // Whether [call] is at the stop [id] (or, by name, the same place: TfL's arrivals can name a
     // station by another of its ids).
     // A bus pole is never matched by name to another pole, or to a stop area the Planner gave for want
     // of a pole: a route can call at two "High Street"s, and a pole's id is authoritative ([Terminating]).
-    private fun calls(call: VehicleCall, id: String, name: String): Boolean {
+    private fun calls(call: VehicleCall, leg: TripLeg, id: String, name: String): Boolean {
         if (call.stopId == id) return true
         if (StopDisruptionBatch.isPole(call.stopId) && id.startsWith(BUS_STOP_PREFIX)) return false
-        return name.isNotBlank() && call.stopName.equals(cleanStopName(name), ignoreCase = true)
+        return name.isNotBlank() && namesStop(call, name, leg)
     }
+
+    // Whether [call] names the stop [name] (one of [leg]'s, but not by [call]'s id). Exactly, or by
+    // [sameStopName] since TfL's sources disagree on a line qualifier. A line-qualified [name]
+    // ("Paddington (H&C)") isn't matched that loosely by a call at another of [leg]'s own stops,
+    // though: a Circle train calls at the plain "Paddington" on its way, and that isn't the rider's
+    // stop, while a call by an id the ride doesn't otherwise know is the station under another of its
+    // ids (Codex, PR #499; maintainer, 2026-10-03).
+    private fun namesStop(call: VehicleCall, name: String, leg: TripLeg): Boolean {
+        if (exactStopName(call.stopName, name)) return true
+        if (!sameStopName(call.stopName, name)) return false
+        return !isLineQualified(name) || call.stopId !in stopsOf(leg)
+    }
+
+    private fun stopsOf(leg: TripLeg): Set<String> = (leg.path + leg.fromId + leg.toId).filter { it.isNotBlank() }.toSet()
 }

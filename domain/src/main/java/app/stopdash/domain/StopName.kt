@@ -4,7 +4,19 @@ package app.stopdash.domain
  * A trailing "(… Line)"/"(… Lines)" parenthetical — TfL disambiguates co-located stations
  * by the line that serves them ("Hammersmith (H&C Line)", "Hammersmith (Dist&Picc Line)").
  */
-private val LINE_PARENTHETICAL = Regex("""\s*\([^()]*\bLines?\)\s*$""", RegexOption.IGNORE_CASE)
+private val LINE_PARENTHETICAL = Regex("""\s*\(([^()]*?)\s*\bLines?\)\s*$""", RegexOption.IGNORE_CASE)
+
+/**
+ * A line qualifier as [cleanStopName] leaves it, its "Line" already gone ("Hammersmith (H&C)",
+ * "Hammersmith (H&C and Circle)"), so [matchStopName] can still recognize one in a name that was
+ * cleaned before it was compared. Only the lines TfL qualifies a station by: "(Bakerloo)" and
+ * "(Central)" are TfL's own names with no "Line" ("Edgware Road (Bakerloo)"), so they stay, and so
+ * does a bus stop's letter ("(C)") or a place ("(London)").
+ */
+private val SHORT_LINE_QUALIFIER = run {
+    val line = """(?:H&C|Hammersmith\s*&\s*City|Dist&Picc|District|Piccadilly|Circle|Metropolitan|Met)"""
+    Regex("""\s*\($line(?:\s*(?:,|&|\band\b)\s*$line)*\)\s*$""", RegexOption.IGNORE_CASE)
+}
 
 /**
  * Trims TfL's `commonName` down to what a rider reads on a sign. TfL suffixes a stop's
@@ -13,15 +25,21 @@ private val LINE_PARENTHETICAL = Regex("""\s*\([^()]*\bLines?\)\s*$""", RegexOpt
  * dropping it keeps the list glanceable (SPEC *Concise copy*). National Rail's board spells the
  * same thing as a parenthetical on a station that shares its name with a tube station —
  * "Heathrow Terminal 5 (Rail Station Only)" — and it goes too, so a train's destination there
- * matches the stop TfL's route names ("Heathrow Terminal 5"). Suffix-only: a name with
- * no type suffix (most bus stops) is returned unchanged, and a stop literally called
+ * matches the stop TfL's route names ("Heathrow Terminal 5"). TfL also names one station
+ * "Paddington (H&C Line)-Underground", whose "-Underground" goes the same way. Suffix-only: a name
+ * with no type suffix (most bus stops) is returned unchanged, and a stop literally called
  * "Station" is never emptied.
  *
- * Also drops a trailing line-name parenthetical — "Hammersmith (H&C Line)" → "Hammersmith" —
- * which just names the line that serves the stop, already shown by the row's line pill. A
- * *geographic* parenthetical has no "Line" and is kept ("Stratford (London)"), so a name that
- * genuinely needs the disambiguator keeps it. The two Hammersmiths (H&C vs Dist&Picc) both
- * collapse to "Hammersmith"; the line pill tells them apart.
+ * A trailing line-name parenthetical is kept but shortened — "Hammersmith (H&C Line)" →
+ * "Hammersmith (H&C)" (maintainer, 2026-10-03). TfL only adds that bracket to tell apart two
+ * stations of one name a street apart, served by different lines (Hammersmith's two, Edgware Road's
+ * Circle beside its Bakerloo), so a rider needs it wherever the station is named — a headline, a
+ * card header, a train's destination — and "Line" is the only word in it that says nothing. A
+ * *geographic* parenthetical has no "Line" and is kept whole ("Stratford (London)").
+ *
+ * This is the **display** form. Two TfL sources can name one station with and without the bracket
+ * ("Hammersmith (H&C Line)" in one, "Hammersmith" or "Hammersmith (H&C and Circle Lines)" in
+ * another), so anything that pairs names across sources compares [matchStopName] instead.
  *
  * Order matters twice. Among the type suffixes the specific multi-word ones are tried before
  * the bare " Station" catch-all, so "X Underground Station" loses the whole phrase, not just
@@ -36,9 +54,20 @@ private val LINE_PARENTHETICAL = Regex("""\s*\([^()]*\bLines?\)\s*$""", RegexOpt
  * loses the spaces TfL pads it with (maintainer, 2026-10-03), so a narrow row fits more of each
  * place. A road named for one ("Station Road") has no suffix to strip. Runs of whitespace fold to one.
  */
-fun cleanStopName(raw: String): String {
+fun cleanStopName(raw: String): String = clean(raw, forMatching = false)
+
+/**
+ * The form of a stop name to **compare** by, never to show: [cleanStopName] without a line
+ * qualifier at all ("Hammersmith (H&C Line)", "Hammersmith (H&C)" and "Hammersmith" all give
+ * "Hammersmith"), as every name was cleaned before the qualifier was kept. TfL brackets a station
+ * by its line in some sources and not others, so pairing by this keeps every match that worked
+ * when the bracket was dropped. Takes a raw or an already-cleaned name alike, and is idempotent.
+ */
+fun matchStopName(raw: String): String = clean(raw, forMatching = true)
+
+private fun clean(raw: String, forMatching: Boolean): String {
     val name = raw.trim().replace(WHITESPACE_RUN, " ")
-    return name.split(CROSS_STREET).joinToString("/", transform = ::cleanPart)
+    return name.split(CROSS_STREET).joinToString("/") { cleanPart(it, forMatching) }
 }
 
 private val WHITESPACE_RUN = Regex("\\s+")
@@ -50,8 +79,9 @@ private val WHITESPACE_RUN = Regex("\\s+")
  */
 private val CROSS_STREET = Regex("\\s*/\\s*")
 
-// One place name: its type suffix, then a trailing line parenthetical ([cleanStopName]).
-private fun cleanPart(part: String): String {
+// One place name: its type suffix, then a trailing line parenthetical ([cleanStopName]), shortened
+// for display or dropped for matching ([matchStopName]).
+private fun cleanPart(part: String, forMatching: Boolean): String {
     var name = part.trim()
     val suffixes = listOf(
         " (Rail Station Only)",
@@ -61,6 +91,7 @@ private fun cleanPart(part: String): String {
         " Overground Station",
         " Bus Station",
         " Coach Station",
+        "-Underground",
         " Station",
     )
     for (suffix in suffixes) {
@@ -71,7 +102,14 @@ private fun cleanPart(part: String): String {
     }
     LINE_PARENTHETICAL.find(name)?.let { match ->
         val stripped = name.removeRange(match.range).trim()
-        if (stripped.isNotEmpty()) name = stripped
+        val lines = match.groupValues[1].trim()
+        if (stripped.isNotEmpty()) name = if (forMatching || lines.isEmpty()) stripped else "$stripped ($lines)"
+    }
+    if (forMatching) {
+        SHORT_LINE_QUALIFIER.find(name)?.let { match ->
+            val stripped = name.removeRange(match.range).trim()
+            if (stripped.isNotEmpty()) name = stripped
+        }
     }
     return name
 }
@@ -157,3 +195,66 @@ fun pointName(commonName: String): String {
     val station = commonName.substringAfterLast(", ", missingDelimiterValue = "").trim()
     return cleanStopName(station.takeIf { it.endsWith(" Station", ignoreCase = true) } ?: commonName)
 }
+
+/**
+ * Whether [a] and [b] name the same stop as far as a name can say: equal by [matchStopName],
+ * ignoring case, and not told apart by their line qualifiers ([conflictingQualifiers]). A qualifier
+ * on one side only is a source that left it off, so "Hammersmith (H&C)" is "Hammersmith", but not
+ * "Hammersmith (Dist&Picc)" (maintainer, 2026-10-03). False when either is null.
+ */
+fun sameStopName(a: String?, b: String?): Boolean =
+    a != null && b != null && matchStopName(a).equals(matchStopName(b), ignoreCase = true) &&
+        !conflictingQualifiers(a, b)
+
+/**
+ * Whether [a] and [b] both carry a line qualifier and the two name no line in common: "(H&C)" and
+ * "(Dist&Picc)" are two stations, "(H&C)" and "(H&C and Circle)" one station that two sources
+ * qualify differently. A name with no qualifier conflicts with nothing.
+ */
+fun conflictingQualifiers(a: String, b: String): Boolean {
+    val linesA = qualifierLines(a)
+    val linesB = qualifierLines(b)
+    return linesA.isNotEmpty() && linesB.isNotEmpty() && linesA.none { it in linesB }
+}
+
+/**
+ * The lines [name]'s qualifier names, each in one spelling ("Hammersmith (Dist&Picc Line)" →
+ * district, piccadilly), or none when it has no qualifier. TfL abbreviates some ("H&C",
+ * "Dist&Picc", "Met") and spells them out elsewhere, so both spellings give one line.
+ */
+internal fun qualifierLines(name: String): Set<String> {
+    if (!isLineQualified(name)) return emptySet()
+    val bracket = TRAILING_BRACKET.find(cleanStopName(name))?.groupValues?.get(1) ?: return emptySet()
+    var text = bracket.lowercase()
+    for ((spelling, line) in LINE_SPELLINGS) text = spelling.replace(text, line)
+    return text.split(LINE_SEPARATOR).map(String::trim).filterTo(LinkedHashSet()) { it.isNotEmpty() }
+}
+
+private val TRAILING_BRACKET = Regex("""\(([^()]*)\)\s*$""")
+
+// Abbreviations first, so "&" inside one isn't read as a separator.
+private val LINE_SPELLINGS = listOf(
+    Regex("""\bhammersmith\s*&\s*city\b""") to "hammersmith-city",
+    Regex("""\bh\s*&\s*c\b""") to "hammersmith-city",
+    Regex("""\bdist\s*&\s*picc\b""") to "district,piccadilly",
+    Regex("""\bdist\b""") to "district",
+    Regex("""\bpicc\b""") to "piccadilly",
+    Regex("""\bmet\b""") to "metropolitan",
+)
+
+private val LINE_SEPARATOR = Regex("""\s*(?:,|&|\band\b)\s*""")
+
+/**
+ * Whether [a] and [b] are the same name as shown ([cleanStopName]), line qualifier and all, ignoring
+ * case. False when either is null.
+ */
+fun exactStopName(a: String?, b: String?): Boolean =
+    a != null && b != null && cleanStopName(a).equals(cleanStopName(b), ignoreCase = true)
+
+/**
+ * Whether [name] carries a line qualifier ("Paddington (H&C)"). Such a name picks its own station
+ * where one is found by [exactStopName], before falling back to [sameStopName]: a Circle train to
+ * "Paddington (H&C)" must not also match the plain "Paddington" it passes on the way.
+ */
+fun isLineQualified(name: String): Boolean =
+    !cleanStopName(name).equals(matchStopName(name), ignoreCase = true)

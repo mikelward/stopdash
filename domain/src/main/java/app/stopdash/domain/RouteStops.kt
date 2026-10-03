@@ -107,7 +107,13 @@ data class LineSequence(
 
 // "St Pancras International" and "St Pancras International LL" are one station; "King's Cross" is
 // not. Either name may carry the qualifier, as TfL's ids don't say which one is the main.
-private fun sameStation(a: String, b: String): Boolean {
+private fun sameStation(rawA: String, rawB: String): Boolean {
+    // By the matching form, so a line qualifier on one spelling doesn't part them ([matchStopName]);
+    // two that name different lines do: Hammersmith's two stations share an interchange
+    // ([conflictingQualifiers]).
+    if (conflictingQualifiers(rawA, rawB)) return false
+    val a = matchStopName(rawA)
+    val b = matchStopName(rawB)
     if (a.isBlank() || b.isBlank()) return false
     val (short, long) = if (a.length <= b.length) a to b else b to a
     return long.equals(short, ignoreCase = true) || long.startsWith("$short ", ignoreCase = true)
@@ -340,21 +346,28 @@ object RouteStops {
         val unknown = isUnknownDestination(destination)
         // Every visit to [stopId] is a candidate origin and every later stop named [destination] a
         // candidate end: a loop can call here twice, and two stops can share a cleaned name (a
-        // loop, a bus route passing a place twice, TfL's line qualifiers that [cleanStopName]
+        // loop, a bus route passing a place twice, TfL's line qualifiers that [matchStopName]
         // drops). Nothing on the arrival says which, so each pairing is its own path, and more
         // than one leaves the answer ambiguous below rather than picking the first.
         // Per route: its stop-name matches, else (none on that route) its route-name terminus — so
         // one variant matching by stop name can't hide another that only matches by its name.
-        val matched = if (unknown) sequence.routes.flatMap { toEnd(it, stopId) } else sequence.routes.flatMap { route ->
+        // A destination with a line qualifier ("Paddington (H&C)") takes the stops of that exact name
+        // where any match, and only failing those every stop of its name without one ([isLineQualified]).
+        fun matchedBy(same: (String?, String) -> Boolean) = sequence.routes.flatMap { route ->
             val byStopName = visits(route, stopId).flatMap { i ->
                 (i + 1 until route.stopIds.size).filter { k ->
-                    sequence.stopNames[route.stopIds[k]].equals(destination, ignoreCase = true)
+                    same(sequence.stopNames[route.stopIds[k]], destination)
                 }.map { j -> route to route.stopIds.subList(i, j + 1) }
             }
             byStopName.ifEmpty {
-                if (!terminusOf(route.name).equals(destination, ignoreCase = true)) return@ifEmpty emptyList()
+                if (!same(terminusOf(route.name), destination)) return@ifEmpty emptyList()
                 toEnd(route, stopId)
             }
+        }
+        val matched = when {
+            unknown -> sequence.routes.flatMap { toEnd(it, stopId) }
+            isLineQualified(destination) -> matchedBy(::exactStopName).ifEmpty { matchedBy(::sameStopName) }
+            else -> matchedBy(::sameStopName)
         }
         // A bus whose label matched nothing: every route calling here, run to its end — unless it ends
         // here, as a bus curtailed at this stop does.
@@ -439,7 +452,12 @@ object RouteStops {
         }
         val bus = leg.mode.equals("bus", ignoreCase = true)
         val termini = leg.headings.ifEmpty { listOf(leg.toName) }
-        fun terminus(name: String?) = termini.any { it.equals(name, ignoreCase = true) }
+        // Exactly where a qualified terminus names a stop or route end of this line, else loosely
+        // ([isLineQualified]).
+        val exactly = termini.any(::isLineQualified) && termini.any { t ->
+            sequence.stopNames.values.any { exactStopName(it, t) } || sequence.routes.any { exactStopName(terminusOf(it.name), t) }
+        }
+        fun terminus(name: String?) = termini.any { if (exactly) exactStopName(it, name) else sameStopName(it, name) }
         val candidates = sequence.routes.flatMap { route ->
             visits(route, leg.fromId).mapNotNull { i ->
                 val off = (i + 1 until route.stopIds.size).firstOrNull { alights(route.stopIds[it]) } ?: return@mapNotNull null
@@ -475,7 +493,7 @@ object RouteStops {
             return area.isNotBlank() && (destinationId == area || sequence.stopAreas[destinationId] == area)
         }
         val name = sequence.stopNames[stopId].orEmpty()
-        return name.isNotBlank() && cleanStopName(destination).equals(name, ignoreCase = true)
+        return name.isNotBlank() && sameStopName(destination, name)
     }
 
     /** From each visit to [stopId] on [route] (bar its last stop) through the route's end. */

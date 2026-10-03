@@ -117,7 +117,7 @@ private fun boardsAt(leg: TripLeg, sequence: LineSequence, id: String) =
 // Planner can name a bus station's stand the line doesn't use, as where it gets off (maintainer,
 // 2026-09-30), and the route's own stand is the only tie between them.
 private fun boardsByName(leg: TripLeg, sequence: LineSequence, id: String) =
-    leg.fromArea.isEmpty() && sequence.stopNames[id]?.equals(leg.fromName, ignoreCase = true) == true
+    leg.fromArea.isEmpty() && sameStopName(sequence.stopNames[id], leg.fromName)
 
 // Whether the route's stop [id] is where [leg] gets off, as [boardsAt] at its other end.
 private fun alightsAt(leg: TripLeg, sequence: LineSequence, id: String) =
@@ -125,7 +125,7 @@ private fun alightsAt(leg: TripLeg, sequence: LineSequence, id: String) =
 
 // A stop in no pair (a bus station's stands, "Archway Station") by its name, as [boardsByName].
 private fun alightsByName(leg: TripLeg, sequence: LineSequence, id: String) =
-    leg.toArea.isEmpty() && sequence.stopNames[id]?.equals(leg.toName, ignoreCase = true) == true
+    leg.toArea.isEmpty() && sameStopName(sequence.stopNames[id], leg.toName)
 
 /**
  * Every way a route of [sequence] could run [leg]'s ride, each as its route and the stops from where
