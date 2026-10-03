@@ -1435,6 +1435,8 @@ class RouteDetailScreenScreenshotTest {
                     )
             },
             io = kotlinx.coroutines.Dispatchers.Unconfined,
+            // In place, so only the page's held worker decides when the marks come in.
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
         )
         val base = disruptedRow().let { row -> row.copy(upcoming = emptyList()) }
         var row by androidx.compose.runtime.mutableStateOf(

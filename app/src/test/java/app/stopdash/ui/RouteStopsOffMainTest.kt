@@ -52,8 +52,8 @@ class RouteStopsOffMainTest {
     @Test
     fun aTrainsStops_areLoadedAndMatchedOnTheWorker() {
         val threads = mutableListOf<String>()
-        // Public names, synthetic ids. The repository works in place ([app.stopdash.domain.Workers]
-        // is in-place under test), so the thread it loads on is the one the page handed it to.
+        // Public names, synthetic ids. The repository works in place, so the thread it loads on is
+        // the one the page handed it to.
         val repository = RouteStopsRepository(
             object : RouteSequenceSource {
                 override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
@@ -65,6 +65,7 @@ class RouteStopsOffMainTest {
                 }
             },
             io = Dispatchers.Unconfined,
+            compute = Dispatchers.Unconfined,
         )
         val now = Instant.parse("2026-09-18T08:00:00Z")
         val next = Departure(

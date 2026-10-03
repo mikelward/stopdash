@@ -14,10 +14,10 @@ import kotlinx.coroutines.Dispatchers
  */
 class TestStopdashApp : StopdashApp() {
     override fun onCreate() {
-        // Computed values worked out in place, on the test's own thread, so a screen settles with
-        // them in its frame instead of racing a real worker thread. A test of the hop itself passes
-        // a worker of its own.
-        Workers.compute = Dispatchers.Unconfined
+        // Off-main work posted to the test's main looper, which Robolectric runs as a screen settles,
+        // instead of racing a real worker thread: it comes back after the frame that asked for it, as
+        // in the app, so a test sees the same order. A test of the hop itself passes a worker of its own.
+        Workers.compute = Dispatchers.Main
         super.onCreate()
     }
 

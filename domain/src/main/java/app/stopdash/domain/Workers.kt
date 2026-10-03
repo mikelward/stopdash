@@ -9,8 +9,9 @@ import kotlinx.coroutines.Dispatchers
  * dispatch only*). A main-safe function hops to it first and takes it as an injectable default, so a
  * test can pass a thread of its own.
  *
- * [compute] is [Dispatchers.Default]. Only a test application replaces it, with one that runs in
- * place (a screenshot settles with every computed value in its frame); nothing in the app does.
+ * [compute] is [Dispatchers.Default]. Only a test application replaces it, with the test's main
+ * looper, so a screen settles with the work done instead of racing a real thread; nothing in the
+ * app does.
  */
 object Workers {
     @Volatile
