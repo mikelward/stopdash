@@ -46,12 +46,8 @@ object DirectTrips {
         var unresolved = false
         val misses = LinkedHashSet<RouteMiss>()
         // A line's route as seen from [stop] and the destination's stops, once per stop and line.
-        fun sequenceAt(stop: StopArrivals, lineId: String): LineSequence? {
-            var sequence = sequences[lineId] ?: return null
-            sequence = sequence.knowing(stop.stopId, hubs[stop.stopId] ?: stop.hubId, stop.stopName).callingAt(stop.stopId)
-            for (end in destination) sequence = sequence.knowing(end.id, end.hubId, end.name).callingAt(end.id)
-            return sequence
-        }
+        fun sequenceAt(stop: StopArrivals, lineId: String): LineSequence? =
+            sequences[lineId]?.let { routeAt(it, stop.stopId, hubs[stop.stopId] ?: stop.hubId, stop.stopName, destination) }
         val kept = stops.map { stop ->
             // The origin itself is no destination: From and To the same station is no trip.
             if (stop.stopId in destinationIds) {
@@ -73,38 +69,13 @@ object DirectTrips {
                         pending = true
                         false
                     }
-                    else -> {
-                        val sequence = routeOf(lineId)
-                        val bus = departure.mode.equals("bus", ignoreCase = true)
-                        val bound = RouteStops.boundOf(departure.platform)
-                        val resolution = sequence?.let {
-                            RouteStops.resolve(
-                                it, stop.stopId, departure.destination, departure.branch, lineId, bus, bound, departure.direction,
-                                departure.destinationId, departure.via,
-                            )
-                        }
-                        // One path can't be told (no destination yet, or two ways that match it):
-                        // still an answer when every way it may take agrees.
-                        val agreed = if (resolution == null || resolution is RouteStops.Resolution.Found) {
-                            null
-                        } else {
-                            RouteStops.reaches(
-                                sequence!!, stop.stopId, departure.destination, departure.branch, destinationIds, bus, bound,
-                                departure.direction, departure.destinationId, departure.via,
-                            )
-                        }
-                        when {
-                            resolution is RouteStops.Resolution.Found -> resolution.stops.drop(1).any { it.id in destinationIds }
-                            // Ending here, it goes nowhere: a sure "no", not a gap in the check.
-                            resolution == RouteStops.Resolution.EndsHere -> false
-                            agreed != null -> agreed
-                            else -> {
-                                unresolved = true
-                                // A failed route (null) is logged by its fetch; a path that won't
-                                // resolve is logged nowhere else, so it's named here.
-                                if (resolution != null) misses += RouteMiss(lineId, stop.stopId, resolution)
-                                false
-                            }
+                    else -> when (val verdict = judge(departure, stop.stopId, routeOf(lineId), destinationIds)) {
+                        Verdict.Reaches -> true
+                        Verdict.Misses -> false
+                        is Verdict.Unknown -> {
+                            unresolved = true
+                            verdict.miss?.let { misses += it }
+                            false
                         }
                     }
                 }
@@ -125,6 +96,68 @@ object DirectTrips {
             stop.copy(departures = departures, lines = lines)
         }.filter { it.departures.isNotEmpty() || it.lines.isNotEmpty() || it.disruptions.isNotEmpty() }
         return Result(kept, pending, unresolved, misses)
+    }
+
+    /** A departure judged on its line's route ([judge]). */
+    sealed interface Verdict {
+        /** Its path calls at the destination after boarding. */
+        data object Reaches : Verdict
+
+        /** Its path doesn't: a sure "no" (one ending at the boarding stop included). */
+        data object Misses : Verdict
+
+        /**
+         * Its path can't be told: the route failed, or doesn't resolve to one path, and the ways it may
+         * take disagree. A path that won't resolve is named in [miss] for the debug log; a failed route
+         * (no [miss]) is logged by its fetch.
+         */
+        data class Unknown(val miss: RouteMiss?) : Verdict
+    }
+
+    /**
+     * [sequence] as seen from [stopId] and [destination]'s stops, each matched through its interchange
+     * ([LineSequence.callingAt]): what [judge] judges a departure from that stop on. Worked out once per
+     * stop and line, then shared by its departures.
+     */
+    fun routeAt(sequence: LineSequence, stopId: String, hubId: String, stopName: String, destination: List<End>): LineSequence {
+        var route = sequence.knowing(stopId, hubId, stopName).callingAt(stopId)
+        for (end in destination) route = route.knowing(end.id, end.hubId, end.name).callingAt(end.id)
+        return route
+    }
+
+    /**
+     * Whether [departure], boarding at [stopId], calls at one of [destinationIds] on its line's [route]
+     * ([routeAt]; null when the route failed). Depends on where the departure is going, not when, so a
+     * verdict holds for every later prediction of the same service.
+     */
+    fun judge(departure: Departure, stopId: String, route: LineSequence?, destinationIds: Set<String>): Verdict {
+        val lineId = departure.lineId
+        val bus = departure.mode.equals("bus", ignoreCase = true)
+        val bound = RouteStops.boundOf(departure.platform)
+        val resolution = route?.let {
+            RouteStops.resolve(
+                it, stopId, departure.destination, departure.branch, lineId, bus, bound, departure.direction,
+                departure.destinationId, departure.via,
+            )
+        }
+        // One path can't be told (no destination yet, or two ways that match it): still an answer when
+        // every way it may take agrees.
+        val agreed = if (resolution == null || resolution is RouteStops.Resolution.Found) {
+            null
+        } else {
+            RouteStops.reaches(
+                route!!, stopId, departure.destination, departure.branch, destinationIds, bus, bound,
+                departure.direction, departure.destinationId, departure.via,
+            )
+        }
+        return when {
+            resolution is RouteStops.Resolution.Found ->
+                if (resolution.stops.drop(1).any { it.id in destinationIds }) Verdict.Reaches else Verdict.Misses
+            // Ending here, it goes nowhere: a sure "no", not a gap in the check.
+            resolution == RouteStops.Resolution.EndsHere -> Verdict.Misses
+            agreed != null -> if (agreed) Verdict.Reaches else Verdict.Misses
+            else -> Verdict.Unknown(resolution?.let { RouteMiss(lineId, stopId, it) })
+        }
     }
 
     /** How far from the rider a stop still counts as "here" for To… from the near-me list: 0.2 mi. */
