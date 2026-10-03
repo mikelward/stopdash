@@ -43,9 +43,12 @@ import app.stopdash.domain.TripModes
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.onPoles
 import app.stopdash.domain.TripTiming
+import app.stopdash.domain.Workers
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -80,11 +83,14 @@ class TripViewModelTest {
     @Before fun setUp() {
         Dispatchers.setMain(dispatcher)
         TripVerdicts.onMiss = TripVerdicts::compute
+        // The trip's work that grows with its stops runs here too ([Workers.compute]), in virtual time.
+        Workers.compute = dispatcher
     }
 
     @After fun tearDown() {
         Dispatchers.resetMain()
         TripVerdicts.onMiss = null
+        Workers.compute = Dispatchers.Default
     }
 
     private fun at(minutes: Long) = Instant.parse("2026-09-26T08:00:00Z").plus(Duration.ofMinutes(minutes))
@@ -191,8 +197,11 @@ class TripViewModelTest {
         var failDisruptions = emptySet<String>()
         val disruptionAsks = mutableListOf<List<String>>()
         override suspend fun stopDisruptions(stopId: String): List<StopDisruption> = poleDisruptions(listOf(stopId)).getValue(stopId)
+        // A stop's closure lookup waits on its gate, once.
+        val disruptionGates = mutableMapOf<String, CompletableDeferred<Unit>>()
         override suspend fun poleDisruptions(stopIds: List<String>): Map<String, List<StopDisruption>> {
             disruptionAsks += stopIds
+            for (id in stopIds) disruptionGates.remove(id)?.await()
             if (stopIds.any { it in failDisruptions }) throw TflException.Offline(null)
             return stopIds.associateWith { disruptions[it].orEmpty() }
         }
@@ -355,6 +364,184 @@ class TripViewModelTest {
         // TfL now reports the blue line good, so its dismissal goes, and the same alert coming back
         // later shows again; the green line, which this trip doesn't check, keeps its (Codex on #367).
         assertEquals(setOf(green), store.stored.value)
+    }
+
+    @Test
+    fun `a trip settles its stops' dismissals on the worker, not the main thread`() = runTest(dispatcher) {
+        val card = DepartureRows.across(
+            listOf(StopArrivals("B", "", emptyList(), SteadyClock.stamp(now), disruptions = stationClosed)),
+            now,
+        ).single { it.stopDisruption != null }
+        val atB = DismissedAlert.ofStopClosure(card)
+        val store = reconcilingStore(setOf(atB))
+        // Holds what's handed to it until let go, so nothing it's given can run on the caller.
+        val held = mutableListOf<Pair<CoroutineContext, Runnable>>()
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                held += context to block
+            }
+        }
+        // B checked clear: its closure's dismissal is to go.
+        val trip = TripViewModel(
+            FakePlanner(listOf(route)), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+            clock = { now }, io = dispatcher, compute = worker, dismissedStore = store,
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        // With the worker held, the check is in but not settled: settling is the worker's to do.
+        assertTrue("nothing handed to the worker", held.isNotEmpty())
+        assertEquals(setOf(atB), store.stored.value)
+        // Let go on a thread of the worker's own, noting where each piece ran.
+        val caller = Thread.currentThread()
+        val ranOn = mutableListOf<Thread>()
+        val thread = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            while (held.isNotEmpty()) {
+                val next = held.toList()
+                held.clear()
+                thread.submit {
+                    for ((_, block) in next) {
+                        ranOn += Thread.currentThread()
+                        block.run()
+                    }
+                }.get()
+                advanceUntilIdle()
+            }
+        } finally {
+            thread.shutdown()
+        }
+        assertTrue("$ranOn", ranOn.isNotEmpty() && ranOn.none { it === caller })
+        assertTrue("${store.stored.value}", store.stored.value.isEmpty())
+    }
+
+    @Test
+    fun `a trip's closure check is settled even when the trip is left while the worker has it`() = runTest(dispatcher) {
+        val card = DepartureRows.across(
+            listOf(StopArrivals("B", "", emptyList(), SteadyClock.stamp(now), disruptions = stationClosed)),
+            now,
+        ).single { it.stopDisruption != null }
+        val atB = DismissedAlert.ofStopClosure(card)
+        val store = reconcilingStore(setOf(atB))
+        // Holds what's handed to it until let go, as a busy worker would.
+        val held = mutableListOf<Pair<CoroutineContext, Runnable>>()
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                held += context to block
+            }
+        }
+        val models = ViewModelStore()
+        // B checked clear: its closure's dismissal is to go.
+        val client = FakeClient(mutableMapOf())
+        ViewModelProvider.create(
+            models,
+            viewModelFactory {
+                initializer {
+                    TripViewModel(
+                        FakePlanner(listOf(route)), client, "A", listOf(TripDestination.Stop("C")),
+                        clock = { now }, io = dispatcher, compute = worker, dismissedStore = store,
+                    )
+                }
+            },
+        )[TripViewModel::class].refresh()
+        advanceUntilIdle()
+        assertTrue("nothing handed to the worker", held.isNotEmpty())
+        // The rider leaves while the worker still has the check: it's settled and stored all the same,
+        // so the closure coming back on a later trip isn't hidden.
+        models.clear()
+        while (held.isNotEmpty()) {
+            val next = held.toList()
+            held.clear()
+            for ((context, block) in next) dispatcher.dispatch(context, block)
+            advanceUntilIdle()
+        }
+        assertTrue("${store.stored.value}", store.stored.value.isEmpty())
+    }
+
+    @Test
+    fun `a trip's older closure check doesn't settle a stop a later check took over meanwhile`() = runTest(dispatcher) {
+        val card = DepartureRows.across(
+            listOf(StopArrivals("X", "", emptyList(), SteadyClock.stamp(now), disruptions = stationClosed)),
+            now,
+        ).single { it.stopDisruption != null }
+        val atX = DismissedAlert.ofStopClosure(card)
+        val store = reconcilingStore(setOf(atX))
+        // Holds what's handed to it until let go, as a busy worker would.
+        val held = mutableListOf<Pair<CoroutineContext, Runnable>>()
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                held += context to block
+            }
+        }
+        val client = FakeClient(mutableMapOf())
+        val trip = TripViewModel(
+            FakePlanner(listOf(route)), client, "A", listOf(TripDestination.Stop("C")),
+            clock = { now }, io = dispatcher, compute = worker, dismissedStore = store,
+        )
+        // A stop the screen shows is checked and found clear; while the worker has that check, a
+        // refresh asks about the stop again and finds it closed.
+        trip.checkShownStops(setOf("X"))
+        advanceUntilIdle()
+        assertTrue("nothing handed to the worker", held.isNotEmpty())
+        now = now.plus(Duration.ofMinutes(6))
+        client.disruptions = mapOf("X" to stationClosed)
+        trip.refresh()
+        advanceUntilIdle()
+        while (held.isNotEmpty()) {
+            val next = held.toList()
+            held.clear()
+            for ((context, block) in next) dispatcher.dispatch(context, block)
+            advanceUntilIdle()
+        }
+        // The refresh owns X and finds it closed: the older "clear" doesn't forget its dismissal.
+        assertEquals(setOf(atX), store.stored.value)
+    }
+
+    @Test
+    fun `a trip's closure check still settles a stop whose later check was left unanswered`() = runTest(dispatcher) {
+        val card = DepartureRows.across(
+            listOf(StopArrivals("X", "", emptyList(), SteadyClock.stamp(now), disruptions = stationClosed)),
+            now,
+        ).single { it.stopDisruption != null }
+        val atX = DismissedAlert.ofStopClosure(card)
+        val store = reconcilingStore(setOf(atX))
+        // Holds what's handed to it until let go, as a busy worker would.
+        val held = mutableListOf<Pair<CoroutineContext, Runnable>>()
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                held += context to block
+            }
+        }
+        val models = ViewModelStore()
+        val client = FakeClient(mutableMapOf())
+        val trip = ViewModelProvider.create(
+            models,
+            viewModelFactory {
+                initializer {
+                    TripViewModel(
+                        FakePlanner(listOf(route)), client, "A", listOf(TripDestination.Stop("C")),
+                        clock = { now }, io = dispatcher, compute = worker, dismissedStore = store,
+                    )
+                }
+            },
+        )[TripViewModel::class]
+        // A stop the screen shows is checked and found clear; while the worker has that check, a
+        // refresh asks about the stop again, and the trip is left before its answer comes.
+        trip.checkShownStops(setOf("X"))
+        advanceUntilIdle()
+        assertTrue("nothing handed to the worker", held.isNotEmpty())
+        now = now.plus(Duration.ofMinutes(6))
+        client.disruptionGates["X"] = CompletableDeferred()
+        trip.refresh()
+        advanceUntilIdle()
+        models.clear()
+        while (held.isNotEmpty()) {
+            val next = held.toList()
+            held.clear()
+            for ((context, block) in next) dispatcher.dispatch(context, block)
+            advanceUntilIdle()
+        }
+        // The later check never answered, so the first one's "clear" stands: the dismissal goes.
+        assertTrue("${store.stored.value}", store.stored.value.isEmpty())
     }
 
     @Test
