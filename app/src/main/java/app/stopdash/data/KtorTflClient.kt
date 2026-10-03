@@ -711,8 +711,11 @@ class KtorTflClient(
         /** How many name-search matches to ask for — a screenful; a longer query narrows it. */
         const val SEARCH_MAX_RESULTS: Int = 20
 
-        /** The production HTTP client: OkHttp engine + lenient JSON, failing on non-2xx. */
-        fun defaultHttpClient(): HttpClient =
+        /**
+         * The production HTTP client: OkHttp engine + lenient JSON, failing on non-2xx. Each slow
+         * call, or one whose connect had to be retried, is told to [warn] ([SlowRequestListener]).
+         */
+        fun defaultHttpClient(warn: (String) -> Unit = {}): HttpClient =
             HttpClient(OkHttp) {
                 engine {
                     config {
@@ -724,6 +727,7 @@ class KtorTflClient(
                                 maxRequestsPerHost = SharedTflRequestPool.MAX_CONCURRENT
                             },
                         )
+                        eventListenerFactory(SlowRequestListener.factory(warn))
                     }
                 }
                 expectSuccess = true

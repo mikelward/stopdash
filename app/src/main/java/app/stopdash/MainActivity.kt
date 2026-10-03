@@ -63,6 +63,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import app.stopdash.data.AndroidLocationProvider
+import app.stopdash.data.logNetworkWarning
 import app.stopdash.data.DataStoreAlertsBehindStore
 import app.stopdash.data.DataStoreAppSettings
 import app.stopdash.ui.WatchInstallActions
@@ -3126,7 +3127,7 @@ class MainActivity : ComponentActivity() {
         // closes a Ktor client, so a per-launch one accumulates engine/pool resources). A
         // single long-lived client is OkHttp's own recommended shape; it lives for the
         // process and dies with it.
-        private val httpClient by lazy { KtorTflClient.defaultHttpClient() }
+        private val httpClient by lazy { KtorTflClient.defaultHttpClient(warn = ::logNetworkWarning) }
 
         // A departures list's client: TfL's, plus National Rail's own live departures at a rail
         // station once the user has pasted a National Rail key (SPEC *National Rail*). The key and
