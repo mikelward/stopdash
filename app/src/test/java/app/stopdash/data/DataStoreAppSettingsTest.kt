@@ -54,9 +54,9 @@ class DataStoreAppSettingsTest {
     }
 
     @Test
-    fun `max walk is 30 minutes by default and persists a change`() = runTest {
+    fun `max walk is 20 minutes by default and persists a change`() = runTest {
         val store = DataStoreAppSettings(FakeDataStore(null))
-        assertEquals(MaxWalk.THIRTY, store.maxWalk().first())
+        assertEquals(MaxWalk.TWENTY, store.maxWalk().first())
         store.setMaxWalk(MaxWalk.SIXTY)
         assertEquals(MaxWalk.SIXTY, store.maxWalk().first())
     }

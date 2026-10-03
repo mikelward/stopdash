@@ -706,27 +706,27 @@ class TripViewModelTest {
         val plans = TripPlans()
         val trip = TripViewModel(
             planner, FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
-            clock = { now }, plans = plans, io = dispatcher, maxWalk = MaxWalk.TWENTY,
+            clock = { now }, plans = plans, io = dispatcher, maxWalk = MaxWalk.FIFTEEN,
         )
         trip.refreshFor(1)
         advanceUntilIdle()
-        assertEquals(listOf(MaxWalk.TWENTY), planner.maxWalks)
+        assertEquals(listOf(MaxWalk.FIFTEEN), planner.maxWalks)
         // The same limit again changes nothing.
-        trip.maxWalk = MaxWalk.TWENTY
+        trip.maxWalk = MaxWalk.FIFTEEN
         advanceUntilIdle()
         assertEquals(1, planner.calls)
         trip.maxWalk = MaxWalk.SIXTY
         advanceUntilIdle()
-        assertEquals(listOf(MaxWalk.TWENTY, MaxWalk.SIXTY), planner.maxWalks)
+        assertEquals(listOf(MaxWalk.FIFTEEN, MaxWalk.SIXTY), planner.maxWalks)
         // At the rider's pace throughout.
         assertEquals(listOf(WalkingSpeed.AVERAGE, WalkingSpeed.AVERAGE), planner.speeds)
         // Each limit's plan is kept apart: a trip reopened under another isn't shown the other's.
         val destinations = listOf(TripDestination.Stop("C"))
-        assertNotNull(plans.get("A", destinations, maxWalk = MaxWalk.TWENTY))
+        assertNotNull(plans.get("A", destinations, maxWalk = MaxWalk.FIFTEEN))
         assertNotNull(plans.get("A", destinations, maxWalk = MaxWalk.SIXTY))
         assertNull(plans.get("A", destinations, maxWalk = MaxWalk.DEFAULT))
         // Back to a limit a plan was kept for: shown at once, without planning again.
-        trip.maxWalk = MaxWalk.TWENTY
+        trip.maxWalk = MaxWalk.FIFTEEN
         assertEquals(listOf(route), trip.state.value.routes)
         advanceUntilIdle()
         assertEquals(2, planner.calls)

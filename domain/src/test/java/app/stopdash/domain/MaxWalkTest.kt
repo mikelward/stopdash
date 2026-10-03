@@ -5,10 +5,10 @@ import org.junit.Test
 
 class MaxWalkTest {
     @Test
-    fun `reads back what was stored, and 30 minutes otherwise`() {
+    fun `reads back what was stored, and 20 minutes otherwise`() {
         MaxWalk.entries.forEach { assertEquals(it, MaxWalk.fromStored(it.name)) }
-        assertEquals(MaxWalk.THIRTY, MaxWalk.fromStored(null))
-        assertEquals(MaxWalk.THIRTY, MaxWalk.fromStored("NINETY"))
+        assertEquals(MaxWalk.TWENTY, MaxWalk.fromStored(null))
+        assertEquals(MaxWalk.TWENTY, MaxWalk.fromStored("NINETY"))
     }
 
     @Test

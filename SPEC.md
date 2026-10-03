@@ -1403,7 +1403,7 @@ Planner and arrivals requests go through the same rate limiter as every TfL requ
 
 **Walking** is capped per walk at the rider's **max walk** (the Planner's `maxWalkingMinutes`), the
 walk from where the rider is included, so it never offers a longer walk than they chose beside the
-rides: 10, 15, 20, 30, 45 or 60 minutes, **30 by default** (maintainer, 2026-09-30). It was a fixed
+rides: 10, 15, 20, 30, 45 or 60 minutes, **20 by default** (maintainer, 2026-10-03; 30 from 2026-09-30). It was a fixed
 15, timed like every walk at the rider's pace, so a walk to a station that beat every ride (21 minutes
 at the average pace) was never offered (maintainer's report, 2026-09-30). It is one setting, chosen in Settings (under the walking speed) or from a dropdown under the walking
 speed atop a trip's routes (maintainer, 2026-09-30), and a change plans the trip again at once, as a

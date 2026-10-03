@@ -1119,7 +1119,7 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             unchanged: the Planner ignores the speed unless the request names its modes, which it now
             does (walking among them).
       - [x] **Configurable walking limit** (maintainer, 2026-09-30): the Planner's `maxWalkingMinutes`,
-            *Max walk* in Settings and as a dropdown under the walking speed atop a trip (10–60 min, default 30; it was
+            *Max walk* in Settings and as a dropdown under the walking speed atop a trip (10–60 min, default 20 since 2026-10-03, 30 before; it was
             a fixed 15). Each plan also asks the Planner for the fewest changes beside the quickest,
             merged, since its three quickest routes are often one route at three departures.
       - [x] **Mode toggles** at the top of a trip, remembered across trips (the Planner's `mode=`):
