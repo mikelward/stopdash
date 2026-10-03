@@ -432,6 +432,47 @@ class AlertStopsTest {
     }
 
     @Test
+    fun `where rerouted trains will go is not where the disruption is`() {
+        // TfL's rerouting prose names where trains now run to; only the cause is a place it touches.
+        // A stand-in alert in the shape of a real one, on stock station names.
+        val alert = "Minor delays due to an earlier points failure at King's Cross. All southbound trains will go to " +
+            "Brixton / Stockwell and all northbound trains will travel to Walthamstow Central. If you're travelling " +
+            "beyond King's Cross, please take the first train and change there."
+        assertEquals(
+            setOf("King's Cross"),
+            mentioned(alert, "Walthamstow Central", "King's Cross", "Euston", "Stockwell", "Brixton"),
+        )
+        // Where trains terminate is still marked: a ride is cut short there.
+        assertEquals(setOf("Stockwell"), mentioned("Southbound trains will terminate at Stockwell.", "Stockwell", "Brixton"))
+        // Where trains won't go, or riders are told not to, is where the alert applies.
+        assertEquals(setOf("Victoria"), mentioned("Trains will not travel to Victoria.", "Victoria", "Brixton"))
+        assertEquals(setOf("Victoria"), mentioned("Do not travel to Victoria today.", "Victoria", "Brixton"))
+        assertEquals(setOf("Victoria", "Brixton"), mentioned("Trains won't go to Victoria or Brixton.", "Victoria", "Brixton"))
+        assertEquals(setOf("Victoria"), mentioned("No trains will go to Victoria.", "Victoria", "Brixton"))
+        // A negation in an earlier phrase is that phrase's own.
+        assertEquals(
+            setOf("Euston"),
+            mentioned("Trains will not stop at Euston but will go to Victoria.", "Euston", "Victoria"),
+        )
+        // A negated subject with its own "and" stays negated.
+        assertEquals(
+            setOf("Euston", "Warren Street", "Victoria"),
+            mentioned("No trains between Euston and Warren Street will go to Victoria.", "Euston", "Warren Street", "Victoria"),
+        )
+        // A rider's journey says nothing of where services run.
+        assertEquals(
+            setOf("Victoria"),
+            mentioned("Customers travelling to Victoria should change at Green Park.", "Victoria", "Brixton"),
+        )
+        assertEquals(setOf("Victoria"), mentioned("If you're going to Victoria, allow extra time.", "Victoria", "Brixton"))
+        // And a name past the list, after a verb, is a place again.
+        assertEquals(
+            setOf("Euston"),
+            mentioned("Trains will go to Brixton and are not stopping at Euston.", "Euston", "Brixton"),
+        )
+    }
+
+    @Test
     fun `a name after a towards list's sentence ends still counts`() {
         assertEquals(
             setOf("London Bridge"),

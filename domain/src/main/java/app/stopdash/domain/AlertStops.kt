@@ -325,19 +325,48 @@ object AlertStops {
     }
 
     // Whether the name at [at] is one of the destinations in a "towards Lewisham and London Bridge"
-    // list: that says which way the affected buses run, not where the disruption is. The list is the
-    // run after the nearest "towards" in the same sentence made only of capitalized words, commas,
-    // "and" and "or" — anything else (a verb, "will miss stops") means the name is past the list.
-    // Read on the capped text, so a station's own lowercase word ("Prince of Wales Road") doesn't
-    // end the list early.
+    // list, or a "trains will go to High Barnet / Mill Hill East" one: that says where the affected
+    // services run to, not where the disruption is. A rider whose train still goes there reads the
+    // marker as their stop being hit, when it's the one stop the alert says is fine. The list is the
+    // run after the nearest [DESTINATIONS] word in the same sentence made only of capitalized words,
+    // commas, slashes, "and" and "or" — anything else (a verb, "will miss stops") means the name is
+    // past the list. Read on the capped text, so a station's own lowercase word ("Prince of Wales
+    // Road") doesn't end the list early. Where trains terminate isn't one: that's where a ride is cut
+    // short, so it stays marked.
     private fun inTowardsList(haystack: String, at: Int): Boolean {
         val sentence = haystack.lastIndexOfAny(CLAUSE_ENDS, at - 1) + 1
-        val towards = haystack.lastIndexOf("towards ", at, ignoreCase = true)
-        if (towards < sentence) return false
-        val between = haystack.substring(towards + "towards ".length, at)
+        val lead = DESTINATIONS.findAll(haystack, sentence).lastOrNull { it.range.last < at } ?: return false
+        // Only where services do go: "will not travel to Victoria", "Do not go to Victoria" name a
+        // station the alert is about. A "towards" list says which way buses run whatever the clause.
+        if (!lead.value.startsWith("towards", ignoreCase = true) && negatedBefore(haystack, sentence, lead.range.first)) return false
+        val between = haystack.substring(lead.range.last + 1, at)
         return between.split(' ', ',').filter(String::isNotEmpty)
-            .all { it == "and" || it == "or" || it.first().isUpperCase() }
+            .all { it == "and" || it == "or" || it == "/" || it.first().isUpperCase() }
     }
+
+    // Whether the phrase leading up to [at] is negated ("No trains will go to …"): from the last "but"
+    // since [from], so a negation in a contrasted predicate ("Trains will not stop at Euston but will
+    // go to Victoria") doesn't carry over to this one. Only "but": an "and" or a comma may sit inside a
+    // negated subject ("No trains between Euston and Warren Street will go to …"), and a negation
+    // kept too long only leaves a station marked, the safe side.
+    private fun negatedBefore(haystack: String, from: Int, at: Int): Boolean {
+        val before = haystack.substring(from, at)
+        val phrase = PHRASE_BREAK.findAll(before).lastOrNull()?.let { before.substring(it.range.last + 1) } ?: before
+        return NEGATED.containsMatchIn(phrase)
+    }
+
+    private val PHRASE_BREAK = Regex("""\bbut\b""", RegexOption.IGNORE_CASE)
+
+    // What leads a list of where services head: "towards", and TfL's rerouting prose, which says
+    // where services will now run with a future "will go to" / "will travel to" ("All northbound
+    // trains will go to …", "… will now travel to Edgware"), and only where nothing in its own phrase
+    // negates it ([negatedBefore]). Only that shape: a bare "going to" or "travelling to" is as often
+    // a rider's journey ("Customers travelling to Victoria should change"), which says nothing of
+    // where services run.
+    private val DESTINATIONS = Regex(
+        """\b(?:towards|will\s+(?:now\s+|instead\s+|only\s+)?(?:go|travel)\s+to)\s+""",
+        RegexOption.IGNORE_CASE,
+    )
 
     private val CLAUSE_ENDS = charArrayOf('.', '?', '!', ':', ';')
 
