@@ -3002,6 +3002,15 @@ they aren't re-derived; none is scheduled, and each needs the maintainer's go-ah
 
 ## Decisions needing review
 
+- [ ] **A rerouting's destinations aren't marked on a line's page (autopilot, 2026-10-03).** A
+  Northern line alert after a points failure said northbound trains "will go to" two branch ends,
+  and a route page whose stop list began past the failure marked only the destination, the one stop
+  the alert said was fine. Taken: names in a "will go to" / "will travel to" list (joined by "and",
+  "or" or "/") are treated like a "towards" list, so the chip names the cause instead. Where trains
+  "terminate" stays marked. *Alternatives:* keep marking every station named (the generous rule's
+  default); also leave out where trains terminate; read the rerouting to say whether this train is
+  affected, judged too open-ended. **Reversible:** `AlertStops.DESTINATIONS` and its test. **To
+  confirm:** on a device, the next rerouting alert's page.
 - [ ] **Which routes get a Fastest / Simplest header (autopilot, 2026-09-30).** Taken: Fastest over
   the first card, which the list already ranks as the soonest arrival StopDash stands behind, and
   none on a lone card or one whose arrival is withheld; Simplest over the card with the fewest

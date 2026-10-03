@@ -1960,7 +1960,12 @@ stop list's ⚠s give the detail (maintainer, 2026-09-26; runs 2026-10-01) — a
 affects, since TfL gives that only as prose. A station matches without the place TfL qualifies it
 with ("Stratford" for "Stratford (London)") but not inside a longer station name on the same page, and a
 bus stop matches on its own name, not its cross
-street, and destinations in a "towards …" list (joined by "and" or "or") are not taken as the affected stops. An alert
+street, and destinations in a "towards …" list, or in a rerouting's "trains will go to …" / "will travel to …" list
+(joined by "and", "or" or "/"), are not taken as the affected stops: they're where services still run to, so a marker
+there reads as the one stop the alert says is fine being hit (maintainer, 2026-10-03). Only where services do go:
+"trains will not travel to …" or "do not go to …" names a station the alert is about, and a rider's journey ("customers
+travelling to …") says nothing of where services run, so both stay marked, as does
+where trains **terminate**, since a ride is cut short there. An alert
 written all in capitals carries no case to tell names from words, so it marks every station it
 names, destinations included — judged a clause at a time, so an all-caps clause stays generous even
 when the alert goes on in ordinary case (maintainer, 2026-09-26): a marker too many beats a missed stop. A page with no
