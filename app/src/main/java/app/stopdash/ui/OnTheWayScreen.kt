@@ -36,6 +36,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,6 +58,7 @@ import app.stopdash.R
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Countdown
 import app.stopdash.domain.Departure
+import app.stopdash.domain.LineSequence
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RouteDisruption
@@ -67,6 +72,7 @@ import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripProgress
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.withContext
 
 /**
  * A trip on the way (SPEC *On the way*): the next step over the route, leg by leg, the leg the rider
@@ -178,7 +184,10 @@ internal fun OnTheWayScreen(
         ) {
             // Time left and when they get there (maintainer, 2026-10-01). Not from an answer too old to
             // stand behind ([current]): it waits, as the step's own times do.
-            val eta = trip?.let { OnTheWay.eta(it, progress, now) }
+            // The board's next train only for the ride the rider is still to board: another ride's board
+            // times nothing here.
+            val nextDue = nextTrains?.takeIf { it.ride == (progress as? TripProgress.Waiting)?.leg ?: (progress as? TripProgress.Lost)?.leg }?.nextDue
+            val eta = trip?.let { OnTheWay.eta(it, progress, now, nextDue) }
             val stale = !current && fromTfl(progress)
             // The card leads with the whole trip, then the step at hand (maintainer, 2026-10-03). The next
             // ride's trains sit right under it, the board the rider is heading for, before the route, and
@@ -304,6 +313,9 @@ data class NextTrains(
     // under its own header: another of the ride's lines boards there, across the road. None for a
     // station, or with no other pole read.
     val others: List<PoleTrains> = emptyList(),
+    // When the soonest train the rider can catch is due, of every pole's ([OnTheWay.nextDue]): what the
+    // trip's time falls back on once the train followed has gone by. Null with none, or a board too old.
+    val nextDue: Instant? = null,
 ) {
     /** Whether no pole has a train listed: the board's own ([trains]) nor any of [others]. */
     val none: Boolean get() = trains.isEmpty() && others.all { it.trains.isEmpty() }
@@ -337,7 +349,8 @@ internal fun rememberNextTrains(
     ride: TripLeg? = board?.ride,
 ): NextTrains? {
     val lineIds = board?.let { OnTheWay.boardLineIds(it.ride, it.boards.values.flatten()) }.orEmpty()
-    val sequences = rememberLineSequences(lineIds, now)
+    val loads = rememberLineLoads(lineIds, now)
+    val sequences = loads.sequences
     // No board of this ride's yet (just started, or back after a restart): its section, loading.
     if (board == null || board.ride != ride) return ride?.let { NextTrains(it, emptyList(), pending = true, readyAt = readyAt) }
     // Never read: nothing to show but that the update failed.
@@ -355,6 +368,7 @@ internal fun rememberNextTrains(
     val routes = LocalRouteStops.current
     LaunchedEffect(routes, misses) { routes?.reportMisses(misses) }
     val stale = Staleness.isStale(fetchedAt, now)
+    val nextDue = rememberNextDue(board, sequences, loads.version, readyAt, now).takeIf { !stale }
     return NextTrains(
         board.ride, found.trains,
         pending = found.pending || others.any { it.second.pending },
@@ -367,7 +381,60 @@ internal fun rememberNextTrains(
         others = others.map { (other, trains) ->
             PoleTrains(other.pole.id, other.pole.name.ifBlank { board.ride.fromName }, trains.trains, other.pole.stopLetter, other.pole.towards, other.pole.bearing)
         },
+        nextDue = nextDue,
     )
+}
+
+/**
+ * When the soonest train [board] lists that takes the rider where they get off and that they can
+ * catch is due ([OnTheWay.nextDue]): every pole's, its trains kept as [rememberNextTrains] keeps them,
+ * from [sequences]. Worked out on the page's worker ([LocalWorker]), never the main thread, keyed by
+ * the board itself rather than its trains, so composition compares no departures (AGENTS.md *Main
+ * thread: read and dispatch only*; Codex, PR #520). An answer is only ever this board's: null while
+ * a new board's is worked out, never the last board's train (Codex, PR #520). It holds until its
+ * train is due, since no sooner one can turn up on the same board, and is worked out again then.
+ */
+@Composable
+internal fun rememberNextDue(
+    board: ActiveTripTracker.NextBoard,
+    sequences: Map<String, LineSequence?>,
+    // The routes' [LineLoads.version]: a route loaded, or replaced in place by a retry, works it out again.
+    routesVersion: Int,
+    readyAt: Instant?,
+    now: Instant,
+): Instant? {
+    val worker = LocalWorker.current
+    val key = DueKey(board, readyAt, routesVersion)
+    val routes by rememberUpdatedState(sequences)
+    var held by remember { mutableStateOf<HeldDue?>(null) }
+    val mine = held?.takeIf { it.key == key }
+    val expired = mine?.due?.let { now.isAfter(it) } == true
+    LaunchedEffect(key, expired, worker) {
+        if (mine != null && !expired) return@LaunchedEffect
+        val at = now
+        held = HeldDue(key, withContext(worker) { nextDueOf(board, routes, readyAt, at) })
+    }
+    return mine?.due?.takeIf { !now.isAfter(it) }
+}
+
+// What a fallback train is worked out from: the board by identity (a new one each read), so the key
+// compares no departures.
+private class DueKey(val board: ActiveTripTracker.NextBoard, val readyAt: Instant?, val routes: Int) {
+    override fun equals(other: Any?): Boolean = other is DueKey && other.board === board && other.readyAt == readyAt && other.routes == routes
+    override fun hashCode(): Int = (System.identityHashCode(board) * 31 + (readyAt?.hashCode() ?: 0)) * 31 + routes
+}
+
+private class HeldDue(val key: DueKey, val due: Instant?)
+
+/** [rememberNextDue]'s work, off the main thread: [board]'s poles' trains as the board keeps them. */
+internal fun nextDueOf(board: ActiveTripTracker.NextBoard, sequences: Map<String, LineSequence?>, readyAt: Instant?, now: Instant): Instant? {
+    val fetchedAt = board.fetchedAt ?: return null
+    val trains = OnTheWay.boardTrains(board.ride, board.departures, fetchedAt, sequences, now).trains +
+        board.others.flatMap { other ->
+            val ride = board.ride.copy(fromId = other.pole.id, fromName = other.pole.name.ifBlank { board.ride.fromName })
+            OnTheWay.boardTrains(ride, other.departures, fetchedAt, sequences, now).trains
+        }
+    return OnTheWay.nextDue(trains, readyAt, now)
 }
 
 /**
