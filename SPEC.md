@@ -2305,11 +2305,17 @@ been set, so none keeps showing what it judged before.
   keeps its last rows for that moment, including on a return from a page over it. A list with no
   rows of its own yet (shown for the first time, or for other places) shows a spinner until they
   are in, never an empty list that would read as "No departures".
-- **Cold load** (nothing saved to show yet): the app waits up to **2 s** for the whole batch
-  (maintainer, 2026-09-26), showing its loading stamp meanwhile, so a typical load (well under a
-  second to two) paints once, whole, with nothing to jump or tap. Past that, it shows each stop as
-  soon as its departures and closure check are back, rather than a spinner until the slowest stop
-  answers (one slow National Rail board shouldn't hold up the tube). A stop still out shows as a collapsed card —
+- **Cold load** (nothing saved to show yet): the app waits up to **2 s** for every stop's
+  departures (maintainer, 2026-09-26), showing its loading stamp meanwhile, so a typical load (well
+  under a second to two) paints once, whole, with nothing to jump or tap. It doesn't wait on stop
+  closure checks, which can take another second or more at a big station (maintainer,
+  2026-10-03): the requests go out in a fixed order, every stop's departures first and each stop's
+  closure check only once its own departures request has settled (a junction's poles, once all of
+  theirs have), and a stop whose closure check is still out shows its departures with a small
+  spinner in its heading where the "Closed" chip would be. Its route page says it's checking for
+  disruptions, never "No disruptions reported", until the check is back. Past the 2 s, it shows each
+  stop as soon as its departures are back, rather than a spinner until the slowest stop answers
+  (one slow National Rail board shouldn't hold up the tube). A stop still out shows as a collapsed card —
   its name, distance and lines, with "Loading" where the times go — in the place it will land:
   by distance on a near-me or station list (below any starred ones), at the foot of the watched
   list, whose soonest-first order can't be known until it's in. The list never jumps under the
@@ -2623,11 +2629,13 @@ surface.)
   stamped last-good data and an offline/rate-limited notice (never a blank or an
   unlabeled stale number). Added latency lives off every render path (snapshot-render,
   above).
-- **A refresh fans out in parallel, capped.** Each stop's requests go out together rather
+- **A refresh fans out in parallel, capped.** Every stop's departures go out together rather
   than one after another, through one small pool shared by the app and the widget, so a
-  refresh costs a couple of round trips instead of one per request. Arrivals are started
-  before closure checks, so departures tend to come back first — a best effort, not a
-  promise; nothing depends on the order. The pool caps requests *at once*;
+  refresh costs a couple of round trips instead of one per request. A stop's closure check
+  follows its own departures, never ahead of them (a junction's shared pole check, all of its
+  poles'), so departures never queue behind a closure check and a cold load can show them while
+  it's still out (*Freshness → Cold load*; maintainer, 2026-10-03). Other screens' requests share
+  the pool first come, first served. The pool caps requests *at once*;
   the rate budget above still caps requests *per minute*, so a keyless fan-out larger than
   the burst is paced rather than fired at once.
 - **A refresh spends the budget only where it's needed.** A stop whose departures came back

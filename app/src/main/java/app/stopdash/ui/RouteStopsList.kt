@@ -71,6 +71,17 @@ import kotlinx.coroutines.withContext
 internal val LocalWorker = staticCompositionLocalOf<CoroutineDispatcher> { Workers.compute }
 
 /**
+ * A key for work handed to [LocalWorker] (`produceState`, `LaunchedEffect`) that's equal only to the
+ * very same [value], so composition checks it in constant time rather than comparing a collection's
+ * contents. A new copy of equal contents just runs the work again, off the main thread.
+ */
+internal class ByIdentity(val value: Any?) {
+    override fun equals(other: Any?): Boolean = other is ByIdentity && other.value === value
+
+    override fun hashCode(): Int = System.identityHashCode(value)
+}
+
+/**
  * How long "Loading" waits before it shows, so a stop list worked out in a few frames appears
  * without a flash of "Loading" first. Its line is held meanwhile, so nothing moves when it shows.
  */

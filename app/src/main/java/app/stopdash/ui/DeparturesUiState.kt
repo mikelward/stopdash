@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.StopArrivals
 import java.time.Instant
@@ -90,9 +91,17 @@ sealed interface DeparturesUiState {
         // and the rest of the load won't ask again, so the banner says it couldn't check rather
         // than the stamp saying it's still checking.
         val checkFailed: Boolean = false,
+        // A cold load's stops shown with their departures while their own closure check is still out:
+        // each heading shows a spinner where a closure notice would be, until it's back. Never
+        // persisted, like [pendingStops].
+        val closurePending: Set<String> = emptySet(),
         // The stops of an opened farther card whose own cold load is still out, landed or not: its
         // card keeps saying "Loading" until they all settle, rather than a dash for one back empty.
         val openedLoadingStopIds: Set<String> = emptySet(),
+        // With [statusPending]: the shown lines whose status check is still out, so a row on one reads
+        // "checking" while a row whose check is already back undetermined reads "couldn't check".
+        // Worked out with the state, so the screen only looks rows up in it.
+        val pendingLineIds: Set<String> = emptySet(),
     ) : DeparturesUiState {
         /**
          * The one reason the banner gives: the one every named stop failed with, else null — a stop
@@ -103,11 +112,22 @@ sealed interface DeparturesUiState {
             get() = partialStops.values.mapTo(HashSet()) { it.reason }.singleOrNull()
 
         /**
-         * Some of what's shown is still to be checked for disruptions, and nothing checked so far
-         * failed: the stamp says "Checking…" rather than a banner (SPEC *Freshness → Cold load*).
+         * Some of what's shown is still to be checked for disruptions — a line's status, or a stop's
+         * own closure check ([closurePending]) — and nothing checked so far failed: the stamp says
+         * "Checking…" rather than a banner (SPEC *Freshness → Cold load*). It says so for a closure
+         * check too, since a list of one place may show no heading for its spinner.
          */
         val checkingDisruptions: Boolean
-            get() = statusPending && disruptionUnknown && !checkFailed
+            get() = statusPending && (disruptionUnknown || closurePending.isNotEmpty()) && !checkFailed
+
+        /**
+         * Whether [row]'s own disruption check is still out: its stop's closure check, or its line's
+         * status on a cold load with neither back failed. Per row, so another stop's failed check
+         * doesn't make this one read "couldn't check" before its own is back.
+         */
+        fun checkingDisruptionsFor(row: DepartureRow): Boolean =
+            row.stopId in closurePending ||
+                (statusPending && row.lineId in pendingLineIds && row.stopId !in stopsDisruptionUnknown)
     }
 
     /** A stop that couldn't be refreshed: its [name], and [reason] if known. */

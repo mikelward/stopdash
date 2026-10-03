@@ -225,7 +225,7 @@ import app.stopdash.ui.rememberLastPull
 import app.stopdash.ui.rememberListStateFor
 import app.stopdash.ui.rememberPendingTracker
 import app.stopdash.ui.theme.StopDashTheme
-import app.stopdash.ui.withOpenedFarther
+import app.stopdash.ui.rememberWithOpenedFarther
 import app.stopdash.widget.LiveWidgetRefreshResult
 import app.stopdash.widget.StopDashWidget
 import app.stopdash.widget.WidgetSnapshotStore
@@ -1950,7 +1950,12 @@ class MainActivity : ComponentActivity() {
                     open.distanceMeters.keys to model.state.collectAsStateWithLifecycle().value
                 }
             }
-            val shownState = (state as? DeparturesUiState.Loaded)?.let { withOpenedFarther(it, openedStates) } ?: state
+            val shownState = rememberWithOpenedFarther(
+                state,
+                openedStates,
+                cached = fartherModels.lastMerged,
+                onMerged = { fartherModels.lastMerged = it },
+            )
             // These background refreshes are composed only while the departures view is shown:
             // the licenses screen is hosted above this subtree (see onCreate), so opening it
             // removes DeparturesForStops from composition and stops the polling (Codex).

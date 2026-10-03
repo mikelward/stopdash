@@ -763,8 +763,9 @@ fun MainScreen(
     val quietInputs = remember(quietFrom, quietTick, stopDistanceMeters, hiddenModes, dismissed) {
         val ld = quietFrom
         // Not while nearby stops are still loading: one of them may have trains for a line that
-        // would otherwise read "?" at a stop already in.
-        if (ld == null || stopDistanceMeters.isEmpty() || ld.pendingStops.isNotEmpty()) null else QuietInputs(ld.stops, ld.lineStatuses, ld.determinedLineIds, quietTick, stopDistanceMeters, hiddenModes, dismissed, ld.stopsDisruptionUnknown)
+        // would otherwise read "?" at a stop already in. Nor while a stop's closure check is out: a
+        // closed station's timetable trains aren't due, so "?" waits until it's known.
+        if (ld == null || stopDistanceMeters.isEmpty() || ld.pendingStops.isNotEmpty() || ld.closurePending.isNotEmpty()) null else QuietInputs(ld.stops, ld.lineStatuses, ld.determinedLineIds, quietTick, stopDistanceMeters, hiddenModes, dismissed, ld.stopsDisruptionUnknown)
     }
     val nearbyRows = withQuietRows(nearbyMarked, quietInputs)
     // The journey cards ([judgeCards]), then the rows drawn and the dismissed closures that keep a
@@ -1095,6 +1096,10 @@ fun MainScreen(
             disruptionUnknown = detailRow.lineId.isBlank() ||
                 detailRow.lineId !in detailLoaded.determinedLineIds ||
                 detailRow.stopId in detailLoaded.stopsDisruptionUnknown,
+            // A check for this row still out on a cold load — its stop's closure check, or its line's
+            // status with nothing failed yet: "checking", neither "couldn't check" nor a clean
+            // "no disruptions" until it's back.
+            disruptionChecking = detailLoaded.checkingDisruptionsFor(detailRow),
             // This row's own age (the same per-row rule the card uses to withhold countdowns): a
             // stale snapshot's disruption status isn't presented as current (SPEC D4).
             stale = Staleness.isStale(detailRow.fetchedAt, detailNow),
@@ -1720,6 +1725,7 @@ private fun LoadedContent(
                     pendingTracker = pendingTracker,
                     fetchedStopIds = state.stops.mapTo(HashSet()) { it.stopId } - state.openedLoadingStopIds,
                     unavailableStopIds = state.unavailableStopIds,
+                    closurePending = state.closurePending,
                     listState = listState,
                     onOpenSettings = onOpenSettings,
                     onHideMode = onHideMode,
@@ -1895,6 +1901,8 @@ private fun DepartureList(
     fetchedStopIds: Set<String> = emptySet(),
     // The stops whose fetch failed, so an opened card whose stops all failed can offer a retry.
     unavailableStopIds: Set<String> = emptySet(),
+    // The stops shown whose own closure check is still out: their headings show a spinner.
+    closurePending: Set<String> = emptySet(),
     onDismissAlert: (DepartureRow) -> Unit = {},
     // The near-me closure notices the user dismissed ([ClosedNotice] wording only): a closed place
     // with nothing else to show keeps its heading and "Closed" chip without the notice.
@@ -1961,6 +1969,19 @@ private fun DepartureList(
     // carrying a line-status alert; the watched list keeps warnings leading (D1, SPEC *Disruptions*).
     val groups = remember(rows, stopDistanceMeters) {
         StopGrouping.groupByStop(rows, warningsLead = stopDistanceMeters.isEmpty())
+    }
+    // The groups with a stop whose closure check is still out, by key, worked out off the main
+    // thread ([LocalWorker]) so each heading only looks itself up. None to find when none is out.
+    val closureWorker = LocalWorker.current
+    // Keyed by identity: comparing the groups or pending set by content would walk them here.
+    val checkingGroups by produceState(emptySet<String>(), ByIdentity(groups), ByIdentity(closurePending), closureWorker) {
+        value = if (closurePending.isEmpty()) {
+            emptySet()
+        } else {
+            withContext(closureWorker) {
+                groups.filter { group -> group.rows.any { it.stopId in closurePending } }.mapTo(HashSet()) { it.key }
+            }
+        }
     }
     // One place-wide header distance per cluster: the nearest of ALL the place's members, shared by
     // every direction group of that place — so a station split into direction headers shows one
@@ -2250,6 +2271,7 @@ private fun DepartureList(
                         hideModes = if (onHideMode != null) headerModes(group, modesByPlace) else emptyList(),
                         onHideMode = onHideMode,
                         closed = group.key in closedPoles,
+                        checkingClosure = group.key in checkingGroups,
                     )
                 }
             }
@@ -3042,6 +3064,9 @@ internal fun StopGroupHeader(
     // A notice in force says this place is closed ([ClosedNotice]): a "Closed" chip after the name,
     // so a closure stands out where it sits in the list (SPEC *Disruptions*).
     closed: Boolean = false,
+    // This place's closure check is still out: a small spinner where the "Closed" chip would be,
+    // until it's back (SPEC *Freshness → Cold load*).
+    checkingClosure: Boolean = false,
 ) {
     val style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
     val closedLabel = stringResource(R.string.farther_closed)
@@ -3051,12 +3076,14 @@ internal fun StopGroupHeader(
     val label = remember(qualifier) { groupHeaderLabel(qualifier) }
     // The full spoken label: the place name, the spoken qualifier (direction/towards kept), then the
     // distance — read as one, so a screen reader hears the whole header rather than three fragments.
-    val spoken = remember(name, spokenName, qualifier, distanceLabel, closed, closedLabel) {
+    val checkingLabel = stringResource(R.string.closure_checking)
+    val spoken = remember(name, spokenName, qualifier, distanceLabel, closed, closedLabel, checkingClosure, checkingLabel) {
         buildString {
             append(spokenName ?: name)
             groupHeaderSpoken(qualifier)?.let { append(", ").append(it) }
             distanceLabel?.let { append(", ").append(it) }
             if (closed) append(", ").append(closedLabel)
+            else if (checkingClosure) append(", ").append(checkingLabel)
         }
     }
     val hideable = onHideMode != null && hideModes.isNotEmpty()
@@ -3163,6 +3190,13 @@ internal fun StopGroupHeader(
                     modifier = Modifier.padding(horizontal = 4.dp),
                 )
             }
+        } else if (checkingClosure) {
+            // Small enough to sit in the heading's line without growing it.
+            CircularProgressIndicator(
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 8.dp).size(12.dp),
+            )
         }
     }
     if (hideable) {
@@ -4233,6 +4267,10 @@ internal fun RouteDetailScreen(
     // disruptions" (SPEC principle 1). The caller decides this per row, so one unknown line or stop
     // doesn't taint a checked-clean row.
     disruptionUnknown: Boolean,
+    // True while a check for this row is still out on a cold load (its stop's closure check, or its
+    // line's status): the page says it's checking, ahead of [disruptionUnknown], rather than claim
+    // "no disruptions", or a failure, before the check is back (SPEC principle 1).
+    disruptionChecking: Boolean = false,
     // True when this row's snapshot has crossed the staleness threshold: the status is from an old
     // fetch, so the page — which carries no freshness stamp of its own, unlike the list — caveats it
     // and never claims "no disruptions" from stale data (SPEC D4).
@@ -4579,7 +4617,14 @@ internal fun RouteDetailScreen(
                     modifier = Modifier.padding(top = 12.dp),
                 )
             }
-            if (disruptionUnknown) {
+            if (disruptionChecking) {
+                Text(
+                    text = stringResource(R.string.disruptions_checking),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+            } else if (disruptionUnknown) {
                 Text(
                     text = stringResource(R.string.disruptions_unknown),
                     style = MaterialTheme.typography.bodyMedium,

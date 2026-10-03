@@ -2547,6 +2547,14 @@ Builds on Phase 1's minimal line-status marking.
           users. The recommended shape if the license allows public use.
   - [ ] **Route pages and journeys for National Rail**: the stop list and journey matching use
         TfL's route data, which National Rail services may lack.
+  - [ ] **One priority order for every TfL request** (maintainer, 2026-10-03): the near-me list now
+        sends each stop's closure check only after its departures, but other screens (trips, farther
+        cards, the widget) still share the client's request pool first come, first served. Swap the
+        pool's plain permits for a priority queue, each call tagged with a class: departures, then
+        line status, then closures, then hubs and routes.
+  - [ ] **A closure found mid-load moves the list**: its notice card appears under the heading and
+        pushes that place's departures down. Show it behind "Tap to see" when the place is on screen,
+        as a late stop's card is (*Freshness → Cold load*).
 
 ## Phase 4 — Widget
 
