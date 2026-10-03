@@ -499,7 +499,9 @@ class OnTheWayScreenScreenshotTest {
         show(trip.copy(boarded = true, onBoardSeen = true), TripProgress.Riding(mildmay, "Hackney Central", 4, at(16), getOffSoon = false))
         onCard("Ride to Stratford").assertIsDisplayed()
         // The time left on the ride, as its stop is predicted (maintainer, 2026-09-29).
-        composeRule.onNodeWithText("08:18 · 16 min · 4 stops").assertIsDisplayed()
+        composeRule.onNodeWithText("08:18 · 16 min").assertIsDisplayed()
+        // The stops and the next stop on a row of their own, the minutes not said twice (maintainer, 2026-10-03).
+        onCard("4 stops · next Hackney Central").assertIsDisplayed()
         captureSnapshot("on-the-way-riding.png")
     }
 
@@ -526,7 +528,8 @@ class OnTheWayScreenScreenshotTest {
         // The card says the moment; the ride's own row still names the ride (maintainer, 2026-10-01).
         onCard("Get off at Stratford").assertIsDisplayed()
         composeRule.onNodeWithText("Highbury & Islington → Stratford").assertIsDisplayed()
-        composeRule.onNodeWithText("08:03 · 1 min · 1 stop").assertIsDisplayed()
+        composeRule.onNodeWithText("08:03 · 1 min").assertIsDisplayed()
+        onCard("Next stop").assertIsDisplayed()
         captureSnapshot("on-the-way-get-off.png")
     }
 
@@ -535,7 +538,8 @@ class OnTheWayScreenScreenshotTest {
         // Underground, the rider may never be seen on board: told to get off, the time still shows.
         show(trip.copy(boarded = true), TripProgress.Riding(mildmay, "Stratford", 1, at(1), getOffSoon = true, seen = false))
         onCard("Get off at Stratford").assertIsDisplayed()
-        composeRule.onNodeWithText("08:03 · 1 min · 1 stop").assertIsDisplayed()
+        composeRule.onNodeWithText("08:03 · 1 min").assertIsDisplayed()
+        onCard("Next stop").assertIsDisplayed()
     }
 
     @Test
