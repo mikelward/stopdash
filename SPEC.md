@@ -721,10 +721,25 @@ direction-independent since no prediction supplies a direction. So a suspended l
 closed stop is surfaced, not silently dropped for want of a departure to build a row from
 (see *Disruptions*) — the quietly-wrong failure the whole model exists to avoid.
 Where its countdown would be, the status row says what is known (maintainer, 2026-09-24): a
-**dash** when the line's source answered with no trains (TfL for its own lines, the National Rail
-board for a National Rail line), **"No data"** when no source answered for it (a National Rail line
-whose board failed, or that no board covers), and **"No key"** for a National Rail line at a
+**dash** only when StopDash is sure no train is coming, **"?"** (heard as "Times unknown") when one
+might be but its source hasn't said when, **"No data"** when no source answered for it (a National
+Rail line whose board failed, or that no board covers), and **"No key"** for a National Rail line at a
 station a key would cover when none is set — a tap on it opens Settings.
+
+*Sure* means (maintainer, 2026-10-03): a National Rail board that answered with no trains, since it
+lists every train it runs; a TfL line whose status says it isn't running here (closed, suspended, or
+a part closure with this stop inside it); or a TfL line whose **timetable** has nothing leaving within
+**30 minutes**, about as far ahead as TfL's live list reaches. TfL's live list can come back empty
+while trains run — during a disruption it can lose track of a whole branch — and a dash there read
+as "no trains" when they were only unseen; at night the same empty list is honestly "none", and the
+timetable is what tells the two apart. **The timetable decides only which mark: its times are never
+shown in place of live ones**, since it knows nothing of the disruption that emptied the board
+(maintainer, 2026-10-03). It is fetched only for a line with no live times, kept for the service
+day, and while it isn't in (or failed) the mark is "?" — StopDash can't be sure. A place card whose
+stops came back with nothing (*Freshness → Cold load*, *Farther stations*) still shows a dash for
+now; giving it the same marks is planned. On a bank holiday, and from Christmas Eve to 3 January, the timetable gives no answer ("?"):
+TfL runs another day type's timetable on some ("Saturday (also Good Friday)"), and its weekday's
+could say "none" while trains run.
 
 The list shows the **watched stops'** rows (D1) — stopdash renders the stops the user
 chose ahead of time, not "nearest to me" — ordered **location-free** so the view works

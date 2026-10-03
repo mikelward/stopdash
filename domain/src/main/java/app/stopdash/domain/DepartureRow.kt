@@ -114,6 +114,10 @@ data class DepartureRow(
     // row's countdowns in their place, never timed (SPEC *National Rail*). Only the in-app list has
     // them ([StopArrivals.untimed]); empty everywhere else.
     val untimed: List<UntimedTrain> = emptyList(),
+    // For a status row, whether its line's status says it isn't running at this stop
+    // ([EmptyTimes.notRunningAt]), worked out where the row is built so a surface reads it rather
+    // than working it out: its empty board is then a sure dash. False otherwise.
+    val notRunningHere: Boolean = false,
 )
 
 /**

@@ -1,5 +1,7 @@
 package app.stopdash.ui
 
+import app.stopdash.domain.EmptyTimes
+import kotlinx.coroutines.flow.MutableStateFlow
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
@@ -2050,6 +2052,79 @@ class MainScreenScreenshotTest {
         }
         composeRule.onNodeWithContentDescription("No departures").assertExists()
         composeRule.onNodeWithText("Loading").assertDoesNotExist()
+    }
+
+    /** King's Cross with the Victoria line delayed and no live times for it: its status row's mark. */
+    private fun delayedVictoria(marks: Map<String, EmptyTimes.Marked>, asked: MutableList<Pair<String, EmptyTimes.Board>>? = null) {
+        val station = StopArrivals(
+            "940GZZLUKSX",
+            "King's Cross St. Pancras",
+            emptyList(),
+            fetchedAt = now.minusSeconds(60),
+            lines = listOf(LineRef("victoria", "Victoria", "tube")),
+        )
+        val delays = mapOf("victoria" to LineStatus("victoria", severity = 9, description = "Minor Delays"))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalEmptyTimes provides EmptyTimesState(MutableStateFlow(marks), now) { id, board -> asked?.add(id to board()) }) {
+                        MainScreen(DeparturesUiState.Loaded(listOf(station), now.minusSeconds(60), lineStatuses = delays), now, {})
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `a delayed line's empty row asks for its mark, and reads unknown until it's in`() {
+        val asked = mutableListOf<Pair<String, EmptyTimes.Board>>()
+        delayedVictoria(emptyMap(), asked)
+        composeRule.onNodeWithContentDescription("Times unknown").assertExists()
+        composeRule.runOnIdle {
+            assertEquals(
+                listOf("line:940GZZLUKSX|victoria" to EmptyTimes.Board(listOf(EmptyTimes.Key("940GZZLUKSX", "victoria")))),
+                asked.distinct(),
+            )
+        }
+    }
+
+    @Test
+    fun `a delayed line's empty row is a dash once its timetable has nothing due`() {
+        delayedVictoria(mapOf("line:940GZZLUKSX|victoria" to EmptyTimes.Marked(EmptyTimes.Mark.NONE, now)))
+        composeRule.onNodeWithContentDescription("No departures").assertExists()
+        composeRule.onNodeWithContentDescription("Times unknown").assertDoesNotExist()
+    }
+
+    @Test
+    fun `a dash left over from when the row was last shown isn't trusted`() {
+        // Worked out an hour ago, when the row was last on screen: until the repository answers for
+        // now, it's "?", not a dash StopDash no longer stands behind.
+        delayedVictoria(mapOf("line:940GZZLUKSX|victoria" to EmptyTimes.Marked(EmptyTimes.Mark.NONE, now.minusSeconds(3_600))))
+        composeRule.onNodeWithContentDescription("Times unknown").assertExists()
+        composeRule.onNodeWithContentDescription("No departures").assertDoesNotExist()
+    }
+
+    @Test
+    fun `a delayed line with no live times reads unknown, a suspended one a dash`() {
+        // King's Cross: the Victoria line has minor delays and TfL predicts no trains for it, the
+        // Piccadilly is suspended. Something may still be coming on the Victoria; not on the Piccadilly.
+        val station = StopArrivals(
+            "940GZZLUKSX",
+            "King's Cross St. Pancras",
+            emptyList(),
+            fetchedAt = now.minusSeconds(60),
+            lines = listOf(LineRef("victoria", "Victoria", "tube"), LineRef("piccadilly", "Piccadilly", "tube")),
+        )
+        val delays = mapOf(
+            "victoria" to LineStatus("victoria", severity = 9, description = "Minor Delays"),
+            "piccadilly" to LineStatus("piccadilly", severity = 2, description = "Suspended"),
+        )
+        capture("main-times-unknown.png") {
+            MainScreen(DeparturesUiState.Loaded(listOf(station), now.minusSeconds(60), lineStatuses = delays), now, {})
+        }
+        composeRule.onNodeWithText("Minor Delays").assertExists()
+        composeRule.onNodeWithContentDescription("Times unknown").assertExists()
+        composeRule.onNodeWithContentDescription("No departures").assertExists()
     }
 
     private fun busPlace(id: String, name: String, meters: Double, vararg routes: String) =

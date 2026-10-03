@@ -126,6 +126,7 @@ import app.stopdash.domain.RailAwareTflClient
 import app.stopdash.domain.RecentPositions
 import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RouteStopsRepository
+import app.stopdash.domain.TimetableRepository
 import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.StarredJourney
 import app.stopdash.domain.StepFreeAccess
@@ -200,6 +201,7 @@ import app.stopdash.ui.OnTheWayBannerState
 import app.stopdash.ui.OnTheWayScreen
 import app.stopdash.ui.PendingTracker
 import app.stopdash.ui.ProvideDistanceSystem
+import app.stopdash.ui.ProvideEmptyTimes
 import app.stopdash.ui.SettingsScreen
 import app.stopdash.ui.StationPlaceholderScreen
 import app.stopdash.ui.StationSearchScreen
@@ -251,6 +253,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -476,6 +479,7 @@ class MainActivity : ComponentActivity() {
                 // A key change that didn't save (a Clear included) says so; Try again saves it again.
                 keySaveFailed = keySaveFailed,
                 onRetryKeySave = { UserApiKeySetting.set(UserApiKeySetting.current) },
+                timetables = timetables(applicationContext),
             ) {
                 // TfL's step-free table, read once off the main thread: the route page marks its
                 // stations from it (SPEC *Step-free access*), and nothing until it's read.
@@ -3322,6 +3326,27 @@ class MainActivity : ComponentActivity() {
         private val routeStopsLock = Any()
         private var routeStopsInstance: RouteStopsRepository? = null
 
+        // The timetables that settle an empty board's "–" or "?" ([EmptyTimes]), fetched only for a
+        // line with no live times and kept in memory for the service day. Never on the refresh path.
+        private val timetablesLock = Any()
+        private var timetablesInstance: TimetableRepository? = null
+
+        internal fun timetables(context: Context): TimetableRepository = synchronized(timetablesLock) {
+            timetablesInstance ?: TimetableRepository(
+                source = KtorTflClient(
+                    httpClient,
+                    appKey = { UserApiKeySetting.current },
+                    rateLimiterFor = SharedTflRateLimiter::rateLimiterFor,
+                    requestPool = SharedTflRequestPool.pool,
+                    keyAnswered = RejectedApiKey.SHARED::record,
+                ),
+                // The app's scope, so a fetch outlives the screen that asked for it; a test's own app
+                // has none, and gets one of its own.
+                scope = (context.applicationContext as? StopdashApp)?.applicationScope ?: MainScope(),
+                warn = ::logTimetableWarning,
+            ).also { timetablesInstance = it }
+        }
+
         // Internal for the widget's refresh, which reads only what's held ([placeWidgetAlerts]).
         internal fun routeStops(context: Context): RouteStopsRepository = synchronized(routeStopsLock) {
             routeStopsInstance ?: RouteStopsRepository(
@@ -3541,11 +3566,17 @@ internal fun StopDashAppRoot(
     // A change to that key didn't save: the bar saying so, and its Try again.
     keySaveFailed: Boolean = false,
     onRetryKeySave: () -> Unit = {},
+    // The timetables an empty board's "–" or "?" is settled by ([EmptyTimes]); null in a test, where
+    // every empty board reads "?".
+    timetables: TimetableRepository? = null,
     content: @Composable () -> Unit,
 ) {
     StopDashTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
-            ProvideDistanceSystem { KeyRejectedFrame(keyRejected, onClearKey, keySaveFailed, onRetryKeySave, content) }
+            ProvideDistanceSystem {
+                val framed: @Composable () -> Unit = { KeyRejectedFrame(keyRejected, onClearKey, keySaveFailed, onRetryKeySave, content) }
+                if (timetables != null) ProvideEmptyTimes(timetables, framed) else framed()
+            }
         }
     }
 }
@@ -3838,6 +3869,8 @@ private fun recordPosition(what: String, at: Coordinates) {
 }
 
 private fun logRouteStopsWarning(message: String) = StopdashDebugLog.warning("route stops: %s", message)
+
+private fun logTimetableWarning(message: String) = StopdashDebugLog.warning("timetables: %s", message)
 
 private fun logStepFreeWarning(message: String) = StopdashDebugLog.warning("step-free: %s", message)
 

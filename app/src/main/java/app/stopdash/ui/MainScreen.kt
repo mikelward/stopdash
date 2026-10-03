@@ -164,6 +164,8 @@ import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.lineLabel
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.NoTimes
+import app.stopdash.domain.EmptyTimes
+import app.stopdash.domain.NATIONAL_RAIL_MODE
 import app.stopdash.domain.RelativeTime
 import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.Staleness
@@ -3603,18 +3605,29 @@ internal fun StopGroupCard(
                             row.status?.let { status -> DisruptionChip(status.description) }
                                 ?: row.plannedAlerts.firstOrNull()?.let { planned -> PlannedAlertGlyph(planned) }
                         }
-                        // A dash when the line's source answered with no trains; "No data" when no
-                        // source did; "No key" (a tap away in Settings) for a National Rail line a
-                        // key would give times.
+                        // A dash when the line's source answered with no trains and none is due
+                        // ([EmptyTimes]): a National Rail board lists every train it runs, and a TfL
+                        // line's timetable says what TfL's live list leaves out. "?" when one might be
+                        // coming. "No data" when no source answered; "No key" (a tap away in
+                        // Settings) for a National Rail line a key would give times.
                         val noTimes = NoTimes.of(row)
                         val noKey = noTimes == NoTimes.NO_KEY
-                        val noTrains = stringResource(R.string.status_no_departures_description)
+                        val unknown = noTimes == NoTimes.NO_TRAINS &&
+                            !row.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) &&
+                            !row.notRunningHere &&
+                            emptyTimesMark("line:${row.stopId}|${row.lineId}") {
+                                EmptyTimes.Board(listOf(EmptyTimes.Key(row.stopId, row.lineId)))
+                            } == EmptyTimes.Mark.UNKNOWN
+                        val spoken = stringResource(
+                            if (unknown) R.string.status_times_unknown_description else R.string.status_no_departures_description,
+                        )
                         Text(
                             text = stringResource(
-                                when (noTimes) {
-                                    NoTimes.NO_TRAINS -> R.string.status_no_departures
-                                    NoTimes.NO_KEY -> R.string.status_no_rail_key
-                                    NoTimes.NO_DATA -> R.string.status_no_data
+                                when {
+                                    unknown -> R.string.status_times_unknown
+                                    noTimes == NoTimes.NO_TRAINS -> R.string.status_no_departures
+                                    noKey -> R.string.status_no_rail_key
+                                    else -> R.string.status_no_data
                                 },
                             ),
                             style = MaterialTheme.typography.titleMedium,
@@ -3623,9 +3636,10 @@ internal fun StopGroupCard(
                             modifier = Modifier
                                 .padding(start = 12.dp)
                                 .then(
-                                    // The dash alone could be heard as missing data; say "No departures".
+                                    // The dash alone could be heard as missing data, and "?" as nothing at
+                                    // all; say "No departures" or "Times unknown".
                                     if (noTimes == NoTimes.NO_TRAINS) {
-                                        Modifier.semantics { contentDescription = noTrains }
+                                        Modifier.semantics { contentDescription = spoken }
                                     } else {
                                         Modifier
                                     },

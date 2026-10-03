@@ -2328,4 +2328,24 @@ class DepartureRowsTest {
         // Another stop's card changes nothing.
         assertEquals(nearby, DepartureRows.withoutShownAbove(nearby, listOf(rowWith(bank, bank2).copy(stopId = "940GZZLUKSX"))))
     }
+
+    @Test
+    fun `a status row says whether its line runs at its stop, worked out with the rows`() {
+        val at = Instant.parse("2026-09-18T08:00:00Z")
+        val station = StopArrivals(
+            "940GZZLUKSX",
+            "King's Cross St. Pancras",
+            emptyList(),
+            fetchedAt = at,
+            lines = listOf(LineRef("victoria", "Victoria", "tube"), LineRef("piccadilly", "Piccadilly", "tube")),
+        )
+        val statuses = mapOf(
+            "victoria" to LineStatus("victoria", severity = 9, description = "Minor Delays"),
+            "piccadilly" to LineStatus("piccadilly", severity = 2, description = "Suspended"),
+        )
+        val rows = DepartureRows.across(listOf(station), at, statuses).associateBy { it.lineId }
+        assertFalse(rows.getValue("victoria").notRunningHere)
+        assertTrue(rows.getValue("piccadilly").notRunningHere)
+    }
+
 }

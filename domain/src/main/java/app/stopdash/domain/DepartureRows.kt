@@ -947,6 +947,7 @@ object DepartureRows {
                     // Its page lists work still to come beside the disruption now, as a timed row's does.
                     plannedAlerts = status.planned,
                     railFeed = stop.railFeed.takeIf { line.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) },
+                    notRunningHere = EmptyTimes.notRunningAt(status, stop.stopId),
                 )
             }
     }

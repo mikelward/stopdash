@@ -105,6 +105,9 @@
          description instead, since a bare dash could read as missing data. -->
     <string name="status_no_departures">–</string>
     <string name="status_no_departures_description">No departures</string>
+    <!-- No live times, but one might be coming: the stale countdown's "?" (maintainer, 2026-10-03). -->
+    <string name="status_times_unknown" translatable="false">?</string>
+    <string name="status_times_unknown_description">Times unknown</string>
     <!-- Instead of the dash when no source answered for the line: a National Rail line whose board
          failed, or that no board covers (maintainer, 2026-09-24). -->
     <string name="status_no_data">No data</string>
