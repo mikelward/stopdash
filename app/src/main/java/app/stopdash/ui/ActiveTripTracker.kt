@@ -2,6 +2,7 @@ package app.stopdash.ui
 
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Coordinates
+import app.stopdash.domain.Workers
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LocationFix
@@ -79,6 +80,9 @@ class ActiveTripTracker(
     // A monotonic clock in ms, for timing a wait the wall clock could be set back during.
     private val elapsed: () -> Long = { System.nanoTime() / 1_000_000 },
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    // Work that grows with its input (a station's entrances, measured), never on the caller's thread,
+    // which can be the main one (AGENTS.md *Main thread: read and dispatch only*; Codex, PR #521).
+    private val compute: CoroutineDispatcher = Workers.compute,
     // Coarse facts only — a line id, an error kind, never a stop or where the rider is going.
     private val warn: (String) -> Unit = {},
     // "Get off soon", once per leg ([OnTheWay.shouldWarn]): whether it was said, so one that
@@ -820,6 +824,15 @@ class ActiveTripTracker(
         // train's call there is theirs, however late, not a loop's next lap ([OnTheWay.atBoarding]).
         val atBoarding = OnTheWay.atBoarding(trip, rider?.let { aged(it, Duration.ofMillis(elapsed() - reading)) })
         var (next, progress) = OnTheWay.advance(trip, calls, now, atBoarding)
+        // How far the walk's end is, from this refresh's fix, or as last seen on the same walk: a refresh
+        // without one doesn't blank it. Shown on the trip's screen only, never logged (SPEC *Privacy*).
+        (progress as? TripProgress.Walking)?.let { walking ->
+            // The station read for this walk only: one read for a ride got off at is behind the rider.
+            val walkedTo = places.takeIf { next.legIndex == before.legIndex && OnTheWay.stationWalkedTo(next, now) != null }
+            val seen = withContext(compute) { OnTheWay.metersLeft(next, seenRider, walkedTo ?: StationPlaces()) }
+                ?: (_progress.value as? TripProgress.Walking)?.takeIf { it.leg == walking.leg }?.metersLeft
+            progress = walking.copy(metersLeft = seen)
+        }
         // A train that turned out not to be the rider's: drop it, so the next refresh picks another.
         // Once on board it stays followed: TfL has only gone quiet on it.
         if (progress is TripProgress.Lost && calls != null && !next.boarded) next = next.copy(vehicleId = "", vehicleLeg = null, vehicleOffId = "", dueOffAt = null)

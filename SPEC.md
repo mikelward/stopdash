@@ -1587,7 +1587,16 @@ them there:
   process; a fix gone stale while TfL answered isn't acted on, and a failed read is asked again on the
   next refresh, the walk ending as before until then; without a fix, the walk runs its
   estimated time as before. The estimate errs long on purpose (it grays trains a rider might miss),
-  so it mustn't hold a rider already at the station on "Walk to…". A train ride ends the same way
+  so it mustn't hold a rider already at the station on "Walk to…". The **walk to the destination**
+  (the trip's last leg, with the destination placed) ends when the rider is **seen there**, within
+  100 m with the fix's uncertainty counted, not on its time (maintainer, 2026-10-03): ending on its
+  time said "arrived" to a rider still a few hundred meters away. Never seen there (indoors, a
+  destination placed off its door), it ends 10 minutes past its time, so neither the trip nor GPS
+  runs on. Each refresh on it takes one precise fix, past its time too — up to 10 minutes more of
+  fixes than before. An unplaced
+  destination can't be seen, so its walk still ends on its time. Every walk says **how far is
+  left**, straight to its end, from the last fix that placed the rider, where a ride says its stops
+  ("450 m", in the distance units the app shows); with no such fix, nothing. A train ride ends the same way
   at the station the rider gets off at (maintainer, 2026-09-28): from about two stops out (the
   train followed due there within 4 minutes) until the ride ends, or 5 minutes past that train's
   time (so a time gone stale, with TfL quiet, doesn't keep GPS on), each refresh takes one precise

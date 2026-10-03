@@ -1444,6 +1444,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 when the rider is taken to be moving (on board, or walking) and no fresh fix has come
                 in for a while (underground, indoors, a fix refused).
           - [ ] Following a bus above ground by location (get off soon from where the bus is).
+        - [ ] **A clock set back during a walk** (Codex, PR #521): a walk stays `Walking` while the clock
+              says its time isn't up, so a device clock set back hours keeps any walk (the last included) on
+              until it catches up. Re-anchor the walk's start to the new clock, as `atLeg` does, across all
+              walks; the last walk's wait to be seen at the destination is already bounded to its window.
         - [ ] **No line wrapping for the next action at all** (maintainer, 2026-10-03): the trip card's
               step ("Walk to …", "Board 43 at …") now takes its places' common abbreviations to stay on one
               line and wraps to a second only if those don't fit. Consider never wrapping it: one line,
