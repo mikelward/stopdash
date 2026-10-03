@@ -2056,6 +2056,108 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithText("Loading").assertDoesNotExist()
     }
 
+    /**
+     * West Ham opened as a farther card whose fetch came back with nothing: its District and
+     * Hammersmith & City lines' mark, from [marks].
+     */
+    private val westHamStop = StopLocation(
+        "940GZZLUWHM", "West Ham", 51.5, 0.0,
+        lines = listOf(LineRef("district", "District", "tube"), LineRef("hammersmith-city", "Hammersmith & City", "tube")),
+    )
+
+    private val westHam = fartherPlace(
+        "940GZZLUWHM", "West Ham", 1_600.0,
+        Triple("district", "District", "tube"), Triple("hammersmith-city", "Hammersmith & City", "tube"),
+    )
+
+    /** West Ham's opened farther card with nothing back, and the id its mark is published under. */
+    private val emptyWestHamCard = FartherCard(westHam, FartherLoad.Open(listOf(westHamStop), mapOf("940GZZLUWHM" to 1_600.0)))
+    private val emptyWestHamId = "place:${westHam.key}#${fartherBoard(emptyWestHamCard)!!.tag}"
+
+    private fun emptyWestHam(marks: Map<String, EmptyTimes.Marked>, asked: MutableList<Pair<String, EmptyTimes.Board>>? = null) {
+        val opened = StopArrivals("940GZZLUWHM", "West Ham", emptyList(), fetchedAt = now.minusSeconds(60))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalEmptyTimes provides EmptyTimesState(MutableStateFlow(marks), now) { id, board -> asked?.add(id to board()) }) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(listOf(opened), now.minusSeconds(60)),
+                            now,
+                            {},
+                            stopDistanceMeters = mapOf("940GZZLUWHM" to 1_600.0),
+                            farther = listOf(emptyWestHamCard),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `an empty farther card asks for its lines' timetables, and shows a spinner until they answer`() {
+        val asked = mutableListOf<Pair<String, EmptyTimes.Board>>()
+        emptyWestHam(emptyMap(), asked)
+        composeRule.onNodeWithContentDescription("Loading times").assertExists()
+        composeRule.onNodeWithContentDescription("No departures").assertDoesNotExist()
+        composeRule.runOnIdle {
+            val board = EmptyTimes.Board(
+                listOf(EmptyTimes.Key("940GZZLUWHM", "district"), EmptyTimes.Key("940GZZLUWHM", "hammersmith-city")),
+            )
+            assertEquals(listOf(emptyWestHamId to board), asked.distinct())
+        }
+    }
+
+    @Test
+    fun `an empty farther card reads unknown when a timetable has a train due`() {
+        emptyWestHam(mapOf(emptyWestHamId to EmptyTimes.Marked(EmptyTimes.Mark.UNKNOWN, now)))
+        composeRule.onNodeWithContentDescription("Times unknown").assertExists()
+        composeRule.onNodeWithContentDescription("No departures").assertDoesNotExist()
+    }
+
+    @Test
+    fun `an empty farther card keeps its dash when the timetables have nothing due`() {
+        emptyWestHam(mapOf(emptyWestHamId to EmptyTimes.Marked(EmptyTimes.Mark.NONE, now)))
+        composeRule.onNodeWithContentDescription("No departures").assertExists()
+        composeRule.onNodeWithContentDescription("Times unknown").assertDoesNotExist()
+    }
+
+    @Test
+    fun `an empty farther card whose board changes shows a spinner until the new board's mark lands`() {
+        val opened = StopArrivals("940GZZLUWHM", "West Ham", emptyList(), fetchedAt = now.minusSeconds(60))
+        val marks = MutableStateFlow(mapOf(emptyWestHamId to EmptyTimes.Marked(EmptyTimes.Mark.NONE, now)))
+        var card by mutableStateOf(emptyWestHamCard)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalEmptyTimes provides EmptyTimesState(marks, now) { _, _ -> }) {
+                        MainScreen(
+                            DeparturesUiState.Loaded(listOf(opened), now.minusSeconds(60)),
+                            now,
+                            {},
+                            stopDistanceMeters = mapOf("940GZZLUWHM" to 1_600.0),
+                            farther = listOf(card),
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.onNodeWithContentDescription("No departures").assertExists()
+        // Loaded again with another line at the stop: a new board, so the old board's dash, even one
+        // published late for it, no longer counts.
+        val widened = westHamStop.copy(lines = westHamStop.lines + LineRef("circle", "Circle", "tube"))
+        val reloaded = FartherCard(westHam, FartherLoad.Open(listOf(widened), mapOf("940GZZLUWHM" to 1_600.0)))
+        val reloadedId = "place:${westHam.key}#${fartherBoard(reloaded)!!.tag}"
+        assertNotEquals(emptyWestHamId, reloadedId)
+        card = reloaded
+        composeRule.onNodeWithContentDescription("Loading times").assertExists()
+        marks.value = marks.value + (emptyWestHamId to EmptyTimes.Marked(EmptyTimes.Mark.NONE, now.plusSeconds(1)))
+        composeRule.onNodeWithContentDescription("Loading times").assertExists()
+        composeRule.onNodeWithContentDescription("No departures").assertDoesNotExist()
+        // The new board's own mark counts.
+        marks.value = marks.value + (reloadedId to EmptyTimes.Marked(EmptyTimes.Mark.NONE, now.plusSeconds(1)))
+        composeRule.onNodeWithContentDescription("No departures").assertExists()
+    }
+
     /** King's Cross with the Victoria line delayed and no live times for it: its status row's mark. */
     private fun delayedVictoria(marks: Map<String, EmptyTimes.Marked>, asked: MutableList<Pair<String, EmptyTimes.Board>>? = null) {
         val station = StopArrivals(

@@ -160,4 +160,46 @@ class EmptyTimesTest {
             EmptyTimes.mark(quiet.keys, failed, noon, unsure = quiet.unsure, pending = quiet.pending, retrying = quiet.retrying, fetching = { true }),
         )
     }
+
+    @Test
+    fun `a night bus by day is surely not running, so its board is a dash without a timetable`() {
+        val n29 = EmptyTimes.Key("STOP-BUS-1", "n29")
+        // Noon: a dash, with no lookup at all.
+        assertTrue(EmptyTimes.resting(n29, noon))
+        assertEquals(EmptyTimes.Mark.NONE, EmptyTimes.mark(listOf(n29), emptyMap(), noon))
+        // 03:00: it runs, so it's looked up like any line.
+        assertFalse(EmptyTimes.resting(n29, night))
+        assertEquals(EmptyTimes.Mark.LOADING, EmptyTimes.mark(listOf(n29), emptyMap(), night))
+        // A 24-hour route and a tube line are never taken as resting.
+        assertFalse(EmptyTimes.resting(EmptyTimes.Key("STOP-BUS-1", "29"), noon))
+        assertFalse(EmptyTimes.resting(EmptyTimes.Key("940GZZLUKSX", "northern"), noon))
+        // The day's edges, London time: 07:00 in, 22:00 out (BST here).
+        assertTrue(EmptyTimes.resting(n29, Instant.parse("2026-10-06T06:00:00Z")))
+        assertFalse(EmptyTimes.resting(n29, Instant.parse("2026-10-06T05:59:00Z")))
+        assertFalse(EmptyTimes.resting(n29, Instant.parse("2026-10-06T21:00:00Z")))
+        // And on GMT, after the clocks go back: 07:00 London is 07:00Z.
+        assertFalse(EmptyTimes.resting(n29, Instant.parse("2026-11-03T06:30:00Z")))
+        assertTrue(EmptyTimes.resting(n29, Instant.parse("2026-11-03T07:00:00Z")))
+    }
+
+    @Test
+    fun `a place card's board asks for each line where it stops, never for National Rail`() {
+        val tube = LineRef("district", "District", "tube")
+        val rail = LineRef("c2c", "c2c", "national-rail")
+        val bus = LineRef("115", "115", "bus")
+        val stops = mapOf("940GZZLUWHM" to listOf("district"), "STOP-BUS-1" to listOf("115"))
+        assertEquals(
+            setOf(EmptyTimes.Key("940GZZLUWHM", "district"), EmptyTimes.Key("STOP-BUS-1", "115")),
+            EmptyTimes.placeBoard(stops, listOf(tube, rail, bus)).keys.toSet(),
+        )
+        // A line no stop says it serves is asked for at each stop, rather than left out.
+        val unlisted = LineRef("hammersmith-city", "Hammersmith & City", "tube")
+        assertEquals(
+            setOf(EmptyTimes.Key("940GZZLUWHM", "hammersmith-city"), EmptyTimes.Key("STOP-BUS-1", "hammersmith-city")),
+            EmptyTimes.placeBoard(stops, listOf(unlisted)).keys.toSet(),
+        )
+        // Nothing but National Rail: nothing to look up, and the card's dash stands.
+        val railOnly = EmptyTimes.placeBoard(stops, listOf(rail))
+        assertTrue(railOnly.notRunning)
+    }
 }

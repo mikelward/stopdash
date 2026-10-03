@@ -130,6 +130,18 @@ class TimetableRepositoryTest {
     }
 
     @Test
+    fun `a night bus by day is a dash with no timetable fetched`() = runTest {
+        val source = FakeSource { timetable }
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        // Tuesday 12:00 London.
+        val repository = TimetableRepository(source, TestScope(dispatcher), clock = { now }, io = dispatcher)
+        repository.watch("night") { EmptyTimes.Board(listOf(EmptyTimes.Key("STOP-BUS-1", "n29"))) }
+        advanceUntilIdle()
+        assertEquals(EmptyTimes.Mark.NONE, repository.marks.value["night"]?.mark)
+        assertTrue(source.asked.isEmpty())
+    }
+
+    @Test
     fun `a request returns at once and fetches off the caller's thread`() = runTest {
         val executor = Executors.newSingleThreadExecutor()
         try {
