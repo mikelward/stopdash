@@ -1544,8 +1544,10 @@ them there:
   rider says so (maintainer, 2026-09-28): **Next** (with **Back** beside it, End trip set apart at
   the other end), or a tap on any step in the list, puts them at that step now, as if they'd just
   got there. A walk is one step and a ride two (maintainer, 2026-09-29): boarding it (its line's row)
-  and **getting off it** ("Ride to …", a row of its own under it, said as a continuous action, as "Walk to …" is; maintainer, 2026-10-01), so the rider can say they're on
-  before they say they're off. At a boarding step, a walk's time runs from then and a ride's train is
+  and **getting off it** ("Ride to …", said as a continuous action, as "Walk to …" is; maintainer, 2026-10-01), so the rider can say they're on
+  before they say they're off. Getting off is a step for Next, Back and the card, but not a row of its
+  own in the route's legs: one row per leg, the ride's row the rider's while they board it and ride it
+  (maintainer, 2026-10-03). At a boarding step, a walk's time runs from then and a ride's train is
   picked at once from then; at a getting-off step they're on board the train followed (the next they
   could catch, as the trip assumes, or with none yet one at the platform when they said so, due within
   a minute of it; with none there it says it can't find their train rather than name a later one). A
@@ -1563,7 +1565,8 @@ them there:
   says the trip couldn't be saved: a trip restored after the app dies is always the one on screen,
   so its "get off soon" is never at odds with it. While the rider walks to a ride,
   changes onto it or waits for it, **the trains at its boarding stop that take them on** are listed
-  under that ride's own row in the route's legs, drawn as the departures board draws a stop — its
+  right under the card at the top, before the route's legs (maintainer, 2026-10-03: the board the
+  rider is heading for, not one further down), drawn as the departures board draws a stop — its
   platform header, or a bus pole's letter ("Archway – Stop D", maintainer, 2026-09-29: not where the
   buses go), over the board's own outlined card, and a bus pair's other pole read with it (*Which
   train*) under its own header ("Stop E") — so they read as a board, not as another step
@@ -1585,8 +1588,15 @@ them there:
   Start but says it can't be followed yet: its times come from National Rail's boards, which name
   no train to follow. **One trip at a time:** while one is on the way, a route offers **Open current
   trip** in Start's place; the trip is ended from its own screen.
-- **Time left.** Under the step, the trip says how long is left and when it gets there
-  (maintainer, 2026-10-01): "29 min left · ~08:31". It's "~" when it's TfL's prediction for where
+- **The card at the top** leads with the whole trip, then the step at hand, as two matched pairs with
+  no labels (maintainer, 2026-10-03): where the trip goes ("To Canary Wharf") over when it gets
+  there and how long is left, then the step ("Walk to Stratford") over when it's done and how long,
+  said as the trip's own time is ("08:06 · 4 min"), with a ride's stops left after it ("08:18 · 16 min
+  · 4 stops"). Where the step's time isn't known or no longer stands, its own words stay ("Finding
+  your train…", "Updating…").
+  The app bar says StopDash: the card names the trip, so the bar needn't.
+- **Time left.** On the card, under where the trip goes, it says when it gets there and how long is
+  left (maintainer, 2026-10-01; moved onto the card 2026-10-03): "~08:31 · 29 min". It's "~" when it's TfL's prediction for where
   the rider gets off the ride they're on, with only walks after. It's "est." when any of it is the
   Planner's: a train still to come (its time at the boarding stop, then the time on board), or a ride
   or change still ahead. Like the step, it claims no time it can't take from a train: none while the

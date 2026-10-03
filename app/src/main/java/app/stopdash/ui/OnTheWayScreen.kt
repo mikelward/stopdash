@@ -26,6 +26,8 @@ import androidx.compose.material3.CardColors
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -42,6 +44,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
@@ -118,13 +121,8 @@ internal fun OnTheWayScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
-                title = {
-                    Text(
-                        destination?.let { stringResource(R.string.on_the_way_title, it) } ?: stringResource(R.string.on_the_way),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
+                // The app's name: where the trip goes, and when, lead the card below (maintainer, 2026-10-03).
+                title = { Text(stringResource(R.string.app_name), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 // A trip gone wrong is reported from where it's seen (maintainer, 2026-09-29).
                 actions = { AppMenuOverflow() },
             )
@@ -178,20 +176,15 @@ internal fun OnTheWayScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxSize().padding(padding).testTag("onTheWay"),
         ) {
-            item(key = "next") { NextStep(progress, now, current) }
             // Time left and when they get there (maintainer, 2026-10-01). Not from an answer too old to
             // stand behind ([current]): it waits, as the step's own times do.
             val eta = trip?.let { OnTheWay.eta(it, progress, now) }
             val stale = !current && fromTfl(progress)
-            if (eta != null && !stale) {
-                item(key = "eta") {
-                    Text(
-                        etaText(eta, now),
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.testTag("onTheWayEta"),
-                    )
-                }
-            }
+            // The card leads with the whole trip, then the step at hand (maintainer, 2026-10-03).
+            item(key = "next") { NextStep(destination, eta?.takeIf { !stale }, progress, now, current) }
+            // The next ride's trains right under what to do next (maintainer, 2026-10-03): the board
+            // the rider is heading for, before the route.
+            if (nextTrains != null && trip != null) item(key = "nextTrains") { NextTrainsSection(nextTrains, now) }
             if (trip != null) {
                 // Each thing known once, as the alert has it: two legs on one line read as one.
                 disruptions.distinctBy { DisruptionKey.of(it) }.forEach { signal ->
@@ -211,14 +204,6 @@ internal fun OnTheWayScreen(
                     }
                 }
             }
-            // The next ride's trains go under its own row below (maintainer, 2026-09-28); here only
-            // if that ride isn't among the legs still ahead, so they're never lost.
-            val nextAt = if (nextTrains != null && trip != null) {
-                trip.route.legs.indices.firstOrNull { it >= trip.legIndex && trip.route.legs[it] == nextTrains.ride }
-            } else {
-                null
-            }
-            if (nextTrains != null && trip != null && nextAt == null) item(key = "nextTrains") { NextTrainsSection(nextTrains, now) }
             if (endFailed && trip != null) {
                 item(key = "endFailed") {
                     Text(
@@ -268,19 +253,17 @@ internal fun OnTheWayScreen(
                 val steps = OnTheWay.steps(trip.route)
                 val at = OnTheWay.stepOf(trip)
                 val doneCount = OnTheWay.stepsDone(trip)
+                // One row per leg (maintainer, 2026-10-03): a ride's getting-off step is still a step, for
+                // Back, Next and the card above, but not a row of its own. On board, the ride's row is the
+                // rider's; it's done once they're past getting off it.
                 steps.forEachIndexed { index, step ->
+                    if (step.onBoard) return@forEachIndexed
                     val leg = trip.route.legs[step.leg]
+                    val last = if (leg.isWalk) index else index + 1
                     val onTap = onGoTo?.takeIf { OnTheWay.canGoTo(trip, step, now) }?.let { go -> { go(at, step) } }
-                    item(key = if (step.onBoard) "getOff${step.leg}" else "leg${step.leg}") {
-                        // A ride's second step: getting off it, once on board (maintainer, 2026-09-29).
-                        if (step.onBoard) {
-                            GetOffLine(leg, trip.route.rides, current = step == at, done = index < doneCount, onTap = onTap)
-                        } else {
-                            LegLine(leg, trip.route.rides, current = step == at, done = index < doneCount, onTap = onTap)
-                        }
+                    item(key = "leg${step.leg}") {
+                        LegLine(leg, trip.route.rides, current = at.leg == step.leg, done = last < doneCount, onTap = onTap)
                     }
-                    // The next ride's trains under its boarding step, before getting off it.
-                    if (!step.onBoard && step.leg == nextAt && nextTrains != null) item(key = "nextTrains") { NextTrainsSection(nextTrains, now) }
                 }
             }
         }
@@ -445,19 +428,58 @@ internal fun etaText(eta: OnTheWay.Eta, now: Instant): String {
 internal fun etaText(resources: Resources, eta: OnTheWay.Eta, now: Instant): String {
     val minutes = Countdown.minutes(eta.arrival, now).toInt()
     val clock = CLOCK.format(eta.arrival.atZone(LONDON))
-    return resources.getString(if (eta.live) R.string.on_the_way_eta else R.string.on_the_way_eta_estimated, minutes, clock)
+    return resources.getString(if (eta.live) R.string.on_the_way_trip_eta else R.string.on_the_way_trip_eta_estimated, clock, minutes)
 }
 
-/** The card at the top: what the rider does next, from [progress]. */
+/**
+ * The card at the top: the whole trip, where to and when ([eta], held back while the answer it's from
+ * is too old to stand behind), then what the rider does next, from [progress], with when that step's
+ * done where it's known. Two matched pairs, headline over time, with no labels (maintainer, 2026-10-03).
+ */
 @Composable
-private fun NextStep(progress: TripProgress?, now: Instant, current: Boolean) {
+private fun NextStep(destination: String?, eta: OnTheWay.Eta?, progress: TripProgress?, now: Instant, current: Boolean) {
     val (title, detail) = nextStepText(progress, now, current)
+    val stepAt = stepTime(progress, current, now)?.let { stepTimeText(it, now, (progress as? TripProgress.Riding)?.stopsLeft) } ?: detail
     Card(colors = nextStepColors(progress, current), modifier = Modifier.fillMaxWidth().testTag("onTheWayNext")) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(stringResource(R.string.on_the_way_next), style = MaterialTheme.typography.labelMedium)
+            if (destination != null) {
+                Text(stringResource(R.string.on_the_way_title, destination), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                if (eta != null) Text(etaText(eta, now), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.testTag("onTheWayEta"))
+                HorizontalDivider(Modifier.padding(vertical = 8.dp), color = LocalContentColor.current.copy(alpha = 0.25f))
+            }
             Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            if (detail.isNotEmpty()) Text(detail, style = MaterialTheme.typography.bodyLarge)
+            if (stepAt.isNotEmpty()) Text(stepAt, style = MaterialTheme.typography.bodyLarge)
         }
+    }
+}
+
+/**
+ * When the step at hand is done, where that's known and stands ([current]) and is still ahead of
+ * [now]: null otherwise, as [OnTheWay.eta] drops a time already passed, so the step says its own
+ * words rather than a clock time gone by.
+ */
+internal fun stepTime(progress: TripProgress?, current: Boolean, now: Instant): Instant? = when (progress) {
+    is TripProgress.Walking -> progress.until
+    is TripProgress.Changing -> progress.until
+    is TripProgress.Waiting -> progress.due?.takeIf { current }
+    // Seen on board, or told to get off either way (as the step says it, [nextStepText]); not while
+    // the step is still to take the train, which has no time of its own.
+    is TripProgress.Riding -> progress.getOffAt?.takeIf { current && (progress.seen || progress.getOffSoon) }
+    else -> null
+}?.takeIf { it.isAfter(now) }
+
+/**
+ * When the step at hand is done, [at], as the trip's own time is said: the clock time, then the
+ * minutes until it (counted as the boards count), then a ride's [stops] left (maintainer, 2026-10-03).
+ */
+@Composable
+private fun stepTimeText(at: Instant, now: Instant, stops: Int?): String {
+    val clock = CLOCK.format(at.atZone(LONDON))
+    val minutes = Countdown.minutes(at, now).toInt()
+    return if (stops != null && stops > 0) {
+        pluralStringResource(R.plurals.on_the_way_step_time_stops, stops, clock, minutes, stops)
+    } else {
+        stringResource(R.string.on_the_way_step_time, clock, minutes)
     }
 }
 
@@ -551,7 +573,7 @@ private fun finding(leg: TripLeg) = Vehicle.of(leg).finding
 /**
  * One leg of the route: its line and ends, the leg the rider is on in bold, done legs muted. A walk
  * shows a walker in the room the [rides]' pills take, so its text lines up with theirs, as on a trip
- * card. A ride's line is its boarding step; getting off it is a step of its own ([GetOffLine]).
+ * card. A ride is one row, its boarding step's, though getting off it is a step of its own.
  */
 @Composable
 private fun LegLine(leg: TripLeg, rides: List<TripLeg>, current: Boolean, done: Boolean, onTap: (() -> Unit)? = null) {
@@ -620,21 +642,6 @@ private fun DisruptionCard(signal: RouteDisruption.Signal, leg: TripLeg?) {
             }
         }
     }
-}
-
-/**
- * A ride's second step, getting off it (maintainer, 2026-09-29): under its line, in the room the
- * [rides]' pills take, so it reads as part of the ride above it and its text lines up with the rest.
- */
-@Composable
-private fun GetOffLine(leg: TripLeg, rides: List<TripLeg>, current: Boolean, done: Boolean, onTap: (() -> Unit)? = null) {
-    StepLine(
-        slot = { Box { rides.forEach { LinePill(it.lineName, it.lineId, it.mode, Modifier.alpha(0f).clearAndSetSemantics {}) } } },
-        text = stringResource(R.string.on_the_way_ride_to, leg.toName),
-        current = current,
-        color = stepColor(done),
-        onTap = onTap,
-    )
 }
 
 // A done step reads muted; the rest as ordinary text.
