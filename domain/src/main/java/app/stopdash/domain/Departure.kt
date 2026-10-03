@@ -38,6 +38,11 @@ import java.time.Instant
  *
  * [vehicleId] is TfL's id for the train or bus making this departure (unique within a line), so a
  * trip can follow the one the rider boards ([VehicleSource]); blank when TfL gives none.
+ *
+ * [via] is what a National Rail board says the train runs by ("Wimbledon" from "via Wimbledon"), so
+ * its stop list can tell apart two ways to one terminus (round a loop either way) where nothing else
+ * on the board does ([RouteStops.resolve]). Kept apart from [branch]: it narrows a route, it isn't
+ * shown. Blank where the board names none, and on every TfL departure.
  */
 data class Departure(
     val lineId: String,
@@ -50,4 +55,5 @@ data class Departure(
     val branch: String? = null,
     val destinationId: String = "",
     val vehicleId: String = "",
+    val via: String = "",
 )

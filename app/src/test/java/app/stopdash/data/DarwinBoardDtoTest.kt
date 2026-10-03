@@ -46,6 +46,19 @@ class DarwinBoardDtoTest {
     }
 
     @Test
+    fun `a train's via comes in as the stations it runs by, but not a dividing train's`() {
+        val service = board().trainServices!!.first()
+        val via = service.copy(destination = listOf(DarwinLocationDto("Guildford", "GLD", via = "via Woking")))
+        val dividing = service.copy(
+            destination = listOf(DarwinLocationDto("Guildford", "GLD", via = "via Woking"), DarwinLocationDto("Reading", "RDG")),
+        )
+        val read = board().copy(trainServices = listOf(via, dividing, service)).toDepartures()
+        assertEquals(listOf("Woking", "", ""), read.map { it.via })
+        // The via narrows the route; it isn't the shown branch.
+        assertTrue(read.all { it.branch == null })
+    }
+
+    @Test
     fun `a canceled or delayed train with no schedule to place it is left out and reported`() {
         val delayed = board().trainServices!!.first().copy(etd = "Delayed", std = null)
         val warnings = mutableListOf<String>()

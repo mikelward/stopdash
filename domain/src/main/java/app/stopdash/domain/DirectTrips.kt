@@ -80,7 +80,7 @@ object DirectTrips {
                         val resolution = sequence?.let {
                             RouteStops.resolve(
                                 it, stop.stopId, departure.destination, departure.branch, lineId, bus, bound, departure.direction,
-                                departure.destinationId,
+                                departure.destinationId, departure.via,
                             )
                         }
                         // One path can't be told (no destination yet, or two ways that match it):
@@ -90,7 +90,7 @@ object DirectTrips {
                         } else {
                             RouteStops.reaches(
                                 sequence!!, stop.stopId, departure.destination, departure.branch, destinationIds, bus, bound,
-                                departure.direction, departure.destinationId,
+                                departure.direction, departure.destinationId, departure.via,
                             )
                         }
                         when {

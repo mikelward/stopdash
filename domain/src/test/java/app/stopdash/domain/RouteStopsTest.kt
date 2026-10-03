@@ -62,6 +62,93 @@ class RouteStopsTest {
     }
 
     @Test
+    fun `a rail board's via picks between the two ways round a loop to one terminus`() {
+        // From L the terminus T is reached either way round: by North or by South (Holm). Nothing on
+        // the board but its "via" says which; a via no way calls at can't narrow, and stays ambiguous.
+        val loop = LineSequence(
+            routes = listOf(
+                LineRoute("T &harr; T clockwise", listOf("T", "N", "L", "S", "T")),
+                LineRoute("T &harr; T anticlockwise", listOf("T", "S", "L", "N", "T")),
+            ),
+            stopNames = mapOf("T" to "Terminus", "N" to "North", "L" to "Loop", "S" to "South (Holm)"),
+        )
+        assertEquals(RouteStops.Resolution.Ambiguous(2), RouteStops.resolve(loop, "L", "Terminus", null))
+        assertEquals(listOf("L", "N", "T"), RouteStops.ahead(loop, "L", "Terminus", null, via = "North")?.map { it.id })
+        // The board leaves off the place a route's name brackets.
+        assertEquals(listOf("L", "S", "T"), RouteStops.ahead(loop, "L", "Terminus", null, via = "South")?.map { it.id })
+        // A via no way calls at is a working the routes don't model: no list, not a guessed one.
+        assertEquals(RouteStops.Resolution.ViaMatchesNoRoute, RouteStops.resolve(loop, "L", "Terminus", null, via = "Elsewhere"))
+        // Every station it names must be on the way; and the boarding stop itself names no way.
+        assertEquals(RouteStops.Resolution.ViaMatchesNoRoute, RouteStops.resolve(loop, "L", "Terminus", null, via = "North & South"))
+        assertEquals(RouteStops.Resolution.ViaMatchesNoRoute, RouteStops.resolve(loop, "L", "Terminus", null, via = "Loop"))
+        assertNull(RouteStops.reaches(loop, "L", "Terminus", null, setOf("S"), via = "Elsewhere"))
+        // Even a single way is refused when the board says it runs somewhere that way doesn't.
+        val line = LineSequence(listOf(LineRoute("A &harr; Z", listOf("A", "B", "Z"))), mapOf("A" to "Start", "B" to "Middle", "Z" to "End"))
+        assertEquals(listOf("A", "B", "Z"), RouteStops.ahead(line, "A", "End", null, via = "Middle")?.map { it.id })
+        assertEquals(RouteStops.Resolution.ViaMatchesNoRoute, RouteStops.resolve(line, "A", "End", null, via = "Elsewhere"))
+        // Reaching a stop by one way only is a sure answer once the via names that way.
+        assertEquals(true, RouteStops.reaches(loop, "L", "Terminus", null, setOf("S"), via = "South"))
+        assertEquals(false, RouteStops.reaches(loop, "L", "Terminus", null, setOf("S"), via = "North"))
+    }
+
+    @Test
+    fun `a via naming one station with an ampersand in it keeps it whole, and two stations both`() {
+        // Two ways from A to Z: by "Elephant & Castle", or by Woking then Guildford.
+        val sequence = LineSequence(
+            routes = listOf(
+                LineRoute("A &harr; Z by E", listOf("A", "E", "Z")),
+                LineRoute("A &harr; Z by W and G", listOf("A", "W", "G", "Z")),
+            ),
+            stopNames = mapOf("A" to "Start", "E" to "Elephant & Castle", "W" to "Woking", "G" to "Guildford", "Z" to "End"),
+        )
+        assertEquals(listOf("A", "E", "Z"), RouteStops.ahead(sequence, "A", "End", null, via = "Elephant & Castle")?.map { it.id })
+        assertEquals(listOf("A", "W", "G", "Z"), RouteStops.ahead(sequence, "A", "End", null, via = "Woking & Guildford")?.map { it.id })
+        assertEquals(listOf("A", "W", "G", "Z"), RouteStops.ahead(sequence, "A", "End", null, via = "Woking and Guildford")?.map { it.id })
+        // A station with a join in its name among others: its words stay together.
+        val compound = LineSequence(
+            routes = listOf(
+                LineRoute("A &harr; Z by E and D", listOf("A", "E", "D", "Z")),
+                LineRoute("A &harr; Z by W", listOf("A", "W", "Z")),
+            ),
+            stopNames = mapOf("A" to "Start", "E" to "Elephant & Castle", "D" to "Denmark Hill", "W" to "Woking", "Z" to "End"),
+        )
+        assertEquals(
+            listOf("A", "E", "D", "Z"),
+            RouteStops.ahead(compound, "A", "End", null, via = "Elephant & Castle and Denmark Hill")?.map { it.id },
+        )
+        // The board names its vias in the order the train calls: a way calling the other way round doesn't fit.
+        assertEquals(RouteStops.Resolution.ViaMatchesNoRoute, RouteStops.resolve(sequence, "A", "End", null, via = "Guildford & Woking"))
+        // Two ways each fitting a different reading of one via: neither is picked.
+        val readings = LineSequence(
+            routes = listOf(
+                LineRoute("A &harr; Z by AB and G", listOf("A", "AB", "G", "Z")),
+                LineRoute("A &harr; Z by AL and BG", listOf("A", "AL", "BG", "Z")),
+            ),
+            stopNames = mapOf("A" to "Start", "AB" to "Alpha & Beta", "G" to "Gamma", "AL" to "Alpha", "BG" to "Beta and Gamma", "Z" to "End"),
+        )
+        assertEquals(RouteStops.Resolution.Ambiguous(2), RouteStops.resolve(readings, "A", "End", null, via = "Alpha & Beta and Gamma"))
+    }
+
+    @Test
+    fun `a rail board's via text reads as what it names, whole`() {
+        assertEquals("Woking", railVia("via Woking"))
+        assertEquals("Elephant & Castle", railVia("Via Elephant & Castle"))
+        assertEquals("", railVia(null))
+        assertEquals("", railVia("  "))
+        assertEquals(listOf(listOf("Harrow", "Harrow and Wealdstone"), listOf("Wealdstone")), viaSpans("Harrow and Wealdstone"))
+        assertEquals(
+            listOf(
+                listOf("Elephant", "Elephant & Castle", "Elephant & Castle and Denmark Hill"),
+                listOf("Castle", "Castle and Denmark Hill"),
+                listOf("Denmark Hill"),
+            ),
+            viaSpans("Elephant & Castle and Denmark Hill"),
+        )
+        assertEquals(listOf(listOf("Woking")), viaSpans("Woking"))
+        assertEquals(emptyList<List<String>>(), viaSpans(""))
+    }
+
+    @Test
     fun `a loop that calls at the boarding stop twice is ambiguous`() {
         val loop = LineSequence(
             routes = listOf(LineRoute("A &harr; E", listOf("A", "L", "M", "L", "E"))),

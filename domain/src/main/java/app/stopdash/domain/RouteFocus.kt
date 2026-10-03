@@ -40,30 +40,31 @@ fun followedDeparture(row: DepartureRow, focus: RouteFocus?, topology: RouteTopo
 }
 
 /**
- * Every departure on the route the detail follows — the [followedDeparture]'s destination and
- * topology route — soonest-first and uncapped, so the page can list more than the card's few.
- * It keys on the followed train, not [focus] directly, so the list always matches the title and
- * stop list, fallback included. Empty for a status row.
+ * Every departure on the route the detail follows — the [followedDeparture]'s destination, topology
+ * route and [Departure.via] — soonest-first and uncapped, so the page can list more than the card's
+ * few. It keys on the followed train, not [focus] directly, so the list always matches the title and
+ * stop list, fallback included: a National Rail train to the same terminus by another via may not
+ * call at the stops the page lists. Empty for a status row.
  */
 fun routeDepartures(row: DepartureRow, focus: RouteFocus?, topology: RouteTopology = RouteTopology.EMPTY): List<Departure> {
     val followed = followedDeparture(row, focus, topology) ?: return emptyList()
     val route = topology.grouping(row.lineId, row.stopId, followed.destination, followed.branch).mergeKey
     return row.upcoming.filter {
-        it.destination == followed.destination &&
+        it.destination == followed.destination && it.via == followed.via &&
             topology.grouping(row.lineId, row.stopId, it.destination, it.branch).mergeKey == route
     }
 }
 
 /**
  * The trains with no time ([DepartureRow.untimed]) on the route [routeDepartures] lists: the followed
- * train's destination and topology route, as the card groups them ([DepartureRows.destinationLines]).
+ * train's destination, topology route and via, as the card groups them ([DepartureRows.destinationLines]).
  * Empty for a status row.
  */
 fun routeUntimed(row: DepartureRow, focus: RouteFocus?, topology: RouteTopology = RouteTopology.EMPTY): List<UntimedTrain> {
     val followed = followedDeparture(row, focus, topology) ?: return emptyList()
     val route = topology.grouping(row.lineId, row.stopId, followed.destination, followed.branch).mergeKey
     return row.untimed.filter {
-        it.train.destination == followed.destination &&
+        it.train.destination == followed.destination && it.train.via == followed.via &&
             topology.grouping(row.lineId, row.stopId, it.train.destination, it.train.branch).mergeKey == route
     }
 }

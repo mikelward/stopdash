@@ -261,7 +261,7 @@ internal fun leavesAlongLeg(train: Departure, leg: TripLeg, sequences: Map<Strin
     if (sequence.routes.none { route -> route.stopIds.any { isStop(sequence, it, next) } }) return null
     // A bus blind names an area more often than a stop: a bus runs to its route's end (RouteStops.resolve).
     val bus = leg.mode.equals("bus", ignoreCase = true)
-    val ahead = RouteStops.ahead(sequence, leg.fromId, train.destination, train.branch, leg.lineId, bus, RouteStops.boundOf(train.platform), train.direction) ?: return null
+    val ahead = RouteStops.ahead(sequence, leg.fromId, train.destination, train.branch, leg.lineId, bus, RouteStops.boundOf(train.platform), train.direction, via = train.via) ?: return null
     return ahead.getOrNull(1)?.let { isStop(sequence, it.id, next) } == true
 }
 

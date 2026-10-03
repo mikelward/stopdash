@@ -7,6 +7,7 @@ import app.stopdash.domain.TFL_RUN_OPERATORS
 import app.stopdash.domain.UntimedTrain
 import app.stopdash.domain.cleanStopName
 import app.stopdash.domain.railLineId
+import app.stopdash.domain.railVia
 import app.stopdash.domain.riderLineName
 import java.time.Duration
 import java.time.Instant
@@ -44,6 +45,8 @@ data class DarwinServiceDto(
 data class DarwinLocationDto(
     val locationName: String? = null,
     val crs: String? = null,
+    // "via Wimbledon": the stations it runs by, where two ways reach this destination.
+    val via: String? = null,
 )
 
 private val UK = ZoneId.of("Europe/London")
@@ -89,6 +92,8 @@ fun DarwinBoardDto.toBoard(warn: (String) -> Unit = {}): RailBoard {
         val canceled = service.isCancelled || etd == "Cancelled"
         // Each place cleaned on its own, so a train dividing for two keeps neither's qualifier.
         val destination = service.destination.orEmpty().mapNotNull { it.locationName?.trim()?.ifBlank { null }?.let(::cleanStopName) }
+        // Only a train with one destination: a dividing train's portions each run their own way.
+        val via = service.destination?.singleOrNull()?.let { railVia(it.via) }.orEmpty()
         fun train(at: Instant) = Departure(
             lineId = railLineId(operator, service.operatorCode),
             // Named as a rider knows it, here where the feed's name comes in (SPEC *Line pill colors*).
@@ -98,6 +103,7 @@ fun DarwinBoardDto.toBoard(warn: (String) -> Unit = {}): RailBoard {
             platform = service.platform?.trim()?.ifBlank { null }?.let { "Platform $it" },
             expectedArrival = at,
             mode = NATIONAL_RAIL_MODE,
+            via = via,
         )
         if (canceled || etd == "Delayed") {
             // Placed by its schedule, never counted down.
