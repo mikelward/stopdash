@@ -790,11 +790,14 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
   - [ ] **The scheduled frequency in place of a bare "?"** (maintainer, 2026-10-03): where the
         timetable has departures due, show its interval with the "every" sign and the same interval
         logic as a trip's future stops, a "?" after "min", likely in gray. Copy to agree first.
-  - [ ] **Build the departure rows off the main thread**: `DepartureRows.across` runs in
-        `MainScreen`'s composition, which grows with the stops and their predictions (maintainer,
-        2026-10-03: "you keep putting more work there"). With it, key the near-me list's
-        `remember`s on the snapshot's identity rather than its collections, which Compose compares
-        by value (Codex, #505).
+  - [x] **Build the departure rows off the main thread**: the list's rows, the journey cards
+        (`Journeys.trains`), the platform view's rows and the alert lines and verdicts are built on the
+        list's worker (`ListWork`, keyed on the snapshot's identity, not its collections). The screen
+        draws against the snapshot and time its rows were built from; the last rows stand in while new
+        ones are built, and a new list shows a spinner until its first rows are in.
+  - [ ] **The rest of the main screen's loops off the main thread**: the widget journey checks and
+        boarding keys, `journeySiblings`, `journeyOrigins`, `fartherShown` and `placeModesShown` still
+        loop over cards, rows or stops in composition. Move them to the list's worker the same way.
   - [ ] **Work a trip card's times out off the main thread**: `TripScreen`'s `cardTimes` runs in a
         `remember` in composition and reaches `RouteStops.ahead` per live train (via `legTrains` →
         `leavesAlongLeg`), a path scan that grows with the line's routes, more so with a National

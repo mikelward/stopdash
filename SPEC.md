@@ -2300,6 +2300,11 @@ been set, so none keeps showing what it judged before.
   differently are named without one, rather than given a reason untrue of some. A failure in an
   opened farther-station card isn't named: the warning falls back to "some stops". A snapshot
   restored from disk names the stops but not the reason, which isn't kept.
+- **The list's rows are built off the main thread**, from the snapshot, so a long list never holds
+  up a frame (maintainer, 2026-10-03). While a refresh's or the clock's new rows are built, the list
+  keeps its last rows for that moment, including on a return from a page over it. A list with no
+  rows of its own yet (shown for the first time, or for other places) shows a spinner until they
+  are in, never an empty list that would read as "No departures".
 - **Cold load** (nothing saved to show yet): the app waits up to **2 s** for the whole batch
   (maintainer, 2026-09-26), showing its loading stamp meanwhile, so a typical load (well under a
   second to two) paints once, whole, with nothing to jump or tap. Past that, it shows each stop as
