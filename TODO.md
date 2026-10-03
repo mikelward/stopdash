@@ -2141,6 +2141,21 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       to say so. Cost: the Planner is free (£0), and a location origin replaces the stop in the
       same request rather than adding one; a location fix taken for it is a battery change, stated
       against SPEC's budget when it's built.
+- [ ] **Skip a walk the rider's location can't follow** (maintainer, 2026-10-03). A trip on the way
+      skips a walk only when it starts and ends at the same name with a ride before and after it
+      (`OnTheWay.changesOnFoot`, #494). The real reason to skip it is that location can't tell the
+      platform, or when the rider got there. So try skipping a walk whose two ends are within the
+      location's confidence radius of each other instead. Start from the station places the trip
+      already loads to see a rider arrive (SPEC *On the way*: the Planner's point, the station's own
+      point and each entrance TfL lists, 100 m around a point and 50 m around an entrance). The open
+      question is whether those places are enough to tell that both ends fall in the same area, or
+      whether the station's extent needs data beyond them. Today those places are loaded only for
+      the station being walked to, but which walks are steps is decided for the whole route. So this
+      needs them for both ends of every walk, loaded in the background (one free TfL request per
+      station), with the same-name rule while they aren't in. Designing it includes when each walk's
+      decision settles, so it never changes the step the rider is on or has passed. Open question: whether a walk to the first ride that falls within that radius should
+      be skipped too. The maintainer would rather keep the first walk, but maybe not when it's that
+      short.
 - [ ] **Tap a card to open a detail view** (requested 2026-09-19, on-device). The compact
       card drops platform, full direction, and any longer disruption text to stay glanceable
       (SPEC *Departures*); a tap opens the fuller picture — platform and direction (already in
