@@ -28,7 +28,9 @@ import java.time.Instant
  * [boardWarned] is the train whose "time to board" has been said ([OnTheWay.boardKey]): its leg and the train
  * followed there, so it's said once for each train the rider waits for, a missed one's next included.
  * [disruptionsHeard] is each "route disruption" already heard ([RouteDisruption.Signal.key]), so a restart
- * doesn't sound it again and only something new is heard. [vehicleLeg] is the ride as the line of the
+ * doesn't sound it again and only something new is heard. [disruptionsDismissed] is each the rider
+ * dismissed on the trip's screen, read and kept going: no longer shown nor alerted on this trip, while
+ * something new (another stop, a worse status) still is. [vehicleLeg] is the ride as the line of the
  * train followed runs it, where that's another of the ride's lines than the Planner's ([RideLines]):
  * its line is the one TfL answers for the train on, and the one the step tells the rider to board, and
  * the train's calls are checked against its own stops ([OnTheWay.ridden]). Null for the ride's own
@@ -65,6 +67,7 @@ data class ActiveTrip(
     val seenAlongStop: Int = -1,
     val boardWarned: String = "",
     val disruptionsHeard: Set<String> = emptySet(),
+    val disruptionsDismissed: Set<String> = emptySet(),
     val vehicleLeg: TripLeg? = null,
     val heldFrom: Instant? = null,
     val destinations: List<TripDestination> = emptyList(),
@@ -1590,9 +1593,16 @@ object OnTheWay {
     fun atStep(trip: ActiveTrip, step: Step, now: Instant): ActiveTrip {
         // Back to the ride Next just moved them past, on board: its train as it was, or none named if
         // none was, not one looked for afresh at a stop they left minutes ago (Codex, PR #384). Its "get off soon", taken back
-        // when they left it, is to be said again.
+        // when they left it, is to be said again. What the rider let go of or has heard since stays so: an
+        // older snapshot never brings back what Keep going dismissed, nor sounds again what was heard (Codex on #519).
         trip.leftRide?.takeIf { step.onBoard && step == stepBefore(trip) && stepOf(it) == step }
-            ?.let { return it.copy(warnedLeg = -1, alertLeft = false, leftRide = null) }
+            ?.let {
+                return it.copy(
+                    warnedLeg = -1, alertLeft = false, leftRide = null,
+                    disruptionsDismissed = it.disruptionsDismissed + trip.disruptionsDismissed,
+                    disruptionsHeard = it.disruptionsHeard + trip.disruptionsHeard,
+                )
+            }
         val moved = if (!step.onBoard) {
             atLeg(trip, step.leg, now)
         } else {

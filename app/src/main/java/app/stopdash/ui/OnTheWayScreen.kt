@@ -122,6 +122,9 @@ internal fun OnTheWayScreen(
     // ([onPlanAgain], maintainer 2026-10-02). Null leaves it out.
     replanFrom: ReplanOrigin.Stop? = null,
     onPlanAgain: ((ReplanOrigin.Stop) -> Unit)? = null,
+    // The rider read [disruptions] and keeps going ([ActiveTripTracker.dismissDisruptions], maintainer
+    // 2026-10-03), as shown. Null leaves Keep going out.
+    onDismissDisruptions: ((List<RouteDisruption.Signal>) -> Unit)? = null,
 ) {
     BackHandler(onBack = onBack)
     val destination = trip?.destinationName
@@ -212,13 +215,28 @@ internal fun OnTheWayScreen(
                 // Only while it's still ahead of the trip as shown: worked out by the last check, it can lag
                 // a step the trip has since taken, and a stop now behind the rider is never offered (Codex on #479).
                 val planFrom = replanFrom?.takeIf { it.id in ReplanOrigin.stopsAhead(trip, ReplanOrigin.rideAhead(trip, progress)) }
-                if (disruptions.isNotEmpty() && planFrom != null && onPlanAgain != null) {
+                val planAgain = planFrom?.takeIf { onPlanAgain != null }
+                if (disruptions.isNotEmpty() && (planAgain != null || onDismissDisruptions != null)) {
+                    // Plan again, or Keep going as planned (maintainer, 2026-10-03), side by side
+                    // under the cards they answer; Keep going alone sits at the end.
                     item(key = "planAgain") {
-                        OutlinedButton(
-                            onClick = { onPlanAgain(planFrom) },
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("onTheWayPlanAgain"),
-                        ) {
-                            Text(stringResource(R.string.on_the_way_plan_again, planFrom.name))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            if (planAgain != null && onPlanAgain != null) {
+                                OutlinedButton(
+                                    onClick = { onPlanAgain(planAgain) },
+                                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("onTheWayPlanAgain"),
+                                ) {
+                                    Text(stringResource(R.string.on_the_way_plan_again, planAgain.name))
+                                }
+                            }
+                            if (onDismissDisruptions != null) {
+                                OutlinedButton(
+                                    onClick = { onDismissDisruptions(disruptions) },
+                                    modifier = Modifier.heightIn(min = 48.dp).testTag("onTheWayKeepGoing"),
+                                ) {
+                                    Text(stringResource(R.string.on_the_way_keep_going))
+                                }
+                            }
                         }
                     }
                 }

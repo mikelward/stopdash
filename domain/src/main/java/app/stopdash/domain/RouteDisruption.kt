@@ -42,6 +42,13 @@ object RouteDisruption {
         val key: String
 
         /**
+         * What Keep going lets go of ([ActiveTrip.disruptionsDismissed]): the leg and the alert as its
+         * Dismiss identifies it ([DismissedAlert]), so it stays let go of whatever is learned of it later
+         * (placed on the leg, say), where [key] would be heard again (Codex on #519).
+         */
+        val dismissKey: String get() = key
+
+        /**
          * The line [lineId] (named [lineName]) the leg rides has an alert: [status], as shown on the trip,
          * or, [placed], a part closure TfL places on the leg's own stretch, which raised it to [tier]
          * ([lineSignal]).
@@ -57,9 +64,9 @@ object RouteDisruption {
             // Placing it is an escalation the rider hasn't heard: the first check after a new alert,
             // before its detail lands, finds it unplaced, so a placed one is a key of its own and is heard
             // again when the next check places it (Codex, PR #446).
-            override val key: String get() = DismissedAlert.ofLineStatus(status).let {
-                "line/$legIndex/${it.alertKey}/${it.contentSignature}" + if (placed) "/placed" else ""
-            }
+            override val key: String get() = dismissKey + if (placed) "/placed" else ""
+
+            override val dismissKey: String get() = DismissedAlert.ofLineStatus(status).let { "line/$legIndex/${it.alertKey}/${it.contentSignature}" }
         }
 
         /**

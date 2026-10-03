@@ -82,13 +82,14 @@ class OnTheWayScreenScreenshotTest {
         disruptions: List<RouteDisruption.Signal> = emptyList(),
         replanFrom: ReplanOrigin.Stop? = null,
         onPlanAgain: ((ReplanOrigin.Stop) -> Unit)? = null,
+        onDismissDisruptions: ((List<RouteDisruption.Signal>) -> Unit)? = null,
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 OnTheWayScreen(
                     trip, progress, failed, now, onEnd, onBack, current = current, notKept = notKept, endFailed = endFailed, alertsOff = alertsOff,
                     appOpenOnly = appOpenOnly, nextTrains = nextTrains, onGoTo = onGoTo, disruptions = disruptions,
-                    replanFrom = replanFrom, onPlanAgain = onPlanAgain,
+                    replanFrom = replanFrom, onPlanAgain = onPlanAgain, onDismissDisruptions = onDismissDisruptions,
                 )
             }
         }
@@ -121,6 +122,31 @@ class OnTheWayScreenScreenshotTest {
         composeRule.onNodeWithText("Plan again from Highbury & Islington").assertIsDisplayed().performClick()
         assertEquals(listOf(from), asked)
         captureSnapshot("on-the-way-plan-again.png")
+    }
+
+    @Test
+    fun keep_going_sits_beside_plan_again() {
+        // Read and keeping going (maintainer, 2026-10-03): Keep going hands over every signal shown. Made-up words.
+        val status = LineStatus("jubilee", 3, "Part Suspended", fullText = "No service between Stratford and Canary Wharf.")
+        val signal = RouteDisruption.Signal.Line(2, "jubilee", "Jubilee", status, RouteDisruption.Tier.HIGH, placed = true)
+        val dismissed = mutableListOf<List<RouteDisruption.Signal>>()
+        show(
+            trip, TripProgress.Waiting(mildmay, at(4)), disruptions = listOf(signal),
+            replanFrom = ReplanOrigin.Stop("910GHGHI", "Highbury & Islington"), onPlanAgain = {}, onDismissDisruptions = { dismissed += it },
+        )
+        composeRule.onNodeWithTag("onTheWayPlanAgain").assertIsDisplayed()
+        captureSnapshot("on-the-way-keep-going.png")
+        composeRule.onNodeWithText("Keep going").assertIsDisplayed().performClick()
+        assertEquals(listOf(listOf(signal)), dismissed)
+    }
+
+    @Test
+    fun a_disruption_with_nowhere_to_plan_from_still_offers_keep_going() {
+        val status = LineStatus("jubilee", 3, "Part Suspended", fullText = "No service between Stratford and Canary Wharf.")
+        val signal = RouteDisruption.Signal.Line(2, "jubilee", "Jubilee", status, RouteDisruption.Tier.HIGH, placed = true)
+        show(trip, TripProgress.Waiting(mildmay, at(4)), disruptions = listOf(signal), onDismissDisruptions = {})
+        composeRule.onNodeWithTag("onTheWayPlanAgain").assertDoesNotExist()
+        composeRule.onNodeWithTag("onTheWayKeepGoing").assertIsDisplayed()
     }
 
     @Test
