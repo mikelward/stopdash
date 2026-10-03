@@ -1682,6 +1682,35 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         **Arrivals stay one request per pole:** `/StopPoint/{ids}/Arrivals` 404s on a list, and a
         stop area's (`490G…`) own arrivals come back empty — so a P-pole junction costs P + 1, not
         2P. A per-cluster arrivals budget remains the lever for the arrivals half.
+  - [x] **Log a slow or retried request, and a wait for a request slot** (maintainer bug report,
+        2026-10-03). A near-me load's fetch line read ~10 s with nothing failed, and the two nearest
+        bus places landed as cards while a farther station's rows were already up: the total alone
+        couldn't say which request held them. Each call now logs, when over 2 s or when a connect had
+        to be retried, its endpoint (identifiers left out), connection / first-byte / read times and
+        any failed connect's address family; the shared pool logs a wait of 0.5 s or more for a slot.
+  - [ ] **Don't hold a stop's times for its closure check** (same report). A stop lands only once
+        both its arrivals and its closure check are back, and all of a junction's poles share one
+        batched check, so one slow check holds back every nearby bus place together, and the
+        never-jump rule then leaves the nearest ones as "Tap to see" cards below nothing the rider
+        needed. Show the times as they land with the closure still "Checking…" (as line status
+        already does, SPEC *Freshness → Cold load*), and let a closure found later mark the stop;
+        principle 1 still holds, since nothing reads as verified-open until the check is back.
+        Confirm against the new slow-request log first: it should name `StopPoint/…/Disruption`.
+  - [ ] **A prioritized request queue across TfL and National Rail** (maintainer, 2026-10-03).
+        Today the pool is one fair 10-slot queue for TfL alone: every TfL request in the process
+        queues on equal terms, and National Rail boards skip it. Instead, one queue for both sources
+        with two simple tags: **foreground or background** (on screen, or the widget, a prefetch, a
+        lookup nobody is looking at yet) and **departures above closures and the rest** (line status,
+        route sequences, timetables, alert directions, hubs). Foreground departures go first; a
+        waiting background request still ages into a slot; each source keeps its own rate limit.
+        **Needs "Don't hold a stop's times for its closure check" first**: while a stop waits for
+        both, a lower-priority closure check would only delay the departures it's paired with. Only
+        matters when the queue is full (a normal near-me load is under 10 requests, a big station
+        ~20); size it from the "waited N ms for a free request slot" log lines.
+  - [ ] **Shorter connect timeout** (same report). OkHttp's default is 10 s, so a connect that
+        stalls (a dead IPv6 route after a network change) costs 10 s before OkHttp tries the next
+        address. ~3 s would fall over sooner without touching slow-to-answer endpoints, whose read
+        timeout is separate. Only if the slow-request log shows failed connects.
   - [x] **A revealed stop whose first fetch fails isn't in the widget's polling set** — *moot: the
         reveal was deleted (see "Delete the now-unreachable 'More' reveal path"), so there are no
         revealed stops.* (Codex P2, PR
