@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
 /**
  * The transport modes the user has hidden from the near-me list ("bus", "national-rail"…), and
  * what hiding one means (SPEC *Finding stops → Hiding a mode*): a stop that serves only hidden
@@ -78,6 +79,7 @@ object HiddenModes {
         !isHidden(NATIONAL_RAIL_MODE, hidden) || starred.any { it.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) }
 
     /** [rows] without a hidden mode's or line's departures and status rows; stop-closure rows always stay. */
+    @WorkerThread
     fun rows(rows: List<DepartureRow>, hidden: Set<String>): List<DepartureRow> {
         if (hidden.isEmpty()) return rows
         return rows.filter { it.stopDisruption != null || !isHidden(it.mode, it.lineId, hidden) }

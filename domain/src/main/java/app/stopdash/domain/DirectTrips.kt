@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
 /**
  * The departures from a stop that call at another (SPEC *Finding stops → From… To…*): a trip's leg
  * boarding at Highgate and getting off at Euston keeps the Northern line trains whose path reaches
@@ -32,6 +33,7 @@ object DirectTrips {
      * A stop's lines are kept only where their route reaches the destination, so a status row
      * (a suspension) shows for the lines that matter and not for the rest.
      */
+    @WorkerThread
     fun filter(
         stops: List<StopArrivals>,
         destination: List<End>,
@@ -119,6 +121,7 @@ object DirectTrips {
      * ([LineSequence.callingAt]): what [judge] judges a departure from that stop on. Worked out once per
      * stop and line, then shared by its departures.
      */
+    @WorkerThread
     fun routeAt(sequence: LineSequence, stopId: String, hubId: String, stopName: String, destination: List<End>): LineSequence {
         var route = sequence.knowing(stopId, hubId, stopName).callingAt(stopId)
         for (end in destination) route = route.knowing(end.id, end.hubId, end.name).callingAt(end.id)
@@ -130,6 +133,7 @@ object DirectTrips {
      * ([routeAt]; null when the route failed). Depends on where the departure is going, not when, so a
      * verdict holds for every later prediction of the same service.
      */
+    @WorkerThread
     fun judge(departure: Departure, stopId: String, route: LineSequence?, destinationIds: Set<String>): Verdict {
         val lineId = departure.lineId
         val bus = departure.mode.equals("bus", ignoreCase = true)

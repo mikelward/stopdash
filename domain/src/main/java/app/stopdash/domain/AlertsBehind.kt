@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.flow.Flow
@@ -92,6 +93,7 @@ object AlertsBehind {
      * as [DepartureRows.across] builds them, placed by [DepartureRows.alertsBehind], at every one of
      * [stops], checking [lines] (null: all of them).
      */
+    @WorkerThread
     fun placement(
         stops: List<StopArrivals>,
         statuses: Map<String, LineStatus>,

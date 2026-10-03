@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
 /**
  * One end of a [StarredJourney]: a station the rider boards or alights at, with its published
  * position (TfL's, from the route sequence — never the rider's own fix) so the nearer end can be
@@ -249,6 +250,7 @@ object Journeys {
      * stop. The distance fallback applies only to a bus journey on its starred line's own route:
      * another line that merely passes near an end hasn't been shown to serve it.
      */
+    @WorkerThread
     fun segment(journey: StarredJourney, lineSequence: LineSequence, lineId: String = journey.lineId): JourneySegment? {
         val sequence = lineSequence.callingAtEnds(journey)
         for (tier in 0..maxTier(journey, lineId)) {
@@ -303,6 +305,7 @@ object Journeys {
      * guessed, and flagged. A line's status-only row (a suspension, no predictions) is kept when its
      * route serves the segment, so the card shows the warning rather than a bare "no trains".
      */
+    @WorkerThread
     fun trains(
         segment: JourneySegment,
         rows: List<DepartureRow>,
@@ -471,6 +474,7 @@ object Journeys {
      * lines' routes calls there and then at the far end, matched as [trains] matches it. Only a pole
      * of the journey's mode: another mode's stop in the area is a different journey.
      */
+    @WorkerThread
     fun siblingPoles(
         journey: StarredJourney,
         originId: String,

@@ -13,6 +13,8 @@ kotlin {
 dependencies {
     // Public signatures carry Flow and CoroutineDispatcher, so consumers see coroutines too.
     api(libs.kotlinx.coroutines.core)
+    // @WorkerThread marks the work a screen may not call from composition (lint's WorkerThreadCall).
+    implementation(libs.androidx.annotation)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

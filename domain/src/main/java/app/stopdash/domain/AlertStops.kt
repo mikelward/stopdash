@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
 /**
  * Which stations on a line's page its service alert names (SPEC *Disruptions*): a first guess at
  * the stretch a diversion or closure touches, since TfL gives it only as prose ("Diverted between
@@ -17,6 +18,7 @@ package app.stopdash.domain
  */
 object AlertStops {
     /** The ids of [stops] whose names appear in [text]; empty when there is no text. */
+    @WorkerThread
     fun mentioned(text: String?, stops: List<RouteStop>): Set<String> {
         if (text.isNullOrBlank() || stops.isEmpty()) return emptySet()
         // The two lines named after a station and "City" are taken out first, so neither marks its
@@ -60,6 +62,7 @@ object AlertStops {
      * leaves an alert out of a ride by is marked here too, so the page and the trip read an alert the
      * same way (maintainer, 2026-10-01).
      */
+    @WorkerThread
     fun affected(text: String?, stops: List<RouteStop>): Set<String> {
         val named = mentioned(text, stops)
         val marked = named + stretches(text, stops, named) + stretched(text, stops)
@@ -71,6 +74,7 @@ object AlertStops {
      * a run, "A" for a stop alone (maintainer, 2026-10-01), each stop called by [name]. A run whose
      * ends share a name is that name once, and a label already given isn't given again.
      */
+    @WorkerThread
     fun runs(marked: Set<String>, stops: List<RouteStop>, name: (RouteStop) -> String): List<String> {
         val runs = ArrayList<List<RouteStop>>()
         var run = ArrayList<RouteStop>()
@@ -94,6 +98,7 @@ object AlertStops {
      * ("near Moorgate"), and a stretch may be one running normally ("Good service between …"), neither
      * where it applies (Codex, PR #455).
      */
+    @WorkerThread
     fun stretched(text: String?, stops: List<RouteStop>): Set<String> {
         val named = mentioned(text, stops)
         val read = ArrayList<IntRange>()
