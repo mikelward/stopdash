@@ -1,6 +1,5 @@
 package app.stopdash.ui
 
-import app.stopdash.domain.DepartureLabels
 import app.stopdash.domain.StopQualifier
 
 /**
@@ -13,7 +12,7 @@ const val ARROW = "➔"
 /**
  * A group header's **qualifier segment** — the title-case cue that follows the place name on the one
  * line header ("Platform 1", "Stop E", "Southbound", "➔ Archway"). "Stop" is reserved for a literal
- * pole letter; a compass reads as a bare direction word, a shared terminus as "➔ destination". It
+ * pole letter; a compass reads as a bare direction word, a letter-less pole's "towards" as "➔ Archway". It
  * joins the place name via [groupHeaderJoin] (" – ", or a space before a destination's arrow); null
  * when the group carries no qualifier, so the header is the bare place name. Title case with no small-caps treatment, and it **drops the
  * direction/towards parenthetical** the old two-level sub-header showed — the compass/towards moves
@@ -27,14 +26,44 @@ fun groupHeaderLabel(qualifier: StopQualifier?): String? = when (qualifier) {
     // uppercase() is locale-invariant (Turkish-ı safe); the letter reads the same case however TfL
     // supplied it.
     // "Stop" is reserved for a literal pole letter ("Stop E"). A compass bearing reads as a bare
-    // direction word ("Southbound"), like the rail compass; the shared terminus reads as an arrow
-    // plus the destination ("➔ Archway"), the arrow meaning "heading to".
+    // direction word ("Southbound"), like the rail compass.
     is StopQualifier.BusStop -> "Stop ${qualifier.letter.uppercase()}"
     is StopQualifier.BusBearing -> bearingSpoken(qualifier.bearing.uppercase())
-    is StopQualifier.Terminus ->
-        // The same display rename the destination line uses ("Battersea Power" → "Battersea",
-        // DepartureLabels), so the header and the card read consistently.
-        "$ARROW ${DepartureLabels.destinationLabel(qualifier.terminus, "") ?: qualifier.terminus}"
+    // The first place the sign names ("Farringdon Or Holborn Circus" → "➔ Farringdon"), the arrow meaning
+    // "heading to"; the whole of it is what a screen reader hears ([groupHeaderSpoken]).
+    is StopQualifier.Towards -> "$ARROW ${towardsShort(qualifier.towards)}"
+}
+
+/**
+ * The qualifier a bus pole is headed by, from its own stop data: its letter ("Stop D"), else the
+ * "towards" on its sign ("➔ Farringdon"), else its compass bearing ("Westbound"), else null. The
+ * same order the grouping heads a pole by (SPEC D8), for a surface that labels one pole on its own
+ * (the watch's trip board).
+ */
+fun busPoleLabel(letter: String, towards: String, bearing: String): String? {
+    letter.trim().ifEmpty { null }?.let { return groupHeaderLabel(StopQualifier.BusStop(it, towards.trim().ifEmpty { null })) }
+    towards.trim().ifEmpty { null }?.let { return groupHeaderLabel(StopQualifier.Towards(it)) }
+    return bearing.trim().ifEmpty { null }?.let { groupHeaderLabel(StopQualifier.BusBearing(it)) }
+}
+
+/** A bus pole's own cues for [busPoleLabels]: its letter, the "towards" on its sign, its compass bearing. */
+data class BusPoleCues(val letter: String, val towards: String, val bearing: String)
+
+/**
+ * [busPoleLabel] for each of [poles], several boarding together: where two would read the same (two
+ * letterless poles whose signs point the same way, facing apart), those fall back to their bearings
+ * ("Westbound", "Eastbound"), so each pole's trains stay under a label of their own, as the grouping
+ * keeps them apart (Codex P2, #492). A clash the bearings can't settle keeps the shared label.
+ */
+fun busPoleLabels(poles: List<BusPoleCues>): List<String?> {
+    val labels = poles.map { busPoleLabel(it.letter, it.towards, it.bearing) }
+    val clashing = labels.groupingBy { it }.eachCount().filter { (label, count) -> label != null && count > 1 }.keys
+    return poles.mapIndexed { i, pole ->
+        if (labels[i] !in clashing || pole.letter.isNotBlank()) return@mapIndexed labels[i]
+        val bearings = poles.indices.filter { labels[it] == labels[i] }.map { poles[it].bearing.trim().uppercase() }
+        if (bearings.any { it.isEmpty() } || bearings.toSet().size < bearings.size) labels[i]
+        else groupHeaderLabel(StopQualifier.BusBearing(pole.bearing.trim()))
+    }
 }
 
 /**
@@ -72,11 +101,11 @@ fun groupHeaderSpoken(qualifier: StopQualifier?): String? = when (qualifier) {
         towards?.let { "Stop $letter, towards $it" } ?: "Stop $letter"
     }
     is StopQualifier.BusBearing -> bearingSpoken(qualifier.bearing.uppercase())
-    is StopQualifier.Terminus -> {
-        val display = DepartureLabels.destinationLabel(qualifier.terminus, "") ?: qualifier.terminus
-        "to $display"
-    }
+    is StopQualifier.Towards -> "towards ${qualifier.towards.replace(" Or ", " or ")}"
 }
+
+/** A pole's "towards" cut to the first place it names: TfL joins several with " Or ". */
+private fun towardsShort(towards: String): String = towards.substringBefore(" Or ").trim().ifEmpty { towards.trim() }
 
 /** A bus pole's compass [bearing] as a direction word ("E" → "Eastbound"), else null when it names
  *  none of the eight compass points — the route page heads its stop list with it. */

@@ -294,10 +294,12 @@ data class NextTrains(
     val readyAt: Instant? = null,
     // When the board was read: its rows' age, as the departures board ages a stop's.
     val fetchedAt: Instant? = null,
-    // The boarding pole's letter and "towards" ([ActiveTripTracker.NextBoard.pole]), so the board is
-    // headed as the main view heads that stop ("Stop D"), not by where the ride goes; blank for none.
+    // The boarding pole's letter, "towards" and bearing ([ActiveTripTracker.NextBoard.pole]), so the
+    // board is headed as the main view heads that stop ("Stop D", "➔ Archway", "Southbound"), never by
+    // where one of its buses goes; blank for none.
     val stopLetter: String = "",
     val towards: String = "",
+    val bearing: String = "",
     // The boarding stop pair's other poles read with it ([ActiveTripTracker.NextBoard.others]), each
     // under its own header: another of the ride's lines boards there, across the road. None for a
     // station, or with no other pole read.
@@ -311,7 +313,14 @@ data class NextTrains(
  * A pole of the boarding stop pair besides the ride's own ([NextTrains.others]): its trains that take
  * the rider where they get off, headed by its letter and "towards" as the main view heads it.
  */
-data class PoleTrains(val stopId: String, val stopName: String, val trains: List<Departure>, val stopLetter: String = "", val towards: String = "")
+data class PoleTrains(
+    val stopId: String,
+    val stopName: String,
+    val trains: List<Departure>,
+    val stopLetter: String = "",
+    val towards: String = "",
+    val bearing: String = "",
+)
 
 /**
  * [board] ([ActiveTripTracker.nextBoard]) as [NextTrains] at [now]: its trains kept to those whose
@@ -354,8 +363,9 @@ internal fun rememberNextTrains(
         // A pole of the pair left unread is said too: a train there went unseen.
         failed = board.failed || board.partial,
         readyAt = readyAt, fetchedAt = fetchedAt, stopLetter = board.pole?.stopLetter.orEmpty(), towards = board.pole?.towards.orEmpty(),
+        bearing = board.pole?.bearing.orEmpty(),
         others = others.map { (other, trains) ->
-            PoleTrains(other.pole.id, other.pole.name.ifBlank { board.ride.fromName }, trains.trains, other.pole.stopLetter, other.pole.towards)
+            PoleTrains(other.pole.id, other.pole.name.ifBlank { board.ride.fromName }, trains.trains, other.pole.stopLetter, other.pole.towards, other.pole.bearing)
         },
     )
 }
@@ -375,9 +385,12 @@ private fun NextTrainsSection(next: NextTrains, now: Instant) {
         StopGrouping.groupByStop(
             DepartureRows.forStop(
                 next.ride.fromId, next.ride.fromName, next.trains, now, fetchedAt = fetchedAt,
-                stopLetter = next.stopLetter, towards = next.towards,
+                stopLetter = next.stopLetter, towards = next.towards, bearing = next.bearing,
             ) + next.others.flatMap { pole ->
-                DepartureRows.forStop(pole.stopId, pole.stopName, pole.trains, now, fetchedAt = fetchedAt, stopLetter = pole.stopLetter, towards = pole.towards)
+                DepartureRows.forStop(
+                    pole.stopId, pole.stopName, pole.trains, now, fetchedAt = fetchedAt,
+                    stopLetter = pole.stopLetter, towards = pole.towards, bearing = pole.bearing,
+                )
             },
         )
     }

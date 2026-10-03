@@ -12,6 +12,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import app.stopdash.ui.BusPoleCues
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -154,7 +155,7 @@ class WatchTripsTest {
     fun `a train leaving before the rider can board is marked missed, and never pushes a catchable one off`() {
         val trains = listOf(train(2), train(3), train(7), train(8), train(9))
         val sent = runBlocking {
-            WatchTrips.build(trip, "Walk", "4 min", trains, t0, readyAt = at(5), stopOf = { "Stop A" }) { leg, _ -> leg.toName }
+            WatchTrips.build(trip, "Walk", "4 min", trains, t0, readyAt = at(5), poleOf = { WatchTrips.Pole("A", "King's Cross", BusPoleCues("A", "", "")) }) { leg, _ -> leg.toName }
         }
         assertEquals(listOf(at(7), at(8), at(9)).map { it.toEpochMilli() }, sent.departures.map { it.dueAt })
         assertTrue(sent.departures.none { it.missed })
@@ -163,6 +164,29 @@ class WatchTripsTest {
         // Missed ones fill the room the catchable leave, marked.
         assertEquals(listOf(true, true, false), few.departures.map { it.missed })
         assertEquals("", few.departures.first().stop)
+    }
+
+    @Test
+    fun `poles are told apart by bearing only among those whose trains are sent`() {
+        // Two letterless poles whose signs read the same, facing apart: by their bearings while both have
+        // trains sent; one with none sent can't relabel the other, which keeps its towards (Codex P2, #492).
+        val west = WatchTrips.Pole("W", "King's Cross", BusPoleCues("", "Euston", "W"))
+        val east = WatchTrips.Pole("E", "King's Cross", BusPoleCues("", "Euston", "E"))
+        val a = train(7)
+        val b = train(8)
+        val both = runBlocking {
+            WatchTrips.build(trip, "Walk", "4 min", listOf(a, b), t0, poleOf = { if (it === a) west else east }) { leg, _ -> leg.toName }
+        }
+        assertEquals(listOf("Westbound", "Eastbound"), both.departures.map { it.stop })
+        val alone = runBlocking {
+            WatchTrips.build(trip, "Walk", "4 min", listOf(a), t0, poleOf = { if (it === a) west else east }) { leg, _ -> leg.toName }
+        }
+        assertEquals(listOf("➔ Euston"), alone.departures.map { it.stop })
+        // A pole whose cues name nothing goes by its name.
+        val bare = runBlocking {
+            WatchTrips.build(trip, "Walk", "4 min", listOf(a), t0, poleOf = { WatchTrips.Pole("X", "King's Cross", BusPoleCues("", "", "")) }) { leg, _ -> leg.toName }
+        }
+        assertEquals(listOf("King's Cross"), bare.departures.map { it.stop })
     }
 
     @Test

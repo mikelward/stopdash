@@ -11,7 +11,7 @@ import org.junit.Test
 private val StopGroup.platform: String? get() = (qualifier as? StopQualifier.Platform)?.number
 private val StopGroup.platformDir: String? get() = (qualifier as? StopQualifier.Platform)?.direction
 private val StopGroup.compass: String? get() = (qualifier as? StopQualifier.Compass)?.label
-private val StopGroup.terminus: String? get() = (qualifier as? StopQualifier.Terminus)?.terminus
+private val StopGroup.towards: String? get() = (qualifier as? StopQualifier.Towards)?.towards
 private val StopGroup.busLetter: String? get() = (qualifier as? StopQualifier.BusStop)?.letter
 private val StopGroup.busTowards: String? get() = (qualifier as? StopQualifier.BusStop)?.towards
 private val StopGroup.busBearing: String? get() = (qualifier as? StopQualifier.BusBearing)?.bearing
@@ -48,6 +48,7 @@ class StopGroupingTest {
         mode: String = "tube",
         stopLetter: String = "",
         bearing: String = "",
+        towards: String = "",
         upcoming: List<Departure> = listOf(dep(destination, platform, mode)),
         stopDisruption: String? = null,
     ) = DepartureRow(
@@ -56,6 +57,7 @@ class StopGroupingTest {
         clusterId = clusterId,
         stopLetter = stopLetter,
         bearing = bearing,
+        towards = towards,
         lineId = lineId,
         lineName = lineId.uppercase(),
         direction = direction,
@@ -644,76 +646,66 @@ class StopGroupingTest {
     }
 
     @Test
-    fun `the stop letter wins over the shared terminus`() {
-        // A lettered pole whose buses all head one way still splits/labels on the letter (the primary
-        // pole cue), not the terminus (the fallback for letter-less poles).
+    fun `the stop letter wins over the pole's towards`() {
+        // A lettered pole labels on the letter (the primary pole cue); its "towards" rides along.
         val group = StopGrouping.groupByStop(
-            listOf(row("B", "King's Cross Station", mode = "bus", stopLetter = "D", destination = "Bank")),
+            listOf(row("B", "King's Cross Station", mode = "bus", stopLetter = "D", towards = "Farringdon", destination = "Bank")),
         ).single()
         assertEquals("D", group.busLetter)
-        assertNull(group.terminus)
+        assertNull(group.towards)
     }
 
     @Test
-    fun `a bus stop whose routes all head one way takes the shared terminus`() {
-        // The bus analog of the rail compass: a compass-less bus place where every route heads to
-        // one terminus is qualified "-> Bank", and the terminus forces its header even as a lone place.
+    fun `a letter-less pole is headed by its towards, ahead of its bearing, whatever its buses' destinations`() {
+        // The sign's "towards" heads the pole even when several routes serve it with different
+        // destinations (the sign shows it all the same), and before its compass bearing.
         val rows = listOf(
-            row("BP", "Turnpike Lane", lineId = "141", destination = "Bank", mode = "bus"),
-            row("BP", "Turnpike Lane", lineId = "341", destination = "Bank", mode = "bus"),
+            row("BP", "Turnpike Lane", lineId = "141", destination = "Bank", mode = "bus", towards = "King's Cross Or Euston", bearing = "S"),
+            row("BP", "Turnpike Lane", lineId = "341", destination = "Waterloo", mode = "bus", towards = "King's Cross Or Euston", bearing = "S"),
         )
         val group = StopGrouping.groupByStop(rows).single()
-        assertEquals("Bank", group.terminus)
-        assertNull(group.compass)
+        assertEquals("King's Cross Or Euston", group.towards)
+        assertNull(group.busBearing)
         assertTrue(group.showHeader)
     }
 
     @Test
-    fun `a bus stop serving diverging termini stays bare`() {
-        // Routes at the pole head different ways, so there is no one terminus to stand behind — the
-        // header stays the bare name rather than claim a direction (SPEC principle 1).
-        val rows = listOf(
-            row("BP", "Wood Green", lineId = "141", destination = "Bank", mode = "bus"),
-            row("BP", "Wood Green", lineId = "341", destination = "Waterloo", mode = "bus"),
-        )
-        assertNull(StopGrouping.groupByStop(rows).single().terminus)
-    }
-
-    @Test
-    fun `a short-working within one route blocks the shared terminus`() {
-        // One (line, direction) row can carry departures to more than one terminus (a short-working
-        // among the through buses); the row headline names only the soonest. The terminus must be a
-        // consensus of every upcoming departure, not the headline — else "-> Bank" would show while a
-        // card below still lists a Waterloo departure (Codex P1, PR #116).
-        val rows = listOf(
-            row(
-                "BP", "Wood Green", lineId = "141", mode = "bus", destination = "Bank",
-                upcoming = listOf(dep("Bank", "", "bus"), dep("Waterloo", "", "bus")),
+    fun `two letter-less poles whose signs read the same but face different ways stay apart`() {
+        // Same cluster, same "towards", opposite bearings: two places to stand, so two groups, each
+        // still headed by its towards (Codex P2, #492). Both directions: the same bearing still merges.
+        val apart = StopGrouping.groupByStop(
+            listOf(
+                row("B1", "King's Cross Station", clusterId = "C", lineId = "73", mode = "bus", towards = "Euston", bearing = "W"),
+                row("B2", "King's Cross Station", clusterId = "C", lineId = "390", mode = "bus", towards = "Euston", bearing = "E"),
             ),
         )
-        assertNull(StopGrouping.groupByStop(rows).single().terminus)
+        assertEquals(2, apart.size)
+        assertEquals(listOf("Euston", "Euston"), apart.map { it.towards })
+        val together = StopGrouping.groupByStop(
+            listOf(
+                row("B1", "King's Cross Station", clusterId = "C", lineId = "73", mode = "bus", towards = "Euston", bearing = "W"),
+                row("B2", "King's Cross Station", clusterId = "C", lineId = "390", mode = "bus", towards = "Euston", bearing = "W"),
+            ),
+        )
+        assertEquals(1, together.size)
     }
 
     @Test
-    fun `a blank destination among the bus routes blocks the shared terminus`() {
-        // TfL omitted a terminus, so a shared one can't be confirmed — bail rather than guess.
-        val rows = listOf(
-            row("BP", "Wood Green", lineId = "141", destination = "Bank", mode = "bus"),
-            row("BP", "Wood Green", lineId = "341", destination = "", mode = "bus"),
-        )
-        assertNull(StopGrouping.groupByStop(rows).single().terminus)
+    fun `a letter-less pole without a towards falls back to its bearing`() {
+        val group = StopGrouping.groupByStop(listOf(row("BP", "Turnpike Lane", mode = "bus", bearing = "S"))).single()
+        assertEquals("S", group.busBearing)
+        assertNull(group.towards)
     }
 
     @Test
-    fun `a suspended bus route blocks the shared terminus`() {
-        // A live route to Bank plus a suspended bus route (no predictions) at the same stop: the
-        // suspended route's card rides in the group but its destination is unknown, so the header
-        // can't claim "-> Bank" over it (Codex P2, PR #116) — every route must name the terminus.
+    fun `a bus stop is never headed by one bus's destination`() {
+        // Every route heading one way used to head the pole "➔ Bank": that names where those buses
+        // go, not where the stop heads, so a pole with no letter, towards or bearing stays bare.
         val rows = listOf(
-            row("BP", "Turnpike Lane", lineId = "141", mode = "bus", destination = "Bank"),
-            row("BP", "Turnpike Lane", lineId = "341", mode = "bus", upcoming = emptyList()),
+            row("BP", "Turnpike Lane", lineId = "141", destination = "Bank", mode = "bus"),
+            row("BP", "Turnpike Lane", lineId = "341", destination = "Bank", mode = "bus"),
         )
-        assertNull(StopGrouping.groupByStop(rows).single().terminus)
+        assertNull(StopGrouping.groupByStop(rows).single().qualifier)
     }
 
     @Test
@@ -727,7 +719,7 @@ class StopGroupingTest {
         val kings = StopGrouping.groupByStop(rows).first { it.stopName == "King's Cross" }
         assertEquals("1", kings.platform)
         assertEquals("Northbound", kings.platformDir)
-        assertNull(kings.terminus)
+        assertNull(kings.towards)
     }
 
     @Test
@@ -739,7 +731,7 @@ class StopGroupingTest {
             row("A", "Archway", mode = "tube", destination = "Morden"),
         )
         val depot = StopGrouping.groupByStop(rows).first { it.stopName == "Some Depot" }
-        assertNull(depot.terminus)
+        assertNull(depot.towards)
         assertNull(depot.compass)
     }
 }

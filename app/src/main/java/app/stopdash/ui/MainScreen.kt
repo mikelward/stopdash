@@ -2364,10 +2364,12 @@ private fun DepartureList(
                 StopGroupHeader(
                     name,
                     // A pole's letter only when the notice is that pole's alone, not its junction's.
-                    // A letter-less pole reads by its bearing, as its own section's heading does.
+                    // A letter-less pole reads by its sign's "towards", else its bearing, as its own
+                    // section's heading does.
                     when {
                         !isPole(notice) || (stopPlaceKey(notice) to notice.stopDisruption.orEmpty()) in sharedNotices -> null
                         notice.stopLetter.isNotBlank() -> StopQualifier.BusStop(notice.stopLetter, notice.towards.ifBlank { null })
+                        notice.towards.isNotBlank() -> StopQualifier.Towards(notice.towards)
                         notice.bearing.isNotBlank() -> StopQualifier.BusBearing(notice.bearing)
                         else -> null
                     },

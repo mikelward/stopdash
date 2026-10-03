@@ -1194,34 +1194,6 @@ class MainScreenScreenshotTest {
     }
 
     @Test
-    fun `a platform view's title follows the pole's current terminus`() {
-        // A letterless, bearingless bus pole is headed by its shared terminus, which comes from the
-        // departures — so after a refresh changes it, the title must not keep claiming the old one.
-        fun pole(destination: String) = StopArrivals(
-            "490000001A",
-            "Example Road",
-            listOf(dep("141", "141", "outbound", destination, 120, "", mode = "bus")),
-            fetchedAt = now.minusSeconds(60),
-        )
-        var state by mutableStateOf<DeparturesUiState>(
-            DeparturesUiState.Loaded(listOf(pole("Palmers Green")), now.minusSeconds(60)),
-        )
-        composeRule.setContent {
-            StopDashTheme(dynamicColor = false) {
-                Surface(modifier = Modifier.fillMaxSize()) { MainScreen(state, now, {}) }
-            }
-        }
-        composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("Example Road", substring = true).performClick()
-        composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("Back").assertExists()
-
-        state = DeparturesUiState.Loaded(listOf(pole("Wood Green")), now.minusSeconds(60))
-        composeRule.waitForIdle()
-        composeRule.onAllNodesWithText("Palmers Green", substring = true).assertCountEquals(0)
-    }
-
-    @Test
     fun `tapping the station name shows the whole station, the rest of the header one platform`() {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -3152,10 +3124,10 @@ class MainScreenScreenshotTest {
     }
 
     @Test
-    fun `a bus stop whose routes all head one way shows the terminus`() {
-        // The bus analog of the rail compass: a compass-less bus place where every route heads one
-        // way is qualified "➔ BANK", so a rider reads the stop's direction off the header. Logic-only —
-        // no baseline. Public route/place names only (SPEC *Privacy*).
+    fun `a letterless bus stop is headed by its towards, not where its buses go`() {
+        // A letter-less pole is headed by the "towards" on its sign, never by its buses' shared
+        // destination (maintainer, 2026-10-03). Logic-only — no baseline. Public route/place names only
+        // (SPEC *Privacy*).
         val stop = StopArrivals(
             "490G00TPL", "Turnpike Lane",
             listOf(
@@ -3163,6 +3135,7 @@ class MainScreenScreenshotTest {
                 dep("341", "341", "outbound", "Bank", 300, "", mode = "bus"),
             ),
             fetchedAt = now.minusSeconds(60),
+            towards = "King's Cross",
         )
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -3177,7 +3150,8 @@ class MainScreenScreenshotTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Turnpike Lane", substring = true).assertExists()
-        composeRule.onNodeWithText("➔ Bank", substring = true).assertExists()
+        composeRule.onNodeWithText("➔ King's Cross", substring = true).assertExists()
+        composeRule.onAllNodesWithText("➔ Bank", substring = true).assertCountEquals(0)
     }
 
     @Test
@@ -3217,16 +3191,17 @@ class MainScreenScreenshotTest {
     }
 
     @Test
-    fun `a long bus terminus shares the header with the place name, neither crowded out`() {
-        // On the one-line header the place name and the "➔ Terminus" qualifier SHARE the row (each
-        // weighted), so a long terminus at a large font can't consume the whole line and crowd the
+    fun `a long bus towards shares the header with the place name, neither crowded out`() {
+        // On the one-line header the place name and the "➔ Towards" qualifier SHARE the row (each
+        // weighted), so a long towards at a large font can't consume the whole line and crowd the
         // place name to zero — both keep at least their half and clip within it (Codex P1, PR #122).
-        // The header announces "to Finsbury Park Interchange" to a screen reader. Logic-only — no
+        // The header announces "towards King's Cross St. Pancras Station" to a screen reader. Logic-only — no
         // baseline. Public route/place names only.
         val stop = StopArrivals(
             "490G00TPL", "Turnpike Lane",
             listOf(dep("W3", "W3", "outbound", "Finsbury Park Interchange", 120, "", mode = "bus")),
             fetchedAt = now.minusSeconds(60),
+            towards = "King's Cross St. Pancras Station",
         )
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -3245,15 +3220,15 @@ class MainScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        // The place name keeps a positive width — not crowded to zero by the long terminus (the #2
+        // The place name keeps a positive width — not crowded to zero by the long towards (the #2
         // guarantee): name and qualifier share the row.
         val nameBounds = composeRule.onNodeWithText("Turnpike Lane", substring = true).getUnclippedBoundsInRoot()
         assertTrue("place name should keep width, was ${nameBounds.right - nameBounds.left}", nameBounds.right - nameBounds.left > 0.dp)
-        // The terminus segment is present and starts within the row (the cue survives, clipped if need be).
-        val terminus = composeRule.onNodeWithText("➔ Finsbury", substring = true).getUnclippedBoundsInRoot()
+        // The towards segment is present and starts within the row (the cue survives, clipped if need be).
+        val terminus = composeRule.onNodeWithText("➔ King's Cross", substring = true).getUnclippedBoundsInRoot()
         assertTrue("terminus should start within the row, left was ${terminus.left}", terminus.left < 360.dp)
-        // The full terminus is the header's spoken label.
-        composeRule.onNodeWithContentDescription("to Finsbury Park Interchange", substring = true).assertExists()
+        // The full towards is the header's spoken label.
+        composeRule.onNodeWithContentDescription("towards King's Cross St. Pancras Station", substring = true).assertExists()
     }
 
     @Test

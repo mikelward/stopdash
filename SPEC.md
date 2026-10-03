@@ -499,7 +499,7 @@ service's **next few countdowns merged onto one line** on the right ("0 · 3 · 
 its **pill on each route row**, so every destination reads as its own service rather than a
 chip-less continuation. The **stop name is not repeated on every row**: it read as clutter
 restated per row. Instead each group's **header names the place and its platform/pole once**, on
-one line — "King's Cross St. Pancras – Platform 1", "Cranley Gardens – Stop G", or "Turnpike Lane ➔ Bank" for a destination (the arrow joins them, so no dash) — with the
+one line — "King's Cross St. Pancras – Platform 1", "Victoria – Stop G", or "Turnpike Lane ➔ King's Cross" for the way a letterless pole's sign points (the arrow joins them, so no dash) — with the
 near-me distance dimmed after it ("(120 m)"); place and platform share one weight and color,
 only the distance is muted. A *place* is the set of stops that share a
 **cluster** — a bus junction's two poles, a station's several platforms — grouped together so
@@ -534,8 +534,7 @@ direction: its line budget is tight, so a direction split across platforms is on
 drops to the bare compass (or place) rather than name a platform only some of its trains use. A
 header costs a line of that budget, and a place is shown only with at least one departure under it,
 and a header is judged against every departure the widget has, not only those that fit: a place
-keeps its name when the others didn't fit, and a bus stop whose second route didn't fit doesn't
-claim the shown route's terminus as its own;
+keeps its name when the others didn't fit;
 a widget too short for a header and a departure drops headers rather than show no departures. A **bus** pole carries no platform in the arrivals feed, so it
 splits on its **stop letter** — the "D" a rider reads on the physical stop: "**Stop D**". The letter,
 bearing, and "towards" come from the near-me `/StopPoint` lookup (`stopLetter`, `CompassPoint`,
@@ -543,12 +542,14 @@ bearing, and "towards" come from the near-me `/StopPoint` lookup (`stopLetter`, 
 that capture lands. TfL is inconsistent about where it carries the compass — some poles use
 `CompassPoint`, others put an arrow in `stopLetter` (`->N`) in place of a real letter — so an
 arrow-in-`stopLetter` is normalized to the bearing, and a compass-only pole renders the one way
-whichever field TfL used. With no letter, the pole falls back to its **compass bearing** — a bare
-direction word ("**Southbound**"), like the rail compass; with neither, to the **shared terminus** — an
-arrow plus the destination ("**➔ Bank**") — when the whole stop heads one way (every route names the
-same, non-blank terminus, principle 1); with none of the three, the **bare place name**. "Stop" is
-reserved for a literal pole letter; the direction word and the "➔ destination" carry no "Stop".
-Precedence: letter → bearing → terminus → bare. The header is **one line** — "Place – Qualifier
+whichever field TfL used. With no letter, the pole falls back to the **"towards"** its sign shows,
+as an arrow plus the first place it names ("**➔ Farringdon**" for "Farringdon Or Holborn Circus"), even when
+several routes serve the pole, since the sign shows it all the same; then to its **compass bearing** — a
+bare direction word ("**Southbound**"), like the rail compass; with none of the three, the **bare place
+name**. A pole is never headed by one bus's destination, which says where that bus goes, not where the
+stop heads (maintainer, 2026-10-03). "Stop" is reserved for a literal pole letter; the direction word
+and the "➔ towards" carry no "Stop". Precedence: letter → towards → bearing → bare. The trip's board
+heads the boarding pole the same way. The header is **one line** — "Place – Qualifier
 (distance)", title case, no small caps — where the place name and the qualifier **share the row**
 (each weighted, each keeps at least its half and clips within it) so neither a long name nor a long
 qualifier can crowd the other to zero, and the short near-me distance is reserved after them. A
@@ -3004,10 +3005,12 @@ Mirrors the sibling fleet:
   the cue that tells its groups apart: a rail **platform** ("Platform 2", parsed from
   `platformName`, keyed on the platform not the compass, since one compass spans physically
   distinct platforms; a platform-less rail direction falls to the bare compass), a **bus** pole's
-  **letter** ("Stop D" — "Stop" only ever precedes a literal letter), else its **bearing** as a bare
-  direction word ("Southbound"), else a bus place's shared **terminus** as an arrow plus the
-  destination ("➔ Bank") — settled 2026-09-22, superseding the two-level header (place name once + indented
-  sub-header) and the one-level `(place, direction)` step before it. The compass direction is not
+  **letter** ("Stop D" — "Stop" only ever precedes a literal letter), else the **towards** on its
+  sign as an arrow plus its first place ("➔ Farringdon"), else its **bearing** as a bare direction
+  word ("Southbound"), else nothing — never one bus's destination, which says where that bus goes,
+  not where the stop heads (towards settled 2026-10-03; the single line settled 2026-09-22,
+  superseding the two-level header (place name once + indented sub-header) and the one-level
+  `(place, direction)` step before it). The compass direction is not
   shown on the header (the destinations carry it). The cluster key is TfL's `stationNaptan` where
   the nearby lookup gives one,
   else the cleaned display name — keying on TfL's own cluster keeps a station it spells

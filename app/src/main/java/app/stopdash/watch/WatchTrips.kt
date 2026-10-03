@@ -7,6 +7,8 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureLabels
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.TripLeg
+import app.stopdash.ui.BusPoleCues
+import app.stopdash.ui.busPoleLabels
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.ensureActive
@@ -19,13 +21,19 @@ import kotlinx.coroutines.launch
  */
 internal object WatchTrips {
     /**
+     * A pole a train boards at, for its label on the watch: [key] tells two poles apart, [name] is
+     * what it's called when its own cues ([cues]) name nothing ([busPoleLabels]).
+     */
+    class Pole(val key: String, val name: String, val cues: BusPoleCues)
+
+    /**
      * [trip] at [now], [title] and [detail] being what to do at its step now (the trip's screen's
      * own, [app.stopdash.ui.nextStepText]). [stepText] names a step: a walk, boarding a ride, or
      * getting off it ([OnTheWay.Step.onBoard]). [trains] are those taking the rider on the next ride
      * ([OnTheWay.upcomingRide]), already kept to the ones whose route reaches its stop; only those
      * still to come are sent, soonest first, at most [WatchTrip.TRAINS_CAP]. One leaving before [readyAt]
-     * ([OnTheWay.readyAt]) is marked missed, and sent only where catchable ones leave room; [stopOf]
-     * names the pole each boards at, or "" ([WatchTrip.Train.stop]). Built on [dispatcher]:
+     * ([OnTheWay.readyAt]) is marked missed, and sent only where catchable ones leave room; [poleOf]
+     * is the pole each boards at, or null for none to name ([WatchTrip.Train.stop]). Built on [dispatcher]:
      * it walks every step and train, so a caller on the main thread never does that there.
      */
     suspend fun build(
@@ -36,10 +44,10 @@ internal object WatchTrips {
         now: Instant,
         trainsNote: String = "",
         readyAt: Instant? = null,
-        stopOf: (Departure) -> String = { "" },
+        poleOf: (Departure) -> Pole? = { null },
         dispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.Default,
         stepText: (leg: TripLeg, onBoard: Boolean) -> String,
-    ): WatchTrip = kotlinx.coroutines.withContext(dispatcher) { assemble(trip, title, detail, trains, now, trainsNote, readyAt, stopOf, stepText) }
+    ): WatchTrip = kotlinx.coroutines.withContext(dispatcher) { assemble(trip, title, detail, trains, now, trainsNote, readyAt, poleOf, stepText) }
 
     // [build]'s work, on whichever thread calls it.
     private fun assemble(
@@ -51,7 +59,7 @@ internal object WatchTrips {
         // What the trip's screen says of [trains] (failed, updating, loading, none), or "".
         trainsNote: String = "",
         readyAt: Instant?,
-        stopOf: (Departure) -> String,
+        poleOf: (Departure) -> Pole?,
         stepText: (leg: TripLeg, onBoard: Boolean) -> String,
     ): WatchTrip {
         val steps = OnTheWay.steps(trip.route)
@@ -67,6 +75,8 @@ internal object WatchTrips {
         }
         val departuresAt = if (rideLeg < 0) -1 else steps.indexOf(OnTheWay.Step(rideLeg))
         val upcoming = if (departuresAt < 0) emptyList() else Countdown.upcoming(trains, now)
+        val shown = sent(upcoming, readyAt)
+        val stops = labels(shown.mapNotNull(poleOf))
         return WatchTrip(
             title = title,
             detail = detail,
@@ -81,17 +91,25 @@ internal object WatchTrips {
                 )
             },
             current = current,
-            departures = sent(upcoming, readyAt).map {
+            departures = shown.map {
                 // Shortened as the boards say it ("Brixton", not "Brixton Underground Station").
                 val destination = DepartureLabels.destinationLabel(it.destination, it.direction) ?: it.destination
                 val missed = readyAt != null && it.expectedArrival.isBefore(readyAt)
-                WatchTrip.Train(it.lineId, it.lineName, it.mode, destination, it.expectedArrival.toEpochMilli(), stopOf(it), missed)
+                WatchTrip.Train(it.lineId, it.lineName, it.mode, destination, it.expectedArrival.toEpochMilli(), poleOf(it)?.let { pole -> stops[pole.key] }.orEmpty(), missed)
             },
             departuresAt = if (upcoming.isEmpty() && trainsNote.isEmpty()) -1 else departuresAt,
             departuresNote = if (departuresAt < 0) "" else trainsNote,
             sentAt = now.toEpochMilli(),
             startedAt = trip.startedAt.toEpochMilli(),
         )
+    }
+
+    // Each of [poles]' label by its key, among only the poles whose trains are sent: two that would read
+    // the same fall back to their bearings ([busPoleLabels]), a pole with none sent can't force that on
+    // one shown alone (Codex P2, #492), and one whose cues name nothing goes by its name.
+    private fun labels(poles: List<Pole>): Map<String, String> {
+        val distinct = poles.distinctBy { it.key }
+        return distinct.zip(busPoleLabels(distinct.map { it.cues })).associate { (pole, label) -> pole.key to (label ?: pole.name) }
     }
 
     // The trains sent, soonest first: those the rider can catch first, then, where they leave room in

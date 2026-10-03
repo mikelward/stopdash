@@ -70,17 +70,11 @@ class HeaderQualifierTest {
     }
 
     @Test
-    fun `a bus terminus renders an arrow and the destination, no Stop`() {
-        assertEquals("➔ Bank", groupHeaderLabel(StopQualifier.Terminus("Bank")))
-        assertEquals("to Bank", groupHeaderSpoken(StopQualifier.Terminus("Bank")))
-    }
-
-    @Test
-    fun `a bus terminus with a display rename shows the renamed form, matching the card`() {
-        // The destination line renames "Battersea Power" → "Battersea" (DepartureLabels); the header
-        // must use the same so it doesn't read "➔ Battersea Power" above a "Battersea" card.
-        assertEquals("➔ Battersea", groupHeaderLabel(StopQualifier.Terminus("Battersea Power")))
-        assertEquals("to Battersea", groupHeaderSpoken(StopQualifier.Terminus("Battersea Power")))
+    fun `a pole's towards renders an arrow and the first place its sign names, no Stop`() {
+        assertEquals("➔ Archway", groupHeaderLabel(StopQualifier.Towards("Archway")))
+        assertEquals("➔ King's Cross", groupHeaderLabel(StopQualifier.Towards("King's Cross Or Euston")))
+        // A screen reader hears the whole of it.
+        assertEquals("towards King's Cross or Euston", groupHeaderSpoken(StopQualifier.Towards("King's Cross Or Euston")))
     }
 
     @Test
@@ -92,9 +86,38 @@ class HeaderQualifierTest {
     }
 
     @Test
-    fun `a title joins a destination by its arrow alone, anything else by a dash`() {
-        assertEquals("Turnpike Lane ➔ Bank", groupHeaderTitle("Turnpike Lane", StopQualifier.Terminus("Bank")))
+    fun `a title joins a towards by its arrow alone, anything else by a dash`() {
+        assertEquals("Turnpike Lane ➔ King's Cross", groupHeaderTitle("Turnpike Lane", StopQualifier.Towards("King's Cross")))
         assertEquals("Oxford Circus – Platform 2", groupHeaderTitle("Oxford Circus", StopQualifier.Platform("2", null)))
         assertEquals("Oxford Circus", groupHeaderTitle("Oxford Circus", null))
+    }
+
+    @Test
+    fun `a lone bus pole is labeled by its letter, else its towards, else its bearing`() {
+        // The watch's trip board labels each pole of a boarding pair on its own, in the grouping's
+        // order (Codex P2, #492): a letterless pair still reads apart by towards or bearing.
+        assertEquals("Stop D", busPoleLabel("d", "Farringdon", "W"))
+        assertEquals("➔ Farringdon", busPoleLabel("", "Farringdon Or Holborn Circus", "W"))
+        assertEquals("Westbound", busPoleLabel(" ", "", "W"))
+        assertEquals(null, busPoleLabel("", "", ""))
+    }
+
+    @Test
+    fun `poles boarding together whose labels clash fall back to their bearings`() {
+        // Two letterless poles whose signs read the same, facing apart: each by its bearing (Codex P2, #492).
+        assertEquals(
+            listOf("Westbound", "Eastbound"),
+            busPoleLabels(listOf(BusPoleCues("", "Euston", "W"), BusPoleCues("", "Euston", "E"))),
+        )
+        // Both directions: labels that already differ, or a lettered pole, stay as they are.
+        assertEquals(
+            listOf("➔ Euston", "Stop D"),
+            busPoleLabels(listOf(BusPoleCues("", "Euston", "W"), BusPoleCues("D", "Euston", "W"))),
+        )
+        // A clash the bearings can't settle (the same, or one missing) keeps the shared label.
+        assertEquals(
+            listOf("➔ Euston", "➔ Euston"),
+            busPoleLabels(listOf(BusPoleCues("", "Euston", "W"), BusPoleCues("", "Euston", ""))),
+        )
     }
 }
