@@ -65,6 +65,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -2169,8 +2170,10 @@ class MainViewModel(
         now: Instant,
         current: () -> Boolean,
     ) {
-        // Worked out across the whole board, so off the main thread.
-        val (live, checkedPlaces) = withContext(compute) {
+        val dismissed = _dismissed.value
+        // Worked out across the whole board, so off the main thread: every live alert, each line's under
+        // way ones included, and every dismissal (Codex on #519).
+        val (live, checkedPlaces, gone) = withContext(compute) {
             // Includes each near-me folded card's identity, so its dismissal isn't pruned as not-live.
             val live = DepartureRows.liveStopClosureAlerts(DepartureRows.across(shownStops, now, lineStatuses)) +
                 DepartureRows.liveLineStatusAlerts(lineStatuses, now)
@@ -2186,12 +2189,18 @@ class MainViewModel(
                 // A line still waiting on which way its alerts apply isn't split yet, so a dismissal of
                 // one direction's alert can't be matched against it: retained until the split lands.
                 checkedLineIds.filterNot { lineStatuses[it]?.awaitingDirections == true }.map { lineAlertKey(it) }
-            live to checkedPlaces
+            // What's let go of, from what's dismissed now, so one made meanwhile stays (Codex on #519).
+            Triple(live, checkedPlaces, dismissed - Dismissed.reconcile(dismissed, live, checkedPlaces))
         }
         if (!current()) return
         // Reconcile the in-memory set first — safe regardless of whether the persist below succeeds.
-        val pruned = Dismissed.reconcile(_dismissed.value, live, checkedPlaces)
-        if (pruned != _dismissed.value) _dismissed.value = pruned
+        // The set left is worked out on the worker too, as it grows with every dismissal; published only
+        // if no dismissal landed meanwhile, else worked out again from the newer set (Codex on #519).
+        while (gone.isNotEmpty()) {
+            val held = _dismissed.value
+            val left = withContext(compute) { held - gone }
+            if (_dismissed.compareAndSet(held, left)) break
+        }
         try {
             // NonCancellable, as a dismissal's write is: leaving while it's written would otherwise
             // leave the ended notice's dismissal stored, to hide the same notice coming back (Codex,

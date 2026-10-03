@@ -1,6 +1,7 @@
 package app.stopdash.data
 
 import app.stopdash.domain.AlertStart
+import app.stopdash.domain.LineAlert
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.PartClosure
 import app.stopdash.domain.PlannedAlert
@@ -225,8 +226,11 @@ fun TflLineDto.toLineStatus(
         // ([LineStatus.closures]).
         val closures = under.mapNotNull { it.closure(direction) }.distinct()
         // One alert under way, however many entries TfL repeats it in: its words are the whole story.
-        val sole = under.map { it.resolved.severity to it.resolved.fullText }.distinct().size == 1
-        return (current?.toLineStatus(id)?.copy(closures = closures, soleAlert = sole) ?: good).copy(planned = planned)
+        // Told apart as a dismissal tells them ([DismissedAlert.ofLineStatus]): severity, label and words (Codex on #519).
+        val sole = under.map { Triple(it.resolved.severity, it.resolved.label, it.resolved.fullText) }.distinct().size == 1
+        // Each alert under way in its own words, so one off a ride is told from one on it, however many are.
+        val underWay = under.map { LineAlert(it.resolved.severity, it.resolved.label, it.resolved.fullText.ifBlank { null }, directionsOf(it.entry)) }.distinct()
+        return (current?.toLineStatus(id)?.copy(closures = closures, soleAlert = sole, underWay = underWay) ?: good).copy(planned = planned)
     }
     val whole = reduce(null) { true }
     if (alerts.isEmpty()) return whole

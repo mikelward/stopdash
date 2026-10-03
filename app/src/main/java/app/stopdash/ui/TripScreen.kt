@@ -137,6 +137,7 @@ import app.stopdash.domain.placedOnPoles
 import app.stopdash.domain.placedStands
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.coroutines.cancellation.CancellationException
@@ -724,6 +725,25 @@ internal fun rememberLastPull(destKey: String): MutableState<Instant?> =
  * against each line's route from [routeStops], which a caller must give: with none, no route would
  * load and every train would stay "checking".
  */
+/**
+ * [statuses] as of [now]'s day in London ([LineStatus.asOf]): planned work whose day has come shows as
+ * under way, however long ago it was fetched (Codex, PR #337), as a kept status outlives the day it was
+ * sorted on. Sorted on that day already ([sortedOn], the earliest any was), they're shown as they are.
+ * Sorted on an earlier day, they're brought up to it on [LocalWorker], never in composition (AGENTS.md
+ * *Main thread*; Codex on #519), as it goes through every alert under way; until that's in, none is
+ * shown, so each line reads as still being checked rather than as sorted on a day gone by (Codex on #519).
+ */
+@Composable
+internal fun rememberStatusesAsOf(statuses: Map<String, LineStatus>, sortedOn: LocalDate?, now: Instant): Map<String, LineStatus> {
+    val today = now.atZone(AlertStart.ZONE).toLocalDate()
+    val slot = remember { mutableStateOf<Worked<Inputs, Map<String, LineStatus>>?>(null) }
+    val current = sortedOn == null || !sortedOn.isBefore(today)
+    val worked = rememberWorked(slot, Inputs(statuses, if (current) null else today)) {
+        if (current) statuses else LineStatus.asOf(statuses, now)
+    }
+    return if (current) statuses else worked ?: emptyMap()
+}
+
 @Composable
 internal fun TripScreen(
     title: String,
@@ -816,10 +836,8 @@ internal fun TripScreen(
     avoidedLinesWriteFailed: Boolean = false,
     onAvoidedLinesWriteFailureShown: () -> Unit = {},
 ) {
-    // Planned work whose day has come shows as under way, however long ago it was fetched (Codex,
-    // PR #337): a kept status outlives the day it was sorted on.
-    val today = now.atZone(AlertStart.ZONE).toLocalDate()
-    val state = remember(state, today) { state.copy(statuses = LineStatus.asOf(state.statuses, now)) }
+    val statuses = rememberStatusesAsOf(state.statuses, state.statusesSortedOn, now)
+    val state = remember(state, statuses) { state.copy(statuses = statuses) }
     CompositionLocalProvider(LocalRouteStops provides routeStops) {
         TripContent(
             title, state, now, access, onBack, onRetry, locationBanner, relocating, onRelocate,

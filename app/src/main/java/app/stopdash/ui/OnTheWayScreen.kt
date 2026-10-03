@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -117,6 +118,9 @@ internal fun OnTheWayScreen(
     // What's wrong on the route ahead ([ActiveTripTracker.routeDisruptions]), worst first: what the
     // route disruption alert says, here in full, so tapping it finds where and how (maintainer, 2026-10-01).
     disruptions: List<RouteDisruption.Signal> = emptyList(),
+    // [disruptions] as cards, each thing known once ([RouteDisruption.cards]), worked out off the main
+    // thread with them ([ActiveTripTracker.KnownDisruptions.cards]): drawn here, never worked out.
+    cards: List<RouteDisruption.Signal> = disruptions,
     // While something is known wrong ahead, the station still ahead nearest the rider
     // ([ActiveTripTracker.replanFrom]), and the trip list from there to where they chose to go
     // ([onPlanAgain], maintainer 2026-10-02). Null leaves it out.
@@ -208,9 +212,10 @@ internal fun OnTheWayScreen(
                 }
             }
             if (trip != null) {
-                // Each thing known once, as the alert has it: two legs on one line read as one.
-                disruptions.distinctBy { DisruptionKey.of(it) }.forEach { signal ->
-                    item(key = "disruption/${signal.key}") { DisruptionCard(signal, trip.route.legs.getOrNull(signal.legIndex)?.let { RouteDisruption.rideAt(trip, signal.legIndex, it) }) }
+                // Each thing known once, as the alert has it: two legs on one line read as one ([cards]).
+                // Registered by count, not walked here: each card is read only as it's drawn (Codex on #519).
+                items(cards, key = { signal -> "disruption/${signal.key}" }) { signal ->
+                    DisruptionCard(signal, trip.route.legs.getOrNull(signal.legIndex)?.let { RouteDisruption.rideAt(trip, signal.legIndex, it) })
                 }
                 // Only while it's still ahead of the trip as shown: worked out by the last check, it can lag
                 // a step the trip has since taken, and a stop now behind the rider is never offered (Codex on #479).
@@ -790,15 +795,6 @@ private fun LegLine(leg: TripLeg, rides: List<TripLeg>, current: Boolean, done: 
         color = color,
         onTap = onTap,
     )
-}
-
-// What makes two signals the same thing to the rider: the alert's own words ([RouteDisruptionAlert.text]).
-private object DisruptionKey {
-    fun of(signal: RouteDisruption.Signal): Any = when (signal) {
-        is RouteDisruption.Signal.Line -> Triple(signal.lineId, signal.status.description, signal.status.fullText)
-        is RouteDisruption.Signal.Stop -> Pair(signal.stopId, signal.closed)
-        is RouteDisruption.Signal.Unpredicted -> Pair(signal.lineId, signal.stopId)
-    }
 }
 
 /**

@@ -40,6 +40,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -49,6 +50,9 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.cancel
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -498,8 +502,11 @@ class MainViewModelTest {
     @Test
     fun `a refresh reconciles dismissals on the worker, not the main thread`() = runTest(dispatcher) {
         val backing = MutableStateFlow<Set<DismissedAlert>>(emptySet())
+        // Each walk through the dismissed set the list holds, by thread: what's left once one is let go
+        // of is worked out on the worker too, as it grows with every dismissal (Codex on #519).
+        val walked = java.util.Collections.synchronizedList(mutableListOf<Thread>())
         val store = object : DismissedAlertsStore {
-            override fun dismissed() = backing
+            override fun dismissed() = backing.map { if (it.isEmpty()) it else WalkedSet(it, walked) }
             override suspend fun dismiss(alert: DismissedAlert) {
                 backing.value = Dismissed.dismiss(backing.value, alert)
             }
@@ -551,8 +558,9 @@ class MainViewModelTest {
         }
         assertTrue("nothing handed to the worker", held.isNotEmpty())
         assertEquals(setOf(DismissedAlert.ofStopClosure(closure)), backing.value)
-        holding = false
-        // Let go on a thread of the worker's own, noting where each piece ran.
+        walked.clear()
+        // Let go on a thread of the worker's own, noting where each piece ran: still holding, so what's
+        // handed to the worker meanwhile runs there too.
         val caller = Thread.currentThread()
         val ranOn = mutableListOf<Thread>()
         val thread = java.util.concurrent.Executors.newSingleThreadExecutor()
@@ -569,10 +577,19 @@ class MainViewModelTest {
                 advanceUntilIdle()
             }
         } finally {
+            holding = false
             thread.shutdown()
         }
         assertTrue("$ranOn", ranOn.isNotEmpty() && ranOn.none { it === caller })
+        assertTrue("$walked", walked.isNotEmpty() && walked.none { it === caller })
         assertEquals(emptySet<DismissedAlert>(), backing.value)
+    }
+
+    // [items], noting the thread of each walk through it in [walked]; a lookup isn't one.
+    private class WalkedSet<T>(private val items: Set<T>, private val walked: MutableList<Thread>) : AbstractSet<T>() {
+        override val size: Int get() = items.size
+        override fun contains(element: T): Boolean = element in items
+        override fun iterator(): Iterator<T> = items.iterator().also { walked += Thread.currentThread() }
     }
 
     @Test
@@ -628,6 +645,46 @@ class MainViewModelTest {
         override suspend fun stopDisruptions(stopId: String): List<StopDisruption> {
             if (stopId in closureFails) throw TflException.Unreachable("boom", null)
             return emptyList()
+        }
+    }
+
+    @Test
+    fun `the list settles its dismissals off the caller's thread`() = runTest(dispatcher) {
+        // AGENTS.md *Main thread*: every alert under way on a line, in a list that notes each thread
+        // reading it, is gone through on the worker when the list settles its dismissals, not on the
+        // main thread its loads run on (Codex on #519). Made-up words.
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }
+        val worker = executor.asCoroutineDispatcher()
+        val store = androidx.lifecycle.ViewModelStore()
+        try {
+            val read = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val alerts = listOf(
+                app.stopdash.domain.LineAlert(6, "Severe Delays", "Severe delays northbound."),
+                app.stopdash.domain.LineAlert(9, "Minor Delays", "Minor delays southbound."),
+            )
+            val ready = CompletableDeferred<Unit>().apply { complete(Unit) }
+            val client = LinedClient("none", ready, statusOf = {
+                if (it == "victoria") LineStatus(it, 6, "Severe Delays", alerts.first().fullText, underWay = Watched(alerts, read))
+                else status(it, LineStatus.GOOD_SERVICE, "Good Service")
+            })
+            val vm = androidx.lifecycle.ViewModelProvider.create(
+                store,
+                androidx.lifecycle.viewmodel.viewModelFactory { initializer { MainViewModel(client, lined, clock = { now }, io = worker, compute = worker) } },
+            )[MainViewModel::class]
+            vm.state.first { it is DeparturesUiState.Loaded && !it.statusPending && it.pendingStops.isEmpty() }
+            // Let the worker and Main hand the load's settling back and forth until it has run.
+            repeat(50) {
+                if (read.isNotEmpty()) return@repeat
+                executor.submit {}.get()
+                advanceUntilIdle()
+            }
+            assertTrue(read.isNotEmpty())
+            assertEquals(setOf("worker"), read.toSet())
+        } finally {
+            store.clear()
+            executor.shutdown()
+            check(executor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS)) { "worker didn't stop" }
+            advanceUntilIdle()
         }
     }
 
