@@ -87,6 +87,8 @@ object WatchTripState {
         read: (DataItem) -> ByteArray? = { DataMapItem.fromDataItem(it).dataMap.getByteArray(WatchSyncContract.TRIP_KEY) },
         nodeOf: (DataItem) -> String = { it.uri.authority.orEmpty() },
         elapsedNow: () -> Long = { SystemClock.elapsedRealtime() },
+        // The wall clock a trip read back is dated against ([lookedUpHeld]).
+        clock: () -> Instant = Instant::now,
     ): Prepared? = withContext(dispatcher) {
         val trips = items.mapNotNull { item ->
             val bytes = read(item) ?: run {
@@ -101,7 +103,7 @@ object WatchTripState {
         // Read back by a new process: its arrival time went with the old one, so it's dated by the
         // phone's stamp instead, and one already past [GONE_AFTER] stays gone. The trip already held
         // (the app reopened in this process) keeps its own arrival time.
-        Prepared(if (lookedUp) lookedUpHeld(trip, Instant.now(), elapsed, current, node) else HeldTrip(trip, elapsed, node = node))
+        Prepared(if (lookedUp) lookedUpHeld(trip, clock(), elapsed, current, node) else HeldTrip(trip, elapsed, node = node))
     }
 
     /** The phone took the trip off: it ended, or isn't followed any more. */
