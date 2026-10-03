@@ -266,13 +266,17 @@ class JourneyPlannerTest {
         val broken = fixture.replaceFirst("\"departureTime\": \"2026-09-26T07:37:00\"", "\"departureTime\": \"soon\"")
         val warnings = mutableListOf<String>()
         val routes = client(broken, warn = { warnings += it }).journeys("910GHGHI", TripDestination.Stop("940GZZLUCYF"))
-        // Both requests got the same answer: the same two routes, and each says what it dropped.
+        // Every request got the same answer: the same two routes, and each says what it dropped.
         assertEquals(2, routes.size)
         assertEquals(
-            setOf("journey planner: 1 of 3 routes unreadable", "journey planner (fewest changes): 1 of 3 routes unreadable"),
+            setOf(
+                "journey planner: 1 of 3 routes unreadable",
+                "journey planner (fewest changes): 1 of 3 routes unreadable",
+                "journey planner (least walking): 1 of 3 routes unreadable",
+            ),
             warnings.toSet(),
         )
-        assertEquals(2, warnings.size)
+        assertEquals(3, warnings.size)
     }
 
     @Test
@@ -341,8 +345,11 @@ class JourneyPlannerTest {
         val routes = client("{}", status = HttpStatusCode.MultipleChoices, warn = { warnings += it })
             .journeys("910GHGHI", TripDestination.Stop("HUBEXAMPLE"))
         assertEquals(emptyList<Any>(), routes)
-        assertEquals(setOf("journey planner: HTTP 300", "journey planner (fewest changes): HTTP 300"), warnings.toSet())
-        assertEquals(2, warnings.size)
+        assertEquals(
+            setOf("journey planner: HTTP 300", "journey planner (fewest changes): HTTP 300", "journey planner (least walking): HTTP 300"),
+            warnings.toSet(),
+        )
+        assertEquals(3, warnings.size)
     }
 
     @Test
@@ -422,16 +429,19 @@ class JourneyPlannerTest {
 
     private fun HttpRequestData.fewestChanges() = url.parameters["journeyPreference"] == "leastinterchange"
 
+    private fun HttpRequestData.leastWalking() = url.parameters["journeyPreference"] == "leastwalking"
+
     @Test
-    fun `asks the Planner twice, for the quickest routes and for the fewest changes, at the rider's walk`() = runTest {
+    fun `asks the Planner for the quickest routes, the fewest changes and the least walking, at the rider's walk`() = runTest {
         val requests = mutableListOf<HttpRequestData>()
         client(fixture, capture = { synchronized(requests) { requests += it } })
             .journeys(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"), WalkingSpeed.FAST, MaxWalk.SIXTY)
-        assertEquals(2, requests.size)
+        assertEquals(3, requests.size)
         // The quickest is the Planner's default, so that request names no preference.
         assertEquals(1, requests.count { it.url.parameters["journeyPreference"] == null })
         assertEquals(1, requests.count { it.fewestChanges() })
-        // Both at the rider's pace and walk limit, between the same ends.
+        assertEquals(1, requests.count { it.leastWalking() })
+        // All at the rider's pace and walk limit, between the same ends.
         requests.forEach { request ->
             assertEquals("/Journey/JourneyResults/910GHGHI/to/940GZZLUCYF", request.url.encodedPath)
             assertEquals("60", request.url.parameters["maxWalkingMinutes"])
@@ -548,7 +558,7 @@ class JourneyPlannerTest {
         val requests = mutableListOf<HttpRequestData>()
         client(fixture, capture = { synchronized(requests) { requests += it } })
             .journeys(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"))
-        assertEquals(2, requests.size)
+        assertEquals(3, requests.size)
         assertTrue(requests.none { "via" in it.url.parameters.names() })
     }
 
@@ -563,11 +573,11 @@ class JourneyPlannerTest {
     }
 
     @Test
-    fun `asks both requests for the rider's step-free level, and none for any`() = runTest {
+    fun `asks every request for the rider's step-free level, and none for any`() = runTest {
         val requests = mutableListOf<HttpRequestData>()
         val client = client(fixture, capture = { synchronized(requests) { requests += it } })
         client.journeys(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"), stepFree = StepFree.STATION)
-        assertEquals(2, requests.size)
+        assertEquals(3, requests.size)
         assertTrue(requests.all { it.url.parameters["accessibilityPreference"] == "StepFreeToPlatform" })
         requests.clear()
         client.journeys(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"), stepFree = StepFree.FULLY)
@@ -575,19 +585,19 @@ class JourneyPlannerTest {
         requests.clear()
         // No requirement sends nothing, leaving the Planner its own default.
         client.journeys(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"))
-        assertEquals(2, requests.size)
+        assertEquals(3, requests.size)
         assertTrue(requests.none { "accessibilityPreference" in it.url.parameters.names() })
     }
 
     @Test
-    fun `asks both requests for only the modes the rider rides`() = runTest {
+    fun `asks every request for only the modes the rider rides`() = runTest {
         val requests = mutableListOf<HttpRequestData>()
         val noBusOrTrain = listOf("bus", "train").fold(TripModes.DEFAULT) { modes, key ->
             modes.with(ModeGroups.ALL.single { it.key == key }, ride = false)
         }
         client(fixture, capture = { synchronized(requests) { requests += it } })
             .journeys(TripOrigin.Stop("910GHGHI"), TripDestination.Stop("940GZZLUCYF"), modes = noBusOrTrain)
-        assertEquals(2, requests.size)
+        assertEquals(3, requests.size)
         requests.forEach { request ->
             val modes = checkNotNull(request.url.parameters["mode"]).split(",")
             assertTrue(modes.none { it in setOf("bus", "overground", "elizabeth-line", "national-rail") })
@@ -606,32 +616,51 @@ class JourneyPlannerTest {
     }
 
     @Test
-    fun `either request failing still plans the trip from the other, and says which failed`() = runTest {
-        for (failing in listOf(true, false)) {
+    fun `the least-walking routes follow the others, a route already offered once`() = runTest {
+        val routes = clientBy { request ->
+            when {
+                request.fewestChanges() -> walkOnly(20, 12)
+                request.leastWalking() -> walkOnly(25, 12)
+                else -> walkOnly(12)
+            } to HttpStatusCode.OK
+        }.journeys(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"))
+        assertEquals(listOf(12L, 20L, 25L), routes.map { it.legs.single().run.toMinutes() })
+    }
+
+    @Test
+    fun `any request failing still plans the trip from the others, and says which failed`() = runTest {
+        val sources = mapOf<(HttpRequestData) -> Boolean, String>(
+            { r: HttpRequestData -> r.url.parameters["journeyPreference"] == null } to "journey planner (quickest)",
+            { r: HttpRequestData -> r.fewestChanges() } to "journey planner (fewest changes)",
+            { r: HttpRequestData -> r.leastWalking() } to "journey planner (least walking)",
+        )
+        for ((failing, which) in sources) {
             val warnings = mutableListOf<String>()
             val routes = clientBy(warn = { warnings += it }) { request ->
-                if (request.fewestChanges() == failing) "{}" to HttpStatusCode.ServiceUnavailable else walkOnly(12) to HttpStatusCode.OK
+                if (failing(request)) "{}" to HttpStatusCode.ServiceUnavailable else walkOnly(12) to HttpStatusCode.OK
             }.journeys(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"))
             assertEquals(1, routes.size)
-            val which = if (failing) "journey planner (fewest changes)" else "journey planner (quickest)"
             assertEquals(1, warnings.size)
             assertTrue(warnings.single(), warnings.single().startsWith("$which: "))
         }
     }
 
     @Test
-    fun `both requests failing fails the plan with the quickest's failure, and logs the other's`() {
+    fun `every request failing fails the plan with the quickest's failure, and logs the others'`() {
         val warnings = mutableListOf<String>()
-        // Different failures: the quickest rate-limited, the fewest changes unreachable.
+        // Different failures: the quickest rate-limited, the others unreachable.
         assertThrows(TflException.RateLimited::class.java) {
             kotlinx.coroutines.runBlocking {
                 clientBy(warn = { warnings += it }) { request ->
-                    "{}" to if (request.fewestChanges()) HttpStatusCode.ServiceUnavailable else HttpStatusCode.TooManyRequests
+                    "{}" to if (request.fewestChanges() || request.leastWalking()) HttpStatusCode.ServiceUnavailable else HttpStatusCode.TooManyRequests
                 }.journeys(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"))
             }
         }
-        val fewest = warnings.single { it.startsWith("journey planner (fewest changes): ") }
-        assertTrue(fewest, fewest.removePrefix("journey planner (fewest changes): ") !in setOf("", "null", "RateLimited"))
+        assertEquals(2, warnings.size)
+        for (which in listOf("journey planner (fewest changes): ", "journey planner (least walking): ")) {
+            val warning = warnings.single { it.startsWith(which) }
+            assertTrue(warning, warning.removePrefix(which) !in setOf("", "null", "RateLimited"))
+        }
     }
 
     @Test

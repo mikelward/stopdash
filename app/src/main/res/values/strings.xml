@@ -253,7 +253,9 @@
          (fewest changes), one route that is both, or, once, over the routes that are neither. -->
     <string name="trip_label_fastest">Fastest</string>
     <string name="trip_label_simplest">Simplest</string>
-    <string name="trip_label_fastest_simplest">Fastest · Simplest</string>
+    <string name="trip_label_least_walking">Least walking</string>
+    <!-- Between two labels over one card: "Fastest · Simplest". -->
+    <string name="trip_label_separator">" · "</string>
     <string name="trip_label_other">Other</string>
     <string name="trip_no_routes">No routes found</string>
     <!-- Atop a trip's routes, before a chip per line the rider avoids (maintainer, 2026-10-01). -->

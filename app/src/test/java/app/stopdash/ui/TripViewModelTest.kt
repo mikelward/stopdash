@@ -1359,6 +1359,25 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `the route walking least is timed past the cap`() {
+        // Six routes each walking twelve minutes to the train fill the cap; a bus to the station,
+        // arriving last, spares nearly all that walk.
+        fun walk(minutes: Long) = leg("", "X", "A", 0, minutes).copy(mode = TripLeg.WALKING)
+        val walks = (0 until TripViewModel.MAX_ROUTES).map { i -> TripRoute(listOf(walk(12), leg("line$i", "A", "C", 14, 20L + i))) }
+        val bus = TripRoute(listOf(walk(2), leg("43", "Q", "A", 3, 12).copy(mode = "bus"), leg("line0", "A", "C", 14, 40)))
+        val best = TripViewModel.bestOf(walks + bus)
+        assertTrue(bus in best)
+        assertEquals(TripViewModel.MAX_ROUTES + 1, best.size)
+        // Kept whatever it saves: the live ranking's first card, which it's judged against, may
+        // walk farther than the timetable's soonest.
+        val shortWalks = (0 until TripViewModel.MAX_ROUTES).map { i -> TripRoute(listOf(walk(3), leg("line$i", "A", "C", 14, 20L + i))) }
+        assertTrue(bus in TripViewModel.bestOf(shortWalks + bus))
+        // One route more at most: none past the cap when the least walking is already among the soonest.
+        val walksLeast = TripRoute(listOf(walk(1), leg("line9", "A", "C", 14, 15)))
+        assertEquals(TripViewModel.MAX_ROUTES, TripViewModel.bestOf(walks + walksLeast + bus).size)
+    }
+
+    @Test
     fun `the merged plan keeps the routes arriving soonest, with their variants`() {
         val routes = (0 until TripViewModel.MAX_ROUTES + 2).map { i ->
             TripRoute(listOf(leg("line$i", "A", "C", 5, 20L + i)))

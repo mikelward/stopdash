@@ -1126,11 +1126,18 @@ class TripViewModel(
          * so the cap bounds the requests a complex's several answers add. The route open on screen
          * ([keep], by [routeKey]: for a train through a change, the planned route it's made from too,
          * [OpenRoute.keys]) is kept past the cap while [routes] offer it, so live times that move it
-         * out of the soonest few never close it under the rider.
+         * out of the soonest few never close it under the rider. So is the route walking least: the bus
+         * to the station that spares the walk there arrives later, and would otherwise be cut before
+         * its *Least walking* card could show (maintainer, 2026-10-03). Whether it walks enough less
+         * is judged on the live ranking ([routeLabels]), whose first card may not be the timetable's
+         * soonest, so it's kept whatever it saves. One route more at most, so the cap still bounds
+         * the requests.
          */
         internal fun bestOf(routes: List<TripRoute>, keep: Collection<String>): List<TripRoute> {
-            val keys = routes.sortedBy { it.legs.lastOrNull()?.arrival ?: Instant.MAX }
-                .map(::routeKey).distinct().take(MAX_ROUTES).toSet() + keep
+            val soonest = routes.sortedBy { it.legs.lastOrNull()?.arrival ?: Instant.MAX }
+            // Of routes walking as little, the soonest: so a plan with no walks adds none past the cap.
+            val leastWalking = soonest.minByOrNull { it.walking }
+            val keys = soonest.map(::routeKey).distinct().take(MAX_ROUTES).toSet() + keep + listOfNotNull(leastWalking?.let(::routeKey))
             return routes.filter { routeKey(it) in keys }
         }
 
