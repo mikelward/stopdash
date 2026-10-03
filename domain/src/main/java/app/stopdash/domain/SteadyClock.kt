@@ -45,12 +45,15 @@ object SteadyClock {
     fun offset(): Duration = source?.offset() ?: Duration.ZERO
 
     /** A fetch made at the wall time [wall], stamped in this process's steady frame. */
+    @MainSafe
     fun stamp(wall: Instant): Instant = wall.plus(offset())
 
     /** How old a fetch [stamp]ed in this process's frame is at the wall time [now] (a render's, or a frame to come). */
+    @MainSafe
     fun age(stamp: Instant, now: Instant): Duration = Duration.between(stamp, now.plus(offset()))
 
     /** A [stamp]ed instant as the wall clock reads it now, for anything shown or scheduled by the wall clock. */
+    @MainSafe
     fun toWall(stamp: Instant): Instant = stamp.minus(offset())
 
     /**

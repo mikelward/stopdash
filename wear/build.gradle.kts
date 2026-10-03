@@ -124,6 +124,9 @@ android {
 
     lint {
         ignoreTestSources = true
+        // MainThreadWork's existing sites, each one to move off the main thread (TODO.md); a new one
+        // fails the build. Holds no other check's issues.
+        baseline = file("lint-baseline.xml")
     }
 
     compileOptions {
@@ -152,6 +155,8 @@ tasks.withType<Test>().configureEach {
 }
 
 dependencies {
+    // The repo's own lint checks: MainThreadWork (AGENTS.md *Main thread: read and dispatch only*).
+    lintChecks(project(":lint-rules"))
     implementation(project(":shared"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)

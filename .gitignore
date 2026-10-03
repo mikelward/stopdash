@@ -21,6 +21,7 @@
 /domain/build
 /shared/build
 /wear/build
+/lint-rules/build
 /captures
 local.properties
 app/build

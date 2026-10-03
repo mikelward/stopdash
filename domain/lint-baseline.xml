@@ -1,0 +1,1181 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<issues format="6" by="lint 9.4.1" type="baseline" client="gradle" dependencies="false" name="AGP (9.4.1)" variant="all" version="9.4.1">
+
+    <issue
+        id="MainThreadWork"
+        message="`ArrivalsCache.recent`, not marked @MainSafe, on the main thread, in suspend function `fetchBoardOnce` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="            recent(key, now, source)?.let { return it }"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/ArrivalsCache.kt"
+            line="112"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`ArrivalsCache.put`, not marked @MainSafe, on the main thread, in suspend function `fetchBoardOnce` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="            if (entry != null) put(key, entry.departures, askedAt, generation = askedIn, source = source, untimed = entry.untimed)"
+        errorLine2="                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/ArrivalsCache.kt"
+            line="129"
+            column="32"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`TflClient.shareable`, not marked @MainSafe, on the main thread, in suspend function `kept` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        val shareable = tfl.shareable(stopId)"
+        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/ArrivalsCache.kt"
+            line="178"
+            column="25"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`TflClient.arrivalsSource`, not marked @MainSafe, on the main thread, in suspend function `kept` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        val source = tfl.arrivalsSource()"
+        errorLine2="                     ~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/ArrivalsCache.kt"
+            line="179"
+            column="22"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`TflClient.arrivalsSource`, not marked @MainSafe, on the main thread, in suspend function `kept` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="            if (shareable &amp;&amp; tfl.shareable(stopId) &amp;&amp; tfl.arrivalsSource() == source) {"
+        errorLine2="                                                      ~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/ArrivalsCache.kt"
+            line="181"
+            column="55"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`TflClient.shareable`, not marked @MainSafe, on the main thread, in suspend function `kept` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="            if (shareable &amp;&amp; tfl.shareable(stopId) &amp;&amp; tfl.arrivalsSource() == source) {"
+        errorLine2="                             ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/ArrivalsCache.kt"
+            line="181"
+            column="30"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`ArrivalsCache.put`, not marked @MainSafe, on the main thread, in suspend function `kept` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="                cache.put(stopId, it, tfl.stampOf(stopId, askedAt), tfl.railFeed(stopId), generation, source, tfl.untimed(stopId))"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/ArrivalsCache.kt"
+            line="182"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`TflClient.railFeed`, not marked @MainSafe, on the main thread, in suspend function `kept` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="                cache.put(stopId, it, tfl.stampOf(stopId, askedAt), tfl.railFeed(stopId), generation, source, tfl.untimed(stopId))"
+        errorLine2="                                                                    ~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/ArrivalsCache.kt"
+            line="182"
+            column="69"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`TflClient.untimed`, not marked @MainSafe, on the main thread, in suspend function `kept` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="                cache.put(stopId, it, tfl.stampOf(stopId, askedAt), tfl.railFeed(stopId), generation, source, tfl.untimed(stopId))"
+        errorLine2="                                                                                                              ~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/ArrivalsCache.kt"
+            line="182"
+            column="111"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`TflClientKt.stampOf`, not marked @MainSafe, on the main thread, in suspend function `kept` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="                cache.put(stopId, it, tfl.stampOf(stopId, askedAt), tfl.railFeed(stopId), generation, source, tfl.untimed(stopId))"
+        errorLine2="                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/ArrivalsCache.kt"
+            line="182"
+            column="39"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`DismissedAlertKt.lineAlertFingerprint`, not marked @MainSafe, on the main thread, in the constructor of `LineStatusCheck`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="    val fingerprint: String = lineAlertFingerprint(status),"
+        errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/DeparturesSnapshot.kt"
+            line="221"
+            column="31"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`mapValues`) on the main thread, in the constructor of `LineStatusCheck`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="    val directionFingerprints: Map&lt;String, String> = status.byDirection.mapValues { (_, it) -> lineAlertFingerprint(it) },"
+        errorLine2="                                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/DeparturesSnapshot.kt"
+            line="227"
+            column="54"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`DismissedAlertKt.lineAlertFingerprint`, not marked @MainSafe, on the main thread, in the constructor of `LineStatusCheck`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="    val directionFingerprints: Map&lt;String, String> = status.byDirection.mapValues { (_, it) -> lineAlertFingerprint(it) },"
+        errorLine2="                                                                                               ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/DeparturesSnapshot.kt"
+            line="227"
+            column="96"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `DisruptionLabelKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="    Regex(&quot;&quot;&quot;$NEGATION(?:\s+(?!(?:and|but)\b)[\w&apos;’]+)*\s*$&quot;&quot;&quot;)"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/DisruptionLabel.kt"
+            line="99"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `DisruptionLabelKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="    Regex(&quot;&quot;&quot;[.;:,!?]|\b(?:and|but|or|because|as|since|while|whilst|due|where|when|which|until|after|before|so|owing|if|though|although)\b&quot;&quot;&quot;)"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/DisruptionLabel.kt"
+            line="107"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `DisruptionLabelKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="    Regex(&quot;&quot;&quot;\b(?:is|are|was|were|has|have|had|will\s+be)\s+(?:now\s+)?(?:no\s+longer\b|not\s+(?:required|needed|necessary|in\s+(?:place|operation|effect|force))\b|(?:been\s+)?(?:lifted|removed|withdrawn|cancell?ed|stood\s+down|ended|finished)\b|over\b)&quot;&quot;&quot;)"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/DisruptionLabel.kt"
+            line="112"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`toSet`) on the main thread, in the constructor of `FavoritePlace`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        val EVERY_DAY: Set&lt;DayOfWeek> = DayOfWeek.values().toSet()"
+        errorLine2="                                        ~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/FavoritePlace.kt"
+            line="54"
+            column="41"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`map`) on the main thread, in suspend function `raceFix` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="    val jobs = providers.map { provider ->"
+        errorLine2="               ^">
+        <location
+            file="src/main/java/app/stopdash/domain/FixRace.kt"
+            line="36"
+            column="16"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A loop (`while`) on the main thread, in suspend function `raceFix` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        while (remaining > 0 &amp;&amp; coarse == null) {"
+        errorLine2="        ^">
+        <location
+            file="src/main/java/app/stopdash/domain/FixRace.kt"
+            line="53"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A loop (`while`) on the main thread, in suspend function `raceFix` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="            while (remaining > 0 &amp;&amp; found == null) {"
+        errorLine2="            ^">
+        <location
+            file="src/main/java/app/stopdash/domain/FixRace.kt"
+            line="68"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A loop (`forEach`) on the main thread, in suspend function `raceFix` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        jobs.forEach { it.cancel() }"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/FixRace.kt"
+            line="81"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`FixSelection.permissionRevoked`, not marked @MainSafe, on the main thread, in suspend function `resolve` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="            if (!hasPermission()) return permissionRevoked(warn)"
+        errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/FixSelection.kt"
+            line="139"
+            column="42"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`FixSelection.permissionRevoked`, not marked @MainSafe, on the main thread, in suspend function `resolve` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        if (!hasPermission()) return permissionRevoked(warn)"
+        errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/FixSelection.kt"
+            line="153"
+            column="38"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A loop (`for`) on the main thread, in the constructor of `PartClosure`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        for (section in sections) {"
+        errorLine2="        ^">
+        <location
+            file="src/main/java/app/stopdash/domain/LineStatus.kt"
+            line="200"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A loop (`forEachIndexed`) on the main thread, in the constructor of `PartClosure`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="            section.forEachIndexed { i, stop -> if (seen.add(stop) &amp;&amp; i > 0 &amp;&amp; i &lt; section.lastIndex) add(stop) }"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/LineStatus.kt"
+            line="202"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A loop (`for`) on the main thread, in suspend function `request` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        for (chunk in chunks(lineIds)) {"
+        errorLine2="        ^">
+        <location
+            file="src/main/java/app/stopdash/domain/LineStatusBatch.kt"
+            line="59"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`LineStatusBatch.chunks`, not marked @MainSafe, on the main thread, in suspend function `request` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        for (chunk in chunks(lineIds)) {"
+        errorLine2="                      ~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/LineStatusBatch.kt"
+            line="59"
+            column="23"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`RailStationCodes.crsFor`, not marked @MainSafe, on the main thread, in suspend function `arrivals` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        val crs = codes().crsFor(stopId)"
+        errorLine2="                  ~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/NationalRail.kt"
+            line="164"
+            column="19"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`RailAwareTflClient.showed`, not marked @MainSafe, on the main thread, in suspend function `arrivals` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="                    showed(stopId, board)"
+        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/NationalRail.kt"
+            line="212"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`RailAwareTflClient.hasRailBoard`, not marked @MainSafe, on the main thread, in suspend function `arrivals` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        if (railBoard || !hasRailBoard(stopId)) return arrivals(stopId)"
+        errorLine2="                          ~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/NationalRail.kt"
+            line="224"
+            column="27"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`RailStationCodes.crsFor`, not marked @MainSafe, on the main thread, in suspend function `arrivals` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        codes().crsFor(stopId)?.let { crs -> ownersLock.withLock { if (owners[crs]?.first == stopId) owners.remove(crs) } }"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/NationalRail.kt"
+            line="228"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`RailAwareTflClient.showed`, not marked @MainSafe, on the main thread, in suspend function `withBoard` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        showed(stopId, fetched)"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/NationalRail.kt"
+            line="238"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`NationalRailKt.request`, not marked @MainSafe, on the main thread, in suspend function `fetchBoard` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        val cache = boards ?: return request()?.let { ArrivalsCache.Entry(it.departures, SteadyClock.stamp(clock()), untimed = it.untimed) }"
+        errorLine2="                                     ~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/NationalRail.kt"
+            line="263"
+            column="38"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`NationalRailKt.request`, not marked @MainSafe, on the main thread, in suspend function `fetchBoard` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        return cache.fetchBoardOnce(BOARD_KEY + crs, clock(), BOARD_SOURCE) { request() }"
+        errorLine2="                                                                              ~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/NationalRail.kt"
+            line="265"
+            column="79"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`toSet`) on the main thread, in the constructor of `NationalRailKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="val NATIONAL_RAIL_LINE_IDS: Set&lt;String> = TFL_RAIL_LINE_IDS.values.toSet()"
+        errorLine2="                                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/NationalRail.kt"
+            line="359"
+            column="43"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `NationalRailKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="private val NOT_SLUG = Regex(&quot;[^a-z0-9]+&quot;)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/NationalRail.kt"
+            line="372"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`flatMapTo`) on the main thread, in the constructor of `NearbyCluster`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        val modes: Set&lt;String> = stops.flatMapTo(linkedSetOf()) { it.modes() }"
+        errorLine2="                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/NearbySelection.kt"
+            line="94"
+            column="34"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`NearbySelection.modes`, not marked @MainSafe, on the main thread, in the constructor of `NearbyCluster`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        val modes: Set&lt;String> = stops.flatMapTo(linkedSetOf()) { it.modes() }"
+        errorLine2="                                                                  ~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/NearbySelection.kt"
+            line="94"
+            column="67"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`NearbyStopsCache.lookup`, not marked @MainSafe, on the main thread, in suspend function `nearbyStops` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        cache.lookup(latitude, longitude, radiusMeters, stopTypes)"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/NearbyStopsCache.kt"
+            line="137"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`NearbyStopsCache.put`, not marked @MainSafe, on the main thread, in suspend function `nearbyStops` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="                .also { cache.put(latitude, longitude, radiusMeters, stopTypes, it) }"
+        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/NearbyStopsCache.kt"
+            line="139"
+            column="25"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`mapValues`) on the main thread, in the constructor of `RouteTopology`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        patternsByLine.mapValues { (_, patterns) ->"
+        errorLine2="        ^">
+        <location
+            file="src/main/java/app/stopdash/domain/RouteTopology.kt"
+            line="66"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`map`) on the main thread, in the constructor of `RouteTopology`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="            patterns.map {"
+        errorLine2="            ^">
+        <location
+            file="src/main/java/app/stopdash/domain/RouteTopology.kt"
+            line="67"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`StopNameKt.matchStopName`, not marked @MainSafe, on the main thread, in the constructor of `RouteTopology`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="                    it.branch, it.stops, matchStopName(it.endA), matchStopName(it.endB),"
+        errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/RouteTopology.kt"
+            line="69"
+            column="42"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`StopNameKt.matchStopName`, not marked @MainSafe, on the main thread, in the constructor of `RouteTopology`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="                    it.branch, it.stops, matchStopName(it.endA), matchStopName(it.endB),"
+        errorLine2="                                                                 ~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/RouteTopology.kt"
+            line="69"
+            column="66"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`StopNameKt.cleanStopName`, not marked @MainSafe, on the main thread, in the constructor of `RouteTopology`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="                    cleanStopName(it.endA).lowercase(), cleanStopName(it.endB).lowercase(),"
+        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/RouteTopology.kt"
+            line="70"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`StopNameKt.cleanStopName`, not marked @MainSafe, on the main thread, in the constructor of `RouteTopology`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="                    cleanStopName(it.endA).lowercase(), cleanStopName(it.endB).lowercase(),"
+        errorLine2="                                                        ~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/RouteTopology.kt"
+            line="70"
+            column="57"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `RouteTopologyRefreshKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="private val VIA = Regex(&quot;&quot;&quot;\s+via\s+(.+?)\s*$&quot;&quot;&quot;, RegexOption.IGNORE_CASE)"
+        errorLine2="                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/RouteTopologyRefresh.kt"
+            line="38"
+            column="19"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `RouteTopologyRefreshKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="private val ARROW = Regex(&quot;&amp;harr;|↔&quot;)"
+        errorLine2="                    ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/RouteTopologyRefresh.kt"
+            line="41"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A loop (`for`) on the main thread, in suspend function `currentPatterns` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="    for (lineId in bundled.patternsByLine.keys) {"
+        errorLine2="    ^">
+        <location
+            file="src/main/java/app/stopdash/domain/RouteTopologyRefresh.kt"
+            line="96"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`RouteTopologyRefreshKt.routePatternsOf`, not marked @MainSafe, on the main thread, in suspend function `currentPatterns` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        val patterns = routePatternsOf(sequence.routes)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/RouteTopologyRefresh.kt"
+            line="105"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`RouteTopologyRefreshKt.covers`, not marked @MainSafe, on the main thread, in suspend function `currentPatterns` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="            !covers(patterns, bundled.patternsByLine.getValue(lineId)) ->"
+        errorLine2="             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/RouteTopologyRefresh.kt"
+            line="108"
+            column="14"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `ServiceNameKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="private val TRAILING_ALIAS = Regex(&quot;&quot;&quot;\s*\([^()]*\)$&quot;&quot;&quot;)"
+        errorLine2="                             ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/ServiceName.kt"
+            line="49"
+            column="30"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`associate`) on the main thread, in the constructor of `StationIndex`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        stations.filter { it.hubId.isNotBlank() }.associate { it.id to it.hubId }"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StationIndex.kt"
+            line="98"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`filter`) on the main thread, in the constructor of `StationIndex`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        stations.filter { it.hubId.isNotBlank() }.associate { it.id to it.hubId }"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StationIndex.kt"
+            line="98"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A loop (`forEachIndexed`) on the main thread, in the constructor of `StationIndex`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        own.forEachIndexed { i, id ->"
+        errorLine2="        ^">
+        <location
+            file="src/main/java/app/stopdash/domain/StationIndex.kt"
+            line="102"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`associateBy`) on the main thread, in the constructor of `StationIndex`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="    private val byId: Map&lt;String, IndexedStation> by lazy { stations.associateBy { it.id } }"
+        errorLine2="                                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StationIndex.kt"
+            line="110"
+            column="61"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A loop (`forEach`) on the main thread, in the constructor of `StationIndex`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        stations.forEach { station -> station.platforms.forEach { owners.getOrPut(it) { HashSet() } += station.id } }"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StationIndex.kt"
+            line="116"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A loop (`forEach`) on the main thread, in the constructor of `StationIndex`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        stations.forEach { station -> station.platforms.forEach { owners.getOrPut(it) { HashSet() } += station.id } }"
+        errorLine2="                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StationIndex.kt"
+            line="116"
+            column="39"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`mapNotNull`) on the main thread, in the constructor of `StationIndex`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        owners.mapNotNull { (platform, ids) -> ids.singleOrNull()?.let { platform to it } }.toMap()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StationIndex.kt"
+            line="117"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`toMap`) on the main thread, in the constructor of `StationIndex`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        owners.mapNotNull { (platform, ids) -> ids.singleOrNull()?.let { platform to it } }.toMap()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StationIndex.kt"
+            line="117"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `StopDisruptionKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="private val WORD_TOKEN = Regex(&quot;[A-Za-z0-9]+&quot;)"
+        errorLine2="                         ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StopDisruption.kt"
+            line="206"
+            column="26"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `StopDisruptionKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="    Regex(&quot;(?i)\\b(?:underground|overground|dlr|rail|coach|tram|station)\\b&quot;)"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StopDisruption.kt"
+            line="210"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `StopNameKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="private val LINE_PARENTHETICAL = Regex(&quot;&quot;&quot;\s*\(([^()]*?)\s*\bLines?\)\s*$&quot;&quot;&quot;, RegexOption.IGNORE_CASE)"
+        errorLine2="                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StopName.kt"
+            line="7"
+            column="34"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `StopNameKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="    Regex(&quot;&quot;&quot;\s*\($line(?:\s*(?:,|&amp;|\band\b)\s*$line)*\)\s*$&quot;&quot;&quot;, RegexOption.IGNORE_CASE)"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StopName.kt"
+            line="18"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `StopNameKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="private val WHITESPACE_RUN = Regex(&quot;\\s+&quot;)"
+        errorLine2="                             ~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StopName.kt"
+            line="73"
+            column="30"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `StopNameKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="private val CROSS_STREET = Regex(&quot;\\s*/\\s*&quot;)"
+        errorLine2="                           ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StopName.kt"
+            line="80"
+            column="28"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `StopNameKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="private val TRAILING_BRACKET = Regex(&quot;&quot;&quot;\(([^()]*)\)\s*$&quot;&quot;&quot;)"
+        errorLine2="                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StopName.kt"
+            line="233"
+            column="32"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `StopNameKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="    Regex(&quot;&quot;&quot;\bhammersmith\s*&amp;\s*city\b&quot;&quot;&quot;) to &quot;hammersmith-city&quot;,"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StopName.kt"
+            line="237"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `StopNameKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="    Regex(&quot;&quot;&quot;\bh\s*&amp;\s*c\b&quot;&quot;&quot;) to &quot;hammersmith-city&quot;,"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StopName.kt"
+            line="238"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `StopNameKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="    Regex(&quot;&quot;&quot;\bdist\s*&amp;\s*picc\b&quot;&quot;&quot;) to &quot;district,piccadilly&quot;,"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StopName.kt"
+            line="239"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `StopNameKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="    Regex(&quot;&quot;&quot;\bdist\b&quot;&quot;&quot;) to &quot;district&quot;,"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StopName.kt"
+            line="240"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `StopNameKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="    Regex(&quot;&quot;&quot;\bpicc\b&quot;&quot;&quot;) to &quot;piccadilly&quot;,"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StopName.kt"
+            line="241"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `StopNameKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="    Regex(&quot;&quot;&quot;\bmet\b&quot;&quot;&quot;) to &quot;metropolitan&quot;,"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StopName.kt"
+            line="242"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `StopNameKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="private val LINE_SEPARATOR = Regex(&quot;&quot;&quot;\s*(?:,|&amp;|\band\b)\s*&quot;&quot;&quot;)"
+        errorLine2="                             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StopName.kt"
+            line="245"
+            column="30"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `StopTimetableKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="private val BRACKETED = Regex(&quot;&quot;&quot;\([^)]*\)&quot;&quot;&quot;)"
+        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StopTimetable.kt"
+            line="161"
+            column="25"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `StopTimetableKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="private val DAY_WORD = Regex(&quot;&quot;&quot;\b(mon|tue|wed|thu|fri|sat|sun)[a-z]*\b&quot;&quot;&quot;)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StopTimetable.kt"
+            line="162"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A regular expression (`Regex`) on the main thread, in the constructor of `StopTimetableKt`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="private val RANGE = Regex(&quot;&quot;&quot;\s*(?:-|–|to)\s*&quot;&quot;&quot;)"
+        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/StopTimetable.kt"
+            line="163"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`associateWith`) on the main thread, in suspend function `poleDisruptions` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        stopIds.associateWith { stopDisruptions(it) }"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/TflClient.kt"
+            line="98"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A loop (`while`) on the main thread, in suspend function `acquire` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        while (true) {"
+        errorLine2="        ^">
+        <location
+            file="src/main/java/app/stopdash/domain/TflRateLimiter.kt"
+            line="96"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`TokenBucketRateLimiter.refill`, not marked @MainSafe, on the main thread, in suspend function `acquire` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="                    refill(now)"
+        errorLine2="                    ~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/TflRateLimiter.kt"
+            line="100"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="A loop (`while`) on the main thread, in suspend function `watchTripFixes` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        while (true) {"
+        errorLine2="        ^">
+        <location
+            file="src/main/java/app/stopdash/domain/TripFixes.kt"
+            line="93"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`OnTheWay.wantsFix`, not marked @MainSafe, on the main thread, in suspend function `watchTripFixes` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="    combine(trip, ticks) { current, _ -> current != null &amp;&amp; OnTheWay.wantsFix(current, now()) }"
+        errorLine2="                                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/TripFixes.kt"
+            line="98"
+            column="61"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`AskedAgainKt.askedAgainWhenEnded`, not marked @MainSafe, on the main thread, in suspend function `watchTripFixes` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="                askedAgainWhenEnded(WANTS_FIX_RECHECK, updates).collect { fix ->"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/TripFixes.kt"
+            line="105"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`OnTheWay.usableFix`, not marked @MainSafe, on the main thread, in suspend function `watchTripFixes` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="                    OnTheWay.usableFix(fix, current, now())?.let(fixes::offer)"
+        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/TripFixes.kt"
+            line="109"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`TripFixes.clear`, not marked @MainSafe, on the main thread, in suspend function `watchTripFixes` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="                fixes.clear()"
+        errorLine2="                ~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/TripFixes.kt"
+            line="113"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`TripFixes.clear`, not marked @MainSafe, on the main thread, in suspend function `refreshFix` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="    fixes.clear()"
+        errorLine2="    ~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/TripFixes.kt"
+            line="136"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`OnTheWay.wantsFix`, not marked @MainSafe, on the main thread, in suspend function `refreshFix` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="    if (pushed != null &amp;&amp; trip != null &amp;&amp; OnTheWay.wantsFix(trip, now)) {"
+        errorLine2="                                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/TripFixes.kt"
+            line="137"
+            column="43"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`OnTheWay.usableFix`, not marked @MainSafe, on the main thread, in suspend function `refreshFix` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        OnTheWay.usableFix(pushed, trip, now)?.let { return it }"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/TripFixes.kt"
+            line="138"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`WaitMeter.enter`, not marked @MainSafe, on the main thread, in suspend function `measure` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        enter()"
+        errorLine2="        ~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/WaitMeter.kt"
+            line="31"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`WaitMeter.exit`, not marked @MainSafe, on the main thread, in suspend function `measure` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="            exit()"
+        errorLine2="            ~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/WaitMeter.kt"
+            line="35"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`map`) on the main thread, in suspend function `refreshedArrivals` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        val sharedByStop = prior.stops.map { stop ->"
+        errorLine2="                           ^">
+        <location
+            file="src/main/java/app/stopdash/domain/WidgetRefresh.kt"
+            line="129"
+            column="28"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`ArrivalsCache.recent`, not marked @MainSafe, on the main thread, in suspend function `refreshedArrivals` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="            shared?.recent(stop.stopId, now, source)?.takeIf { it.fetchedAt.isAfter(stop.fetchedAt) }"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/WidgetRefresh.kt"
+            line="130"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`mapIndexed`) on the main thread, in suspend function `refreshedArrivals` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="            prior.stops.mapIndexed { i, stop ->"
+        errorLine2="            ^">
+        <location
+            file="src/main/java/app/stopdash/domain/WidgetRefresh.kt"
+            line="136"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`mapIndexed`) on the main thread, in suspend function `refreshedArrivals` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        val stops = prior.stops.mapIndexed { i, stop ->"
+        errorLine2="                    ^">
+        <location
+            file="src/main/java/app/stopdash/domain/WidgetRefresh.kt"
+            line="141"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`maxOf`) on the main thread, in suspend function `refreshedArrivals` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        return prior.copy(stops = stops, fetchedAt = stops.maxOf { it.fetchedAt })"
+        errorLine2="                                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/WidgetRefresh.kt"
+            line="173"
+            column="54"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`Companion.linesOf`, not marked @MainSafe, on the main thread, in suspend function `refreshedLineStatuses` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        val lines = LineStatusCheck.linesOf(snapshot.stops)"
+        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/WidgetRefresh.kt"
+            line="196"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`filterKeys`) on the main thread, in suspend function `refreshedLineStatuses` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        val kept = snapshot.lineStatuses.filterKeys { it in lines }"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/WidgetRefresh.kt"
+            line="197"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`filterTo`) on the main thread, in suspend function `refreshedLineStatuses` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        val toAsk = lines.filterTo(HashSet()) { id ->"
+        errorLine2="                    ^">
+        <location
+            file="src/main/java/app/stopdash/domain/WidgetRefresh.kt"
+            line="198"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`toSet`) on the main thread, in suspend function `refreshedLineStatuses` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        val results = LineStatusBatch.request(toAsk) { chunk -> fetchStatuses(chunk.toSet()) }"
+        errorLine2="                                                                              ~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/WidgetRefresh.kt"
+            line="207"
+            column="79"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`associate`) on the main thread, in suspend function `refreshedLineStatuses` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        val returned = results.answers.flatMap { it.value }"
+        errorLine2="                       ^">
+        <location
+            file="src/main/java/app/stopdash/domain/WidgetRefresh.kt"
+            line="212"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`filter`) on the main thread, in suspend function `refreshedLineStatuses` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        val returned = results.answers.flatMap { it.value }"
+        errorLine2="                       ^">
+        <location
+            file="src/main/java/app/stopdash/domain/WidgetRefresh.kt"
+            line="212"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`flatMap`) on the main thread, in suspend function `refreshedLineStatuses` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        val returned = results.answers.flatMap { it.value }"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/WidgetRefresh.kt"
+            line="212"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`associateWith`) on the main thread, in suspend function `refreshedLineStatuses` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        val fresh = results.answeredIds.filter { it in toAsk }.associateWith { returned[it] ?: LineStatusCheck.noVerdict(it, at) }"
+        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/WidgetRefresh.kt"
+            line="218"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`filter`) on the main thread, in suspend function `refreshedLineStatuses` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        val fresh = results.answeredIds.filter { it in toAsk }.associateWith { returned[it] ?: LineStatusCheck.noVerdict(it, at) }"
+        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/WidgetRefresh.kt"
+            line="218"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`Companion.noVerdict`, not marked @MainSafe, on the main thread, in suspend function `refreshedLineStatuses` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        val fresh = results.answeredIds.filter { it in toAsk }.associateWith { returned[it] ?: LineStatusCheck.noVerdict(it, at) }"
+        errorLine2="                                                                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/WidgetRefresh.kt"
+            line="218"
+            column="96"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="`Companion.newest`, not marked @MainSafe, on the main thread, in suspend function `refreshedLineStatuses` before it hops: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="        return snapshot.copy(lineStatuses = LineStatusCheck.newest(kept, fresh, lines, answered))"
+        errorLine2="                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/WidgetRefresh.kt"
+            line="219"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="MainThreadWork"
+        message="Deriving a collection (`map`) on the main thread, in the constructor of `YourStops`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
+        errorLine1="    val recentPicks: List&lt;SearchEntry> = recent.map(SearchEntry::Stop),"
+        errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/app/stopdash/domain/YourStops.kt"
+            line="22"
+            column="42"/>
+    </issue>
+
+</issues>

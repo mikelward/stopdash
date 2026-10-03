@@ -1,6 +1,8 @@
 plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.android.library) apply false
+    // Applied by :domain, so the repo's lint checks reach its suspend functions too.
+    alias(libs.plugins.android.lint) apply false
     // Applied by :app to export the open-source attribution graph. Declared here
     // so its classpath is pinned once for the build.
     alias(libs.plugins.aboutlibraries) apply false

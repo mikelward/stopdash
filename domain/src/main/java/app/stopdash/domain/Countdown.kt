@@ -30,6 +30,7 @@ object Countdown {
      * minute. Every countdown the rider sees takes this one rule, so a train shown on a board and
      * the same train named elsewhere (a trip's "Due in") never read a minute apart.
      */
+    @MainSafe
     fun minutes(at: Instant, now: Instant): Long =
         Duration.between(now, at).toMinutes().coerceAtLeast(0)
 
