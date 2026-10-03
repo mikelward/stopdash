@@ -129,6 +129,18 @@ class JourneysTest {
     }
 
     @Test
+    fun `a bus ending at the journey's origin goes nowhere, not unchecked`() {
+        val parkToLane = parkToHill.copy(to = JourneyEnd("LANEN", "Lane", 51.505, -0.12))
+        val segment = Journeys.segment(parkToLane, bus())!!
+        // Arriving at Park's northbound pole to end at its stop area, and one setting off north.
+        val ending = departure("Park", 30, lineId = "b1", mode = "bus").copy(destinationId = "G-PARK")
+        val trains = Journeys.trains(segment, rowsAt("PARKN", ending, departure("Hill", 60, lineId = "b1", mode = "bus")), mapOf("b1" to bus()), parkToLane)
+        assertEquals(listOf("Hill"), trains.rows.flatMap { row -> row.upcoming.map { it.destination } })
+        assertFalse(trains.unresolved)
+        assertTrue(trains.misses.isEmpty())
+    }
+
+    @Test
     fun `a train sharing no stop past the origin, or a bus, isn't offered as a change`() {
         // From Top, a Bottom B train runs via Side: nothing shared with the way to Mid.
         val segment = Journeys.segment(journey, rail)!!

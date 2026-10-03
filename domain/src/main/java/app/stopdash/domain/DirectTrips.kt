@@ -78,17 +78,25 @@ object DirectTrips {
                         val bus = departure.mode.equals("bus", ignoreCase = true)
                         val bound = RouteStops.boundOf(departure.platform)
                         val resolution = sequence?.let {
-                            RouteStops.resolve(it, stop.stopId, departure.destination, departure.branch, lineId, bus, bound, departure.direction)
+                            RouteStops.resolve(
+                                it, stop.stopId, departure.destination, departure.branch, lineId, bus, bound, departure.direction,
+                                departure.destinationId,
+                            )
                         }
                         // One path can't be told (no destination yet, or two ways that match it):
                         // still an answer when every way it may take agrees.
                         val agreed = if (resolution == null || resolution is RouteStops.Resolution.Found) {
                             null
                         } else {
-                            RouteStops.reaches(sequence!!, stop.stopId, departure.destination, departure.branch, destinationIds, bus, bound, departure.direction)
+                            RouteStops.reaches(
+                                sequence!!, stop.stopId, departure.destination, departure.branch, destinationIds, bus, bound,
+                                departure.direction, departure.destinationId,
+                            )
                         }
                         when {
                             resolution is RouteStops.Resolution.Found -> resolution.stops.drop(1).any { it.id in destinationIds }
+                            // Ending here, it goes nowhere: a sure "no", not a gap in the check.
+                            resolution == RouteStops.Resolution.EndsHere -> false
                             agreed != null -> agreed
                             else -> {
                                 unresolved = true

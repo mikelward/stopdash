@@ -181,6 +181,11 @@ object RouteStops {
         data object NotOnRoute : Resolution
         /** The stop is on a route, but nothing ahead of it matches the destination. */
         data object NoMatch : Resolution
+        /**
+         * The train or bus ends at the stop it's listed under ([endsAt]): it takes no one anywhere
+         * from there, so it reaches nothing, as surely as one whose path is known.
+         */
+        data object EndsHere : Resolution
         /** More than one distinct path matches; [paths] of them. */
         data class Ambiguous(val paths: Int) : Resolution
         /** TfL has no route for the line at all (a National Rail service it doesn't know). */
@@ -199,7 +204,8 @@ object RouteStops {
         bus: Boolean = false,
         bound: Bound? = null,
         direction: String = "",
-    ): List<RouteStop>? = (resolve(sequence, stopId, destination, branch, lineId, bus, bound, direction) as? Resolution.Found)?.stops
+        destinationId: String = "",
+    ): List<RouteStop>? = (resolve(sequence, stopId, destination, branch, lineId, bus, bound, direction, destinationId) as? Resolution.Found)?.stops
 
     /**
      * Which way a train leaves its platform, from the platform's name ("Eastbound - Platform 2",
@@ -252,6 +258,10 @@ object RouteStops {
      * a short-working whose label *does* name a stop still ends there (the tests above run first).
      * Rail keeps the strict rule: its destinations name real stations, so a miss there means a
      * working the sequence doesn't model, and running it to the line's end would be a guess.
+     *
+     * A train or bus that ends here ([endsAt]: a bus arriving at its stand, a train turned short at
+     * this station during engineering works) is [Resolution.EndsHere], not a miss: TfL lists it among
+     * the stop's arrivals, but it goes nowhere from it. [destinationId] is TfL's id for its terminus.
      */
     fun resolve(
         sequence: LineSequence,
@@ -263,11 +273,15 @@ object RouteStops {
         // Which way the train leaves its platform ([boundOf]): picks between ways round a loop.
         bound: Bound? = null,
         direction: String = "",
+        destinationId: String = "",
     ): Resolution {
+        // TfL's id for where it ends is authoritative: ending here outranks any match by name (a loop
+        // calling at a stop of the same name again), and holds with no destination named.
+        if (destinationId.isNotBlank() && endsAt(sequence, stopId, destination, destinationId)) return Resolution.EndsHere
         if (isUnknownDestination(destination)) return Resolution.NoDestination
         if (sequence.routes.none { visits(it, stopId).isNotEmpty() }) return Resolution.NotOnRoute
-        val paths = candidatePaths(sequence, stopId, destination, branch, bus, bound, direction)
-        if (paths.isEmpty()) return Resolution.NoMatch
+        val paths = candidatePaths(sequence, stopId, destination, branch, bus, bound, direction, destinationId)
+        if (paths.isEmpty()) return if (endsAt(sequence, stopId, destination, destinationId)) Resolution.EndsHere else Resolution.NoMatch
         val path = paths.singleOrNull() ?: return Resolution.Ambiguous(paths.size)
         return Resolution.Found(
             path.map { id ->
@@ -292,8 +306,9 @@ object RouteStops {
         bus: Boolean = false,
         bound: Bound? = null,
         direction: String = "",
+        destinationId: String = "",
     ): Boolean? {
-        val paths = candidatePaths(sequence, stopId, destination, branch, bus, bound, direction)
+        val paths = candidatePaths(sequence, stopId, destination, branch, bus, bound, direction, destinationId)
         if (paths.isEmpty()) return null
         val answers = paths.mapTo(HashSet()) { path -> path.drop(1).any { it in destinationIds } }
         return answers.singleOrNull()
@@ -306,7 +321,8 @@ object RouteStops {
      * more than one, a [bound] keeps those leaving the platform that way — unless it would keep
      * none, or the stops' positions can't say. With no [bound], the train's TfL [direction] keeps
      * the ways on routes fetched for it (a route whose direction isn't known stays), again unless
-     * it would keep none.
+     * it would keep none. A service that ends here ([endsAt]) by TfL's id has no way at all, and a bus
+     * that does by name isn't run on to its route's end.
      */
     fun candidatePaths(
         sequence: LineSequence,
@@ -316,8 +332,11 @@ object RouteStops {
         bus: Boolean = false,
         bound: Bound? = null,
         direction: String = "",
+        destinationId: String = "",
     ): List<List<String>> {
         if (sequence.routes.none { visits(it, stopId).isNotEmpty() }) return emptyList()
+        // TfL's id saying it ends here outranks any way its name would match ([resolve]).
+        if (destinationId.isNotBlank() && endsAt(sequence, stopId, destination, destinationId)) return emptyList()
         val unknown = isUnknownDestination(destination)
         // Every visit to [stopId] is a candidate origin and every later stop named [destination] a
         // candidate end: a loop can call here twice, and two stops can share a cleaned name (a
@@ -337,8 +356,13 @@ object RouteStops {
                 toEnd(route, stopId)
             }
         }
-        // A bus whose label matched nothing: every route calling here, run to its end.
-        val candidates = if (matched.isEmpty() && bus) sequence.routes.flatMap { toEnd(it, stopId) } else matched
+        // A bus whose label matched nothing: every route calling here, run to its end — unless it ends
+        // here, as a bus curtailed at this stop does.
+        val candidates = if (matched.isEmpty() && bus && !endsAt(sequence, stopId, destination, destinationId)) {
+            sequence.routes.flatMap { toEnd(it, stopId) }
+        } else {
+            matched
+        }
         if (candidates.isEmpty()) return emptyList()
         // A branch TfL named narrows to the routes carrying it; if none carry it (an unlabeled
         // Battersea route for a "via CX" train), the branch can't narrow and all candidates stand.
@@ -436,6 +460,22 @@ object RouteStops {
         val byTerminus = resolve(sequence, leg.fromId, leg.headings.firstOrNull() ?: leg.toName, null, leg.lineId, bus)
         if (byTerminus is Resolution.Found && byTerminus.stops.drop(1).none { alights(it.id) }) return Resolution.NoMatch
         return byTerminus
+    }
+
+    /**
+     * Whether a train or bus at [stopId] bound for [destination] ends there: TfL's [destinationId]
+     * for its terminus is [stopId] or another stop in its stop area (a bus stand's other pole), or,
+     * only where TfL gave no id, [destination] is [stopId]'s name. The id is authoritative when given,
+     * as two places can share a name ([Terminating] reads it the same way).
+     */
+    fun endsAt(sequence: LineSequence, stopId: String, destination: String, destinationId: String): Boolean {
+        if (destinationId.isNotBlank()) {
+            if (destinationId == stopId) return true
+            val area = sequence.stopAreas[stopId].orEmpty()
+            return area.isNotBlank() && (destinationId == area || sequence.stopAreas[destinationId] == area)
+        }
+        val name = sequence.stopNames[stopId].orEmpty()
+        return name.isNotBlank() && cleanStopName(destination).equals(name, ignoreCase = true)
     }
 
     /** From each visit to [stopId] on [route] (bar its last stop) through the route's end. */
@@ -608,6 +648,7 @@ class RouteStopsRepository(
             RouteStops.Resolution.NoDestination -> "no destination"
             RouteStops.Resolution.NotOnRoute -> "stop not on any route"
             RouteStops.Resolution.NoMatch -> "destination matches no route"
+            RouteStops.Resolution.EndsHere -> "ends at this stop"
             is RouteStops.Resolution.Ambiguous -> "${resolution.paths} possible paths"
             RouteStops.Resolution.UnknownLine -> "line not known to TfL"
             RouteStops.Resolution.NoLine -> "no line id"
