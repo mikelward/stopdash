@@ -147,8 +147,9 @@ class MainViewModel(
     initialMore: List<NearbySelection.NearbyCluster> = emptyList(),
     private val clock: () -> Instant = Instant::now,
     private val io: CoroutineDispatcher = Dispatchers.IO,
-    // Where a cold load's progress is worked out as its stops land ([fetchBatch]'s onProgress): off
-    // the main thread, which only publishes it (AGENTS.md *Main thread: read and dispatch only*).
+    // Where work that grows with the board runs (AGENTS.md *Main thread: read and dispatch only*):
+    // a cold load's progress as its stops land ([fetchBatch]'s onProgress), and the dismissal checks.
+    // [viewModelScope] is the main thread, which only publishes what's worked out here.
     private val compute: CoroutineDispatcher = Workers.compute,
     // Persists the last-good snapshot across sessions and to the widget. No-op by default so
     // tests and an unwired build run identically minus the restore.
@@ -526,7 +527,7 @@ class MainViewModel(
             _journeyDestinationsUnknown.value = failed
             // A dismissed destination closure that has since cleared is forgotten, so the same notice
             // recurring later shows again; a place whose check failed keeps its dismissals.
-            reconcileDismissals(stops.distinctBy { it.id }.map { it.copy(clusterId = "", hubId = "") }, checked, emptyMap(), emptySet(), failed)
+            reconcileDismissals(stops.distinctBy { it.id }.map { it.copy(clusterId = "", hubId = "") }, checked, emptyMap(), emptySet(), failed, destinationSettles)
         }
     }
 
@@ -588,6 +589,12 @@ class MainViewModel(
     val dismissWriteFailed: StateFlow<Boolean> = _dismissWriteFailed.asStateFlow()
 
     private var fetchJob: Job? = null
+
+    // The refreshes' and journey-destination checks' settlements of dismissals ([reconcileDismissals]):
+    // one whose checks came in before a newer one's leaves the dismissals to that one. A newer check
+    // canceled before its own came in takes no turn, so the older one still settles.
+    private val refreshSettles = Turns()
+    private val destinationSettles = Turns()
 
     // Resolved interchange info (hubId → name + member aliases), so a hub with a disruption is
     // looked up once and reused across refreshes and across the stops sharing it (King's Cross and
@@ -1905,7 +1912,7 @@ class MainViewModel(
             // set ([fetchedStops]); the reconcile is scoped per place to only the queried stops whose
             // disruption lookup succeeded (see reconcileDismissals), so it prunes a resolved notice
             // without touching a place that failed to refresh or belongs to a different nearby set.
-            reconcileDismissals(fetchedStops, merged, lineStatuses, determinedLineIds, stopsDisruptionUnknown)
+            reconcileDismissals(fetchedStops, merged, lineStatuses, determinedLineIds, stopsDisruptionUnknown, refreshSettles)
         }
         fetchJob = job
         // Clear the in-flight flag only when this job settles — a job superseded by a
@@ -2139,22 +2146,49 @@ class MainViewModel(
         lineStatuses: Map<String, LineStatus>,
         checkedLineIds: Set<String>,
         stopsDisruptionUnknown: Set<String>,
+        // This kind of check's settlements, of which this is now the newest; null for one nothing
+        // supersedes.
+        turns: Turns? = null,
     ) {
-        // Includes each near-me folded card's identity, so its dismissal isn't pruned as not-live.
-        val live = DepartureRows.liveStopClosureAlerts(DepartureRows.across(shownStops, clock(), lineStatuses)) +
-            DepartureRows.liveLineStatusAlerts(lineStatuses, clock())
-        fun placeOf(stop: StopRef) = stopPlaceKey(stop.hubId, stop.clusterId, stop.name, stop.id)
-        // A place with any member whose disruption lookup failed this cycle is not fully known, so it
-        // is excluded from the checked set and its dismissals are retained.
-        val unknownPlaces = queriedStops.asSequence()
-            .filter { it.id in stopsDisruptionUnknown }
-            .mapTo(mutableSetOf()) { placeOf(it) }
-        val checkedPlaces = queriedStops.asSequence()
-            .map { placeOf(it) }
-            .filterTo(mutableSetOf()) { it !in unknownPlaces } +
-            // A line still waiting on which way its alerts apply isn't split yet, so a dismissal of
-            // one direction's alert can't be matched against it: retained until the split lands.
-            checkedLineIds.filterNot { lineStatuses[it]?.awaitingDirections == true }.map { lineAlertKey(it) }
+        val now = clock()
+        // Still the newest once the worker hands the verdict back; one superseded meanwhile leaves the
+        // dismissals to the newer one. Once applied in memory, it's written too, so the two agree.
+        val current = turns?.take() ?: { true }
+        // Once the refresh's checks are in, settling them outlasts the list, as the write below does:
+        // leaving while the worker has them would otherwise keep an ended notice's dismissal stored.
+        withContext(NonCancellable) { settleDismissals(queriedStops, shownStops, lineStatuses, checkedLineIds, stopsDisruptionUnknown, now, current) }
+    }
+
+    // [reconcileDismissals]'s work, run to the end once begun.
+    private suspend fun settleDismissals(
+        queriedStops: List<StopRef>,
+        shownStops: List<StopArrivals>,
+        lineStatuses: Map<String, LineStatus>,
+        checkedLineIds: Set<String>,
+        stopsDisruptionUnknown: Set<String>,
+        now: Instant,
+        current: () -> Boolean,
+    ) {
+        // Worked out across the whole board, so off the main thread.
+        val (live, checkedPlaces) = withContext(compute) {
+            // Includes each near-me folded card's identity, so its dismissal isn't pruned as not-live.
+            val live = DepartureRows.liveStopClosureAlerts(DepartureRows.across(shownStops, now, lineStatuses)) +
+                DepartureRows.liveLineStatusAlerts(lineStatuses, now)
+            fun placeOf(stop: StopRef) = stopPlaceKey(stop.hubId, stop.clusterId, stop.name, stop.id)
+            // A place with any member whose disruption lookup failed this cycle is not fully known, so it
+            // is excluded from the checked set and its dismissals are retained.
+            val unknownPlaces = queriedStops.asSequence()
+                .filter { it.id in stopsDisruptionUnknown }
+                .mapTo(mutableSetOf()) { placeOf(it) }
+            val checkedPlaces = queriedStops.asSequence()
+                .map { placeOf(it) }
+                .filterTo(mutableSetOf()) { it !in unknownPlaces } +
+                // A line still waiting on which way its alerts apply isn't split yet, so a dismissal of
+                // one direction's alert can't be matched against it: retained until the split lands.
+                checkedLineIds.filterNot { lineStatuses[it]?.awaitingDirections == true }.map { lineAlertKey(it) }
+            live to checkedPlaces
+        }
+        if (!current()) return
         // Reconcile the in-memory set first — safe regardless of whether the persist below succeeds.
         val pruned = Dismissed.reconcile(_dismissed.value, live, checkedPlaces)
         if (pruned != _dismissed.value) _dismissed.value = pruned
@@ -2201,6 +2235,7 @@ class MainViewModel(
             lineStatuses = found.filter { it.hasAlerts }.associateBy { it.lineId },
             checkedLineIds = found.mapTo(HashSet()) { it.lineId },
             stopsDisruptionUnknown = emptySet(),
+            turns = refreshSettles,
         )
     }
 
@@ -2381,6 +2416,20 @@ internal fun errorKindOf(e: Throwable?): DeparturesUiState.Error.Kind = when (e)
 class WriteFailures {
     val star = MutableStateFlow(false)
     val dismiss = MutableStateFlow(false)
+}
+
+/**
+ * Settlements of one kind, newest last ([take]): a settlement is current while no newer one has
+ * taken a turn. Taken and read on the main thread.
+ */
+internal class Turns {
+    private var latest = 0L
+
+    /** A new turn, and whether it's still the newest. */
+    fun take(): () -> Boolean {
+        val mine = ++latest
+        return { latest == mine }
+    }
 }
 
 /** The generation of a model that never writes the widget's journeys: no real turn is ever this. */

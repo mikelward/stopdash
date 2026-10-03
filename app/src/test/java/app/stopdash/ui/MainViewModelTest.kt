@@ -496,6 +496,86 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `a refresh reconciles dismissals on the worker, not the main thread`() = runTest(dispatcher) {
+        val backing = MutableStateFlow<Set<DismissedAlert>>(emptySet())
+        val store = object : DismissedAlertsStore {
+            override fun dismissed() = backing
+            override suspend fun dismiss(alert: DismissedAlert) {
+                backing.value = Dismissed.dismiss(backing.value, alert)
+            }
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) {
+                backing.value = Dismissed.reconcile(backing.value, live, checkedPlaces)
+            }
+        }
+        // Runs what's handed to it at once until holding, then keeps it until let go, so nothing
+        // it's given after the first load can run on the caller.
+        val held = mutableListOf<Pair<CoroutineContext, Runnable>>()
+        var holding = false
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (holding) held += context to block else dispatcher.dispatch(context, block)
+            }
+        }
+        var closed = true
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) =
+                if (closed) listOf(StopDisruption("Bus Stop Closed")) else emptyList()
+        }
+        val vm = MainViewModel(
+            client,
+            listOf(StopRef("490000001A", "Example Road", clusterId = "490G000EXAMPLE")),
+            clock = { now },
+            io = dispatcher,
+            compute = worker,
+            dismissedStore = store,
+        )
+        advanceUntilIdle()
+        val closure = DepartureRows.across((vm.state.value as DeparturesUiState.Loaded).stops, now)
+            .first { it.stopDisruption != null }
+        vm.dismissAlert(closure)
+        advanceUntilIdle()
+
+        // The notice ends. The worker merges the refresh's stops first; once the list shows them, the
+        // refresh's checks are in but not settled: settling them across the board is the worker's to do.
+        closed = false
+        holding = true
+        vm.refresh()
+        advanceUntilIdle()
+        while (held.isNotEmpty() && !shownClear(vm)) {
+            val next = held.toList()
+            held.clear()
+            for ((context, block) in next) dispatcher.dispatch(context, block)
+            advanceUntilIdle()
+        }
+        assertTrue("nothing handed to the worker", held.isNotEmpty())
+        assertEquals(setOf(DismissedAlert.ofStopClosure(closure)), backing.value)
+        holding = false
+        // Let go on a thread of the worker's own, noting where each piece ran.
+        val caller = Thread.currentThread()
+        val ranOn = mutableListOf<Thread>()
+        val thread = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            while (held.isNotEmpty()) {
+                val next = held.toList()
+                held.clear()
+                thread.submit {
+                    for ((_, block) in next) {
+                        ranOn += Thread.currentThread()
+                        block.run()
+                    }
+                }.get()
+                advanceUntilIdle()
+            }
+        } finally {
+            thread.shutdown()
+        }
+        assertTrue("$ranOn", ranOn.isNotEmpty() && ranOn.none { it === caller })
+        assertEquals(emptySet<DismissedAlert>(), backing.value)
+    }
+
+    @Test
     fun `a cold load shows its last stop without waiting on the line-status check`() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
         val statusGate = CompletableDeferred<Unit>()
@@ -2352,6 +2432,219 @@ class MainViewModelTest {
         assertEquals(setOf(DismissedAlert.ofStopClosure(closure)), backing.value)
         // ...but the in-memory set the screen uses is reconciled, so the resolved notice can't suppress.
         assertEquals(emptySet<DismissedAlert>(), vm.dismissed.value)
+    }
+
+    // Whether the list shows every stop with no notice: a refresh that found its closures ended is in.
+    private fun shownClear(vm: MainViewModel) =
+        (vm.state.value as? DeparturesUiState.Loaded)?.stops?.all { it.disruptions.isEmpty() } == true
+
+    @Test
+    fun `a refresh's prune is stored even when the list is left while the worker has it`() = runTest(dispatcher) {
+        val backing = MutableStateFlow<Set<DismissedAlert>>(emptySet())
+        val store = object : DismissedAlertsStore {
+            override fun dismissed() = backing
+            override suspend fun dismiss(alert: DismissedAlert) {
+                backing.value = Dismissed.dismiss(backing.value, alert)
+            }
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) {
+                backing.value = Dismissed.reconcile(backing.value, live, checkedPlaces)
+            }
+        }
+        // Runs what's handed to it at once, or, once holding, keeps it until let go, as a busy worker would.
+        val held = mutableListOf<Pair<CoroutineContext, Runnable>>()
+        var holding = false
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (holding) held += context to block else dispatcher.dispatch(context, block)
+            }
+        }
+        var closed = true
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) =
+                if (closed) listOf(StopDisruption("Bus Stop Closed")) else emptyList()
+        }
+        val vm = MainViewModel(
+            client,
+            listOf(StopRef("490000001A", "Example Road", clusterId = "490G000EXAMPLE")),
+            clock = { now },
+            io = dispatcher,
+            compute = worker,
+            dismissedStore = store,
+        )
+        advanceUntilIdle()
+        val closure = DepartureRows.across((vm.state.value as DeparturesUiState.Loaded).stops, now)
+            .first { it.stopDisruption != null }
+        vm.dismissAlert(closure)
+        advanceUntilIdle()
+        assertEquals(setOf(DismissedAlert.ofStopClosure(closure)), backing.value)
+
+        closed = false
+        holding = true
+        vm.refresh()
+        advanceUntilIdle()
+        // The worker merges the refresh's stops first; once the list shows them, what it holds next
+        // is the refresh's checks, to settle.
+        while (held.isNotEmpty() && !shownClear(vm)) {
+            val next = held.toList()
+            held.clear()
+            for ((context, block) in next) dispatcher.dispatch(context, block)
+            advanceUntilIdle()
+        }
+        assertTrue("nothing handed to the worker", held.isNotEmpty())
+        // The app is left while the worker still has the refresh's checks: they're settled and stored
+        // all the same, so the same notice coming back later isn't hidden.
+        vm.viewModelScope.cancel()
+        holding = false
+        while (held.isNotEmpty()) {
+            val next = held.toList()
+            held.clear()
+            for ((context, block) in next) dispatcher.dispatch(context, block)
+            advanceUntilIdle()
+        }
+        assertEquals(emptySet<DismissedAlert>(), backing.value)
+    }
+
+    @Test
+    fun `a refresh superseded while the worker has it doesn't settle dismissals`() = runTest(dispatcher) {
+        val backing = MutableStateFlow<Set<DismissedAlert>>(emptySet())
+        val store = object : DismissedAlertsStore {
+            override fun dismissed() = backing
+            override suspend fun dismiss(alert: DismissedAlert) {
+                backing.value = Dismissed.dismiss(backing.value, alert)
+            }
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) {
+                backing.value = Dismissed.reconcile(backing.value, live, checkedPlaces)
+            }
+        }
+        val held = mutableListOf<Pair<CoroutineContext, Runnable>>()
+        var holding = false
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (holding) held += context to block else dispatcher.dispatch(context, block)
+            }
+        }
+        var closed = true
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) =
+                if (closed) listOf(StopDisruption("Bus Stop Closed")) else emptyList()
+        }
+        val vm = MainViewModel(
+            client,
+            listOf(StopRef("490000001A", "Example Road", clusterId = "490G000EXAMPLE")),
+            clock = { now },
+            io = dispatcher,
+            compute = worker,
+            dismissedStore = store,
+        )
+        advanceUntilIdle()
+        val closure = DepartureRows.across((vm.state.value as DeparturesUiState.Loaded).stops, now)
+            .first { it.stopDisruption != null }
+        vm.dismissAlert(closure)
+        advanceUntilIdle()
+
+        // One refresh finds the notice ended; while the worker has its checks, a newer one finds it
+        // back. (The worker merges the refresh's stops first, and the list shows them.)
+        holding = true
+        closed = false
+        vm.refresh(automatic = false)
+        advanceUntilIdle()
+        while (held.isNotEmpty() && !shownClear(vm)) {
+            val next = held.toList()
+            held.clear()
+            for ((context, block) in next) dispatcher.dispatch(context, block)
+            advanceUntilIdle()
+        }
+        assertTrue("nothing handed to the worker", held.isNotEmpty())
+        val older = held.toList()
+        held.clear()
+        closed = true
+        vm.forceNextFetch()
+        vm.refresh()
+        advanceUntilIdle()
+        holding = false
+        // The newer refresh's checks come in and settle while the worker still has the older one's.
+        while (held.isNotEmpty()) {
+            val next = held.toList()
+            held.clear()
+            for ((context, block) in next) dispatcher.dispatch(context, block)
+            advanceUntilIdle()
+        }
+        for ((context, block) in older) dispatcher.dispatch(context, block)
+        advanceUntilIdle()
+        // The newer refresh has the last word: the notice is live, so its dismissal stays.
+        assertEquals(setOf(DismissedAlert.ofStopClosure(closure)), backing.value)
+    }
+
+    @Test
+    fun `a refresh still settles when a newer one is canceled before its checks come in`() = runTest(dispatcher) {
+        val backing = MutableStateFlow<Set<DismissedAlert>>(emptySet())
+        val store = object : DismissedAlertsStore {
+            override fun dismissed() = backing
+            override suspend fun dismiss(alert: DismissedAlert) {
+                backing.value = Dismissed.dismiss(backing.value, alert)
+            }
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) {
+                backing.value = Dismissed.reconcile(backing.value, live, checkedPlaces)
+            }
+        }
+        val held = mutableListOf<Pair<CoroutineContext, Runnable>>()
+        var holding = false
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (holding) held += context to block else dispatcher.dispatch(context, block)
+            }
+        }
+        var closed = true
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) =
+                if (closed) listOf(StopDisruption("Bus Stop Closed")) else emptyList()
+        }
+        val vm = MainViewModel(
+            client,
+            listOf(StopRef("490000001A", "Example Road", clusterId = "490G000EXAMPLE")),
+            clock = { now },
+            io = dispatcher,
+            compute = worker,
+            dismissedStore = store,
+        )
+        advanceUntilIdle()
+        val closure = DepartureRows.across((vm.state.value as DeparturesUiState.Loaded).stops, now)
+            .first { it.stopDisruption != null }
+        vm.dismissAlert(closure)
+        advanceUntilIdle()
+
+        // A refresh finds the notice ended; while the worker has it, a newer refresh starts and is
+        // canceled (a re-locate begins) before its own checks come in.
+        closed = false
+        holding = true
+        vm.refresh()
+        advanceUntilIdle()
+        // The worker merges the refresh's stops first; once the list shows them, what it holds next
+        // is the refresh's checks, to settle.
+        while (held.isNotEmpty() && !shownClear(vm)) {
+            val next = held.toList()
+            held.clear()
+            for ((context, block) in next) dispatcher.dispatch(context, block)
+            advanceUntilIdle()
+        }
+        assertTrue("nothing handed to the worker", held.isNotEmpty())
+        vm.refresh()
+        vm.cancelFetch()
+        holding = false
+        while (held.isNotEmpty()) {
+            val next = held.toList()
+            held.clear()
+            for ((context, block) in next) dispatcher.dispatch(context, block)
+            advanceUntilIdle()
+        }
+        // Nothing newer settled, so the first refresh's verdict stands: the ended notice is forgotten.
+        assertEquals(emptySet<DismissedAlert>(), backing.value)
     }
 
     @Test

@@ -38,6 +38,7 @@ import app.stopdash.domain.TripModes
 import app.stopdash.domain.TripTiming
 import app.stopdash.domain.mergedRoutes
 import app.stopdash.domain.withoutDetours
+import app.stopdash.domain.Workers
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -45,6 +46,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -92,6 +94,9 @@ class TripViewModel(
     private val plans: TripPlans = TripPlans.SHARED,
     // Requests and their decoding run off the main thread, as the other screens' do.
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    // Where work that grows with the trip's stops runs (AGENTS.md *Main thread: read and dispatch
+    // only*): [viewModelScope] is the main thread.
+    private val compute: CoroutineDispatcher = Workers.compute,
     // The stops' last arrivals, shared with the other screens (the app passes [ArrivalsCache.SHARED]):
     // a boarding stop fetched within [ArrivalsCache.TTL] shows at once and isn't asked for again.
     private val arrivals: ArrivalsCache = ArrivalsCache(),
@@ -1046,8 +1051,19 @@ class TripViewModel(
         // This check's place in line ([StopClosureCache.ask]), taken before any request is sent, and
         // each stop's latest check from now on ([closureAsks]).
         val ticket = closureCache.ask(now)
+        val before = ids.associateWith { closureAsks[it] }
         for (id in ids) closureAsks[id] = ticket
-        val checked = closureChecks.check(ids, ticket, now)
+        val checked = try {
+            closureChecks.check(ids, ticket, now)
+        } catch (e: CancellationException) {
+            // Canceled before its verdict (the trip was left): each stop goes back to the check that
+            // had it, so that one's verdict, already in, still settles it.
+            for ((id, was) in before) {
+                if (closureAsks[id] !== ticket) continue
+                if (was == null) closureAsks.remove(id) else closureAsks[id] = was
+            }
+            throw e
+        }
         return ClosureCheck(checked.found, checked.at, checked.failed, ids, ticket)
     }
 
@@ -1065,10 +1081,25 @@ class TripViewModel(
     // check that stop (Codex on #367). Only the stops no later check has asked about since: an older
     // answer landing late isn't evidence over a newer one.
     private suspend fun reconcileStopDismissals(check: ClosureCheck) {
-        val latest = check.latest()
-        val (live, checked) = stopDismissalCheck(check.found.filterKeys { it in latest }, clock())
-        reconcileDismissals(_dismissed.value, live, checked, dismissedStore, io, warn, "trip") { pruned ->
-            if (pruned != _dismissed.value) _dismissed.value = pruned
+        val now = clock()
+        // Once the check is in, settling it outlasts the trip, as its write does: leaving while the
+        // worker has it would otherwise keep an ended closure's dismissal stored, to hide it coming back.
+        withContext(NonCancellable) {
+            var latest = check.latest()
+            while (true) {
+                val (live, checked) = withContext(compute) { stopDismissalCheck(check.found.filterKeys { it in latest }, now) }
+                // A later check that took over a stop while the worker had this one settles that stop
+                // itself: this one's verdict on it is older, so it's worked out again without it.
+                val still = check.latest()
+                if (still != latest) {
+                    latest = still
+                    continue
+                }
+                reconcileDismissals(_dismissed.value, live, checked, dismissedStore, io, warn, "trip") { pruned ->
+                    if (pruned != _dismissed.value) _dismissed.value = pruned
+                }
+                break
+            }
         }
     }
 

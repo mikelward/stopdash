@@ -25,248 +25,6 @@
 
     <issue
         id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called 6 times on the main thread (through `MainViewModel()`), in composable `DeparturesForStops`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                        MainViewModel("
-        errorLine2="                        ^">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="1781"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called 6 times on the main thread (through `fartherCardModel()`), in composable `DeparturesForStops`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                                fartherCardModel(departuresClient(appContext), appContext, stops, distances, writeFailures)"
-        errorLine2="                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="1930"
-            column="33"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called 3 times on the main thread (through `retain()`), in composable `DeparturesForStops`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="            LaunchedEffect(farther, ready.location) { farther?.let { fartherModels.retain(it, ready.location) } }"
-        errorLine2="                                                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="1938"
-            column="70"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called 3 times on the main thread (through `reconcile()`), in composable `DeparturesForStops`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                    viewModel.reconcile("
-        errorLine2="                    ^">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="2015"
-            column="21"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called 3 times on the main thread (through `refresh()`), in composable `DeparturesForStops`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                    fartherModels.refresh()"
-        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="2024"
-            column="21"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called 3 times on the main thread (through `setJourneyStops()`), in composable `DeparturesForStops`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                    onJourneyOrigins = viewModel::setJourneyStops,"
-        errorLine2="                                       ~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="2122"
-            column="40"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called 3 times on the main thread (through `journeyStopsReported()`), in composable `DeparturesForStops`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                        viewModel.journeyStopsReported()"
-        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="2127"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called on the main thread (through `setJourneyDestinations()`), in composable `DeparturesForStops`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                    onJourneyDestinations = viewModel::setJourneyDestinations,"
-        errorLine2="                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="2129"
-            column="45"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called 3 times on the main thread (through `open()`), in composable `DeparturesForStops`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                            fartherModels.open(place, ready.location)"
-        errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="2226"
-            column="29"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called 2 times on the main thread (through `carryPull()`), in composable `HereTripArea`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="        SideEffect { lastPull?.let(trip::carryPull) }"
-        errorLine2="                                   ~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="2854"
-            column="36"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called 6 times on the main thread (through `refreshFor()`), in composable `HereTripArea`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="        LaunchedEffect(trip, pickId) { trip.refreshFor(pickId) }"
-        errorLine2="                                       ~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="2888"
-            column="40"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called 2 times on the main thread (through `refresh()`), in composable `HereTripArea`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="            ) { trip.refresh() }"
-        errorLine2="                ~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="2897"
-            column="17"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called 2 times on the main thread (through `retry()`), in composable `HereTripArea`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="            onRetry = trip::retry,"
-        errorLine2="                      ~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="2917"
-            column="23"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called 2 times on the main thread (through `noteWithheld()`), in composable `HereTripArea`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="            onWithheld = trip::noteWithheld,"
-        errorLine2="                         ~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="2940"
-            column="26"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called on the main thread (through `checkShownStops()`), in composable `HereTripArea`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="            onShownStops = trip::checkShownStops,"
-        errorLine2="                           ~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="2941"
-            column="28"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called 2 times on the main thread (through `boardAt()`), in composable `HereTripArea`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="            onPlacedStands = trip::boardAt,"
-        errorLine2="                             ~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="2942"
-            column="30"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called 2 times on the main thread (through `pullRefresh()`), in composable `HereTripArea`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                lastPull = trip.pullRefresh(awaitFix = here != null)"
-        errorLine2="                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="2980"
-            column="28"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called 6 times on the main thread (through `MainViewModel()`), in composable `LookDepartures`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                    MainViewModel("
-        errorLine2="                    ^">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="3004"
-            column="21"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called 3 times on the main thread (through `refresh()`), in composable `LookDepartures`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                if (returning &amp;&amp; !viewModel.refreshing.value) viewModel.refresh()"
-        errorLine2="                                                              ~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="3048"
-            column="63"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called 3 times on the main thread (through `refresh()`), in composable `LookDepartures`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                onRefresh = { viewModel.refresh() },"
-        errorLine2="                              ~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="3062"
-            column="31"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called 3 times on the main thread (through `refresh()`), in composable `LookDepartures`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                    viewModel.refresh()"
-        errorLine2="                    ~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="3066"
-            column="21"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called 3 times on the main thread (through `refresh()`), in composable `AutoRefresh`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="        ) { viewModel.refresh(automatic = true) }"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="3813"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
         message="`Journeys.segment` is marked @WorkerThread but called on the main thread, in composable `MainScreen`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
         errorLine1="        cardJourneys.associate { j -> j.key to starSequences[j.lineId]?.let { Journeys.segment(j, it) } }"
         errorLine2="                                                                              ~~~~~~~~~~~~~~~~~~~~~~~">
@@ -624,7 +382,7 @@
         errorLine2="                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/TripScreen.kt"
-            line="1468"
+            line="1484"
             column="45"/>
     </issue>
 
@@ -635,7 +393,7 @@
         errorLine2="                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/TripScreen.kt"
-            line="1468"
+            line="1484"
             column="45"/>
     </issue>
 
@@ -646,7 +404,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/TripScreen.kt"
-            line="1788"
+            line="1871"
             column="35"/>
     </issue>
 
@@ -657,7 +415,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/TripScreen.kt"
-            line="2010"
+            line="2093"
             column="9"/>
     </issue>
 
@@ -668,7 +426,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/TripScreen.kt"
-            line="2010"
+            line="2093"
             column="9"/>
     </issue>
 
@@ -679,7 +437,7 @@
         errorLine2="                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/TripScreen.kt"
-            line="2639"
+            line="2722"
             column="37"/>
     </issue>
 

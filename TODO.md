@@ -79,11 +79,27 @@ exercises the whole spine the widget later renders from.
 - [ ] Clear the `WorkerThreadCall` lint baseline (`app/lint-baseline.xml`): composition that reaches a
       `@WorkerThread` domain function, directly or through a helper, today MainScreen's near-me rows,
       journey cards and alert placement, OnTheWayScreen's next trains, TripScreen's line rows and
-      card helpers, `MainViewModel`'s refresh and dismissal pruning (run on `viewModelScope`, the main
-      thread), the widget's model (built in
-      Glance's `provideContent`) and, in `wear/lint-baseline.xml`, the complication picker's choices.
+      card helpers, the widget's model (built in Glance's `provideContent`) and, in
+      `wear/lint-baseline.xml`, the complication picker's choices. (The view models' dismissal checks
+      moved to their worker.)
       Each moves off the main thread, worked out with the data it comes from and published with it,
       one screen per PR.
+- [ ] Prune the saved dismissals off the main thread: `Dismissed.reconcile` still filters the whole
+      dismissed set on the main thread after each check settles, in the list, the trip and the line
+      checks. The set is small (only alerts the rider dismissed, expiring daily), but it grows with
+      use. Moving it needs the set updated atomically (`_dismissed.update`) by dismissing and pruning
+      alike, so a dismissal made while the worker prunes isn't lost. The same goes for the store: a
+      check's write lands after its in-memory prune, so a dismissal made in between (of a notice a
+      newer refresh found back) can be written away; pruning by what the check saw, not the whole
+      set, would close it.
+- [ ] Settle stop closures by a single owner per place: the trip's checks take each stop over before
+      their request (`closureAsks`) and hand it back if canceled first, but a check that has already
+      settled without a stop it lost doesn't take it back, so one left unanswered by a canceled
+      successor keeps an ended closure's dismissal until the list next checks that stop. The list's
+      refreshes and journey-destination checks keep separate turns (`Turns`), so a stop that's both
+      on the board and a destination can be settled by an older destination check after a newer
+      refresh found its closure back. A per-place queue of pending verdicts, shared by every kind of
+      check and settled newest-first as each lands, would close both.
 - [ ] Finish marking `@WorkerThread`: the first sweep marked the route, alert, journey and board-wide
       work; smaller loops the UI still calls in composition (a row's `Countdown.entries`, and the like)
       aren't marked yet, so `WorkerThreadCall` can't see them. Mark each as its screen moves off the
