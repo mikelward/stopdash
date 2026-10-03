@@ -1195,7 +1195,7 @@ each line runs there ("↻ 2–7 min"), as its row on the list's card does and f
 ride on one line reads the same on both (maintainer, 2026-09-29): the rider isn't at that stop yet, so
 its next few trains say nothing they can use. Each line's row gives its own line's figure, and none
 where fewer than three of its trains are known. A row still opens its line's page, which counts down.
-A walk reads "Walk to ‹place› (5 min)", its minutes in parentheses so they read as how long it
+A walk reads "Walk to ‹place› (5 min)" (one within a place onto a ride reads as the change, *On the way*), its minutes in parentheses so they read as how long it
 takes, not a time of day (maintainer, 2026-09-27); a walk to a station's entrance, which the
 Planner names by its street then the station ("Cannon Street, Cannon Street Rail Station"), goes by
 the station ("Cannon Street"), never the street repeated. Line status and stop closures for every leg show exactly as on the list:
@@ -1548,7 +1548,15 @@ them there:
   and **getting off it** ("Ride to …", said as a continuous action, as "Walk to …" is; maintainer, 2026-10-01), so the rider can say they're on
   before they say they're off. Getting off is a step for Next, Back and the card, but not a row of its
   own in the route's legs: one row per leg, the ride's row the rider's while they board it and ride it
-  (maintainer, 2026-10-03). At a boarding step, a walk's time runs from then and a ride's train is
+  (maintainer, 2026-10-03). A **walk within one place** between two rides — from and to the same name
+  ("Stratford" to "Stratford", between two platforms or a station and its bus stop) — is no step at
+  all: "walk to" where the rider already is says nothing, nothing tells when they reach the platform,
+  and the ride's card names the stop or platform to go to (maintainer, 2026-10-03). The trip goes
+  straight from the ride before to boarding the next; until the walk's time and the change after it
+  are up it reads as that change ("Change to ‹line› at ‹place›"), as a timed change between two rides
+  does, so no train is followed before the rider can reach it, then as boarding. One before the first
+  ride is no change, so it stays a walk step. Those minutes also
+  say which trains are in reach, and the route page shows them as the change's "N min to change". At a boarding step, a walk's time runs from then and a ride's train is
   picked at once from then; at a getting-off step they're on board the train followed (the next they
   could catch, as the trip assumes, or with none yet one at the platform when they said so, due within
   a minute of it; with none there it says it can't find their train rather than name a later one). A

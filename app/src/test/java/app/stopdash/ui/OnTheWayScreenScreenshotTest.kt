@@ -300,10 +300,22 @@ class OnTheWayScreenScreenshotTest {
         composeRule.onNodeWithText("Board Mildmay at Highbury & Islington").assertIsDisplayed()
         // When it's due as a clock time, then how long (maintainer, 2026-10-03).
         composeRule.onNodeWithText("08:06 · 4 min").assertIsDisplayed()
-        // The walk between the rides is a walker in the pills' column, not the word "Walk".
-        composeRule.onNodeWithContentDescription("Walk").assertIsDisplayed()
+        // The walk between the rides stays within Stratford, so it has no row: the Jubilee's card names
+        // where to go (maintainer, 2026-10-03). Nor the word "Walk" anywhere.
+        composeRule.onNodeWithContentDescription("Walk").assertDoesNotExist()
         composeRule.onNodeWithText("Walk").assertDoesNotExist()
         captureSnapshot("on-the-way-waiting.png")
+    }
+
+    @Test
+    fun a_walk_between_two_places_is_a_walker_row() {
+        // Both directions of the rule above: a walk to another place keeps its row, a walker in the
+        // pills' column rather than the word "Walk".
+        val across = walk.copy(toId = "940GZZLUCYF", toName = "Canary Wharf")
+        show(ActiveTrip(TripRoute(listOf(mildmay, across)), "Canary Wharf", startedAt = now), TripProgress.Waiting(mildmay, at(4)))
+        composeRule.onNodeWithContentDescription("Walk").assertIsDisplayed()
+        composeRule.onNodeWithText("Stratford → Canary Wharf").assertIsDisplayed()
+        composeRule.onNodeWithText("Walk").assertDoesNotExist()
     }
 
     @Test
@@ -576,18 +588,21 @@ class OnTheWayScreenScreenshotTest {
         val went = mutableListOf<Pair<OnTheWay.Step, OnTheWay.Step>>()
         show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(3)), onGoTo = { from, to -> went += from to to })
         captureSnapshot("on-the-way-next.png")
-        val walking = OnTheWay.Step(1)
+        // The walk within Stratford is no step (maintainer, 2026-10-03): the rider is at boarding the
+        // Jubilee meanwhile, so Next is getting on it.
+        val walking = OnTheWay.Step(2)
         composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoNext")).performClick()
-        // Back from the walk is getting off the ride before it: a ride is two steps (maintainer, 2026-09-29).
+        // Back is getting off the ride before it: a ride is two steps (maintainer, 2026-09-29).
         composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoBack")).performClick()
-        // A ride is one row (maintainer, 2026-10-03): tapping it goes to boarding it.
+        // A ride is one row (maintainer, 2026-10-03): tapping it goes to boarding it, the Jubilee's
+        // included, since the rider is still walking to it.
         composeRule.onNodeWithText("Stratford → Canary Wharf").performClick()
         composeRule.onNodeWithText("Highbury & Islington → Stratford").performClick()
-        // The step they're at already: nothing to move to.
-        composeRule.onNodeWithText("Stratford → Stratford").performClick()
+        // No row of its own for the walk.
+        assertTrue(composeRule.onAllNodesWithText("Stratford → Stratford").fetchSemanticsNodes().isEmpty())
         assertEquals(
             listOf(
-                walking to OnTheWay.Step(2),
+                walking to OnTheWay.Step(2, onBoard = true),
                 walking to OnTheWay.Step(0, onBoard = true),
                 walking to OnTheWay.Step(2),
                 walking to OnTheWay.Step(0),
