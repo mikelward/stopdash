@@ -57,6 +57,7 @@ import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.StepFreeLevel
 import app.stopdash.domain.TflException
 import app.stopdash.domain.Workers
+import android.util.LruCache
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.delay
@@ -107,10 +108,38 @@ sealed interface RouteStopsUi {
 }
 
 /**
+ * The stop lists this process has worked out, by the train they're for and the repository
+ * they came from, so a reopened page shows its stops in its first frame (SPEC D8, route detail)
+ * while the current list is worked out again off the main thread. A lookup only; bounded, as each
+ * list keeps its line's routes ([RouteStopsUi.Loaded.sequence]). A failure isn't kept, so a
+ * reopened page asks again. A list is shown only while the repository still holds the very routes
+ * it was worked out from ([RouteStopsRepository.cached]), so none outlives the route's day, or a
+ * refetch made for another train.
+ */
+internal object RouteStopsMemo {
+    // A list with the line's routes it was worked out from.
+    private class Held(val stops: RouteStopsUi, val from: LineSequence)
+
+    private val held = LruCache<Any, Held>(MAX_ENTRIES)
+
+    /** [key]'s list, only if it was worked out from [current]: the very routes the repository holds now. */
+    fun get(key: Any, current: LineSequence?): RouteStopsUi? =
+        held.get(key)?.takeIf { current != null && it.from === current }?.stops
+
+    fun put(key: Any, stops: RouteStopsUi, from: LineSequence) {
+        if (stops !is RouteStopsUi.Failed && stops !is RouteStopsUi.Loading) held.put(key, Held(stops, from))
+    }
+
+    const val MAX_ENTRIES = 16
+}
+
+/**
  * The stop list for the [next] departure on [row] (see [followedDeparture]): from the boarding stop
- * through that train's destination. [RouteStopsUi.Loading] while it loads and matches, both off the
- * main thread ([LocalWorker]): matching a train to its line's routes walks every route, which on a
- * National Rail line froze the page (SPEC D8, route detail). [retry] bumps to refetch after a failure.
+ * through that train's destination. Loaded and matched off the main thread ([LocalWorker]):
+ * matching a train to its line's routes walks every route, which on a National Rail line froze the
+ * page (SPEC D8, route detail). The first frame shows the list worked out when this train's page
+ * was last open ([RouteStopsMemo]), else [RouteStopsUi.Loading]. [retry] bumps to refetch after a
+ * failure.
  */
 @Composable
 internal fun rememberRouteStops(row: DepartureRow, next: Departure?, retry: Int): RouteStopsUi {
@@ -136,13 +165,19 @@ internal fun rememberRouteStops(row: DepartureRow, next: Departure?, retry: Int)
     }
     // Keyed by the followed train (and the mode, which changes the matching rule), so a change of
     // soonest train (a refresh, or one departing) discards the old state outright: the first frame
-    // for the new train is Loading, never the previous train's stops.
-    return key(repository, row.lineId, row.direction, row.stopId, destination, next.branch, next.platform, next.direction, next.destinationId, bus, worker) {
-        val state by produceState<RouteStopsUi>(RouteStopsUi.Loading, retry) {
-            if (value !is RouteStopsUi.Loading && value !is RouteStopsUi.Failed) return@produceState
-            value = RouteStopsUi.Loading
+    // for the new train is its own list or Loading, never the previous train's stops.
+    val memo = listOf("train", repository, row.lineId, row.direction, row.stopId, destination, next.branch, next.platform, next.direction, next.destinationId, bus)
+    return key(memo, worker) {
+        // Only while the repository still holds the routes it came from: none past its day or a refetch.
+        val remembered = RouteStopsMemo.get(memo, repository.cached(row.lineId, row.direction))
+        val state by produceState(remembered ?: RouteStopsUi.Loading, retry) {
+            // A list shown from the memo stays up while the current one is worked out.
+            if (value is RouteStopsUi.Failed) value = RouteStopsUi.Loading
             value = try {
-                withContext(worker) { resolve(repository.load(row.lineId, row.direction)) }
+                withContext(worker) {
+                    val fetched = repository.load(row.lineId, row.direction)
+                    resolve(fetched).also { RouteStopsMemo.put(memo, it, fetched) }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TflException.NotFound) {
