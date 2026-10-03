@@ -38,8 +38,10 @@ internal const val COMPUTE_BUDGET_MILLIS = 300L
 
 /**
  * A value worked out off the main thread by [rememberComputed]: [value] is what to show now, [ready]
- * whether it is a computed answer rather than the placeholder, and [hasUpdate] whether a newer one
- * came in too late to swap in unasked; [showUpdate] swaps it in (the [UpdateChip]'s tap).
+ * whether it is a computed answer rather than the placeholder, [current] whether it was worked out
+ * from the inputs as they are now (so a thing missing from it is really missing), and [hasUpdate]
+ * whether a newer one came in too late to swap in unasked; [showUpdate] swaps it in (the
+ * [UpdateChip]'s tap).
  */
 @Stable
 internal class Computed<T>(initial: T, ready: Boolean, provisional: Boolean = false) {
@@ -50,28 +52,38 @@ internal class Computed<T>(initial: T, ready: Boolean, provisional: Boolean = fa
     private var update: Any? by mutableStateOf(NO_UPDATE)
     // A value from the memo: an earlier visit's answer, shown only until this one's first is in.
     private var provisional = provisional
+    // The inputs [value] and the held update were worked out from, and those of the latest
+    // composition (set by [rememberComputed] as it composes; read in the same pass).
+    private var shownKeys: List<Any?>? by mutableStateOf(null)
+    private var updateKeys: List<Any?>? = null
+    internal var latestKeys: List<Any?> = emptyList()
 
     val hasUpdate: Boolean get() = update !== NO_UPDATE
+
+    val current: Boolean get() = ready && shownKeys == latestKeys
 
     fun showUpdate() {
         val next = update
         if (next === NO_UPDATE) return
         @Suppress("UNCHECKED_CAST")
         value = next as T
+        shownKeys = updateKeys
         update = NO_UPDATE
     }
 
     // Shown at once while nothing computed for these inputs is on screen (the placeholder, or an
     // earlier visit's answer from the memo), or it came in within the budget, or it shows the same;
     // otherwise held for a tap, so a late answer never moves what the rider is reading.
-    internal fun offer(result: T, inTime: Boolean, same: Boolean) {
+    internal fun offer(result: T, keys: List<Any?>, inTime: Boolean, same: Boolean) {
         if (!ready || provisional || inTime || same) {
             value = result
+            shownKeys = keys
             ready = true
             provisional = false
             update = NO_UPDATE
         } else {
             update = result
+            updateKeys = keys
         }
     }
 
@@ -115,6 +127,9 @@ internal fun <T> rememberComputed(
         @Suppress("UNCHECKED_CAST")
         if (known != null) Computed(known.value as T, ready = true, provisional = true) else Computed(placeholder, ready = false)
     }
+    // A view of the keys, not a copy.
+    val keyList = keys.asList()
+    computed.latestKeys = keyList
     LaunchedEffect(*keys, worker) {
         val started = System.nanoTime()
         val shown = computed.value
@@ -125,7 +140,7 @@ internal fun <T> rememberComputed(
             result to (wasReady && result == shown)
         }
         if (memo != null && memoIf(result)) ComputedMemo.put(memo, result)
-        computed.offer(result, inTime = (System.nanoTime() - started) / 1_000_000 <= budget, same = same)
+        computed.offer(result, keyList, inTime = (System.nanoTime() - started) / 1_000_000 <= budget, same = same)
     }
     return computed
 }
@@ -156,8 +171,14 @@ internal object ComputedMemo {
 @Composable
 internal fun UpdateChip(computed: Computed<*>, modifier: Modifier = Modifier) {
     if (!computed.hasUpdate) return
+    UpdateChip(onClick = computed::showUpdate, modifier = modifier)
+}
+
+/** The "Tap to see" cue itself, for a list that places it as one of its items. */
+@Composable
+internal fun UpdateChip(onClick: () -> Unit, modifier: Modifier = Modifier) {
     AssistChip(
-        onClick = computed::showUpdate,
+        onClick = onClick,
         label = { Text(stringResource(R.string.computed_tap_to_see)) },
         modifier = modifier.padding(horizontal = 16.dp, vertical = 4.dp),
     )

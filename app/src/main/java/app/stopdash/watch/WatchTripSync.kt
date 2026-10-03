@@ -180,7 +180,7 @@ internal object WatchTripSync {
         }
         // Logged once per set, as the screen logs them once per change, not again every tick.
         val misses = (own.misses + others.flatMap { it.misses }).toSet()
-        if (misses != reportedMisses) routes.reportMisses(misses)
+        if (misses != reportedMisses) routes.reportMissesNow(misses)
         reportedMisses = misses
         val trains = java.util.IdentityHashMap<Departure, WatchTrips.Pole?>()
         val poles = board.others.isNotEmpty()

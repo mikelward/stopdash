@@ -218,7 +218,7 @@ class RouteStopsTest {
     }
 
     @Test
-    fun `misses and an unplaced journey are logged with their ids and reasons`() {
+    fun `misses and an unplaced journey are logged with their ids and reasons`() = runBlocking {
         val warnings = mutableListOf<String>()
         val repository = RouteStopsRepository(
             source = object : RouteSequenceSource {

@@ -109,6 +109,31 @@ class ComputedTest {
     }
 
     @Test
+    fun `an answer is current only once it's worked out from the inputs as they are`() {
+        var input by mutableStateOf("first")
+        val gate = CompletableDeferred<Unit>()
+        var current = false
+        composeRule.setContent {
+            val shown = rememberComputed(input, placeholder = "placeholder", resetOnChange = false) {
+                if (input == "second") gate.await()
+                "$input answer"
+            }
+            current = shown.current
+            Text(shown.value)
+        }
+        assertEquals(true, current)
+        input = "second"
+        composeRule.waitForIdle()
+        // The old answer is still up, but a thing missing from it isn't known to be missing now.
+        composeRule.onNodeWithText("first answer").assertExists()
+        assertEquals(false, current)
+        gate.complete(Unit)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("second answer").assertExists()
+        assertEquals(true, current)
+    }
+
+    @Test
     fun `a page reopened shows its last answer in its first frame`() {
         val memo = listOf("ComputedTest", "reopened")
         var open by mutableStateOf(true)
