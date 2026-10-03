@@ -80,43 +80,65 @@ internal class RouteDisruptionChecks(
         // the same alert coming back later is heard again even when nothing else checks its line or stop
         // (Codex, PR #441): each line answered, and each stop checked, as its own place, settled against
         // what this check found live.
-        val lineCheck = statuses?.let { lineDismissalCheck(it.statuses, it.answered, at) } ?: (emptySet<DismissedAlert>() to emptySet())
-        val stopCheck = stopDismissalCheck(current, at)
-        reconcileDismissals(cleared, lineCheck.first + stopCheck.first, lineCheck.second + stopCheck.second, dismissedStore, io, warn, "on the way") {
-            cleared = it
+        // Every live alert's identity, each line's under way ones included: on [io], never the caller's
+        // (the main) thread (Codex on #519).
+        val (live, checkedPlaces) = withContext(io) {
+            val lineCheck = statuses?.let { lineDismissalCheck(it.statuses, it.answered, at) } ?: (emptySet<DismissedAlert>() to emptySet())
+            val stopCheck = stopDismissalCheck(current, at)
+            (lineCheck.first + stopCheck.first) to (lineCheck.second + stopCheck.second)
+        }
+        reconcileDismissals(cleared, live, checkedPlaces, dismissedStore, io, warn, "on the way") { gone ->
+            cleared = cleared - gone
         }
         // The routes of the coming bus lines whose alert could be left out for naming only stops off
         // the ride ([RouteDisruption.offRide]), read exactly as [RouteDisruption.signals] reads them —
         // the same day, direction and dismissals — so one that can't change the answer costs no route;
         // each asked for once, from the shared cache (Codex, PR #455).
-        val alerted = RouteDisruption.routesWanted(trip, statuses?.statuses.orEmpty(), directions, cleared, at)
+        val alerted = withContext(io) { RouteDisruption.routesWanted(trip, statuses?.statuses.orEmpty(), directions, cleared, at) }
         // At once, not in turn: the check waits on all of them, and the route repository already caps
         // its own concurrent fetches (Codex, PR #455).
         val sequences = coroutineScope { alerted.map { line -> async { lookUp(line)?.let { line to it } } }.awaitAll() }
             .filterNotNull().toMap()
         var leftOff = 0
-        val signals = RouteDisruption.signals(trip, progress, statuses?.statuses.orEmpty(), directions, current, places, cleared, at, sequences) { leftOff++ }
+        // Every alert of every coming line weighed against the ride, and how long what's found stands: on
+        // [io], never the caller's (the main) thread (Codex on #519).
+        val found = withContext(io) {
+            val signals = RouteDisruption.signals(trip, progress, statuses?.statuses.orEmpty(), directions, current, places, cleared, at, sequences) { leftOff++ }
+            if (signals.isEmpty()) return@withContext RouteDisruption.Found.NONE
+            // Stale no later than the oldest check behind a signal.
+            val stamps = signals.mapNotNull { signal ->
+                when (signal) {
+                    is RouteDisruption.Signal.Line -> statuses?.at
+                    is RouteDisruption.Signal.Stop -> checked.at[signal.stopId]
+                    // A change's board is the tracker's to read, never this check's.
+                    is RouteDisruption.Signal.Unpredicted -> null
+                }
+            }
+            fun staleAt(stamp: Instant) = at.plus(Staleness.remainingUntilStale(SteadyClock.age(stamp, at).toKotlinDuration()).toJavaDuration())
+            val stale = stamps.minOrNull()?.let(::staleAt)
+            // Nor past the end of a notice in force at a stop it names: one ending changes what that
+            // stop's card says, so it isn't left standing as current until a check notices (Codex, PR #441).
+            val ends = signals.filterIsInstance<RouteDisruption.Signal.Stop>()
+                .flatMap { current[it.stopId].orEmpty() }
+                .filter { it.isActiveAt(at) }
+                .mapNotNull { it.validTo }
+            // Each signal's own: its check's, and for a stop, the end of a notice in force there, so letting
+            // go of one doesn't leave the rest standing only as long as it would have (Codex on #519).
+            val stands = signals.mapNotNull { signal ->
+                when (signal) {
+                    is RouteDisruption.Signal.Line -> statuses?.at?.let(::staleAt)
+                    is RouteDisruption.Signal.Stop -> listOfNotNull(
+                        checked.at[signal.stopId]?.let(::staleAt),
+                        current[signal.stopId].orEmpty().filter { it.isActiveAt(at) }.mapNotNull { it.validTo }.minOrNull(),
+                    ).minOrNull()
+                    is RouteDisruption.Signal.Unpredicted -> null
+                }?.let { signal.key to it }
+            }.toMap()
+            RouteDisruption.Found(signals, listOfNotNull(stale, ends.minOrNull()).minOrNull(), stands)
+        }
         // Said, never quietly dropped (principle 1): which stops it named stays out of the log.
         if (leftOff > 0) warn("on the way: $leftOff line alert(s) left out, naming only stops off the ride")
-        if (signals.isEmpty()) return RouteDisruption.Found.NONE
-        // Stale no later than the oldest check behind a signal.
-        val stamps = signals.mapNotNull { signal ->
-            when (signal) {
-                is RouteDisruption.Signal.Line -> statuses?.at
-                is RouteDisruption.Signal.Stop -> checked.at[signal.stopId]
-                // A change's board is the tracker's to read, never this check's.
-                is RouteDisruption.Signal.Unpredicted -> null
-            }
-        }
-        val stale = stamps.minOrNull()?.let { at.plus(Staleness.remainingUntilStale(SteadyClock.age(it, at).toKotlinDuration()).toJavaDuration()) }
-        // Nor past the end of a notice in force at a stop it names: one ending changes what that
-        // stop's card says, so it isn't left standing as current until a check notices (Codex, PR #441).
-        val ends = signals.filterIsInstance<RouteDisruption.Signal.Stop>()
-            .flatMap { current[it.stopId].orEmpty() }
-            .filter { it.isActiveAt(at) }
-            .mapNotNull { it.validTo }
-        val until = listOfNotNull(stale, ends.minOrNull()).minOrNull()
-        return RouteDisruption.Found(signals, until)
+        return found
     }
 
     // What a check of the coming lines' statuses found: the [statuses] TfL returned, the lines it gave a

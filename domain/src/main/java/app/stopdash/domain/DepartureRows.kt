@@ -891,6 +891,7 @@ object DepartureRows {
      * dismissed while it showed is still the rider's dismissal once a milder alert TfL ranks above it
      * shows, and a trip's "route disruption" names it again where it's placed on a ride (Codex, PR #446).
      */
+    @WorkerThread
     fun liveLineStatusAlerts(lineStatuses: Map<String, LineStatus>, now: Instant? = null): Set<DismissedAlert> =
         // Each direction's alert counts too: a row shows its own direction's, so that is what a
         // rider dismisses, and pruning it here would bring it straight back.
@@ -899,7 +900,11 @@ object DepartureRows {
             // A planned alert is one too, so its dismissal isn't pruned while it's still coming.
             listOfNotNull(DismissedAlert.ofLineStatus(status).takeIf { status.disrupted }) +
                 status.planned.map { DismissedAlert.ofPlanned(status.lineId, it) } +
-                status.closures.map { DismissedAlert.ofLineStatus(status.naming(it)) }
+                status.closures.map { DismissedAlert.ofLineStatus(status.naming(it)) } +
+                // Each alert under way behind the one shown is live too: a trip shows each on its own
+                // ([RouteDisruption.alertsOnRide]), so one dismissed while it showed stays dismissed once a
+                // worse one shows over it (Codex on #519).
+                status.underWay.map { DismissedAlert.ofLineStatus(LineStatus(status.lineId, it.severity, it.description, it.fullText)) }
         }
 
     /**

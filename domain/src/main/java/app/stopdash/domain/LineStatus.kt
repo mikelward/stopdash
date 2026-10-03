@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
 import java.time.LocalDate
 
 /**
@@ -64,6 +65,11 @@ data class LineStatus(
     // a row as the app does ([DepartureRows.withAlertsBehind]). Empty in the app, which places alerts
     // itself, and wherever nothing was placed.
     val behindAt: Set<StopWay> = emptySet(),
+    // Every alert under way on the line, each in its own words, as TfL answered (the one shown among
+    // them): what lets a trip leave out a bus line's alerts that each name only stops off the ride
+    // though several are under way ([RouteDisruption.offRide], maintainer 2026-10-03). Empty where not
+    // known, or nothing is under way.
+    val underWay: List<LineAlert> = emptyList(),
 ) {
     /** True when TfL reports anything other than a good service on this line. */
     val disrupted: Boolean get() = severity != GOOD_SERVICE
@@ -104,6 +110,7 @@ data class LineStatus(
      * status is classified when it is fetched, but a kept one (a later check failed, or is reused)
      * outlives that day, and work already started must not stay muted as to come (Codex, PR #337).
      */
+    @WorkerThread
     fun asOf(today: LocalDate): LineStatus {
         val due = planned.filter { !it.startsOn.isAfter(today) }
         val split = byDirection.mapValues { (_, status) -> status.asOf(today) }
@@ -111,7 +118,11 @@ data class LineStatus(
         val now = due.map { ResolvedDisruption(it.label, it.severity, isFallback = it.isFallback, fullText = it.fullText) } +
             listOfNotNull(if (disrupted) ResolvedDisruption(description, severity, isFallback = isFallback, fullText = fullText.orEmpty()) else null)
         val worst = mostSevereDisruption(now) ?: return this
-        val sole = (soleAlert || !disrupted) && now.map { it.severity to it.fullText }.distinct().size == 1
+        val sole = (soleAlert || !disrupted) && now.map { Triple(it.severity, it.label, it.fullText) }.distinct().size == 1
+        // Work that has started joins what's under way, only where all of that is known: added to a list
+        // that was never kept, it would pass for the whole of it.
+        val started = due.map { LineAlert(it.severity, it.label, it.fullText.ifBlank { null }) }
+        val all = if (!disrupted || underWay.isNotEmpty()) (underWay + started).distinct() else emptyList()
         return copy(
             severity = worst.severity,
             description = worst.label,
@@ -125,6 +136,7 @@ data class LineStatus(
             // The one alert under way only while nothing else is: work that has started is another
             // (Codex, PR #455).
             soleAlert = sole,
+            underWay = all,
             // Work that has started is an alert the app placed on its own words, not the one shown
             // before: placed as it was ([PlannedAlert.behindAt]) where it's all that's under way and
             // nothing was before it, else nowhere.
@@ -211,6 +223,7 @@ data class PartClosure(
      * two sections, or through one the other way. A section on a loop can name a stop twice: the
      * stretch is there if any of its calls at the second stop follows any at the first (Codex, PR #446).
      */
+    @WorkerThread
     fun coversRide(calls: List<String>): Boolean =
         calls.zipWithNext().any { (from, to) ->
             sections.any { section -> section.indexOf(from).let { at -> at >= 0 && section.lastIndexOf(to) > at } }
@@ -254,3 +267,9 @@ data class PlannedAlert(
         const val PART_CLOSURE = 5
     }
 }
+
+/**
+ * One alert under way on a line, in its own words ([LineStatus.underWay]), as [LineStatus] words the one
+ * shown, with the [directions] (TfL's `inbound`/`outbound`) it was found to affect; null where not known.
+ */
+data class LineAlert(val severity: Int, val description: String, val fullText: String?, val directions: Set<String>? = null)

@@ -66,7 +66,7 @@ object RouteDisruption {
             // again when the next check places it (Codex, PR #446).
             override val key: String get() = dismissKey + if (placed) "/placed" else ""
 
-            override val dismissKey: String get() = DismissedAlert.ofLineStatus(status).let { "line/$legIndex/${it.alertKey}/${it.contentSignature}" }
+            override val dismissKey: String get() = lineDismissKey(legIndex, status)
         }
 
         /**
@@ -105,13 +105,40 @@ object RouteDisruption {
      * What's known ([signals], worst first), and until when it stands ([until]): no later than its
      * evidence goes stale, null when nothing is known.
      */
-    data class Found(val signals: List<Signal>, val until: Instant?) {
+    data class Found(
+        val signals: List<Signal>,
+        val until: Instant?,
+        // How long each signal's own evidence stands, by its key ([Signal.key]), where known: what's
+        // left once some are let go of stands as long as its own do, not as long as one let go of
+        // (Codex on #519). One not listed stands as long as the whole ([until]).
+        val stands: Map<String, Instant> = emptyMap(),
+    ) {
         /** What's known with [signal] too, which stands no later than [stands]: so neither does the whole. */
+        @WorkerThread
         fun with(signal: Signal, stands: Instant): Found =
-            Found(ordered(signals + signal), until?.let { minOf(it, stands) } ?: stands)
+            Found(ordered(signals + signal), until?.let { minOf(it, stands) } ?: stands, this.stands + (signal.key to stands))
+
+        /** How long [signal] (one of [signals]) stands: its own time ([stands]), else the whole's ([until]). */
+        fun standsUntil(signal: Signal): Instant? = stands[signal.key] ?: until
 
         companion object {
             val NONE = Found(emptyList(), null)
+        }
+    }
+
+    /**
+     * [signals] as the trip's screen shows them: each thing known once, as the alert has it (its own
+     * words, [Signal.Line.status]'s or a stop's or a change's), so two legs on one line with the same
+     * words read as one card. A line's alert is told apart by its dismissal identity ([DismissedAlert.ofLineStatus]:
+     * severity, label and prose), so Keep going never lets go of one no card showed (Codex on #519).
+     * Worked out with what's known, never in composition (Codex on #519).
+     */
+    @WorkerThread
+    fun cards(signals: List<Signal>): List<Signal> = signals.distinctBy { signal ->
+        when (signal) {
+            is Signal.Line -> DismissedAlert.ofLineStatus(signal.status)
+            is Signal.Stop -> Pair(signal.stopId, signal.closed)
+            is Signal.Unpredicted -> Pair(signal.lineId, signal.stopId)
         }
     }
 
@@ -151,8 +178,12 @@ object RouteDisruption {
      * for, named for itself (Codex, PR #446). A closure the rider dismissed (as the alert shown)
      * doesn't come back for being placed: its text already names its stretch.
      */
+    @WorkerThread
     fun lineSignal(index: Int, leg: TripLeg, status: LineStatus, dismissed: Set<DismissedAlert>): Signal.Line? {
-        val shown = status.remainingAfter(dismissed)?.takeIf { it.disrupted }
+        // Its shown alert dismissed, the worst other alert under way the rider hasn't stands in for it,
+        // rather than the line going quiet (Codex on #519).
+        val shown = (status.remainingAfter(dismissed) ?: underWayOf(status).filter { it.disrupted && DismissedAlert.ofLineStatus(it) !in dismissed }.minByOrNull { it.severity })
+            ?.takeIf { it.disrupted }
         val tier = shown?.let { tierOf(it.severity) }
         if (shown != null && tier == Tier.HIGH) return Signal.Line(index, leg.lineId, leg.lineName, shown, tier)
         // The closures under way the rider hasn't dismissed, named for themselves.
@@ -165,25 +196,108 @@ object RouteDisruption {
     }
 
     /**
+     * [dismissed], and what of [status] the rider let go of on [trip]'s leg [index] with Keep going
+     * ([ActiveTrip.disruptionsDismissed]): weighed as [lineSignal] picks, so the line's next alert stands
+     * in for one let go of, as it does for a dismissal on the list, rather than the line going quiet
+     * for the rest of the trip (Codex on #519).
+     */
+    private fun dismissedOn(trip: ActiveTrip, index: Int, status: LineStatus, dismissed: Set<DismissedAlert>): Set<DismissedAlert> {
+        if (trip.disruptionsDismissed.isEmpty()) return dismissed
+        val candidates = listOf(status) + status.byDirection.values + status.closures.map(status::naming) + underWayOf(status)
+        val letGo = candidates.filter { lineDismissKey(index, it) in trip.disruptionsDismissed }.map(DismissedAlert::ofLineStatus)
+        return if (letGo.isEmpty()) dismissed else dismissed + letGo
+    }
+
+    // Each alert under way on [status]'s line ([LineStatus.underWay]) as a status of its own.
+    private fun underWayOf(status: LineStatus): List<LineStatus> =
+        status.underWay.map { LineStatus(status.lineId, it.severity, it.description, it.fullText, soleAlert = true) }
+
+    // [Signal.Line.dismissKey]: the leg and the alert as a dismissal knows it.
+    private fun lineDismissKey(legIndex: Int, status: LineStatus): String =
+        DismissedAlert.ofLineStatus(status).let { "line/$legIndex/${it.alertKey}/${it.contentSignature}" }
+
+    /**
      * Whether a bus line's alert ([status], its own words) puts it off [leg]'s ride, on its line's routes
      * ([sequence]) (maintainer, 2026-10-01): TfL gives a bus diversion's stretch only as prose
      * ("not serving stops between Bank Station and Moorgate Station"), and an alert at the far end of
      * a long route says nothing of the rider's part of it. Off only where every way a route of the line
      * runs the ride (its boarding stop, then where it gets off) has a stretch the alert gives
      * between two of its stops ([AlertStops.stretched]) and the ride calls at none of it. A stop
-     * merely named isn't enough: it may be an aside (Codex, PR #455). Unknown is on: no text, no
-     * route, a ride no route runs, an alert that gives no stretch on a route, or one of several under
-     * way ([LineStatus.soleAlert]), the others' words being lost.
+     * merely named isn't enough: it may be an aside (Codex, PR #455). With several alerts under way
+     * ([LineStatus.underWay]), each must be off the ride on its own words (maintainer, 2026-10-03: a
+     * route with five, each about the far end, flagged a ride none of them reached). Unknown is on: no
+     * text, no route, a ride no route runs, an alert that gives no stretch on a route, or several under
+     * way whose words weren't all kept.
      * Buses only: a tube or rail line's delays spread along it, so naming a station elsewhere doesn't
      * keep them off the ride, and its part closures are placed by TfL itself ([lineSignal]).
      */
     @WorkerThread
     fun offRide(leg: TripLeg, status: LineStatus, sequence: LineSequence?): Boolean {
-        if (!leg.mode.equals(BUS, ignoreCase = true) || sequence == null || !scopable(status)) return false
-        val text = status.fullText ?: return false
+        if (!leg.mode.equals(BUS, ignoreCase = true) || sequence == null) return false
         // Every way a route could run the ride, its ends matched as bus placement matches them
         // ([ridesOf]): the stop, its pair, or a stand of the same name (Codex, PR #455).
-        return clearOf(text, sequence, ridesOf(leg, sequence))
+        val rides = ridesOf(leg, sequence)
+        return alertsOf(status).let { alerts -> alerts.isNotEmpty() && alerts.all { (alert, directions) -> alertOffRide(alert, directions, rides, sequence) } }
+    }
+
+    /**
+     * The alerts under way on a bus line of several ([LineStatus.underWay]) that may reach [leg]'s ride,
+     * each as a status of its own, on its own words: what's left once each one [offRide] would leave out
+     * is. Each is its own signal, dismissed on its own (maintainer, 2026-10-03: Keep going lets go of the
+     * one seen, and the others still show). With no route to place them on, every one may. Null where
+     * they can't be told apart ([splits]).
+     */
+    @WorkerThread
+    fun alertsOnRide(leg: TripLeg, status: LineStatus, sequence: LineSequence?): List<LineStatus>? {
+        if (!splits(leg, status)) return null
+        if (sequence == null) return alertsOf(status).map { it.first }
+        val rides = ridesOf(leg, sequence)
+        return alertsOf(status).filterNot { (alert, directions) -> alertOffRide(alert, directions, rides, sequence) }.map { it.first }
+    }
+
+    // Whether [alert] (one of a line's alerts, scoped to [directions] where known) is off every one of
+    // [rides]. An alert TfL scopes to the other way is off every route that runs the ride this way,
+    // whatever its words say (maintainer, 2026-10-03; Codex on #519): with no route left, it's off the
+    // ride. A route of no stated way counts. Otherwise only one about part of the route ([scopable]) can
+    // be, by the stretch its words give.
+    private fun alertOffRide(alert: LineStatus, directions: Set<String>?, rides: List<Pair<LineRoute, List<String>>>, sequence: LineSequence): Boolean {
+        val theirs = directions?.let { ways -> rides.filter { (route, _) -> route.direction.isBlank() || ways.any { it.equals(route.direction, ignoreCase = true) } } } ?: rides
+        if (rides.isNotEmpty() && theirs.isEmpty()) return true
+        return scopable(alert) && alert.fullText?.let { clearOf(it, sequence, theirs) } == true
+    }
+
+    // Whether [alert]'s route can change what's said of it: its words may place it ([scopable]), or TfL
+    // scoped it to one way, which a route's ways can rule out.
+    private fun weighable(alert: LineStatus, directions: Set<String>?): Boolean = scopable(alert) || directions != null
+
+    /**
+     * Whether [leg]'s line's alerts under way ([status]) are each a signal of their own ([alertsOnRide]):
+     * a bus line with several whose words were kept.
+     */
+    fun splits(leg: TripLeg, status: LineStatus): Boolean =
+        leg.mode.equals(BUS, ignoreCase = true) && !status.soleAlert && status.underWay.size > 1
+
+    /** Whether any alert under way on [status]'s line could be placed on a ride ([scopable]): its route is worth reading. */
+    @WorkerThread
+    fun placeable(status: LineStatus): Boolean = alertsOf(status).any { (alert, directions) -> weighable(alert, directions) }
+
+    /**
+     * Whether every alert under way on [status]'s line could be left out of a ride it doesn't reach
+     * ([offRide]), each on its own words ([scopable]): the line's sole alert, or each of several TfL's
+     * answer kept ([LineStatus.underWay]). None known is never.
+     */
+    @WorkerThread
+    fun scopableOnRide(status: LineStatus): Boolean = alertsOf(status).let { alerts -> alerts.isNotEmpty() && alerts.all { scopable(it.first) } }
+
+    // Each alert under way on [status]'s line as a status of its own, the line's sole alert, with the
+    // directions it affects where known ([LineAlert.directions]): [status] itself where it's the one, each
+    // of [LineStatus.underWay] where several are, none where their words weren't kept.
+    private fun alertsOf(status: LineStatus): List<Pair<LineStatus, Set<String>?>> = when {
+        status.soleAlert -> listOf(status to status.underWay.singleOrNull()?.directions?.takeIf { it.isNotEmpty() })
+        status.underWay.size > 1 -> status.underWay.map {
+            LineStatus(status.lineId, it.severity, it.description, it.fullText, soleAlert = true) to it.directions?.takeIf { ways -> ways.isNotEmpty() }
+        }
+        else -> emptyList()
     }
 
     /**
@@ -325,6 +439,7 @@ object RouteDisruption {
      * a route is fetched only where it can change the answer — never for an alert dismissed, placed,
      * route-wide or not sounding at all (Codex, PR #455).
      */
+    @WorkerThread
     fun routesWanted(
         trip: ActiveTrip,
         statuses: Map<String, LineStatus>,
@@ -337,8 +452,20 @@ object RouteDisruption {
             val ride = rideAt(trip, i, leg)
             if (!ride.mode.equals(BUS, ignoreCase = true)) return@mapNotNullTo null
             val status = shown[ride.lineId] ?: return@mapNotNullTo null
-            lineSignal(i, ride, directions[i]?.let(status::forDirection) ?: status, dismissed)
-                ?.takeIf { !it.placed && scopable(it.status) }?.let { ride.lineId }
+            val way = directions[i]?.let(status::forDirection) ?: status
+            // Split, each alert is weighed on its own: worth the route while one the rider hasn't
+            // dismissed could be placed, whichever shows (Codex on #519).
+            if (splits(ride, way)) {
+                return@mapNotNullTo ride.lineId.takeIf { alertsOf(way).any { (alert, directions) ->
+                    // Only one that would sound: minor delays never alert, wherever they are, nor one the rider
+                    // let go of on this trip with Keep going (Codex on #519).
+                    val tier = tierOf(alert.severity)
+                    tier != null && weighable(alert, directions) && DismissedAlert.ofLineStatus(alert) !in dismissed &&
+                        Signal.Line(i, ride.lineId, ride.lineName, alert, tier).dismissKey !in trip.disruptionsDismissed
+                } }
+            }
+            lineSignal(i, ride, way, dismissedOn(trip, i, way, dismissed))
+                ?.takeIf { !it.placed && placeable(it.status) }?.let { ride.lineId }
         }
     }
 
@@ -354,18 +481,45 @@ object RouteDisruption {
         now: Instant,
         // The coming lines' routes, by line, where had: what places a bus alert by the stops it names ([offRide]).
         sequences: Map<String, LineSequence> = emptyMap(),
-        // Told of each leg whose line's alert is left out for naming only stops off the ride, for the log.
+        // Told, by its leg, of each line alert left out for being off the ride, for the log: once an alert.
         leftOff: (legIndex: Int) -> Unit = {},
     ): List<Signal> {
         if (progress == TripProgress.Arrived) return emptyList()
         val shown = LineStatus.asOf(statuses, now)
-        val lines = comingRides(trip).mapNotNull { (i, leg) ->
+        val lines = comingRides(trip).flatMap { (i, leg) ->
             // The leg as the rider takes it ([rideAt]): another line's train followed is checked, named
             // and placed as that line, on its own stretch (Codex, PR #451).
             val ride = rideAt(trip, i, leg)
-            val status = shown[ride.lineId] ?: return@mapNotNull null
-            lineSignal(i, ride, directions[i]?.let(status::forDirection) ?: status, dismissed)
-                ?.takeUnless { !it.placed && offRide(ride, it.status, sequences[ride.lineId]).also { off -> if (off) leftOff(i) } }
+            val status = shown[ride.lineId] ?: return@flatMap emptyList()
+            val way = directions[i]?.let(status::forDirection) ?: status
+            val sequence = sequences[ride.lineId]
+            // Several alerts under way on a bus line: each that may reach the ride is a signal of its own,
+            // named and keyed for itself, so dismissing the one seen leaves the others (maintainer,
+            // 2026-10-03). Split before any dismissal is weighed: the one shown dismissed on the list
+            // doesn't take the rest with it (Codex on #519). One that never alerts (minor delays) is left
+            // out, as for any line, unless TfL places it as a part closure on the ride's stretch: then
+            // it's High and placed, as [lineSignal] has it (Codex on #519).
+            alertsOnRide(ride, way, sequence)?.let { each ->
+                // Each alert left out is told, for the log (Codex on #519).
+                repeat(alertsOf(way).size - each.size) { leftOff(i) }
+                val calls = rideCalls(ride)
+                return@flatMap each.filter { DismissedAlert.ofLineStatus(it) !in dismissed }.mapNotNull { alert ->
+                    val tier = tierOf(alert.severity)
+                    val onRide = tier != Tier.HIGH && way.closures.any { closure ->
+                        closure.severity == alert.severity && closure.description == alert.description &&
+                            closure.fullText?.ifBlank { null } == alert.fullText?.ifBlank { null } && closure.coversRide(calls)
+                    }
+                    if (onRide) Signal.Line(i, ride.lineId, ride.lineName, alert, Tier.HIGH, placed = true)
+                    else tier?.let { Signal.Line(i, ride.lineId, ride.lineName, alert, it) }
+                }
+            }
+            val signal = lineSignal(i, ride, way, dismissedOn(trip, i, way, dismissed)) ?: return@flatMap emptyList()
+            if (signal.placed) return@flatMap listOf(signal)
+            if (offRide(ride, signal.status, sequence)) {
+                leftOff(i)
+                return@flatMap emptyList()
+            }
+            listOf(signal)
         }
         return ordered(lines + stopSignals(trip, progress, closures, places, dismissed, now))
     }

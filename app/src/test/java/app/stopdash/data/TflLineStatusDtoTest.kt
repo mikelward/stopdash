@@ -58,8 +58,27 @@ class TflLineStatusDtoTest {
         assertTrue(checkNotNull(line(status(5, "Diversion", diversion), status(5, "Diversion", diversion)).toLineStatus(monday)).soleAlert)
         val both = checkNotNull(line(status(5, "Diversion", diversion), status(6, "Severe Delays", "Severe delays across the route.")).toLineStatus(monday))
         assertFalse(both.soleAlert)
+        // The same words under another label are another alert, as a dismissal tells them (Codex on #519).
+        assertFalse(checkNotNull(line(status(5, "Diversion", diversion), status(5, "Part Closure", diversion)).toLineStatus(monday)).soleAlert)
         // A good service has no alert to speak for.
         assertFalse(checkNotNull(line(status(10, "Good Service")).toLineStatus(monday)).soleAlert)
+    }
+
+    @Test
+    fun `every alert under way is kept in its own words, and work still to come isn't`() {
+        // So a trip can tell each one's stretch from its ride's (maintainer, 2026-10-03).
+        val diversion = "Buses diverted via Example Street due to roadworks."
+        val delays = "Severe delays across the route."
+        val later = "Road will be closed from 13 Oct 07:00 until 31 Oct 18:00. Buses will be diverted."
+        val result = checkNotNull(
+            line(status(5, "Diversion", diversion), status(6, "Severe Delays", delays), status(5, "Diversion", diversion), plannedWork(later))
+                .toLineStatus(monday),
+        )
+        assertEquals(setOf(diversion, delays), result.underWay.mapTo(HashSet()) { it.fullText })
+        assertEquals(2, result.underWay.size)
+        // Once its day comes, the work to come joins them.
+        val started = result.asOf(java.time.LocalDate.of(2026, 10, 13))
+        assertEquals(setOf(diversion, delays, later), started.underWay.mapTo(HashSet()) { it.fullText })
     }
 
     @Test
@@ -540,7 +559,9 @@ class TflLineStatusDtoTest {
         // The northbound way has its one alert; the line as a whole has two ([LineStatus.soleAlert]).
         assertTrue(north.soleAlert)
         assertFalse(split.soleAlert)
-        assertEquals(north, split.copy(byDirection = emptyMap(), soleAlert = true))
+        // Each with its own alerts under way: the northbound way's one, the line's two.
+        assertEquals(north, split.copy(byDirection = emptyMap(), soleAlert = true, underWay = split.underWay.take(1)))
+        assertEquals(2, split.underWay.size)
         val snapshot = app.stopdash.domain.DeparturesSnapshot(
             emptyList(), java.time.Instant.EPOCH,
             lineStatuses = mapOf("line" to app.stopdash.domain.LineStatusCheck(split, java.time.Instant.EPOCH)),

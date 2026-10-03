@@ -80,6 +80,8 @@ class ActiveTripTrackerTest {
     private val indexThreads = mutableListOf<String>()
     // The thread each save ran on.
     private val saveThreads = mutableListOf<String>()
+    // The thread each "route disruption" post ran on.
+    private val postThreads = mutableListOf<String>()
     private var saves = true
     // The next save is cut short, as by the activity being recreated mid-write.
     private var cancelNextSave = false
@@ -131,6 +133,8 @@ class ActiveTripTrackerTest {
 
     // What the disruption check knows about the trip's coming legs, and whether it fails.
     private var known: List<RouteDisruption.Signal> = emptyList()
+    // How long each known signal's own evidence stands, by its key, where the check says.
+    private var knownStands: Map<String, Instant> = emptyMap()
     private var knownFails = false
     // The direction of each coming leg's trains, as each check was given it.
     private val directionsGiven = mutableListOf<Map<Int, String>>()
@@ -244,9 +248,14 @@ class ActiveTripTrackerTest {
         disruptions = { _, _, directions ->
             directionsGiven += directions
             if (knownFails) throw TflException.Offline(null)
-            RouteDisruption.Found(known, now.plus(Duration.ofMinutes(5)).takeIf { known.isNotEmpty() })
+            RouteDisruption.Found(
+                known,
+                (knownStands.values + now.plus(Duration.ofMinutes(5))).min().takeIf { !((known as? Watched<*>)?.quietlyEmpty ?: known.isEmpty()) },
+                knownStands,
+            )
         },
         onDisruption = { _, signals, how, until ->
+            postThreads += Thread.currentThread().name.substringBefore(" @")
             disruptionAlerts += "${how.name.lowercase()} ${signals.joinToString(",") { it.key }}"
             routesReadAtPost += sequencesRead.toList()
             disruptionUntil += until
@@ -703,6 +712,30 @@ class ActiveTripTrackerTest {
         tracker.dismissDisruptions(listOf(severe))
         assertEquals(listOf("keep ${suspended.key}"), disruptionAlerts)
         assertEquals(listOf(suspended), tracker.routeDisruptions.value?.signals)
+        // Its card worked out with it, for the screen only to draw (Codex on #519).
+        assertEquals(listOf(suspended), tracker.routeDisruptions.value?.cards)
+    }
+
+    @Test
+    fun `what's left after Keep going stands as long as its own evidence`() = runTest {
+        // A stop notice ending in seconds bounded the alert; let go of, it no longer cuts the line's
+        // alert short, which would time out before the next check and never be heard again (Codex on #519).
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        val severe = line(0, 6, "Severe Delays")
+        val closed = RouteDisruption.Signal.Stop(0, "C", "C", closed = true)
+        known = listOf(severe, closed)
+        knownStands = mapOf(closed.key to now.plusSeconds(10), severe.key to now.plus(Duration.ofMinutes(5)))
+        tracker.refresh()
+        assertEquals(now.plusSeconds(10), disruptionUntil.last())
+        tracker.dismissDisruptions(listOf(closed))
+        // The line's alert, kept up on its own: as long as the trip's answer stands, not ten seconds.
+        assertEquals(now.plus(ActiveTripTracker.CURRENT_FOR), disruptionUntil.last())
+        // And a check after stands by it too, the notice it let go of not cutting it short.
+        tracker.refresh()
+        assertEquals(now.plus(ActiveTripTracker.CURRENT_FOR), disruptionUntil.last())
     }
 
     @Test
@@ -793,18 +826,63 @@ class ActiveTripTrackerTest {
             departures["A"] = listOf(train("3", 8))
             trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
             val severe = line(0, 6, "Severe Delays")
-            known = listOf(severe)
+            // Lists that note each thread that reads them: what's known, and what the screen showed, are
+            // only ever gone through on the worker (Codex on #519).
+            val read = mutableListOf<String>()
+            known = Watched(listOf(severe), read)
             kotlinx.coroutines.runBlocking(caller) {
                 tracker.start(route, "C", readyAt = now)
                 tracker.refresh()
                 saveThreads.clear()
-                tracker.dismissDisruptions(listOf(severe))
+                tracker.dismissDisruptions(Watched(listOf(severe), read))
                 // And a refresh from the caller leaves it out, sorted out on the worker (Codex on #519).
                 tracker.refresh()
             }
             assertEquals(setOf(severe.dismissKey), kept?.disruptionsDismissed)
             assertNull(tracker.routeDisruptions.value)
             assertTrue(saveThreads.isNotEmpty() && saveThreads.all { it == "worker" })
+            assertTrue(read.isNotEmpty())
+            assertEquals(setOf("worker"), read.toSet())
+            // The alert, put together from every signal, is posted from the worker too (Codex on #519).
+            assertTrue(postThreads.isNotEmpty())
+            assertEquals(setOf("worker"), postThreads.toSet())
+        } finally {
+            caller.close()
+            worker.close()
+        }
+    }
+
+    @Test
+    fun `a change with no train predicted is joined with what else is known off the caller's thread`() {
+        // AGENTS.md *Main thread*: the refresh runs on Main; joining the change's signal with the rest,
+        // in a list that notes each thread reading it, is done on the worker (Codex on #519).
+        val caller = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "caller") }.asCoroutineDispatcher()
+        val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }.asCoroutineDispatcher()
+        try {
+            val tracker = tracker(worker)
+            val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "D", "D", at(16), at(18))
+            val second = TripLeg("tube", "blue", "Blue", "D", "D", "E", "E", at(20), at(28), path = listOf("E"))
+            departures["A"] = listOf(train("3", 6))
+            trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 16))
+            departures["D"] = emptyList()
+            val read = mutableListOf<String>()
+            val severe = line(0, 6, "Severe Delays")
+            known = Watched(listOf(severe), read)
+            kotlinx.coroutines.runBlocking(caller) {
+                tracker.start(TripRoute(listOf(ride, walkOn, second)), "E", readyAt = now)
+                tracker.refresh()
+                // On the train, then five minutes before boarding at D.
+                now = at(7)
+                trains["3"] = listOf(call("B", 9), call("C", 16))
+                tracker.refresh()
+                now = at(13)
+                trains["3"] = listOf(call("C", 16))
+                tracker.refresh()
+            }
+            val none = RouteDisruption.Signal.Unpredicted(2, "blue", "Blue", "D", "D")
+            assertEquals(setOf(severe.key, none.key), tracker.routeDisruptions.value?.signals?.mapTo(HashSet()) { it.key })
+            assertTrue(read.isNotEmpty())
+            assertEquals(setOf("worker"), read.toSet())
         } finally {
             caller.close()
             worker.close()
@@ -4237,3 +4315,14 @@ class ActiveTripTrackerTest {
     }
 }
 
+// [items], noting the thread of each read in [read]: work done over it is seen where it ran.
+internal class Watched<T>(private val items: List<T>, private val read: MutableList<String>) : AbstractList<T>() {
+    private fun seen() { synchronized(read) { read += Thread.currentThread().name.substringBefore(" @") } }
+
+    // Whether there's anything, unnoted: for a fake standing in for TfL, whose own reads aren't the app's.
+    val quietlyEmpty: Boolean get() = items.isEmpty()
+
+    override val size: Int get() = items.size.also { seen() }
+
+    override fun get(index: Int): T = items[index].also { seen() }
+}

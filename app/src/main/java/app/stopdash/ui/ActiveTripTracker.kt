@@ -189,12 +189,23 @@ class ActiveTripTracker(
      * the alert's own timeout does: refreshes paused (the app closed on a trip followed only while
      * open) leave nothing shown as current past it (D4; Codex, PR #453).
      */
-    data class KnownDisruptions(val signals: List<RouteDisruption.Signal>, val until: Instant) {
+    data class KnownDisruptions(
+        val signals: List<RouteDisruption.Signal>,
+        val until: Instant,
+        // [signals] as the trip's screen shows them ([RouteDisruption.cards]), worked out with them on
+        // [io], so the screen only draws them (Codex on #519).
+        val cards: List<RouteDisruption.Signal> = signals,
+    ) {
         /**
          * [signals] while they stand at the wall time [now], else none. [until] is in the steady frame
          * ([SteadyClock.stamp]), so a wall clock set back can't keep them up (Codex, PR #453).
          */
-        fun at(now: Instant): List<RouteDisruption.Signal> = if (SteadyClock.stamp(now).isBefore(until)) signals else emptyList()
+        fun at(now: Instant): List<RouteDisruption.Signal> = if (standsAt(now)) signals else emptyList()
+
+        /** [cards] while they stand at [now], as [at]. */
+        fun cardsAt(now: Instant): List<RouteDisruption.Signal> = if (standsAt(now)) cards else emptyList()
+
+        private fun standsAt(now: Instant) = SteadyClock.stamp(now).isBefore(until)
     }
 
     private val _nextBoard = MutableStateFlow<NextBoard?>(null)
@@ -306,9 +317,9 @@ class ActiveTripTracker(
     // Whether a "route disruption" may be up ([checkDisruptions]). One heard before a restart may be up
     // still, for as long as its evidence stays current.
     private var disruptionUp = false
-    // Until when what's known stands, as the alert was last posted or kept with ([checkDisruptions]):
-    // for keeping it up with what's left after a dismissal ([dismissDisruptions]).
-    private var disruptionUntil: Instant? = null
+    // Until when each signal known stands, by its key, as the alert was last posted or kept with
+    // ([checkDisruptions]): for keeping it up with what's left after a dismissal ([dismissDisruptions]).
+    private var disruptionStands: Map<String, Instant> = emptyMap()
 
     // The direction each of this trip's rides was seen going, by its leg ([directionsOf]). In memory
     // only: after a restart a ride's direction is learned again, and meanwhile isn't known.
@@ -515,10 +526,17 @@ class ActiveTripTracker(
         // Keyed and sorted out on [io], not the caller's (the main) thread.
         // Null when nothing new is dismissed; compared there too, so the caller does no work that grows
         // with the trip's dismissals (Codex on #519).
+        val stands = disruptionStands
+        // What's left stands as long as its own evidence ([disruptionStands]), not as long as what was let
+        // go of: a notice ending soon no longer cuts short a line's alert (Codex on #519).
         val (kept, left) = withContext(io) {
             val dismissed = trip.disruptionsDismissed + shown.map { it.dismissKey }
             if (dismissed.size == trip.disruptionsDismissed.size) return@withContext null to null
-            trip.copy(disruptionsDismissed = dismissed) to known?.let { it.copy(signals = it.signals.filter { signal -> signal.dismissKey !in dismissed }) }
+            trip.copy(disruptionsDismissed = dismissed) to known?.let { known ->
+                val signals = known.signals.filter { signal -> signal.dismissKey !in dismissed }
+                val until = signals.map { stands[it.key] }.takeIf { it.all { own -> own != null } }?.filterNotNull()?.minOrNull()
+                Triple(signals, until, RouteDisruption.cards(signals))
+            }
         }
         if (kept == null) return@withLock
         unsaved = true
@@ -527,16 +545,15 @@ class ActiveTripTracker(
         _notKept.value = !saved
         if (!saved) return@withLock
         _trip.value = kept
+        val (signals, until, cards) = left ?: Triple(emptyList<RouteDisruption.Signal>(), null, emptyList())
         when {
-            left == null || left.signals.isEmpty() -> takeDisruptionDown()
+            signals.isEmpty() || until == null -> takeDisruptionDown()
             // Something found since the screen showed [shown], not dismissed: the alert stays up, as that
             // alone, already heard, so it isn't sounded again (Codex on #519).
-            disruptionUp -> {
-                _routeDisruptions.value = left
-                val until = disruptionUntil
-                if (until == null || !onDisruption(kept, left.signals, DisruptionPost.KEEP, until)) takeDisruptionDown(known = false)
+            else -> {
+                _routeDisruptions.value = KnownDisruptions(signals, SteadyClock.stamp(until), cards)
+                if (disruptionUp && !postDisruption(kept, signals, DisruptionPost.KEEP, until)) takeDisruptionDown(known = false)
             }
-            else -> _routeDisruptions.value = left
         }
     }
 
@@ -626,24 +643,36 @@ class ActiveTripTracker(
         val answered = _updatedAt.value
         // No train predicted where the rider changes, from a board read for this refresh's answer only:
         // none read once the refresh failed. It stands as long as that answer does.
-        val withChange = answered?.let { changeSignal(trip, progress, boards) }?.let { found.with(it, answered.plus(CURRENT_FOR)) } ?: found
-        // What the rider dismissed on the trip's screen ([dismissDisruptions]) is neither shown nor alerted
-        // again: sorted out on [io], not the caller's (the main) thread (Codex on #519).
-        val known = withContext(io) { withChange.copy(signals = withChange.signals.filter { it.dismissKey !in trip.disruptionsDismissed }) }
-        val until = known.until?.let { evidence -> answered?.let { minOf(evidence, it.plus(CURRENT_FOR)) } }
+        val change = answered?.let { changeSignal(trip, progress, boards) }
+        // Joined with what else is known there, and what the rider dismissed on the trip's screen
+        // ([dismissDisruptions]) left out, neither shown nor alerted again: on [io], not the caller's (the
+        // main) thread, as is keying what's new to hear (Codex on #519).
+        // Each kept signal stands as long as its own evidence ([RouteDisruption.Found.standsUntil]), and
+        // no longer than the trip's own answer: what's kept stands as long as the earliest of them, never
+        // as long as one let go of (Codex on #519).
+        val (checked, deadline) = withContext(io) {
+            val withChange = if (change != null && answered != null) found.with(change, answered.plus(CURRENT_FOR)) else found
+            val kept = withChange.copy(signals = withChange.signals.filter { it.dismissKey !in trip.disruptionsDismissed })
+            val stands = kept.signals.mapNotNull { signal ->
+                withChange.standsUntil(signal)?.let { evidence -> answered?.let { signal.key to minOf(evidence, it.plus(CURRENT_FOR)) } }
+            }.toMap()
+            val until = if (stands.size == kept.signals.size) stands.values.minOrNull() else null
+            Triple(kept, kept.signals.map { it.key }.filter { it !in trip.disruptionsHeard }, RouteDisruption.cards(kept.signals)) to (stands to until)
+        }
+        val (known, heard, cards) = checked
+        val (stands, until) = deadline
         if (known.signals.isEmpty() || until == null) {
             takeDisruptionDown()
             return
         }
-        _routeDisruptions.value = KnownDisruptions(known.signals, SteadyClock.stamp(until))
-        disruptionUntil = until
-        val heard = known.signals.map { it.key }.filter { it !in trip.disruptionsHeard }
+        _routeDisruptions.value = KnownDisruptions(known.signals, SteadyClock.stamp(until), cards)
+        disruptionStands = stands
         when {
-            heard.isNotEmpty() -> if (onDisruption(trip, known.signals, DisruptionPost.NEW, until)) {
+            heard.isNotEmpty() -> if (postDisruption(trip, known.signals, DisruptionPost.NEW, until)) {
                 disruptionUp = true
                 keep(trip.copy(disruptionsHeard = trip.disruptionsHeard + heard), progress)
             }
-            disruptionUp -> if (!onDisruption(trip, known.signals, DisruptionPost.KEEP, until)) takeDisruptionDown(known = false)
+            disruptionUp -> if (!postDisruption(trip, known.signals, DisruptionPost.KEEP, until)) takeDisruptionDown(known = false)
         }
         // Only once the alert is out: the routes it may read never hold up what's known (Codex on #479).
         _replanFrom.value = replanStop(trip, progress, rider, asked)
@@ -727,6 +756,11 @@ class ActiveTripTracker(
         for (ride in rides) routeOf(ride.lineId)?.let { positions.putAll(OnTheWay.ridePositions(ride, it)) }
         return ReplanOrigin.stopOf(trip, now(), positions, ahead)
     }
+
+    // [onDisruption] on [io]: the alert's words are put together from every signal known, never on the
+    // caller's (the main) thread (Codex on #519). Posting a notification needs no particular thread.
+    private suspend fun postDisruption(trip: ActiveTrip, signals: List<RouteDisruption.Signal>, how: DisruptionPost, until: Instant): Boolean =
+        withContext(io) { onDisruption(trip, signals, how, until) }
 
     // [known]: whether what was known goes too (nothing is left, or the trip ended), not only the
     // alert (swiped away), which leaves the trip's screen still showing it.

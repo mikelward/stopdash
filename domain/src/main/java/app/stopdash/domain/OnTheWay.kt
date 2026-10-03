@@ -1590,6 +1590,7 @@ object OnTheWay {
      * second-guesses that assumption, so a train still standing at the platform can't have it taken
      * back.
      */
+    @WorkerThread
     fun atStep(trip: ActiveTrip, step: Step, now: Instant): ActiveTrip {
         // Back to the ride Next just moved them past, on board: its train as it was, or none named if
         // none was, not one looked for afresh at a stop they left minutes ago (Codex, PR #384). Its "get off soon", taken back

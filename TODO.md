@@ -1456,6 +1456,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 "Special Service", whose inferred label is never placed. If TfL starts wording bus
                 part closures, map the path's areas to the route's poles (its line sequence, as
                 the trip's cards already load) before `coversRide`.
+          - [x] **A bus line's several alerts, each placed** (maintainer, 2026-10-03): every alert
+                under way (`LineStatus.underWay`) is placed on its own words, each that may reach the
+                ride its own signal, dismissed on its own; the line is left out once none does. The departure board's "behind
+                the stop" still needs the line's sole alert: its verdicts key on the shown alert.
           - [x] **Planning again from where the rider is** (the re-plan tier, and the alert
                 offering it): the trip's screen offers **Plan again from ‹station›** while something
                 is known wrong ahead (`ActiveTripTracker.replanFrom`, `ReplanOrigin`), the trip list
@@ -1463,6 +1467,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 Needs a device check of the station chosen on a moving train.
             - [x] **Keep going** beside it: what's shown is dismissed for this trip only
                   (`ActiveTrip.disruptionsDismissed`), the alert taken down; something new still shows.
+                - [ ] **Forget a Keep going once its alert has ended** (Codex on #519): the same
+                      words coming back later in the trip stay let go of. Pruning needs a check known
+                      to have read every coming line and stop, or a partial failure would bring back
+                      what the rider let go of, with sound.
             - [ ] **Plan from when the rider gets there**: the list plans from now, so a route
                   leaving that station before the rider reaches it is offered too. Plan from the
                   trip's own time there (its train's call, or the walk's end) instead.

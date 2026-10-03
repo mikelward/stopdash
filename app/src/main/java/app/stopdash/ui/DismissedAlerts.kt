@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import androidx.annotation.WorkerThread
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.Dismissed
@@ -104,7 +105,9 @@ internal suspend fun reconcileLineDismissals(
     what: String,
     pruned: (Set<DismissedAlert>) -> Unit,
 ) {
-    val (live, checked) = lineDismissalCheck(answered, answeredIds, now)
+    // Every live alert's identity, each line's under way ones included: on [io], never the caller's (the
+    // main) thread (Codex on #519).
+    val (live, checked) = withContext(io) { lineDismissalCheck(answered, answeredIds, now) }
     reconcileDismissals(dismissed, live, checked, store, io, warn, what, pruned)
 }
 
@@ -115,6 +118,7 @@ internal suspend fun reconcileLineDismissals(
  * included, as the list counts them (Codex, PR #441). Not a line still waiting on which way its alerts
  * go: a dismissal of one direction's alert can't be matched against it until the split lands.
  */
+@WorkerThread
 internal fun lineDismissalCheck(
     answered: Map<String, LineStatus>,
     answeredIds: Set<String>,
@@ -139,8 +143,10 @@ internal fun stopDismissalCheck(found: Map<String, List<StopDisruption>>, now: I
 
 /**
  * Settles [dismissed] against what a check found [live] at the places and lines it [checked]
- * ([Dismissed.reconcile]): in memory first ([pruned]), then the store, a write that outlasts the
- * caller. Best-effort: a failed write is logged with [what] asked. Nothing checked, nothing settled.
+ * ([Dismissed.reconcile]): in memory first, [pruned] told on [io] of each dismissal to let go of (none,
+ * not told), then the store, a write that outlasts the caller. What to let go of rather than what's
+ * left, so a dismissal made meanwhile isn't lost (Codex on #519). Best-effort: a failed write is
+ * logged with [what] asked. Nothing checked, nothing settled.
  */
 internal suspend fun reconcileDismissals(
     dismissed: Set<DismissedAlert>,
@@ -153,7 +159,12 @@ internal suspend fun reconcileDismissals(
     pruned: (Set<DismissedAlert>) -> Unit,
 ) {
     if (checked.isEmpty()) return
-    pruned(Dismissed.reconcile(dismissed, live, checked))
+    // Settled on [io]: it goes through every dismissal and live alert, never on the caller's (the main)
+    // thread (Codex on #519).
+    withContext(io) {
+        val gone = dismissed - Dismissed.reconcile(dismissed, live, checked)
+        if (gone.isNotEmpty()) pruned(gone)
+    }
     try {
         withContext(NonCancellable + io) { store.reconcile(live, checked) }
     } catch (e: CancellationException) {
