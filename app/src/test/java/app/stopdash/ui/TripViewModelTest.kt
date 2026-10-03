@@ -234,23 +234,39 @@ class TripViewModelTest {
     fun `a route's changes on foot are decided off the caller's thread`() = runTest(dispatcher) {
         // AGENTS.md *Main-safe by default*: the index is read and the walks measured on the worker,
         // not the main thread the model's updates run on.
-        val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }.asCoroutineDispatcher()
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }
+        val worker = executor.asCoroutineDispatcher()
+        // Owned by a store so the model's work can be cancelled before the test ends: left running,
+        // a worker resuming onto Main after this test reset it broke whichever test ran next.
+        val store = ViewModelStore()
         try {
             val threads = java.util.Collections.synchronizedList(mutableListOf<String>())
-            val trip = TripViewModel(
-                FakePlanner(listOf(onFootRoute)), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
-                clock = { now }, plans = TripPlans(), io = worker,
-                stations = {
-                    threads += Thread.currentThread().name.substringBefore(" @")
-                    onFootIndex(150.0)
+            val trip = ViewModelProvider.create(
+                store,
+                viewModelFactory {
+                    initializer {
+                        TripViewModel(
+                            FakePlanner(listOf(onFootRoute)), FakeClient(mutableMapOf()), "A", listOf(TripDestination.Stop("C")),
+                            clock = { now }, plans = TripPlans(), io = worker,
+                            stations = {
+                                threads += Thread.currentThread().name.substringBefore(" @")
+                                onFootIndex(150.0)
+                            },
+                        )
+                    }
                 },
-            )
+            )[TripViewModel::class]
             trip.refresh()
             assertEquals(setOf(onFootWalk), trip.state.first { it.changesOnFoot.isNotEmpty() }.changesOnFoot)
             assertTrue(threads.isNotEmpty())
             assertEquals(setOf("worker"), threads.toSet())
         } finally {
-            worker.close()
+            // Cancel the model, let the worker finish what it holds, then drain what it handed back to
+            // Main while this test's Main is still set.
+            store.clear()
+            executor.shutdown()
+            check(executor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS)) { "worker didn't stop" }
+            advanceUntilIdle()
         }
     }
 
