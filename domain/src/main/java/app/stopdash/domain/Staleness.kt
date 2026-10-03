@@ -43,18 +43,22 @@ object Staleness {
      * stamped more than [CLOCK_SKEW] in the future ([isFromFuture]): it would otherwise read as
      * fresh until the clock caught up with it.
      */
+    @MainSafe
     fun isStale(age: Duration, threshold: Duration = THRESHOLD): Boolean = isFromFuture(age) || age >= threshold
 
     /** True for a stamp more than [CLOCK_SKEW] ahead of the clock: made before the clock was set back. */
+    @MainSafe
     fun isFromFuture(age: Duration): Boolean = age < -CLOCK_SKEW
 
     /**
      * How old the fetch stamped [fetchedAt] is at the wall time [now], by the steady clock
      * ([SteadyClock.age]), so setting the device's clock doesn't make old data read as new.
      */
+    @MainSafe
     fun age(fetchedAt: Instant, now: Instant): Duration = SteadyClock.age(fetchedAt, now).toKotlinDuration()
 
     /** Whether the fetch stamped [fetchedAt] is stale at the wall time [now] ([age], [isStale]). */
+    @MainSafe
     fun isStale(fetchedAt: Instant, now: Instant, threshold: Duration = THRESHOLD): Boolean = isStale(age(fetchedAt, now), threshold)
 
     /**

@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -591,6 +592,7 @@ class RouteStopsRepository(
      */
     suspend fun warm(): Unit = withContext(compute) { warmHere() }
 
+    @WorkerThread
     private suspend fun warmHere() {
         if (stationsByHub == null) {
             val index = withContext(io) { stations?.invoke().orEmpty() }
@@ -626,11 +628,13 @@ class RouteStopsRepository(
         this[key]?.takeIf { fresh(it, clock()) }?.value
 
     /** Writes the fresh entries to [store], so an expired one leaves it too. */
+    @WorkerThread
     private suspend fun save() {
         if (store === RouteStopsStore.NONE) return
         storeLock.withLock { saveLocked() }
     }
 
+    @WorkerThread
     private suspend fun saveLocked() {
         val now = clock()
         cache.entries.removeIf { !fresh(it.value, now) }
@@ -640,6 +644,7 @@ class RouteStopsRepository(
     }
 
     /** The poles of stop area [areaId] if already fetched (and not expired), else null. No IO. */
+    @MainSafe
     fun cachedPoles(areaId: String): List<StopLocation>? = areaCache.freshValue(areaId)
 
     /**
@@ -647,6 +652,7 @@ class RouteStopsRepository(
      * the index isn't read yet ([warm]): where a stop no line's route data places (one a trip only
      * walks to or from) is keyed as the list keys it ([stopPlaceKey]).
      */
+    @MainSafe
     fun hubOf(stopId: String): String? = hubByStation[stopId]
 
     /**
@@ -659,6 +665,7 @@ class RouteStopsRepository(
         loadPolesHere(areaId)
     }
 
+    @WorkerThread
     private suspend fun loadPolesHere(areaId: String): List<StopLocation> {
         areaCache.freshValue(areaId)?.let { return it }
         val areas = areas ?: return emptyList()
@@ -681,6 +688,7 @@ class RouteStopsRepository(
      * Ids and the reason only; the destination is TfL's label, kept out as it adds nothing the ids
      * don't.
      */
+    @MainSafe
     fun reportUnresolved(lineId: String, stopId: String, resolution: RouteStops.Resolution) {
         val reason = when (resolution) {
             is RouteStops.Resolution.Found -> return
@@ -710,6 +718,7 @@ class RouteStopsRepository(
      * card reading "Couldn't check" says why (SPEC principle 2). The line only: a journey's two ends
      * together are a route the rider travels, which the log's floor keeps out (docs/PRIVACY.md).
      */
+    @MainSafe
     fun reportUnplaced(lineId: String) {
         warn("journey not placed on line $lineId: no single boarding stop before the far end")
     }
@@ -719,6 +728,7 @@ class RouteStopsRepository(
      * null — also null until [warm] has read the station index, so a first frame never resolves
      * without it. A lookup only: no IO, no merging, nothing that grows with the line.
      */
+    @MainSafe
     fun cached(lineId: String, direction: String): LineSequence? {
         if (stationsByHub == null) return null
         val held = merged[mergedKey(lineId, direction)] ?: return null
@@ -767,6 +777,7 @@ class RouteStopsRepository(
      * under way for it (a trip's, when its page opens meanwhile) is joined rather than asked again,
      * sparing TfL's request quota; one canceled with the caller that started it is asked again.
      */
+    @WorkerThread
     private suspend fun CoroutineScope.shared(lineId: String, dir: String): Result<Pair<LineSequence, Boolean>> {
         val key = "$lineId/$dir"
         while (true) {

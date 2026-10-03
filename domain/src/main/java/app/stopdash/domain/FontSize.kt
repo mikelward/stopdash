@@ -43,6 +43,7 @@ data class FontSizeSettings(
  * preference, a degenerate gesture — falls back to the default rather than sizing text to infinity
  * (or to NaN, which lays out as nothing at all).
  */
+@MainSafe
 fun clampFontScale(scale: Float): Float {
     if (!scale.isFinite()) return DEFAULT_FONT_SCALE
     return scale.coerceIn(MIN_FONT_SCALE, MAX_FONT_SCALE)
