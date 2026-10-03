@@ -540,9 +540,13 @@ interface RouteStopsStore {
 /**
  * The route detail's stop lists and stop areas' poles, fetched on demand and kept for up to
  * [maxAge] (a day: a line's route and a stop area's poles barely change), in memory and through
- * [store] so a reopen after the process was killed still has them. [cached] is the IO-free peek a
- * first frame can use; [load] reads [store] once (see [warm]) and fetches on a miss or an expired
- * entry. One or two requests per line+direction per day.
+ * [store] so a reopen after the process was killed still has them. [cached] is a constant-time peek
+ * at a line's routes already merged; [load] reads [store] once (see [warm]) and fetches on a miss or
+ * an expired entry. One or two requests per line+direction per day.
+ *
+ * Main-safe: every suspend function hops to [compute] first, as merging a line's routes and placing
+ * the station index walk them whole (a National Rail line's run to thousands of stops); [cached]
+ * only looks up what that work left.
  */
 class RouteStopsRepository(
     private val source: RouteSequenceSource,
@@ -557,8 +561,15 @@ class RouteStopsRepository(
     // TfL lists departures under an id its routes don't call at ([LineSequence.withStations]).
     // Null: none, as in a test.
     private val stations: (() -> List<IndexedStation>)? = null,
+    // Where the merging and placing above run ([Workers]).
+    private val compute: CoroutineDispatcher = Workers.compute,
 ) {
     private val cache = ConcurrentHashMap<String, RouteStopsStore.Timed<LineSequence>>()
+    // Each line+direction's routes merged and placed ([merge]), with the cache entries they came
+    // from: what [cached] hands out, so it never merges on its caller's thread.
+    private val merged = ConcurrentHashMap<String, Merged>()
+
+    private class Merged(val parts: List<RouteStopsStore.Timed<LineSequence>>, val sequence: LineSequence)
     // The index's stations by interchange, once read; empty when no index is wired.
     @Volatile private var stationsByHub: Map<String, List<IndexedStation>>? = if (stations == null) emptyMap() else null
     // And each such station's interchange, by the station's id.
@@ -578,7 +589,9 @@ class RouteStopsRepository(
      * than [maxAge]. [load] and [loadPoles] do this themselves; calling it early, off the render
      * path, lets [cached] answer a first frame from what an earlier process fetched.
      */
-    suspend fun warm() {
+    suspend fun warm(): Unit = withContext(compute) { warmHere() }
+
+    private suspend fun warmHere() {
         if (stationsByHub == null) {
             val index = withContext(io) { stations?.invoke().orEmpty() }
             val inHubs = index.filter { it.hubId.isNotBlank() }
@@ -593,6 +606,10 @@ class RouteStopsRepository(
             contents.sequences.forEach { (key, entry) -> if (fresh(entry, now)) cache.putIfAbsent(key, entry) }
             contents.poles.forEach { (key, entry) -> if (fresh(entry, now)) areaCache.putIfAbsent(key, entry) }
             storeRead = true
+            // Every line held, merged now, so [cached] answers a first frame for it.
+            cache.keys.map { it.substringBefore('/') }.distinct().forEach { lineId ->
+                (RouteStops.directionsFor("") + "").forEach { direction -> merge(lineId, direction) }
+            }
             val expired = contents.sequences.size + contents.poles.size -
                 contents.sequences.values.count { fresh(it, now) } - contents.poles.values.count { fresh(it, now) }
             if (expired > 0) saveLocked()
@@ -637,8 +654,12 @@ class RouteStopsRepository(
      * change). Empty when no area source is wired. Throws a [TflException] on failure after logging
      * it (sanitized: the area id and error class).
      */
-    suspend fun loadPoles(areaId: String): List<StopLocation> {
-        warm()
+    suspend fun loadPoles(areaId: String): List<StopLocation> = withContext(compute) {
+        warmHere()
+        loadPolesHere(areaId)
+    }
+
+    private suspend fun loadPolesHere(areaId: String): List<StopLocation> {
         areaCache.freshValue(areaId)?.let { return it }
         val areas = areas ?: return emptyList()
         val poles = try {
@@ -694,21 +715,29 @@ class RouteStopsRepository(
     }
 
     /**
-     * The merged sequence if already fetched (and not expired), else null — also null until [warm]
-     * has read the station index, so a first frame never resolves without it. No IO.
+     * The merged sequence if already fetched (and not expired) and merged by [load] or [warm], else
+     * null — also null until [warm] has read the station index, so a first frame never resolves
+     * without it. A lookup only: no IO, no merging, nothing that grows with the line.
      */
     fun cached(lineId: String, direction: String): LineSequence? {
-        val byHub = stationsByHub ?: return null
-        val parts = RouteStops.directionsFor(direction).map { cache.freshValue("$lineId/$it") ?: return null }
-        return parts.reduce(LineSequence::plus).withStations(byHub)
+        if (stationsByHub == null) return null
+        val held = merged[mergedKey(lineId, direction)] ?: return null
+        val now = clock()
+        return held.sequence.takeIf {
+            RouteStops.directionsFor(direction).withIndex().all { (i, dir) ->
+                val part = cache["$lineId/$dir"]
+                part != null && part === held.parts.getOrNull(i) && fresh(part, now)
+            }
+        }
     }
 
     /**
      * The sequence for [lineId] in [direction] (both directions when blank), fetched and cached.
      * Throws a [TflException] on failure after logging it (sanitized: line id and error class).
      */
-    suspend fun load(lineId: String, direction: String): LineSequence {
-        warm()
+    suspend fun load(lineId: String, direction: String): LineSequence = withContext(compute) {
+        warmHere()
+        cached(lineId, direction)?.let { return@withContext it }
         // Both directions at once: a National Rail line's sequence can take TfL several seconds to
         // start answering, so fetching them in turn doubled the wait.
         val parts = coroutineScope {
@@ -717,8 +746,20 @@ class RouteStopsRepository(
         // A direction fetched while the other failed is still kept.
         if (parts.any { it.getOrNull()?.second == true }) save()
         parts.firstNotNullOfOrNull { it.exceptionOrNull() }?.let { throw it }
-        val sequence = parts.map { it.getOrThrow().first }.reduce(LineSequence::plus)
-        return sequence.withStations(stationsByHub.orEmpty())
+        merge(lineId, direction) ?: parts.map { it.getOrThrow().first }.reduce(LineSequence::plus)
+            .withStations(stationsByHub.orEmpty())
+    }
+
+    private fun mergedKey(lineId: String, direction: String) = "$lineId|${RouteStops.directionsFor(direction).joinToString(",")}"
+
+    // [lineId]'s routes in [direction] merged and placed from what's held, kept for [cached]; null
+    // when a direction isn't held. Runs on [compute]: it walks every route and the station index.
+    private fun merge(lineId: String, direction: String): LineSequence? {
+        val byHub = stationsByHub ?: return null
+        val parts = RouteStops.directionsFor(direction).map { cache["$lineId/$it"] ?: return null }
+        val sequence = parts.map { it.value }.reduce(LineSequence::plus).withStations(byHub)
+        merged[mergedKey(lineId, direction)] = Merged(parts, sequence)
+        return sequence
     }
 
     /**
