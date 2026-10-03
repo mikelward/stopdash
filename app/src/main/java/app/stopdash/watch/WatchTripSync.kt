@@ -16,11 +16,10 @@ import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.StopLocation
-import app.stopdash.domain.StopQualifier
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripLeg
 import app.stopdash.ui.ActiveTripTracker
-import app.stopdash.ui.groupHeaderLabel
+import app.stopdash.ui.BusPoleCues
 import app.stopdash.ui.nextStepText
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.PutDataRequest
@@ -69,7 +68,6 @@ internal object WatchTripSync {
     // One write at a time, in the order asked for ([WatchTrips.OrderedWrites]).
     private val writes = WatchTrips.OrderedWrites(scope) { StopdashDebugLog.watchStatus(it) }
 
-
     // What was last sent, so an unchanged trip isn't sent again; null after a clear.
     private var sent: WatchTrip? = null
     // When [sent] went, by the monotonic clock ([SystemClock.elapsedRealtime]).
@@ -101,7 +99,7 @@ internal object WatchTripSync {
             val (found, note) = withContext(Dispatchers.IO) { trainsFor(app, trip, board, now) }
             // A train leaving before the rider can board is grayed, as the trip's screen grays it.
             val readyAt = OnTheWay.readyAt(trip, progress)
-            val built = WatchTrips.build(trip, title, detail, found.trains, now, note, readyAt, stopOf = { found.poles[it].orEmpty() }) { leg, onBoard ->
+            val built = WatchTrips.build(trip, title, detail, found.trains, now, note, readyAt, poleOf = { found.poles[it] }) { leg, onBoard ->
                 stepText(app, leg, onBoard)
             }
             send(app, built)
@@ -160,8 +158,8 @@ internal object WatchTripSync {
     // through the shared repository, so its trains aren't dropped for want of one ([sequences]); a failed
     // load is tried again after [ROUTE_RETRY], not on every tick.
     //
-    // Each train maps to the pole it boards at ([poleLabel]) when the pair has other poles read, as the
-    // trip's screen heads each pole's trains; else to "". Keyed by identity: two poles can list equal
+    // Each train maps to the pole it boards at ([pole]) when the pair has other poles read, as the
+    // trip's screen heads each pole's trains; else to none. Keyed by identity: two poles can list equal
     // departures, and each keeps its own pole.
     private fun trainsFor(context: Context, trip: ActiveTrip, board: ActiveTripTracker.NextBoard?, now: Instant): Pair<FoundTrains, String> {
         val none = FoundTrains(emptyList(), emptyMap())
@@ -184,10 +182,10 @@ internal object WatchTripSync {
         val misses = (own.misses + others.flatMap { it.misses }).toSet()
         if (misses != reportedMisses) routes.reportMisses(misses)
         reportedMisses = misses
-        val trains = java.util.IdentityHashMap<Departure, String>()
+        val trains = java.util.IdentityHashMap<Departure, WatchTrips.Pole?>()
         val poles = board.others.isNotEmpty()
-        own.trains.forEach { trains[it] = if (poles) poleLabel(board.pole, ride.fromName) else "" }
-        others.zip(board.others).forEach { (found, other) -> found.trains.forEach { trains[it] = poleLabel(other.pole, ride.fromName) } }
+        own.trains.forEach { trains[it] = if (poles) pole(board.pole, ride.fromName) else null }
+        others.zip(board.others).forEach { (found, other) -> found.trains.forEach { trains[it] = pole(other.pole, ride.fromName) } }
         val pending = own.pending || others.any { it.pending }
         val unresolved = own.unresolved || others.any { it.unresolved }
         val list = trains.keys.toList()
@@ -203,13 +201,14 @@ internal object WatchTripSync {
         return FoundTrains(list, trains) to note
     }
 
-    // How the trip's screen heads [pole]'s trains: "Stop N" by its letter, else its name, else
+    // [pole] as the watch labels its trains ([WatchTrips.Pole]): "Stop N" by its letter, else the towards
+    // on its sign, else its bearing, among the poles whose trains are sent; else its name, else
     // [fallback] (the ride's own stop name).
-    private fun poleLabel(pole: StopLocation?, fallback: String): String {
-        val letter = pole?.stopLetter.orEmpty().trim()
-        if (letter.isNotEmpty()) return groupHeaderLabel(StopQualifier.BusStop(letter, pole?.towards?.ifBlank { null })).orEmpty()
-        return pole?.name?.ifBlank { null } ?: fallback
-    }
+    private fun pole(pole: StopLocation?, fallback: String): WatchTrips.Pole = WatchTrips.Pole(
+        key = pole?.id.orEmpty(),
+        name = pole?.name?.ifBlank { null } ?: fallback,
+        cues = BusPoleCues(pole?.stopLetter.orEmpty(), pole?.towards.orEmpty(), pole?.bearing.orEmpty()),
+    )
 
     // [lineId]'s route if known: held, or null when it couldn't be had lately (its trains are then
     // left out as unchecked). Absent while it loads, which reads as still being checked, as on the
@@ -269,4 +268,4 @@ internal object WatchTripSync {
 }
 
 // The next ride's trains ([WatchTripSync.trainsFor]), listed, and the pole each boards at by identity.
-private class FoundTrains(val trains: List<Departure>, val poles: Map<Departure, String>)
+private class FoundTrains(val trains: List<Departure>, val poles: Map<Departure, WatchTrips.Pole?>)

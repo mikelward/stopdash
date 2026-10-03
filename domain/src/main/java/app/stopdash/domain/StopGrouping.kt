@@ -19,8 +19,8 @@ package app.stopdash.domain
  * compass. A **bus** pole, which carries no platform in the arrivals feed, splits on its **stop
  * letter** ("King's Cross Station (D) (towards Farringdon)"), else its **compass bearing** ("(Eastbound)"),
  * from the nearby lookup's [DepartureRow.stopLetter]/[DepartureRow.bearing]/[DepartureRow.towards]. A
- * bus place with neither falls back to a **shared terminus** ("➔ Bank") when the whole stop heads one
- * way ([sharedBusTerminus]), else the bare place name. The group's [StopQualifier] carries whichever
+ * letter-less bus pole falls back to the **"towards"** TfL puts on its sign ("➔ Archway"), then its
+ * bearing, else the bare place name — never one bus's destination (maintainer, 2026-10-03). The group's [StopQualifier] carries whichever
  * cue it split on. The cluster (top level) is uniform across modes; the split (sub-level) is
  * mode-aware — rail-family modes (tube, DLR, Overground, rail) carry a `platformName`, trams don't
  * (falling to the compass/bearing/bare chain), buses use the stop letter.
@@ -170,8 +170,8 @@ object StopGrouping {
                 // The group's **qualifier** — the cue that tells two blocks of one place apart, under
                 // the place name (SPEC D8). A **rail** place splits on its platform ("Platform 2
                 // (Eastbound)"), else a bare compass; a **bus** pole on its letter ("Stop D (towards
-                // Farringdon)"), else its bearing; a letter/bearing-less bus place falls back to the
-                // shared terminus ("➔ Bank") when its whole stop heads one way ([sharedBusTerminus]).
+                // Farringdon)"), else the "towards" on its sign ("➔ Archway"), else its bearing; never
+                // one bus's destination, which names where that bus goes, not where the stop heads.
                 val qualifier = when (val s = info.split) {
                     // The platform's direction is a consensus across EVERY row in the group, not just
                     // the first row's split: separate line rows share a platform number but TfL can
@@ -181,7 +181,8 @@ object StopGrouping {
                     is RowSplit.Compass -> StopQualifier.Compass(s.label)
                     is RowSplit.Letter -> StopQualifier.BusStop(s.letter, s.towards.ifEmpty { null })
                     is RowSplit.Bearing -> StopQualifier.BusBearing(s.bearing)
-                    RowSplit.None -> sharedBusTerminus(groupRows)?.let(StopQualifier::Terminus)
+                    is RowSplit.Towards -> StopQualifier.Towards(s.towards)
+                    RowSplit.None -> null
                 }
                 // A header is drawn where it tells the reader something: more than one place
                 // (counting closures), a place split into several groups, or a qualifier worth naming.
@@ -197,41 +198,6 @@ object StopGrouping {
                     splitKey = info.split.keyPart,
                 )
             }
-    }
-
-    /**
-     * The single terminus a **bus** place heads to, for the "➔ Terminus" header qualifier, or null
-     * when it has none to stand behind. Bus-only, and only for a place with no letter or bearing to
-     * split on (this is called only for a [RowSplit.None] group): the letter/bearing is the primary
-     * bus cue, the terminus its fallback; other compass-less modes stay bare.
-     *
-     * "Heads one way" is judged from **every timed prediction** in the group, not the row headline:
-     * a single (line, direction) row can carry departures to more than one terminus (a short-working
-     * among the through buses), and [DepartureRow.destination] names only the *soonest* — so keying
-     * on it could assert "-> Bank" while a card below still shows a later Waterloo departure (Codex
-     * P1, PR #116). So this checks each upcoming departure's destination: they must all name the
-     * **same, non-blank** terminus. Any divergence, or a blank TfL didn't fill (which can't confirm
-     * the shared terminus — SPEC principle 1), yields null so the header stays the bare name rather
-     * than claim a direction the snapshot contradicts.
-     *
-     * A **status row** (a suspended line, [DepartureRow.upcoming] empty) names no destination to
-     * confirm, and it rides in the group at the same stop id — so it too withholds the terminus,
-     * rather than let its card sit under a "➔ Terminus" header for a direction it may not share
-     * (Codex P2, PR #116): every route in the group must name the confirmed terminus, so any route
-     * that can't disqualifies it.
-     */
-    private fun sharedBusTerminus(rows: List<DepartureRow>): String? {
-        if (rows.isEmpty() || rows.any { it.mode != "bus" || it.upcoming.isEmpty() }) return null
-        val destinations = HashSet<String>()
-        for (row in rows) {
-            for (dep in row.upcoming) {
-                val dest = dep.destination.trim()
-                if (dest.isEmpty()) return null
-                destinations.add(dest)
-                if (destinations.size > 1) return null
-            }
-        }
-        return destinations.singleOrNull()
     }
 
     /**
@@ -267,9 +233,9 @@ object StopGrouping {
      * that share it land in one group. A **rail** row splits on its [Platform] number (the compass
      * direction is resolved later, as a consensus over the whole group — [platformDirectionOf]), else
      * a bare [Compass] when TfL gives a direction but no platform number; a **bus** pole on its
-     * [Letter] ("D", carrying the pole's "towards"), else its [Bearing]
-     * ("E"). Anything else is [None] (a letter/bearing-less bus, which then falls back to the shared
-     * terminus, or a stop with no cue at all). The [keyPart] tags each kind so a platform "2", a bus
+     * [Letter] ("D", carrying the pole's "towards"), else its [Towards] (the sign's "towards Archway"),
+     * else its [Bearing] ("E"). Anything else is [None] (a stop with no cue at all, headed by its bare
+     * name). The [keyPart] tags each kind so a platform "2", a bus
      * letter "2", and a bearing never collide in the group key.
      */
     private sealed interface RowSplit {
@@ -285,6 +251,12 @@ object StopGrouping {
 
         data class Letter(val letter: String, val towards: String) : RowSplit {
             override val keyPart get() = "l\u0001$letter"
+        }
+
+        // The bearing stays in the key though the header shows only the towards: two letterless poles
+        // whose signs read the same but face different ways are two places to stand (Codex P2, #492).
+        data class Towards(val towards: String, val bearing: String) : RowSplit {
+            override val keyPart get() = "t\u0001$towards\u0001$bearing"
         }
 
         data class Bearing(val bearing: String) : RowSplit {
@@ -323,10 +295,12 @@ object StopGrouping {
         // Buses split on stop metadata (letter, then bearing), never on the arrivals `platform`: a
         // bus prediction can carry a stop-local "platform" that reads like a rail one ("Platform 1"),
         // so running the rail parser on it would file the pole under "Platform 1" instead of its
-        // "Stop D" (Codex P1, PR #119). Resolve the bus cues first and stop — a letter/bearing-less
-        // bus is [None], which the caller then offers the shared terminus.
+        // "Stop D" (Codex P1, PR #119). Resolve the bus cues first and stop: a letter-less pole is
+        // headed by the "towards" on its sign, even when several routes serve it (the sign shows it
+        // all the same), before its compass bearing (maintainer, 2026-10-03).
         if (row.mode == "bus") {
             row.stopLetter.trim().ifEmpty { null }?.let { return RowSplit.Letter(it, row.towards.trim()) }
+            row.towards.trim().ifEmpty { null }?.let { return RowSplit.Towards(it, row.bearing.trim()) }
             row.bearing.trim().ifEmpty { null }?.let { return RowSplit.Bearing(it) }
             return RowSplit.None
         }
@@ -414,8 +388,9 @@ sealed interface StopQualifier {
     /** A bus pole's compass bearing ("E", TfL `CompassPoint`), the fallback when it has no letter. */
     data class BusBearing(val bearing: String) : StopQualifier
 
-    /** The single terminus a letter/bearing-less **bus** place heads to ("Bank"), the last fallback. */
-    data class Terminus(val terminus: String) : StopQualifier
+    /** A letter-less **bus** pole's "towards" as its sign gives it ("Farringdon Or Holborn Circus", TfL
+     *  `Towards`), ahead of its bearing; rendered "➔ Farringdon". */
+    data class Towards(val towards: String) : StopQualifier
 }
 
 /**

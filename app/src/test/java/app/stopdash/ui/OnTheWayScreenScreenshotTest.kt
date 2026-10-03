@@ -366,6 +366,26 @@ class OnTheWayScreenScreenshotTest {
     }
 
     @Test
+    fun a_letterless_bus_board_is_headed_by_its_towards_never_a_bus_destination() {
+        // A pole TfL gives no letter: its sign's "towards" heads the board, not where its buses go.
+        val bus = TripLeg("bus", "25", "25", "490000000001D", "Stratford", "490000000002A", "Liverpool Street", at(4), at(20))
+        val buses = listOf(Departure("25", "25", "outbound", "Oxford Circus", null, at(6), "bus"))
+        show(trip.copy(route = TripRoute(listOf(bus))), TripProgress.Waiting(bus, at(6)), nextTrains = NextTrains(bus, buses, readyAt = now, towards = "Liverpool Street Or Bank", bearing = "W"))
+        composeRule.onNodeWithText("➔ Liverpool Street", substring = true).assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("➔ Oxford Circus", substring = true).fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun a_bus_board_with_no_letter_or_towards_is_headed_by_its_bearing() {
+        // No towards: the bearing, and never the bus's destination.
+        val bus = TripLeg("bus", "25", "25", "490000000001D", "Stratford", "490000000002A", "Liverpool Street", at(4), at(20))
+        val buses = listOf(Departure("25", "25", "outbound", "Oxford Circus", null, at(6), "bus"))
+        show(trip.copy(route = TripRoute(listOf(bus))), TripProgress.Waiting(bus, at(6)), nextTrains = NextTrains(bus, buses, readyAt = now, bearing = "W"))
+        composeRule.onNodeWithText("Westbound", substring = true).assertIsDisplayed()
+        assertTrue(composeRule.onAllNodesWithText("➔ Oxford Circus", substring = true).fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
     fun a_bus_board_shows_the_other_pole_of_the_pair_under_its_own_letter() {
         // The 25 boards at Stop D; the 86 runs the same way from Stop E, across the road: each pole's
         // buses under its own header, the ride's own first.

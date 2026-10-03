@@ -521,17 +521,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
   - [x] **Draw the arrow as an inline Material `ArrowForward` icon** (maintainer, 2026-09-24): the
         labels keep `➔` as a marker character, drawn as the icon (centered, lighter than the glyph) in
         `StopGroupHeader` and `JourneyHeader`; the journey heading is spoken "A to B".
-  - [ ] **Rethink the bus header cue: what's most informative, matched to the signage** (maintainer,
-        2026-09-22; longer-term). A pole often carries several cues — a real `stopLetter`, a
-        `CompassPoint`, a `Towards`, and the live departures' shared terminus. Today's precedence is
-        letter → compass word → shared terminus → bare. Open questions to settle: which is most
-        informative *about the service* (where it's going) vs *about the stop* (which pole/where the
-        rider stands); what riders actually look for at the stop; and what to fall back to when the
-        preferred cue is missing — ideally matching the **physical signage**. Cranley Gardens has no
-        letter on the pole but the sign reads "Towards Friern Barnet", so `➔ Friern Barnet` (the
-        `Towards`) would match reality where `Northbound` (our derived compass) does not. Leaning
-        toward preferring `Towards` (`➔ Archway`) over the bare compass; handle TfL's two-way
-        `Towards` (`"Farringdon Or Holborn Circus"` — already trimmed at `" Or "` for the spoken label).
+  - [x] **Rethink the bus header cue: what's most informative, matched to the signage** (maintainer,
+        2026-09-22; settled 2026-10-03): letter → `Towards` (`➔ Archway`, trimmed at `" Or "`) →
+        compass word → bare, on the main list and the trip's board alike; the shared terminus is gone,
+        since one bus's destination says where it goes, not where the stop heads.
   - [x] **Split a mixed-platform row into a card per platform** (Codex P1, PR #119). A direction
         that runs from several platforms (Camden Town southbound: Platform 2 or 4) now gets a card
         per platform; platform-less predictions beside two platforms sit under the bare compass.
@@ -543,10 +536,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         platform split and the bus letter split (above) already break a hub into per-platform/per-pole
         blocks. Still open: whether a dense hub wants a *finer* grain still (per-line dividers within
         a block), or whether the blocks are enough — judge on a device; the alternatives are in the mock.
-  - [ ] **Persist the bus letter/bearing onto a watched stop.** The near-me path now captures a
-        bus pole's `stopLetter`/`CompassPoint` and splits on it (above), but a **watched** bus stop
-        refreshes from the arrivals feed, which carries neither — so a watched bus stop still shows a
-        bare/terminus header, not its "(D)". Capture the letter on the Phase-2 watched-stop add flow
+  - [ ] **Persist the bus letter/towards/bearing onto a watched stop.** The near-me path now captures a
+        bus pole's `stopLetter`/`Towards`/`CompassPoint` and splits on them (above), but a **watched** bus
+        stop refreshes from the arrivals feed, which carries none — so a watched bus stop still shows a
+        bare header, not its "Stop D" or "➔ Archway". Capture all three on the Phase-2 watched-stop add flow
         (the StopPoint fetch that resolves a watched stop's cluster) and persist it on the watched
         stop / `PersistedStop`, so it survives restore like `clusterId` rather than being re-fetched
         only on a near-me refresh.
