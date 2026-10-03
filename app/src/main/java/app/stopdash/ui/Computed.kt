@@ -183,3 +183,14 @@ internal fun UpdateChip(onClick: () -> Unit, modifier: Modifier = Modifier) {
         modifier = modifier.padding(horizontal = 16.dp, vertical = 4.dp),
     )
 }
+
+/**
+ * One tap showing every update waiting among [values] ([Computed.hasUpdate]), for a list whose parts
+ * are worked out apart but read as one page; null when none is waiting.
+ */
+internal fun listUpdate(values: List<Computed<*>>): (() -> Unit)? {
+    // A fixed few values, not the list's data: no work that grows with the page.
+    var waiting = false
+    for (value in values) waiting = waiting || value.hasUpdate
+    return if (waiting) ({ for (value in values) value.showUpdate() }) else null
+}

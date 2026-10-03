@@ -42,6 +42,8 @@ internal data class JourneyCardsShown(
     val widgetBoarding: Map<String, Set<String>> = emptyMap(),
     // The rows the cards show, so a near-me row they cover isn't repeated and a tap on one opens.
     val rowsShown: List<DepartureRow> = emptyList(),
+    // Those rows by route identity, for a route page opened from a card to follow.
+    val rowsByDetailKey: Map<String, DepartureRow> = emptyMap(),
     // The near journeys, pinned on the widget (a far one opened in the app doesn't join it), and the
     // direction each is shown in, so a flip reaches the widget before its route places the new origin.
     val widgetKeys: Set<String> = emptySet(),
@@ -213,6 +215,7 @@ internal fun journeyCardsOf(
         val key = card.journey.key
         key to card.boardingIds.mapIndexedTo(HashSet()) { i, id -> if (i == 0) key else WidgetJourneys.poleKey(key, id) }
     }
+    val rowsShown = cards.flatMap { (it.state as? JourneyCardState.Trains)?.shownRows.orEmpty() }
     return JourneyCardsShown(
         cards = cards,
         near = cards.filter { it.journey.key !in farJourneyMeters },
@@ -222,7 +225,8 @@ internal fun journeyCardsOf(
         destinations = destinations,
         widgetChecks = widgetChecks,
         widgetBoarding = widgetBoarding,
-        rowsShown = cards.flatMap { (it.state as? JourneyCardState.Trains)?.shownRows.orEmpty() },
+        rowsShown = rowsShown,
+        rowsByDetailKey = byDetailKey(rowsShown),
         widgetKeys = journeyKeys,
         shownFrom = cardJourneys.filter { it.key in journeyKeys }.associate { it.key to it.from.stopId },
     )
