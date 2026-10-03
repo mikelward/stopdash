@@ -3627,12 +3627,29 @@ internal fun StopGroupCard(
                         val noTimes = NoTimes.of(row)
                         val noKey = noTimes == NoTimes.NO_KEY
                         // A quiet row is only in the list once its mark is "?" ([withQuietRows]).
-                        val unknown = row.quiet || noTimes == NoTimes.NO_TRAINS &&
-                            !row.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) &&
-                            !row.notRunningHere &&
-                            emptyTimesMark("line:${row.stopId}|${row.lineId}") {
-                                EmptyTimes.Board(listOf(EmptyTimes.Key(row.stopId, row.lineId)))
-                            } == EmptyTimes.Mark.UNKNOWN
+                        val mark = when {
+                            row.quiet -> EmptyTimes.Mark.UNKNOWN
+                            noTimes == NoTimes.NO_TRAINS && !row.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) && !row.notRunningHere ->
+                                emptyTimesMark("line:${row.stopId}|${row.lineId}") {
+                                    EmptyTimes.Board(listOf(EmptyTimes.Key(row.stopId, row.lineId)))
+                                }
+                            else -> null
+                        }
+                        val unknown = mark == EmptyTimes.Mark.UNKNOWN
+                        if (mark == EmptyTimes.Mark.LOADING) {
+                            // Its timetable is still being fetched: a spinner says "wait", where a "?" read
+                            // as an answer (maintainer, 2026-10-03).
+                            val loading = stringResource(R.string.status_times_loading_description)
+                            CircularProgressIndicator(
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .padding(start = 12.dp)
+                                    .size(16.dp)
+                                    .semantics { contentDescription = loading },
+                            )
+                            return@RouteRow
+                        }
                         val spoken = stringResource(
                             if (unknown) R.string.status_times_unknown_description else R.string.status_no_departures_description,
                         )

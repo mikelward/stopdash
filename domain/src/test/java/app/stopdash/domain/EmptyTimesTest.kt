@@ -36,8 +36,9 @@ class EmptyTimesTest {
 
     @Test
     fun `what can't be settled is unknown, never a dash`() {
-        // Not looked up yet, failed, or no keys at all.
-        assertEquals(EmptyTimes.Mark.UNKNOWN, EmptyTimes.mark(listOf(day), emptyMap(), night))
+        // Not looked up yet: still loading (a spinner), not an answer either way.
+        assertEquals(EmptyTimes.Mark.LOADING, EmptyTimes.mark(listOf(day), emptyMap(), night))
+        // Failed, or no keys at all.
         assertEquals(EmptyTimes.Mark.UNKNOWN, EmptyTimes.mark(listOf(day), mapOf(day to EmptyTimes.Lookup.Failed), night))
         assertEquals(EmptyTimes.Mark.UNKNOWN, EmptyTimes.mark(emptyList(), emptyMap(), night))
         // A timetable with no schedule for the day.
@@ -142,7 +143,21 @@ class EmptyTimesTest {
             EmptyTimes.Mark.UNKNOWN,
             EmptyTimes.mark(tube.keys, mapOf(key to EmptyTimes.Lookup.Failed), noon, unsure = tube.unsure, pending = tube.pending),
         )
-        // A status row's board still reads "?" while its timetable loads.
-        assertEquals(EmptyTimes.Mark.UNKNOWN, EmptyTimes.mark(tube.keys, emptyMap(), noon))
+        // A status row's board reads as loading while its timetable is fetched, not as "?".
+        assertEquals(EmptyTimes.Mark.LOADING, EmptyTimes.mark(tube.keys, emptyMap(), noon))
+    }
+
+    @Test
+    fun `a failed timetable asked for again is loading, unless the board keeps its failure's mark`() {
+        val status = EmptyTimes.Board(listOf(EmptyTimes.Key("940GZZLUKSX", "victoria")))
+        val key = status.keys.single()
+        val failed = mapOf(key to EmptyTimes.Lookup.Failed)
+        assertEquals(EmptyTimes.Mark.UNKNOWN, EmptyTimes.mark(status.keys, failed, noon))
+        assertEquals(EmptyTimes.Mark.LOADING, EmptyTimes.mark(status.keys, failed, noon, fetching = { true }))
+        val quiet = EmptyTimes.quietBoard("940GZZLUKSX", "victoria", "tube")
+        assertEquals(
+            EmptyTimes.Mark.UNKNOWN,
+            EmptyTimes.mark(quiet.keys, failed, noon, unsure = quiet.unsure, pending = quiet.pending, retrying = quiet.retrying, fetching = { true }),
+        )
     }
 }

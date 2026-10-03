@@ -735,7 +735,9 @@ as "no trains" when they were only unseen; at night the same empty list is hones
 timetable is what tells the two apart. **The timetable decides only which mark: its times are never
 shown in place of live ones**, since it knows nothing of the disruption that emptied the board
 (maintainer, 2026-10-03). It is fetched only for a line with no live times, kept for the service
-day, and while it isn't in (or failed) the mark is "?" — StopDash can't be sure. A place card whose
+day. While it is still being fetched, or a failed one is being asked for again, the row shows a small **spinner** (heard as "Loading times"),
+not "?": a "?" during a page load read as an answer when it was only a wait (maintainer,
+2026-10-03). A timetable that failed, or can't say, is "?" — StopDash can't be sure. A place card whose
 stops came back with nothing (*Freshness → Cold load*, *Farther stations*) still shows a dash for
 now; giving it the same marks is planned. On a bank holiday, and from Christmas Eve to 3 January, the timetable gives no answer ("?"):
 TfL runs another day type's timetable on some ("Saturday (also Good Friday)"), and its weekday's

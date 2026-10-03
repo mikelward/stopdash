@@ -2078,10 +2078,11 @@ class MainScreenScreenshotTest {
     }
 
     @Test
-    fun `a delayed line's empty row asks for its mark, and reads unknown until it's in`() {
+    fun `a delayed line's empty row asks for its mark, and shows a spinner until it's in`() {
         val asked = mutableListOf<Pair<String, EmptyTimes.Board>>()
         delayedVictoria(emptyMap(), asked)
-        composeRule.onNodeWithContentDescription("Times unknown").assertExists()
+        composeRule.onNodeWithContentDescription("Loading times").assertExists()
+        composeRule.onNodeWithContentDescription("Times unknown").assertDoesNotExist()
         composeRule.runOnIdle {
             assertEquals(
                 listOf("line:940GZZLUKSX|victoria" to EmptyTimes.Board(listOf(EmptyTimes.Key("940GZZLUKSX", "victoria")))),
@@ -2100,9 +2101,9 @@ class MainScreenScreenshotTest {
     @Test
     fun `a dash left over from when the row was last shown isn't trusted`() {
         // Worked out an hour ago, when the row was last on screen: until the repository answers for
-        // now, it's "?", not a dash StopDash no longer stands behind.
+        // now, it's loading, not a dash StopDash no longer stands behind.
         delayedVictoria(mapOf("line:940GZZLUKSX|victoria" to EmptyTimes.Marked(EmptyTimes.Mark.NONE, now.minusSeconds(3_600))))
-        composeRule.onNodeWithContentDescription("Times unknown").assertExists()
+        composeRule.onNodeWithContentDescription("Loading times").assertExists()
         composeRule.onNodeWithContentDescription("No departures").assertDoesNotExist()
     }
 
@@ -2121,12 +2122,33 @@ class MainScreenScreenshotTest {
             "victoria" to LineStatus("victoria", severity = 9, description = "Minor Delays"),
             "piccadilly" to LineStatus("piccadilly", severity = 2, description = "Suspended"),
         )
+        // The Victoria's timetable has answered: a train may be due.
+        val marks = mapOf("line:940GZZLUKSX|victoria" to EmptyTimes.Marked(EmptyTimes.Mark.UNKNOWN, now))
         capture("main-times-unknown.png") {
-            MainScreen(DeparturesUiState.Loaded(listOf(station), now.minusSeconds(60), lineStatuses = delays), now, {})
+            CompositionLocalProvider(LocalEmptyTimes provides EmptyTimesState(MutableStateFlow(marks), now) { _, _ -> }) {
+                MainScreen(DeparturesUiState.Loaded(listOf(station), now.minusSeconds(60), lineStatuses = delays), now, {})
+            }
         }
         composeRule.onNodeWithText("Minor Delays").assertExists()
         composeRule.onNodeWithContentDescription("Times unknown").assertExists()
         composeRule.onNodeWithContentDescription("No departures").assertExists()
+    }
+
+    @Test
+    fun `a delayed line's empty row shows a spinner while its timetable loads`() {
+        val station = StopArrivals(
+            "940GZZLUKSX",
+            "King's Cross St. Pancras",
+            emptyList(),
+            fetchedAt = now.minusSeconds(60),
+            lines = listOf(LineRef("victoria", "Victoria", "tube")),
+        )
+        val delays = mapOf("victoria" to LineStatus("victoria", severity = 9, description = "Minor Delays"))
+        capture("main-times-loading.png") {
+            MainScreen(DeparturesUiState.Loaded(listOf(station), now.minusSeconds(60), lineStatuses = delays), now, {})
+        }
+        composeRule.onNodeWithContentDescription("Loading times").assertExists()
+        composeRule.onNodeWithContentDescription("Times unknown").assertDoesNotExist()
     }
 
     /** King's Cross with the Victoria line on good service and no live times for it. */
