@@ -93,6 +93,8 @@
     <string name="trip_disruptions_unknown_named">Couldn\'t check for disruptions: %1$s</string>
     <!-- While a cold load is still bringing stops in: line status is checked once they're all back. -->
     <string name="disruptions_checking">Checking for disruptions</string>
+    <!-- Spoken after a near-me place's name while its closure check is still out (a spinner shows). -->
+    <string name="closure_checking">Checking for closures</string>
     <!-- Click labels for the stop-closure card, which collapses a long TfL notice to one
          line and expands to the full text on tap. Announced by a screen reader as the action
          ("double tap to Show full alert"); the notice text itself is read from the card. -->

@@ -1713,6 +1713,35 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `a stop whose closure check is still out shows a spinner in its heading, not a clear stop`() {
+        val warrenStreet = StopArrivals(
+            "940GZZLUWRR",
+            "Warren Street",
+            listOf(dep("northern", "Northern", "inbound", "Morden", 180, "Southbound - Platform 2", branch = "Bank")),
+            fetchedAt = now.minusSeconds(60),
+        )
+        capture("main-closure-checking.png") {
+            MainScreen(
+                DeparturesUiState.Loaded(
+                    listOf(eustonSouthbound(), warrenStreet),
+                    now.minusSeconds(60),
+                    statusPending = true,
+                    closurePending = setOf("940GZZLUEUS"),
+                ),
+                now,
+                {},
+                stopDistanceMeters = mapOf("940GZZLUEUS" to 80.0, "940GZZLUWRR" to 400.0),
+            )
+        }
+        // Its departures show; its heading says it's still being checked for closures, the other's doesn't.
+        composeRule.onNodeWithText("Brixton", substring = true).assertExists()
+        composeRule.onAllNodesWithContentDescription("Checking for closures", substring = true).assertCountEquals(1)
+        composeRule.onNodeWithText("Closed").assertDoesNotExist()
+        // The stamp says so too, for a list whose one place shows no heading to hold the spinner.
+        composeRule.onNodeWithText("Checking…").assertExists()
+    }
+
+    @Test
     fun `tapping a closed station's distance shows it on a map`() {
         val closed = StopArrivals(
             "940GZZLUESQ", "Euston Square", emptyList(),

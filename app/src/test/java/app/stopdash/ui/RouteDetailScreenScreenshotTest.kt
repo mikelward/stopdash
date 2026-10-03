@@ -399,6 +399,38 @@ class RouteDetailScreenScreenshotTest {
     }
 
     @Test
+    fun aRowWhoseStopIsStillBeingCheckedForClosures_saysSo_notClean() {
+        val stop = StopArrivals(
+            "940GZZLUEUS", "Euston",
+            listOf(Departure("victoria", "Victoria", "inbound", "Brixton", "Southbound - Platform 5", now.plusSeconds(120), "tube")),
+            now,
+        )
+        val row = DepartureRows.across(listOf(stop), now, emptyMap()).single()
+        setDetail {
+            StopDashTheme {
+                RouteDetailScreen(
+                    row = row,
+                    isStarred = false,
+                    starrable = true,
+                    // Its line's status is still out too: checking, not "couldn't check" (nothing failed).
+                    disruptionUnknown = true,
+                    disruptionChecking = true,
+                    stale = false,
+                    now = now,
+                    onToggleStar = {},
+                    onBack = {},
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        // Its stop's closure check is still out: checking, never a clean line yet (SPEC principle 1).
+        composeRule.onNodeWithText("Checking for disruptions").assertIsDisplayed()
+        composeRule.onNodeWithText("No disruptions reported").assertDoesNotExist()
+        composeRule.onNodeWithText("Couldn't check for disruptions").assertDoesNotExist()
+    }
+
+    @Test
     fun anAlertBehindABusStop_isToldMutedWithWhereItIs_notFlagged() {
         // A bus route north from Bank (made-up stops past Moorgate), as TfL's route data lists it, and
         // a diversion in TfL's words wholly before the rider's stop: a bus from here has passed it.

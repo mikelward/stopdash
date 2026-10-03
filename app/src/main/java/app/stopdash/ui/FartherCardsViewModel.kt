@@ -1,5 +1,8 @@
 package app.stopdash.ui
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
@@ -135,6 +138,10 @@ class FartherCardsViewModel(
     /** The departures model of [key]'s card, while it is open. */
     fun model(key: String): MainViewModel? = models[key]
 
+    // The list as last shown with its opened cards merged in ([rememberWithOpenedFarther]), and what
+    // it was merged from: the screen recreated (a rotation) shows it at once while it's still current.
+    internal var lastMerged: MergedFarther? = null
+
     /** Refresh every opened card's departures, as the list refreshes its own. */
     fun refresh() {
         for (model in models.values) model.refresh()
@@ -189,7 +196,12 @@ internal fun withOpenedFarther(
     var lineStatuses = list.lineStatuses
     val determined = list.determinedLineIds.toHashSet()
     val disruptionUnknown = list.stopsDisruptionUnknown.toHashSet()
+    // A card's stops shown while their own closure check is still out, as the list's own are.
+    val closurePending = list.closurePending.toHashSet()
     val unavailable = list.unavailableStopIds.toHashSet()
+    // Lines whose check is still out, from the list and each card still loading: only a row on one reads
+    // "checking". A finished source has none, so a card loading doesn't make its rows read "checking".
+    val pendingLines = (if (list.statusPending) list.pendingLineIds else emptySet()).toHashSet()
     // The stop ids of each card whose last refresh failed or came back incomplete.
     val failedCards = ArrayList<Set<String>>()
     // A card part-shown by its own cold load. With its line status not all checked yet, the list says
@@ -210,8 +222,18 @@ internal fun withOpenedFarther(
                 lineStatuses = state.lineStatuses + lineStatuses
                 determined += state.determinedLineIds
                 disruptionUnknown += state.stopsDisruptionUnknown
+                // Only for the rows the card adds: a stop the list already shows keeps the list's own mark.
+                added.filter { it.stopId in state.closurePending }.mapTo(closurePending) { it.stopId }
                 if (state.disruptionUnknown) added.mapTo(disruptionUnknown) { it.stopId }
                 unavailable += state.unavailableStopIds
+                // Only the lines of the rows the card adds: a stop the list already shows keeps the
+                // list's own verdict on its lines.
+                if (state.statusPending && state.pendingLineIds.isNotEmpty()) {
+                    for (stop in added) {
+                        stop.departures.forEach { if (it.lineId in state.pendingLineIds) pendingLines += it.lineId }
+                        stop.lines.forEach { if (it.id in state.pendingLineIds) pendingLines += it.id }
+                    }
+                }
                 if (state.partialRefresh || state.refreshFailure != null) failedCards += cardIds
                 if (state.statusPending) {
                     cardStatusPending = true
@@ -242,13 +264,70 @@ internal fun withOpenedFarther(
         lineStatuses = lineStatuses,
         determinedLineIds = determined,
         stopsDisruptionUnknown = disruptionUnknown,
+        closurePending = closurePending,
         unavailableStopIds = unavailable,
         disruptionUnknown = list.disruptionUnknown || cardStillChecking,
         statusPending = list.statusPending || cardStatusPending,
         // The list's own finished "couldn't check" stays that, not "checking", while a card loads.
         checkFailed = list.checkFailed || cardCheckFailed || (list.disruptionUnknown && !list.statusPending),
         openedLoadingStopIds = openedLoading,
+        pendingLineIds = pendingLines - determined,
     )
+}
+
+/** [merged], the list [list] with [opened]'s cards merged in by [withOpenedFarther]. */
+internal class MergedFarther(
+    val list: DeparturesUiState.Loaded,
+    val opened: List<Pair<Set<String>, DeparturesUiState>>,
+    val merged: DeparturesUiState.Loaded,
+) {
+    /** Merged from these very states. */
+    fun isOf(list: DeparturesUiState.Loaded, opened: List<Pair<Set<String>, DeparturesUiState>>): Boolean =
+        sameStates(this.list, this.opened, list, opened)
+}
+
+/** The same states and cards' stop sets, by identity, so the check walks neither their stops nor the sets. */
+private fun sameStates(
+    list: DeparturesUiState.Loaded,
+    opened: List<Pair<Set<String>, DeparturesUiState>>,
+    otherList: DeparturesUiState.Loaded,
+    otherOpened: List<Pair<Set<String>, DeparturesUiState>>,
+): Boolean = list === otherList && opened.size == otherOpened.size &&
+    opened.indices.all { opened[it].first === otherOpened[it].first && opened[it].second === otherOpened[it].second }
+
+/**
+ * [state] with each opened card's stops shown through the list ([withOpenedFarther]), merged on
+ * [LocalWorker], not in composition: the merge walks every card's stops (AGENTS *Main thread*).
+ * Until it's back, [cached] if merged from the same states (the screen recreated by a rotation),
+ * else the list alone, shows. Each merge is handed to [onMerged] to keep.
+ */
+@Composable
+internal fun rememberWithOpenedFarther(
+    state: DeparturesUiState,
+    opened: List<Pair<Set<String>, DeparturesUiState>>,
+    cached: MergedFarther?,
+    onMerged: (MergedFarther) -> Unit,
+    merge: (DeparturesUiState.Loaded, List<Pair<Set<String>, DeparturesUiState>>) -> DeparturesUiState.Loaded = ::withOpenedFarther,
+): DeparturesUiState {
+    val list = state as? DeparturesUiState.Loaded ?: return state
+    if (opened.isEmpty()) return list
+    val worker = LocalWorker.current
+    // Keyed by identity, so a recomposition doesn't compare the states' stops to see if they changed.
+    val key = MergeKey(list, opened)
+    val shown by produceState(initialValue = cached?.takeIf { it.isOf(list, opened) }?.merged ?: list, key) {
+        val merged = withContext(worker) { merge(list, opened) }
+        onMerged(MergedFarther(list, opened, merged))
+        value = merged
+    }
+    return shown
+}
+
+/** The merge's inputs, equal only to the same ones ([sameStates]). */
+private class MergeKey(val list: DeparturesUiState.Loaded, val opened: List<Pair<Set<String>, DeparturesUiState>>) {
+    override fun equals(other: Any?): Boolean =
+        other is MergeKey && sameStates(list, opened, other.list, other.opened)
+
+    override fun hashCode(): Int = System.identityHashCode(list)
 }
 
 /**
