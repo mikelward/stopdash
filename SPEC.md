@@ -819,7 +819,11 @@ so a miss there is a working the sequence doesn't model. **A loop goes the way i
 where more than one path matches, the platform's compass ("Eastbound", or a loop's "Inner Rail" /
 "Outer Rail", the outer running clockwise) keeps the path that leaves that way. TfL's direction
 can't decide it — on a loop both trips pass the same platform. Where the platform names no compass
-("Platform 1"), the train's direction does instead, keeping the routes TfL runs that way. **A train TfL shows as "Check Front
+("Platform 1"), the train's direction does instead, keeping the routes TfL runs that way. **A
+National Rail train goes the way its board's "via" names**: its board gives no direction and its
+platforms no compass, so a train round a loop to one terminus ("via Wimbledon") keeps the paths
+calling at every station the via names after boarding. The via narrows the path only — it isn't
+shown — and a via no path calls at leaves the list unavailable rather than guessed. **A train TfL shows as "Check Front
 of Train"** keeps TfL's wording on the list, as the platform board has it, but names no place: it
 has no stop list, and a trip or journey counts it only where every way it may run from its platform
 agrees (all pass the rider's stop, at least as far as where they part, or none does); otherwise it's

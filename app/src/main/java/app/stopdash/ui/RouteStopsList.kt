@@ -154,7 +154,7 @@ internal fun rememberRouteStops(row: DepartureRow, next: Departure?, retry: Int)
     // A station whose departures TfL lists under an id its routes don't call at boards at its sibling.
     fun resolve(fetched: LineSequence): RouteStopsUi {
         val sequence = fetched.callingAt(row.stopId)
-        return when (val resolution = RouteStops.resolve(sequence, row.stopId, destination, next.branch, row.lineId, bus, RouteStops.boundOf(next.platform), next.direction, next.destinationId)) {
+        return when (val resolution = RouteStops.resolve(sequence, row.stopId, destination, next.branch, row.lineId, bus, RouteStops.boundOf(next.platform), next.direction, next.destinationId, next.via)) {
             is RouteStops.Resolution.Found -> RouteStopsUi.Loaded(
                 resolution.stops,
                 resolution.stops.mapNotNull { stop -> sequence.stopPositions[stop.id]?.let { stop.id to it } }.toMap(),
@@ -166,7 +166,7 @@ internal fun rememberRouteStops(row: DepartureRow, next: Departure?, retry: Int)
     // Keyed by the followed train (and the mode, which changes the matching rule), so a change of
     // soonest train (a refresh, or one departing) discards the old state outright: the first frame
     // for the new train is its own list or Loading, never the previous train's stops.
-    val memo = listOf("train", repository, row.lineId, row.direction, row.stopId, destination, next.branch, next.platform, next.direction, next.destinationId, bus)
+    val memo = listOf("train", repository, row.lineId, row.direction, row.stopId, destination, next.branch, next.platform, next.direction, next.destinationId, next.via, bus)
     return key(memo, worker) {
         // Only while the repository still holds the routes it came from: none past its day or a refetch.
         val remembered = RouteStopsMemo.get(memo, repository.cached(row.lineId, row.direction))

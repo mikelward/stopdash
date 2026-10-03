@@ -363,7 +363,7 @@ object Journeys {
                     val bound = RouteStops.boundOf(departure.platform)
                     val resolution = RouteStops.resolve(
                         sequence, segment.originId, departure.destination, departure.branch, row.lineId, bus, bound, departure.direction,
-                        departure.destinationId,
+                        departure.destinationId, departure.via,
                     )
                     // Ending here, it goes nowhere: a sure "no", not a gap in the check.
                     if (resolution == RouteStops.Resolution.EndsHere) return@filter false
@@ -373,7 +373,7 @@ object Journeys {
                         // still an answer when every way it may take agrees on reaching the far end.
                         val ways = RouteStops.candidatePaths(
                             sequence, segment.originId, departure.destination, departure.branch, bus, bound, departure.direction,
-                            departure.destinationId,
+                            departure.destinationId, departure.via,
                         )
                             .map { way -> way.drop(1).filter { it in destinations } }
                         when {
@@ -452,12 +452,13 @@ object Journeys {
         callingAt(journey.from.stopId).callingAt(journey.to.stopId)
 
     /**
-     * [this] row's trains with no time ([DepartureRow.untimed]) to a destination one of [kept] runs to:
-     * drawn among those on a journey card, as on the stop's own. One to anywhere else isn't, since its
-     * path to the journey's far end goes unchecked; it would be a line of its own there.
+     * [this] row's trains with no time ([DepartureRow.untimed]) to a destination one of [kept] runs to,
+     * by the same via ([Departure.via]): drawn among those on a journey card, as on the stop's own. One
+     * to anywhere else, or by another way to the same terminus, isn't, since its path to the journey's
+     * far end goes unchecked; it would be a line of its own there.
      */
     private fun DepartureRow.untimedTo(kept: List<Departure>): List<UntimedTrain> =
-        untimed.filter { train -> kept.any { it.destination == train.train.destination } }
+        untimed.filter { train -> kept.any { it.destination == train.train.destination && it.via == train.train.via } }
 
     /** Whether any of a journey card's direct [rows] has a train due: a status-only row has none. */
     fun directDue(rows: List<DepartureRow>): Boolean = rows.any { it.upcoming.isNotEmpty() }

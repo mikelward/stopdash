@@ -119,6 +119,17 @@ class FollowedDepartureTest {
     }
 
     @Test
+    fun `a rail route lists only the trains running the followed train's via`() {
+        fun rail(via: String, inSeconds: Long) =
+            Departure("south-western-railway", "SWR", "", "London Waterloo", "Platform 1", now.plusSeconds(inSeconds), "national-rail", via = via)
+        val station = row("910GSTATION", rail("North", 60), rail("South", 120), rail("North", 180))
+        val untimed = UntimedTrain(rail("South", 240), canceled = true)
+        val withUntimed = station.copy(untimed = listOf(untimed, UntimedTrain(rail("North", 300), canceled = true)))
+        assertEquals(listOf(60L, 180L), routeDepartures(withUntimed, null).map { it.expectedArrival.epochSecond - now.epochSecond })
+        assertEquals(listOf("North"), routeUntimed(withUntimed, null).map { it.train.via })
+    }
+
+    @Test
     fun `the route's trains with no time go with its times, not another route's`() {
         // One platform, so one row with two destination lines.
         val toFar = Departure("great-example", "Great Example", "", "Far", "Platform 1", now.plusSeconds(300), "national-rail")

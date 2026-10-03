@@ -191,6 +191,29 @@ class JourneysTest {
     }
 
     @Test
+    fun `a journey's row keeps a train with no time only by the via its kept train runs`() {
+        // Two ways from Top to End: by Mid, the journey's far end, or by Side.
+        val ways = LineSequence(
+            routes = listOf(LineRoute("Top ↔ End by Mid", listOf("TOP", "MID", "END")), LineRoute("Top ↔ End by Side", listOf("TOP", "SIDE", "END"))),
+            stopNames = mapOf("TOP" to "Top", "MID" to "Mid", "SIDE" to "Side", "END" to "End"),
+        )
+        val segment = Journeys.segment(journey, ways)!!
+        val byMid = UntimedTrain(departure("End", 300, mode = "national-rail").copy(via = "Mid"), canceled = true)
+        val bySide = UntimedTrain(departure("End", 400, mode = "national-rail").copy(via = "Side"), canceled = true)
+        val rows = DepartureRows.across(
+            listOf(
+                StopArrivals(
+                    "TOP", "TOP", listOf(departure("End", 120, mode = "national-rail").copy(via = "Mid")), fetchedAt = now,
+                    untimed = listOf(byMid, bySide),
+                ),
+            ),
+            now,
+        )
+        val trains = Journeys.trains(segment, rows, mapOf("example" to ways))
+        assertEquals(listOf(byMid), trains.rows.flatMap { it.untimed })
+    }
+
+    @Test
     fun `a journey's warning row for a line whose every train has no time shows the warning alone`() {
         val segment = Journeys.segment(journey, rail)!!
         val disrupted = LineStatus("example", 6, "Severe Delays")

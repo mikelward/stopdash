@@ -475,6 +475,9 @@ data class PersistedDeparture(
     // TfL's id for the train making the departure, so one restored can still be followed. Defaulted
     // blank (no train) for an older snapshot.
     val vehicleId: String = "",
+    // What a National Rail board says it runs by, so a restored train's stop list still tells its
+    // way. Defaulted blank for an older snapshot.
+    val via: String = "",
 )
 
 @Serializable
@@ -576,6 +579,7 @@ private fun Departure.toPersisted(): PersistedDeparture =
         branch = branch,
         destinationId = destinationId,
         vehicleId = vehicleId,
+        via = via,
     )
 
 internal fun PersistedDeparture.toDomain(): Departure =
@@ -592,4 +596,5 @@ internal fun PersistedDeparture.toDomain(): Departure =
         branch = normalizeBranch(branch),
         destinationId = destinationId,
         vehicleId = vehicleId,
+        via = via,
     )

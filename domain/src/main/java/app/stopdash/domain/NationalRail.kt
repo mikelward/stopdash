@@ -370,3 +370,34 @@ fun railLineId(operator: String, operatorCode: String? = null): String =
 
 /** What a line-id slug leaves out ([railLineId]): compiled once, as it's asked per departure. */
 private val NOT_SLUG = Regex("[^a-z0-9]+")
+
+/**
+ * What a National Rail board's "via" text names ([Departure.via]), cleaned as a destination is
+ * ([cleanStopName]): "via Wimbledon" gives "Wimbledon". Kept whole, as a station's own name can hold
+ * an "&" or "and" (Elephant & Castle); [viaSpans] reads it as more than one. Blank for no text.
+ */
+fun railVia(text: String?): String {
+    val names = text?.trim()?.replace(LEADING_VIA, "")?.trim().orEmpty()
+    return if (names.isEmpty()) "" else cleanStopName(names)
+}
+
+/**
+ * The runs of words [via] ([railVia]) may name a station by: between its "&"s and "and"s it has
+ * parts, and `spans[i][k]` is parts i through i + k as written, joins included. So "Elephant &
+ * Castle and Denmark Hill" has `spans[0]` = "Elephant", "Elephant & Castle", "Elephant & Castle
+ * and Denmark Hill". A route's stops say how the parts group into stations, if any way does
+ * ([RouteStops.candidatePaths]); a station's own "&" (Elephant & Castle) stays in one span. Empty for
+ * a blank via.
+ */
+fun viaSpans(via: String): List<List<String>> {
+    if (via.isBlank()) return emptyList()
+    val separators = VIA_SEPARATOR.findAll(via).toList()
+    // Where each part starts and ends, so a span keeps the joins between its parts as written.
+    val starts = listOf(0) + separators.map { it.range.last + 1 }
+    val ends = separators.map { it.range.first } + via.length
+    if (starts.indices.any { via.substring(starts[it], ends[it]).isBlank() }) return listOf(listOf(via.trim()))
+    return starts.indices.map { i -> (i until starts.size).map { j -> via.substring(starts[i], ends[j]).trim() } }
+}
+
+private val LEADING_VIA = Regex("^via\\s+", RegexOption.IGNORE_CASE)
+private val VIA_SEPARATOR = Regex("\\s*&\\s*|\\s+and\\s+", RegexOption.IGNORE_CASE)
