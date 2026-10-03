@@ -574,6 +574,8 @@
     <string name="farther_retry">Tap to retry</string>
     <!-- A collapsed card whose stop has nothing running and a notice saying it is closed. -->
     <string name="farther_closed">Closed</string>
+    <!-- A value on screen that was worked out again and came in too late to swap in unasked: tap to show it. -->
+    <string name="computed_tap_to_see">Tap to see</string>
 
     <!-- Bug report (SPEC Privacy). Overflow item, then the consent screen that spells out what
          leaves the device before anything is shared. The copy is deliberately plain that it
