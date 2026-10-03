@@ -601,12 +601,22 @@
     <!-- TODO: translate -->
     <string name="on_the_way_plan_again" tools:ignore="MissingTranslation">Plan again from %1$s</string>
     <string name="on_the_way_done">Done</string>
-    <string name="on_the_way_next">Next</string>
-    <!-- A trip's time left and when it gets there, on its screen: %1$d is minutes, %2$s a clock time.
+    <!-- The whole trip on its screen's card: %1$s the clock time it gets there, %2$d the minutes left.
          "About" (~): TfL's prediction where the rider gets off, with only walks after. -->
-    <string name="on_the_way_eta">%1$d min left · ~%2$s</string>
-    <!-- The same, estimated from the Planner's times for what's still ahead. -->
-    <string name="on_the_way_eta_estimated">%1$d min left · est. %2$s</string>
+    <!-- TODO: translate -->
+    <string name="on_the_way_trip_eta" tools:ignore="MissingTranslation">~%1$s · %2$d min</string>
+    <!-- As on_the_way_trip_eta, partly estimated from the plan. -->
+    <!-- TODO: translate -->
+    <string name="on_the_way_trip_eta_estimated" tools:ignore="MissingTranslation">est. %1$s · %2$d min</string>
+    <!-- The step at hand on the card: %1$s the clock time it's done at, %2$d the minutes until then. -->
+    <!-- TODO: translate -->
+    <string name="on_the_way_step_time" tools:ignore="MissingTranslation">%1$s · %2$d min</string>
+    <!-- As on_the_way_step_time on a ride, with %3$d the stops left to where the rider gets off. -->
+    <!-- TODO: translate -->
+    <plurals name="on_the_way_step_time_stops" tools:ignore="MissingTranslation">
+        <item quantity="one">%1$s · %2$d min · %3$d stop</item>
+        <item quantity="other">%1$s · %2$d min · %3$d stops</item>
+    </plurals>
     <!-- Moves the trip on to its next step, as if the rider had got there. -->
     <string name="on_the_way_go_next">Next</string>
     <!-- Moves the trip back to its previous step, to undo a Next tapped too soon. -->

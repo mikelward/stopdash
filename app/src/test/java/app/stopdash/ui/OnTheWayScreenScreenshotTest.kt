@@ -298,7 +298,8 @@ class OnTheWayScreenScreenshotTest {
     fun on_the_way_waiting_for_the_train() {
         show(trip, TripProgress.Waiting(mildmay, at(4)))
         composeRule.onNodeWithText("Board Mildmay at Highbury & Islington").assertIsDisplayed()
-        composeRule.onNodeWithText("Due in 4 min").assertIsDisplayed()
+        // When it's due as a clock time, then how long (maintainer, 2026-10-03).
+        composeRule.onNodeWithText("08:06 · 4 min").assertIsDisplayed()
         // The walk between the rides is a walker in the pills' column, not the word "Walk".
         composeRule.onNodeWithContentDescription("Walk").assertIsDisplayed()
         composeRule.onNodeWithText("Walk").assertDoesNotExist()
@@ -326,7 +327,7 @@ class OnTheWayScreenScreenshotTest {
         val due = at(4).plusSeconds(30)
         val train = Departure("mildmay", "Mildmay", "outbound", "Stratford", null, due, "overground")
         show(trip, TripProgress.Waiting(mildmay, due), nextTrains = NextTrains(mildmay, listOf(train), readyAt = now))
-        composeRule.onNodeWithText("Due in 4 min").assertIsDisplayed()
+        composeRule.onNodeWithText("08:06 · 4 min").assertIsDisplayed()
         composeRule.onNodeWithText("4 min").assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithText("Due in 5 min").fetchSemanticsNodes().isEmpty())
     }
@@ -341,10 +342,11 @@ class OnTheWayScreenScreenshotTest {
         // The walk ends at 24: the 21-minute train leaves first, so it's grayed.
         show(walking, TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, trains, readyAt = at(24)))
         composeRule.onNodeWithText("21 · 24 min").assertIsDisplayed()
-        // Under the ride they board, not over the route: below its row, and below the walk's.
+        // Right under the card, over the route (maintainer, 2026-10-03): the board the rider is heading for.
         val board = composeRule.onNodeWithTag("onTheWayTrains").getUnclippedBoundsInRoot()
+        val card = composeRule.onNodeWithTag("onTheWayNext").getUnclippedBoundsInRoot()
         val ride = composeRule.onNodeWithText("Stratford → Canary Wharf").getUnclippedBoundsInRoot()
-        assertTrue(board.top >= ride.bottom)
+        assertTrue(board.top >= card.bottom && board.bottom <= ride.top)
         // Nothing to open from here: no row takes a tap or announces one.
         assertTrue(composeRule.onAllNodes(hasClickAction() and hasAnyDescendant(hasText("Stanmore"))).fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithText("Wembley Park").assertIsDisplayed()
@@ -465,7 +467,7 @@ class OnTheWayScreenScreenshotTest {
         show(trip.copy(boarded = true, onBoardSeen = true), TripProgress.Riding(mildmay, "Hackney Central", 4, at(16), getOffSoon = false))
         onCard("Ride to Stratford").assertIsDisplayed()
         // The time left on the ride, as its stop is predicted (maintainer, 2026-09-29).
-        composeRule.onNodeWithText("4 stops (~16 min) · next Hackney Central").assertIsDisplayed()
+        composeRule.onNodeWithText("08:18 · 16 min · 4 stops").assertIsDisplayed()
         captureSnapshot("on-the-way-riding.png")
     }
 
@@ -489,11 +491,28 @@ class OnTheWayScreenScreenshotTest {
     @Test
     fun on_the_way_get_off_soon() {
         show(trip.copy(boarded = true, onBoardSeen = true), TripProgress.Riding(mildmay, "Stratford", 1, at(1), getOffSoon = true))
-        // The card says the moment; the step's own row still names the ride (maintainer, 2026-10-01).
+        // The card says the moment; the ride's own row still names the ride (maintainer, 2026-10-01).
         onCard("Get off at Stratford").assertIsDisplayed()
-        composeRule.onNodeWithText("Ride to Stratford").assertIsDisplayed()
-        composeRule.onNodeWithText("Next stop (~1 min)").assertIsDisplayed()
+        composeRule.onNodeWithText("Highbury & Islington → Stratford").assertIsDisplayed()
+        composeRule.onNodeWithText("08:03 · 1 min · 1 stop").assertIsDisplayed()
         captureSnapshot("on-the-way-get-off.png")
+    }
+
+    @Test
+    fun get_off_soon_says_its_time_seen_on_board_or_not() {
+        // Underground, the rider may never be seen on board: told to get off, the time still shows.
+        show(trip.copy(boarded = true), TripProgress.Riding(mildmay, "Stratford", 1, at(1), getOffSoon = true, seen = false))
+        onCard("Get off at Stratford").assertIsDisplayed()
+        composeRule.onNodeWithText("08:03 · 1 min · 1 stop").assertIsDisplayed()
+    }
+
+    @Test
+    fun a_step_time_gone_by_isnt_shown() {
+        // The walk's end has passed before the next update: its own words, not "08:00 · 0 min".
+        show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(-2)))
+        assertTrue(composeRule.onAllNodesWithText("08:00 · 0 min").fetchSemanticsNodes().isEmpty())
+        assertEquals(null, stepTime(TripProgress.Walking(walk, at(-2)), current = true, now))
+        assertEquals(at(3), stepTime(TripProgress.Walking(walk, at(3)), current = true, now))
     }
 
     @Test
@@ -501,7 +520,7 @@ class OnTheWayScreenScreenshotTest {
         // A change between two rides with no walk of its own, as the route shows it: "N min to change".
         show(trip.copy(legIndex = 2, vehicleId = ""), TripProgress.Changing(jubilee, at(3)))
         composeRule.onNodeWithText("Change to Jubilee at Stratford").assertIsDisplayed()
-        composeRule.onNodeWithText("3 min to change").assertIsDisplayed()
+        composeRule.onNodeWithText("08:05 · 3 min").assertIsDisplayed()
     }
 
     @Test
@@ -541,8 +560,8 @@ class OnTheWayScreenScreenshotTest {
         composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoNext")).performClick()
         // Back from the walk is getting off the ride before it: a ride is two steps (maintainer, 2026-09-29).
         composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoBack")).performClick()
+        // A ride is one row (maintainer, 2026-10-03): tapping it goes to boarding it.
         composeRule.onNodeWithText("Stratford → Canary Wharf").performClick()
-        composeRule.onNodeWithText("Ride to Canary Wharf").performClick()
         composeRule.onNodeWithText("Highbury & Islington → Stratford").performClick()
         // The step they're at already: nothing to move to.
         composeRule.onNodeWithText("Stratford → Stratford").performClick()
@@ -551,7 +570,6 @@ class OnTheWayScreenScreenshotTest {
                 walking to OnTheWay.Step(2),
                 walking to OnTheWay.Step(0, onBoard = true),
                 walking to OnTheWay.Step(2),
-                walking to OnTheWay.Step(2, onBoard = true),
                 walking to OnTheWay.Step(0),
             ),
             went,
@@ -586,9 +604,8 @@ class OnTheWayScreenScreenshotTest {
         composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoNext")).performClick()
         composeRule.onNode(androidx.compose.ui.test.hasTestTag("onTheWayGoBack")).performClick()
         // Nor is a step's row a way back (Codex, PR #384).
-        composeRule.onNodeWithText("Ride to Canary Wharf").performClick()
         composeRule.onNodeWithText("Stratford → Canary Wharf").performClick()
-        assertTrue(composeRule.onAllNodes(hasClickAction() and androidx.compose.ui.test.hasText("Ride to Canary Wharf")).fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodes(hasClickAction() and androidx.compose.ui.test.hasText("Stratford → Canary Wharf")).fetchSemanticsNodes().isEmpty())
         assertEquals(emptyList<Pair<OnTheWay.Step, OnTheWay.Step>>(), went)
         composeRule.onNodeWithText("End trip").assertIsEnabled()
     }
@@ -671,13 +688,15 @@ class OnTheWayScreenScreenshotTest {
     @Test
     fun the_trip_says_its_time_left_and_when_it_gets_there() {
         val resources = composeRule.activity.resources
-        assertEquals("14 min left · est. 08:16", etaText(resources, OnTheWay.Eta(at(14), live = false), now))
-        assertEquals("14 min left · ~08:16", etaText(resources, OnTheWay.Eta(at(14), live = true), now))
+        assertEquals("est. 08:16 · 14 min", etaText(resources, OnTheWay.Eta(at(14), live = false), now))
+        assertEquals("~08:16 · 14 min", etaText(resources, OnTheWay.Eta(at(14), live = true), now))
         // On the last ride, TfL's time where they get off; not from an answer too old to stand behind.
         val last = trip.copy(legIndex = 2, boarded = true, onBoardSeen = true)
         val riding = TripProgress.Riding(jubilee, "Canning Town", 2, at(31), getOffSoon = false)
         show(last, riding)
-        composeRule.onNodeWithTag("onTheWayEta").assertTextEquals("31 min left · ~08:33")
+        // On the card, under where the trip goes, over the step at hand (maintainer, 2026-10-03).
+        onCard("To Canary Wharf").assertIsDisplayed()
+        composeRule.onNodeWithTag("onTheWayEta").assertTextEquals("~08:33 · 31 min")
     }
 
     @Test

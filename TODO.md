@@ -1157,6 +1157,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
               screen shows the live departures that matter where the rider is now: the boarding
               stop's while walking to it or waiting, the change stop's while changing, from the
               leg's own stop and source (as in the route-view item above).
+        - [ ] **Consider F3 for the trip card's ride line** (maintainer, 2026-10-03): the card shipped F2,
+              "08:18 · 16 min · 4 stops" (dropping the next stop's name). F3 keeps both pairs matched as
+              "08:18 · 16 min" and adds a quieter third line, "4 stops · next Tottenham Court Road", in a
+              slightly larger font than the mock's. Try it on a device against F2.
         - [ ] **A train through the change, on the way** (maintainer, 2026-09-28): the trip list
               now offers a train that runs through a change as its own route, and drops a route
               whose change buys nothing. A trip already on the way keeps its planned change: when a
