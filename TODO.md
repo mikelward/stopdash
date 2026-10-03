@@ -789,6 +789,15 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         2026-10-03: "you keep putting more work there"). With it, key the near-me list's
         `remember`s on the snapshot's identity rather than its collections, which Compose compares
         by value (Codex, #505).
+  - [ ] **Work a trip card's times out off the main thread**: `TripScreen`'s `cardTimes` runs in a
+        `remember` in composition and reaches `RouteStops.ahead` per live train (via `legTrains` →
+        `leavesAlongLeg`), a path scan that grows with the line's routes, more so with a National
+        Rail train's via to match (Codex, #515). Precompute it with the trip state, on the worker.
+  - [ ] **Group a route page's rail countdowns by the path their via resolves to**, not the via's
+        text (`routeDepartures`/`routeUntimed`): two trains running one path under different via
+        wording ("Horsham", "Horsham & Arundel") now split, the page showing only the followed one's.
+        Darwin's via table keys its text by station and destination, so this should be rare; it errs
+        to fewer countdowns, never a wrong one (Codex, #515).
   - [ ] **The same marks off the phone's list**: the widget and the watch show no dash for a
         line with nothing coming today, so they're unchanged; revisit if either ever shows one.
   - [x] **A good-service line with no live times gets a "?" row** (maintainer, 2026-10-03: a
