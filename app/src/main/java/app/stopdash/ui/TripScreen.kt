@@ -127,6 +127,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.withContext
 
 /**
  * The live trains [leg] can use (SPEC *Trips with a change*): its line's upcoming trains at its
@@ -2287,20 +2288,20 @@ internal fun legStops(planned: TripLeg, fetched: LineSequence): RouteStopsUi {
 }
 
 /**
- * [leg]'s stops ([legStops]) from the line's route in [LocalRouteStops]: the held copy at once, else
- * loading it off the render path; a failed load says why and loads again on [retry], as a row's stop
+ * [leg]'s stops ([legStops]) from the line's route in [LocalRouteStops], loaded and matched off the
+ * main thread ([LocalWorker]); a failed load says why and loads again on [retry], as a row's stop
  * list does ([rememberRouteStops]).
  */
 @Composable
 internal fun rememberLegRouteStops(leg: TripLeg, retry: Int): RouteStopsUi {
     val repository = LocalRouteStops.current ?: return RouteStopsUi.Hidden
-    return key(repository, leg) {
-        val initial = remember { repository.cached(leg.lineId, "")?.let { legStops(leg, it) } ?: RouteStopsUi.Loading }
-        val state by produceState(initial, retry) {
+    val worker = LocalWorker.current
+    return key(repository, leg, worker) {
+        val state by produceState<RouteStopsUi>(RouteStopsUi.Loading, retry) {
             if (value !is RouteStopsUi.Loading && value !is RouteStopsUi.Failed) return@produceState
             value = RouteStopsUi.Loading
             value = try {
-                legStops(leg, repository.load(leg.lineId, ""))
+                withContext(worker) { legStops(leg, repository.load(leg.lineId, "")) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TflException.NotFound) {
@@ -2312,10 +2313,13 @@ internal fun rememberLegRouteStops(leg: TripLeg, retry: Int): RouteStopsUi {
             }
         }
         // Logged once per opened leg, off composition, as a followed train's page logs it.
-        LaunchedEffect(state) {
-            (state as? RouteStopsUi.Unavailable)?.let { repository.reportUnresolved(leg.lineId, leg.fromId, it.reason) }
+        // Keyed by, and reading, this composition's value: the delegate read when the effect runs
+        // could already be the next state, which then logs twice.
+        val shown = state
+        LaunchedEffect(shown) {
+            (shown as? RouteStopsUi.Unavailable)?.let { repository.reportUnresolved(leg.lineId, leg.fromId, it.reason) }
         }
-        state
+        shown
     }
 }
 

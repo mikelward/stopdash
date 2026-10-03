@@ -24,10 +24,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -37,6 +40,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -52,7 +56,24 @@ import app.stopdash.domain.RouteStops
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.StepFreeLevel
 import app.stopdash.domain.TflException
+import app.stopdash.domain.Workers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+
+/**
+ * Where a page works out what it shows from data it holds (a train's stops, an alert's marks): off
+ * the main thread (AGENTS.md *Main thread: read and dispatch only*). A screenshot test provides the
+ * main one, so the result is in its first settled frame rather than racing it.
+ */
+internal val LocalWorker = staticCompositionLocalOf<CoroutineDispatcher> { Workers.compute }
+
+/**
+ * How long "Loading" waits before it shows, so a stop list worked out in a few frames appears
+ * without a flash of "Loading" first. Its line is held meanwhile, so nothing moves when it shows.
+ */
+internal const val LOADING_NOTE_DELAY_MILLIS = 150L
 
 /**
  * The route stop lists, provided once at the composition root ([app.stopdash.MainActivity]).
@@ -87,14 +108,15 @@ sealed interface RouteStopsUi {
 
 /**
  * The stop list for the [next] departure on [row] (see [followedDeparture]): from the boarding stop
- * through that train's destination. Rendered at once from the in-memory cache when this line was
- * already fetched this process, else [RouteStopsUi.Loading] while it fetches off the render path
- * (SPEC D8, route detail). [retry] bumps to refetch after a failure.
+ * through that train's destination. [RouteStopsUi.Loading] while it loads and matches, both off the
+ * main thread ([LocalWorker]): matching a train to its line's routes walks every route, which on a
+ * National Rail line froze the page (SPEC D8, route detail). [retry] bumps to refetch after a failure.
  */
 @Composable
 internal fun rememberRouteStops(row: DepartureRow, next: Departure?, retry: Int): RouteStopsUi {
     val repository = LocalRouteStops.current
     if (repository == null || next == null || row.lineId.isBlank()) return RouteStopsUi.Hidden
+    val worker = LocalWorker.current
     val destination = next.destination
     // The mode from any departure when TfL left it off the soonest one, so a bus blind that names no
     // stop still gets the bus rule (and a stop list to star from).
@@ -114,14 +136,13 @@ internal fun rememberRouteStops(row: DepartureRow, next: Departure?, retry: Int)
     }
     // Keyed by the followed train (and the mode, which changes the matching rule), so a change of
     // soonest train (a refresh, or one departing) discards the old state outright: the first frame
-    // for the new train is its cached list or Loading, never the previous train's stops.
-    return key(repository, row.lineId, row.direction, row.stopId, destination, next.branch, next.platform, next.direction, next.destinationId, bus) {
-        val initial = remember { repository.cached(row.lineId, row.direction)?.let(::resolve) ?: RouteStopsUi.Loading }
-        val state by produceState(initial, retry) {
+    // for the new train is Loading, never the previous train's stops.
+    return key(repository, row.lineId, row.direction, row.stopId, destination, next.branch, next.platform, next.direction, next.destinationId, bus, worker) {
+        val state by produceState<RouteStopsUi>(RouteStopsUi.Loading, retry) {
             if (value !is RouteStopsUi.Loading && value !is RouteStopsUi.Failed) return@produceState
             value = RouteStopsUi.Loading
             value = try {
-                resolve(repository.load(row.lineId, row.direction))
+                withContext(worker) { resolve(repository.load(row.lineId, row.direction)) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TflException.NotFound) {
@@ -135,10 +156,13 @@ internal fun rememberRouteStops(row: DepartureRow, next: Departure?, retry: Int)
             }
         }
         // Logged once per followed train, off composition: the page itself only says "unavailable".
-        LaunchedEffect(state) {
-            (state as? RouteStopsUi.Unavailable)?.let { repository.reportUnresolved(row.lineId, row.stopId, it.reason) }
+        // Keyed by, and reading, this composition's value: the delegate read when the effect runs
+        // could already be the next state, which then logs twice.
+        val shown = state
+        LaunchedEffect(shown) {
+            (shown as? RouteStopsUi.Unavailable)?.let { repository.reportUnresolved(row.lineId, row.stopId, it.reason) }
         }
-        state
+        shown
     }
 }
 
@@ -146,22 +170,22 @@ internal fun rememberRouteStops(row: DepartureRow, next: Departure?, retry: Int)
  * Every station on [lineId] in both directions, in route order, for a page with no stop list of its
  * own (a status row: no train to follow). Used only to name the stations a line's alert mentions
  * beside its chip (SPEC *Disruptions*), so it is empty until loaded, when not [wanted], and on a
- * failure: a missing name costs nothing the alert's own prose doesn't already say. Rendered from
- * the in-memory cache when this line was already fetched, else loaded off the render path.
+ * failure: a missing name costs nothing the alert's own prose doesn't already say. Loaded and
+ * listed off the main thread ([LocalWorker]).
  */
 @Composable
 internal fun rememberLineStops(lineId: String, wanted: Boolean): List<RouteStop> {
     val repository = LocalRouteStops.current
     if (repository == null || !wanted || lineId.isBlank()) return emptyList()
+    val worker = LocalWorker.current
     fun stopsOf(sequence: LineSequence): List<RouteStop> =
         sequence.routes.flatMap { it.stopIds }.distinct()
             .map { id -> RouteStop(id, sequence.stopNames[id].orEmpty()) }
-    return key(repository, lineId) {
-        val initial = remember { repository.cached(lineId, "")?.let(::stopsOf) }
-        val state by produceState(initial, lineId) {
+    return key(repository, lineId, worker) {
+        val state by produceState<List<RouteStop>?>(null, lineId) {
             if (value != null) return@produceState
             value = try {
-                stopsOf(repository.load(lineId, ""))
+                withContext(worker) { stopsOf(repository.load(lineId, "")) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TflException) {
@@ -235,12 +259,22 @@ internal fun RouteStopsSection(
                 )
             }
         } else if (note != null) {
+            // "Loading" holds its line unseen briefly, so a list in within it never flashes it.
+            var noteShown by remember(state is RouteStopsUi.Loading) { mutableStateOf(state !is RouteStopsUi.Loading) }
+            if (!noteShown) {
+                LaunchedEffect(Unit) {
+                    delay(LOADING_NOTE_DELAY_MILLIS)
+                    noteShown = true
+                }
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = note,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f, fill = false),
+                    // Unseen and unread: TalkBack doesn't announce a note no one can see yet.
+                    modifier = Modifier.weight(1f, fill = false).alpha(if (noteShown) 1f else 0f)
+                        .then(if (noteShown) Modifier else Modifier.clearAndSetSemantics {}),
                 )
                 if (state is RouteStopsUi.Failed) {
                     TextButton(onClick = onRetry) { Text(stringResource(R.string.route_stops_retry)) }

@@ -106,7 +106,7 @@ class RouteSequenceThameslinkTest {
         val source = object : RouteSequenceSource {
             override suspend fun routeSequence(lineId: String, direction: String) = fetched
         }
-        val repository = RouteStopsRepository(source, io = StandardTestDispatcher(testScheduler), stations = { index })
+        val repository = RouteStopsRepository(source, io = StandardTestDispatcher(testScheduler), compute = StandardTestDispatcher(testScheduler), stations = { index })
         // Nothing to hand out before the index is read, so a first frame never resolves without it.
         assertNull(repository.cached("thameslink", "inbound"))
         val loaded = repository.load("thameslink", "inbound")
@@ -119,7 +119,7 @@ class RouteSequenceThameslinkTest {
         val source = object : RouteSequenceSource {
             override suspend fun routeSequence(lineId: String, direction: String) = fetched
         }
-        val repository = RouteStopsRepository(source, io = StandardTestDispatcher(testScheduler), stations = { index })
+        val repository = RouteStopsRepository(source, io = StandardTestDispatcher(testScheduler), compute = StandardTestDispatcher(testScheduler), stations = { index })
         assertNull(repository.hubOf(ST_PANCRAS_DOMESTIC))
         repository.warm()
         assertEquals(HUB, repository.hubOf(ST_PANCRAS_DOMESTIC))
