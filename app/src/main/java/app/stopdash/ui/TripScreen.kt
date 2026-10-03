@@ -2,6 +2,7 @@ package app.stopdash.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
+import androidx.annotation.WorkerThread
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -47,7 +48,6 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -2271,8 +2271,10 @@ internal fun legRows(
 
 /**
  * A leg's stops on its line ([fetched]) for a page with no train to follow ([RouteStops.forLeg]),
- * from the pole its bus uses ([onPoles]) where the Planner named the other side of the road.
+ * from the pole its bus uses ([onPoles]) where the Planner named the other side of the road. Walks
+ * the line's routes, so it runs on a worker ([rememberLegRouteStops]).
  */
+@WorkerThread
 internal fun legStops(planned: TripLeg, fetched: LineSequence): RouteStopsUi {
     val leg = onPoles(planned, mapOf(planned.lineId to fetched))
     val sequence = fetched.callingAt(leg.fromId)
@@ -2287,36 +2289,36 @@ internal fun legStops(planned: TripLeg, fetched: LineSequence): RouteStopsUi {
 }
 
 /**
- * [leg]'s stops ([legStops]) from the line's route in [LocalRouteStops]: the held copy at once, else
- * loading it off the render path; a failed load says why and loads again on [retry], as a row's stop
- * list does ([rememberRouteStops]).
+ * [leg]'s stops ([legStops]) from the line's route in [LocalRouteStops], worked out off the main
+ * thread ([rememberComputed]): the leg's last answer in this process at first, else loading; a
+ * failed load says why and loads again on [retry], as a row's stop list does ([rememberRouteStops]).
  */
 @Composable
 internal fun rememberLegRouteStops(leg: TripLeg, retry: Int): RouteStopsUi {
     val repository = LocalRouteStops.current ?: return RouteStopsUi.Hidden
-    return key(repository, leg) {
-        val initial = remember { repository.cached(leg.lineId, "")?.let { legStops(leg, it) } ?: RouteStopsUi.Loading }
-        val state by produceState(initial, retry) {
-            if (value !is RouteStopsUi.Loading && value !is RouteStopsUi.Failed) return@produceState
-            value = RouteStopsUi.Loading
-            value = try {
-                legStops(leg, repository.load(leg.lineId, ""))
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: TflException.NotFound) {
-                // TfL has no route for this line: unavailable, with no retry that could never work.
-                RouteStopsUi.Unavailable(RouteStops.Resolution.UnknownLine)
-            } catch (e: TflException) {
-                // Already logged (sanitized) by the repository; surfaced here with its reason.
-                RouteStopsUi.Failed(errorKindOf(e))
-            }
+    val state = rememberComputed(
+        repository, leg, retry,
+        placeholder = RouteStopsUi.Loading,
+        memo = listOf("legStops", repository, leg),
+        memoIf = { it !is RouteStopsUi.Failed },
+    ) {
+        try {
+            legStops(leg, repository.load(leg.lineId, ""))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: TflException.NotFound) {
+            // TfL has no route for this line: unavailable, with no retry that could never work.
+            RouteStopsUi.Unavailable(RouteStops.Resolution.UnknownLine)
+        } catch (e: TflException) {
+            // Already logged (sanitized) by the repository; surfaced here with its reason.
+            RouteStopsUi.Failed(errorKindOf(e))
         }
-        // Logged once per opened leg, off composition, as a followed train's page logs it.
-        LaunchedEffect(state) {
-            (state as? RouteStopsUi.Unavailable)?.let { repository.reportUnresolved(leg.lineId, leg.fromId, it.reason) }
-        }
-        state
+    }.value
+    // Logged once per opened leg, off composition, as a followed train's page logs it.
+    LaunchedEffect(state) {
+        (state as? RouteStopsUi.Unavailable)?.let { repository.reportUnresolved(leg.lineId, leg.fromId, it.reason) }
     }
+    return state
 }
 
 /**

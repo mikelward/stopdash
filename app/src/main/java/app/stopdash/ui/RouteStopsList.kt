@@ -22,9 +22,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.produceState
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -87,90 +84,87 @@ sealed interface RouteStopsUi {
 
 /**
  * The stop list for the [next] departure on [row] (see [followedDeparture]): from the boarding stop
- * through that train's destination. Rendered at once from the in-memory cache when this line was
- * already fetched this process, else [RouteStopsUi.Loading] while it fetches off the render path
- * (SPEC D8, route detail). [retry] bumps to refetch after a failure.
+ * through that train's destination. Worked out off the main thread ([rememberComputed]): matching a
+ * train to its line's routes walks every route, which on a National Rail line froze the page. The
+ * first frame shows the list worked out when this train's page was last open, else
+ * [RouteStopsUi.Loading] while it loads and matches (SPEC D8, route detail). [retry] bumps to refetch
+ * after a failure.
  */
 @Composable
 internal fun rememberRouteStops(row: DepartureRow, next: Departure?, retry: Int): RouteStopsUi {
     val repository = LocalRouteStops.current
     if (repository == null || next == null || row.lineId.isBlank()) return RouteStopsUi.Hidden
     val destination = next.destination
-    // The mode from any departure when TfL left it off the soonest one, so a bus blind that names no
-    // stop still gets the bus rule (and a stop list to star from).
-    val mode = row.mode.ifBlank { row.upcoming.firstOrNull { it.mode.isNotBlank() }?.mode.orEmpty() }
-    val bus = mode.equals("bus", ignoreCase = true)
-    // A station whose departures TfL lists under an id its routes don't call at boards at its sibling.
-    fun resolve(fetched: LineSequence): RouteStopsUi {
-        val sequence = fetched.callingAt(row.stopId)
-        return when (val resolution = RouteStops.resolve(sequence, row.stopId, destination, next.branch, row.lineId, bus, RouteStops.boundOf(next.platform), next.direction, next.destinationId)) {
-            is RouteStops.Resolution.Found -> RouteStopsUi.Loaded(
-                resolution.stops,
-                resolution.stops.mapNotNull { stop -> sequence.stopPositions[stop.id]?.let { stop.id to it } }.toMap(),
-                sequence,
-            )
-            else -> RouteStopsUi.Unavailable(resolution)
-        }
-    }
+    // The row's mode is already any of its departures' where TfL left it off the soonest one (the row
+    // builder resolves it), so a bus blind that names no stop still gets the bus rule (and a stop
+    // list to star from).
+    val bus = row.mode.equals("bus", ignoreCase = true)
+    val branch = next.branch
+    val platform = next.platform
+    val direction = next.direction
+    val destinationId = next.destinationId
     // Keyed by the followed train (and the mode, which changes the matching rule), so a change of
-    // soonest train (a refresh, or one departing) discards the old state outright: the first frame
-    // for the new train is its cached list or Loading, never the previous train's stops.
-    return key(repository, row.lineId, row.direction, row.stopId, destination, next.branch, next.platform, next.direction, next.destinationId, bus) {
-        val initial = remember { repository.cached(row.lineId, row.direction)?.let(::resolve) ?: RouteStopsUi.Loading }
-        val state by produceState(initial, retry) {
-            if (value !is RouteStopsUi.Loading && value !is RouteStopsUi.Failed) return@produceState
-            value = RouteStopsUi.Loading
-            value = try {
-                resolve(repository.load(row.lineId, row.direction))
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: TflException.NotFound) {
-                // TfL has no route for this line: unavailable, with no retry that could never work.
-                RouteStopsUi.Unavailable(RouteStops.Resolution.UnknownLine)
-            } catch (e: TflException) {
-                // Already logged (sanitized) by the repository; surfaced here with its reason.
-                RouteStopsUi.Failed(
-                    errorKindOf(e),
+    // soonest train (a refresh, or one departing) puts the placeholder back at once: the first frame
+    // for the new train is its own list or Loading, never the previous train's stops (SPEC D4).
+    val keys = arrayOf<Any?>(repository, row.lineId, row.direction, row.stopId, destination, branch, platform, direction, destinationId, bus, retry)
+    val state = rememberComputed(
+        *keys,
+        placeholder = RouteStopsUi.Loading,
+        memo = listOf("routeStops", repository, row.lineId, row.direction, row.stopId, destination, branch, platform, direction, destinationId, bus),
+        memoIf = { it !is RouteStopsUi.Failed },
+    ) {
+        try {
+            // A station whose departures TfL lists under an id its routes don't call at boards at
+            // its sibling.
+            val sequence = repository.load(row.lineId, row.direction).callingAt(row.stopId)
+            when (val resolution = RouteStops.resolve(sequence, row.stopId, destination, branch, row.lineId, bus, RouteStops.boundOf(platform), direction, destinationId)) {
+                is RouteStops.Resolution.Found -> RouteStopsUi.Loaded(
+                    resolution.stops,
+                    resolution.stops.mapNotNull { stop -> sequence.stopPositions[stop.id]?.let { stop.id to it } }.toMap(),
+                    sequence,
                 )
+                else -> RouteStopsUi.Unavailable(resolution)
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: TflException.NotFound) {
+            // TfL has no route for this line: unavailable, with no retry that could never work.
+            RouteStopsUi.Unavailable(RouteStops.Resolution.UnknownLine)
+        } catch (e: TflException) {
+            // Already logged (sanitized) by the repository; surfaced here with its reason.
+            RouteStopsUi.Failed(errorKindOf(e))
         }
-        // Logged once per followed train, off composition: the page itself only says "unavailable".
-        LaunchedEffect(state) {
-            (state as? RouteStopsUi.Unavailable)?.let { repository.reportUnresolved(row.lineId, row.stopId, it.reason) }
-        }
-        state
+    }.value
+    // Logged once per followed train, off composition: the page itself only says "unavailable".
+    LaunchedEffect(state) {
+        (state as? RouteStopsUi.Unavailable)?.let { repository.reportUnresolved(row.lineId, row.stopId, it.reason) }
     }
+    return state
 }
 
 /**
  * Every station on [lineId] in both directions, in route order, for a page with no stop list of its
  * own (a status row: no train to follow). Used only to name the stations a line's alert mentions
  * beside its chip (SPEC *Disruptions*), so it is empty until loaded, when not [wanted], and on a
- * failure: a missing name costs nothing the alert's own prose doesn't already say. Rendered from
- * the in-memory cache when this line was already fetched, else loaded off the render path.
+ * failure: a missing name costs nothing the alert's own prose doesn't already say. Worked out off
+ * the main thread ([rememberComputed]), from the line's last answer in this process at first.
  */
 @Composable
 internal fun rememberLineStops(lineId: String, wanted: Boolean): List<RouteStop> {
     val repository = LocalRouteStops.current
     if (repository == null || !wanted || lineId.isBlank()) return emptyList()
-    fun stopsOf(sequence: LineSequence): List<RouteStop> =
-        sequence.routes.flatMap { it.stopIds }.distinct()
-            .map { id -> RouteStop(id, sequence.stopNames[id].orEmpty()) }
-    return key(repository, lineId) {
-        val initial = remember { repository.cached(lineId, "")?.let(::stopsOf) }
-        val state by produceState(initial, lineId) {
-            if (value != null) return@produceState
-            value = try {
-                stopsOf(repository.load(lineId, ""))
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: TflException) {
-                // Already logged (sanitized) by the repository; the page just names no stations.
-                emptyList()
-            }
+    return rememberComputed(repository, lineId, placeholder = emptyList(), memo = listOf("lineStops", repository, lineId)) {
+        try {
+            val sequence = repository.load(lineId, "")
+            sequence.routes.flatMap { it.stopIds }.distinct()
+                .map { id -> RouteStop(id, sequence.stopNames[id].orEmpty()) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: TflException) {
+            // Already logged (sanitized) by the repository; the page just names no stations.
+            emptyList()
         }
-        state.orEmpty()
-    }
+    }.value
 }
 
 /**
