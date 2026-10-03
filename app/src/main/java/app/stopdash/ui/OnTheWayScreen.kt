@@ -180,11 +180,15 @@ internal fun OnTheWayScreen(
             // stand behind ([current]): it waits, as the step's own times do.
             val eta = trip?.let { OnTheWay.eta(it, progress, now) }
             val stale = !current && fromTfl(progress)
-            // The card leads with the whole trip, then the step at hand (maintainer, 2026-10-03).
-            item(key = "next") { NextStep(destination, eta?.takeIf { !stale }, progress, now, current) }
-            // The next ride's trains right under what to do next (maintainer, 2026-10-03): the board
-            // the rider is heading for, before the route.
-            if (nextTrains != null && trip != null) item(key = "nextTrains") { NextTrainsSection(nextTrains, now) }
+            // The card leads with the whole trip, then the step at hand (maintainer, 2026-10-03). The next
+            // ride's trains sit right under it, the board the rider is heading for, before the route, and
+            // close enough to read as the card's own (4dp, as the board's rows; maintainer, 2026-10-03).
+            item(key = "next") {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    NextStep(destination, eta?.takeIf { !stale }, progress, now, current)
+                    if (nextTrains != null && trip != null) NextTrainsSection(nextTrains, now)
+                }
+            }
             if (trip != null) {
                 // Each thing known once, as the alert has it: two legs on one line read as one.
                 disruptions.distinctBy { DisruptionKey.of(it) }.forEach { signal ->
