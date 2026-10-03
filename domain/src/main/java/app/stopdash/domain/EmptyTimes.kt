@@ -2,6 +2,8 @@ package app.stopdash.domain
 
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalTime
+import java.time.ZoneId
 
 /**
  * What a line with no live times shows where its times would be (maintainer, 2026-10-03): a dash
@@ -101,7 +103,7 @@ object EmptyTimes {
         var again = false
         var unsettled = false
         for (key in keys) {
-            if (notRunning(key)) continue
+            if (notRunning(key) || resting(key, now)) continue
             when (val lookup = lookups[key]) {
                 null -> waiting = true
                 is Lookup.Failed -> if (fetching(key)) again = true else unsettled = true
@@ -118,6 +120,41 @@ object EmptyTimes {
             unsettled -> unsure
             else -> Mark.NONE
         }
+    }
+
+    /**
+     * Whether [key]'s line is a night bus (TfL's night-only routes are all "N" and a number, the
+     * 24-hour ones plain numbers) in the day, [DAY_START] to [DAY_END] London time: it runs from
+     * about 23:00 to 06:00, so nothing of it is due within [WINDOW], and its timetable needn't be
+     * fetched to say so. The day is drawn short of both ends, so a late first journey or an early
+     * last one never meets it.
+     */
+    fun resting(key: Key, now: Instant): Boolean {
+        if (!NIGHT_ROUTE.matches(key.lineId)) return false
+        val time = now.atZone(LONDON).toLocalTime()
+        return !time.isBefore(DAY_START) && time.isBefore(DAY_END)
+    }
+
+    /** When a night bus is taken as surely not running: see [resting]. */
+    val DAY_START: LocalTime = LocalTime.of(7, 0)
+    val DAY_END: LocalTime = LocalTime.of(22, 0)
+
+    private val NIGHT_ROUTE = Regex("n\\d+", RegexOption.IGNORE_CASE)
+    private val LONDON: ZoneId = ZoneId.of("Europe/London")
+
+    /**
+     * The board of a place card whose stops came back with nothing (SPEC *Farther stations*,
+     * *Freshness → Cold load*): each of [lines] at every stop of [stopLines] that serves it, or at
+     * every stop where none says it does. National Rail lines are left out: their board lists every
+     * train they run, so an empty one is an answer, as for a status row. With nothing left to look
+     * up, the card's dash stands, as it did before these marks.
+     */
+    fun placeBoard(stopLines: Map<String, Collection<String>>, lines: List<LineRef>): Board {
+        val keys = lines.filterNot { it.mode.equals(NATIONAL_RAIL_MODE, ignoreCase = true) }.flatMap { line ->
+            val serving = stopLines.filterValues { line.id in it }.keys.ifEmpty { stopLines.keys }
+            serving.map { Key(it, line.id) }
+        }
+        return if (keys.isEmpty()) Board(keys, notRunning = true) else Board(keys)
     }
 
     /**

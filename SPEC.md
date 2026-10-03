@@ -738,8 +738,12 @@ shown in place of live ones**, since it knows nothing of the disruption that emp
 day. While it is still being fetched, or a failed one is being asked for again, the row shows a small **spinner** (heard as "Loading times"),
 not "?": a "?" during a page load read as an answer when it was only a wait (maintainer,
 2026-10-03). A timetable that failed, or can't say, is "?" — StopDash can't be sure. A place card whose
-stops came back with nothing (*Freshness → Cold load*, *Farther stations*) still shows a dash for
-now; giving it the same marks is planned. On a bank holiday, and from Christmas Eve to 3 January, the timetable gives no answer ("?"):
+stops came back with nothing (*Freshness → Cold load*, *Farther stations*) gets the same marks, for
+the lines it shows at the stops that serve them (no National Rail line): a dash only when none of
+their timetables has a train due, "?" when one has or can't say, the spinner while they load. A
+**night bus** (TfL's night-only routes are "N" and a number) is sure not to run between 07:00 and
+22:00 London time, so it's a dash then with no timetable fetched; the hours are drawn inside its
+service, so a late first or early last journey never meets them. On a bank holiday, and from Christmas Eve to 3 January, the timetable gives no answer ("?"):
 TfL runs another day type's timetable on some ("Saturday (also Good Friday)"), and its weekday's
 could say "none" while trains run.
 

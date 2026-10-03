@@ -2,6 +2,7 @@ package app.stopdash.ui
 
 import app.stopdash.domain.LineRef
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -169,6 +170,45 @@ class PendingPlacesTest {
         // Recreated while still loading; it lands before the new list draws a frame.
         val restored = recreated(tracker)
         assertEquals(setOf(p.placeKey), restored.update(emptyList()).keys)
+    }
+
+    @Test
+    fun `a held card keeps its stops' lines for its marks, across stops landing and a recreated screen`() {
+        val a = StopRef("A", "Euston Square", listOf(circle), clusterId = "940GZZLUESQ")
+        val b = StopRef("B", "Euston Square", listOf(circle, metropolitan), clusterId = "940GZZLUESQ")
+        val tracker = PendingTracker()
+        tracker.update(pendingPlaces(listOf(a, b), emptySet(), emptyMap()))
+        // A comes back first; B's lines are still known once it lands too.
+        tracker.update(pendingPlaces(listOf(b), emptySet(), emptyMap()))
+        tracker.onScreen = setOf(pendingItemKey(pendingPlaces(listOf(b), emptySet(), emptyMap()).single()))
+        val held = tracker.update(emptyList()).values.single()
+        // Its board asks for each line only at the stops that serve it, after a recreated screen too.
+        val board = heldBoard(held)!!.recipe()
+        assertEquals(board, heldBoard(recreated(tracker).update(emptyList()).values.single())!!.recipe())
+        assertEquals(
+            setOf(
+                app.stopdash.domain.EmptyTimes.Key("A", "circle"),
+                app.stopdash.domain.EmptyTimes.Key("B", "circle"),
+                app.stopdash.domain.EmptyTimes.Key("B", "metropolitan"),
+            ),
+            board.keys.toSet(),
+        )
+    }
+
+    @Test
+    fun `a held card's board tag holds across frames and changes only when stops land`() {
+        val a = StopRef("A", "Euston Square", listOf(circle), clusterId = "940GZZLUESQ")
+        val b = StopRef("B", "Euston Square", listOf(circle, metropolitan), clusterId = "940GZZLUESQ")
+        val tracker = PendingTracker()
+        val first = tracker.widened(pendingPlaces(listOf(a), emptySet(), emptyMap()).single())
+        tracker.update(listOf(first))
+        val tag = heldBoard(first)!!.tag
+        // Re-measured and refiltered each frame: the same tag, so the card keeps its mark.
+        assertEquals(tag, heldBoard(remeasured(first, mapOf("A" to 120.0)))!!.tag)
+        assertEquals(tag, heldBoard(withoutHidden(first, setOf("bus"))!!)!!.tag)
+        // Another stop landing is a new board, with no mark yet.
+        val widened = tracker.widened(pendingPlaces(listOf(b), emptySet(), emptyMap()).single())
+        assertNotEquals(tag, heldBoard(widened)!!.tag)
     }
 
     private fun recreated(tracker: PendingTracker): PendingTracker {
