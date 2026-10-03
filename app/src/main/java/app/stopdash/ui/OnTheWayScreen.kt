@@ -48,7 +48,6 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
@@ -523,7 +522,15 @@ internal fun etaText(resources: Resources, eta: OnTheWay.Eta, now: Instant): Str
 @Composable
 private fun NextStep(destination: String?, eta: OnTheWay.Eta?, progress: TripProgress?, now: Instant, current: Boolean) {
     val (title, detail) = nextStepText(progress, now, current)
-    val stepAt = stepTime(progress, current, now)?.let { stepTimeText(it, now, (progress as? TripProgress.Riding)?.stopsLeft) } ?: detail
+    val at = stepTime(progress, current, now)
+    val stepAt = at?.let { stepTimeText(it, now) } ?: detail
+    // A timed ride's stops on a row of their own under its time, the minutes said once (maintainer, 2026-10-03).
+    val stops = if (at != null && progress is TripProgress.Riding) {
+        LocalConfiguration.current // Read again on a configuration change (locale, font scale).
+        rideStopsText(LocalContext.current.resources, progress, minutes = null)
+    } else {
+        ""
+    }
     Card(colors = nextStepColors(progress, current), modifier = Modifier.fillMaxWidth().testTag("onTheWayNext")) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (destination != null) {
@@ -533,6 +540,7 @@ private fun NextStep(destination: String?, eta: OnTheWay.Eta?, progress: TripPro
             }
             Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             if (stepAt.isNotEmpty()) Text(stepAt, style = MaterialTheme.typography.bodyLarge)
+            if (stops.isNotEmpty()) Text(stops, style = MaterialTheme.typography.bodyLarge)
         }
     }
 }
@@ -554,18 +562,11 @@ internal fun stepTime(progress: TripProgress?, current: Boolean, now: Instant): 
 
 /**
  * When the step at hand is done, [at], as the trip's own time is said: the clock time, then the
- * minutes until it (counted as the boards count), then a ride's [stops] left (maintainer, 2026-10-03).
+ * minutes until it, counted as the boards count (maintainer, 2026-10-03).
  */
 @Composable
-private fun stepTimeText(at: Instant, now: Instant, stops: Int?): String {
-    val clock = CLOCK.format(at.atZone(LONDON))
-    val minutes = Countdown.minutes(at, now).toInt()
-    return if (stops != null && stops > 0) {
-        pluralStringResource(R.plurals.on_the_way_step_time_stops, stops, clock, minutes, stops)
-    } else {
-        stringResource(R.string.on_the_way_step_time, clock, minutes)
-    }
-}
+private fun stepTimeText(at: Instant, now: Instant): String =
+    stringResource(R.string.on_the_way_step_time, CLOCK.format(at.atZone(LONDON)), Countdown.minutes(at, now).toInt())
 
 /** The next step's card colors: "get off soon" stands out, the one step with a deadline a stop away. */
 @Composable
@@ -611,12 +612,7 @@ internal fun nextStepText(resources: Resources, progress: TripProgress?, now: In
         is TripProgress.Riding -> resources.getString(if (progress.getOffSoon) R.string.get_off_soon_title else R.string.on_the_way_ride_to, progress.leg.toName) to
             // The time left on the ride, where the stop is predicted (maintainer, 2026-09-29): counted as
             // the boards count, never estimated from the plan beyond TfL's predictions.
-            when (val left = progress.stopsLeft) {
-                null -> progress.nextStop?.let { resources.getString(R.string.on_the_way_next_is, it) } ?: ""
-                0, 1 -> progress.getOffAt?.let { resources.getString(R.string.on_the_way_next_stop_timed, Countdown.minutes(it, now).toInt()) }
-                    ?: resources.getString(R.string.on_the_way_next_stop)
-                else -> stopsText(resources, left, progress.nextStop, progress.getOffAt?.let { Countdown.minutes(it, now).toInt() })
-            }
+            rideStopsText(resources, progress, progress.getOffAt?.let { Countdown.minutes(it, now).toInt() })
         is TripProgress.Changing -> resources.getString(R.string.on_the_way_change, progress.leg.lineName, progress.leg.fromName) to
             resources.getString(R.string.on_the_way_change_time, minutesUntil(now, progress.until))
         is TripProgress.Walking -> resources.getString(R.string.on_the_way_walk, progress.leg.toName) to
@@ -761,6 +757,17 @@ internal fun minutesUntil(now: Instant, at: Instant): Int {
     val seconds = Duration.between(now, at).seconds.coerceAtLeast(0)
     return ((seconds + 59) / 60).toInt()
 }
+
+/**
+ * A ride's stops left and its next stop, with [minutes] to getting off where they're said here rather
+ * than on a time row of their own.
+ */
+internal fun rideStopsText(resources: Resources, progress: TripProgress.Riding, minutes: Int?): String =
+    when (val left = progress.stopsLeft) {
+        null -> progress.nextStop?.let { resources.getString(R.string.on_the_way_next_is, it) } ?: ""
+        0, 1 -> minutes?.let { resources.getString(R.string.on_the_way_next_stop_timed, it) } ?: resources.getString(R.string.on_the_way_next_stop)
+        else -> stopsText(resources, left, progress.nextStop, minutes)
+    }
 
 /**
  * [left] stops to where the rider gets off, [minutes] from it when its time is predicted, and the

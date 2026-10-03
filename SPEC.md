@@ -1670,8 +1670,8 @@ them there:
 - **The card at the top** leads with the whole trip, then the step at hand, as two matched pairs with
   no labels (maintainer, 2026-10-03): where the trip goes ("To Canary Wharf") over when it gets
   there and how long is left, then the step ("Walk to Stratford") over when it's done and how long,
-  said as the trip's own time is ("08:06 · 4 min"), with a ride's stops left after it ("08:18 · 16 min
-  · 4 stops"). Where the step's time isn't known or no longer stands, its own words stay ("Finding
+  said as the trip's own time is ("08:06 · 4 min"). A ride's stops left and its next stop take a row
+  of their own under its time ("08:18 · 16 min" over "4 stops · next Hackney Central"). Where the step's time isn't known or no longer stands, its own words stay ("Finding
   your train…", "Updating…").
   The app bar says StopDash: the card names the trip, so the bar needn't.
 - **Time left.** On the card, under where the trip goes, it says when it gets there and how long is

@@ -616,12 +616,6 @@
     <!-- The step at hand on the card: %1$s the clock time it's done at, %2$d the minutes until then. -->
     <!-- TODO: translate -->
     <string name="on_the_way_step_time" tools:ignore="MissingTranslation">%1$s · %2$d min</string>
-    <!-- As on_the_way_step_time on a ride, with %3$d the stops left to where the rider gets off. -->
-    <!-- TODO: translate -->
-    <plurals name="on_the_way_step_time_stops" tools:ignore="MissingTranslation">
-        <item quantity="one">%1$s · %2$d min · %3$d stop</item>
-        <item quantity="other">%1$s · %2$d min · %3$d stops</item>
-    </plurals>
     <!-- Moves the trip on to its next step, as if the rider had got there. -->
     <string name="on_the_way_go_next">Next</string>
     <!-- Moves the trip back to its previous step, to undo a Next tapped too soon. -->
