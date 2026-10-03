@@ -162,7 +162,7 @@ class MainScreenScreenshotTest {
                 dep("district", "District", "outbound", "Upminster", 40, "Eastbound - Platform 1"),
                 dep("district", "District", "outbound", "Upminster", 240, "Eastbound - Platform 1"),
                 dep("hammersmith-city", "Hammersmith & City", "outbound", "Barking", 430, "Eastbound - Platform 1"),
-                dep("hammersmith-city", "Hammersmith & City", "inbound", "Hammersmith", 150, "Westbound - Platform 2"),
+                dep("hammersmith-city", "Hammersmith & City", "inbound", "Hammersmith (H&C)", 150, "Westbound - Platform 2"),
                 // A branching direction: same line and platform, different destinations — the
                 // second train names its own destination rather than "Wimbledon".
                 dep("district", "District", "inbound", "Wimbledon", 180, "Westbound - Platform 2"),
@@ -769,11 +769,11 @@ class MainScreenScreenshotTest {
             // `inbound`, the others `outbound`) and a Westbound train can carry no direction at all —
             // the platform is what keeps their trains together, one header for all three.
             dep("circle", "Circle", "inbound", "Edgware Road", 300, "Eastbound - Platform 7"),
-            dep("circle", "Circle", "outbound", "Hammersmith", 390, "Westbound - Platform 8"),
+            dep("circle", "Circle", "outbound", "Hammersmith (H&C)", 390, "Westbound - Platform 8"),
             dep("metropolitan", "Metropolitan", "outbound", "Aldgate", 180, "Eastbound - Platform 7"),
             dep("metropolitan", "Metropolitan", "inbound", "Uxbridge", 270, "Westbound - Platform 8"),
             dep("hammersmith-city", "Hammersmith & City", "outbound", "Barking", 150, "Eastbound - Platform 7"),
-            dep("hammersmith-city", "Hammersmith & City", "", "Hammersmith", 420, "Westbound - Platform 8"),
+            dep("hammersmith-city", "Hammersmith & City", "", "Hammersmith (H&C)", 420, "Westbound - Platform 8"),
         ),
         fetchedAt = now.minusSeconds(60),
     )

@@ -141,7 +141,10 @@ private fun stripLeadingPlaceName(
     hubName: String,
     aliases: List<String>,
 ): String {
+    // Each also in its matching form: a notice may lead with "Hammersmith" where the stop is
+    // "Hammersmith (H&C)" ([matchStopName]).
     val names = (listOf(hubName, stopName) + aliases)
+        .flatMap { listOf(it, matchStopName(it)) }
         .map { it.trim() }
         .filter { it.isNotEmpty() }
         .distinct()

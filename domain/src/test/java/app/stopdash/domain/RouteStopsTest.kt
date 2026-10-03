@@ -8,6 +8,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -617,4 +618,29 @@ class RouteStopsTest {
         val stops = RouteStops.forLeg(line, leg) as RouteStops.Resolution.Found
         assertEquals(listOf("A", "B", "Z", "Y"), stops.stops.map { it.id })
     }
+
+    @Test
+    fun `a station's line qualifier keeps Hammersmith's two stations apart`() {
+        // Both are in one interchange; the District calls at the Dist&Picc station only.
+        val district = LineSequence(
+            routes = listOf(LineRoute("Ealing Broadway ↔ Upminster", listOf("A", "HSD", "B"))),
+            stopNames = mapOf(
+                "A" to "A", "B" to "B",
+                "HSD" to cleanStopName("Hammersmith (Dist&Picc Line) Underground Station"),
+                "HSC" to cleanStopName("Hammersmith (H&C Line) Underground Station"),
+                "HSX" to "Hammersmith",
+            ),
+            stopHubs = mapOf("HSD" to "HUBHMS", "HSC" to "HUBHMS", "HSX" to "HUBHMS"),
+        )
+        // The H&C station isn't taken for the District's own.
+        assertTrue(district.callingAt("HSC") === district)
+        // A stop under another id that leaves the qualifier off is.
+        assertEquals(listOf("A", "HSX", "B"), district.callingAt("HSX").routes.single().stopIds)
+        // Ending here, by name only: a qualifier on one side is a source that left it off; on both,
+        // it has to name the same line.
+        assertTrue(RouteStops.endsAt(district, "HSD", "Hammersmith", ""))
+        assertTrue(RouteStops.endsAt(district.copy(stopNames = district.stopNames + ("HSD" to "Hammersmith")), "HSD", "Hammersmith (Dist&Picc)", ""))
+        assertFalse(RouteStops.endsAt(district, "HSD", "Hammersmith (H&C Line) Underground Station", ""))
+    }
+
 }

@@ -52,6 +52,7 @@ object Terminating {
         drop(departures, nearer(stopId, places))
 
     // Names compare cleaned and case-folded, so TfL's "Walthamstow Central Underground Station" as
-    // a stop and "Walthamstow Central" as a destination are one place.
-    private fun nameKey(name: String): String = cleanStopName(name).lowercase()
+    // a stop and "Walthamstow Central" as a destination are one place — and without a line
+    // qualifier ([matchStopName]), so "Hammersmith (H&C Line)" and "Hammersmith" are too.
+    private fun nameKey(name: String): String = matchStopName(name).lowercase()
 }

@@ -591,9 +591,20 @@ trimmed** the way stop names are — TfL's "Brixton Underground Station" shows a
 (*Concise copy*); "Bus Station" and "Coach Station" go whole the same way ("Canada Water Bus
 Station" → "Canada Water", the bus pill saying it's a bus, maintainer 2026-09-27); the bare
 " Station" is dropped too, so a terminus like "Battersea Power
-Station" reads "Battersea Power". A trailing **line-name parenthetical** is dropped the same
-way — "Hammersmith (H&C Line)" shows as "Hammersmith", since the pill already names the line —
-while a *geographic* parenthetical with no line ("Stratford (London)") is kept. National Rail's
+Station" reads "Battersea Power". A trailing **line-name parenthetical** is kept but
+shortened to its lines — "Hammersmith (H&C Line)" shows as "Hammersmith (H&C)", "Edgware Road
+(Circle Line)" as "Edgware Road (Circle)" (maintainer, 2026-10-03). TfL adds that bracket only to
+tell apart two stations of one name a street apart, so it is shown wherever such a station is
+named — a headline, a card header, the route page, a trip's steps, the watch, a train's
+destination — and only the word "Line" goes. A *geographic* parenthetical with no line
+("Stratford (London)") is kept whole, as is TfL's own "Edgware Road (Bakerloo)". Since TfL names
+one station with the bracket in some sources and without it in others, everything that **pairs**
+names across sources — a terminating service, an alert's stops, a route's stops, a walk within
+one place, a search result folded into its neighbor — compares them without a line qualifier, so
+"Hammersmith (H&C)" still matches a plain "Hammersmith". A qualifier on both sides still has to
+name a line in common: "Hammersmith (H&C)" never pairs with "Hammersmith (Dist&Picc)", which is
+the other station (maintainer, 2026-10-03). A walk between those two still counts as within one
+place, a street apart. National Rail's
 board marks a station sharing its name with a tube station "(Rail Station Only)", and that goes
 too, as the station-type suffix it is — "Heathrow Terminal 5 (Rail Station Only)" shows as
 "Heathrow Terminal 5", the name TfL's route gives the stop, so the train can be followed on it. A short list of **hardcoded display renames** shortens a

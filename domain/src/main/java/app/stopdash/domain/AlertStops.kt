@@ -206,8 +206,8 @@ object AlertStops {
         return matches.isNotEmpty()
     }
 
-    // The name as listed and as a rider would write it (no "Underground Station", no line
-    // parenthetical), each folded the same way as the alert text. A bus stop is listed with its cross
+    // The name as listed and as a rider would write it (no "Underground Station", the line
+    // parenthetical shortened or gone: [cleanStopName], [matchStopName]), each folded the same way as the alert text. A bus stop is listed with its cross
     // street ("Camomile Street / Bishopsgate") where an alert names only the stop's own part, so the
     // part before the slash counts too — but not the part after, which names another road. A place
     // TfL qualifies in brackets ("Stratford (London)") is written without them in an alert, so the
@@ -216,7 +216,8 @@ object AlertStops {
     private fun names(name: String): Set<String> {
         val primary = name.substringBefore("/").trim()
         val unqualified = cleanStopName(primary).substringBefore(" (").trim()
-        return (setOf(name, cleanStopName(name), primary, cleanStopName(primary), unqualified) + signed(name))
+        val forms = setOf(name, cleanStopName(name), matchStopName(name), primary, cleanStopName(primary), matchStopName(primary), unqualified)
+        return (forms + signed(name))
             .map { normalize(it).replace("'", "") }.filterTo(LinkedHashSet()) { it.length >= MIN_NAME }
     }
 

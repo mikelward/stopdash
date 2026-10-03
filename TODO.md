@@ -532,13 +532,28 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         a merged direction row runs from exactly one ("Oxford Circus – Platform 3"). Still open: a
         direction split across platforms stays one row under the bare compass, where the app shows a
         card per platform; splitting it on the widget costs lines its budget may not have.
-  - [ ] **Qualify a place's name only where it isn't unique** (maintainer, 2026-10-03). Try naming
-        a stop and platform "Hammersmith (Dist&Picc) – Platform 1" when the clean name doesn't tell it
-        apart: several buildings share it (Hammersmith's H&C and District/Piccadilly stations), or the
-        same platform number is in more than one (both have a Platform 1). Use TfL's own name for the
-        qualifier, with no special cases (no stripping "Line" or other words): where it must be
-        shortened, truncate or elide each part evenly, which should land close to
-        "Hammersmith (Dist&Picc)". Everywhere else the clean name stays as it is.
+  - [x] **Tell same-named stations apart by their lines** (maintainer, 2026-10-03). Landed as
+        "keep TfL's line qualifier, shortened": "Hammersmith (H&C Line)" shows as "Hammersmith
+        (H&C)" everywhere a station is named, rather than qualifying a name only where it isn't
+        unique. The line qualifier also settles the platform-number overlap (both Hammersmiths have a
+        Platform 1), so there is no uniqueness check. Names pair across TfL's sources when only
+        one side carries the qualifier, and not when both do and they name different lines
+        (maintainer, 2026-10-03: "compatible qualifiers"). Where a plain-named station really is a
+        different one ("Paddington" beside "Paddington (H&C)"), a qualified name matches exactly
+        first, or (a train's own calls) not by a stop already on the ride's route.
+  - [ ] **Consider matching stations by id rather than name** (maintainer, 2026-10-03: "record
+        other options, especially this one"). The bundled station index gives each of Hammersmith's
+        two stations, and each Paddington, its own id, so wherever both sides carry an id (or one the
+        index can map a name to), comparing ids would remove the name ambiguity at its source rather
+        than ruling on brackets. Names stay the fallback where TfL's sources disagree on ids, which
+        is why the name rule exists. A bigger change than the qualifier PR (#499), so its own PR.
+        Alternatives considered for #499 and not taken: patch each site Codex flags (smallest diff,
+        but each fix was local and the next finding came from another site); or show the
+        qualifier and match exactly as before it (brackets ignored everywhere), leaving the
+        Paddington and Hammersmith mix-ups as they were. Known gap of the name rule: the
+        near-me terminating filter keys names without a qualifier (`Terminating.nameKey`, saved
+        with each stop), so it still can't tell the two Hammersmiths apart by name alone; TfL's
+        destination id decides first, so this only applies when TfL gives none.
   - [ ] **Revisit the header grain for a busy interchange** (maintainer, 2026-09-21). The rail
         platform split and the bus letter split (above) already break a hub into per-platform/per-pole
         blocks. Still open: whether a dense hub wants a *finer* grain still (per-line dividers within
