@@ -214,7 +214,7 @@ object AlertStops {
     // name before the bracket counts too. And a bus stop as its sign reads, the way an alert quotes
     // one ([signed]).
     private fun names(name: String): Set<String> {
-        val primary = name.substringBefore(" / ").trim()
+        val primary = name.substringBefore("/").trim()
         val unqualified = cleanStopName(primary).substringBefore(" (").trim()
         return (setOf(name, cleanStopName(name), primary, cleanStopName(primary), unqualified) + signed(name))
             .map { normalize(it).replace("'", "") }.filterTo(LinkedHashSet()) { it.length >= MIN_NAME }
@@ -225,7 +225,7 @@ object AlertStops {
     // has "'Bank Station/King William Street'" (maintainer, 2026-10-02). Each part with "Station" or
     // without, the slash spaced or not.
     private fun signed(name: String): List<String> {
-        val parts = name.split(" / ").map(String::trim)
+        val parts = name.split("/").map(String::trim)
         if (parts.size != 2 || parts.any(String::isEmpty)) return emptyList()
         val (own, cross) = parts.map { listOf(it, "$it Station") }
         return own.flatMap { a -> cross.flatMap { b -> listOf("$a/$b", "$a / $b") } }
@@ -237,7 +237,7 @@ object AlertStops {
     // letter after it, which says it is a stop and not the road ([ref], [mentioned]).
     private fun crossNames(name: String): Set<String> {
         val primaries = names(name)
-        return name.split(" / ").drop(1)
+        return name.split("/").drop(1)
             .flatMap { listOf(it.trim(), cleanStopName(it.trim()).substringBefore(" (").trim()) }
             .map { normalize(it).replace("'", "") }
             .filterTo(LinkedHashSet()) { it.length >= MIN_NAME && it !in primaries }

@@ -85,19 +85,18 @@ internal fun ShortenedText(forms: List<String>, style: TextStyle, modifier: Modi
 
 /**
  * [text]'s slash-separated places side by side, each eliding with its own "…" in an equal share of
- * the width, so "Shepherd's Bush Mkt / Wood Ln" reads "Shepherd's… / Wood Ln" rather than losing
+ * the width, so "Shepherd's Bush Mkt/Wood Ln" reads "Shepherd's…/Wood Ln" rather than losing
  * the second place; [full] is the screen-reader label.
  */
 @Composable
 private fun SplitName(text: String, full: String, style: TextStyle, color: Color) {
     val parts = text.split("/")
-    val separator = if (text.contains(" / ")) " / " else "/"
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = full },
     ) {
         parts.forEachIndexed { index, part ->
-            if (index > 0) Text(text = separator, style = style, color = color, maxLines = 1, softWrap = false)
+            if (index > 0) Text(text = "/", style = style, color = color, maxLines = 1, softWrap = false)
             Text(
                 text = part.trim(),
                 style = style,

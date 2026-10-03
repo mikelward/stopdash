@@ -28,7 +28,7 @@ class RouteSequenceBusTest {
     fun `a bus signed to a place runs from the boarding stop to its route's end`() {
         assertEquals(
             listOf(
-                "Victoria", "Warwick Way", "Belgrave Road", "St George's Square / Pimlico",
+                "Victoria", "Warwick Way", "Belgrave Road", "St George's Square/Pimlico",
                 "Pimlico Academy & Library", "Alderney Street", "Winchester Street",
                 "Westmoreland Terrace", "Grosvenor Road",
             ),

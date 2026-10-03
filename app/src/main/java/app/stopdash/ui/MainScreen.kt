@@ -4266,7 +4266,7 @@ internal fun RouteDetailScreen(
         val alert = Triple(alertText, statusText, hasStatus)
         if (value.first != alert) value = alert to AlertMarks.NONE
         value = alert to AlertMarks.of(alertText, statusText, hasStatus, trainStops, lineStops, wholeRoute, shortName = { stop ->
-            stop.name.substringBefore(" / ").trim().ifBlank { stop.name.ifBlank { stop.id } }
+            stop.name.substringBefore("/").trim().ifBlank { stop.name.ifBlank { stop.id } }
         }, worker = alertWorker)
     }
     val alertMarks = readAlert.second
