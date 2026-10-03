@@ -31,8 +31,8 @@ exercises the whole spine the widget later renders from.
       The UI derives state in `rememberComputed` (or a presenter whose work runs on
       `Workers.compute`); a domain function it calls becomes `suspend` (hop first) or is marked
       `@MainSafe` once checked to be constant work. In order:
-  - [ ] MainScreen's journey cards, keyed on the 10 s tick (each journey's trains resolved
-        against whole routes).
+  - [x] MainScreen's journey cards, keyed on the 10 s tick (each journey's trains resolved
+        against whole routes), and what the screen and widget read off them (`journeyCardsOf`).
   - [ ] Alerts placed behind a stop (`withAlertsBehind`, `AlertsBehind.placement`) in
         MainScreen's loaded, nearby and platform rows.
   - [ ] MainScreen's journey preparation (`sequencesFor`, segments, origins, siblings) and the

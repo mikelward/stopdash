@@ -708,7 +708,11 @@ class RouteStopsRepository(
      * [reportUnresolved] does for a followed train: those screens show only "Some routes couldn't be
      * checked", so this is what says which line, at which stop, and why (SPEC principle 2).
      */
-    fun reportMisses(misses: Collection<RouteMiss>) {
+    suspend fun reportMisses(misses: Collection<RouteMiss>): Unit = withContext(compute) { reportMissesNow(misses) }
+
+    /** [reportMisses] on the caller's thread, for a caller already off the main one. */
+    @WorkerThread
+    fun reportMissesNow(misses: Collection<RouteMiss>) {
         misses.forEach { reportUnresolved(it.lineId, it.stopId, it.reason) }
     }
 
