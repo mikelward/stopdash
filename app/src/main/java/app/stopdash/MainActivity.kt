@@ -200,6 +200,7 @@ import app.stopdash.ui.widgetNearbySet
 import app.stopdash.ui.OnTheWayActions
 import app.stopdash.ui.OnTheWayBannerState
 import app.stopdash.ui.OnTheWayScreen
+import app.stopdash.ui.ListWork
 import app.stopdash.ui.PendingTracker
 import app.stopdash.ui.ProvideDistanceSystem
 import app.stopdash.ui.ProvideEmptyTimes
@@ -794,6 +795,9 @@ class MainActivity : ComponentActivity() {
                 val departuresTracker = rememberPendingTracker(
                     (nearby as? NearbyStopsViewModel.State.Ready)?.clusterSetKey,
                 )
+                // The list's rows as last worked out off the main thread, held here too so a return
+                // from an overlay draws them at once; following the same set.
+                val departuresWork = remember((nearby as? NearbyStopsViewModel.State.Ready)?.clusterSetKey) { ListWork() }
                 val bugReportConsent: BugReportConsentViewModel = viewModel()
                 val requestBugReport = {
                     if (skipBugReportConsent) shareBugReport(bugReportRequestFor(nearby))
@@ -1386,6 +1390,7 @@ class MainActivity : ComponentActivity() {
                                         listState = departuresListState,
                                         farReveal = farReveal,
                                         pendingTracker = departuresTracker,
+                                        listWork = departuresWork,
                                         watchInstall = watchInstallCard,
                                     )
                                 }
@@ -1719,6 +1724,8 @@ class MainActivity : ComponentActivity() {
         // The held loading cards, hoisted with [listState] for the same reason; null keeps them in
         // the screen.
         pendingTracker: PendingTracker? = null,
+        // The list's worked-out rows, hoisted with [pendingTracker]; null keeps them in the screen.
+        listWork: ListWork? = null,
         // The crosshairs, where it doesn't re-locate here: a From… station page's return to near me.
         onLocate: (() -> Unit)? = null,
         // A searched station's page (From…) is this same list around the station: its own retained
@@ -1956,6 +1963,7 @@ class MainActivity : ComponentActivity() {
             // departures-only refresh is caught by a unit test.
             val shownFarReveal = farReveal ?: rememberFarReveal(stopsKey)
             val shownTracker = pendingTracker ?: rememberSaveable(stopsKey, saver = PendingTracker.Saver) { PendingTracker() }
+            val shownWork = listWork ?: remember(stopsKey) { ListWork() }
             // Each shown journey's fetched stops, as the screen last reported them; read by a relocate.
             val journeyStopIds = remember { mutableStateOf(emptyMap<String, Set<String>>()) }
             val openJourneyKey = remember { mutableStateOf<String?>(null) }
@@ -2077,6 +2085,7 @@ class MainActivity : ComponentActivity() {
                 MainScreen(
                     listState = listState,
                     pendingTracker = shownTracker,
+                    listWork = shownWork,
                     state = shownState,
                     now = tickingNow(),
                     // Re-locates then re-fetches (see onRelocate above) — the same action a return

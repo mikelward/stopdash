@@ -99,6 +99,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -261,6 +262,9 @@ fun MainScreen(
     // The list's held cards, kept above the list so they outlive a full-screen page over it (a
     // route's detail) and a rotation; the near-me list hoists it above the app's overlays too.
     pendingTracker: PendingTracker = rememberSaveable(listKey, saver = PendingTracker.Saver) { PendingTracker() },
+    // The list's rows as last worked out off the main thread ([ListWork]), kept above the list as
+    // [pendingTracker] is, so a return to it draws them at once. It follows [listKey] too.
+    listWork: ListWork = remember(listKey) { ListWork() },
     onToggleJourney: ((StarredJourney) -> Unit)? = null,
     // Dismisses the route page's tip on starring a journey; null (dismissed, or not read yet) hides it.
     onDismissJourneyTip: (() -> Unit)? = null,
@@ -467,9 +471,14 @@ fun MainScreen(
         }
     }
     // Each bus journey's area poles, by journey key: absent while loading, null when it failed.
-    val journeyPoles: Map<String, List<StopLocation>?> = journeyAreas.mapNotNull { (key, areaId) ->
-        if (areaId in loadedPoles) key to loadedPoles[areaId] else null
-    }.toMap()
+    // One map until a lookup comes in, so the work keyed on it isn't done again each recomposition.
+    val journeyPoles: Map<String, List<StopLocation>?> by remember(journeyAreas) {
+        derivedStateOf {
+            journeyAreas.mapNotNull { (key, areaId) ->
+                if (areaId in loadedPoles) key to loadedPoles[areaId] else null
+            }.toMap()
+        }
+    }
     // The stop each journey is fetched from: its resolved origin, or, before its route is in, a
     // station's own id (the same both ways) — a bus waits, since its way-back pole isn't known yet.
     val journeyOrigins = remember(cardJourneys, journeySegments, starSequences, journeyPoles) {
@@ -540,25 +549,33 @@ fun MainScreen(
     LaunchedEffect(routeStopsRepository, journeyLineIds, journeyRouteRetry, routeRecheck) {
         loadSequences(routeStopsRepository ?: return@LaunchedEffect, journeyLineIds)
     }
-    val journeySequences = sequencesFor(journeyLineIds)
+    // One map until a route comes in, as for the alerts' routes below.
+    val journeySequences by remember(journeyLineIds, routeStopsRepository) { derivedStateOf { sequencesFor(journeyLineIds) } }
     // The routes of the shown stops' bus lines whose alert may lie wholly behind a stop, so a
     // diversion a bus from there never reaches doesn't flag it ([DepartureRows.withAlertsBehind]):
     // one request per such line a day, the route page's own. Until one is in, or where it failed, the
     // alert stays on, as it was.
     // Read again each London day, as planned work whose day has come counts ([LineStatus.asOf]).
     val alertDay = now.atZone(AlertStart.ZONE).toLocalDate()
-    val alertLineIds = remember(loaded?.stops, loaded?.lineStatuses, alertDay, dismissed) {
+    // Worked out off the main thread; the last lines stand in meanwhile, so their routes don't drop
+    // and come back.
+    val alertLineIds = rememberWorked(
+        listWork.alertLines,
+        Inputs(loaded?.stops, loaded?.lineStatuses, alertDay, dismissed),
+        keep = { _, _ -> true },
+    ) {
         loaded?.let { DepartureRows.linesWithAlertsToPlace(it.stops, it.lineStatuses, now, dismissed) }.orEmpty()
-    }
+    }.orEmpty()
     LaunchedEffect(routeStopsRepository, alertLineIds, routeRecheck) {
         loadSequences(routeStopsRepository ?: return@LaunchedEffect, alertLineIds)
     }
-    val alertSequences = sequencesFor(alertLineIds)
+    // One map until a route comes in, so the work keyed on it isn't done again each recomposition.
+    val alertSequences by remember(alertLineIds, routeStopsRepository) { derivedStateOf { sequencesFor(alertLineIds) } }
     // The verdicts those routes give, kept for the widget and the watch, which have no routes to reach
     // them (SPEC *Disruptions*). Keyed on the alerts and routes, not the clock: a verdict says where an
     // alert is, not when.
     val alertsBehind = LocalAlertsBehind.current
-    val alertVerdicts = remember(loaded?.stops, loaded?.lineStatuses, alertDay, alertSequences) {
+    val alertVerdicts = rememberWorked(listWork.alertVerdicts, Inputs(loaded?.stops, loaded?.lineStatuses, alertDay, alertSequences)) {
         // At every stop shown, placed or not: the store keeps verdicts at these alone.
         loaded?.let { ld -> AlertsBehind.placement(ld.stops, ld.lineStatuses, alertSequences, now) }
     }
@@ -597,22 +614,37 @@ fun MainScreen(
         }
     }
     LaunchedEffect(journeyStopIds, journeyViewKey) { reportJourneyStopIds(journeyStopIds, journeyViewKey) }
+    // The snapshot's rows ([listRowsOf]), built off the main thread from the snapshot as it stands,
+    // the list's last rows standing in meanwhile. Null only until a new list's first rows are in:
+    // the screen then shows a spinner rather than call the list empty. None are built before the first
+    // snapshot, so nothing from a cold load's wait stands in for its first rows (Codex, #524).
+    val listRows = rememberWorked(
+        listWork.rows,
+        ListInputs(
+            listKey,
+            // The snapshot itself too, so a change to its checks or loading stops alone (a canceled
+            // fetch keeps the same stops) is drawn at once (Codex, #524).
+            Inputs(loaded, now, stopDistanceMeters, dismissed, hiddenModes, alertSequences, journeyDestinationStops, journeyDestinationsUnknown),
+        ),
+        keep = ListInputs.sameList,
+    ) {
+        loaded?.let {
+            listRowsOf(it, now, stopDistanceMeters, dismissed, hiddenModes, alertSequences, journeyDestinationStops, journeyDestinationsUnknown)
+        }
+    }
+    val rowsPending = loaded != null && listRows == null
     // The journey cards: the trains or buses from each journey's origin that call at its far end, on
     // any line, the origin's closure notice if it has one, or why they can't be shown yet (SPEC
     // principle 1).
-    val journeyCards = remember(
-        loaded?.stops, loaded?.lineStatuses, loaded?.unavailableStopIds, now, cardJourneys, journeySegments,
-        journeySequences, dismissed, journeyAreas, journeyPoles, journeySiblings, journeyDestinationStops,
-        journeyDestinationIds, journeyDestinationsUnknown, alertSequences,
-    ) {
-        val ld = loaded
+    // Judged against the snapshot and time [rows] were built from ([ListRows.source]), with the list
+    // they're drawn beside, on the list's worker ([shownRowsOf]'s stage) (Codex, #524).
+    fun judgeCards(rows: ListRows): List<JourneyCard> {
+        val ld = rows.source
+        val judgedAt = rows.now
         // Dismissals apply here as on the list, so an alert dismissed anywhere is gone from the card,
-        // and an alert behind the origin flags it no more than the list.
-        val across = DepartureRows.withAlertsBehind(
-            DepartureRows.withoutDismissed(ld?.let { DepartureRows.across(it.stops, now, it.lineStatuses) }.orEmpty(), dismissed),
-            alertSequences,
-        )
-        cardJourneys.map { journey ->
+        // and an alert behind the origin flags it no more than the list ([ListRows.all]).
+        val across = rows.all
+        return cardJourneys.map { journey ->
             val segment = journeySegments[journey.key]
             val originId = segment?.originId ?: journey.from.stopId
             val origin = ld?.stops?.firstOrNull { it.stopId == originId }
@@ -666,7 +698,7 @@ fun MainScreen(
                     // well call at the far end. A line whose route is still loading says checking.
                     // The same holds for each neighboring pole.
                     val current = (listOf(origin) + siblingStops.filterNotNull()).all { stop ->
-                        stop.arrivalsFresh && !Staleness.isStale(stop.fetchedAt, now)
+                        stop.arrivalsFresh && !Staleness.isStale(stop.fetchedAt, judgedAt)
                     }
                     // A line still loading holds the whole card at "checking", so a first line's trains
                     // aren't shown as if they were all; one that couldn't be checked is said so beneath
@@ -707,28 +739,78 @@ fun MainScreen(
             // And the far end's (closed or moved), from its own check, for every stop the card's departures
             // reach there: a journey can't end as shown. One card per notice, however many poles carry it.
             val destinationIds = journeyDestinationIds[journey.key].orEmpty() + reached
-            val destinationClosures = DepartureRows.withoutDismissed(
-                DepartureRows.across(journeyDestinationStops.filter { it.stopId in destinationIds }, now),
-                dismissed,
-            ).filter { it.stopDisruption != null }.groupBy { it.stopDisruption }.values.toList()
+            val destinationClosures = rows.destinationClosures
+                .filter { it.stopId in destinationIds }.groupBy { it.stopDisruption }.values.toList()
             val closures = boardingStops.mapNotNull { id ->
                 across.firstOrNull { it.stopId == id && it.stopDisruption != null }?.let(::listOf)
             } + destinationClosures
             // A destination whose check failed with nothing known: the card says so, not "open".
-            val destinationUnchecked = destinationIds.any { it in journeyDestinationsUnknown }
+            // From the same check as the far end's closures ([ListRows.destinationsUnknown]) (Codex, #524).
+            val destinationUnchecked = destinationIds.any { it in rows.destinationsUnknown }
             JourneyCard(journey, state, closures, checked, boardingIds, destinationIds, destinationUnchecked, misses)
         }
     }
+    val nearbyOrdered = listRows?.nearby.orEmpty()
+    val nearbyMarked = listRows?.marked ?: noRows
+    // A line on good service whose times are missing shows as "?" where its timetable says a train
+    // is due, in the near-me list only (SPEC *Departures*); worked out off the main thread ([withQuietRows]).
+    // On the minute tick ([EmptyTimesState.now]), not the screen's own: a timetable's answer moves no
+    // faster, and a new input reruns the background work.
+    val quietTick = LocalEmptyTimes.current.now
+    // From the snapshot the rows were built from, so the "?" rows join the rows of their own snapshot
+    // (Codex, #524).
+    val quietFrom = listRows?.source
+    val quietInputs = remember(quietFrom, quietTick, stopDistanceMeters, hiddenModes, dismissed) {
+        val ld = quietFrom
+        // Not while nearby stops are still loading: one of them may have trains for a line that
+        // would otherwise read "?" at a stop already in.
+        if (ld == null || stopDistanceMeters.isEmpty() || ld.pendingStops.isNotEmpty()) null else QuietInputs(ld.stops, ld.lineStatuses, ld.determinedLineIds, quietTick, stopDistanceMeters, hiddenModes, dismissed, ld.stopsDisruptionUnknown)
+    }
+    val nearbyRows = withQuietRows(nearbyMarked, quietInputs)
+    // The journey cards ([judgeCards]), then the rows drawn and the dismissed closures that keep a
+    // heading ([shownRowsOf]), in one go off the main thread, so the cards and the list beside them
+    // are always from one snapshot (Codex, #524); null while the snapshot's rows are.
+    val shown = rememberWorked(
+        listWork.shown,
+        ListInputs(
+            listKey,
+            Inputs(
+                listRows, nearbyRows, starred, stopDistanceMeters, cardJourneys, journeySegments, journeySequences,
+                journeyAreas, journeyPoles, journeySiblings, journeyDestinationIds,
+            ),
+        ),
+        keep = ListInputs.sameList,
+    ) {
+        listRows?.let { from ->
+            val cards = judgeCards(from)
+            // What the journey cards above already show: a near-me row they cover in full isn't repeated.
+            val cardRows = cards.flatMap { (it.state as? JourneyCardState.Trains)?.shownRows.orEmpty() }
+            shownRowsOf(from, nearbyRows, cardRows, starred, stopDistanceMeters, cards, cardJourneys)
+        }
+    }?.takeIf { listRows != null }
+    val journeyCards = shown?.cards.orEmpty()
+    val journeyRowsShown = shown?.cardRows.orEmpty()
+    val rows = shown?.rows.orEmpty()
+    val dismissedClosures = shown?.dismissedClosures.orEmpty()
+    val listPending = rowsPending || loaded != null && shown == null
+    // What the screen draws against: the snapshot and time the drawn rows were built from, so rows
+    // held while new ones are built are never drawn against a newer clock (a train just gone would
+    // read "0 min") or a newer snapshot's checks or loading cards (Codex, #524).
+    val drawnFrom = shown?.from ?: listRows
+    val drawnLoaded = drawnFrom?.source ?: loaded
+    // The drawn rows' own shared notices (Codex, #524).
+    val sharedNotices = drawnFrom?.shared.orEmpty()
     // The cards say only "Some routes couldn't be checked"; the log says which trains and why, once
     // per distinct set (a refresh finding the same misses logs nothing new), off composition.
     val journeyMisses = remember(journeyCards) { journeyCards.flatMapTo(LinkedHashSet()) { it.misses } }
-    LaunchedEffect(routeStopsRepository, journeyMisses) { routeStopsRepository?.reportMisses(journeyMisses) }
+    LaunchedEffect(routeStopsRepository, journeyMisses) { if (shown != null) routeStopsRepository?.reportMisses(journeyMisses) }
     // The far ends to check for a closure.
     val journeyDestinations = remember(journeyCards) {
         journeyCards.flatMap { card -> card.destinationIds.map { id -> StopRef(id, card.journey.to.name) } }.distinctBy { it.id }
     }
     val reportJourneyDestinations by rememberUpdatedState(onJourneyDestinations)
-    LaunchedEffect(journeyDestinations) { reportJourneyDestinations(journeyDestinations) }
+    // Not while the cards are still being judged, which would read as no far ends to check.
+    LaunchedEffect(journeyDestinations, shown == null) { if (shown != null) reportJourneyDestinations(journeyDestinations) }
     // What each placed journey's card found for the widget (it can't load routes itself): the
     // origin's departures that call at the far end, by line, destination and branch, and — from a
     // complete check — every departure it judged. The ViewModel merges these into what it pins.
@@ -772,85 +854,19 @@ fun MainScreen(
         }
     }
     val reportWidgetJourneys by rememberUpdatedState(onWidgetJourneys)
-    LaunchedEffect(journeysKnown, journeyKeys, widgetJourneyChecks, journeyShownFrom, widgetJourneyBoarding) {
-        if (journeysKnown) reportWidgetJourneys(journeyKeys, widgetJourneyChecks, journeyShownFrom, widgetJourneyBoarding)
-    }
-    // What the journey cards above already show: a near-me row they cover in full isn't repeated.
-    val journeyRowsShown = remember(journeyCards) {
-        journeyCards.flatMap { (it.state as? JourneyCardState.Trains)?.shownRows.orEmpty() }
+    // Nor while the snapshot's rows are still being built: every card says "checking" then, which
+    // would unpin the widget's trains for a moment.
+    // Judged for the journeys as they stand: a flip's or reload's old cards aren't reported against the
+    // new direction (Codex, #524).
+    val cardsJudged = shown != null && shown.journeys === cardJourneys
+    LaunchedEffect(journeysKnown, cardsJudged, journeyKeys, widgetJourneyChecks, journeyShownFrom, widgetJourneyBoarding) {
+        if (journeysKnown && cardsJudged) reportWidgetJourneys(journeyKeys, widgetJourneyChecks, journeyShownFrom, widgetJourneyBoarding)
     }
     // Each place's modes, less those already hidden, for a header's "Hide ‹mode›" items.
     val placeModesShown = remember(loaded?.stops, hiddenModes) {
         placeModes(loaded?.stops.orEmpty()).mapValues { (_, modes) ->
             modes.filterNotTo(LinkedHashSet()) { HiddenModes.isHidden(it, hiddenModes) }
         }
-    }
-    val nearbyComputed = remember(loaded?.stops, loaded?.lineStatuses, now, stopDistanceMeters, dismissed, hiddenModes) {
-        val ld = loaded ?: return@remember emptyList<DepartureRow>() to emptySet<Pair<String, String>>()
-        // A near-me list shows its nearby stops only: a journey's farther origin, fetched for its
-        // card above, isn't one of them (SPEC *Journeys*).
-        val shownStops = if (stopDistanceMeters.isEmpty()) ld.stops else ld.stops.filter { it.stopId in stopDistanceMeters }
-        val across = HiddenModes.rows(DepartureRows.across(shownStops, now, ld.lineStatuses), hiddenModes)
-        // A "near me now" list (distances present) shows a line once, from its nearest stop, then
-        // orders closest-stop-first (soonest breaks a same-stop tie). A location-free list keeps
-        // across's soonest-first order (D1).
-        val ordered =
-            if (stopDistanceMeters.isEmpty()) {
-                // No line dedupe without distances (a station's page shows every stop), but a
-                // notice TfL reports against each member of a hub is still one card per place.
-                DepartureRows.stopStatusFolded(across)
-            } else {
-                val deduped = DepartureRows.nearbyDeduped(across, stopDistanceMeters, dismissed)
-                DepartureRows.byStopDistance(deduped, stopDistanceMeters)
-            }
-        // The notices TfL filed against more than one stop of a place, seen before the fold keeps one
-        // copy: such a notice is about the place, so it heads the place's own group, even when the
-        // copy kept is a lettered pole's (SPEC *Disruptions*).
-        val shared = across.filter { it.stopDisruption != null }
-            .groupBy { stopPlaceKey(it) to it.stopDisruption.orEmpty() }
-            .filterValues { rows -> rows.mapTo(HashSet()) { it.stopId }.size > 1 }
-            .keys
-        ordered to shared
-    }
-    val nearbyOrdered = nearbyComputed.first
-    val sharedNotices = nearbyComputed.second
-    // Hide the service alerts the user has dismissed (until their content changes), and unflag a bus
-    // alert wholly behind its stop.
-    val nearbyMarked = remember(nearbyOrdered, dismissed, alertSequences, now) {
-        RowsRevision(DepartureRows.withAlertsBehind(DepartureRows.withoutDismissed(nearbyOrdered, dismissed), alertSequences), now)
-    }
-    // A line on good service whose times are missing shows as "?" where its timetable says a train
-    // is due, in the near-me list only (SPEC *Departures*); worked out off the main thread ([withQuietRows]).
-    // On the minute tick ([EmptyTimesState.now]), not the screen's own: a timetable's answer moves no
-    // faster, and a new input reruns the background work.
-    val quietTick = LocalEmptyTimes.current.now
-    val quietInputs = remember(loaded?.stops, loaded?.lineStatuses, loaded?.determinedLineIds, loaded?.pendingStops, loaded?.stopsDisruptionUnknown, quietTick, stopDistanceMeters, hiddenModes, dismissed) {
-        val ld = loaded
-        // Not while nearby stops are still loading: one of them may have trains for a line that
-        // would otherwise read "?" at a stop already in.
-        if (ld == null || stopDistanceMeters.isEmpty() || ld.pendingStops.isNotEmpty()) null else QuietInputs(ld.stops, ld.lineStatuses, ld.determinedLineIds, quietTick, stopDistanceMeters, hiddenModes, dismissed, ld.stopsDisruptionUnknown)
-    }
-    val nearbyRows = withQuietRows(nearbyMarked, quietInputs)
-    // The near-me closures the user dismissed: a closed place with nothing else to show keeps its
-    // heading and "Closed" chip in place (SPEC *Disruptions*).
-    val dismissedClosures = remember(nearbyOrdered, nearbyRows, stopDistanceMeters) {
-        if (stopDistanceMeters.isEmpty()) {
-            emptyList()
-        } else {
-            val shown = nearbyRows.toHashSet()
-            nearbyOrdered.filter { it !in shown && it.stopDisruption?.let(ClosedNotice::saysClosed) == true }
-        }
-    }
-    // Without the rows a journey card above already shows in full, then with the user's starred
-    // services lifted to the top (SPEC D8). Warnings still lead on the location-free watched list; on
-    // the near-me list (distances present) an alert is not hoisted, so a nearer stop is never pushed
-    // below a farther one for carrying one.
-    val rows = remember(nearbyRows, journeyRowsShown, starred, stopDistanceMeters) {
-        DepartureRows.pinStarred(
-            DepartureRows.withoutShownAbove(nearbyRows, journeyRowsShown),
-            starred,
-            warningsLead = stopDistanceMeters.isEmpty(),
-        )
     }
     // The farther bus cards to show, decided against the routes the screen actually shows (SPEC
     // *Finding stops → Farther stations*): every row drawn, the list's, the journey cards' and an
@@ -860,7 +876,7 @@ fun MainScreen(
     // run is never offered again by another. A place by a station the screen shows claims its
     // routes first: one it draws rows for (the list's or a journey card's), or one still drawn as a
     // cold load's "Loading" card, so the cards don't reshuffle when its rows land (Codex).
-    val pendingStopIds = (state as? DeparturesUiState.Loaded)?.pendingStops.orEmpty().map { it.id }
+    val pendingStopIds = drawnLoaded?.pendingStops.orEmpty().map { it.id }
     val fartherShown = remember(farther, rows, journeyRowsShown, pendingStopIds) {
         val opened = farther.filter { it.load != null }.mapTo(HashSet()) { it.place.key }
         val shownBus = (rows + journeyRowsShown)
@@ -889,63 +905,38 @@ fun MainScreen(
     // was opened straight from the full list.
     var parentStationIds by rememberSaveable { mutableStateOf<String?>(null) }
     var parentStationTitle by rememberSaveable { mutableStateOf("") }
-    // Built from the platform's own stops WITHOUT the near-me fold: the fold keeps a line only at its
-    // nearest stop, which would drop services from a farther platform — the drill-down shows all of
-    // them. The stop ids alone aren't the platform: a station's platforms all come from one TfL stop,
-    // so the rows are regrouped and only the tapped group is kept, with any closure alert for its
-    // stops (Codex). It is matched on [StopGroup.splitKey] — the platform, pole letter, bearing or
-    // compass — not [StopGroup.key], whose place part switches to a per-stop key while the stop
-    // carries a line-status row (Codex). The saved stop ids already pin the place. Dismissals and
-    // stars still apply, as on the full list. The title is resolved from the matched group each time, since a letterless bus
-    // pole's qualifier (its shared terminus) can change with the departures (Codex).
-    val platformView = remember(loaded?.stops, loaded?.lineStatuses, now, platformStopIds, platformKey, platformIsStation, starred, dismissed, rows, hiddenModes, alertSequences) {
-        val ids = platformStopIds?.split(',')?.toSet() ?: return@remember null
-        val ld = loaded ?: return@remember emptyList<DepartureRow>() to null
-        // A station view saved its clusters, not stop ids, so each snapshot re-resolves its members —
-        // a pole or platform that joins or leaves the cluster on a refresh is followed (Codex).
-        val platformStops =
-            if (platformIsStation) ld.stops.filter { stationClusterOf(it.clusterId, it.stopId) in ids }
-            else ld.stops.filter { it.stopId in ids }
-        val stopRows = DepartureRows.pinStarred(
-            DepartureRows.withAlertsBehind(
-                DepartureRows.withoutDismissed(
-                    HiddenModes.rows(DepartureRows.across(platformStops, now, ld.lineStatuses), hiddenModes),
-                    dismissed,
-                ),
-                alertSequences,
-            ),
-            starred,
-        )
-        val groups = StopGrouping.groupByStop(stopRows)
-        // A header with no platform/pole to split on (a bare stop, or a directionless line-status
-        // group beside a station's platforms) opens the whole stop: matching only its blank split
-        // would show the warning without the stop's live departures (Codex).
-        val matched = if (platformKey.isEmpty()) groups else groups.filter { it.splitKey == platformKey }
-        // Plus the stops' directionless line-status rows ([StopGrouping.unplacedStatusRows]): which
-        // platform a suspended line would run from is unknown, so every platform view shows it.
-        val groupRows = (matched.flatMap { it.rows } + StopGrouping.unplacedStatusRows(groups)).toHashSet()
-        // A whole-station view, or a whole-stop view spanning several groups, is titled by the bare
-        // place, never by whichever platform happens to come first (Codex); a single group opened
-        // from its own header keeps its full header text.
-        val title = matched.firstOrNull()?.let { g ->
-            // A station view keeps the name that was tapped: the cluster's members can carry different
-            // cleaned names, and the first matched group depends on row order (Codex).
-            if (platformIsStation) platformTitle
-            else if (matched.size > 1) g.stopName
-            else groupHeaderTitle(g.stopName, g.qualifier)
+    // Its rows and title ([platformViewOf]), off the main thread; the same view's last rows stand in
+    // meanwhile. Null while closed, and while a view just opened has none worked out yet.
+    val platformView = rememberWorked(
+        listWork.platform,
+        PlatformInputs(
+            platformStopIds.orEmpty(), platformKey, platformIsStation,
+            Inputs(shown, platformTitle, starred, dismissed, hiddenModes, alertSequences),
+        ),
+        keep = PlatformInputs.sameView,
+    ) {
+        val ids = platformStopIds?.split(',')?.toSet()
+        // From the drawn list's own snapshot, time and rows (its closure cards), so the view never
+        // mixes two snapshots (Codex, #524). Nothing before the list's first rows: a view restored
+        // while loading waits for its rows rather than read as gone.
+        val drawn = shown
+        if (ids == null || drawn == null) {
+            null
+        } else {
+            platformViewOf(
+                drawn.from.source, drawn.from.now, ids, platformKey, platformIsStation, platformTitle, starred, dismissed,
+                drawn.rows, hiddenModes, alertSequences,
+            )
         }
-        // The place's closure cards are the full list's own — already folded and dismissal-filtered —
-        // so a card dismissed on either screen carries one identity and stays hidden on both (Codex).
-        val places = platformStops.mapTo(HashSet()) { stopPlaceKey(it) }
-        val closures = rows.filter { it.stopDisruption != null && stopPlaceKey(it) in places }
-        (closures + stopRows.filter { it.stopDisruption == null && it in groupRows }) to title
-    }
+    }?.takeIf { platformStopIds != null }
+    // A view opened over a loaded list whose rows aren't in yet: a spinner, not the full list.
+    val platformPending = platformStopIds != null && loaded != null && platformView == null
     // Close the view when the snapshot no longer holds the tapped group: its stops weren't fetched
     // (a near-me set re-resolved elsewhere), its last departure passed, or the feed dropped the
     // platform number it was keyed on. An empty page would assert "no departures" for a platform
     // that may still have trains (SPEC principle 1), so the full list shows instead — at once, not a
     // frame later — and the saved view is cleared.
-    val platformGone = loaded != null && platformView != null && platformView.second == null
+    val platformGone = loaded != null && platformView != null && platformView.title == null
     // Leave the current view one level: a platform opened from a station returns to that station;
     // anything else returns to the full list.
     fun closeView() {
@@ -964,9 +955,13 @@ fun MainScreen(
     // Keyed on the view too: when a refresh drops both a platform and its station, closing to the
     // station leaves platformGone true, and the effect must run again to close that as well.
     LaunchedEffect(platformGone, platformStopIds, platformIsStation) { if (platformGone) closeView() }
-    val platformRows = platformView?.first?.takeUnless { platformGone }
+    val platformRows = platformView?.rows?.takeUnless { platformGone } ?: emptyList<DepartureRow>().takeIf { platformPending }
     val shownRows = platformRows ?: rows
     BackHandler(enabled = platformRows != null) { closeView() }
+    val drawnNow = (if (platformRows != null) platformView?.now else drawnFrom?.now) ?: now
+    // A platform or station view's rows are built apart from the list's, maybe from another
+    // snapshot: the view is drawn against its own (Codex, #524).
+    val drawnState = (if (platformRows != null) platformView?.source else null) ?: drawnLoaded
     // A searched station's page closes back to the search; a drill-down inside it steps out first
     // (this one is off while a drill-down is open, so the handler above takes that back).
     BackHandler(enabled = stationTitle != null && platformRows == null, onBack = onCloseStation)
@@ -975,14 +970,17 @@ fun MainScreen(
     // resolves against the current cards each recomposition, so it follows a swap and its trains stay
     // live; once the saved journeys are known and it isn't among them (unstarred), the view closes.
     val journeyViewCard = journeyViewKey?.let { key -> journeyCards.firstOrNull { it.journey.key == key } }
-    LaunchedEffect(journeyViewKey, journeyViewCard == null, journeysLoading) {
-        if (journeyViewKey != null && journeyViewCard == null && !journeysLoading) journeyViewKey = null
+    // Only once the cards are judged for the journeys as they stand: held cards from before a reload
+    // of the saved journeys don't say it's gone.
+    val cardsCurrent = shown?.journeys === cardJourneys
+    LaunchedEffect(journeyViewKey, journeyViewCard == null, journeysLoading, cardsCurrent) {
+        if (journeyViewKey != null && journeyViewCard == null && !journeysLoading && cardsCurrent) journeyViewKey = null
     }
     // Open while its card is shown, and while the saved journeys' first read is pending (after a
     // rotation they re-read from disk): the view then holds a placeholder rather than flashing to the
     // list, and Back still leaves it (Codex). A read that failed isn't pending, so the view closes
     // rather than spin forever (Codex).
-    val journeyViewOpen = journeyViewKey != null && (journeyViewCard != null || journeysLoading)
+    val journeyViewOpen = journeyViewKey != null && (journeyViewCard != null || journeysLoading || !cardsCurrent)
     BackHandler(enabled = journeyViewOpen) { journeyViewKey = null }
     // A platform, station or journey view scrolls on its own, from the top when first opened. Each
     // open view keeps its own place — across a route page opened from it, a rotation, and a platform
@@ -1019,21 +1017,26 @@ fun MainScreen(
     }
     // And, last, among every loaded stop's rows: a page opened from a journey card stays open when
     // that journey is unstarred from the page itself, while its origin's departures are still loaded.
-    val loadedRows = remember(loaded?.stops, loaded?.lineStatuses, now, dismissed, alertSequences) {
-        val ld = loaded ?: return@remember emptyList()
-        DepartureRows.withAlertsBehind(DepartureRows.withoutDismissed(DepartureRows.across(ld.stops, now, ld.lineStatuses), dismissed), alertSequences)
+    val loadedRows = drawnFrom?.all.orEmpty()
+    // With the snapshot and time of the rows it came from, which the page is drawn against (Codex,
+    // #524): the drawn list's (or an open platform view's), or the journey cards' and loaded rows,
+    // which are the drawn list's too.
+    val detailHit = detailKey?.let { key ->
+        shownRows.firstOrNull { it.detailKey() == key }?.let { Triple(it, drawnState, drawnNow) }
+            ?: (journeyRows.firstOrNull { it.detailKey() == key }
+                ?: loadedRows.takeIf { platformRows == null }?.firstOrNull { it.detailKey() == key })
+                ?.let { Triple(it, drawnFrom?.source, drawnFrom?.now ?: now) }
     }
-    val detailRow = detailKey?.let { key ->
-        shownRows.firstOrNull { it.detailKey() == key }
-            ?: journeyRows.firstOrNull { it.detailKey() == key }
-            ?: loadedRows.takeIf { platformRows == null }?.firstOrNull { it.detailKey() == key }
-    }
+    val detailRow = detailHit?.first
     // When the open route's row leaves the list — its last departure passed on the 10s clock, or it
     // was pruned — clear the saved key so the vanished page stays closed rather than silently
     // reopening if a later refresh reproduced that same stop/line/direction identity (Codex). A live
     // refresh keeps the same identity, so this fires only on a genuine disappearance.
-    LaunchedEffect(detailKey, detailRow == null) {
-        if (detailKey != null && detailRow == null) detailKey = null
+    // Not while the rows are still being worked out (a return to the list, a rotation): the row isn't
+    // gone, just not in yet.
+    val rowsKnown = !listPending && !platformPending
+    LaunchedEffect(detailKey, detailRow == null, rowsKnown) {
+        if (detailKey != null && detailRow == null && rowsKnown) detailKey = null
     }
     // Surface a failed star write as a snackbar (SPEC principle 2: a tap that didn't take isn't
     // swallowed). Gated on the list being shown — the snackbar host lives in the departures Scaffold,
@@ -1077,7 +1080,9 @@ fun MainScreen(
     // A full-screen page (its own app bar) that REPLACES the departures Scaffold, so it covers the
     // top bar and reads as a real destination rather than an overlay — the home for the star and the
     // line's full disruption text, and where the maps/nav hand-off will land (`TODO.md`).
-    if (loaded != null && detailRow != null) {
+    val detailLoaded = detailHit?.second
+    val detailNow = detailHit?.third ?: now
+    if (detailLoaded != null && detailRow != null) {
         RouteDetailScreen(
             row = detailRow,
             isStarred = StarredRow.of(detailRow) in starred,
@@ -1088,12 +1093,12 @@ fun MainScreen(
             // leaves the row unchecked — clean only when TfL checked its line AND its stop's
             // disruption returned (SPEC principle 1).
             disruptionUnknown = detailRow.lineId.isBlank() ||
-                detailRow.lineId !in loaded.determinedLineIds ||
-                detailRow.stopId in loaded.stopsDisruptionUnknown,
+                detailRow.lineId !in detailLoaded.determinedLineIds ||
+                detailRow.stopId in detailLoaded.stopsDisruptionUnknown,
             // This row's own age (the same per-row rule the card uses to withhold countdowns): a
             // stale snapshot's disruption status isn't presented as current (SPEC D4).
-            stale = Staleness.isStale(detailRow.fetchedAt, now),
-            now = now,
+            stale = Staleness.isStale(detailRow.fetchedAt, detailNow),
+            now = detailNow,
             onToggleStar = { onToggleStar(detailRow) },
             onBack = { detailKey = null },
             focus = detailDestination?.let { RouteFocus(it, detailBranch) },
@@ -1126,7 +1131,7 @@ fun MainScreen(
                         // Elided from the start, so a narrow bar (it shares the row with the
                         // freshness stamp) keeps the platform — the part that tells platforms apart.
                         Text(
-                            withArrowIcons(platformView?.second ?: platformTitle),
+                            withArrowIcons(platformView?.title ?: platformTitle),
                             inlineContent = arrowInlineContent(LocalContentColor.current),
                             maxLines = 1,
                             softWrap = false,
@@ -1170,7 +1175,8 @@ fun MainScreen(
                     }
                 },
                 actions = {
-                    FreshnessStamp(state, now, onRefresh)
+                    // The drawn rows' own fetch, not a newer one they don't hold yet (Codex, #524).
+                    FreshnessStamp(drawnState ?: state, drawnNow, onRefresh)
                     // Crosshairs: "use my location" (SPEC *Finding stops*). Near me it re-locates, as
                     // pull-to-refresh does; on a From… station page it goes back to the near-me list.
                     IconButton(onClick = onLocate ?: onRefresh) {
@@ -1299,11 +1305,16 @@ fun MainScreen(
                 is DeparturesUiState.Loaded -> if (journeyViewOpen && journeyViewCard == null) {
                     // The saved journeys are still loading: a placeholder until the card is back.
                     Centered(content) { CircularProgressIndicator() }
+                } else if (platformPending || platformRows == null && journeyViewCard == null && listPending) {
+                    // The snapshot's rows are being worked out off the main thread, for a list or view
+                    // with none to stand in yet: a placeholder, never an empty list that reads as
+                    // "No departures" (SPEC principle 1).
+                    Centered(content) { CircularProgressIndicator() }
                 } else if (journeyViewCard != null) {
                     // A journey's own view: just its card, each group headed by where it boards, under
                     // Swap and Unstar. Rendered from the same snapshot as the list (SPEC D4).
                     LoadedContent(
-                        state, now, onPullRefresh ?: onRefresh, refreshing, content, rows = emptyList(),
+                        drawnLoaded ?: state, drawnNow, onPullRefresh ?: onRefresh, refreshing, content, rows = emptyList(),
                         listState = drillListState,
                         journeyCards = listOf(journeyViewCard),
                         journeyView = true,
@@ -1321,7 +1332,7 @@ fun MainScreen(
                     )
                 } else {
                     LoadedContent(
-                        state, now, onPullRefresh ?: onRefresh, refreshing, content, shownRows,
+                        drawnState ?: state, drawnNow, onPullRefresh ?: onRefresh, refreshing, content, shownRows,
                         listState = if (platformRows != null) drillListState else listState,
                         dismissedClosures = if (platformRows != null) emptyList() else dismissedClosures,
                         sharedNotices = sharedNotices,
@@ -1358,7 +1369,9 @@ fun MainScreen(
                         // Hiding a mode applies to the loading cards too, as to the loaded rows.
                         // Unfiltered: hiding a mode drops its loading cards from view, but they're still
                         // loading (see [DepartureList]'s held cards).
-                        pending = if (platformRows != null) emptyList() else state.pendingStops,
+                        // From the drawn snapshot, as the rows are: a stop that lands is pending no
+                        // more in the same frame its rows appear.
+                        pending = if (platformRows != null) emptyList() else (drawnLoaded ?: state).pendingStops,
                         holdLanded = platformRows == null,
                         pendingTracker = pendingTracker,
                         onOpenFarther = onOpenFarther,
@@ -1455,7 +1468,7 @@ fun MainScreen(
 
 
 /** A stop's station identity for the whole-station view: its StopArea cluster, else the stop alone. */
-private fun stationClusterOf(clusterId: String, stopId: String): String = clusterId.ifBlank { "\u0000$stopId" }
+internal fun stationClusterOf(clusterId: String, stopId: String): String = clusterId.ifBlank { "\u0000$stopId" }
 
 /** The app's mark at the start of the departures app bar, and the location gate's. */
 @Composable
