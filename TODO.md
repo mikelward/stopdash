@@ -786,12 +786,22 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         logic as a trip's future stops, a "?" after "min", likely in gray. Copy to agree first.
   - [ ] **Build the departure rows off the main thread**: `DepartureRows.across` runs in
         `MainScreen`'s composition, which grows with the stops and their predictions (maintainer,
-        2026-10-03: "you keep putting more work there").
+        2026-10-03: "you keep putting more work there"). With it, key the near-me list's
+        `remember`s on the snapshot's identity rather than its collections, which Compose compares
+        by value (Codex, #505).
   - [ ] **The same marks off the phone's list**: the widget and the watch show no dash for a
         line with nothing coming today, so they're unchanged; revisit if either ever shows one.
-  - [ ] **A good-service line with no live times gets no row** (only a disrupted one gets a
-        status row), so at a place with other lines it simply isn't listed. Consider a "?" row
-        where its timetable says it's due — a product call, since it adds rows to every night list.
+  - [x] **A good-service line with no live times gets a "?" row** (maintainer, 2026-10-03: a
+        line's whole feed went quiet on Good Service and its station showed nothing for it). In the
+        near-me list only, and only where its timetable has a train due, or, unable to say, for a
+        tube, Elizabeth line, Overground, DLR or tram line; never National Rail, so a hub's
+        intercity services add no rows.
+  - [ ] **The same "?" rows on a station's own page** (opened from its header): it still lists
+        only a quiet line's disruption, not its missing times.
+  - [ ] **A "Times unknown" note on a "?" line's page**: a "?" row opens nothing for now, since the
+        page has no times and no words yet for why (copy to agree with the maintainer first).
+        Until then a "?" row's planned work shows only as its calendar glyph: its full notice and
+        dismissal are on that page (Codex, #505).
 
 ## Phase 2 — Watched stops and settings
 

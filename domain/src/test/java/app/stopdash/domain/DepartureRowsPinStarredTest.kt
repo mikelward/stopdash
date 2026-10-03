@@ -135,4 +135,12 @@ class DepartureRowsPinStarredTest {
         val pinned = DepartureRows.pinStarred(rows, setOf(StarredRow.of(starredAlert)), warningsLead = false)
         assertEquals(listOf(starredAlert, unstarredTimed), pinned)
     }
+
+    @Test
+    fun `a quiet row isn't a warning, so it doesn't lead the starred band`() {
+        val quiet = statusRow("A", "victoria").copy(quiet = true)
+        val starredTimed = timed("B", "central", "e", 60)
+        val pinned = DepartureRows.pinStarred(listOf(quiet, starredTimed), setOf(StarredRow.of(starredTimed)))
+        assertEquals(listOf(starredTimed, quiet), pinned)
+    }
 }

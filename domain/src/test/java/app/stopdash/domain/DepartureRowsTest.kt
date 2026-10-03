@@ -2348,4 +2348,144 @@ class DepartureRowsTest {
         assertTrue(rows.getValue("piccadilly").notRunningHere)
     }
 
+
+    @Test
+    fun `a TfL line on good service with no times gets a quiet row when asked, last`() {
+        val victoria = departure("victoria", "Victoria", "outbound", "Brixton", 120)
+        val stop = StopArrivals(
+            "940GZZLUKSX",
+            "King's Cross St. Pancras",
+            departures = listOf(victoria),
+            fetchedAt = now,
+            lines = listOf(
+                LineRef("victoria", "Victoria", "tube"), // has times: no quiet row
+                LineRef("northern", "Northern", "tube"), // good service, no times: quiet
+                LineRef("circle", "Circle", "tube"), // suspended: its status row, not a quiet one
+                LineRef("great-example", "Great Example", "national-rail"), // its board is the answer
+            ),
+            railFeed = RailFeed.LIVE,
+        )
+        val statuses = mapOf("circle" to LineStatus("circle", 2, "Suspended"))
+
+        // Not asked (a glance surface): no quiet rows.
+        assertTrue(DepartureRows.across(listOf(stop), now, statuses).none { it.quiet })
+
+        val rows = DepartureRows.across(listOf(stop), now, statuses, quietRows = true)
+        assertEquals(listOf("circle", "victoria", "northern"), rows.map { it.lineId })
+        val quiet = rows.last()
+        assertTrue(quiet.quiet)
+        assertEquals(null, quiet.status)
+        assertEquals(STATUS_DIRECTION_KEY, quiet.directionKey)
+        assertTrue(quiet.upcoming.isEmpty())
+        assertEquals("tube", quiet.mode)
+        assertFalse(rows.first { it.lineId == "circle" }.quiet)
+    }
+
+    @Test
+    fun `a stale stop gets no quiet rows`() {
+        val stop = StopArrivals(
+            "940GZZLUKSX", "King's Cross St. Pancras", departures = emptyList(),
+            fetchedAt = now.minus(java.time.Duration.ofHours(1)),
+            lines = listOf(LineRef("northern", "Northern", "tube")),
+        )
+        assertTrue(DepartureRows.across(listOf(stop), now, quietRows = true).isEmpty())
+    }
+
+    @Test
+    fun `a stop with a notice in force gets no quiet candidate`() {
+        fun stop(notices: List<StopDisruption>) = StopArrivals(
+            "940GZZLUKSX", "King's Cross St. Pancras", departures = emptyList(), fetchedAt = now,
+            lines = listOf(LineRef("victoria", "Victoria", "tube")), disruptions = notices,
+        )
+        val distances = mapOf("940GZZLUKSX" to 100.0)
+        fun candidates(notices: List<StopDisruption>) =
+            DepartureRows.quietCandidates(listOf(stop(notices)), now, emptyMap(), setOf("victoria"), distances)
+        assertEquals(1, candidates(emptyList()).size)
+        // Closed: its notice says why there are no times.
+        assertTrue(candidates(listOf(StopDisruption("Station closed"))).isEmpty())
+        // A notice not yet in force leaves the gap unexplained: the candidate stays.
+        val later = StopDisruption("Station closed", validFrom = now.plusSeconds(3_600))
+        assertEquals(1, candidates(listOf(later)).size)
+        // Its notices couldn't be checked: it may be closed, so no candidate either.
+        assertTrue(
+            DepartureRows.quietCandidates(listOf(stop(emptyList())), now, emptyMap(), setOf("victoria"), distances, disruptionUnknown = setOf("940GZZLUKSX"))
+                .isEmpty(),
+        )
+    }
+
+    @Test
+    fun `a quiet candidate keeps planned work, less what the user dismissed`() {
+        val first = PlannedAlert("Part Closure", "No service on Saturday 3 October.", java.time.LocalDate.of(2026, 10, 3))
+        val second = PlannedAlert("Part Closure", "No service on Sunday 11 October.", java.time.LocalDate.of(2026, 10, 11))
+        val stop = StopArrivals(
+            "940GZZLUKSX", "King's Cross St. Pancras", departures = emptyList(), fetchedAt = now,
+            lines = listOf(LineRef("victoria", "Victoria", "tube")),
+        )
+        val statuses = mapOf("victoria" to LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(first, second)))
+        val distances = mapOf("940GZZLUKSX" to 100.0)
+        fun candidate(dismissed: Set<DismissedAlert>) =
+            DepartureRows.quietCandidates(listOf(stop), now, statuses, setOf("victoria"), distances, dismissed = dismissed).single()
+        assertEquals(listOf(first, second), candidate(emptySet()).plannedAlerts)
+        assertEquals(listOf(second), candidate(setOf(DismissedAlert.ofPlanned("victoria", first))).plannedAlerts)
+    }
+
+    @Test
+    fun `a near-me list's quiet candidates skip a line with trains elsewhere, and keep each stop's, nearest first`() {
+        fun stop(id: String, name: String, departures: List<Departure>) = StopArrivals(
+            id, name, departures = departures, fetchedAt = now,
+            lines = listOf(LineRef("northern", "Northern", "tube"), LineRef("victoria", "Victoria", "tube")),
+        )
+        val euston = stop("940GZZLUEUS", "Euston", listOf(departure("northern", "Northern", "outbound", "Morden", 120)))
+        val kingsCross = stop("940GZZLUKSX", "King's Cross St. Pancras", emptyList())
+        val distances = mapOf("940GZZLUKSX" to 100.0, "940GZZLUEUS" to 600.0)
+        val shown = DepartureRows.byStopDistance(DepartureRows.across(listOf(euston, kingsCross), now), distances)
+        val determined = setOf("northern", "victoria")
+        val candidates = DepartureRows.quietCandidates(listOf(euston, kingsCross), now, emptyMap(), determined, distances)
+        // The Northern has trains at Euston: no "?" for it. The Victoria has none anywhere: a
+        // candidate at each stop, nearest first, the shown one picked once their timetables answer.
+        assertEquals(
+            listOf("victoria" to "940GZZLUKSX", "victoria" to "940GZZLUEUS"),
+            candidates.map { it.lineId to it.stopId },
+        )
+        assertTrue(candidates.all { it.quiet })
+        // A hidden mode adds none.
+        assertTrue(DepartureRows.quietCandidates(listOf(euston, kingsCross), now, emptyMap(), determined, distances, setOf("tube")).isEmpty())
+        // A line whose status TfL hasn't answered for may be suspended: no "?" for it.
+        assertTrue(DepartureRows.quietCandidates(listOf(euston, kingsCross), now, emptyMap(), setOf("northern"), distances).isEmpty())
+        // Added, it sits with its stop, after that stop's other rows.
+        val merged = DepartureRows.withQuietRows(shown, candidates.take(1), distances)
+        assertEquals(shown.size + 1, merged.size)
+        assertEquals("940GZZLUKSX", merged.first().stopId)
+        assertTrue(merged.first().quiet)
+    }
+
+    @Test
+    fun `a quiet row keeps its line's planned work, and doesn't split its station's header`() {
+        val planned = PlannedAlert("Part Closure", "No service next Saturday.", java.time.LocalDate.of(2099, 1, 3))
+        val stop = StopArrivals(
+            "940GZZLUKSX", "King's Cross St. Pancras", departures = emptyList(), fetchedAt = now,
+            lines = listOf(LineRef("victoria", "Victoria", "tube")),
+        )
+        val statuses = mapOf("victoria" to LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service", planned = listOf(planned)))
+        val quiet = DepartureRows.across(listOf(stop), now, statuses, quietRows = true).single()
+        assertTrue(quiet.quiet)
+        assertEquals(listOf(planned), quiet.plannedAlerts)
+        // A "?" row warns of nothing, so its stop isn't carved out of its place as a warning's is.
+        assertTrue(StopGrouping.warnedStopsOf(listOf(quiet)).isEmpty())
+        assertEquals(setOf("940GZZLUKSX"), StopGrouping.warnedStopsOf(listOf(quiet.copy(quiet = false))))
+    }
+
+    @Test
+    fun `a quiet row sorts after its stop's disruption, whatever the line names`() {
+        val stop = StopArrivals(
+            "940GZZLUKSX", "King's Cross St. Pancras", departures = emptyList(), fetchedAt = now,
+            lines = listOf(LineRef("victoria", "Victoria", "tube"), LineRef("bakerloo", "Bakerloo", "tube")),
+        )
+        // The Victoria suspended, the Bakerloo (earlier by name) quiet.
+        val statuses = mapOf("victoria" to LineStatus("victoria", 2, "Suspended"))
+        val rows = DepartureRows.across(listOf(stop), now, statuses, quietRows = true)
+        val sorted = DepartureRows.byStopDistance(rows.reversed(), mapOf("940GZZLUKSX" to 100.0))
+        assertEquals(listOf("victoria", "bakerloo"), sorted.map { it.lineId })
+        assertTrue(sorted.last().quiet)
+    }
 }

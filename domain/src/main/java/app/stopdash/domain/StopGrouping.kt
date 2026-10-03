@@ -206,7 +206,8 @@ object StopGrouping {
      * exactly as the headers do.
      */
     internal fun warnedStopsOf(listRows: List<DepartureRow>): Set<String> =
-        listRows.filter { !it.hasTrains }.mapTo(HashSet()) { it.stopId }
+        // A quiet row ([DepartureRow.quiet], "?") warns of nothing: its stop stays with its place.
+        listRows.filter { !it.hasTrains && !it.quiet }.mapTo(HashSet()) { it.stopId }
 
     /**
      * The clustering identity: [DepartureRow.clusterId] — TfL's `stationNaptan` where it gives one

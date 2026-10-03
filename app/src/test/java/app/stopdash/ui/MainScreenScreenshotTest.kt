@@ -1,6 +1,7 @@
 package app.stopdash.ui
 
 import app.stopdash.domain.EmptyTimes
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -92,6 +93,7 @@ import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -2125,6 +2127,298 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithText("Minor Delays").assertExists()
         composeRule.onNodeWithContentDescription("Times unknown").assertExists()
         composeRule.onNodeWithContentDescription("No departures").assertExists()
+    }
+
+    /** King's Cross with the Victoria line on good service and no live times for it. */
+    private fun quietVictoria(
+        marks: Map<String, EmptyTimes.Marked>,
+        asked: MutableList<Pair<String, EmptyTimes.Board>>? = null,
+        record: String? = null,
+        worker: kotlin.coroutines.CoroutineContext = kotlin.coroutines.EmptyCoroutineContext,
+        nearMe: Boolean = true,
+    ) {
+        val station = StopArrivals(
+            "940GZZLUKSX",
+            "King's Cross St. Pancras",
+            emptyList(),
+            fetchedAt = now.minusSeconds(60),
+            lines = listOf(LineRef("victoria", "Victoria", "tube")),
+        )
+        val state = EmptyTimesState(MutableStateFlow(marks), now, worker) { id, board -> asked?.add(id to board()) }
+        val content: @Composable () -> Unit = {
+            CompositionLocalProvider(LocalEmptyTimes provides state) {
+                MainScreen(
+                    // TfL confirmed the Victoria's good service.
+                    DeparturesUiState.Loaded(listOf(station), now.minusSeconds(60), determinedLineIds = setOf("victoria")),
+                    now,
+                    {},
+                    stopDistanceMeters = if (nearMe) mapOf("940GZZLUKSX" to 300.0) else emptyMap(),
+                )
+            }
+        }
+        if (record != null) {
+            capture(record, content = content)
+        } else {
+            composeRule.setContent { StopDashTheme(dynamicColor = false) { Surface(modifier = Modifier.fillMaxSize()) { content() } } }
+        }
+    }
+
+    @Test
+    fun `a line on good service with no times reads unknown when a train is due`() {
+        // TfL's feed for the line has gone quiet, its status still good: the line doesn't vanish.
+        quietVictoria(mapOf("quiet:940GZZLUKSX|victoria" to EmptyTimes.Marked(EmptyTimes.Mark.UNKNOWN, now)), record = "main-quiet-line.png")
+        composeRule.onNodeWithContentDescription("Times unknown").assertExists()
+    }
+
+    @Test
+    fun `a line's good service confirmed after its arrivals gets its "?" at once`() {
+        val station = StopArrivals(
+            "940GZZLUKSX",
+            "King's Cross St. Pancras",
+            emptyList(),
+            fetchedAt = now.minusSeconds(60),
+            lines = listOf(LineRef("victoria", "Victoria", "tube")),
+        )
+        val marks = mapOf("quiet:940GZZLUKSX|victoria" to EmptyTimes.Marked(EmptyTimes.Mark.UNKNOWN, now))
+        val state = EmptyTimesState(MutableStateFlow(marks), now) { _, _ -> }
+        // Arrivals first, the status check not back yet.
+        var loaded by mutableStateOf(DeparturesUiState.Loaded(listOf(station), now.minusSeconds(60)))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalEmptyTimes provides state) {
+                        MainScreen(loaded, now, {}, stopDistanceMeters = mapOf("940GZZLUKSX" to 300.0))
+                    }
+                }
+            }
+        }
+        composeRule.onNodeWithContentDescription("Times unknown").assertDoesNotExist()
+        // Then TfL confirms its good service, nothing else changing, within the same minute.
+        composeRule.runOnIdle { loaded = loaded.copy(determinedLineIds = setOf("victoria")) }
+        composeRule.onNodeWithContentDescription("Times unknown").assertExists()
+    }
+
+    @Test
+    fun `no "?" while nearby stops are still loading`() {
+        val station = StopArrivals(
+            "940GZZLUKSX",
+            "King's Cross St. Pancras",
+            emptyList(),
+            fetchedAt = now.minusSeconds(60),
+            lines = listOf(LineRef("victoria", "Victoria", "tube")),
+        )
+        val marks = mapOf("quiet:940GZZLUKSX|victoria" to EmptyTimes.Marked(EmptyTimes.Mark.UNKNOWN, now))
+        val asked = mutableListOf<String>()
+        val state = EmptyTimesState(MutableStateFlow(marks), now) { id, _ -> asked += id }
+        // Euston still loading: it may have trains for the Victoria.
+        var loaded by mutableStateOf(
+            DeparturesUiState.Loaded(
+                listOf(station), now.minusSeconds(60), determinedLineIds = setOf("victoria"),
+                pendingStops = listOf(StopRef("940GZZLUEUS", "Euston")),
+            ),
+        )
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalEmptyTimes provides state) {
+                        MainScreen(loaded, now, {}, stopDistanceMeters = mapOf("940GZZLUKSX" to 300.0, "940GZZLUEUS" to 600.0))
+                    }
+                }
+            }
+        }
+        composeRule.onNodeWithContentDescription("Times unknown").assertDoesNotExist()
+        composeRule.runOnIdle { assertTrue(asked.isEmpty()) }
+        // Every nearby stop in: the "?" shows.
+        composeRule.runOnIdle { loaded = loaded.copy(pendingStops = emptyList()) }
+        composeRule.onNodeWithContentDescription("Times unknown").assertExists()
+    }
+
+    @Test
+    fun `a "?" row opens no line page, which would read as a clean line`() {
+        quietVictoria(mapOf("quiet:940GZZLUKSX|victoria" to EmptyTimes.Marked(EmptyTimes.Mark.UNKNOWN, now)))
+        composeRule.onNodeWithContentDescription("Times unknown").performClick()
+        composeRule.onNodeWithText("No disruptions reported").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Times unknown").assertExists()
+    }
+
+    @Test
+    fun `a line on good service with no times asks its timetable, and isn't shown until it's in`() {
+        val asked = mutableListOf<Pair<String, EmptyTimes.Board>>()
+        quietVictoria(emptyMap(), asked)
+        composeRule.onNodeWithContentDescription("Times unknown").assertDoesNotExist()
+        composeRule.runOnIdle {
+            assertEquals(
+                listOf("quiet:940GZZLUKSX|victoria" to EmptyTimes.quietBoard("940GZZLUKSX", "victoria", "tube")),
+                asked.distinct(),
+            )
+        }
+    }
+
+    @Test
+    fun `a line on good service with nothing due isn't shown`() {
+        quietVictoria(mapOf("quiet:940GZZLUKSX|victoria" to EmptyTimes.Marked(EmptyTimes.Mark.NONE, now)))
+        composeRule.onNodeWithContentDescription("Times unknown").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("No departures").assertDoesNotExist()
+    }
+
+    @Test
+    fun `a list's quiet rows are filtered off the main thread`() {
+        // The worker's tasks queue here and run on their own thread only while the main thread waits
+        // on them, between frames: a free-running thread could land its result mid-layout.
+        val queued = java.util.concurrent.LinkedBlockingQueue<Runnable>()
+        val worker = java.util.concurrent.Executor { queued.add(it) }.asCoroutineDispatcher()
+        fun runQueued() {
+            val thread = Thread { while (true) (queued.poll() ?: break).run() }
+            thread.start()
+            thread.join()
+        }
+        val filteredOn = java.util.concurrent.atomic.AtomicReference<Thread>()
+        val marked = mapOf("quiet:940GZZLUKSX|victoria" to EmptyTimes.Marked(EmptyTimes.Mark.UNKNOWN, now))
+        // Read by the filter as it looks each quiet row's mark up, so it says where that ran.
+        val recording = object : Map<String, EmptyTimes.Marked> by marked {
+            override fun get(key: String): EmptyTimes.Marked? {
+                filteredOn.compareAndSet(null, Thread.currentThread())
+                return marked[key]
+            }
+        }
+        quietVictoria(recording, worker = worker)
+        val main = Thread.currentThread()
+        repeat(10) {
+            composeRule.waitForIdle()
+            runQueued()
+        }
+        composeRule.waitForIdle()
+        assertNotEquals(null, filteredOn.get())
+        assertNotEquals(main, filteredOn.get())
+        composeRule.onNodeWithContentDescription("Times unknown").assertExists()
+    }
+
+    @Test
+    fun `a refreshed list never shows the rows its quiet lines were last added to`() {
+        val queued = java.util.concurrent.LinkedBlockingQueue<Runnable>()
+        val worker = java.util.concurrent.Executor { queued.add(it) }.asCoroutineDispatcher()
+        fun runQueued() {
+            repeat(10) {
+                composeRule.waitForIdle()
+                val thread = Thread { while (true) (queued.poll() ?: break).run() }
+                thread.start()
+                thread.join()
+            }
+            composeRule.waitForIdle()
+        }
+        fun stops(destination: String) = listOf(
+            StopArrivals(
+                "940GZZLUKSX", "King's Cross St. Pancras", emptyList(), fetchedAt = now.minusSeconds(60),
+                lines = listOf(LineRef("victoria", "Victoria", "tube")),
+            ),
+            StopArrivals(
+                "940GZZLUEUS", "Euston",
+                listOf(
+                    dep("northern", "Northern", "outbound", destination, 120, "Platform 1"),
+                    dep("northern", "Northern", "inbound", "High Barnet", 20, "Platform 2"),
+                ),
+                fetchedAt = now.minusSeconds(60), lines = listOf(LineRef("northern", "Northern", "tube")),
+            ),
+        )
+        val marks = mapOf("quiet:940GZZLUKSX|victoria" to EmptyTimes.Marked(EmptyTimes.Mark.UNKNOWN, now))
+        val state = EmptyTimesState(MutableStateFlow(marks), now, worker) { _, _ -> }
+        var loaded by mutableStateOf(DeparturesUiState.Loaded(stops("Morden"), now.minusSeconds(60), determinedLineIds = setOf("victoria", "northern")))
+        var screenNow by mutableStateOf(now)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalEmptyTimes provides state) {
+                        MainScreen(loaded, screenNow, {}, stopDistanceMeters = mapOf("940GZZLUKSX" to 300.0, "940GZZLUEUS" to 600.0))
+                    }
+                }
+            }
+        }
+        runQueued()
+        composeRule.onNodeWithContentDescription("Times unknown").assertExists()
+        composeRule.onNodeWithText("Morden", substring = true).assertExists()
+        // A refresh: until the worker has added the quiet rows to the new list, the new list shows
+        // without them, never the old one with its dropped train.
+        composeRule.runOnIdle { loaded = loaded.copy(stops = stops("Edgware")) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Morden", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithText("Edgware", substring = true).assertExists()
+        runQueued()
+        composeRule.onNodeWithContentDescription("Times unknown").assertExists()
+        composeRule.onNodeWithText("Edgware", substring = true).assertExists()
+        composeRule.onNodeWithText("High Barnet", substring = true).assertExists()
+        // The screen's clock moves on, the data and the minute tick don't: the train that has left goes
+        // at once, though the quiet rows wait for the worker again.
+        composeRule.runOnIdle { screenNow = now.plusSeconds(60) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("High Barnet", substring = true).assertDoesNotExist()
+        runQueued()
+        composeRule.onNodeWithContentDescription("Times unknown").assertExists()
+    }
+
+    @Test
+    fun `new quiet candidates under an unchanged list don't show the old ones' rows`() {
+        val queued = java.util.concurrent.LinkedBlockingQueue<Runnable>()
+        val worker = java.util.concurrent.Executor { queued.add(it) }.asCoroutineDispatcher()
+        fun runQueued() {
+            repeat(10) {
+                composeRule.waitForIdle()
+                val thread = Thread { while (true) (queued.poll() ?: break).run() }
+                thread.start()
+                thread.join()
+            }
+            composeRule.waitForIdle()
+        }
+        val station = StopArrivals(
+            "940GZZLUKSX", "King's Cross St. Pancras", emptyList(), fetchedAt = now.minusSeconds(60),
+            lines = listOf(LineRef("victoria", "Victoria", "tube"), LineRef("piccadilly", "Piccadilly", "tube")),
+        )
+        val marks = mapOf(
+            "quiet:940GZZLUKSX|victoria" to EmptyTimes.Marked(EmptyTimes.Mark.UNKNOWN, now),
+            "quiet:940GZZLUKSX|piccadilly" to EmptyTimes.Marked(EmptyTimes.Mark.UNKNOWN, now),
+        )
+        val state = EmptyTimesState(MutableStateFlow(marks), now, worker) { _, _ -> }
+        var loaded by mutableStateOf(DeparturesUiState.Loaded(listOf(station), now.minusSeconds(60), determinedLineIds = setOf("victoria")))
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalEmptyTimes provides state) {
+                        MainScreen(loaded, now, {}, stopDistanceMeters = mapOf("940GZZLUKSX" to 300.0))
+                    }
+                }
+            }
+        }
+        runQueued()
+        composeRule.onAllNodesWithContentDescription("Times unknown").assertCountEquals(1)
+        composeRule.onAllNodesWithContentDescription("Victoria", useUnmergedTree = true).assertCountEquals(1)
+        // Only the quiet inputs change (the Victoria's status is no longer confirmed, the
+        // Piccadilly's is): the list itself is the same, and the Victoria's "?" goes at once.
+        composeRule.runOnIdle { loaded = loaded.copy(determinedLineIds = setOf("piccadilly")) }
+        // One worker step at a time, so the frame between the new candidates and their list is seen.
+        repeat(10) {
+            composeRule.waitForIdle()
+            composeRule.onAllNodesWithContentDescription("Victoria", useUnmergedTree = true).assertCountEquals(0)
+            val task = queued.poll() ?: return@repeat
+            val thread = Thread { task.run() }
+            thread.start()
+            thread.join()
+        }
+        runQueued()
+        composeRule.onAllNodesWithContentDescription("Victoria", useUnmergedTree = true).assertCountEquals(0)
+        composeRule.onAllNodesWithContentDescription("Piccadilly", useUnmergedTree = true).assertCountEquals(1)
+    }
+
+    @Test
+    fun `a location-free list of watched stops gets no quiet rows`() {
+        val asked = mutableListOf<Pair<String, EmptyTimes.Board>>()
+        quietVictoria(mapOf("quiet:940GZZLUKSX|victoria" to EmptyTimes.Marked(EmptyTimes.Mark.UNKNOWN, now)), asked, nearMe = false)
+        composeRule.onNodeWithContentDescription("Times unknown").assertDoesNotExist()
+        composeRule.runOnIdle { assertTrue(asked.isEmpty()) }
+    }
+
+    @Test
+    fun `a quiet line's "?" from long ago isn't trusted`() {
+        quietVictoria(mapOf("quiet:940GZZLUKSX|victoria" to EmptyTimes.Marked(EmptyTimes.Mark.UNKNOWN, now.minusSeconds(3_600))))
+        composeRule.onNodeWithContentDescription("Times unknown").assertDoesNotExist()
     }
 
     private fun busPlace(id: String, name: String, meters: Double, vararg routes: String) =

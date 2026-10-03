@@ -118,6 +118,11 @@ data class DepartureRow(
     // ([EmptyTimes.notRunningAt]), worked out where the row is built so a surface reads it rather
     // than working it out: its empty board is then a sure dash. False otherwise.
     val notRunningHere: Boolean = false,
+    // A row for a line the stop serves, on good service, that TfL returned no times for
+    // ([DepartureRows.across]'s `quietRows`): shown as "?" only when its timetable says a train
+    // should be coming ([EmptyTimes.quietBoard]), so a line whose feed went quiet doesn't vanish
+    // without a word. False for every other row.
+    val quiet: Boolean = false,
 )
 
 /**

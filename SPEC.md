@@ -741,6 +741,20 @@ now; giving it the same marks is planned. On a bank holiday, and from Christmas 
 TfL runs another day type's timetable on some ("Saturday (also Good Friday)"), and its weekday's
 could say "none" while trains run.
 
+A line on **good service** (as TfL confirmed, not merely unchecked) with no live times gets a row too, in the near-me list (maintainer,
+2026-10-03): TfL's live feed for a whole line can go quiet while its status still reads Good Service,
+and the line then vanished from a station with nothing to say why. Its row reads **"?"**, and appears
+only when the line's timetable has a train due within the 30 minutes; a line whose timetable has none
+due (an infrequent service, a night bus by day) adds no row. When the timetable can't say, a tube,
+Elizabeth line, Overground, DLR or tram line still reads "?", since half an hour without a train is a
+fault there; a bus doesn't appear. National Rail lines never get one: their board lists every train
+they run, so an empty one is an answer, and a hub's infrequent intercity services would otherwise fill
+it with rows. A line with trains at another nearby stop gets none either, its trains being the better
+answer. A stop with a notice in force (a closure, a moved stop) gets none: its notice is already
+there, and the row is for a gap nothing explains. Nor does a stop whose notices couldn't be checked,
+which may be closed for all StopDash knows. A line gets one such row, at the nearest stop whose timetable has a train due, so a branch the
+nearest stop doesn't see still shows from the stop that does. The glance surfaces (widget, watch) have no timetable to decide with, and show none.
+
 The list shows the **watched stops'** rows (D1) — stopdash renders the stops the user
 chose ahead of time, not "nearest to me" — ordered **location-free** so the view works
 with location denied: soonest-first, with **starred** rows pinned to the top. Starring is

@@ -6,6 +6,7 @@ import java.util.concurrent.Executors
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -117,6 +118,29 @@ class TimetableRepositoryTest {
             val thread = fetchedOn.await()
             assertNotEquals(caller, thread)
             assertTrue(thread.isAlive)
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `boards watched together are found off the caller's thread, each watched`() = runTest {
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val io = executor.asCoroutineDispatcher()
+            val source = object : TimetableSource {
+                override suspend fun timetable(lineId: String, stopId: String): StopTimetable = timetable
+            }
+            val repository = TimetableRepository(source, TestScope(StandardTestDispatcher(testScheduler)), clock = { now }, io = io)
+            val caller = Thread.currentThread()
+            val foundOn = CompletableDeferred<Thread>()
+            repository.watchEach {
+                foundOn.complete(Thread.currentThread())
+                mapOf("a" to EmptyTimes.Board(listOf(key)), "b" to EmptyTimes.Board(listOf(key), notRunning = true))
+            }
+            assertNotEquals(caller, foundOn.await())
+            val marks = repository.marks.first { it.keys.containsAll(listOf("a", "b")) }
+            assertEquals(EmptyTimes.Mark.NONE, marks.getValue("b").mark)
         } finally {
             executor.shutdownNow()
         }
