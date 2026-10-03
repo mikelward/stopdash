@@ -1441,6 +1441,8 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                 is known wrong ahead (`ActiveTripTracker.replanFrom`, `ReplanOrigin`), the trip list
                 from there to the destination as chosen, its Start replacing the trip on the way.
                 Needs a device check of the station chosen on a moving train.
+            - [x] **Keep going** beside it: what's shown is dismissed for this trip only
+                  (`ActiveTrip.disruptionsDismissed`), the alert taken down; something new still shows.
             - [ ] **Plan from when the rider gets there**: the list plans from now, so a route
                   leaving that station before the rider reaches it is offered too. Plan from the
                   trip's own time there (its train's call, or the walk's end) instead.

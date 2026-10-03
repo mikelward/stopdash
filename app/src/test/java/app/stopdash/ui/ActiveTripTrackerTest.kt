@@ -78,6 +78,8 @@ class ActiveTripTrackerTest {
     // Where the station index places stops, by id, and the threads it was read on.
     private val stopPositions = mutableMapOf<String, app.stopdash.domain.Coordinates>()
     private val indexThreads = mutableListOf<String>()
+    // The thread each save ran on.
+    private val saveThreads = mutableListOf<String>()
     private var saves = true
     // The next save is cut short, as by the activity being recreated mid-write.
     private var cancelNextSave = false
@@ -154,6 +156,7 @@ class ActiveTripTrackerTest {
     ) = ActiveTripTracker(
         load = load,
         save = {
+            saveThreads += Thread.currentThread().name.substringBefore(" @")
             if (cancelNextSave) {
                 cancelNextSave = false
                 throw kotlinx.coroutines.CancellationException("recreated")
@@ -658,6 +661,154 @@ class ActiveTripTrackerTest {
         assertEquals(listOf(severe), tracker.routeDisruptions.value?.signals)
         tracker.end()
         assertNull(tracker.routeDisruptions.value)
+    }
+
+    @Test
+    fun `a dismissed route disruption leaves the screen and the alert, and only something new comes back`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        disruptionAlerts.clear()
+        val severe = line(0, 6, "Severe Delays")
+        known = listOf(severe)
+        tracker.refresh()
+        tracker.dismissDisruptions(listOf(severe))
+        assertNull(tracker.routeDisruptions.value)
+        assertNull(tracker.replanFrom.value)
+        assertEquals(setOf(severe.dismissKey), kept?.disruptionsDismissed)
+        tracker.refresh()
+        assertNull(tracker.routeDisruptions.value)
+        // Worse than what was dismissed: shown and heard.
+        val suspended = line(0, 3, "Part Suspended")
+        known = listOf(severe, suspended)
+        tracker.refresh()
+        assertEquals(listOf(suspended), tracker.routeDisruptions.value?.signals)
+        assertEquals(listOf("new ${severe.key}", "done", "new ${suspended.key}"), disruptionAlerts)
+    }
+
+    @Test
+    fun `something found after the screen showed what was dismissed keeps the alert up, as that alone`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        disruptionAlerts.clear()
+        val severe = line(0, 6, "Severe Delays")
+        val suspended = line(0, 3, "Part Suspended")
+        // The screen showed only the severe delays; a check found the suspension before the tap landed (Codex on #519).
+        known = listOf(severe, suspended)
+        tracker.refresh()
+        disruptionAlerts.clear()
+        tracker.dismissDisruptions(listOf(severe))
+        assertEquals(listOf("keep ${suspended.key}"), disruptionAlerts)
+        assertEquals(listOf(suspended), tracker.routeDisruptions.value?.signals)
+    }
+
+    @Test
+    fun `a dismissal that can't be saved isn't made, and says so`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        val severe = line(0, 6, "Severe Delays")
+        known = listOf(severe)
+        tracker.refresh()
+        disruptionAlerts.clear()
+        saves = false
+        tracker.dismissDisruptions(listOf(severe))
+        // Still shown and alerted: a restart would bring back the trip without it (Codex on #519).
+        assertEquals(listOf(severe), tracker.routeDisruptions.value?.signals)
+        assertEquals(emptyList<String>(), disruptionAlerts)
+        assertTrue(tracker.notKept.value)
+        assertEquals(emptySet<String>(), tracker.trip.value?.disruptionsDismissed)
+    }
+
+    @Test
+    fun `Keep going after arriving saves nothing back`() = runTest {
+        // An arrival not yet forgotten on the device: a tap queued behind it would write the trip back,
+        // to come back after a restart (Codex on #519).
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        val severe = line(0, 6, "Severe Delays")
+        known = listOf(severe)
+        tracker.refresh()
+        now = at(10)
+        trains["3"] = listOf(call("C", 14))
+        tracker.refresh()
+        now = at(15)
+        trains["3"] = emptyList()
+        saves = false
+        tracker.refresh()
+        assertEquals(TripProgress.Arrived, tracker.progress.value)
+        assertTrue(tracker.trip.value != null)
+        saves = true
+        saveThreads.clear()
+        tracker.dismissDisruptions(listOf(severe))
+        assertTrue(saveThreads.isEmpty())
+        assertEquals(emptySet<String>(), tracker.trip.value?.disruptionsDismissed)
+    }
+
+    @Test
+    fun `a dismissed alert placed on the leg later stays dismissed`() = runTest {
+        // Keep going before the alert's detail landed: placing it later is no new alert (Codex on #519).
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        val closed = line(0, 5, "Part Closure")
+        known = listOf(closed)
+        tracker.refresh()
+        tracker.dismissDisruptions(listOf(closed))
+        disruptionAlerts.clear()
+        known = listOf(closed.copy(placed = true, tier = RouteDisruption.Tier.HIGH))
+        tracker.refresh()
+        assertNull(tracker.routeDisruptions.value)
+        assertEquals(emptyList<String>(), disruptionAlerts)
+    }
+
+    @Test
+    fun `a dismissed route disruption stays dismissed across a restart`() = runTest {
+        val severe = line(0, 6, "Severe Delays")
+        val keptTrip = ActiveTrip(route, "C", startedAt = t0, disruptionsHeard = setOf(severe.key), disruptionsDismissed = setOf(severe.dismissKey))
+        val tracker = tracker(StandardTestDispatcher(testScheduler)) { keptTrip }
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.restore()
+        known = listOf(severe)
+        tracker.refresh()
+        assertNull(tracker.routeDisruptions.value)
+    }
+
+    @Test
+    fun `a route disruption is dismissed off the caller's thread`() {
+        // AGENTS.md *Main thread*: the rider taps Keep going on the main thread; the keys are worked out
+        // and the trip saved on the worker.
+        val caller = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "caller") }.asCoroutineDispatcher()
+        val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }.asCoroutineDispatcher()
+        try {
+            val tracker = tracker(worker)
+            departures["A"] = listOf(train("3", 8))
+            trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+            val severe = line(0, 6, "Severe Delays")
+            known = listOf(severe)
+            kotlinx.coroutines.runBlocking(caller) {
+                tracker.start(route, "C", readyAt = now)
+                tracker.refresh()
+                saveThreads.clear()
+                tracker.dismissDisruptions(listOf(severe))
+                // And a refresh from the caller leaves it out, sorted out on the worker (Codex on #519).
+                tracker.refresh()
+            }
+            assertEquals(setOf(severe.dismissKey), kept?.disruptionsDismissed)
+            assertNull(tracker.routeDisruptions.value)
+            assertTrue(saveThreads.isNotEmpty() && saveThreads.all { it == "worker" })
+        } finally {
+            caller.close()
+            worker.close()
+        }
     }
 
     @Test

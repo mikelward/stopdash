@@ -1897,6 +1897,11 @@ them there:
   on the way's place (one trip at a time otherwise opens the one on the way). The list plans from
   now, not from when the rider reaches that station, so a route leaving before then is theirs to
   pass over (`TODO.md`).
+- **Keep going** (maintainer, 2026-10-03) sits beside Plan again, and alone where there's nowhere to
+  plan from: the rider has read what's wrong and stays on the route. What it answers is no longer
+  shown or alerted, for **this trip only** (kept with the trip, so through a restart, and gone when
+  it ends); something new still is, a worse status for the same line included. The alert comes
+  down with it, since what it said has been read.
 - **Where it shows:** the trip's own screen (the next step over the route), a **card pinned at the
   top of the main view** (the near-me list, under the top bar, not scrolling with it; a station's
   page, and a station, platform or starred journey opened from the list, are each their own view),

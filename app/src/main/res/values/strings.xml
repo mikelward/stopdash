@@ -612,6 +612,7 @@
     <string name="on_the_way_end">End trip</string>
     <!-- TODO: translate -->
     <string name="on_the_way_plan_again" tools:ignore="MissingTranslation">Plan again from %1$s</string>
+    <string name="on_the_way_keep_going" tools:ignore="MissingTranslation">Keep going</string>
     <string name="on_the_way_done">Done</string>
     <!-- The whole trip on its screen's card, beside where it goes: %2$d the minutes left, then %1$s the clock time it gets there.
          "About" (~): TfL's prediction where the rider gets off, with only walks after. -->

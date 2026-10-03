@@ -1000,6 +1000,10 @@ class MainActivity : ComponentActivity() {
                                             onTheWayOpen = false
                                         }
                                     },
+                                    // Read and kept going: in the app's scope, so a rotation can't cut the save short.
+                                    onDismissDisruptions = { shown ->
+                                        ((application as? StopdashApp)?.applicationScope ?: onTheWayScope).launch { tracker.dismissDisruptions(shown) }
+                                    },
                                     // The rider at a step the trip couldn't tell they'd reached (maintainer, 2026-09-28).
                                     onGoTo = { from, to ->
                                         ((application as? StopdashApp)?.applicationScope ?: onTheWayScope).launch { tracker.goTo(from, to) }
