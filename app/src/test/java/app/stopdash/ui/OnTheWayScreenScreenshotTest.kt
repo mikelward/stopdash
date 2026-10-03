@@ -735,6 +735,21 @@ class OnTheWayScreenScreenshotTest {
     }
 
     @Test
+    fun a_train_followed_gone_by_times_the_trip_from_the_boards_next() {
+        // The train followed past its time, the board's next due in 10 min: timed from it (maintainer, 2026-10-03).
+        val gone = TripProgress.Waiting(mildmay, at(-1))
+        show(trip, gone, nextTrains = NextTrains(mildmay, emptyList(), readyAt = now, nextDue = at(10)))
+        composeRule.onNodeWithTag("onTheWayEta").assertTextEquals("est. 08:39 · 37 min")
+    }
+
+    @Test
+    fun another_rides_board_doesnt_time_the_trip() {
+        // The board shown is the ride after a walk's: its trains aren't the one the rider waits for.
+        show(trip, TripProgress.Waiting(mildmay, at(-1)), nextTrains = NextTrains(jubilee, emptyList(), nextDue = at(10)))
+        composeRule.onNodeWithTag("onTheWayEta").assertDoesNotExist()
+    }
+
+    @Test
     fun the_trip_doesnt_say_when_it_gets_there_from_an_old_answer() {
         val last = trip.copy(legIndex = 2, boarded = true, onBoardSeen = true)
         show(last, TripProgress.Riding(jubilee, "Canning Town", 2, at(31), getOffSoon = false), current = false)

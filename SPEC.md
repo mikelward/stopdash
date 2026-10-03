@@ -1678,8 +1678,11 @@ them there:
   left (maintainer, 2026-10-01; moved onto the card 2026-10-03): "~08:31 · 29 min". It's "~" when it's TfL's prediction for where
   the rider gets off the ride they're on, with only walks after. It's "est." when any of it is the
   Planner's: a train still to come (its time at the boarding stop, then the time on board), or a ride
-  or change still ahead. Like the step, it claims no time it can't take from a train: none while the
-  ride's train is still being found, while where the rider gets off is beyond TfL's predictions, or for
+  or change still ahead. Still to board, with the train followed gone by (TfL can list a bus past its
+  time, or drop it without a word), not yet found, or lost, it's timed from the next train the boarding
+  stop's board lists that the rider can catch (maintainer, 2026-10-03), rather than leave the card
+  without a time. Like the step, it claims no time it can't take from a train: none with no train on
+  that board either, while where the rider gets off is beyond TfL's predictions, or for
   a rider on board by where they were seen until their train is told, nor once the time it's counted
   from (TfL's, or the end of a walk or change) has passed without a newer one. It waits, as the step's own times do, while the
   last answer is too old to stand behind.

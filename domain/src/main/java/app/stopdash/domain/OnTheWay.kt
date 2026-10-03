@@ -729,14 +729,20 @@ object OnTheWay {
      * (maintainer, 2026-10-01): [arrival], and [live] when it's TfL's prediction for where they get off
      * the ride they're on, with only walks after. Otherwise it's estimated: from the train's time (due at
      * the boarding stop, the Planner's time on board after), or the end of a walk or change, with the
-     * Planner's times for the legs and changes still ahead. Null with no train to time a ride from (still
-     * being found, lost, or not yet told for a rider on board by where they were seen), with where they
-     * get off beyond TfL's predictions, once arrived, or with no leg.
+     * Planner's times for the legs and changes still ahead. A rider still to board whose train followed
+     * is past its time, or not yet found or lost, is timed from the next one the board lists that they
+     * can catch ([nextDue]), rather than shown none (maintainer, 2026-10-03). Null with no train to time
+     * a ride from (none on the board either, or not yet told for a rider on board by where they were
+     * seen), with where they get off beyond TfL's predictions, once arrived, or with no leg.
      */
     data class Eta(val arrival: Instant, val live: Boolean)
 
-    /** [trip]'s [Eta] at [now], from where it stands ([progress]). */
-    fun eta(trip: ActiveTrip, progress: TripProgress?, now: Instant): Eta? {
+    /**
+     * [trip]'s [Eta] at [now], from where it stands ([progress]); [nextDue] is when the next train the
+     * rider can catch is due at the ride's boarding stop, as its board lists it ([nextDue]), for a rider
+     * still to board whose train followed has gone by or isn't known.
+     */
+    fun eta(trip: ActiveTrip, progress: TripProgress?, now: Instant, nextDue: Instant? = null): Eta? {
         if (progress == TripProgress.Arrived) return null
         // On board by where they were seen, with no train: counted stops only, which stand still between
         // fixes, so a time from them would slide later as the clock runs (Codex, PR #449).
@@ -748,9 +754,13 @@ object OnTheWay {
             // Its stop beyond TfL's predictions: no time for it, as the step claims none (maintainer,
             // 2026-09-29), rather than one counted from now that slides later between stops (Codex, PR #449).
             is TripProgress.Riding -> Triple(progress.getOffAt ?: return null, Duration.ZERO, true)
-            // No train yet, none can be timed: no arrival rather than one sliding later as the clock
-            // runs (Codex, PR #449).
-            is TripProgress.Waiting -> Triple(progress.due ?: return null, leg.run, false)
+            // The train followed, or once it's gone by (TfL can list it past its time while it's at the
+            // stop, or after it's left without a word) or with none yet, the board's next one the rider
+            // can catch: a prediction of its own, not one sliding later as the clock runs (Codex, PR #449).
+            // None on the board either: no arrival.
+            is TripProgress.Waiting -> Triple(progress.due?.takeIf { !it.isBefore(now) } ?: upcoming(nextDue, now) ?: return null, leg.run, false)
+            // Its train lost before boarding: another is to be picked, the board's next the soonest it can be.
+            is TripProgress.Lost if !trip.boarded -> Triple(upcoming(nextDue, now) ?: return null, leg.run, false)
             is TripProgress.Changing -> Triple(progress.until, leg.run, false)
             is TripProgress.Walking -> Triple(progress.until, Duration.ZERO, false)
             else -> return null
@@ -765,6 +775,19 @@ object OnTheWay {
         val rest = ahead.fold(changes) { sum, next -> sum.plus(next.run) }
         // A change still ahead is the Planner's time, as a ride is: estimated (Codex, PR #449).
         return Eta(anchor.plus(after).plus(rest), live && ahead.all { it.isWalk } && changes.isZero)
+    }
+
+    // [at] when it's still to come at [now].
+    private fun upcoming(at: Instant?, now: Instant): Instant? = at?.takeIf { !it.isBefore(now) }
+
+    /**
+     * When the next of [trains] (a ride's board, kept to those taking the rider where they get off) is
+     * due that the rider can catch: at or after [readyAt], when they can be at the boarding stop, and
+     * [now]. Null with none. For [eta], once the train followed has gone by or isn't known.
+     */
+    fun nextDue(trains: List<Departure>, readyAt: Instant?, now: Instant): Instant? {
+        val from = if (readyAt != null && readyAt.isAfter(now)) readyAt else now
+        return trains.filter { !it.expectedArrival.isBefore(from) }.minOfOrNull { it.expectedArrival }
     }
 
     /**

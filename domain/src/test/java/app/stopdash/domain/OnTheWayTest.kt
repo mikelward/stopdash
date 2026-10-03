@@ -895,6 +895,33 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `a train followed gone by times the trip from the next the board lists`() {
+        // The train followed still listed past its time, with the board's next due at 15: timed from it
+        // (maintainer, 2026-10-03), the Planner's after, as from any train.
+        assertEquals(OnTheWay.Eta(at(38), live = false), OnTheWay.eta(trip, TripProgress.Waiting(ride, at(8)), at(9), nextDue = at(15)))
+        // The train followed still to come: its own time, whatever the board's next.
+        assertEquals(OnTheWay.Eta(at(31), live = false), OnTheWay.eta(trip, TripProgress.Waiting(ride, at(8)), at(6), nextDue = at(15)))
+        // None followed yet, or lost before boarding: the board's next.
+        assertEquals(OnTheWay.Eta(at(38), live = false), OnTheWay.eta(trip, TripProgress.Waiting(ride, null), at(9), nextDue = at(15)))
+        assertEquals(OnTheWay.Eta(at(38), live = false), OnTheWay.eta(trip, TripProgress.Lost(ride), at(9), nextDue = at(15)))
+        // Lost on board: the board's trains aren't theirs.
+        assertNull(OnTheWay.eta(trip.copy(boarded = true), TripProgress.Lost(ride), at(9), nextDue = at(15)))
+        // The board's next gone by too: none.
+        assertNull(OnTheWay.eta(trip, TripProgress.Waiting(ride, at(8)), at(16), nextDue = at(15)))
+    }
+
+    @Test
+    fun `the board's next train is the soonest the rider can catch`() {
+        val board = listOf(train("1", 4), train("2", 9), train("3", 12))
+        // Gone by, or due before the rider can be there: not one they can catch.
+        assertEquals(at(9), OnTheWay.nextDue(board, readyAt = null, now = at(5)))
+        assertEquals(at(12), OnTheWay.nextDue(board, readyAt = at(10), now = at(5)))
+        assertEquals(at(4), OnTheWay.nextDue(board, readyAt = at(2), now = at(4)))
+        assertNull(OnTheWay.nextDue(board, readyAt = null, now = at(13)))
+        assertNull(OnTheWay.nextDue(emptyList(), readyAt = null, now = at(5)))
+    }
+
+    @Test
     fun `waiting for a ride's train, a fix is wanted and one sure to 100 m will do`() {
         val waiting = OnTheWay.follow(trip, train("9", 8))
         assertTrue(OnTheWay.wantsFix(waiting, at(6)))

@@ -2,6 +2,7 @@ package app.stopdash.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import app.stopdash.domain.Coordinates
@@ -27,9 +28,10 @@ internal fun rememberLineSequences(lineIds: List<String>, now: Instant): Map<Str
 /**
  * [rememberLineSequences]' routes ([sequences]), with the lines whose load is under way ([loading]):
  * a first load, absent from [sequences] meanwhile, and a retry of one that failed, held there as null
- * meanwhile. A retry is a check running again, not one that failed.
+ * meanwhile. A retry is a check running again, not one that failed. [version] changes with each load
+ * stored, so a route replaced in place still reads as new.
  */
-internal class LineLoads(val sequences: Map<String, LineSequence?>, val loading: Set<String>)
+internal class LineLoads(val sequences: Map<String, LineSequence?>, val loading: Set<String>, val version: Int = 0)
 
 /** [rememberLineSequences], saying which lines' loads are under way ([LineLoads]). */
 @Composable
@@ -37,6 +39,9 @@ internal fun rememberLineLoads(lineIds: List<String>, now: Instant): LineLoads {
     val repository = LocalRouteStops.current
     val loaded = remember { mutableStateMapOf<String, LineSequence?>() }
     val loading = remember { mutableStateMapOf<String, Unit>() }
+    // Bumped on each load stored, a retry's included, so what's worked out from the routes can key on it
+    // without comparing them (Codex, PR #520).
+    val version = remember { mutableIntStateOf(0) }
     val recheck = now.epochSecond / 3600
     LaunchedEffect(repository, lineIds, recheck) {
         val routes = repository ?: return@LaunchedEffect
@@ -49,7 +54,7 @@ internal fun rememberLineLoads(lineIds: List<String>, now: Instant): LineLoads {
                 launch {
                     loading[lineId] = Unit
                     try {
-                        loaded[lineId] = routes.cached(lineId, "") ?: try {
+                        loaded[lineId] = (routes.cached(lineId, "") ?: try {
                             routes.load(lineId, "")
                         } catch (e: CancellationException) {
                             throw e
@@ -57,7 +62,7 @@ internal fun rememberLineLoads(lineIds: List<String>, now: Instant): LineLoads {
                             // Logged (sanitized) by the repository. A day-old copy beats none; with none,
                             // null marks the failure so the page says some routes couldn't be checked.
                             held
-                        }
+                        }).also { version.intValue++ }
                     } finally {
                         loading.remove(lineId)
                     }
@@ -65,7 +70,7 @@ internal fun rememberLineLoads(lineIds: List<String>, now: Instant): LineLoads {
             }
         }
     }
-    return LineLoads(lineIds.filter { it in loaded }.associateWith { loaded[it] }, lineIds.filterTo(HashSet()) { it in loading })
+    return LineLoads(lineIds.filter { it in loaded }.associateWith { loaded[it] }, lineIds.filterTo(HashSet()) { it in loading }, version.intValue)
 }
 
 /**
