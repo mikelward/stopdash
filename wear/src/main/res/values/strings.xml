@@ -73,6 +73,12 @@
     <string name="complication_pick_row">%1$s · %2$s</string>
     <!-- The picker has no rows to offer yet. -->
     <string name="complication_pick_none">No rows to pick yet</string>
+    <!-- Heads the trip on the way at the top of the watch app. -->
+    <string name="watch_trip">On the way</string>
+    <!-- Pages back through the trip's steps; spoken by a screen reader. -->
+    <string name="watch_trip_previous">Previous step</string>
+    <!-- Pages forward through the trip's steps; spoken by a screen reader. -->
+    <string name="watch_trip_next">Next step</string>
     <!-- Stops left out because the snapshot was too big to send. -->
     <plurals name="watch_more_stops_on_phone">
         <item quantity="one">%d more stop on phone</item>

@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 /**
  * Receives each snapshot the phone publishes (dev-docs/wear-os.md *The snapshot over the wire*)
@@ -41,6 +42,19 @@ class SnapshotListenerService : WearableListenerService() {
     }
 
     override fun onDataChanged(events: DataEventBuffer) {
+        // The trip on the way: shown while it lasts, gone when the phone takes it off.
+        val trip = events.filter { it.dataItem.uri.path == WatchSyncContract.TRIP_PATH }
+        // Blocks, as the listener may: it runs on the Data Layer's background thread.
+        runBlocking {
+            // One node's item removed: what's left (another node's, after a phone change) stands, so
+            // it's read back rather than the trip cleared outright ([WatchTripState.removed]).
+            if (trip.any { it.type == DataEvent.TYPE_DELETED }) {
+                WatchTripState.removed { WatchTripState.lookUp(this@SnapshotListenerService) }
+            } else if (trip.isNotEmpty()) {
+                // The changes as one batch: the latest received stands ([WatchTripState.prepared]).
+                WatchTripState.ingest(trip.map { it.dataItem })
+            }
+        }
         val store = WatchEnvelopeStore.from(this)
         val ingested = events
             .filter { it.type == DataEvent.TYPE_CHANGED && it.dataItem.uri.path == WatchSyncContract.SNAPSHOT_PATH }

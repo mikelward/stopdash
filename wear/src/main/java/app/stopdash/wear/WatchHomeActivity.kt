@@ -1,6 +1,7 @@
 package app.stopdash.wear
 
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.getValue
@@ -25,6 +26,11 @@ import kotlinx.coroutines.launch
  * ([WatchAppFrames.tick]), and it stops when the app leaves the foreground.
  */
 class WatchHomeActivity : ComponentActivity() {
+    private companion object {
+        // How often the trip's minutes and age are worked out again while it's shown.
+        val TRIP_TICK: Duration = Duration.ofSeconds(15)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val store = WatchEnvelopeStore.from(this)
@@ -55,6 +61,8 @@ class WatchHomeActivity : ComponentActivity() {
                 // Opening the app asks the phone for fresh departures (debounced), and looks up the
                 // phone's latest item, so an update the listener couldn't read is picked up.
                 WatchRefresh.request(this@WatchHomeActivity)
+                // The trip on the way, which may have arrived before this process started.
+                launch { WatchTripState.lookUpRetrying(this@WatchHomeActivity) }
                 WatchSurfaces.lookUpRetrying(this@WatchHomeActivity, store)
             }
         }
@@ -70,7 +78,26 @@ class WatchHomeActivity : ComponentActivity() {
                     delay(Duration.between(Instant.now(), current.until).toMillis().coerceAtLeast(0) + 1)
                 }
             }
-            WatchHomeScreen(shown, notice?.kind) { WatchRefresh.request(this@WatchHomeActivity) }
+            val trip by WatchTripState.trip.collectAsStateWithLifecycle()
+            // The trip's countdowns and age, read again every [TRIP_TICK] and with each new trip: wall
+            // time for the countdowns, the monotonic clock for how long the trip has been held. Only
+            // while there's a trip and the app is in the foreground, so it wakes nothing otherwise.
+            val clock by produceState(Instant.now() to SystemClock.elapsedRealtime(), trip) {
+                value = Instant.now() to SystemClock.elapsedRealtime()
+                if (trip == null) return@produceState
+                this@WatchHomeActivity.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    // Until the trip goes ([WatchTripState.shown]): a held trip past its time is shown as
+                    // none, and nothing it would redraw is left to tick for.
+                    while (true) {
+                        val tick = Instant.now() to SystemClock.elapsedRealtime()
+                        value = tick
+                        if (WatchTripState.shown(trip, tick.first, tick.second) == null) break
+                        delay(TRIP_TICK.toMillis())
+                    }
+                }
+            }
+            val (now, elapsedNow) = clock
+            WatchHomeScreen(shown, notice?.kind, { WatchRefresh.request(this@WatchHomeActivity) }, WatchTripState.shown(trip, now, elapsedNow), now)
         }
     }
 }

@@ -65,7 +65,7 @@ soon as you confirm — detailed below).
 So the guarantee is precise rather than absolute: **without your opt-in, the only user data
 stopdash itself sends off the device goes in its TfL requests, and its National Rail requests if
 you've added a key** (the Play update check carries none), **plus, if a paired watch has the
-StopDash watch app, the widget's stops and departures to that watch** (above); with it, the crash reports and usage
+StopDash watch app, the widget's stops and departures, and any trip on the way, to that watch** (above); with it, the crash reports and usage
 stats above go to Firebase too. Android's backup
 carries your saved data under your control, and a bug report carries what you consent to share.
 
@@ -81,6 +81,13 @@ requests to refresh, which carry only a random request number, and the row each 
 services' Wearable Data Layer**: over Bluetooth when the watch is near, but when it isn't (a watch
 on Wi-Fi or mobile data) it may pass **through Google's servers**. Nothing is sent when no paired
 watch has the app. The watch keeps only the latest copy, never backs it up, and doesn't log it.
+While the phone follows a **trip on the way**, it also sends the watch that trip, so the watch can
+show where you are in it: its steps (each walk and ride, the line, and the stations at each end, so
+where you're going), the step you're at with what to do there now, and the trains for your next
+ride. It goes the same way as above, and the phone takes it off the Data Layer when the trip ends.
+If the phone app stops without ending the trip, the watch stops showing it after 15 minutes, but the
+Data Layer keeps that last copy until the phone next sends or removes a trip. The watch app itself
+holds it in memory only.
 For Play's Data Safety form, the determination is that this moves your own data between your own
 devices and stopdash never receives it, so it adds no data type *collected* by the developer.
 Google's Data Layer documentation says what passes through its servers is end-to-end encrypted
@@ -139,7 +146,8 @@ end it: the route's stops and lines, the leg you're on and the train followed, a
 go (the destination's stops, or the position of the place you picked: a favorite, a place or a
 postcode), in app storage that
 Android never backs up or transfers, so the trip survives the app being closed. It's never logged
-beyond coarse diagnostics (a line id, an error kind) or sent anywhere. While a trip is on the way, app
+beyond coarse diagnostics (a line id, an error kind) or sent anywhere, except to your own watch if it
+has the StopDash watch app (see **Your Wear OS watch**). While a trip is on the way, app
 open or closed, stopdash asks TfL about every 30 seconds (with the app open, as often as every 10
 seconds while you're moving) where the followed train will call next, by TfL's own id for that
 train, and for the departures at a stop where the next leg boards; neither says anything about you
@@ -291,7 +299,8 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   that freeze. Never a value the code was working on.
 - **where the link to a paired watch stands**, when it changes: whether any paired watch has
   StopDash, how many do (a count only), whether the latest departures were queued for it or had
-  already been, that a watch asked for a refresh, and the failure type if a send failed —
+  already been, that a watch asked for a refresh, that a trip on the way was queued for it or
+  taken off it, and the failure type if a send failed —
   never which watch, its name or id, or what was sent.
 - **the app's own code reading or writing the disk on the screen's thread**, which can make
   the screen stutter: the kind (e.g. `DiskReadViolation`) and the place in the app's code that

@@ -1,9 +1,11 @@
 package app.stopdash.wear
 
+import app.stopdash.data.WatchTrip
 import app.stopdash.domain.NoTimes
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
+import java.time.Instant
 import java.time.LocalDate
 import org.junit.Rule
 import org.junit.Test
@@ -25,8 +27,8 @@ class WatchHomeScreenshotTest {
     @get:Rule
     val compose = createComposeRule()
 
-    private fun capture(name: String, frame: TileFrame?, notice: RefreshNotice.Kind? = null, refresh: Boolean = false) {
-        compose.setContent { WatchHomeScreen(frame, notice, onRefresh = if (refresh) ({}) else null) }
+    private fun capture(name: String, frame: TileFrame?, notice: RefreshNotice.Kind? = null, refresh: Boolean = false, trip: ShownTrip? = null) {
+        compose.setContent { WatchHomeScreen(frame, notice, onRefresh = if (refresh) ({}) else null, trip = trip, now = tripNow) }
         compose.onRoot().captureRoboImage(filePath = "../app/src/test/snapshots/images/wear_$name.png")
     }
 
@@ -46,6 +48,69 @@ class WatchHomeScreenshotTest {
     private fun stale(lines: List<TileLine>) = lines.map { line ->
         if (line is TileLine.Departure) line.copy(row = line.row.copy(countdown = "?", stale = true)) else line
     }
+
+    // A trip on the way: a walk to King's Cross, then the Victoria line to Victoria. Stock stations.
+    private val tripNow = Instant.parse("2026-10-03T08:00:00Z")
+    private val trip = WatchTrip(
+        title = "Walk to King's Cross St. Pancras",
+        detail = "4 min",
+        steps = listOf(
+            WatchTrip.Step("Walk to King's Cross St. Pancras", walk = true, mode = "walking"),
+            WatchTrip.Step("King's Cross St. Pancras → Victoria", "victoria", "Victoria", "tube"),
+            WatchTrip.Step("Ride to Victoria", "victoria", "Victoria", "tube"),
+        ),
+        current = 0,
+        departures = listOf(
+            WatchTrip.Train("victoria", "Victoria", "tube", "Brixton", tripNow.plusSeconds(6 * 60).toEpochMilli()),
+            WatchTrip.Train("victoria", "Victoria", "tube", "Brixton", tripNow.plusSeconds(9 * 60).toEpochMilli()),
+        ),
+        departuresAt = 1,
+        sentAt = tripNow.toEpochMilli(),
+    )
+
+    @Test
+    fun trip() = capture(
+        "trip",
+        TileFrame.Rows(lines, ageMinutes = 0, stale = false, partial = false),
+        refresh = true,
+        trip = ShownTrip(trip, stale = false),
+    )
+
+    @Test
+    fun tripOutOfDate() = capture("trip_out_of_date", TileFrame.NeverSynced, refresh = true, trip = ShownTrip(trip, stale = true))
+
+    // A bus stop pair: each pole's buses under its own letter, one leaving before the rider is there grayed.
+    @Test
+    fun tripBusPoles() = capture(
+        "trip_bus_poles",
+        TileFrame.NeverSynced,
+        refresh = true,
+        trip = ShownTrip(
+            trip.copy(
+                steps = listOf(
+                    WatchTrip.Step("Walk to Victoria Bus Station", walk = true, mode = "walking"),
+                    WatchTrip.Step("Victoria Bus Station → Oxford Circus", "73", "73", "bus"),
+                    WatchTrip.Step("Ride to Oxford Circus", "73", "73", "bus"),
+                ),
+                title = "Walk to Victoria Bus Station",
+                departures = listOf(
+                    WatchTrip.Train("73", "73", "bus", "Oxford Circus", tripNow.plusSeconds(2 * 60).toEpochMilli(), stop = "Stop A", missed = true),
+                    WatchTrip.Train("73", "73", "bus", "Oxford Circus", tripNow.plusSeconds(7 * 60).toEpochMilli(), stop = "Stop A"),
+                    WatchTrip.Train("38", "38", "bus", "Oxford Circus", tripNow.plusSeconds(9 * 60).toEpochMilli(), stop = "Stop B"),
+                ),
+            ),
+            stale = false,
+        ),
+    )
+
+    // The phone's word that the trains' last update failed, over the last good board's rows.
+    @Test
+    fun tripTrainsFailed() = capture(
+        "trip_trains_failed",
+        TileFrame.NeverSynced,
+        refresh = true,
+        trip = ShownTrip(trip.copy(departuresNote = "Couldn't update just now"), stale = false),
+    )
 
     @Test
     fun neverSynced() = capture("never_synced", TileFrame.NeverSynced)

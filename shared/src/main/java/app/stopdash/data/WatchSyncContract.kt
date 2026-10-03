@@ -34,6 +34,13 @@ object WatchSyncContract {
     /** The message path the phone answers a refresh request on, with a [WatchRefreshOutcome]. */
     const val REFRESH_RESULT_PATH = "/stopdash/refresh-result"
 
+    /** The `DataItem` path the phone writes a trip on the way to ([WatchTrip]), deleted when the
+     *  trip ends. Apart from [SNAPSHOT_PATH]: a trip changes on its own cadence. */
+    const val TRIP_PATH = "/stopdash/trip"
+
+    /** The trip's key in that item: [WatchTrip.encode]'s bytes. */
+    const val TRIP_KEY = "trip"
+
     /** Declared by the watch app (res/values/wear.xml), so the phone publishes only when a paired
      *  watch has it installed. */
     const val WATCH_CAPABILITY = "stopdash_watch"

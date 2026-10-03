@@ -2917,9 +2917,12 @@ and these carry the rest as their own PRs:
         have StopDash, opening its Play page on the watch (`RemoteActivityHelper`).
     - [ ] **Device check:** a watch without the app shows the offer, Install opens Play on it,
           and the offer goes once the app is installed.
-  - [ ] **Trip view on the watch** (maintainer, 2026-10-02): the current step of a trip on the
+  - [x] **Trip view on the watch** (maintainer, 2026-10-02): the current step of a trip on the
         way, with previous/next buttons to page through steps, plus departures for the next leg
-        when they fit.
+        when they fit. Disclosed as a trip leaving the phone (maintainer, 2026-10-03).
+    - [ ] **Device check:** a trip followed on the phone shows on the watch, pages, counts down,
+          and goes when the trip ends; out of date once the phone stops updating it.
+    - [ ] (Later) A trip followed only by the open app (the service refused) isn't sent.
 
 ## Beyond MVP (not planned)
 

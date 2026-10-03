@@ -1792,7 +1792,8 @@ them there:
   as chosen: every stop of a station complex, or a place, so the trip can be planned again from
   partway along to any of them, not just the stop the route ends at), in app storage
   that is never backed up, so it survives the app being closed; where a rider is going is theirs
-  (*Privacy*), and it's forgotten when the trip ends.
+  (*Privacy*), and it's forgotten when the trip ends. Its steps go to the rider's own watch, if it
+  has the app (*Privacy*, the Wear OS watch sync).
 
 **Notifications** need Android's notification permission, asked for when the rider taps Start;
 declined, the trip still follows them on its screen and the main view's card, and its screen says
@@ -2761,6 +2762,15 @@ complications show and its refresh requests. It goes over Google Play services' 
 which may relay through Google's servers when the watch isn't on Bluetooth; that relay is accepted,
 with this disclosure. Nothing is sent when no paired watch has the app. `docs/PRIVACY.md` carries
 the user-facing wording and the Data Safety determination, re-checked before the watch release.
+
+**A trip on the way goes to the watch too** (maintainer, 2026-10-03), by the same route and on the
+same terms: while the phone follows a trip, it sends the watch the trip's steps (each walk and ride,
+its line and the stations at each end), the step the rider is at with what to do there now, and the
+trains for the next ride. It is the one exception to a trip being kept on the phone only, made so
+the watch can show the step the rider is at; it is taken off the watch when the trip ends, and the
+watch stops showing one the phone stopped updating (its copy in the Data Layer goes with the
+phone's next trip). The watch only shows it: paging through the
+steps there looks ahead or back without moving the trip.
 
 With a National Rail key set (*Data source*), a rail station's departures request also goes to
 the Rail Data Marketplace, carrying that station's CRS code and the user's own key, never a
