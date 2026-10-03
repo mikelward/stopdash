@@ -66,7 +66,9 @@ contract, and jank-free UI**:
   hopping to an injectable dispatcher: they read precomputed state and hand off, the hop
   first in the function. "It's usually fast" is no exemption (a 600 KB route froze the
   screen, #483; per-board work crept into composition, #502). Each such function gets a test
-  calling it from a single-thread caller that checks the work ran elsewhere.
+  calling it from a single-thread caller that checks the work ran elsewhere. Mark domain work that
+  grows with the data `@WorkerThread`; lint's `WorkerThreadCall` fails a call to it from composition,
+  and `app/lint-baseline.xml` only ever shrinks.
 
 When you can't verify something locally (no emulator, no lock-screen host, no real
 device), say so in the chat update — "verified by unit test; the lock-screen placement
