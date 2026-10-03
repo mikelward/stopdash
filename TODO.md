@@ -30,6 +30,26 @@ exercises the whole spine the widget later renders from.
       thread: the upcoming trains (`Countdown.upcoming`), their verdicts gathered (`legFilter`), and
       the routes timed (`tripEstimates`, the card helpers, `headedCards`). Move them to the trip's view model,
       published with the data they come from, so the page only reads.
+- [ ] Clear the `WorkerThreadCall` lint baseline (`app/lint-baseline.xml`): composition that reaches a
+      `@WorkerThread` domain function, directly or through a helper, today MainScreen's near-me rows,
+      journey cards and alert placement, OnTheWayScreen's next trains, TripScreen's line rows and
+      card helpers, `MainViewModel`'s refresh and dismissal pruning (run on `viewModelScope`, the main
+      thread), the trip tracker's refresh (run from a `LaunchedEffect`), the widget's model (built in
+      Glance's `provideContent`) and, in `wear/lint-baseline.xml`, the complication picker's choices.
+      Each moves off the main thread, worked out with the data it comes from and published with it,
+      one screen per PR.
+- [ ] Finish marking `@WorkerThread`: the first sweep marked the route, alert, journey and board-wide
+      work; smaller loops the UI still calls in composition (a row's `Countdown.entries`, and the like)
+      aren't marked yet, so `WorkerThreadCall` can't see them. Mark each as its screen moves off the
+      main thread, its calls joining the baseline until then.
+- [ ] Sharpen `WorkerThreadCall` where it still guesses: a helper's default argument doing the work
+      (`fun rows(v = RouteStops.resolve(…))`) isn't followed, and a local function or stored lambda is
+      matched to its calls by name, so a shadowing local of the same name is attributed to it. A
+      helper returning a function reference (`deferred()(stops)`) isn't followed, nor a composable
+      lambda marked only on its literal (`val Stops = @Composable { … }`). A property read isn't
+      followed into its getter (`show(model.rows)` whose `get()` reaches marked work, or a
+      `@get:WorkerThread` property); no getter in the app reaches marked work yet.
+      Static analysis can't be complete; fix each when one bites or a review shows it's cheap.
 
 - [ ] Screenshot job — record + upload landed; **drift-refresh + visual-diff apparatus
       wired**, awaiting one operator step. The `screenshot-tests` job now checks out the PR
