@@ -63,10 +63,13 @@ contract, and jank-free UI**:
 - **Main thread: read and dispatch only.** Composition, `remember`/`LaunchedEffect` bodies,
   click handlers, and any data or domain function the UI calls do no I/O and no work that
   grows with input (a loop, filter, map, sort, parse or decode over a collection) before
-  hopping to an injectable dispatcher: they read precomputed state and hand off, the hop
-  first in the function. "It's usually fast" is no exemption (a 600 KB route froze the
-  screen, #483; per-board work crept into composition, #502). Each such function gets a test
-  calling it from a single-thread caller that checks the work ran elsewhere.
+  hopping to a worker (`Workers.compute`, injectable): derive UI state in
+  `rememberComputed { }`; a domain function the UI calls is `suspend` with the hop first, or
+  `@MainSafe` when its work is constant. "It's usually fast" is no exemption (#483, #502, a
+  terminus's route froze the page). Lint's `MainThreadWork` enforces it (a `suspend` function
+  hops before it works; one called only off the main thread is `@WorkerThread`): never add to a
+  `lint-baseline.xml`, only remove from it. Each hopping function gets a test calling it from
+  a single-thread caller that checks the work ran elsewhere.
 
 When you can't verify something locally (no emulator, no lock-screen host, no real
 device), say so in the chat update — "verified by unit test; the lock-screen placement

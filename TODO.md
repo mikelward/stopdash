@@ -25,6 +25,28 @@ exercises the whole spine the widget later renders from.
 
 ### Phase 0 — remaining (follow-up PRs)
 
+- [ ] Clear the `MainThreadWork` lint baselines (`app/`, `domain/` and `wear/lint-baseline.xml`):
+      every site where the main thread derives what it shows, or a `suspend` function works before
+      it hops, one screen per PR, biggest first.
+      The UI derives state in `rememberComputed` (or a presenter whose work runs on
+      `Workers.compute`); a domain function it calls becomes `suspend` (hop first) or is marked
+      `@MainSafe` once checked to be constant work. In order:
+  - [ ] MainScreen's journey cards, keyed on the 10 s tick (each journey's trains resolved
+        against whole routes).
+  - [ ] Alerts placed behind a stop (`withAlertsBehind`, `AlertsBehind.placement`) in
+        MainScreen's loaded, nearby and platform rows.
+  - [ ] MainScreen's journey preparation (`sequencesFor`, segments, origins, siblings) and the
+        route page's `journeysHere`.
+  - [ ] TripScreen's estimates, checks, card statuses/closures/times, and line page rows.
+  - [ ] MainScreen's near-me rows (`nearbyComputed` and what follows it) on the tick.
+  - [ ] `ActiveTripTracker.refresh` and `MainViewModel` refresh merging, on a main-dispatched
+        scope.
+  - [ ] The view models' `suspend` functions that work before their first `withContext`
+        (MainViewModel, TripViewModel, FartherCardsViewModel and the rest).
+  - [ ] The domain's `suspend` functions that work before they hop (`WidgetRefresh`,
+        `ArrivalsCache`, `NationalRail` and the rest).
+  - [ ] OnTheWayScreen's next trains, MainActivity's farther-stations produceState, and the rest.
+
 - [ ] Screenshot job — record + upload landed; **drift-refresh + visual-diff apparatus
       wired**, awaiting one operator step. The `screenshot-tests` job now checks out the PR
       head branch, enforces the `--tests` allow-list against every `*ScreenshotTest`, clears

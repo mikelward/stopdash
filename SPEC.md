@@ -2904,6 +2904,15 @@ In priority order; where a rule below conflicts with a principle, the principle 
 4. **Jank-free.** The app list and the widget render from in-memory/snapshot state; no
    I/O in composition, and no blocking a first frame on a fetch *or a disk read* — a
    stamped placeholder shows at once and fills in when the persisted snapshot loads.
+   The main thread only reads what is already worked out: anything that grows with the
+   data (matching a train to its line's routes, reading an alert's stations, grouping a
+   board) is worked out on a worker, never in composition, an effect or a click handler.
+   A screen shows at once with what it has (the last answer for that page in this
+   process, else a placeholder); an answer in within a short budget (300 ms) replaces it
+   unasked, and one that comes later and would change what the rider is reading waits
+   behind a "Tap to see" rather than moving the page under them. A lint check
+   (`MainThreadWork`) fails the build on a new main-thread site; the ones that predate it
+   are listed in each app's lint baseline, to be moved off.
 5. **Battery is the user's cost.** Background refresh is bounded and degrades to
    on-demand; anything that adds a wakeup or a location request is a battery change and
    is justified as one.
