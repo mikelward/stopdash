@@ -33,12 +33,12 @@ exercises the whole spine the widget later renders from.
       `@MainSafe` once checked to be constant work. In order:
   - [x] MainScreen's journey cards, keyed on the 10 s tick (each journey's trains resolved
         against whole routes), and what the screen and widget read off them (`journeyCardsOf`).
-  - [ ] Alerts placed behind a stop (`withAlertsBehind`, `AlertsBehind.placement`) in
-        MainScreen's loaded, nearby and platform rows.
+  - [x] Alerts placed behind a stop (`withAlertsBehind`, `AlertsBehind.placement`) in
+        MainScreen's loaded, nearby and platform rows (`nearbyListOf`, `platformViewOf`).
   - [ ] MainScreen's journey preparation (`sequencesFor`, segments, origins, siblings) and the
         route page's `journeysHere`.
   - [ ] TripScreen's estimates, checks, card statuses/closures/times, and line page rows.
-  - [ ] MainScreen's near-me rows (`nearbyComputed` and what follows it) on the tick.
+  - [x] MainScreen's near-me rows (`nearbyComputed` and what follows it) on the tick.
   - [ ] `ActiveTripTracker.refresh` and `MainViewModel` refresh merging, on a main-dispatched
         scope.
   - [ ] The view models' `suspend` functions that work before their first `withContext`

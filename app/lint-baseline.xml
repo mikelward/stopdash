@@ -2967,7 +2967,7 @@
         errorLine2="                                                                                      ~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="390"
+            line="391"
             column="87"/>
     </issue>
 
@@ -2978,7 +2978,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="424"
+            line="425"
             column="9"/>
     </issue>
 
@@ -2989,7 +2989,7 @@
         errorLine2="                                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="426"
+            line="427"
             column="53"/>
     </issue>
 
@@ -3000,7 +3000,7 @@
         errorLine2="                                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="426"
+            line="427"
             column="53"/>
     </issue>
 
@@ -3011,7 +3011,7 @@
         errorLine2="                                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="426"
+            line="427"
             column="53"/>
     </issue>
 
@@ -3022,7 +3022,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="430"
+            line="431"
             column="9"/>
     </issue>
 
@@ -3033,7 +3033,7 @@
         errorLine2="                                                                              ~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="430"
+            line="431"
             column="79"/>
     </issue>
 
@@ -3044,7 +3044,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="435"
+            line="436"
             column="9"/>
     </issue>
 
@@ -3055,7 +3055,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="435"
+            line="436"
             column="9"/>
     </issue>
 
@@ -3066,7 +3066,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="445"
+            line="446"
             column="9"/>
     </issue>
 
@@ -3077,7 +3077,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="445"
+            line="446"
             column="9"/>
     </issue>
 
@@ -3088,7 +3088,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="445"
+            line="446"
             column="9"/>
     </issue>
 
@@ -3099,7 +3099,7 @@
         errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="453"
+            line="454"
             column="24"/>
     </issue>
 
@@ -3110,7 +3110,7 @@
         errorLine2="                                                         ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="470"
+            line="471"
             column="58"/>
     </issue>
 
@@ -3121,7 +3121,7 @@
         errorLine2="                                                         ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="470"
+            line="471"
             column="58"/>
     </issue>
 
@@ -3132,7 +3132,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="476"
+            line="477"
             column="9"/>
     </issue>
 
@@ -3143,7 +3143,7 @@
         errorLine2="                                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="485"
+            line="486"
             column="41"/>
     </issue>
 
@@ -3154,7 +3154,7 @@
         errorLine2="                         ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="486"
+            line="487"
             column="26"/>
     </issue>
 
@@ -3165,7 +3165,7 @@
         errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="489"
+            line="490"
             column="24"/>
     </issue>
 
@@ -3176,7 +3176,7 @@
         errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="496"
+            line="497"
             column="25"/>
     </issue>
 
@@ -3187,7 +3187,7 @@
         errorLine2="                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="501"
+            line="502"
             column="19"/>
     </issue>
 
@@ -3198,7 +3198,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="502"
+            line="503"
             column="9"/>
     </issue>
 
@@ -3209,7 +3209,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="502"
+            line="503"
             column="9"/>
     </issue>
 
@@ -3220,7 +3220,7 @@
         errorLine2="                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="503"
+            line="504"
             column="32"/>
     </issue>
 
@@ -3231,7 +3231,7 @@
         errorLine2="                                                                   ~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="503"
+            line="504"
             column="68"/>
     </issue>
 
@@ -3242,7 +3242,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="508"
+            line="509"
             column="9"/>
     </issue>
 
@@ -3253,7 +3253,7 @@
         errorLine2="                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="511"
+            line="512"
             column="28"/>
     </issue>
 
@@ -3264,7 +3264,7 @@
         errorLine2="                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="511"
+            line="512"
             column="28"/>
     </issue>
 
@@ -3275,7 +3275,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="512"
+            line="513"
             column="13"/>
     </issue>
 
@@ -3286,7 +3286,7 @@
         errorLine2="            ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="512"
+            line="513"
             column="13"/>
     </issue>
 
@@ -3297,7 +3297,7 @@
         errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="513"
+            line="514"
             column="17"/>
     </issue>
 
@@ -3308,7 +3308,7 @@
         errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="513"
+            line="514"
             column="17"/>
     </issue>
 
@@ -3319,7 +3319,7 @@
         errorLine2="                                                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="513"
+            line="514"
             column="59"/>
     </issue>
 
@@ -3330,7 +3330,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="518"
+            line="519"
             column="9"/>
     </issue>
 
@@ -3341,30 +3341,8 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="518"
+            line="519"
             column="9"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`DepartureRows.linesWithAlertsToPlace`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        loaded?.let { DepartureRows.linesWithAlertsToPlace(it.stops, it.lineStatuses, now, dismissed) }.orEmpty()"
-        errorLine2="                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="551"
-            column="23"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`AlertsBehind.placement`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        loaded?.let { ld -> AlertsBehind.placement(ld.stops, ld.lineStatuses, alertSequences, now) }"
-        errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="563"
-            column="29"/>
     </issue>
 
     <issue
@@ -3374,7 +3352,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="572"
+            line="573"
             column="9"/>
     </issue>
 
@@ -3385,7 +3363,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="572"
+            line="573"
             column="9"/>
     </issue>
 
@@ -3396,7 +3374,7 @@
         errorLine2="                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="575"
+            line="576"
             column="22"/>
     </issue>
 
@@ -3407,7 +3385,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="579"
+            line="580"
             column="9"/>
     </issue>
 
@@ -3418,7 +3396,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="579"
+            line="580"
             column="9"/>
     </issue>
 
@@ -3429,7 +3407,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="579"
+            line="580"
             column="9"/>
     </issue>
 
@@ -3440,7 +3418,7 @@
         errorLine2="            ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="580"
+            line="581"
             column="13"/>
     </issue>
 
@@ -3451,7 +3429,7 @@
         errorLine2="                                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="581"
+            line="582"
             column="47"/>
     </issue>
 
@@ -3462,7 +3440,7 @@
         errorLine2="                                                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="581"
+            line="582"
             column="67"/>
     </issue>
 
@@ -3473,7 +3451,7 @@
         errorLine2="                                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="583"
+            line="584"
             column="52"/>
     </issue>
 
@@ -3484,7 +3462,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="588"
+            line="589"
             column="9"/>
     </issue>
 
@@ -3495,7 +3473,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="594"
+            line="595"
             column="9"/>
     </issue>
 
@@ -3506,602 +3484,8 @@
         errorLine2="                                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="596"
+            line="597"
             column="41"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`mapValues`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        placeModes(loaded?.stops.orEmpty()).mapValues { (_, modes) ->"
-        errorLine2="        ^">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="640"
-            column="9"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`filterNotTo`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="            modes.filterNotTo(LinkedHashSet()) { HiddenModes.isHidden(it, hiddenModes) }"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="641"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`HiddenModes.isHidden`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="            modes.filterNotTo(LinkedHashSet()) { HiddenModes.isHidden(it, hiddenModes) }"
-        errorLine2="                                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="641"
-            column="50"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`filter`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val shownStops = if (stopDistanceMeters.isEmpty()) ld.stops else ld.stops.filter { it.stopId in stopDistanceMeters }"
-        errorLine2="                                                                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="648"
-            column="74"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`DepartureRows.across`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val across = HiddenModes.rows(DepartureRows.across(shownStops, now, ld.lineStatuses), hiddenModes)"
-        errorLine2="                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="649"
-            column="39"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`HiddenModes.rows`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val across = HiddenModes.rows(DepartureRows.across(shownStops, now, ld.lineStatuses), hiddenModes)"
-        errorLine2="                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="649"
-            column="22"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`DepartureRows.stopStatusFolded`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="                DepartureRows.stopStatusFolded(across)"
-        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="657"
-            column="17"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`DepartureRows.nearbyDeduped`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="                val deduped = DepartureRows.nearbyDeduped(across, stopDistanceMeters, dismissed)"
-        errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="659"
-            column="31"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`DepartureRows.byStopDistance`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="                DepartureRows.byStopDistance(deduped, stopDistanceMeters)"
-        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="660"
-            column="17"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`filterValues`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val shared = across.filter { it.stopDisruption != null }"
-        errorLine2="                     ^">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="665"
-            column="22"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`filter`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val shared = across.filter { it.stopDisruption != null }"
-        errorLine2="                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="665"
-            column="22"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`groupBy`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val shared = across.filter { it.stopDisruption != null }"
-        errorLine2="                     ^">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="665"
-            column="22"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`DismissedAlertKt.stopPlaceKey`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="            .groupBy { stopPlaceKey(it) to it.stopDisruption.orEmpty() }"
-        errorLine2="                       ~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="666"
-            column="24"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`mapTo`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="            .filterValues { rows -> rows.mapTo(HashSet()) { it.stopId }.size > 1 }"
-        errorLine2="                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="667"
-            column="37"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`DepartureRows.withAlertsBehind`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        DepartureRows.withAlertsBehind(DepartureRows.withoutDismissed(nearbyOrdered, dismissed), alertSequences)"
-        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="676"
-            column="9"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`DepartureRows.withoutDismissed`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        DepartureRows.withAlertsBehind(DepartureRows.withoutDismissed(nearbyOrdered, dismissed), alertSequences)"
-        errorLine2="                                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="676"
-            column="40"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`toHashSet`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="            val shown = nearbyRows.toHashSet()"
-        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="684"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`filter`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="            nearbyOrdered.filter { it !in shown &amp;&amp; it.stopDisruption?.let(ClosedNotice::saysClosed) == true }"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="685"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`DepartureRows.pinStarred`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        DepartureRows.pinStarred("
-        errorLine2="        ^">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="693"
-            column="9"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`DepartureRows.withoutShownAbove`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="            DepartureRows.withoutShownAbove(nearbyRows, journeyRowsShown),"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="694"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`map`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="    val pendingStopIds = (state as? DeparturesUiState.Loaded)?.pendingStops.orEmpty().map { it.id }"
-        errorLine2="                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="707"
-            column="26"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`filter`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val opened = farther.filter { it.load != null }.mapTo(HashSet()) { it.place.key }"
-        errorLine2="                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="709"
-            column="22"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`mapTo`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val opened = farther.filter { it.load != null }.mapTo(HashSet()) { it.place.key }"
-        errorLine2="                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="709"
-            column="22"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`filter`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val shownBus = (rows + journeyRowsShown)"
-        errorLine2="                       ^">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="710"
-            column="24"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`mapTo`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val shownBus = (rows + journeyRowsShown)"
-        errorLine2="                       ^">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="710"
-            column="24"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`mapTo`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val shownStops = (rows + journeyRowsShown).mapTo(HashSet()) { it.stopId }"
-        errorLine2="                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="713"
-            column="26"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`associateBy`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val kept = CollapsedPlaces.withBusesPicked(farther.map { it.place }, shownBus, opened, shownStopIds = shownStops)"
-        errorLine2="                   ^">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="715"
-            column="20"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`map`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val kept = CollapsedPlaces.withBusesPicked(farther.map { it.place }, shownBus, opened, shownStopIds = shownStops)"
-        errorLine2="                                                   ~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="715"
-            column="52"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`CollapsedPlaces.withBusesPicked`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val kept = CollapsedPlaces.withBusesPicked(farther.map { it.place }, shownBus, opened, shownStopIds = shownStops)"
-        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="715"
-            column="20"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`mapNotNull`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        farther.mapNotNull { card -> kept[card.place.key]?.let { card.copy(place = it) } }"
-        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="717"
-            column="9"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`toSet`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val ids = platformStopIds?.split(&apos;,&apos;)?.toSet() ?: return@remember null"
-        errorLine2="                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="746"
-            column="19"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`filter`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="            if (platformIsStation) ld.stops.filter { stationClusterOf(it.clusterId, it.stopId) in ids }"
-        errorLine2="                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="751"
-            column="36"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`filter`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="            else ld.stops.filter { it.stopId in ids }"
-        errorLine2="                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="752"
-            column="18"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`DepartureRows.pinStarred`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val stopRows = DepartureRows.pinStarred("
-        errorLine2="                       ^">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="753"
-            column="24"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`DepartureRows.withAlertsBehind`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="            DepartureRows.withAlertsBehind("
-        errorLine2="            ^">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="754"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`DepartureRows.withoutDismissed`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="                DepartureRows.withoutDismissed("
-        errorLine2="                ^">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="755"
-            column="17"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`DepartureRows.across`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="                    HiddenModes.rows(DepartureRows.across(platformStops, now, ld.lineStatuses), hiddenModes),"
-        errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="756"
-            column="38"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`HiddenModes.rows`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="                    HiddenModes.rows(DepartureRows.across(platformStops, now, ld.lineStatuses), hiddenModes),"
-        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="756"
-            column="21"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`StopGrouping.groupByStop`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val groups = StopGrouping.groupByStop(stopRows)"
-        errorLine2="                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="763"
-            column="22"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`filter`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val matched = if (platformKey.isEmpty()) groups else groups.filter { it.splitKey == platformKey }"
-        errorLine2="                                                             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="767"
-            column="62"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`flatMap`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val groupRows = (matched.flatMap { it.rows } + StopGrouping.unplacedStatusRows(groups)).toHashSet()"
-        errorLine2="                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="770"
-            column="26"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`toHashSet`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val groupRows = (matched.flatMap { it.rows } + StopGrouping.unplacedStatusRows(groups)).toHashSet()"
-        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="770"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`StopGrouping.unplacedStatusRows`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val groupRows = (matched.flatMap { it.rows } + StopGrouping.unplacedStatusRows(groups)).toHashSet()"
-        errorLine2="                                                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="770"
-            column="56"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`mapTo`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val places = platformStops.mapTo(HashSet()) { stopPlaceKey(it) }"
-        errorLine2="                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="783"
-            column="22"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`DismissedAlertKt.stopPlaceKey`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val places = platformStops.mapTo(HashSet()) { stopPlaceKey(it) }"
-        errorLine2="                                                      ~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="783"
-            column="55"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`filter`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val closures = rows.filter { it.stopDisruption != null &amp;&amp; stopPlaceKey(it) in places }"
-        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="784"
-            column="24"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`DismissedAlertKt.stopPlaceKey`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        val closures = rows.filter { it.stopDisruption != null &amp;&amp; stopPlaceKey(it) in places }"
-        errorLine2="                                                                  ~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="784"
-            column="67"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`filter`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        (closures + stopRows.filter { it.stopDisruption == null &amp;&amp; it in groupRows }) to title"
-        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="785"
-            column="21"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`DepartureRows.across`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        DepartureRows.withAlertsBehind(DepartureRows.withoutDismissed(DepartureRows.across(ld.stops, now, ld.lineStatuses), dismissed), alertSequences)"
-        errorLine2="                                                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="869"
-            column="71"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`DepartureRows.withAlertsBehind`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        DepartureRows.withAlertsBehind(DepartureRows.withoutDismissed(DepartureRows.across(ld.stops, now, ld.lineStatuses), dismissed), alertSequences)"
-        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="869"
-            column="9"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="`DepartureRows.withoutDismissed`, not marked @MainSafe, on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        DepartureRows.withAlertsBehind(DepartureRows.withoutDismissed(DepartureRows.across(ld.stops, now, ld.lineStatuses), dismissed), alertSequences)"
-        errorLine2="                                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="869"
-            column="40"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`firstOrNull`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="        shownRows.firstOrNull { it.detailKey() == key }"
-        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="872"
-            column="9"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`firstOrNull`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="            ?: journeyRows.firstOrNull { it.detailKey() == key }"
-        errorLine2="               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="873"
-            column="16"/>
-    </issue>
-
-    <issue
-        id="MainThreadWork"
-        message="Deriving a collection (`firstOrNull`) on the main thread, in composable `MainScreen`: move it into `rememberComputed { }`, a `suspend` function that hops to `Workers.compute`, or a `@WorkerThread` function called from one"
-        errorLine1="            ?: loadedRows.takeIf { platformRows == null }?.firstOrNull { it.detailKey() == key }"
-        errorLine2="               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="874"
-            column="16"/>
     </issue>
 
     <issue
@@ -4111,7 +3495,7 @@
         errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="928"
+            line="829"
             column="25"/>
     </issue>
 
@@ -4122,7 +3506,7 @@
         errorLine2="                                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1062"
+            line="963"
             column="50"/>
     </issue>
 
@@ -4133,7 +3517,7 @@
         errorLine2="                                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1231"
+            line="1134"
             column="51"/>
     </issue>
 
@@ -4144,7 +3528,7 @@
         errorLine2="                                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1231"
+            line="1134"
             column="51"/>
     </issue>
 
@@ -4155,7 +3539,7 @@
         errorLine2="                                                  ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1245"
+            line="1148"
             column="51"/>
     </issue>
 
@@ -4166,7 +3550,7 @@
         errorLine2="                                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1245"
+            line="1148"
             column="51"/>
     </issue>
 
@@ -4177,7 +3561,7 @@
         errorLine2="            ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1429"
+            line="1332"
             column="13"/>
     </issue>
 
@@ -4188,7 +3572,7 @@
         errorLine2="                                             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1475"
+            line="1378"
             column="46"/>
     </issue>
 
@@ -4199,7 +3583,7 @@
         errorLine2="                                             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1475"
+            line="1378"
             column="46"/>
     </issue>
 
@@ -4210,7 +3594,7 @@
         errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1542"
+            line="1445"
             column="25"/>
     </issue>
 
@@ -4221,7 +3605,7 @@
         errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1558"
+            line="1461"
             column="38"/>
     </issue>
 
@@ -4232,7 +3616,7 @@
         errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1570"
+            line="1473"
             column="25"/>
     </issue>
 
@@ -4243,7 +3627,7 @@
         errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1570"
+            line="1473"
             column="25"/>
     </issue>
 
@@ -4254,7 +3638,7 @@
         errorLine2="                        ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1575"
+            line="1478"
             column="25"/>
     </issue>
 
@@ -4265,7 +3649,7 @@
         errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1575"
+            line="1478"
             column="25"/>
     </issue>
 
@@ -4276,7 +3660,7 @@
         errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1643"
+            line="1546"
             column="25"/>
     </issue>
 
@@ -4287,7 +3671,7 @@
         errorLine2="                                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1793"
+            line="1696"
             column="40"/>
     </issue>
 
@@ -4298,7 +3682,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1804"
+            line="1707"
             column="9"/>
     </issue>
 
@@ -4309,7 +3693,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1815"
+            line="1718"
             column="13"/>
     </issue>
 
@@ -4320,7 +3704,7 @@
         errorLine2="            ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1815"
+            line="1718"
             column="13"/>
     </issue>
 
@@ -4331,7 +3715,7 @@
         errorLine2="            ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1815"
+            line="1718"
             column="13"/>
     </issue>
 
@@ -4342,7 +3726,7 @@
         errorLine2="                ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1816"
+            line="1719"
             column="17"/>
     </issue>
 
@@ -4353,7 +3737,7 @@
         errorLine2="                ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1816"
+            line="1719"
             column="17"/>
     </issue>
 
@@ -4364,7 +3748,7 @@
         errorLine2="                                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1826"
+            line="1729"
             column="43"/>
     </issue>
 
@@ -4375,7 +3759,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1842"
+            line="1745"
             column="9"/>
     </issue>
 
@@ -4386,7 +3770,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1842"
+            line="1745"
             column="9"/>
     </issue>
 
@@ -4397,7 +3781,7 @@
         errorLine2="                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1847"
+            line="1750"
             column="28"/>
     </issue>
 
@@ -4408,7 +3792,7 @@
         errorLine2="                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1864"
+            line="1767"
             column="28"/>
     </issue>
 
@@ -4419,7 +3803,7 @@
         errorLine2="                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1865"
+            line="1768"
             column="27"/>
     </issue>
 
@@ -4430,7 +3814,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1866"
+            line="1769"
             column="9"/>
     </issue>
 
@@ -4441,7 +3825,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1866"
+            line="1769"
             column="9"/>
     </issue>
 
@@ -4452,7 +3836,7 @@
         errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1875"
+            line="1778"
             column="38"/>
     </issue>
 
@@ -4463,7 +3847,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1884"
+            line="1787"
             column="9"/>
     </issue>
 
@@ -4474,7 +3858,7 @@
         errorLine2="                                                                                                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1907"
+            line="1810"
             column="117"/>
     </issue>
 
@@ -4485,7 +3869,7 @@
         errorLine2="                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1958"
+            line="1861"
             column="44"/>
     </issue>
 
@@ -4496,7 +3880,7 @@
         errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1959"
+            line="1862"
             column="25"/>
     </issue>
 
@@ -4507,7 +3891,7 @@
         errorLine2="                                                                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1985"
+            line="1888"
             column="81"/>
     </issue>
 
@@ -4518,7 +3902,7 @@
         errorLine2="                                                                                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2070"
+            line="1973"
             column="108"/>
     </issue>
 
@@ -4529,7 +3913,7 @@
         errorLine2="                            ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2089"
+            line="1992"
             column="29"/>
     </issue>
 
@@ -4540,7 +3924,7 @@
         errorLine2="                            ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2089"
+            line="1992"
             column="29"/>
     </issue>
 
@@ -4551,7 +3935,7 @@
         errorLine2="                             ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2121"
+            line="2024"
             column="30"/>
     </issue>
 
@@ -4562,7 +3946,7 @@
         errorLine2="                            ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2124"
+            line="2027"
             column="29"/>
     </issue>
 
@@ -4573,7 +3957,7 @@
         errorLine2="                                                                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2125"
+            line="2028"
             column="82"/>
     </issue>
 
@@ -4584,7 +3968,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2125"
+            line="2028"
             column="13"/>
     </issue>
 
@@ -4595,7 +3979,7 @@
         errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2131"
+            line="2034"
             column="29"/>
     </issue>
 
@@ -4606,7 +3990,7 @@
         errorLine2="                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2132"
+            line="2035"
             column="27"/>
     </issue>
 
@@ -4617,7 +4001,7 @@
         errorLine2="                        ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2133"
+            line="2036"
             column="25"/>
     </issue>
 
@@ -4628,7 +4012,7 @@
         errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2138"
+            line="2041"
             column="24"/>
     </issue>
 
@@ -4639,7 +4023,7 @@
         errorLine2="                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2139"
+            line="2042"
             column="22"/>
     </issue>
 
@@ -4650,7 +4034,7 @@
         errorLine2="                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2141"
+            line="2044"
             column="22"/>
     </issue>
 
@@ -4661,7 +4045,7 @@
         errorLine2="                    ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2141"
+            line="2044"
             column="21"/>
     </issue>
 
@@ -4672,7 +4056,7 @@
         errorLine2="                                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2144"
+            line="2047"
             column="54"/>
     </issue>
 
@@ -4683,7 +4067,7 @@
         errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2144"
+            line="2047"
             column="29"/>
     </issue>
 
@@ -4694,7 +4078,7 @@
         errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2144"
+            line="2047"
             column="29"/>
     </issue>
 
@@ -4705,7 +4089,7 @@
         errorLine2="                                                                      ~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2144"
+            line="2047"
             column="71"/>
     </issue>
 
@@ -4716,7 +4100,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2146"
+            line="2049"
             column="13"/>
     </issue>
 
@@ -4727,7 +4111,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2147"
+            line="2050"
             column="13"/>
     </issue>
 
@@ -4738,7 +4122,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2148"
+            line="2051"
             column="13"/>
     </issue>
 
@@ -4749,7 +4133,7 @@
         errorLine2="                              ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2155"
+            line="2058"
             column="31"/>
     </issue>
 
@@ -4760,7 +4144,7 @@
         errorLine2="                              ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2155"
+            line="2058"
             column="31"/>
     </issue>
 
@@ -4771,7 +4155,7 @@
         errorLine2="                                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2157"
+            line="2060"
             column="51"/>
     </issue>
 
@@ -4782,7 +4166,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2159"
+            line="2062"
             column="13"/>
     </issue>
 
@@ -4793,7 +4177,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2164"
+            line="2067"
             column="13"/>
     </issue>
 
@@ -4804,7 +4188,7 @@
         errorLine2="                      ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2169"
+            line="2072"
             column="23"/>
     </issue>
 
@@ -4815,7 +4199,7 @@
         errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2170"
+            line="2073"
             column="29"/>
     </issue>
 
@@ -4826,7 +4210,7 @@
         errorLine2="                                                     ~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2175"
+            line="2078"
             column="54"/>
     </issue>
 
@@ -4837,7 +4221,7 @@
         errorLine2="                                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2175"
+            line="2078"
             column="54"/>
     </issue>
 
@@ -4848,7 +4232,7 @@
         errorLine2="                         ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2176"
+            line="2079"
             column="26"/>
     </issue>
 
@@ -4859,7 +4243,7 @@
         errorLine2="                         ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2176"
+            line="2079"
             column="26"/>
     </issue>
 
@@ -4870,7 +4254,7 @@
         errorLine2="                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2177"
+            line="2080"
             column="39"/>
     </issue>
 
@@ -4881,7 +4265,7 @@
         errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2178"
+            line="2081"
             column="38"/>
     </issue>
 
@@ -4892,7 +4276,7 @@
         errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2180"
+            line="2083"
             column="29"/>
     </issue>
 
@@ -4903,7 +4287,7 @@
         errorLine2="                                                                   ~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2180"
+            line="2083"
             column="68"/>
     </issue>
 
@@ -4914,7 +4298,7 @@
         errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2181"
+            line="2084"
             column="25"/>
     </issue>
 
@@ -4925,7 +4309,7 @@
         errorLine2="                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2182"
+            line="2085"
             column="28"/>
     </issue>
 
@@ -4936,7 +4320,7 @@
         errorLine2="                               ~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2185"
+            line="2088"
             column="32"/>
     </issue>
 
@@ -4947,7 +4331,7 @@
         errorLine2="            ~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2185"
+            line="2088"
             column="13"/>
     </issue>
 
@@ -4958,7 +4342,7 @@
         errorLine2="                   ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2192"
+            line="2095"
             column="20"/>
     </issue>
 
@@ -4969,7 +4353,7 @@
         errorLine2="                   ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2192"
+            line="2095"
             column="20"/>
     </issue>
 
@@ -4980,7 +4364,7 @@
         errorLine2="                        ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2201"
+            line="2104"
             column="25"/>
     </issue>
 
@@ -4991,7 +4375,7 @@
         errorLine2="                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2201"
+            line="2104"
             column="26"/>
     </issue>
 
@@ -5002,7 +4386,7 @@
         errorLine2="                                                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2201"
+            line="2104"
             column="63"/>
     </issue>
 
@@ -5013,7 +4397,7 @@
         errorLine2="                        ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2201"
+            line="2104"
             column="25"/>
     </issue>
 
@@ -5024,7 +4408,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2211"
+            line="2114"
             column="13"/>
     </issue>
 
@@ -5035,7 +4419,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2212"
+            line="2115"
             column="13"/>
     </issue>
 
@@ -5046,7 +4430,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2213"
+            line="2116"
             column="13"/>
     </issue>
 
@@ -5057,7 +4441,7 @@
         errorLine2="                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2228"
+            line="2131"
             column="26"/>
     </issue>
 
@@ -5068,7 +4452,7 @@
         errorLine2="                                            ~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2239"
+            line="2142"
             column="45"/>
     </issue>
 
@@ -5079,7 +4463,7 @@
         errorLine2="                         ~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2239"
+            line="2142"
             column="26"/>
     </issue>
 
@@ -5090,7 +4474,7 @@
         errorLine2="                                                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2245"
+            line="2148"
             column="67"/>
     </issue>
 
@@ -5101,7 +4485,7 @@
         errorLine2="                               ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2265"
+            line="2168"
             column="32"/>
     </issue>
 
@@ -5112,7 +4496,7 @@
         errorLine2="                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2270"
+            line="2173"
             column="27"/>
     </issue>
 
@@ -5123,7 +4507,7 @@
         errorLine2="                                                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2288"
+            line="2191"
             column="65"/>
     </issue>
 
@@ -5134,7 +4518,7 @@
         errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2296"
+            line="2199"
             column="38"/>
     </issue>
 
@@ -5145,7 +4529,7 @@
         errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2316"
+            line="2219"
             column="25"/>
     </issue>
 
@@ -5156,7 +4540,7 @@
         errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2317"
+            line="2220"
             column="17"/>
     </issue>
 
@@ -5167,7 +4551,7 @@
         errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2317"
+            line="2220"
             column="17"/>
     </issue>
 
@@ -5178,7 +4562,7 @@
         errorLine2="                              ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2325"
+            line="2228"
             column="31"/>
     </issue>
 
@@ -5189,7 +4573,7 @@
         errorLine2="                              ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2325"
+            line="2228"
             column="31"/>
     </issue>
 
@@ -5200,7 +4584,7 @@
         errorLine2="                              ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2325"
+            line="2228"
             column="31"/>
     </issue>
 
@@ -5211,7 +4595,7 @@
         errorLine2="                              ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2325"
+            line="2228"
             column="31"/>
     </issue>
 
@@ -5222,7 +4606,7 @@
         errorLine2="                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2328"
+            line="2231"
             column="45"/>
     </issue>
 
@@ -5233,7 +4617,7 @@
         errorLine2="                              ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2347"
+            line="2250"
             column="31"/>
     </issue>
 
@@ -5244,7 +4628,7 @@
         errorLine2="                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2352"
+            line="2255"
             column="27"/>
     </issue>
 
@@ -5255,7 +4639,7 @@
         errorLine2="                                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2353"
+            line="2256"
             column="64"/>
     </issue>
 
@@ -5266,7 +4650,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2353"
+            line="2256"
             column="20"/>
     </issue>
 
@@ -5277,7 +4661,7 @@
         errorLine2="           ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2412"
+            line="2315"
             column="12"/>
     </issue>
 
@@ -5288,7 +4672,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2414"
+            line="2317"
             column="20"/>
     </issue>
 
@@ -5299,7 +4683,7 @@
         errorLine2="                                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2414"
+            line="2317"
             column="43"/>
     </issue>
 
@@ -5310,7 +4694,7 @@
         errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2469"
+            line="2372"
             column="21"/>
     </issue>
 
@@ -5321,7 +4705,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2470"
+            line="2373"
             column="9"/>
     </issue>
 
@@ -5332,7 +4716,7 @@
         errorLine2="               ~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2474"
+            line="2377"
             column="16"/>
     </issue>
 
@@ -5343,7 +4727,7 @@
         errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2487"
+            line="2390"
             column="25"/>
     </issue>
 
@@ -5354,7 +4738,7 @@
         errorLine2="               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2503"
+            line="2406"
             column="16"/>
     </issue>
 
@@ -5365,7 +4749,7 @@
         errorLine2="                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2518"
+            line="2421"
             column="45"/>
     </issue>
 
@@ -5376,7 +4760,7 @@
         errorLine2="                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2519"
+            line="2422"
             column="23"/>
     </issue>
 
@@ -5387,7 +4771,7 @@
         errorLine2="                                                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2519"
+            line="2422"
             column="65"/>
     </issue>
 
@@ -5398,7 +4782,7 @@
         errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2533"
+            line="2436"
             column="29"/>
     </issue>
 
@@ -5409,7 +4793,7 @@
         errorLine2="                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2537"
+            line="2440"
             column="27"/>
     </issue>
 
@@ -5420,7 +4804,7 @@
         errorLine2="                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2622"
+            line="2525"
             column="18"/>
     </issue>
 
@@ -5431,7 +4815,7 @@
         errorLine2="                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2639"
+            line="2542"
             column="22"/>
     </issue>
 
@@ -5442,7 +4826,7 @@
         errorLine2="                                                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2639"
+            line="2542"
             column="66"/>
     </issue>
 
@@ -5453,7 +4837,7 @@
         errorLine2="                                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2640"
+            line="2543"
             column="54"/>
     </issue>
 
@@ -5464,7 +4848,7 @@
         errorLine2="                                                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2641"
+            line="2544"
             column="57"/>
     </issue>
 
@@ -5475,7 +4859,7 @@
         errorLine2="               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2647"
+            line="2550"
             column="16"/>
     </issue>
 
@@ -5486,7 +4870,7 @@
         errorLine2="                                             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2647"
+            line="2550"
             column="46"/>
     </issue>
 
@@ -5497,7 +4881,7 @@
         errorLine2="                                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2663"
+            line="2566"
             column="43"/>
     </issue>
 
@@ -5508,7 +4892,7 @@
         errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2664"
+            line="2567"
             column="5"/>
     </issue>
 
@@ -5519,7 +4903,7 @@
         errorLine2="                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2677"
+            line="2580"
             column="26"/>
     </issue>
 
@@ -5530,7 +4914,7 @@
         errorLine2="                                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2677"
+            line="2580"
             column="47"/>
     </issue>
 
@@ -5541,7 +4925,7 @@
         errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2680"
+            line="2583"
             column="17"/>
     </issue>
 
@@ -5552,7 +4936,7 @@
         errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2681"
+            line="2584"
             column="17"/>
     </issue>
 
@@ -5563,7 +4947,7 @@
         errorLine2="                 ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2703"
+            line="2606"
             column="18"/>
     </issue>
 
@@ -5574,7 +4958,7 @@
         errorLine2="                 ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2703"
+            line="2606"
             column="18"/>
     </issue>
 
@@ -5585,7 +4969,7 @@
         errorLine2="                 ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2703"
+            line="2606"
             column="18"/>
     </issue>
 
@@ -5596,7 +4980,7 @@
         errorLine2="                 ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2703"
+            line="2606"
             column="18"/>
     </issue>
 
@@ -5607,7 +4991,7 @@
         errorLine2="                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2708"
+            line="2611"
             column="26"/>
     </issue>
 
@@ -5618,7 +5002,7 @@
         errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2715"
+            line="2618"
             column="29"/>
     </issue>
 
@@ -5629,7 +5013,7 @@
         errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2715"
+            line="2618"
             column="29"/>
     </issue>
 
@@ -5640,7 +5024,7 @@
         errorLine2="                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2719"
+            line="2622"
             column="27"/>
     </issue>
 
@@ -5651,7 +5035,7 @@
         errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2722"
+            line="2625"
             column="24"/>
     </issue>
 
@@ -5662,7 +5046,7 @@
         errorLine2="                                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2732"
+            line="2635"
             column="40"/>
     </issue>
 
@@ -5673,7 +5057,7 @@
         errorLine2="    ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2740"
+            line="2643"
             column="5"/>
     </issue>
 
@@ -5684,7 +5068,7 @@
         errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2742"
+            line="2645"
             column="21"/>
     </issue>
 
@@ -5695,7 +5079,7 @@
         errorLine2="                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2743"
+            line="2646"
             column="27"/>
     </issue>
 
@@ -5706,7 +5090,7 @@
         errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2768"
+            line="2671"
             column="17"/>
     </issue>
 
@@ -5717,7 +5101,7 @@
         errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2769"
+            line="2672"
             column="17"/>
     </issue>
 
@@ -5728,7 +5112,7 @@
         errorLine2="                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2770"
+            line="2673"
             column="37"/>
     </issue>
 
@@ -5739,7 +5123,7 @@
         errorLine2="                                                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2812"
+            line="2715"
             column="80"/>
     </issue>
 
@@ -5750,7 +5134,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3045"
+            line="2948"
             column="9"/>
     </issue>
 
@@ -5761,7 +5145,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3045"
+            line="2948"
             column="9"/>
     </issue>
 
@@ -5772,7 +5156,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3054"
+            line="2957"
             column="9"/>
     </issue>
 
@@ -5783,7 +5167,7 @@
         errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3055"
+            line="2958"
             column="25"/>
     </issue>
 
@@ -5794,7 +5178,7 @@
         errorLine2="                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3060"
+            line="2963"
             column="32"/>
     </issue>
 
@@ -5805,7 +5189,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3066"
+            line="2969"
             column="13"/>
     </issue>
 
@@ -5816,7 +5200,7 @@
         errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3067"
+            line="2970"
             column="29"/>
     </issue>
 
@@ -5827,7 +5211,7 @@
         errorLine2="                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3072"
+            line="2975"
             column="37"/>
     </issue>
 
@@ -5838,7 +5222,7 @@
         errorLine2="    ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3087"
+            line="2990"
             column="5"/>
     </issue>
 
@@ -5849,7 +5233,7 @@
         errorLine2="    ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3087"
+            line="2990"
             column="5"/>
     </issue>
 
@@ -5860,7 +5244,7 @@
         errorLine2="    ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3087"
+            line="2990"
             column="5"/>
     </issue>
 
@@ -5871,7 +5255,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3104"
+            line="3007"
             column="9"/>
     </issue>
 
@@ -5882,7 +5266,7 @@
         errorLine2="         ~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3104"
+            line="3007"
             column="10"/>
     </issue>
 
@@ -5893,7 +5277,7 @@
         errorLine2="                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3104"
+            line="3007"
             column="39"/>
     </issue>
 
@@ -5904,7 +5288,7 @@
         errorLine2="               ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3120"
+            line="3023"
             column="16"/>
     </issue>
 
@@ -5915,7 +5299,7 @@
         errorLine2="                ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3147"
+            line="3050"
             column="17"/>
     </issue>
 
@@ -5926,7 +5310,7 @@
         errorLine2="                    ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3227"
+            line="3130"
             column="21"/>
     </issue>
 
@@ -5937,7 +5321,7 @@
         errorLine2="                    ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3227"
+            line="3130"
             column="21"/>
     </issue>
 
@@ -5948,7 +5332,7 @@
         errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3227"
+            line="3130"
             column="29"/>
     </issue>
 
@@ -5959,7 +5343,7 @@
         errorLine2="                                                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3230"
+            line="3133"
             column="57"/>
     </issue>
 
@@ -5970,7 +5354,7 @@
         errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3248"
+            line="3151"
             column="5"/>
     </issue>
 
@@ -5981,7 +5365,7 @@
         errorLine2="                                 ~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3264"
+            line="3167"
             column="34"/>
     </issue>
 
@@ -5992,7 +5376,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3264"
+            line="3167"
             column="9"/>
     </issue>
 
@@ -6003,7 +5387,7 @@
         errorLine2="                                ~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3451"
+            line="3354"
             column="33"/>
     </issue>
 
@@ -6014,7 +5398,7 @@
         errorLine2="                                      ~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3480"
+            line="3383"
             column="39"/>
     </issue>
 
@@ -6025,7 +5409,7 @@
         errorLine2="                                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3535"
+            line="3438"
             column="40"/>
     </issue>
 
@@ -6036,7 +5420,7 @@
         errorLine2="                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3541"
+            line="3444"
             column="33"/>
     </issue>
 
@@ -6047,7 +5431,7 @@
         errorLine2="                                ~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3550"
+            line="3453"
             column="33"/>
     </issue>
 
@@ -6058,7 +5442,7 @@
         errorLine2="                ~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3907"
+            line="3810"
             column="17"/>
     </issue>
 
@@ -6069,7 +5453,7 @@
         errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4091"
+            line="3994"
             column="20"/>
     </issue>
 
@@ -6080,7 +5464,7 @@
         errorLine2="                     ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4154"
+            line="4057"
             column="22"/>
     </issue>
 
@@ -6091,7 +5475,7 @@
         errorLine2="                                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4154"
+            line="4057"
             column="55"/>
     </issue>
 
@@ -6102,7 +5486,7 @@
         errorLine2="                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4155"
+            line="4058"
             column="22"/>
     </issue>
 
@@ -6113,7 +5497,7 @@
         errorLine2="                  ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4158"
+            line="4061"
             column="19"/>
     </issue>
 
@@ -6124,7 +5508,7 @@
         errorLine2="                                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4158"
+            line="4061"
             column="52"/>
     </issue>
 
@@ -6135,7 +5519,7 @@
         errorLine2="                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4159"
+            line="4062"
             column="19"/>
     </issue>
 
@@ -6146,7 +5530,7 @@
         errorLine2="                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4166"
+            line="4069"
             column="23"/>
     </issue>
 
@@ -6157,7 +5541,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4168"
+            line="4071"
             column="9"/>
     </issue>
 
@@ -6168,7 +5552,7 @@
         errorLine2="        ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4168"
+            line="4071"
             column="9"/>
     </issue>
 
@@ -6179,7 +5563,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4168"
+            line="4071"
             column="9"/>
     </issue>
 
@@ -6190,7 +5574,7 @@
         errorLine2="                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4169"
+            line="4072"
             column="27"/>
     </issue>
 
@@ -6201,7 +5585,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4176"
+            line="4079"
             column="9"/>
     </issue>
 
@@ -6212,7 +5596,7 @@
         errorLine2="                                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4206"
+            line="4109"
             column="40"/>
     </issue>
 
@@ -6223,7 +5607,7 @@
         errorLine2="                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4264"
+            line="4167"
             column="28"/>
     </issue>
 
@@ -6234,7 +5618,7 @@
         errorLine2="                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4265"
+            line="4168"
             column="27"/>
     </issue>
 
@@ -6245,7 +5629,7 @@
         errorLine2="                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4268"
+            line="4171"
             column="32"/>
     </issue>
 
@@ -6256,7 +5640,7 @@
         errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4293"
+            line="4196"
             column="31"/>
     </issue>
 
@@ -6267,7 +5651,7 @@
         errorLine2="                           ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4298"
+            line="4201"
             column="28"/>
     </issue>
 
@@ -6278,7 +5662,7 @@
         errorLine2="                                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4330"
+            line="4233"
             column="40"/>
     </issue>
 
@@ -6289,7 +5673,7 @@
         errorLine2="                                                                                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4364"
+            line="4267"
             column="99"/>
     </issue>
 
@@ -6300,7 +5684,7 @@
         errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4442"
+            line="4345"
             column="31"/>
     </issue>
 
@@ -6311,7 +5695,7 @@
         errorLine2="                ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4444"
+            line="4347"
             column="17"/>
     </issue>
 
@@ -6322,7 +5706,7 @@
         errorLine2="                ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4444"
+            line="4347"
             column="17"/>
     </issue>
 
@@ -6333,7 +5717,7 @@
         errorLine2="                                                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4451"
+            line="4354"
             column="57"/>
     </issue>
 
@@ -6344,7 +5728,7 @@
         errorLine2="                        ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4453"
+            line="4356"
             column="25"/>
     </issue>
 
@@ -6355,7 +5739,7 @@
         errorLine2="                                  ~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4453"
+            line="4356"
             column="35"/>
     </issue>
 
@@ -6366,7 +5750,7 @@
         errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4454"
+            line="4357"
             column="29"/>
     </issue>
 
@@ -6377,7 +5761,7 @@
         errorLine2="                                                                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4471"
+            line="4374"
             column="85"/>
     </issue>
 
@@ -6388,7 +5772,7 @@
         errorLine2="                                                                                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4471"
+            line="4374"
             column="98"/>
     </issue>
 
@@ -6399,7 +5783,7 @@
         errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4487"
+            line="4390"
             column="29"/>
     </issue>
 
@@ -6410,7 +5794,7 @@
         errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4488"
+            line="4391"
             column="17"/>
     </issue>
 
@@ -6421,7 +5805,7 @@
         errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4488"
+            line="4391"
             column="17"/>
     </issue>
 
@@ -6432,7 +5816,7 @@
         errorLine2="                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4488"
+            line="4391"
             column="45"/>
     </issue>
 
@@ -6443,7 +5827,7 @@
         errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4498"
+            line="4401"
             column="29"/>
     </issue>
 
@@ -6454,7 +5838,7 @@
         errorLine2="                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4502"
+            line="4405"
             column="34"/>
     </issue>
 
@@ -6465,7 +5849,7 @@
         errorLine2="                                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4507"
+            line="4410"
             column="60"/>
     </issue>
 
@@ -6476,7 +5860,7 @@
         errorLine2="                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4519"
+            line="4422"
             column="44"/>
     </issue>
 
@@ -6487,7 +5871,7 @@
         errorLine2="                                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4593"
+            line="4496"
             column="54"/>
     </issue>
 
@@ -6498,7 +5882,7 @@
         errorLine2="                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4594"
+            line="4497"
             column="48"/>
     </issue>
 
@@ -6509,7 +5893,7 @@
         errorLine2="                                                 ~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4595"
+            line="4498"
             column="50"/>
     </issue>
 
@@ -6520,7 +5904,7 @@
         errorLine2="                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4676"
+            line="4579"
             column="19"/>
     </issue>
 
@@ -6531,7 +5915,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4681"
+            line="4584"
             column="9"/>
     </issue>
 
@@ -6542,7 +5926,7 @@
         errorLine2="               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4685"
+            line="4588"
             column="16"/>
     </issue>
 
@@ -6553,7 +5937,7 @@
         errorLine2="                ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4686"
+            line="4589"
             column="17"/>
     </issue>
 
@@ -6564,7 +5948,7 @@
         errorLine2="                                                 ~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4694"
+            line="4597"
             column="50"/>
     </issue>
 
@@ -6575,7 +5959,7 @@
         errorLine2="    ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4732"
+            line="4635"
             column="5"/>
     </issue>
 
@@ -6586,7 +5970,7 @@
         errorLine2="    ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4732"
+            line="4635"
             column="5"/>
     </issue>
 
@@ -6597,7 +5981,7 @@
         errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4886"
+            line="4789"
             column="5"/>
     </issue>
 
@@ -6608,7 +5992,7 @@
         errorLine2="    ^">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4886"
+            line="4789"
             column="5"/>
     </issue>
 
@@ -6619,7 +6003,7 @@
         errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4888"
+            line="4791"
             column="21"/>
     </issue>
 
@@ -6630,7 +6014,7 @@
         errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4888"
+            line="4791"
             column="21"/>
     </issue>
 
@@ -6641,7 +6025,7 @@
         errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4889"
+            line="4792"
             column="21"/>
     </issue>
 
