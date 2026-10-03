@@ -159,7 +159,7 @@ class WatchTripStateTest {
             val held = HeldTrip(sentAgo(10), elapsedNow - 10_000)
             val bytes = kotlinx.coroutines.runBlocking { app.stopdash.data.WatchTrip.encode(held.trip) }
             val prepared = kotlinx.coroutines.runBlocking(caller) {
-                WatchTripState.prepared(listOf(item), lookedUp = true, current = held, dispatcher = worker, elapsedNow = { elapsedNow }, nodeOf = { "" }, read = { readOn = Thread.currentThread().name; bytes })
+                WatchTripState.prepared(listOf(item), lookedUp = true, current = held, dispatcher = worker, elapsedNow = { elapsedNow }, clock = { now }, nodeOf = { "" }, read = { readOn = Thread.currentThread().name; bytes })
             }
             assertTrue(readOn.startsWith("worker"))
             // The same trip read back keeps the held one, compared on the worker with the rest.
@@ -202,6 +202,7 @@ class WatchTripStateTest {
                 read = { i -> kotlinx.coroutines.runBlocking { app.stopdash.data.WatchTrip.encode(items.first { it.first === i }.second.first) } },
                 nodeOf = { i -> items.first { it.first === i }.second.second },
                 elapsedNow = { elapsedNow },
+                clock = { now },
             )
         }
         // Sent, whatever its stamp says (another phone's clock can't be compared): the latest received wins.
