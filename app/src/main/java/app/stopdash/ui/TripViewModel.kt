@@ -27,6 +27,9 @@ import app.stopdash.domain.TripClosures
 import app.stopdash.domain.TripDestination
 import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripRoute
+import app.stopdash.domain.TripLeg
+import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.StationIndex
 import app.stopdash.domain.stampOf
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.MaxWalk
@@ -51,7 +54,10 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -131,6 +137,9 @@ class TripViewModel(
     // a stop the list or another trip checked within [closureReuse] isn't asked about again.
     private val closureCache: StopClosureCache = StopClosureCache(),
     private val closureReuse: Duration = DISRUPTION_REUSE,
+    // The bundled station index, for which of the routes' walks are changes on foot ([State.changesOnFoot]):
+    // read on [io], as it may read the asset.
+    private val stations: () -> StationIndex = { StationIndex.EMPTY },
 ) : ViewModel() {
     /** Where the next plan starts ([TripOrigin]); set by the screen on every composition. */
     var origin: () -> TripOrigin = origin
@@ -274,6 +283,11 @@ class TripViewModel(
         // a trip shown again, say, holds checks from before, while its fresh re-check is out.
         val closuresAt: Map<String, Instant> = emptyMap(),
         val statusesAt: Map<String, Instant> = emptyMap(),
+        // The routes' walks that are changes on foot ([OnTheWay.changesOnFoot]), as a trip started on
+        // one decides them: the walk legs themselves, so a route made from a planned one (a train
+        // through a change) finds its walks too. Decided off the main thread as the routes come in;
+        // empty until then, the walks shown as walks.
+        val changesOnFoot: Set<TripLeg> = emptySet(),
     ) {
         /**
          * [routes] as shown: without those riding a [hidden] mode, then without the detours
@@ -434,6 +448,17 @@ class TripViewModel(
 
     init {
         viewModelScope.launch { followDismissed(dismissedStore, _dismissed, warn) }
+        // Which of the routes' walks are changes on foot, decided off the main thread each time the
+        // routes change (with the station index, as a trip started on one decides them).
+        viewModelScope.launch {
+            _state.map { it.routes.orEmpty() }.distinctUntilChanged().collectLatest { routes ->
+                val walks = withContext(io) {
+                    val index = stations()
+                    routes.flatMapTo(HashSet()) { route -> OnTheWay.changesOnFoot(route, index).map { route.legs[it] } }
+                }
+                _state.update { it.copy(changesOnFoot = walks) }
+            }
+        }
         // Arrivals fetched under the old source no longer stand: they're dropped (the trip reads
         // "Loading" rather than show them), and the next time the screen shows this retained trip it
         // fetches afresh rather than wait for the minute tick. Nothing is fetched here, since the

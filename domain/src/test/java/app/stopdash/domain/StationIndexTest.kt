@@ -212,4 +212,23 @@ class StationIndexTest {
         assertNull(index.stationOf("9100SHARED1"))
         assertEquals("910GSECOND", index.stationOf("9100SECOND"))
     }
+
+    @Test
+    fun `a stop's interchange and place come by its station, or the station its platform is under`() {
+        val paddington = StationIndex(
+            listOf(
+                IndexedStation("HUBPAD", "Paddington"),
+                IndexedStation("940GZZLUPAH", "Paddington (H&C Line)", hubId = "HUBPAD", latitude = 51.5, longitude = -0.12, platforms = listOf("9400ZZLUPAH1")),
+                IndexedStation("940GZZLUBST", "Baker Street", latitude = 51.52, longitude = -0.15),
+            ),
+        )
+        assertEquals("HUBPAD", paddington.interchangeOf("940GZZLUPAH"))
+        assertEquals("HUBPAD", paddington.interchangeOf("9400ZZLUPAH1"))
+        assertEquals("HUBPAD", paddington.interchangeOf("HUBPAD"))
+        // Both directions: a station in no interchange, and a stop the index doesn't hold, have none.
+        assertEquals(null, paddington.interchangeOf("940GZZLUBST"))
+        assertEquals(null, paddington.interchangeOf("490000000X"))
+        assertEquals(Coordinates(51.5, -0.12), paddington.placeOf("9400ZZLUPAH1"))
+        assertEquals(null, paddington.placeOf("490000000X"))
+    }
 }

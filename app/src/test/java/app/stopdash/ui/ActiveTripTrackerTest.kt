@@ -13,6 +13,7 @@ import app.stopdash.domain.VehicleCall
 import app.stopdash.domain.VehicleSource
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -71,6 +72,10 @@ class ActiveTripTrackerTest {
     // Each train's calls asked for, with the line TfL was asked on.
     private val askedOn = mutableListOf<String>()
     private var kept: ActiveTrip? = null
+
+    // Where the station index places stops, by id, and the threads it was read on.
+    private val stopPositions = mutableMapOf<String, app.stopdash.domain.Coordinates>()
+    private val indexThreads = mutableListOf<String>()
     private var saves = true
     // The next save is cut short, as by the activity being recreated mid-write.
     private var cancelNextSave = false
@@ -193,6 +198,12 @@ class ActiveTripTrackerTest {
             )
         },
         hidden = { hiddenLines },
+        stations = {
+            indexThreads += Thread.currentThread().name.substringBefore(" @")
+            app.stopdash.domain.StationIndex(
+                stopPositions.map { (id, at) -> app.stopdash.domain.IndexedStation(id, id, latitude = at.latitude, longitude = at.longitude) },
+            )
+        },
         stopPoles = { area ->
             poleReads++
             if (polesFail) throw TflException.Offline(null)
@@ -231,6 +242,49 @@ class ActiveTripTrackerTest {
         onDisruptionDone = { disruptionAlerts += "done" },
         disruptionsShown = { disruptionsShowing },
     ).also { current = it }
+
+    // A ride, a walk between two named stations, and a ride on: the walk's ends placed only by the index.
+    private val changing = TripRoute(
+        listOf(
+            ride.copy(toId = "940GZZ1", toName = "Hammersmith (H&C Line)"),
+            TripLeg(TripLeg.WALKING, "", "", "940GZZ1", "Hammersmith (H&C Line)", "940GZZ2", "Hammersmith (Dist&Picc Line)", at(15), at(18)),
+            ride.copy(fromId = "940GZZ2", fromName = "Hammersmith (Dist&Picc Line)", departure = at(20), arrival = at(30)),
+        ),
+    )
+
+    @Test
+    fun `a started trip keeps the changes on foot decided from the station index`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        // About 156 m apart by the index: a change on foot, no step of its own, kept with the trip.
+        stopPositions["940GZZ1"] = app.stopdash.domain.Coordinates(51.5, -0.12)
+        stopPositions["940GZZ2"] = app.stopdash.domain.Coordinates(51.5 + 156.0 / 111_195.0, -0.12)
+        tracker.start(changing, "C", readyAt = now)
+        assertEquals(setOf(1), kept?.onFootChanges)
+        assertFalse(Step(1) in app.stopdash.domain.OnTheWay.steps(checkNotNull(kept)))
+        // Both directions: about 400 m apart, a walk the rider is followed on.
+        tracker.end()
+        stopPositions["940GZZ2"] = app.stopdash.domain.Coordinates(51.5 + 400.0 / 111_195.0, -0.12)
+        tracker.start(changing, "C", readyAt = now)
+        assertEquals(emptySet<Int>(), kept?.onFootChanges)
+        assertTrue(Step(1) in app.stopdash.domain.OnTheWay.steps(checkNotNull(kept)))
+    }
+
+    @Test
+    fun `the changes on foot are decided off the caller's thread`() {
+        // AGENTS.md *Main-safe by default*: the station index is read on the worker, not the caller,
+        // which is the main thread when the rider taps Start.
+        val caller = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "caller") }.asCoroutineDispatcher()
+        val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }.asCoroutineDispatcher()
+        try {
+            val tracker = tracker(worker)
+            kotlinx.coroutines.runBlocking(caller) { tracker.start(changing, "C", readyAt = now) }
+            assertEquals(listOf("worker"), indexThreads)
+            assertTrue(kept?.onFootChanges != null)
+        } finally {
+            caller.close()
+            worker.close()
+        }
+    }
 
     @Test
     fun `a started trip keeps its destination as chosen`() = runTest {

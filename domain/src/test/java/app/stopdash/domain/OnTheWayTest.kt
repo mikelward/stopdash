@@ -1227,7 +1227,7 @@ class OnTheWayTest {
     fun `a ride is two steps, boarding it and getting off it`() {
         assertEquals(
             listOf(OnTheWay.Step(0), OnTheWay.Step(0, onBoard = true), OnTheWay.Step(1), OnTheWay.Step(2), OnTheWay.Step(2, onBoard = true)),
-            OnTheWay.steps(trip.route),
+            OnTheWay.steps(trip),
         )
         assertEquals(OnTheWay.Step(0), OnTheWay.stepOf(trip))
         assertEquals(OnTheWay.Step(0, onBoard = true), OnTheWay.stepOf(trip.copy(boarded = true, onBoardSeen = true)))
@@ -1251,10 +1251,10 @@ class OnTheWayTest {
         val onward = second.copy(fromId = "C2", fromName = "C")
         val route = TripRoute(listOf(ride, within, onward))
         val changing = ActiveTrip(route, "E", startedAt = t0)
-        assertTrue(OnTheWay.changesOnFoot(route, 1))
+        assertEquals(setOf(1), OnTheWay.changesOnFoot(route))
         assertEquals(
             listOf(OnTheWay.Step(0), OnTheWay.Step(0, onBoard = true), OnTheWay.Step(2), OnTheWay.Step(2, onBoard = true)),
-            OnTheWay.steps(route),
+            OnTheWay.steps(changing),
         )
         val walking = OnTheWay.atLeg(changing, 1, at(15))
         assertEquals(OnTheWay.Step(2), OnTheWay.stepOf(walking))
@@ -1281,9 +1281,12 @@ class OnTheWayTest {
         val within = TripLeg(TripLeg.WALKING, "", "", "C1", "C", "C2", "C", at(0), at(4))
         val onward = second.copy(fromId = "C2", fromName = "C")
         val route = TripRoute(listOf(within, onward))
-        assertFalse(OnTheWay.changesOnFoot(route, 0))
-        assertTrue(OnTheWay.Step(0) in OnTheWay.steps(route))
-        val walking = OnTheWay.atLeg(ActiveTrip(route, "E", startedAt = t0), 0, at(0))
+        assertEquals(emptySet<Int>(), OnTheWay.changesOnFoot(route))
+        val first = ActiveTrip(route, "E", startedAt = t0, onFootChanges = OnTheWay.changesOnFoot(route))
+        assertTrue(OnTheWay.Step(0) in OnTheWay.steps(first))
+        // Nor when its ends are placed right next to each other.
+        assertEquals(emptySet<Int>(), OnTheWay.changesOnFoot(TripRoute(listOf(within.copy(fromAt = here), onward.copy(fromAt = here)))))
+        val walking = OnTheWay.atLeg(first, 0, at(0))
         assertEquals(TripProgress.Walking(within, at(4)), OnTheWay.advance(walking, null, at(1)).second)
         val (boarding, progress) = OnTheWay.advance(walking, null, at(5))
         assertEquals(1, boarding.legIndex)
@@ -1335,18 +1338,121 @@ class OnTheWayTest {
     @Test
     fun `a walk between two places, or within one with no ride after, stays a step`() {
         // Both directions: a walk to another name is a step, and so is a same-name walk that ends the trip.
-        assertFalse(OnTheWay.changesOnFoot(trip.route, 1))
-        assertTrue(OnTheWay.Step(1) in OnTheWay.steps(trip.route))
+        assertEquals(emptySet<Int>(), OnTheWay.changesOnFoot(trip.route))
+        assertFalse(OnTheWay.changesOnFoot(trip, 1))
+        assertTrue(OnTheWay.Step(1) in OnTheWay.steps(trip))
         assertEquals(TripProgress.Walking(walk, at(20)), OnTheWay.advance(OnTheWay.atLeg(trip, 1, at(15)), null, at(16)).second)
         val closingProgress = OnTheWay.advance(OnTheWay.atLeg(ActiveTrip(TripRoute(listOf(ride, TripLeg(TripLeg.WALKING, "", "", "C1", "C", "C2", "C", at(15), at(18)))), "E", startedAt = t0), 1, at(15)), null, at(16)).second
         assertTrue(closingProgress is TripProgress.Walking)
         val closing = TripLeg(TripLeg.WALKING, "", "", "C1", "C", "C2", "C", at(15), at(18))
         val ends = TripRoute(listOf(ride, closing))
-        assertFalse(OnTheWay.changesOnFoot(ends, 1))
-        assertTrue(OnTheWay.Step(1) in OnTheWay.steps(ends))
+        assertEquals(emptySet<Int>(), OnTheWay.changesOnFoot(ends))
+        assertTrue(OnTheWay.Step(1) in OnTheWay.steps(ActiveTrip(ends, "C", startedAt = t0)))
         // Nor a walk whose start has no name (the walk to the first stop, named only at its end).
         val toStart = TripLeg(TripLeg.WALKING, "", "", "", "", "A", "A", at(0), at(5))
-        assertFalse(OnTheWay.changesOnFoot(TripRoute(listOf(toStart, ride)), 0))
+        assertEquals(emptySet<Int>(), OnTheWay.changesOnFoot(TripRoute(listOf(toStart, ride))))
+    }
+
+    // Where the rider changes, for a walk's ends: a synthetic point, and points so far north of it.
+    private val here = Coordinates(51.5, -0.12)
+    private fun north(meters: Double) = Coordinates(51.5 + meters / 111_195.0, -0.12)
+
+    // A ride, a walk from [fromName] to [toName] with its ends at [from] and [to] (the Planner's own
+    // positions, the walk's start and the next ride's boarding stop), and a ride on.
+    private fun change(fromName: String, toName: String, from: Coordinates?, to: Coordinates?): TripRoute = TripRoute(
+        listOf(
+            ride.copy(toId = "940GZZ1", toName = fromName),
+            TripLeg(TripLeg.WALKING, "", "", "940GZZ1", fromName, "940GZZ2", toName, at(15), at(18), fromAt = from),
+            second.copy(fromId = "940GZZ2", fromName = toName, fromAt = to),
+        ),
+    )
+
+    @Test
+    fun `a walk between two rides whose ends are within two arrival radii is a change on foot`() {
+        // Hammersmith's two stations, about 156 m apart and named apart: location can't tell leaving
+        // one from reaching the other, so the walk is the change, not a step (maintainer, 2026-10-03).
+        val hammersmith = change("Hammersmith (H&C Line)", "Hammersmith (Dist&Picc Line)", here, north(156.0))
+        assertEquals(setOf(1), OnTheWay.changesOnFoot(hammersmith))
+        // Edgware Road's two stations, about 168 m: the same.
+        assertEquals(setOf(1), OnTheWay.changesOnFoot(change("Edgware Road (Circle Line)", "Edgware Road (Bakerloo)", here, north(168.0))))
+        // Both directions: about 300 m (King's Cross to St Pancras) is a walk the rider is followed on,
+        // even where both ends share a name.
+        assertEquals(emptySet<Int>(), OnTheWay.changesOnFoot(change("King's Cross St. Pancras", "King's Cross St. Pancras", here, north(300.0))))
+        // And about 500 m (Stratford to Stratford International) is a walk.
+        assertEquals(emptySet<Int>(), OnTheWay.changesOnFoot(change("Stratford", "Stratford International", here, north(500.0))))
+    }
+
+    // An index placing the walk's two ends ([change]'s ids) at [from] and [to], in interchanges
+    // [fromHub] and [toHub] (blank: none).
+    private fun index(from: Coordinates, to: Coordinates, fromHub: String = "", toHub: String = "") = StationIndex(
+        listOf(
+            IndexedStation("940GZZ1", "One", hubId = fromHub, latitude = from.latitude, longitude = from.longitude),
+            IndexedStation("940GZZ2", "Two", hubId = toHub, latitude = to.latitude, longitude = to.longitude, platforms = listOf("9400ZZ2X")),
+        ),
+    )
+
+    @Test
+    fun `a walk's ends are placed by the rides around it, then by the station index`() {
+        // The walk names no position of its own: the ride before it gets off at one end.
+        val ends = change("Hammersmith (H&C Line)", "Hammersmith (Dist&Picc Line)", null, north(156.0))
+        val placedBefore = TripRoute(listOf(ends.legs[0].copy(toAt = here)) + ends.legs.drop(1))
+        assertEquals(setOf(1), OnTheWay.changesOnFoot(placedBefore))
+        // Neither placed by the Planner: the index places each end by its stop's id.
+        val unplaced = change("Paddington", "Paddington (H&C Line)", null, null)
+        assertEquals(setOf(1), OnTheWay.changesOnFoot(unplaced, index(here, north(150.0))))
+        assertEquals(emptySet<Int>(), OnTheWay.changesOnFoot(unplaced, index(here, north(250.0))))
+        // A platform the index lists under its station is placed by the station.
+        val byPlatform = TripRoute(listOf(unplaced.legs[0], unplaced.legs[1].copy(toId = "9400ZZ2X"), unplaced.legs[2].copy(fromId = "9400ZZ2X")))
+        assertEquals(setOf(1), OnTheWay.changesOnFoot(byPlatform, index(here, north(150.0))))
+        // The Planner's own position comes first: one far off keeps the walk a step, whatever the index says.
+        val far = change("Paddington", "Paddington (H&C Line)", here, north(400.0))
+        assertEquals(emptySet<Int>(), OnTheWay.changesOnFoot(far, index(here, north(150.0))))
+    }
+
+    @Test
+    fun `a walk within one interchange is a change on foot a little farther`() {
+        // About 250 m within one interchange (as Paddington's Bakerloo to Hammersmith & City): changed
+        // between indoors, where location can't follow it, so a change on foot (maintainer, 2026-10-03).
+        val near = change("Paddington (Bakerloo)", "Paddington (H&C Line)", here, north(250.0))
+        assertEquals(setOf(1), OnTheWay.changesOnFoot(near, index(here, north(250.0), "HUBPAD", "HUBPAD")))
+        // Placed by the index alone, the same; and a platform's station counts for its interchange.
+        val unplaced = change("Paddington (Bakerloo)", "Paddington (H&C Line)", null, null)
+        assertEquals(setOf(1), OnTheWay.changesOnFoot(unplaced, index(here, north(250.0), "HUBPAD", "HUBPAD")))
+        val byPlatform = TripRoute(listOf(near.legs[0], near.legs[1].copy(toId = "9400ZZ2X"), near.legs[2].copy(fromId = "9400ZZ2X")))
+        assertEquals(setOf(1), OnTheWay.changesOnFoot(byPlatform, index(here, north(250.0), "HUBPAD", "HUBPAD")))
+        // Both directions: two interchanges, or none, at 250 m (as Aldgate to Aldgate East) is a walk.
+        val street = change("Aldgate", "Aldgate East", here, north(250.0))
+        assertEquals(emptySet<Int>(), OnTheWay.changesOnFoot(street, index(here, north(250.0), "HUBA", "HUBB")))
+        assertEquals(emptySet<Int>(), OnTheWay.changesOnFoot(street, index(here, north(250.0))))
+        // And one interchange never stretches past that: about 320 m (King's Cross to St Pancras) is a walk.
+        val kingsCross = change("King's Cross St. Pancras", "St Pancras International", here, north(320.0))
+        assertEquals(emptySet<Int>(), OnTheWay.changesOnFoot(kingsCross, index(here, north(320.0), "HUBKGX", "HUBKGX")))
+    }
+
+    @Test
+    fun `a walk whose ends can't be placed goes by their names`() {
+        // Both directions: the same name is a change on foot, another name a step.
+        assertEquals(setOf(1), OnTheWay.changesOnFoot(change("Stratford", " stratford ", null, null)))
+        assertEquals(emptySet<Int>(), OnTheWay.changesOnFoot(change("Stratford", "Stratford International", null, null)))
+        // One end placed isn't enough to measure: the names decide.
+        assertEquals(emptySet<Int>(), OnTheWay.changesOnFoot(change("Stratford", "Stratford International", here, null)))
+    }
+
+    @Test
+    fun `a trip goes by the changes on foot decided when it started`() {
+        // Same-named but 300 m apart: a walk, decided so at the start, which a trip keeps.
+        val route = change("King's Cross St. Pancras", "King's Cross St. Pancras", here, north(300.0))
+        val started = ActiveTrip(route, "E", startedAt = t0, onFootChanges = OnTheWay.changesOnFoot(route))
+        assertFalse(OnTheWay.changesOnFoot(started, 1))
+        assertTrue(OnTheWay.Step(1) in OnTheWay.steps(started))
+        // Named apart but 156 m apart: a change, no step.
+        val near = change("Hammersmith (H&C Line)", "Hammersmith (Dist&Picc Line)", here, north(156.0))
+        val changing = ActiveTrip(near, "E", startedAt = t0, onFootChanges = OnTheWay.changesOnFoot(near))
+        assertTrue(OnTheWay.changesOnFoot(changing, 1))
+        assertFalse(OnTheWay.Step(1) in OnTheWay.steps(changing))
+        // A trip kept by an older build, with no decision, goes by the names as it was shown then.
+        assertTrue(OnTheWay.changesOnFoot(started.copy(onFootChanges = null), 1))
+        assertFalse(OnTheWay.changesOnFoot(changing.copy(onFootChanges = null), 1))
     }
 
     @Test
@@ -1357,9 +1463,9 @@ class OnTheWayTest {
         assertNull(OnTheWay.stepAfter(arrived))
         assertNull(OnTheWay.stepBefore(arrived))
         // Nor can any step be tapped: the tracker moves that arrival nowhere (Codex, PR #384).
-        assertTrue(OnTheWay.steps(trip.route).none { OnTheWay.canGoTo(arrived, it, at(20)) })
+        assertTrue(OnTheWay.steps(trip).none { OnTheWay.canGoTo(arrived, it, at(20)) })
         // Every step is behind the rider there, so the route reads as done (Codex, PR #384).
-        assertEquals(OnTheWay.steps(trip.route).size, OnTheWay.stepsDone(arrived))
+        assertEquals(OnTheWay.steps(trip).size, OnTheWay.stepsDone(arrived))
         // On the way, only those before their step: none at the first, the ride's two on the walk.
         assertEquals(0, OnTheWay.stepsDone(trip))
         assertEquals(2, OnTheWay.stepsDone(trip.copy(legIndex = 1)))

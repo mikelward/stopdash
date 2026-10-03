@@ -1548,10 +1548,25 @@ them there:
   and **getting off it** ("Ride to …", said as a continuous action, as "Walk to …" is; maintainer, 2026-10-01), so the rider can say they're on
   before they say they're off. Getting off is a step for Next, Back and the card, but not a row of its
   own in the route's legs: one row per leg, the ride's row the rider's while they board it and ride it
-  (maintainer, 2026-10-03). A **walk within one place** between two rides — from and to the same name
-  ("Stratford" to "Stratford", between two platforms or a station and its bus stop) — is no step at
-  all: "walk to" where the rider already is says nothing, nothing tells when they reach the platform,
-  and the ride's card names the stop or platform to go to (maintainer, 2026-10-03). The trip goes
+  (maintainer, 2026-10-03). A **change on foot** — a walk between two rides
+  whose two ends are within 200 m of each other — is no step at all (maintainer, 2026-10-03). A
+  rider counts as at a stop within 100 m of it, so at 200 m the areas round the two ends meet and
+  location can't follow the walk from one to the other: "walk to" says nothing that can be tracked,
+  nothing tells when they reach the platform, and the ride's card names the stop or platform to go
+  to. Hammersmith's two stations (about 150 m apart) are one change; Stratford to Stratford
+  International (about 500 m) stays a walk the rider is followed on. Within one interchange of the
+  bundled index the bar is 290 m: its stations 200–290 m apart (Paddington's lines, London Bridge,
+  West Hampstead, Canary Wharf, Seven Sisters) are changed between mostly indoors, where location
+  can't follow the walk predictably, so as a step it would only end on a tap; a bar that high
+  everywhere would also skip a walk along the street between two places (Aldgate to Aldgate East,
+  Bayswater to Queensway). So every change at Paddington is one change, while King's Cross to St
+  Pancras (about 300 m and more, one interchange) stays a walk. The ends are placed by the
+  Planner's own positions, else by the bundled station index; where an end can't be placed, a walk
+  from and to the same name ("Stratford" to "Stratford") is a change on foot and any other a walk. Which walks are changes is decided once,
+  when the trip starts, from what's on the device (no request), and kept with the trip, so its steps
+  never change on the way or across a restart; a trip kept by an older build goes by the names. The
+  route page shows the same changes, decided the same way in the background as the routes come in.
+  The trip goes
   straight from the ride before to boarding the next; until the walk's time and the change after it
   are up it reads as that change ("Change to ‹line› at ‹place›"), as a timed change between two rides
   does, so no train is followed before the rider can reach it, then as boarding. One before the first

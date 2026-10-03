@@ -75,6 +75,30 @@ class FileActiveTripStoreTest {
     }
 
     @Test
+    fun `the changes on foot decided when a trip started are kept across a reload`() {
+        val file = File(tmp.root, "active-trip.json")
+        // Decided at the start: both directions, some walks changes on foot and none.
+        val decided = trip.copy(onFootChanges = setOf(1))
+        FileActiveTripStore(file).save(decided)
+        assertEquals(decided, FileActiveTripStore(file).load())
+        val none = trip.copy(onFootChanges = emptySet())
+        FileActiveTripStore(file).save(none)
+        assertEquals(none, FileActiveTripStore(file).load())
+    }
+
+    @Test
+    fun `a trip kept by an older build has no changes on foot decided, and goes by the names`() {
+        // As an older build wrote it: no decision in the file at all.
+        val file = File(tmp.root, "active-trip.json")
+        FileActiveTripStore(file).save(trip.copy(onFootChanges = setOf(1)))
+        file.writeText(file.readText().replace(Regex(",?\"onFootChanges\":\\[[0-9,]*]"), ""))
+        assertFalse(file.readText().contains("onFootChanges"))
+        val older = FileActiveTripStore(file).load()
+        assertEquals(trip, older)
+        assertNull(older?.onFootChanges)
+    }
+
+    @Test
     fun `a bus leg moved to its route's stand keeps the stand the Planner named across a reload`() {
         val file = File(tmp.root, "active-trip.json")
         val bus = TripLeg(

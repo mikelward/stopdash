@@ -903,6 +903,48 @@ class TripScreenScreenshotTest {
         composeRule.onAllNodesWithText("Jubilee", substring = true).assertCountEquals(1)
     }
 
+    // Whitechapel's Overground to its Elizabeth line: a walk between two rides.
+    private val onFootWalk = TripLeg(TripLeg.WALKING, "", "", whitechapel.first, "Whitechapel (Overground)", whitechapelXr.first, "Whitechapel (Elizabeth line)", at(16), at(19))
+    private val viaWhitechapelOnFoot = TripRoute(
+        listOf(
+            leg("overground", "windrush", "Windrush", highbury, whitechapel.first to "Whitechapel (Overground)", 3, 16, 6),
+            onFootWalk,
+            leg("elizabeth-line", "elizabeth", "Elizabeth line", whitechapelXr.first to "Whitechapel (Elizabeth line)", canaryWharfXr, 21, 25, 2),
+        ),
+    )
+
+    private fun showOnFoot(changesOnFoot: Set<TripLeg>) {
+        val state = TripViewModel.State(
+            routes = listOf(viaWhitechapelOnFoot), plannedAt = now, closures = checkedOpen(viaWhitechapelOnFoot), changesOnFoot = changesOnFoot,
+        )
+        val openRoute = mutableStateOf<String?>(openRouteOf(viaWhitechapelOnFoot, state, emptyMap()).encode())
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf", state = state, now = now, access = Duration.ZERO,
+                    routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {}, openRoute = openRoute,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+    }
+
+    @Test
+    fun a_route_s_change_on_foot_shows_as_its_change() {
+        // Decided a change on foot: no "walk to", the change's minutes instead.
+        showOnFoot(setOf(onFootWalk))
+        composeRule.onNodeWithText("┊  3 min to change").assertIsDisplayed()
+        composeRule.onNodeWithText("Walk to", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun a_route_s_walk_not_a_change_on_foot_stays_a_walk() {
+        // Both directions: not decided one, a walk.
+        showOnFoot(emptySet())
+        composeRule.onNodeWithText("Walk to Whitechapel (Elizabeth line)", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("min to change", substring = true).assertDoesNotExist()
+    }
+
     @Test
     fun trip_route_legs() {
         show(planned)

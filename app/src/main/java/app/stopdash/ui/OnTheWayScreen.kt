@@ -254,7 +254,7 @@ internal fun OnTheWayScreen(
                 }
             }
             if (trip != null) {
-                val steps = OnTheWay.steps(trip.route)
+                val steps = OnTheWay.steps(trip)
                 val at = OnTheWay.stepOf(trip)
                 val doneCount = OnTheWay.stepsDone(trip)
                 // One row per leg (maintainer, 2026-10-03): a ride's getting-off step is still a step, for

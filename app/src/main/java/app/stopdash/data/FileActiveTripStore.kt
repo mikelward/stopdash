@@ -286,6 +286,9 @@ private data class PersistedActiveTrip(
     // Absent from a trip kept before it was: planning again opens the trip list from the route's
     // own stops alone.
     val destinationStopId: String = "",
+    // The walks decided to be changes on foot when the trip started, by leg index. Absent from a trip
+    // kept before it was: its walks go by their names alone, as that trip was shown.
+    val onFootChanges: List<Int>? = null,
 ) {
     fun toTrip() = ActiveTrip(
         route = TripRoute(legs.map { it.toLeg() }),
@@ -312,6 +315,7 @@ private data class PersistedActiveTrip(
         destinations = destinations.mapNotNull { it.toDestination() },
         destinationIds = destinationIds,
         destinationStopId = destinationStopId,
+        onFootChanges = onFootChanges?.toSet(),
     )
 
     companion object {
@@ -338,6 +342,7 @@ private data class PersistedActiveTrip(
             heldFrom = trip.heldFrom?.toString(),
             destinations = trip.destinations.map { PersistedTripDestination.of(it) },
             destinationIds = trip.destinationIds,
+            onFootChanges = trip.onFootChanges?.sorted(),
             destinationStopId = trip.destinationStopId,
         )
     }

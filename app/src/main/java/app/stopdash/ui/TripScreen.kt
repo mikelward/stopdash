@@ -1932,8 +1932,11 @@ private fun RouteLegs(
         // Only the rider's next ride counts down; they aren't at a later one's stop yet.
         val nextRide = estimate.route.legs.indexOfFirst { !it.isWalk }
         estimate.route.legs.forEachIndexed { index, leg ->
-            if (OnTheWay.changesOnFoot(estimate.route, index)) {
-                // A walk within one place onto the next ride is its change, not "walk to" where the
+            // A change on foot, as the trip decides them ([TripViewModel.State.changesOnFoot]), between two rides.
+            if (leg in state.changesOnFoot && index > 0 && !estimate.route.legs[index - 1].isWalk &&
+                estimate.route.legs.getOrNull(index + 1)?.isWalk == false
+            ) {
+                // A change on foot onto the next ride is its change, not "walk to" where the
                 // rider already is: the ride's own card below names the stop or platform. Its time
                 // still decides which train is in reach, so it shows as the change's (maintainer, 2026-10-03).
                 closureCard(leg.fromId)

@@ -69,6 +69,10 @@ data class ActiveTrip(
     val destinations: List<TripDestination> = emptyList(),
     val destinationIds: Map<String, String> = emptyMap(),
     val destinationStopId: String = "",
+    // The walks that are changes on foot ([OnTheWay.changesOnFoot]), by leg index: decided once when
+    // the trip starts, so its steps never change on the way. Null on a trip kept by an older build,
+    // which goes by the names alone.
+    val onFootChanges: Set<Int>? = null,
 ) {
     /** The leg the rider is on, or null once they've arrived. */
     val leg: TripLeg? get() = route.legs.getOrNull(legIndex)
@@ -564,7 +568,7 @@ object OnTheWay {
         if (leg.isWalk) {
             val until = trip.legStartedAt.plus(leg.run)
             // A walk within one place is no step of its own: straight on to boarding the ride after it.
-            if (changesOnFoot(trip.route, trip.legIndex)) return advanceAlong(pastChange(trip, trip.legStartedAt), calls, now, atBoarding)
+            if (changesOnFoot(trip, trip.legIndex)) return advanceAlong(pastChange(trip, trip.legStartedAt), calls, now, atBoarding)
             return if (now.isBefore(until)) trip to TripProgress.Walking(leg, until) else nextLeg(trip, now)
         }
         changeUntil(trip, now)?.let { return trip to TripProgress.Changing(leg, it) }
@@ -647,7 +651,7 @@ object OnTheWay {
     fun changeUntil(trip: ActiveTrip, now: Instant): Instant? {
         val leg = trip.leg ?: return null
         val before = trip.route.legs.getOrNull(trip.legIndex - 1) ?: return null
-        val afterRide = !before.isWalk || changesOnFoot(trip.route, trip.legIndex - 1)
+        val afterRide = !before.isWalk || changesOnFoot(trip, trip.legIndex - 1)
         if (leg.isWalk || !afterRide || trip.boarded || !now.isBefore(trip.legStartedAt)) return null
         return trip.legStartedAt
     }
@@ -1154,6 +1158,27 @@ object OnTheWay {
     const val AT_STOP_WITHIN_METERS = 100.0
 
     /**
+     * How near a walk's two ends between two rides are for it to be a change on foot rather than a
+     * step ([changesOnFoot]): two arrival radii ([AT_STOP_WITHIN_METERS]), so the areas that count as
+     * at either end overlap or meet, and the rider's location can't follow the walk from one to the
+     * other (maintainer, 2026-10-03).
+     */
+    const val CHANGE_ON_FOOT_WITHIN_METERS = 2 * AT_STOP_WITHIN_METERS
+
+    /**
+     * [CHANGE_ON_FOOT_WITHIN_METERS] where both ends are in one interchange of the bundled index
+     * (maintainer, 2026-10-03). Its stations 200–290 m apart are changed between mostly indoors,
+     * where location can't follow the walk predictably, so as a step it would only end on a tap:
+     * Paddington's Elizabeth line, Bakerloo and main line to the Hammersmith & City (211, 255 and
+     * 285 m), London Bridge (208 m), West Hampstead (212 m), Canary Wharf (213 and 242 m), Seven
+     * Sisters (220 m). As high a bar everywhere would also skip a walk along the street between two
+     * places (Aldgate to Aldgate East at 245 m, Bayswater to Queensway at 226 m). It never stretches
+     * past this: King's Cross to St Pancras, 304 m and more, stays a walk.
+     */
+    const val CHANGE_ON_FOOT_IN_HUB_WITHIN_METERS = 290.0
+
+
+    /**
      * …or this close to one of its entrances ([StationPlaces.entrances]), which is the door itself,
      * not a point inside: 150 m around every entrance of a big interchange reached well out into
      * the streets around it, telling a rider still on their way there that they'd arrived
@@ -1306,7 +1331,7 @@ object OnTheWay {
         // A walk within one place isn't one location can end (nothing tells which platform the rider is
         // at): its time still counts, as when it's passed on its own ([pastChange]), so a trip restored
         // on one doesn't pick a train the rider can't reach (Codex P1, #494).
-        if (changesOnFoot(trip.route, trip.legIndex)) return pastChange(trip, trip.legStartedAt)
+        if (changesOnFoot(trip, trip.legIndex)) return pastChange(trip, trip.legStartedAt)
         return trip.copy(
             legIndex = trip.legIndex + 1, legStartedAt = now.plus(leg.changeAfter),
             vehicleId = "", vehicleLeg = null, vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, waitFrom = null, heldFrom = null,
@@ -1336,26 +1361,73 @@ object OnTheWay {
     data class Step(val leg: Int, val onBoard: Boolean = false)
 
     /**
-     * Whether [route]'s leg at [index] is a walk within one place between two rides: one that starts
-     * and ends at the same name ("Stratford" to "Stratford", between two platforms or a station and its
-     * bus stop) with a ride straight before and after, so it's the change between them ([changeUntil],
-     * the route page's "N min to change"). One before the first ride is no change and stays a step. As a step it would say "walk to" where the rider already
-     * is, and nothing tells when they reach the platform, so it isn't one ([steps]): the trip goes
-     * straight to boarding the ride, whose card names the stop or platform to go to, and the walk's
-     * time only says which trains are in reach (maintainer, 2026-10-03).
+     * Which of [route]'s walks are changes on foot between two rides, by leg index: walks with a ride
+     * straight before and after whose two ends are within [CHANGE_ON_FOOT_WITHIN_METERS] of each
+     * other, so the rider's location can't tell them leaving one stop from reaching the other
+     * ([AT_STOP_WITHIN_METERS] round each), or within [CHANGE_ON_FOOT_IN_HUB_WITHIN_METERS] where
+     * [stations] puts both ends in one interchange. Such a walk is the change between the rides
+     * ([changeUntil], the route page's "N min to change"), not a step of its own ([steps]): the trip
+     * goes straight to boarding the ride after it, whose card names the stop or platform to go to,
+     * and the walk's time only says which trains are in reach (maintainer, 2026-10-03). Hammersmith's
+     * two stations (about 150 m) and Paddington's (up to about 285 m, one interchange) are a change;
+     * King's Cross and St Pancras (about 300 m and more) are a walk.
+     *
+     * Each end is placed by the Planner's own positions first (the walk's, or the ride's it meets),
+     * then by [stations] by stop id. With an end not placed, a walk that starts and ends at the same
+     * name ("Stratford" to "Stratford") is a change, as before. One before the first ride is no change
+     * and stays a step. Decided once when a trip starts ([ActiveTrip.onFootChanges]).
      */
-    fun changesOnFoot(route: TripRoute, index: Int): Boolean {
-        val leg = route.legs.getOrNull(index) ?: return false
-        val before = route.legs.getOrNull(index - 1) ?: return false
-        val onward = route.legs.getOrNull(index + 1) ?: return false
-        val from = leg.fromName.trim()
-        return leg.isWalk && !before.isWalk && !onward.isWalk && from.isNotEmpty() && from.equals(leg.toName.trim(), ignoreCase = true)
+    fun changesOnFoot(route: TripRoute, stations: StationIndex = StationIndex.EMPTY): Set<Int> =
+        route.legs.indices.filterTo(LinkedHashSet()) { changesOnFoot(route, it, stations) }
+
+    /**
+     * Whether [trip]'s leg at [index] is a change on foot, as decided when it started
+     * ([ActiveTrip.onFootChanges]); by the names alone for a trip kept by an older build, as it
+     * was shown then.
+     */
+    fun changesOnFoot(trip: ActiveTrip, index: Int): Boolean =
+        trip.onFootChanges?.let { index in it } ?: sameNameChange(trip.route, index)
+
+    private fun changesOnFoot(route: TripRoute, index: Int, stations: StationIndex): Boolean {
+        val (leg, before, onward) = between(route, index) ?: return false
+        val fromIds = listOf(leg.fromId, before.toId).filter { it.isNotBlank() }
+        val toIds = listOf(leg.toId, onward.fromId).filter { it.isNotBlank() }
+        val from = leg.fromAt ?: before.toAt ?: fromIds.firstNotNullOfOrNull(stations::placeOf)
+        val to = leg.toAt ?: onward.fromAt ?: toIds.firstNotNullOfOrNull(stations::placeOf)
+        if (from == null || to == null) return sameName(leg)
+        // One interchange's stations are changed between mostly indoors, where location can't follow
+        // a little farther either; distinct places that far apart (Aldgate to Aldgate East) it can.
+        val hub = fromIds.firstNotNullOfOrNull(stations::interchangeOf)
+        val within = if (hub != null && hub == toIds.firstNotNullOfOrNull(stations::interchangeOf)) {
+            CHANGE_ON_FOOT_IN_HUB_WITHIN_METERS
+        } else {
+            CHANGE_ON_FOOT_WITHIN_METERS
+        }
+        return distance(from, to) <= within
     }
 
-    /** Every step of [route], in order ([Step]), leaving out a walk within one place ([changesOnFoot]). */
-    fun steps(route: TripRoute): List<Step> = route.legs.flatMapIndexed { index, leg ->
+    // A walk between two rides that starts and ends at the same name: the fallback where its ends
+    // can't be placed, and the whole rule for a trip kept by an older build.
+    private fun sameNameChange(route: TripRoute, index: Int): Boolean =
+        between(route, index)?.let { sameName(it.first) } == true
+
+    private fun sameName(leg: TripLeg): Boolean {
+        val from = leg.fromName.trim()
+        return from.isNotEmpty() && from.equals(leg.toName.trim(), ignoreCase = true)
+    }
+
+    // [route]'s walk at [index] with the rides straight before and after it, or null when it isn't one.
+    private fun between(route: TripRoute, index: Int): Triple<TripLeg, TripLeg, TripLeg>? {
+        val leg = route.legs.getOrNull(index)?.takeIf { it.isWalk } ?: return null
+        val before = route.legs.getOrNull(index - 1)?.takeIf { !it.isWalk } ?: return null
+        val onward = route.legs.getOrNull(index + 1)?.takeIf { !it.isWalk } ?: return null
+        return Triple(leg, before, onward)
+    }
+
+    /** Every step of [trip], in order ([Step]), leaving out a change on foot ([changesOnFoot]). */
+    fun steps(trip: ActiveTrip): List<Step> = trip.route.legs.flatMapIndexed { index, leg ->
         when {
-            changesOnFoot(route, index) -> emptyList()
+            changesOnFoot(trip, index) -> emptyList()
             leg.isWalk -> listOf(Step(index))
             else -> listOf(Step(index), Step(index, onBoard = true))
         }
@@ -1368,7 +1440,7 @@ object OnTheWay {
      */
     fun stepOf(trip: ActiveTrip): Step =
         // On a walk within one place, the step is boarding the ride it changes onto ([changesOnFoot]).
-        if (changesOnFoot(trip.route, trip.legIndex)) Step(trip.legIndex + 1)
+        if (changesOnFoot(trip, trip.legIndex)) Step(trip.legIndex + 1)
         else Step(trip.legIndex, trip.onBoardSeen && trip.leg?.isWalk == false)
 
     /**
@@ -1377,7 +1449,7 @@ object OnTheWay {
      * step rather than at none (Codex, PR #384).
      */
     fun stepsDone(trip: ActiveTrip): Int {
-        val steps = steps(trip.route)
+        val steps = steps(trip)
         return steps.indexOf(stepOf(trip)).takeIf { it >= 0 } ?: steps.size
     }
 
@@ -1388,7 +1460,7 @@ object OnTheWay {
      * (Codex, PR #384).
      */
     fun stepBefore(trip: ActiveTrip): Step? {
-        val steps = steps(trip.route)
+        val steps = steps(trip)
         val at = steps.indexOf(stepOf(trip))
         return if (at < 0) null else steps.getOrNull(at - 1)
     }
@@ -1398,7 +1470,7 @@ object OnTheWay {
      * the trip failed, which Next would otherwise start over from its first step (Codex, PR #384).
      */
     fun stepAfter(trip: ActiveTrip): Step? {
-        val steps = steps(trip.route)
+        val steps = steps(trip)
         val at = steps.indexOf(stepOf(trip))
         return if (at < 0) null else steps.getOrNull(at + 1)
     }
@@ -1444,10 +1516,10 @@ object OnTheWay {
      * no row or button offers a move (Codex, PR #384).
      */
     fun canGoTo(trip: ActiveTrip, step: Step, now: Instant): Boolean {
-        val steps = steps(trip.route)
+        val steps = steps(trip)
         // On a walk within one place its step is the ride's ([stepOf]), which the rider can still
         // say they've reached, ending the walk early.
-        return stepOf(trip) in steps && step in steps && (step != stepOf(trip) || changesOnFoot(trip.route, trip.legIndex)) &&
+        return stepOf(trip) in steps && step in steps && (step != stepOf(trip) || changesOnFoot(trip, trip.legIndex)) &&
             advance(atStep(trip, step, now), null, now).second != TripProgress.Arrived
     }
 
@@ -1516,7 +1588,7 @@ object OnTheWay {
             val until = from.plus(onward.run)
             // A walk already done while away: on to the leg after it.
             // A walk within one place: straight on to boarding the ride after it, ready once its time is up.
-            if (changesOnFoot(next.route, next.legIndex)) {
+            if (changesOnFoot(next, next.legIndex)) {
                 val boarding = pastChange(next, from)
                 val ride = boarding.leg!!
                 return boarding to (changeUntil(boarding, now)?.let { TripProgress.Changing(ride, it) } ?: TripProgress.Waiting(ride, null))
