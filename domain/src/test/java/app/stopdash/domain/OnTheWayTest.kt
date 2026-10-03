@@ -1244,6 +1244,112 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `a walk within one place onto a ride is no step, and reads as the change`() {
+        // "C" to "C" (two platforms, or a station and its bus stop) with a ride straight after: no step
+        // of its own, the rider at the ride's boarding step meanwhile (maintainer, 2026-10-03).
+        val within = TripLeg(TripLeg.WALKING, "", "", "C1", "C", "C2", " c ", at(15), at(19), changeAfter = Duration.ofMinutes(1))
+        val onward = second.copy(fromId = "C2", fromName = "C")
+        val route = TripRoute(listOf(ride, within, onward))
+        val changing = ActiveTrip(route, "E", startedAt = t0)
+        assertTrue(OnTheWay.changesOnFoot(route, 1))
+        assertEquals(
+            listOf(OnTheWay.Step(0), OnTheWay.Step(0, onBoard = true), OnTheWay.Step(2), OnTheWay.Step(2, onBoard = true)),
+            OnTheWay.steps(route),
+        )
+        val walking = OnTheWay.atLeg(changing, 1, at(15))
+        assertEquals(OnTheWay.Step(2), OnTheWay.stepOf(walking))
+        assertEquals(2, OnTheWay.stepsDone(walking))
+        assertEquals(OnTheWay.Step(0, onBoard = true), OnTheWay.stepBefore(walking))
+        // The rider can still say they've got to the ride's stop.
+        assertTrue(OnTheWay.canGoTo(walking, OnTheWay.Step(2), at(16)))
+        // Nothing tells when they reach its platform, so no walking: straight on to boarding the ride,
+        // its time still counted toward which trains are in reach (the walk's 4 min and its 1 to change).
+        // Until then it reads as the change between the two rides, so no train is followed before the
+        // rider can reach it (Codex P2, #494).
+        val (boarding, progress) = OnTheWay.advance(walking, null, at(16))
+        assertEquals(TripProgress.Changing(onward, at(20)), progress)
+        assertEquals(2, boarding.legIndex)
+        assertEquals(at(20), OnTheWay.readyAt(boarding, progress))
+        assertEquals(at(20), OnTheWay.changeUntil(boarding, at(19)))
+        assertNull(OnTheWay.changeUntil(boarding, at(20)))
+    }
+
+    @Test
+    fun `a walk within one place before the first ride is no change and stays a step`() {
+        // Nothing was ridden before it, so there's no change to make: it stays a walk step, and the first
+        // ride is boarded as usual once it's done (Codex P2, #494).
+        val within = TripLeg(TripLeg.WALKING, "", "", "C1", "C", "C2", "C", at(0), at(4))
+        val onward = second.copy(fromId = "C2", fromName = "C")
+        val route = TripRoute(listOf(within, onward))
+        assertFalse(OnTheWay.changesOnFoot(route, 0))
+        assertTrue(OnTheWay.Step(0) in OnTheWay.steps(route))
+        val walking = OnTheWay.atLeg(ActiveTrip(route, "E", startedAt = t0), 0, at(0))
+        assertEquals(TripProgress.Walking(within, at(4)), OnTheWay.advance(walking, null, at(1)).second)
+        val (boarding, progress) = OnTheWay.advance(walking, null, at(5))
+        assertEquals(1, boarding.legIndex)
+        assertNull(OnTheWay.changeUntil(boarding, at(5)))
+        assertFalse(progress is TripProgress.Changing)
+    }
+
+    @Test
+    fun `time to board waits for a walk within one place to be done`() {
+        // Ready to board at 20 min (the walk's 4 and its 1 to change); the train followed is due at 21.
+        // Two minutes out, at 19, the rider is still on the walk: not yet. At 20, ready: time to board.
+        val within = TripLeg(TripLeg.WALKING, "", "", "C1", "C", "C2", "C", at(15), at(19), changeAfter = Duration.ofMinutes(1))
+        val onward = second.copy(fromId = "C2", fromName = "C")
+        val walking = OnTheWay.atLeg(ActiveTrip(TripRoute(listOf(ride, within, onward)), "E", startedAt = t0), 1, at(15))
+        val boarding = OnTheWay.advance(walking, null, at(16)).first.copy(vehicleId = "8")
+        val waiting = TripProgress.Waiting(onward, at(21))
+        assertFalse(OnTheWay.shouldBoard(boarding, waiting, at(19)))
+        assertTrue(OnTheWay.shouldBoard(boarding, waiting, at(20)))
+    }
+
+    @Test
+    fun `a walk within one place seen done by location still counts its time`() {
+        // A trip restored on the walk, the rider seen near the next ride's stop at 16 min: on to boarding
+        // it, but ready only once the walk's 4 min and its 1 to change are up (Codex P1, #494).
+        val within = TripLeg(TripLeg.WALKING, "", "", "C1", "C", "C2", "C", at(15), at(19), changeAfter = Duration.ofMinutes(1))
+        val onward = second.copy(fromId = "C2", fromName = "C")
+        val walking = OnTheWay.atLeg(ActiveTrip(TripRoute(listOf(ride, within, onward)), "E", startedAt = t0), 1, at(15))
+        val seen = OnTheWay.walked(walking, at(16))
+        assertEquals(2, seen.legIndex)
+        assertEquals(at(20), seen.legStartedAt)
+        // Both directions: a walk to another place seen done there runs from then, as before.
+        val other = OnTheWay.walked(OnTheWay.atLeg(trip, 1, at(15)), at(16))
+        assertEquals(at(16), other.legStartedAt)
+    }
+
+    @Test
+    fun `off a ride onto a walk within one place reads as the change at once`() {
+        // Off the Red line at 15: the walk within C (to 18) and its change (to 19) read as the change to
+        // the Blue line, never briefly as boarding it (Codex P2, #494); then boarding once that's up.
+        val within = TripLeg(TripLeg.WALKING, "", "", "C1", "C", "C2", "C", at(15), at(18), changeAfter = Duration.ofMinutes(1))
+        val onward = second.copy(fromId = "C2", fromName = "C")
+        val riding = ActiveTrip(TripRoute(listOf(ride, within, onward)), "E", startedAt = t0, vehicleId = "8", boarded = true, dueOffAt = at(15))
+        val (changing, progress) = OnTheWay.advance(riding, listOf(call("X", 16)), at(15))
+        assertEquals(2, changing.legIndex)
+        assertEquals(TripProgress.Changing(onward, at(19)), progress)
+        assertEquals(TripProgress.Waiting(onward, null), OnTheWay.advance(changing, null, at(19)).second)
+    }
+
+    @Test
+    fun `a walk between two places, or within one with no ride after, stays a step`() {
+        // Both directions: a walk to another name is a step, and so is a same-name walk that ends the trip.
+        assertFalse(OnTheWay.changesOnFoot(trip.route, 1))
+        assertTrue(OnTheWay.Step(1) in OnTheWay.steps(trip.route))
+        assertEquals(TripProgress.Walking(walk, at(20)), OnTheWay.advance(OnTheWay.atLeg(trip, 1, at(15)), null, at(16)).second)
+        val closingProgress = OnTheWay.advance(OnTheWay.atLeg(ActiveTrip(TripRoute(listOf(ride, TripLeg(TripLeg.WALKING, "", "", "C1", "C", "C2", "C", at(15), at(18)))), "E", startedAt = t0), 1, at(15)), null, at(16)).second
+        assertTrue(closingProgress is TripProgress.Walking)
+        val closing = TripLeg(TripLeg.WALKING, "", "", "C1", "C", "C2", "C", at(15), at(18))
+        val ends = TripRoute(listOf(ride, closing))
+        assertFalse(OnTheWay.changesOnFoot(ends, 1))
+        assertTrue(OnTheWay.Step(1) in OnTheWay.steps(ends))
+        // Nor a walk whose start has no name (the walk to the first stop, named only at its end).
+        val toStart = TripLeg(TripLeg.WALKING, "", "", "", "", "A", "A", at(0), at(5))
+        assertFalse(OnTheWay.changesOnFoot(TripRoute(listOf(toStart, ride)), 0))
+    }
+
+    @Test
     fun `an arrival kept because forgetting it failed has no step before or after it`() {
         // Past the last leg, it isn't at any step: Next would start the trip over from its first, and
         // the arrival is being forgotten, which Back can't undo; End trip is the way out.
