@@ -356,12 +356,20 @@ object Journeys {
                 val changing = LinkedHashMap<String, MutableList<Departure>>()
                 val calling = row.upcoming.filter { departure ->
                     val bound = RouteStops.boundOf(departure.platform)
-                    val resolution = RouteStops.resolve(sequence, segment.originId, departure.destination, departure.branch, row.lineId, bus, bound, departure.direction)
+                    val resolution = RouteStops.resolve(
+                        sequence, segment.originId, departure.destination, departure.branch, row.lineId, bus, bound, departure.direction,
+                        departure.destinationId,
+                    )
+                    // Ending here, it goes nowhere: a sure "no", not a gap in the check.
+                    if (resolution == RouteStops.Resolution.EndsHere) return@filter false
                     val path = (resolution as? RouteStops.Resolution.Found)?.stops
                     if (path == null) {
                         // One path can't be told (no destination yet, or two ways that match it):
                         // still an answer when every way it may take agrees on reaching the far end.
-                        val ways = RouteStops.candidatePaths(sequence, segment.originId, departure.destination, departure.branch, bus, bound, departure.direction)
+                        val ways = RouteStops.candidatePaths(
+                            sequence, segment.originId, departure.destination, departure.branch, bus, bound, departure.direction,
+                            departure.destinationId,
+                        )
                             .map { way -> way.drop(1).filter { it in destinations } }
                         when {
                             ways.isNotEmpty() && ways.all { it.isNotEmpty() } -> {

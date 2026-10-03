@@ -143,6 +143,54 @@ class RouteStopsTest {
     }
 
     @Test
+    fun `a bus arriving at its stand ends there rather than matching no route`() {
+        // The stand is only ever a route's last stop: the buses TfL lists there are arriving to end.
+        assertEquals(RouteStops.Resolution.EndsHere, RouteStops.resolve(labeledBus, "E", "Corner Stand", null, bus = true))
+        assertEquals(
+            RouteStops.Resolution.EndsHere,
+            RouteStops.resolve(labeledBus, "E", "Town Centre", null, bus = true, destinationId = "E"),
+        )
+        // TfL's id names another stop: a name alike doesn't overrule it.
+        assertEquals(
+            RouteStops.Resolution.NoMatch,
+            RouteStops.resolve(labeledBus, "E", "Corner Stand", null, bus = true, destinationId = "ELSEWHERE"),
+        )
+    }
+
+    @Test
+    fun `a bus curtailed at this stop ends here, not run on to its route's end`() {
+        assertEquals(RouteStops.Resolution.EndsHere, RouteStops.resolve(labeledBus, "Q", "Queens Avenue", null, bus = true))
+        assertTrue(RouteStops.candidatePaths(labeledBus, "Q", "Queens Avenue", null, bus = true).isEmpty())
+        // Ending at another pole of the stop's area is ending here too.
+        val withAreas = labeledBus.copy(stopAreas = mapOf("Q" to "G-QUEENS", "Q2" to "G-QUEENS"))
+        assertEquals(
+            RouteStops.Resolution.EndsHere,
+            RouteStops.resolve(withAreas, "Q", "Queens Avenue", null, bus = true, destinationId = "Q2"),
+        )
+        assertEquals(
+            RouteStops.Resolution.EndsHere,
+            RouteStops.resolve(withAreas, "Q", "Queens Avenue", null, bus = true, destinationId = "G-QUEENS"),
+        )
+    }
+
+    @Test
+    fun `a train turned short at the station it's listed at ends here`() {
+        val rail = LineSequence(
+            routes = listOf(LineRoute("North ↔ South", listOf("N", "M", "S")), LineRoute("South ↔ North", listOf("S", "M", "N"))),
+            stopNames = mapOf("N" to "North", "M" to "Middle", "S" to "South"),
+        )
+        assertEquals(RouteStops.Resolution.EndsHere, RouteStops.resolve(rail, "M", "Middle", null))
+        assertEquals(RouteStops.Resolution.EndsHere, RouteStops.resolve(rail, "M", "Middle", null, destinationId = "M"))
+        // A loop calling here again still runs to its second call, unless TfL's id says it ends here.
+        val loop = LineSequence(listOf(LineRoute("Loop", listOf("M", "N", "S", "M"))), rail.stopNames)
+        assertEquals(listOf("M", "N", "S", "M"), RouteStops.ahead(loop, "M", "Middle", null)?.map { it.id })
+        assertEquals(RouteStops.Resolution.EndsHere, RouteStops.resolve(loop, "M", "Middle", null, destinationId = "M"))
+        assertTrue(RouteStops.candidatePaths(loop, "M", "Middle", null, destinationId = "M").isEmpty())
+        // The id holds with no destination named, too.
+        assertEquals(RouteStops.Resolution.EndsHere, RouteStops.resolve(rail, "M", "", null, destinationId = "M"))
+    }
+
+    @Test
     fun `an unresolved list is logged with its reason, a resolved one is not`() {
         val warnings = mutableListOf<String>()
         val repository = RouteStopsRepository(
@@ -154,10 +202,12 @@ class RouteStopsTest {
         repository.reportUnresolved("43", "P", RouteStops.Resolution.Found(emptyList()))
         repository.reportUnresolved("43", "P", RouteStops.Resolution.Ambiguous(2))
         repository.reportUnresolved("43", "P", RouteStops.Resolution.NoMatch)
+        repository.reportUnresolved("43", "P", RouteStops.Resolution.EndsHere)
         assertEquals(
             listOf(
                 "route stops unavailable for line 43 at stop P: 2 possible paths",
                 "route stops unavailable for line 43 at stop P: destination matches no route",
+                "route stops unavailable for line 43 at stop P: ends at this stop",
             ),
             warnings,
         )

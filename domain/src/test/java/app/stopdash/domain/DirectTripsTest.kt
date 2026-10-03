@@ -66,6 +66,15 @@ class DirectTripsTest {
     }
 
     @Test
+    fun `a train ending at the stop it's listed at goes nowhere, not unchecked`() {
+        val mid = stop("MID", "Mid", departure("Mid", 30), departure("Bottom A", 60))
+        val result = DirectTrips.filter(listOf(mid), listOf(station("BOTA", "Bottom A")), mapOf("rail" to rail))
+        assertEquals(listOf("Bottom A"), result.stops.single().departures.map { it.destination })
+        assertFalse(result.unresolved)
+        assertTrue(result.misses.isEmpty())
+    }
+
+    @Test
     fun `a line still loading is pending, not a no`() {
         val top = stop("TOP", "Top", departure("Bottom A", 60))
         val result = DirectTrips.filter(listOf(top), listOf(station("BOTA", "Bottom A")), emptyMap())
