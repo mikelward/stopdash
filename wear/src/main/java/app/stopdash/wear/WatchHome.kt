@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -32,6 +33,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
+import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
@@ -41,9 +47,10 @@ import app.stopdash.domain.riderLineName
 import app.stopdash.shared.R as SharedR
 import app.stopdash.ui.PillColors
 import app.stopdash.ui.pillColors
+import java.time.Instant
 
-private val Warning = Color(0xFFF2C14E)
-private val Muted = Color(0xFFB0ABA3)
+internal val Warning = Color(0xFFF2C14E)
+internal val Muted = Color(0xFFB0ABA3)
 private val NeutralFill = Color(0xFF303030)
 
 /**
@@ -54,11 +61,29 @@ private val NeutralFill = Color(0xFF303030)
  * starring, watching and settings stay on the phone.
  */
 @Composable
-fun WatchHomeScreen(frame: TileFrame?, notice: RefreshNotice.Kind? = null, onRefresh: (() -> Unit)? = null) {
+fun WatchHomeScreen(
+    frame: TileFrame?,
+    notice: RefreshNotice.Kind? = null,
+    onRefresh: (() -> Unit)? = null,
+    // The trip on the way, first when there is one ([TripSection]).
+    trip: ShownTrip? = null,
+    now: Instant = Instant.now(),
+) {
     MaterialTheme {
         val background = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
-        when (frame) {
-            is TileFrame.Rows -> ScalingLazyColumn(modifier = background, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // The trip's page ([tripItems]): back at the rider's own step with each step the phone sends,
+        // and with another trip (started at another time), whatever its current step.
+        // Keyed in constant time ([ShownTrip.stepsKey]): this runs on the main thread every tick.
+        var page by remember(trip?.trip?.startedAt, trip?.trip?.current, trip?.stepsKey) { mutableIntStateOf(trip?.trip?.current ?: 0) }
+        // With a trip, the list opens at its top, the trip first, rather than centered on its second item.
+        val list = rememberScalingLazyListState(initialCenterItemIndex = if (trip != null) 0 else 1)
+        // A trip that arrives with the screen open goes above where the list stands, and so does the
+        // step paged to (from the pager below it) or sent by the phone: bring it into view.
+        val hasTrip = trip != null
+        LaunchedEffect(hasTrip, trip?.trip?.startedAt, trip?.trip?.current, page) { if (hasTrip) list.scrollToItem(0) }
+        when {
+            frame is TileFrame.Rows -> ScalingLazyColumn(modifier = background, state = list, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (trip != null) tripItems(trip, now, page) { page = it }
                 item { Stamp(frame) }
                 if (frame.stale || frame.partial) {
                     item { Note(stringResource(if (frame.stale) R.string.tile_out_of_date else R.string.watch_partly_out_of_date), Warning) }
@@ -71,7 +96,12 @@ fun WatchHomeScreen(frame: TileFrame?, notice: RefreshNotice.Kind? = null, onRef
                 items(frame.lines) { line -> Line(line) }
                 if (onRefresh != null) item { RefreshButton(notice, onRefresh) }
             }
-            null -> Box(modifier = background, contentAlignment = Alignment.Center) { Title() }
+            // A trip with no departures to list under it (yet): the trip alone, never hidden behind them.
+            trip != null -> ScalingLazyColumn(modifier = background, state = list, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                tripItems(trip, now, page) { page = it }
+                if (onRefresh != null && frame != null) item { RefreshButton(notice, onRefresh) }
+            }
+            frame == null -> Box(modifier = background, contentAlignment = Alignment.Center) { Title() }
             else -> Box(modifier = background.padding(24.dp), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     when (frame) {
@@ -130,7 +160,7 @@ private fun Line(line: TileLine) {
  * round screen.
  */
 @Composable
-private fun DepartureRow(row: TileRow) {
+internal fun DepartureRow(row: TileRow) {
     val stacked = LocalDensity.current.fontScale > STACKED_FONT_SCALE
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -206,6 +236,7 @@ private fun Destination(row: TileRow, modifier: Modifier) {
     Text(
         text = row.label,
         style = MaterialTheme.typography.bodyMedium,
+        color = if (row.muted) Muted else MaterialTheme.colorScheme.onBackground,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = modifier,
@@ -218,7 +249,11 @@ private fun Countdown(row: TileRow) {
         text = row.countdown,
         style = MaterialTheme.typography.bodyMedium,
         fontWeight = FontWeight.Bold,
-        color = if (row.stale) Warning else MaterialTheme.colorScheme.onBackground,
+        color = when {
+            row.stale -> Warning
+            row.muted -> Muted
+            else -> MaterialTheme.colorScheme.onBackground
+        },
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
     )
@@ -226,7 +261,7 @@ private fun Countdown(row: TileRow) {
 
 /** The line's pill in its official color, as on the tile; a screen reader says the line's name. */
 @Composable
-private fun Pill(row: TileRow) {
+internal fun Pill(row: TileRow) {
     val shape = RoundedCornerShape(6.dp)
     val (fill, label, border) = when (val colors = pillColors(row.lineName, row.lineId, row.mode, Color.Black)) {
         is PillColors.Solid -> Triple(colors.fill, colors.label, colors.border)
@@ -271,7 +306,7 @@ private fun Message(text: String, color: Color = Color.Unspecified) {
 }
 
 @Composable
-private fun Note(text: String, color: Color = Color.Unspecified) {
+internal fun Note(text: String, color: Color = Color.Unspecified) {
     Text(
         text = text,
         style = MaterialTheme.typography.bodySmall,

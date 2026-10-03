@@ -139,7 +139,7 @@ the watch app ships would break pairing between old and new installs.
   - The envelope leaves out the top-level journey fields (`journeys`, `journeyOnlyStopIds`:
     origins, destinations, direction). Whether journeys go to the watch is an open question,
     and journey data would ride the Google relay too. Adding them is a deliberate change with
-    its own disclosure.
+    its own disclosure. (A trip on the way does go, as its own item: *Trip on the way*.)
   - Because journeys are left out, the phone also **drops every journey-only stop** (a starred
     journey's origin outside the nearby set, in `journeyOnlyStopIds`) before building the
     envelope. The widget shows nothing but the journey at such a stop (`withoutJourneys`), so
@@ -418,6 +418,45 @@ Wear's own APIs solve it without wake-ups:
 Verify both mechanisms against the current Tiles and Complications APIs when this is picked up.
 The timeline and time-difference support is the reason the watch needs no polling, so confirm
 it before committing to the design.
+
+## Trip on the way
+
+- **Decided (maintainer, 2026-10-03):** the watch shows a trip on the way: the step the rider is
+  at, Previous and Next to page through the steps, and the next ride's trains when there are some.
+  Sending it is a deliberate change to what leaves the phone, disclosed with it (SPEC *Privacy*,
+  `docs/PRIVACY.md`).
+- **Its own `DataItem`** (`WatchSyncContract.TRIP_PATH`, `WatchTrip`), not a field of the snapshot
+  envelope: a trip changes on its own cadence, and is deleted when it ends. The envelope still
+  carries no journeys.
+- **The phone renders every word** (each step's text, and what to do now, as the trip's own screen
+  says it), so the watch adds none beyond its controls and the trip reads in the phone's language.
+- **While `OnTheWayService` follows the trip**: sent on each change, and every 30 seconds so its
+  minutes count down, but only when what the watch would show changed or a minute has passed
+  since the last send (a heartbeat, so a rider standing still isn't marked out of date), and only
+  to a watch with the app. A trip followed only by the open app (the service refused) isn't sent.
+- **The next ride's trains** are the trip screen's: every pole of the boarding pair, each filtered
+  as the ride boards there. A line whose route isn't held yet is loaded through the shared route
+  repository rather than its trains dropped; a load that failed waits five minutes before the next.
+  Where the pair's other poles have trains too, each pole's sit under its own "Stop N", as the trip
+  screen heads them. One leaving before the rider can be there is grayed, as the trip screen grays
+  it, and is sent only where catchable ones leave room in the watch's three.
+- **More than one phone's item** (after a phone change, until the old one's is removed): no
+  stamp picks between them, since two phones' clocks can't be compared (maintainer, 2026-10-03).
+  The latest update received wins; a read-back keeps the held trip's phone while it still has an
+  item. A stale item from the old phone is replaced within a minute by the active phone's next
+  update, and a removal reads back what's left, clearing the trip if the read fails.
+- **The watch only shows it.** Paging moves nothing; a new step from the phone brings the page back
+  to the rider's. The watch app holds it in memory, and one started later reads the item back. The
+  Data Layer keeps the item until the phone sends or removes the next one, so one left by a phone
+  app that stopped without ending its trip outlasts the 15 minutes it's shown for.
+- **Staleness:** out of date two minutes after the phone stamped it, when stamped ahead of the
+  watch's clock, or after two minutes held without an update; not shown after fifteen held without
+  one. Time held is measured by each device's monotonic clock (as is the phone's heartbeat), so no
+  clock change holds either back, and a trip the phone stopped following without deleting it (the
+  process died) doesn't linger as current.
+- **Battery:** at most one write per 30 seconds while a trip is followed and a watch has the app,
+  each a few hundred bytes, and at least one a minute; the watch app re-renders the trip every 15
+  seconds while open. Measure on a watch with the rest.
 
 ## Privacy and Play Data Safety
 

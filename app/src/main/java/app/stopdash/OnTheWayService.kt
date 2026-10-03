@@ -27,6 +27,7 @@ import app.stopdash.domain.refreshFix
 import app.stopdash.ui.ActiveTripTracker
 import app.stopdash.ui.ON_THE_WAY_REFRESH
 import app.stopdash.ui.nextStepText
+import app.stopdash.watch.WatchTripSync
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
@@ -95,12 +96,17 @@ class OnTheWayService : Service() {
                         if (trip != null) OnTheWayNotification.show(this@OnTheWayService, trip, progress, failed, updatedAt)
                     }.collect()
                 }
+                // The trip on a paired watch with the app, for as long as it's followed here.
+                val onWatch = launch { WatchTripSync.follow(this@OnTheWayService, tracker) }
                 // Arrived, ended, past the cap, or failed: nothing left to follow here.
                 followThenStop(
                     warn = { StopdashDebugLog.warning("on the way: %s", it) },
                     failed = ::notFollowing,
                     stop = {
                         shown.cancel()
+                        onWatch.cancel()
+                        // Off the watch too: a trip no longer followed isn't shown there as current.
+                        WatchTripSync.clear(this@OnTheWayService)
                         stopForeground(STOP_FOREGROUND_REMOVE)
                         stopSelf()
                     },

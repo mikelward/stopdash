@@ -37,6 +37,8 @@ data class TileRow(
     val starred: Boolean,
     val stale: Boolean,
     val planned: TilePlanned? = null,
+    // A trip's train the rider can't be at the stop for: drawn muted, as the phone grays it.
+    val muted: Boolean = false,
 )
 
 /** Work still to come on a line ([PlannedAlert]): its label and the day it starts, for a screen reader. */
