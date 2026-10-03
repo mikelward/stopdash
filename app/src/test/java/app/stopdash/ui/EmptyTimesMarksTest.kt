@@ -24,11 +24,11 @@ class EmptyTimesMarksTest {
         // Last tick's mark holds until this tick's lands, so the dash doesn't blink to "?".
         assertEquals(EmptyTimes.Mark.NONE, freshMark(at("11:00:00.010Z"), shown, tick))
         assertEquals(EmptyTimes.Mark.NONE, freshMark(at("11:01:00.010Z"), shown, tick))
-        // One from before a pause, though the row stayed in place: "?" until it's worked out again.
-        assertEquals(EmptyTimes.Mark.UNKNOWN, freshMark(at("10:30:00Z"), shown, tick))
+        // One from before a pause, though the row stayed in place: loading until it's worked out again.
+        assertEquals(EmptyTimes.Mark.LOADING, freshMark(at("10:30:00Z"), shown, tick))
         // One from before the row came back on screen.
-        assertEquals(EmptyTimes.Mark.UNKNOWN, freshMark(at("11:00:30Z"), tick, tick))
-        assertEquals(EmptyTimes.Mark.UNKNOWN, freshMark(null, shown, tick))
+        assertEquals(EmptyTimes.Mark.LOADING, freshMark(at("11:00:30Z"), tick, tick))
+        assertEquals(EmptyTimes.Mark.LOADING, freshMark(null, shown, tick))
     }
 
     @Test
@@ -39,7 +39,7 @@ class EmptyTimesMarksTest {
         // Worked out during this tick: fresh.
         assertEquals(EmptyTimes.Mark.NONE, freshMark(at("11:01:30Z"), shown, tick))
         // Worked out an hour "later": the clock went back an hour since.
-        assertEquals(EmptyTimes.Mark.UNKNOWN, freshMark(at("12:01:00Z"), shown, tick))
+        assertEquals(EmptyTimes.Mark.LOADING, freshMark(at("12:01:00Z"), shown, tick))
         // A row shown "since" a time the clock has gone back past still takes marks worked out now.
         assertEquals(EmptyTimes.Mark.NONE, freshMark(at("11:01:10Z"), Instant.parse("2026-10-06T12:00:00Z"), tick))
     }

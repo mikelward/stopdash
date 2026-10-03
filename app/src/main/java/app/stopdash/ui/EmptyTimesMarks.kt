@@ -212,7 +212,7 @@ internal fun withQuietRows(revision: RowsRevision, inputs: QuietInputs?): List<D
 }
 
 /**
- * [marked]'s mark if it's fresh, else "?". Fresh means worked out since the board came on screen
+ * [marked]'s mark if it's fresh, else [EmptyTimes.Mark.LOADING] (a spinner) until it is. Fresh means worked out since the board came on screen
  * ([shownSince]: one left over from when it was last shown may be hours old) and no more than
  * [EmptyTimes.MARK_LIFETIME] before the current tick ([now]), which a mark looks that far ahead to
  * cover: the last tick's mark holds until this one's lands, with no "?" between, and a row that
@@ -225,7 +225,9 @@ internal fun freshMark(marked: EmptyTimes.Marked?, shownSince: Instant, now: Ins
     val since = maxOf(minOf(shownSince, now), now.minus(EmptyTimes.MARK_LIFETIME))
     // Nor one stamped later than the tick it could belong to: the clock was set back since.
     val until = now.plus(EmptyTimes.MARK_LIFETIME)
-    return if (marked != null && !marked.at.isBefore(since) && !marked.at.isAfter(until)) marked.mark else EmptyTimes.Mark.UNKNOWN
+    // With no fresh mark, the repository is still working it out: a spinner, not a "?" that would
+    // read as an answer.
+    return if (marked != null && !marked.at.isBefore(since) && !marked.at.isAfter(until)) marked.mark else EmptyTimes.Mark.LOADING
 }
 
 /**

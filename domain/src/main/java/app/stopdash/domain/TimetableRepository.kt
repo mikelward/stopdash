@@ -75,9 +75,11 @@ class TimetableRepository(
             forget(now, today)
             val shown = board()
             boards[id] = shown
+            // Claimed before the mark is worked out, so a failed timetable being asked for again
+            // reads as loading ([EmptyTimes.Board.retrying]), not as the failure.
+            val claimed = if (shown.notRunning) emptyList() else shown.keys.filter { key -> needed(entries[key], today, now) && inFlight.add(key) }
             publish(id, shown)
-            if (shown.notRunning) return@launch
-            shown.keys.filter { key -> needed(entries[key], today, now) && inFlight.add(key) }.forEach { key ->
+            claimed.forEach { key ->
                 launch {
                     try {
                         val lookup = fetch(key)
@@ -85,6 +87,9 @@ class TimetableRepository(
                         // answered after is the old day's, and the next watch replaces it.
                         entries[key] = Entry(lookup, today, clock())
                         _lookups.update { it + (key to lookup) }
+                        // No longer being fetched before the boards are marked, so a failed answer reads
+                        // as failed rather than still loading.
+                        inFlight.remove(key)
                         boards.forEach { (other, watched) -> if (key in watched.keys) publish(other, watched) }
                     } finally {
                         inFlight.remove(key)
@@ -122,7 +127,10 @@ class TimetableRepository(
 
     private fun publish(id: String, board: EmptyTimes.Board) {
         val now = clock()
-        val mark = if (board.notRunning) EmptyTimes.Mark.NONE else EmptyTimes.mark(board.keys, _lookups.value, now, unsure = board.unsure, pending = board.pending)
+        val mark = if (board.notRunning) EmptyTimes.Mark.NONE else EmptyTimes.mark(
+            board.keys, _lookups.value, now,
+            unsure = board.unsure, pending = board.pending, retrying = board.retrying, fetching = { it in inFlight },
+        )
         _marks.update { it + (id to EmptyTimes.Marked(mark, now)) }
     }
 

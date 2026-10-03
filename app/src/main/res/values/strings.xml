@@ -108,6 +108,8 @@
     <!-- No live times, but one might be coming: the stale countdown's "?" (maintainer, 2026-10-03). -->
     <string name="status_times_unknown" translatable="false">?</string>
     <string name="status_times_unknown_description">Times unknown</string>
+    <!-- TODO: translate -->
+    <string name="status_times_loading_description" tools:ignore="MissingTranslation">Loading times</string>
     <!-- Instead of the dash when no source answered for the line: a National Rail line whose board
          failed, or that no board covers (maintainer, 2026-09-24). -->
     <string name="status_no_data">No data</string>

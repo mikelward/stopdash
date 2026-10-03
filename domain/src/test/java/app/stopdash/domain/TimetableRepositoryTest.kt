@@ -94,6 +94,42 @@ class TimetableRepositoryTest {
     }
 
     @Test
+    fun `a failed timetable asked for again reads as loading until it answers, and a quiet "?" stays`() = runTest {
+        var gate: CompletableDeferred<Unit>? = null
+        val source = FakeSource { throw TflException.Offline(null) }
+        val gated = object : TimetableSource {
+            override suspend fun timetable(lineId: String, stopId: String): StopTimetable {
+                gate?.await()
+                return source.timetable(lineId, stopId)
+            }
+        }
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val repository = TimetableRepository(gated, TestScope(dispatcher), clock = { now }, io = dispatcher)
+        val quiet = EmptyTimes.quietBoard(key.stopId, key.lineId, "tube")
+        fun watchBoth() {
+            repository.watch("status") { EmptyTimes.Board(listOf(key)) }
+            repository.watch("quiet") { quiet }
+        }
+        watchBoth()
+        advanceUntilIdle()
+        assertEquals(EmptyTimes.Mark.UNKNOWN, repository.marks.value["status"]?.mark)
+        assertEquals(EmptyTimes.Mark.UNKNOWN, repository.marks.value["quiet"]?.mark)
+        // Past the retry wait, the fetch is held open: the status row's mark is loading again, and the
+        // quiet row's "?" stays rather than going off and on.
+        now = now.plus(TimetableRepository.RETRY_AFTER)
+        gate = CompletableDeferred()
+        watchBoth()
+        advanceUntilIdle()
+        assertEquals(EmptyTimes.Mark.LOADING, repository.marks.value["status"]?.mark)
+        assertEquals(EmptyTimes.Mark.UNKNOWN, repository.marks.value["quiet"]?.mark)
+        // It fails again: "?" again.
+        gate!!.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(2, source.asked.size)
+        assertEquals(EmptyTimes.Mark.UNKNOWN, repository.marks.value["status"]?.mark)
+    }
+
+    @Test
     fun `a request returns at once and fetches off the caller's thread`() = runTest {
         val executor = Executors.newSingleThreadExecutor()
         try {
