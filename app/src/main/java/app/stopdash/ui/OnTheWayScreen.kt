@@ -6,6 +6,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -43,6 +46,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -65,6 +70,7 @@ import app.stopdash.RouteDisruptionAlert
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopGrouping
 import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.cleanStopName
 import app.stopdash.domain.TripLeg
@@ -515,32 +521,85 @@ internal fun etaText(resources: Resources, eta: OnTheWay.Eta, now: Instant): Str
 }
 
 /**
- * The card at the top: the whole trip, where to and when ([eta], held back while the answer it's from
- * is too old to stand behind), then what the rider does next, from [progress], with when that step's
- * done where it's known. Two matched pairs, headline over time, with no labels (maintainer, 2026-10-03).
+ * The card at the top: the whole trip, where to and, beside it, when ([eta], held back while the answer
+ * it's from is too old to stand behind), then what the rider does next, from [progress], large, over a
+ * row with a ride's stops left and, beside them, when that step's done where it's known. Only the step
+ * is large, so it reads first; the times sit at the end, the minutes before the clock, with no labels
+ * (maintainer, 2026-10-03).
  */
 @Composable
 private fun NextStep(destination: String?, eta: OnTheWay.Eta?, progress: TripProgress?, now: Instant, current: Boolean) {
-    val (title, detail) = nextStepText(progress, now, current)
+    val detail = nextStepText(progress, now, current).second
     val at = stepTime(progress, current, now)
-    val stepAt = at?.let { stepTimeText(it, now) } ?: detail
-    // A timed ride's stops on a row of their own under its time, the minutes said once (maintainer, 2026-10-03).
-    val stops = if (at != null && progress is TripProgress.Riding) {
+    // Timed, the step's time stands in for its own words, which say the same; a ride's stops stay beside it.
+    val words = if (at == null) {
+        detail
+    } else if (progress is TripProgress.Riding) {
         LocalConfiguration.current // Read again on a configuration change (locale, font scale).
-        rideStopsText(LocalContext.current.resources, progress, minutes = null)
+        rideStopsLeft(LocalContext.current.resources, progress)
     } else {
         ""
     }
+    val stepAt = at?.let { stepTimeText(it, now) }.orEmpty()
     Card(colors = nextStepColors(progress, current), modifier = Modifier.fillMaxWidth().testTag("onTheWayNext")) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (destination != null) {
-                Text(stringResource(R.string.on_the_way_title, destination), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                if (eta != null) Text(etaText(eta, now), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.testTag("onTheWayEta"))
+                // Shortened as a board shortens a place (its words, then its floor), the "To" kept whole.
+                val shortDestination = remember(destination) { DestinationAbbreviations.abbreviate(destination) }
+                val floorDestination = remember(destination) { DestinationAbbreviations.floor(destination) }
+                CardRow(
+                    listOf(destination, shortDestination, floorDestination).map { stringResource(R.string.on_the_way_title, it) },
+                    eta?.let { etaText(it, now) }.orEmpty(),
+                    startWeight = FontWeight.SemiBold,
+                    endTag = "onTheWayEta",
+                )
                 HorizontalDivider(Modifier.padding(vertical = 8.dp), color = LocalContentColor.current.copy(alpha = 0.25f))
             }
-            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            if (stepAt.isNotEmpty()) Text(stepAt, style = MaterialTheme.typography.bodyLarge)
-            if (stops.isNotEmpty()) Text(stops, style = MaterialTheme.typography.bodyLarge)
+            ShortenedLines(
+                stepTitleForms(progress, now, current),
+                MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                maxLines = 2,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (words.isNotEmpty() || stepAt.isNotEmpty()) CardRow(listOf(words), stepAt)
+        }
+    }
+}
+
+// A row of the card: the first of [start]'s forms (longest first) that fits on the left, and [end]
+// (a time) whole at the right. Where both don't fit (a narrow window, large text) the text yields,
+// shortened before it's cut with a single "…" ([ShortenedText]); the time keeps its one line wherever
+// it fits beside the text's last stub (its first word and the next letter, then "…"), and wraps only past that
+// (maintainer, 2026-10-03; Codex, PR #518).
+@Composable
+private fun CardRow(start: List<String>, end: String, startWeight: FontWeight = FontWeight.Normal, endTag: String? = null) {
+    val style = MaterialTheme.typography.bodyLarge
+    val startStyle = style.copy(fontWeight = startWeight)
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val measurer = rememberTextMeasurer()
+        val density = LocalDensity.current
+        val fontScale = density.fontScale
+        val gap = 12.dp
+        // The text's last stub: its first word whole (the "To" around a place) and the next letter, then
+        // "…" ("To C…"), never a bare "…" (Codex, PR #518).
+        val stub = start.last().takeIf { it.isNotEmpty() }?.let { text ->
+            val word = text.indexOf(' ').takeIf { it in 1 until text.length - 1 }?.let { text.take(it + 2) } ?: text.take(1)
+            "$word…"
+        }
+        val stubWidth = remember(stub, startStyle, fontScale) { stub?.let { measurer.measure(it, startStyle, maxLines = 1).size.width } ?: 0 }
+        // All the row but the text's stub and the gap: the time's single line where that fits, else it wraps in it.
+        // A few px of slack: the stub measured alone can still elide to "…" laid out in exactly its width.
+        val slack = if (stub != null) with(density) { gap.roundToPx() + 4.dp.roundToPx() } else 0
+        val endMax = with(density) { (constraints.maxWidth - stubWidth - slack).coerceAtLeast(0).toDp() }
+        Row(horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
+            if (stub != null) {
+                ShortenedText(start, startStyle, Modifier.weight(1f))
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
+            if (end.isNotEmpty()) {
+                Text(end, style = style, modifier = Modifier.widthIn(max = endMax).then(endTag?.let { Modifier.testTag(it) } ?: Modifier))
+            }
         }
     }
 }
@@ -561,8 +620,8 @@ internal fun stepTime(progress: TripProgress?, current: Boolean, now: Instant): 
 }?.takeIf { it.isAfter(now) }
 
 /**
- * When the step at hand is done, [at], as the trip's own time is said: the clock time, then the
- * minutes until it, counted as the boards count (maintainer, 2026-10-03).
+ * When the step at hand is done, [at], as the trip's own time is said: the minutes until it, counted
+ * as the boards count, then the clock time (maintainer, 2026-10-03).
  */
 @Composable
 private fun stepTimeText(at: Instant, now: Instant): String =
@@ -577,6 +636,19 @@ internal fun nextStepColors(progress: TripProgress?, current: Boolean = true): C
         CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
     }
 
+/**
+ * The step's title in the forms the card tries, longest first ([ShortenedLines]): as named, its places
+ * with common words shortened, then at their floor ([DestinationAbbreviations]), so a long one shortens
+ * before it's cut, as a board's place does (maintainer, 2026-10-03).
+ */
+@Composable
+private fun stepTitleForms(progress: TripProgress?, now: Instant, current: Boolean): List<String> {
+    LocalConfiguration.current // Read again on a configuration change (locale, font scale).
+    val resources = LocalContext.current.resources
+    return listOf<(String) -> String>({ it }, DestinationAbbreviations::abbreviate, DestinationAbbreviations::floor)
+        .map { nextStepText(resources, progress, now, current, it).first }
+}
+
 /** What the rider does next, as a title and a detail line — the trip's screen and its banner alike. */
 @Composable
 internal fun nextStepText(progress: TripProgress?, now: Instant, current: Boolean = true): Pair<String, String> {
@@ -584,21 +656,31 @@ internal fun nextStepText(progress: TripProgress?, now: Instant, current: Boolea
     return nextStepText(LocalContext.current.resources, progress, now, current)
 }
 
-/** [nextStepText] from [resources], for the trip's ongoing notification too. */
-internal fun nextStepText(resources: Resources, progress: TripProgress?, now: Instant, current: Boolean = true): Pair<String, String> {
+/**
+ * [nextStepText] from [resources], for the trip's ongoing notification too. [place] is applied to
+ * each place the title names, so the card can shorten the places alone ([stepTitleForms]), never the
+ * words around them or a line's name.
+ */
+internal fun nextStepText(
+    resources: Resources,
+    progress: TripProgress?,
+    now: Instant,
+    current: Boolean = true,
+    place: (String) -> String = { it },
+): Pair<String, String> {
     // A train's time or stops from an answer too old to stand behind ([current]): the step stays,
     // its details wait for the next answer.
     // Nor "Get off at": the stop being next is what that answer said, and it no longer stands, so the
     // step is the ride until the next one says (Codex, PR #456).
     // Seen on board or not: once told to get off, it doesn't go back to boarding.
     if (fromTfl(progress) && !current) {
-        val title = (progress as? TripProgress.Riding)?.takeIf { it.getOffSoon }?.let { resources.getString(R.string.on_the_way_ride_to, it.leg.toName) }
-            ?: nextStepText(resources, progress, now).first
+        val title = (progress as? TripProgress.Riding)?.takeIf { it.getOffSoon }?.let { resources.getString(R.string.on_the_way_ride_to, place(it.leg.toName)) }
+            ?: nextStepText(resources, progress, now, place = place).first
         return title to resources.getString(R.string.on_the_way_updating)
     }
     return when (progress) {
         // The line of the train followed, which can be another of the ride's lines than the Planner's.
-        is TripProgress.Waiting -> resources.getString(R.string.on_the_way_board, progress.lineName, progress.leg.fromName) to
+        is TripProgress.Waiting -> resources.getString(R.string.on_the_way_board, progress.lineName, place(progress.leg.fromName)) to
             // As the boards count it ([Countdown.minutes]): the train due here is often on the board
             // below, and the two must never read a minute apart.
             (progress.due?.let { resources.getString(R.string.on_the_way_due, Countdown.minutes(it, now).toInt()) } ?: resources.getString(finding(progress.leg)))
@@ -606,16 +688,16 @@ internal fun nextStepText(resources: Resources, progress: TripProgress?, now: In
         // platform looks the same underground, so the step is still the ride, its board below, until
         // location or their word says they're on. A stop or two from getting off, it says so all the same.
         is TripProgress.Riding if !progress.seen && !progress.getOffSoon ->
-            resources.getString(Vehicle.of(progress.leg).take, progress.leg.toName) to ""
+            resources.getString(Vehicle.of(progress.leg).take, place(progress.leg.toName)) to ""
         // "Ride to" for the ride, "Get off at" once the stop is next, a moment to act on, as the
         // get-off-soon alert says; the step's own row stays "Ride to" (maintainer, 2026-10-01).
-        is TripProgress.Riding -> resources.getString(if (progress.getOffSoon) R.string.get_off_soon_title else R.string.on_the_way_ride_to, progress.leg.toName) to
+        is TripProgress.Riding -> resources.getString(if (progress.getOffSoon) R.string.get_off_soon_title else R.string.on_the_way_ride_to, place(progress.leg.toName)) to
             // The time left on the ride, where the stop is predicted (maintainer, 2026-09-29): counted as
             // the boards count, never estimated from the plan beyond TfL's predictions.
             rideStopsText(resources, progress, progress.getOffAt?.let { Countdown.minutes(it, now).toInt() })
-        is TripProgress.Changing -> resources.getString(R.string.on_the_way_change, progress.leg.lineName, progress.leg.fromName) to
+        is TripProgress.Changing -> resources.getString(R.string.on_the_way_change, progress.leg.lineName, place(progress.leg.fromName)) to
             resources.getString(R.string.on_the_way_change_time, minutesUntil(now, progress.until))
-        is TripProgress.Walking -> resources.getString(R.string.on_the_way_walk, progress.leg.toName) to
+        is TripProgress.Walking -> resources.getString(R.string.on_the_way_walk, place(progress.leg.toName)) to
             resources.getString(R.string.on_the_way_walk_time, minutesUntil(now, progress.until))
         is TripProgress.Lost -> resources.getString(Vehicle.of(progress.leg).lost) to resources.getString(finding(progress.leg))
         TripProgress.Arrived -> resources.getString(R.string.on_the_way_arrived) to ""
@@ -757,6 +839,17 @@ internal fun minutesUntil(now: Instant, at: Instant): Int {
     val seconds = Duration.between(now, at).seconds.coerceAtLeast(0)
     return ((seconds + 59) / 60).toInt()
 }
+
+/**
+ * A ride's stops left, beside its time on the card: the count alone, "Next stop" when it's next, or the
+ * next stop's name when the stops can't be counted (maintainer, 2026-10-03).
+ */
+internal fun rideStopsLeft(resources: Resources, progress: TripProgress.Riding): String =
+    when (val left = progress.stopsLeft) {
+        null -> progress.nextStop?.let { resources.getString(R.string.on_the_way_next_is, it) } ?: ""
+        0, 1 -> resources.getString(R.string.on_the_way_next_stop)
+        else -> resources.getQuantityString(R.plurals.on_the_way_stops_left, left, left)
+    }
 
 /**
  * A ride's stops left and its next stop, with [minutes] to getting off where they're said here rather

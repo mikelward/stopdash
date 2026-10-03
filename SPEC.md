@@ -1667,15 +1667,21 @@ them there:
   Start but says it can't be followed yet: its times come from National Rail's boards, which name
   no train to follow. **One trip at a time:** while one is on the way, a route offers **Open current
   trip** in Start's place; the trip is ended from its own screen.
-- **The card at the top** leads with the whole trip, then the step at hand, as two matched pairs with
-  no labels (maintainer, 2026-10-03): where the trip goes ("To Canary Wharf") over when it gets
-  there and how long is left, then the step ("Walk to Stratford") over when it's done and how long,
-  said as the trip's own time is ("08:06 · 4 min"). A ride's stops left and its next stop take a row
-  of their own under its time ("08:18 · 16 min" over "4 stops · next Hackney Central"). Where the step's time isn't known or no longer stands, its own words stay ("Finding
-  your train…", "Updating…").
+- **The card at the top** leads with the whole trip, then the step at hand, with no labels
+  (maintainer, 2026-10-03): where the trip goes ("To Canary Wharf") with, at the end of its row, how
+  long is left and when it gets there; then the step ("Walk to Stratford"), the one large line, so it
+  reads first, over a row with a ride's stops left ("4 stops", "Next stop") and, at its end, how long
+  until the step's done and when ("16 min · 08:18"), the minutes first. Where the step's time isn't
+  known or no longer stands, its own words stay ("Finding your train…", "Updating…"). A time is
+  never squeezed or cut: where a row's text and time don't both fit (a narrow window, large text),
+  the text yields (the time keeps its one line wherever it fits beside the text's last stub), its places shortened as a board's are ("Upper Taxi Road" → "U. Taxi Rd", then
+  the shortest form) and cut with a single "…" only as a last resort. The step shortens its places'
+  common words to stay on one line, and wraps to a second only if even that doesn't fit (then its
+  shortest form, then "…"), since a line that wraps reads slower (maintainer, 2026-10-03); the words around a place ("Walk to", "Board … at") and a
+  line's name never do (maintainer, 2026-10-03).
   The app bar says StopDash: the card names the trip, so the bar needn't.
 - **Time left.** On the card, under where the trip goes, it says when it gets there and how long is
-  left (maintainer, 2026-10-01; moved onto the card 2026-10-03): "~08:31 · 29 min". It's "~" when it's TfL's prediction for where
+  left (maintainer, 2026-10-01; moved onto the card 2026-10-03): "29 min · ~08:31". It's "~" when it's TfL's prediction for where
   the rider gets off the ride they're on, with only walks after. It's "est." when any of it is the
   Planner's: a train still to come (its time at the boarding stop, then the time on board), or a ride
   or change still ahead. Still to board, with the train followed gone by (TfL can list a bus past its
