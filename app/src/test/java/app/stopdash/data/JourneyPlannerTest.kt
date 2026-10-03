@@ -62,7 +62,7 @@ class JourneyPlannerTest {
         val url = checkNotNull(captured).url
         assertEquals("/Journey/JourneyResults/910GHGHI/to/940GZZLUCYF", url.encodedPath)
         assertEquals("EXAMPLE", url.parameters["app_key"])
-        assertEquals("30", url.parameters["maxWalkingMinutes"])
+        assertEquals("20", url.parameters["maxWalkingMinutes"])
         // The Planner's own average unless the rider chose otherwise.
         assertEquals("Average", url.parameters["walkingSpeed"])
     }
