@@ -1,5 +1,8 @@
 package app.stopdash
 
+import app.stopdash.domain.Workers
+import kotlinx.coroutines.Dispatchers
+
 /**
  * The [android.app.Application] Robolectric instantiates for the unit-test suite (wired via
  * `src/test/resources/robolectric.properties`), in place of [StopdashApp].
@@ -10,6 +13,14 @@ package app.stopdash
  * directly, and the library's own tests cover the file sink and crash handler.
  */
 class TestStopdashApp : StopdashApp() {
+    override fun onCreate() {
+        // Off-main work posted to the test's main looper, which Robolectric runs as a screen settles,
+        // instead of racing a real worker thread: the order it finishes in matches the app's, where it
+        // comes back a frame later. A test of the hop itself passes a worker of its own.
+        Workers.compute = Dispatchers.Main
+        super.onCreate()
+    }
+
     override fun installDiagnosticLog() {
         // Intentionally empty — see the class comment. Not a swallowed failure: there is no
         // work to do here, by design.

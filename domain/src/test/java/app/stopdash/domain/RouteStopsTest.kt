@@ -2,8 +2,11 @@ package app.stopdash.domain
 
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.Executors
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -334,6 +337,7 @@ class RouteStopsTest {
             },
             warn = { warnings += it },
             clock = { Instant.parse("2026-09-26T08:00:00Z") },
+            compute = StandardTestDispatcher(testScheduler),
         )
         assertNull(repository.cached("14", "inbound"))
         repository.load("14", "inbound")
@@ -379,6 +383,7 @@ class RouteStopsTest {
                     return bus
                 }
             },
+            compute = StandardTestDispatcher(testScheduler),
         )
         val loads = (1..5).map { line -> async { repository.load("$line", "") } }
         runCurrent()
@@ -400,6 +405,7 @@ class RouteStopsTest {
                     return bus
                 }
             },
+            compute = StandardTestDispatcher(testScheduler),
         )
         // A trip loading the line while its page, opened meanwhile, loads it too.
         val trip = async { repository.load("14", "") }
@@ -422,6 +428,7 @@ class RouteStopsTest {
                     return bus
                 }
             },
+            compute = StandardTestDispatcher(testScheduler),
         )
         val first = async { repository.load("14", "inbound") }
         val second = async { repository.load("14", "inbound") }
@@ -446,6 +453,7 @@ class RouteStopsTest {
                     return bus
                 }
             },
+            compute = StandardTestDispatcher(testScheduler),
         )
         val load = async { repository.load("14", "") }
         runCurrent()
@@ -486,7 +494,7 @@ class RouteStopsTest {
         var now = Instant.parse("2026-09-24T08:00:00Z")
         val io = StandardTestDispatcher(testScheduler)
         val first = CountingSource(bus, listOf(pole))
-        val before = RouteStopsRepository(first, store = store, clock = { now }, io = io)
+        val before = RouteStopsRepository(first, store = store, clock = { now }, io = io, compute = StandardTestDispatcher(testScheduler))
         before.load("14", "inbound")
         before.loadPoles("490G00000001")
         assertEquals(listOf("14/inbound", "490G00000001"), first.calls)
@@ -495,7 +503,7 @@ class RouteStopsTest {
         // has the stops and neither is fetched again.
         now = now.plus(Duration.ofHours(23))
         val second = CountingSource(bus, listOf(pole))
-        val after = RouteStopsRepository(second, store = store, clock = { now }, io = io)
+        val after = RouteStopsRepository(second, store = store, clock = { now }, io = io, compute = StandardTestDispatcher(testScheduler))
         assertNull(after.cached("14", "inbound"))
         after.warm()
         assertEquals(bus, after.cached("14", "inbound"))
@@ -530,6 +538,7 @@ class RouteStopsTest {
             store = store,
             clock = { at.plus(Duration.ofHours(25)) },
             io = StandardTestDispatcher(testScheduler),
+            compute = StandardTestDispatcher(testScheduler),
         )
         repository.warm()
         assertEquals(setOf("22/inbound"), store.contents.sequences.keys)
@@ -545,10 +554,81 @@ class RouteStopsTest {
             contents = RouteStopsStore.Contents(sequences = mapOf("14/inbound" to RouteStopsStore.Timed(now.plusSeconds(60), bus)))
         }
         val source = CountingSource(bus, emptyList())
-        val repository = RouteStopsRepository(source, store = store, clock = { now }, io = StandardTestDispatcher(testScheduler))
+        val repository = RouteStopsRepository(source, store = store, clock = { now }, io = StandardTestDispatcher(testScheduler), compute = StandardTestDispatcher(testScheduler))
         repository.load("14", "inbound")
         assertEquals(listOf("14/inbound"), source.calls)
         assertEquals(now, store.contents.sequences.getValue("14/inbound").at)
+    }
+
+    @Test
+    fun `loading, warming and merging run on the worker, not a single-thread caller`() {
+        // AGENTS.md *Main thread: read and dispatch only*: a page asks from the main thread, and a
+        // National Rail line's routes merged and placed froze it (a bug report's hang at a terminus).
+        val caller = Executors.newSingleThreadExecutor { Thread(it, "test-caller") }.asCoroutineDispatcher()
+        val worker = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }.asCoroutineDispatcher()
+        try {
+            val ranOn = mutableListOf<String>()
+            val source = object : RouteSequenceSource, StopAreaSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                    ranOn += Thread.currentThread().name
+                    return bus
+                }
+                override suspend fun stopAreaPoles(areaId: String): List<StopLocation> {
+                    ranOn += Thread.currentThread().name
+                    return listOf(pole)
+                }
+            }
+            val repository = RouteStopsRepository(
+                source,
+                compute = worker,
+                stations = {
+                    ranOn += Thread.currentThread().name
+                    emptyList()
+                },
+                io = kotlinx.coroutines.Dispatchers.Unconfined,
+            )
+            runBlocking(caller) {
+                repository.warm()
+                repository.load("14", "")
+                repository.loadPoles("490G00000001")
+            }
+            // The station index, both directions of the line, and the stop area.
+            assertEquals(4, ranOn.size)
+            // Debug coroutines append " @coroutine#n" to the name; the thread is what matters.
+            assertEquals(setOf("test-worker"), ranOn.mapTo(HashSet()) { it.substringBefore(" @") })
+        } finally {
+            caller.close()
+            worker.close()
+        }
+    }
+
+    @Test
+    fun `a peek hands back the routes load merged, without merging again`() = runTest {
+        val repository = RouteStopsRepository(CountingSource(bus, emptyList()), compute = kotlinx.coroutines.Dispatchers.Unconfined)
+        assertNull(repository.cached("14", ""))
+        val loaded = repository.load("14", "")
+        // The same object, not an equal one built again: the peek only looks it up.
+        assertTrue(loaded === repository.cached("14", ""))
+        assertTrue(repository.cached("14", "") === repository.cached("14", ""))
+    }
+
+    @Test
+    fun `a line's merged routes leave memory when its entry expires`() = runTest {
+        var now = Instant.parse("2026-09-24T08:00:00Z")
+        val repository = RouteStopsRepository(
+            CountingSource(bus, emptyList()),
+            store = MemoryStore(),
+            clock = { now },
+            io = StandardTestDispatcher(testScheduler),
+            compute = StandardTestDispatcher(testScheduler),
+        )
+        repository.load("14", "inbound")
+        assertEquals(1, repository.mergedCount)
+        now = now.plus(Duration.ofHours(25))
+        // Fetching another line saves, which drops the day-old one, and its merge with it.
+        repository.load("22", "inbound")
+        assertNull(repository.cached("14", "inbound"))
+        assertEquals(1, repository.mergedCount)
     }
 
     private fun at(minutes: Long) = Instant.parse("2026-09-26T08:00:00Z").plus(Duration.ofMinutes(minutes))

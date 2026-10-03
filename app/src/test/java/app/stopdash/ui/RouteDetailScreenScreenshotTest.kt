@@ -67,9 +67,9 @@ class RouteDetailScreenScreenshotTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
-    /** As [composeRule]'s setContent, with the alert's marks read on the main thread ([LocalAlertWorker]). */
+    /** As [composeRule]'s setContent, with the alert's marks read on the main thread ([LocalWorker]). */
     private fun setDetail(content: @Composable () -> Unit) = composeRule.setContent {
-        CompositionLocalProvider(LocalAlertWorker provides Dispatchers.Main.immediate) { content() }
+        CompositionLocalProvider(LocalWorker provides Dispatchers.Main.immediate) { content() }
     }
 
     private val now: Instant = Instant.parse("2026-09-18T08:00:00Z")
@@ -1435,6 +1435,7 @@ class RouteDetailScreenScreenshotTest {
                     )
             },
             io = kotlinx.coroutines.Dispatchers.Unconfined,
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
         )
         val base = disruptedRow().let { row -> row.copy(upcoming = emptyList()) }
         var row by androidx.compose.runtime.mutableStateOf(
@@ -1442,7 +1443,7 @@ class RouteDetailScreenScreenshotTest {
         )
         composeRule.setContent {
             StopDashTheme {
-                CompositionLocalProvider(LocalRouteStops provides repository, LocalAlertWorker provides held) {
+                CompositionLocalProvider(LocalRouteStops provides repository, LocalWorker provides held) {
                     RouteDetailScreen(
                         row = row,
                         isStarred = false,
@@ -1456,8 +1457,12 @@ class RouteDetailScreenScreenshotTest {
                 }
             }
         }
-        composeRule.waitForIdle()
-        scheduler.advanceUntilIdle()
+        // Released twice: the line's stations are worked out on the same worker, and the marks
+        // read once they're in.
+        repeat(2) {
+            composeRule.waitForIdle()
+            scheduler.advanceUntilIdle()
+        }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Green Park, Oxford Circus").assertIsDisplayed()
 

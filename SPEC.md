@@ -806,8 +806,10 @@ rail platform, or a bus pole's compass bearing, and left off when neither names 
 "Stops to": the list opens on the boarding stop and the app bar already names the destination. Only
 while no list is shown (a status row, or a list loading, failed, unavailable, or withheld) does the
 body name the boarding stop ("From Victoria"), so the page always says which stop it is about. The list comes from TfL's Route/Sequence for the line, fetched **when the page opens** — never
-on the refresh path — and kept for a day, in memory and in the app's cache directory, so a reopened route shows at once, even after the process was killed; until
-it arrives the page says so, a failed fetch says why with a retry, and where TfL's data admits more
+on the refresh path — and kept for a day, in memory and in the app's cache directory, so a reopened route needs no request, even after the process was killed.
+Matching the train to the line's routes is worked out off the main thread (it walks every route); a route reopened in the same
+process shows the list it last worked out in its first frame, and otherwise "Loading" holds back for a moment, so a list ready
+within a few frames appears without it. Until the list arrives the page says so, a failed fetch says why with a retry, and where TfL's data admits more
 than one path from here (a Northern train with no branch named) the page says the list is
 unavailable rather than guessing a trunk (principle 1). **A bus runs to its route's end** when its
 destination names neither a stop ahead nor the route: a bus blind shows an area or landmark, not

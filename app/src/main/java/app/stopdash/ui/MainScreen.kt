@@ -102,7 +102,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineDispatcher
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.remember
@@ -207,6 +206,8 @@ import app.stopdash.domain.UntimedTrain
 import app.stopdash.domain.hasTrains
 import app.stopdash.ui.theme.LocalStarredBorderColor
 import java.time.Instant
+import app.stopdash.domain.Workers
+import kotlinx.coroutines.withContext
 
 /** Test tag on the red "update available" dot overlaying the overflow menu icon. */
 internal const val UPDATE_AVAILABLE_DOT_TAG = "update_available_dot"
@@ -4192,10 +4193,11 @@ private fun CollapsibleStatus(
 /** The stable identity of the route a [DepartureRow] represents — its stop, line, and direction —
  *  used as the saveable key for the open route-detail page so it re-resolves against live rows. */
 /**
- * Where a line's page reads its alert's marks ([AlertMarks]): off the main thread. A screenshot test
- * provides the main one, so the marks are in its first settled frame rather than racing it.
+ * Where a route page works out what it shows from the line's routes — the train's stop list, the
+ * alert's marks ([AlertMarks]) — off the main thread: the process's worker ([Workers]). The test
+ * application runs that work in place, so a screenshot's frame settles with it.
  */
-internal val LocalAlertWorker = staticCompositionLocalOf<CoroutineDispatcher> { Dispatchers.Default }
+internal val LocalWorker = staticCompositionLocalOf<CoroutineDispatcher> { Workers.compute }
 
 internal fun DepartureRow.detailKey(): String = "$stopId|$lineId|$directionKey|$platform"
 
@@ -4288,11 +4290,6 @@ internal fun RouteDetailScreen(
             else -> false
         },
     )
-    // The whole route the train's list is part of, from its first stop: the list starts at this stop,
-    // so a stretch the alert gives before it is named from here (maintainer, 2026-10-02).
-    val wholeRoute = remember(stops) {
-        (stops as? RouteStopsUi.Loaded)?.let { loaded -> loaded.sequence?.let { RouteStops.wholeRouteOf(it, loaded.stops) } }.orEmpty()
-    }
     // What the alert marks ([AlertMarks]): the stations its prose names (SPEC *Disruptions*), the
     // train's stops it touches, for their ⚠s (those it names and, on the train's own list, in route
     // order, the ones between two named ends of a stretch it gives, "between Moorgate and Monument"),
@@ -4302,15 +4299,21 @@ internal fun RouteDetailScreen(
     // pattern per station and per pair of them, which froze the page on a long bus route. The page
     // shows at once, unmarked, and the marks follow.
     val trainStops = (stops as? RouteStopsUi.Loaded)?.stops
+    val trainSequence = (stops as? RouteStopsUi.Loaded)?.sequence
     val statusText = row.status?.fullText
     val hasStatus = row.status != null
     // A new alert's marks clear the old ones at once, so a reworded or cleared alert never shows the
     // last one's ⚠s or places while its own are read; a stop list refreshed under the same alert keeps
     // them, so an ordinary refresh doesn't make them blink.
-    val alertWorker = LocalAlertWorker.current
-    val readAlert by produceState<Pair<Any?, AlertMarks>>(null to AlertMarks.NONE, alertText, statusText, hasStatus, trainStops, lineStops, wholeRoute, alertWorker) {
+    val alertWorker = LocalWorker.current
+    val readAlert by produceState<Pair<Any?, AlertMarks>>(null to AlertMarks.NONE, alertText, statusText, hasStatus, trainStops, trainSequence, lineStops, alertWorker) {
         val alert = Triple(alertText, statusText, hasStatus)
         if (value.first != alert) value = alert to AlertMarks.NONE
+        // The whole route the train's list is part of, from its first stop: the list starts at this
+        // stop, so a stretch the alert gives before it is named from here (maintainer, 2026-10-02).
+        val wholeRoute = withContext(alertWorker) {
+            if (trainStops == null || trainSequence == null) emptyList() else RouteStops.wholeRouteOf(trainSequence, trainStops)
+        }
         value = alert to AlertMarks.of(alertText, statusText, hasStatus, trainStops, lineStops, wholeRoute, shortName = { stop ->
             stop.name.substringBefore("/").trim().ifBlank { stop.name.ifBlank { stop.id } }
         }, worker = alertWorker)

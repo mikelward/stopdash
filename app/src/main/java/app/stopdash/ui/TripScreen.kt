@@ -127,6 +127,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.withContext
 
 /**
  * The live trains [leg] can use (SPEC *Trips with a change*): its line's upcoming trains at its
@@ -2287,20 +2288,22 @@ internal fun legStops(planned: TripLeg, fetched: LineSequence): RouteStopsUi {
 }
 
 /**
- * [leg]'s stops ([legStops]) from the line's route in [LocalRouteStops]: the held copy at once, else
- * loading it off the render path; a failed load says why and loads again on [retry], as a row's stop
- * list does ([rememberRouteStops]).
+ * [leg]'s stops ([legStops]) from the line's route in [LocalRouteStops], loaded and worked out on
+ * [LocalWorker], never the main thread, from the leg's last list ([RouteStopsMemo]) or Loading at
+ * first; a failed load says why and loads again on [retry], as a row's stop list does
+ * ([rememberRouteStops]).
  */
 @Composable
 internal fun rememberLegRouteStops(leg: TripLeg, retry: Int): RouteStopsUi {
     val repository = LocalRouteStops.current ?: return RouteStopsUi.Hidden
-    return key(repository, leg) {
-        val initial = remember { repository.cached(leg.lineId, "")?.let { legStops(leg, it) } ?: RouteStopsUi.Loading }
-        val state by produceState(initial, retry) {
-            if (value !is RouteStopsUi.Loading && value !is RouteStopsUi.Failed) return@produceState
-            value = RouteStopsUi.Loading
+    val worker = LocalWorker.current
+    val memo = listOf("leg", repository, leg)
+    return key(memo) {
+        val state by produceState(RouteStopsMemo.get(memo) ?: RouteStopsUi.Loading, retry) {
+            // A list shown from the memo stays up while the current one is worked out.
+            if (value is RouteStopsUi.Failed) value = RouteStopsUi.Loading
             value = try {
-                legStops(leg, repository.load(leg.lineId, ""))
+                withContext(worker) { legStops(leg, repository.load(leg.lineId, "")) }.also { RouteStopsMemo.put(memo, it) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TflException.NotFound) {
@@ -2311,11 +2314,13 @@ internal fun rememberLegRouteStops(leg: TripLeg, retry: Int): RouteStopsUi {
                 RouteStopsUi.Failed(errorKindOf(e))
             }
         }
-        // Logged once per opened leg, off composition, as a followed train's page logs it.
-        LaunchedEffect(state) {
-            (state as? RouteStopsUi.Unavailable)?.let { repository.reportUnresolved(leg.lineId, leg.fromId, it.reason) }
+        // Logged once per opened leg, off composition, as a followed train's page logs it. Keyed by, and
+        // reading, this composition's value, as there ([rememberRouteStops]).
+        val shown = state
+        LaunchedEffect(shown) {
+            (shown as? RouteStopsUi.Unavailable)?.let { repository.reportUnresolved(leg.lineId, leg.fromId, it.reason) }
         }
-        state
+        shown
     }
 }
 
