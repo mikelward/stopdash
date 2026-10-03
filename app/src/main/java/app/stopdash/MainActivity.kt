@@ -984,6 +984,7 @@ class MainActivity : ComponentActivity() {
                                     endFailed = endFailed,
                                     appOpenOnly = appOpenOnly,
                                     disruptions = routeDisruptions?.at(now).orEmpty(),
+                                    cards = routeDisruptions?.cardsAt(now).orEmpty(),
                                     replanFrom = replanFrom,
                                     // The trip list from the station still ahead nearest the rider to where
                                     // they chose to go, as the From… search opens one (maintainer, 2026-10-02):

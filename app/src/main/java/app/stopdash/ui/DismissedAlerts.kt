@@ -104,7 +104,9 @@ internal suspend fun reconcileLineDismissals(
     what: String,
     pruned: (Set<DismissedAlert>) -> Unit,
 ) {
-    val (live, checked) = lineDismissalCheck(answered, answeredIds, now)
+    // Every live alert's identity, each line's under way ones included: on [io], never the caller's (the
+    // main) thread (Codex on #519).
+    val (live, checked) = withContext(io) { lineDismissalCheck(answered, answeredIds, now) }
     reconcileDismissals(dismissed, live, checked, store, io, warn, what, pruned)
 }
 
@@ -139,8 +141,10 @@ internal fun stopDismissalCheck(found: Map<String, List<StopDisruption>>, now: I
 
 /**
  * Settles [dismissed] against what a check found [live] at the places and lines it [checked]
- * ([Dismissed.reconcile]): in memory first ([pruned]), then the store, a write that outlasts the
- * caller. Best-effort: a failed write is logged with [what] asked. Nothing checked, nothing settled.
+ * ([Dismissed.reconcile]): in memory first, [pruned] told on [io] of each dismissal to let go of (none,
+ * not told), then the store, a write that outlasts the caller. What to let go of rather than what's
+ * left, so a dismissal made meanwhile isn't lost (Codex on #519). Best-effort: a failed write is
+ * logged with [what] asked. Nothing checked, nothing settled.
  */
 internal suspend fun reconcileDismissals(
     dismissed: Set<DismissedAlert>,
@@ -153,7 +157,12 @@ internal suspend fun reconcileDismissals(
     pruned: (Set<DismissedAlert>) -> Unit,
 ) {
     if (checked.isEmpty()) return
-    pruned(Dismissed.reconcile(dismissed, live, checked))
+    // Settled on [io]: it goes through every dismissal and live alert, never on the caller's (the main)
+    // thread (Codex on #519).
+    withContext(io) {
+        val gone = dismissed - Dismissed.reconcile(dismissed, live, checked)
+        if (gone.isNotEmpty()) pruned(gone)
+    }
     try {
         withContext(NonCancellable + io) { store.reconcile(live, checked) }
     } catch (e: CancellationException) {

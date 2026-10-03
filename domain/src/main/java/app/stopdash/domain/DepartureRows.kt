@@ -899,7 +899,11 @@ object DepartureRows {
             // A planned alert is one too, so its dismissal isn't pruned while it's still coming.
             listOfNotNull(DismissedAlert.ofLineStatus(status).takeIf { status.disrupted }) +
                 status.planned.map { DismissedAlert.ofPlanned(status.lineId, it) } +
-                status.closures.map { DismissedAlert.ofLineStatus(status.naming(it)) }
+                status.closures.map { DismissedAlert.ofLineStatus(status.naming(it)) } +
+                // Each alert under way behind the one shown is live too: a trip shows each on its own
+                // ([RouteDisruption.alertsOnRide]), so one dismissed while it showed stays dismissed once a
+                // worse one shows over it (Codex on #519).
+                status.underWay.map { DismissedAlert.ofLineStatus(LineStatus(status.lineId, it.severity, it.description, it.fullText)) }
         }
 
     /**

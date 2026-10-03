@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.stopdash.domain.AlertStart
 import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.Departure
@@ -40,6 +41,7 @@ import app.stopdash.domain.mergedRoutes
 import app.stopdash.domain.withoutDetours
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -283,6 +285,11 @@ class TripViewModel(
         // a trip shown again, say, holds checks from before, while its fresh re-check is out.
         val closuresAt: Map<String, Instant> = emptyMap(),
         val statusesAt: Map<String, Instant> = emptyMap(),
+        // The earliest day in London any of [statuses] was sorted on ([LineStatus.asOf]): one sorted on
+        // an earlier day than the screen's may show work that has since started as still to come, so the
+        // screen waits for them to be brought up to its day (Codex on #519). Kept as they're merged, never
+        // worked out from them; null with none.
+        val statusesSortedOn: LocalDate? = null,
         // The routes' walks that are changes on foot ([OnTheWay.changesOnFoot]), as a trip started on
         // one decides them: the walk legs themselves, so a route made from a planned one (a train
         // through a change) finds its walks too. Decided off the main thread as the routes come in;
@@ -782,6 +789,8 @@ class TripViewModel(
                         // A failed request's lines keep their older statuses; the answered ones replace.
                         statuses = fetched?.let { it.statuses + state.statuses.filterKeys { id -> id in it.failed } } ?: state.statuses,
                         statusesAt = fetched?.let { state.statusesAt + it.answeredAt() } ?: state.statusesAt,
+                        // A failed request's lines keep theirs, sorted when they were.
+                        statusesSortedOn = fetched?.let { if (it.failed.isEmpty()) it.sortedOn else earlier(state.statusesSortedOn, it.sortedOn) } ?: state.statusesSortedOn,
                         statusFailed = fetched == null || fetched.failed.isNotEmpty(),
                         statusFailedLines = fetched?.failed ?: (lines + others).toSet(),
                         statusUnknown = lines.filterTo(HashSet()) { it !in (fetched?.statuses ?: state.statuses) },
@@ -816,6 +825,7 @@ class TripViewModel(
                     it.copy(
                         statuses = found?.let { f -> judged(it.statuses, f) + f.statuses } ?: it.statuses,
                         statusesAt = found?.let { f -> judged(it.statusesAt, f) + f.answeredAt() } ?: it.statusesAt,
+                        statusesSortedOn = found?.let { f -> earlier(it.statusesSortedOn, f.sortedOn) } ?: it.statusesSortedOn,
                         statusFailedLines = it.statusFailedLines - late.toSet() + (found?.failed ?: late.toSet()),
                     )
                 }
@@ -1053,7 +1063,7 @@ class TripViewModel(
 
     // What a status check found: the statuses TfL returned, answered [at], the lines it gave a verdict
     // on ([answered], a status or none), and the lines in a request that failed.
-    private class StatusCheck(val statuses: Map<String, LineStatus>, val answered: Set<String>, val failed: Set<String>, val at: Instant) {
+    private class StatusCheck(val statuses: Map<String, LineStatus>, val answered: Set<String>, val failed: Set<String>, val at: Instant, val sortedOn: LocalDate) {
         // Each returned line's answer time, for [State.statusesAt].
         fun answeredAt(): Map<String, Instant> = statuses.mapValues { at }
     }
@@ -1067,27 +1077,34 @@ class TripViewModel(
     private suspend fun reconcileStopDismissals(check: ClosureCheck) {
         val latest = check.latest()
         val (live, checked) = stopDismissalCheck(check.found.filterKeys { it in latest }, clock())
-        reconcileDismissals(_dismissed.value, live, checked, dismissedStore, io, warn, "trip") { pruned ->
-            if (pruned != _dismissed.value) _dismissed.value = pruned
+        reconcileDismissals(_dismissed.value, live, checked, dismissedStore, io, warn, "trip") { gone ->
+            // What's let go of, from what's dismissed now: one made meanwhile stays (Codex on #519).
+            _dismissed.update { it - gone }
         }
     }
 
     // Settles the dismissals of the lines [check] answered ([reconcileLineDismissals]).
     private suspend fun reconcileLineDismissals(check: StatusCheck) {
         val answered = check.statuses.filterKeys { it !in check.failed }
-        reconcileLineDismissals(_dismissed.value, answered, check.answered, clock(), dismissedStore, io, warn, "trip") { pruned ->
-            if (pruned != _dismissed.value) _dismissed.value = pruned
+        reconcileLineDismissals(_dismissed.value, answered, check.answered, clock(), dismissedStore, io, warn, "trip") { gone ->
+            // What's let go of, from what's dismissed now: one made meanwhile stays (Codex on #519).
+            _dismissed.update { it - gone }
         }
     }
 
     private suspend fun fetchStatuses(lineIds: List<String>): StatusCheck? {
+        // The day they're sorted on, read before they're asked for: never later than it was.
+        val sortedOn = clock().atZone(AlertStart.ZONE).toLocalDate()
         val results = LineStatusBatch.request(lineIds) { chunk -> withContext(io) { client.lineStatuses(chunk) } }
         results.failure?.let { warn("trip line status failed for ${results.failed.size} line(s): ${it::class.simpleName}") }
         if (results.unknown.isNotEmpty()) warn("trip line status: TfL doesn't know ${results.unknown.size} line(s)")
         if (!results.anyAnswered) return null
         // Stamped by the steady clock, as a fetch is ([SteadyClock]).
-        return StatusCheck(results.answers.flatMap { it.value }.associateBy { it.lineId }, results.answeredIds, results.failed.toSet(), SteadyClock.stamp(clock()))
+        return StatusCheck(results.answers.flatMap { it.value }.associateBy { it.lineId }, results.answeredIds, results.failed.toSet(), SteadyClock.stamp(clock()), sortedOn)
     }
+
+    // The earlier of [held] (none with no statuses held) and [day].
+    private fun earlier(held: LocalDate?, day: LocalDate): LocalDate = if (held != null && held.isBefore(day)) held else day
 
     companion object {
         private const val KEY_OPEN_ROUTE = "openRoute"
