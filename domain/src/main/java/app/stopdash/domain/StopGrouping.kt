@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
 /**
  * Groups the flat departure list into per-**place** sections so the screen can show a small
  * name header above each group of same-place cards (SPEC D8). The flat list interleaves stops
@@ -61,6 +62,7 @@ object StopGrouping {
      * cards ahead of these groups (SPEC *Disruptions*) — but each closure's stop still counts as a
      * place, so a lone departures group beside a closure-only stop still shows its name header.
      */
+    @WorkerThread
     fun groupByStop(rows: List<DepartureRow>, warningsLead: Boolean = true): List<StopGroup> {
         // Stop closures form NO group — the screen renders them as header-less cards that title
         // themselves on expand (SPEC *Disruptions*) — but a closure's stop is still a **place on

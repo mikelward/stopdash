@@ -1,6 +1,7 @@
 package app.stopdash.ui
 
 import androidx.annotation.VisibleForTesting
+import androidx.annotation.WorkerThread
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DirectTrips
 import app.stopdash.domain.LineSequence
@@ -55,6 +56,7 @@ internal object TripVerdicts {
      * by one for a newer route load), it leaves the verdicts as they are, so a late finish can't put an
      * older route's in place of a newer one's.
      */
+    @WorkerThread
     fun warm(leg: TripLeg, route: LineSequence, trains: List<Departure>, active: () -> Boolean = { true }): Boolean {
         val key = keyOf(leg)
         val table = tables.compute(key) { _, held ->
@@ -87,6 +89,7 @@ internal object TripVerdicts {
     }
 
     /** [train]'s verdict on [leg] over [route], worked out in place. Slow: on a worker only. */
+    @WorkerThread
     fun compute(leg: TripLeg, route: LineSequence, train: Departure): Verdict = judge(leg, route, routeAt(leg, route), train)
 
     private fun routeAt(leg: TripLeg, route: LineSequence): LineSequence =

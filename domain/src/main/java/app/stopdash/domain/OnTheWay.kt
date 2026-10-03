@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
 import java.time.Duration
 import java.time.Instant
 
@@ -384,6 +385,7 @@ object OnTheWay {
      * that comes round to the boarding stop later included (Codex, PR #462). False with no routes
      * known, or none that reach it.
      */
+    @WorkerThread
     fun comesThroughBoarding(ride: TripLeg, ahead: Int, sequence: LineSequence?): Boolean {
         val stop = ride.path.getOrNull(ahead) ?: ride.toId
         val before = ride.path.getOrNull(ahead - 1) ?: ride.fromId
@@ -465,6 +467,7 @@ object OnTheWay {
      * line — each is a way to the same stop. A train for another branch is left out, as on a From…
      * To… page ([DirectTrips.filter]); a line whose route is still loading isn't guessed at.
      */
+    @WorkerThread
     fun boardTrains(
         ride: TripLeg,
         departures: List<Departure>,
@@ -484,6 +487,7 @@ object OnTheWay {
      * ([sequences], by line) takes them where the rider gets off: not another branch's, as on the
      * ride's board ([boardTrains]). A line whose route isn't among [sequences] keeps none.
      */
+    @WorkerThread
     fun takesRide(ride: TripLeg, departures: List<Departure>, sequences: Map<String, LineSequence?>): List<Departure> =
         routed(ride, departures, Instant.EPOCH, sequences).stops.firstOrNull()?.departures.orEmpty()
 
@@ -495,6 +499,7 @@ object OnTheWay {
      * out, so the few a pick asks after ([candidates]) are ones that may be the rider's: at a fork
      * the first few can all turn off.
      */
+    @WorkerThread
     fun mayTakeRide(ride: TripLeg, trains: List<Departure>, sequences: Map<String, LineSequence?>): List<Departure> =
         trains.filter { train ->
             val result = routed(ride, listOf(train), Instant.EPOCH, sequences)
@@ -837,6 +842,7 @@ object OnTheWay {
      * road's poles together) is placed at the middle of its poles; the boarding and alighting stops
      * fall back on the Planner's own points. A stop the route doesn't place is left out.
      */
+    @WorkerThread
     fun ridePositions(leg: TripLeg, sequence: LineSequence): Map<String, Coordinates> {
         val seen = sequence.callingAt(leg.fromId).callingAt(leg.toId)
         fun placed(id: String): Coordinates? {
@@ -1090,6 +1096,7 @@ object OnTheWay {
      * train calling next at [to] has passed [at]'s stop. A route that skips it (a fast service), or none
      * running that way, leaves that unknown. A road's poles count as their stop pair ([LineSequence.stopAreas]).
      */
+    @WorkerThread
     fun passes(ride: TripLeg, sequence: LineSequence?, at: Int, to: Int): Boolean {
         if (sequence == null || at < 0 || at >= to || at >= ride.path.size) return false
         fun stopAt(i: Int) = if (i >= ride.path.size) ride.toId else ride.path[i]

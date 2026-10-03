@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -69,6 +70,7 @@ data class LineSequence(
      * wrong. [stopId]'s own hub and name come from the station index ([withStations]). Unchanged
      * when a route calls at [stopId], its hub or name is unknown, or no sibling matches.
      */
+    @WorkerThread
     fun callingAt(stopId: String): LineSequence {
         val onRoute = routes.flatMapTo(HashSet()) { it.stopIds }
         if (stopId in onRoute) return this
@@ -94,6 +96,7 @@ data class LineSequence(
      * past is added this way, whatever row, saved snapshot or journey names it. What TfL's response
      * already says about a stop is kept.
      */
+    @WorkerThread
     fun withStations(stations: Map<String, List<IndexedStation>>): LineSequence {
         val hubs = stopHubs.values.toSet()
         val known = stations.filterKeys { it in hubs }.values.flatten().filter { it.id !in stopHubs }
@@ -162,6 +165,7 @@ object RouteStops {
      * touches before the boarding stop, which the list leaves off (maintainer, 2026-10-02). The longest
      * where several routes run it; empty where none does.
      */
+    @WorkerThread
     fun wholeRouteOf(sequence: LineSequence, stops: List<RouteStop>): List<RouteStop> {
         if (stops.isEmpty()) return emptyList()
         val ids = stops.map(RouteStop::id)
@@ -203,6 +207,7 @@ object RouteStops {
     }
 
     /** The stop list, or null when [resolve] can't say which path the train takes. */
+    @WorkerThread
     fun ahead(
         sequence: LineSequence,
         stopId: String,
@@ -273,6 +278,7 @@ object RouteStops {
      * the stop's arrivals, but it goes nowhere from it. [destinationId] is TfL's id for its terminus.
      * [via] is what a National Rail board says it runs by ([Departure.via]).
      */
+    @WorkerThread
     fun resolve(
         sequence: LineSequence,
         stopId: String,
@@ -315,6 +321,7 @@ object RouteStops {
      * "Check Front of Train", or two ways matching its destination) still counts when it can only
      * reach the stop, or can't: it runs at least as far as where its possible ways part.
      */
+    @WorkerThread
     fun reaches(
         sequence: LineSequence,
         stopId: String,
@@ -346,6 +353,7 @@ object RouteStops {
      * whose stops its words, split at its "&"s and "and"s where a way's stops say so, can be read as
      * ([viaSpans]). A via no way fits leaves none: a working the routes don't model.
      */
+    @WorkerThread
     fun candidatePaths(
         sequence: LineSequence,
         stopId: String,
@@ -491,6 +499,7 @@ object RouteStops {
      * Failing a single way, [resolve] toward the Planner's terminus, if that passes where the leg
      * gets off. [boarding] is already [LineSequence.callingAt] the boarding stop.
      */
+    @WorkerThread
     fun forLeg(boarding: LineSequence, leg: TripLeg): Resolution {
         // Where it gets off by the id the Planner names, as where it boards: a station's other id
         // in the same interchange (a sibling platform) is the same place.

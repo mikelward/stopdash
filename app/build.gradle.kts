@@ -203,6 +203,9 @@ android {
         // Lint's test-source passes feed a report nothing consumes: a real
         // defect in a test surfaces as a failing test, not a warning.
         ignoreTestSources = true
+        // WorkerThreadCall's existing sites, to move off the main thread one at a time; a new one
+        // fails the build. Holds no other check's issues.
+        baseline = file("lint-baseline.xml")
     }
 
     compileOptions {
@@ -286,6 +289,8 @@ val exportBundledLicenses = tasks.register("exportBundledLicenses") {
 }
 
 dependencies {
+    // The repo's own lint check: WorkerThreadCall (AGENTS.md *Main thread: read and dispatch only*).
+    lintChecks(project(":lint-rules"))
     implementation(project(":domain"))
     implementation(project(":shared"))
     implementation(platform(libs.androidx.compose.bom))

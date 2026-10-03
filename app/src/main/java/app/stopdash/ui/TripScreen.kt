@@ -2,6 +2,7 @@ package app.stopdash.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
+import androidx.annotation.WorkerThread
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -307,6 +308,7 @@ internal fun onPoles(state: TripViewModel.State, sequences: Map<String, LineSequ
  * Judges the live trains of each leg [state]'s routes and their other lines ([rideLines]) ride
  * ([TripVerdicts.warm]); true when any was judged anew. Slow on a main-line railway: on a worker only.
  */
+@WorkerThread
 internal fun warmVerdicts(
     state: TripViewModel.State,
     sequences: Map<String, LineSequence?>,

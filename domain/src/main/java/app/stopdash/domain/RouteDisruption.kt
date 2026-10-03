@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
 import java.time.Duration
 import java.time.Instant
 
@@ -169,6 +170,7 @@ object RouteDisruption {
      * Buses only: a tube or rail line's delays spread along it, so naming a station elsewhere doesn't
      * keep them off the ride, and its part closures are placed by TfL itself ([lineSignal]).
      */
+    @WorkerThread
     fun offRide(leg: TripLeg, status: LineStatus, sequence: LineSequence?): Boolean {
         if (!leg.mode.equals(BUS, ignoreCase = true) || sequence == null || !scopable(status)) return false
         val text = status.fullText ?: return false
@@ -188,6 +190,7 @@ object RouteDisruption {
      * [direction] (TfL's `inbound`/`outbound`, blank for either) count, as [status] is that way's: a
      * stop both ways call at would otherwise read the stretch the other way round (Codex, PR #469).
      */
+    @WorkerThread
     fun behind(stopId: String, status: LineStatus, sequence: LineSequence, direction: String = ""): Boolean {
         if (!scopable(status)) return false
         val text = status.fullText ?: return false
@@ -332,6 +335,7 @@ object RouteDisruption {
         }
     }
 
+    @WorkerThread
     fun signals(
         trip: ActiveTrip,
         progress: TripProgress?,

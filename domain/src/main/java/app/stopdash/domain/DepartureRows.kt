@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
 import java.time.Instant
 
 /**
@@ -122,6 +123,7 @@ object DepartureRows {
      * list works with location denied. Starred rows are pinned to the top by the
      * caller in Phase 2, not here.
      */
+    @WorkerThread
     fun across(
         stops: List<StopArrivals>,
         now: Instant,
@@ -218,6 +220,7 @@ object DepartureRows {
      * in-app card and the widget so the two surfaces group a branching row identically and
      * neither can drift from the other.
      */
+    @WorkerThread
     fun destinationLines(
         row: DepartureRow,
         maxTimes: Int,
@@ -333,6 +336,7 @@ object DepartureRows {
      * of one service (distinct rows at that stop) keeps both, while a farther stop's
      * duplicate is dropped.
      */
+    @WorkerThread
     fun nearbyDeduped(
         rows: List<DepartureRow>,
         stopDistanceMeters: Map<String, Double>,
@@ -554,6 +558,7 @@ object DepartureRows {
      * otherwise repeat once per member stop; the card kept is the first member's, with the whole
      * group's dismissal windows. The line rows aren't deduped: a station's page shows every stop.
      */
+    @WorkerThread
     fun stopStatusFolded(rows: List<DepartureRow>): List<DepartureRow> {
         val groups = rows.filter { it.stopDisruption != null }.groupBy { stopPlaceKey(it) to it.stopDisruption }
         val emitted = HashSet<Pair<String, String?>>()
@@ -651,6 +656,7 @@ object DepartureRows {
      * This is the current near-me display experiment (closest-first, soonest same-stop tiebreak),
      * to be judged on a device against the earlier two-band lean — see `TODO.md`.
      */
+    @WorkerThread
     fun byStopDistance(
         rows: List<DepartureRow>,
         stopDistanceMeters: Map<String, Double>,
@@ -715,6 +721,7 @@ object DepartureRows {
      * The sort is stable, so within each band the prior order (soonest- or closest-first) carries
      * through unchanged; an empty [starred] set returns [rows] as-is.
      */
+    @WorkerThread
     fun pinStarred(
         rows: List<DepartureRow>,
         starred: Set<StarredRow>,
@@ -799,6 +806,7 @@ object DepartureRows {
      * (a status row says only what the alert does). After [withoutDismissed], so a dismissed alert stays
      * dismissed.
      */
+    @WorkerThread
     fun withAlertsBehind(rows: List<DepartureRow>, sequences: Map<String, LineSequence?>): List<DepartureRow> =
         rows.map { row -> if (alertBehind(row, sequences)) row.copy(status = null, statusBehind = row.status) else row }
 
@@ -809,6 +817,7 @@ object DepartureRows {
      * Before [withoutDismissed], so a dismissal doesn't keep the verdict from the widget, which applies
      * the dismissal itself.
      */
+    @WorkerThread
     fun alertsBehind(rows: List<DepartureRow>, sequences: Map<String, LineSequence?>): AlertPlacement {
         val weighed = HashSet<AlertBehind>()
         val behind = HashSet<AlertBehind>()
@@ -844,6 +853,7 @@ object DepartureRows {
      * work whose day has come counts. An alert the rider [dismissed] flags nothing to unflag, so it
      * costs no request (Codex, PR #469).
      */
+    @WorkerThread
     fun linesWithAlertsToPlace(
         stops: List<StopArrivals>,
         lineStatuses: Map<String, LineStatus>,
