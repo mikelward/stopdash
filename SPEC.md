@@ -373,7 +373,7 @@ The app finds stops two ways:
   themselves, even when they match better (maintainer, 2026-09-28: append, don't reorder). A listed row
   takes TfL's fuller copy of itself in place, and one TfL's answer shows to be a duplicate of another
   (the same station twice) leaves. Only coming back from a station re-ranks the whole list. A name in parts — a stop with
-  its cross street ("Foo Street / Bar Road"), a place after its area ("City of Westminster, Tate
+  its cross street ("Foo Street/Bar Road"), a place after its area ("City of Westminster, Tate
   Britain") — matches a query starting **any part** as a prefix. Best-effort: a geocode failure yields
   no places and the stops still stand. A better geocoder is a later option (`TODO.md`). A place
   picked is **remembered under *To…*'s *Recent*** with the stops picked there, in the order picked
@@ -612,7 +612,9 @@ run via different central trunks, and TfL names the trunk in `towards` ("Batters
 Station via Charing Cross") — the cue a rider uses to pick their train. So when `towards`
 carries a "via", the branch is shown **joined after the destination with a slash**
 ("Battersea/Charing X", the destination display-renamed from "Battersea Power Station" as
-above). The branch **participates in grouping**: within a direction, a
+above). **A slash is always shown unspaced** (maintainer, 2026-10-03): TfL lists a stop with its
+cross street as "Aldwych / Somerset House", and the name is shown as "Aldwych/Somerset House", so a
+tight row fits more of each place. The branch **participates in grouping**: within a direction, a
 line is split not just per destination (D8) but per terminus-and-branch, so two trains to
 one terminus via different trunks (Edgware via Bank and via Charing Cross) each get their
 own line and their own merged countdown. Merging across branches would label the later
@@ -674,8 +676,8 @@ Green or Finchley Central shows no "/Bank".
 Where the pair won't fit, the **branch is kept whole** — it is the cue that tells the two trunks
 apart, so truncating it would lose which train this is — and the **terminus yields**: it shortens
 common whole words to a compact form (`East`→`E.`, `Street`→`St`, `Lane`→`Ln`, `Market`→`Mkt`, `Station`→`Stn`, and the rest —
-`DestinationAbbreviations`; each part of a slash-separated name alike, so "Shepherd's Bush Market /
-Wood Lane" keeps both places, and below the floor each place elides on its own rather than all but
+`DestinationAbbreviations`; each part of a slash-separated name alike, so "Shepherd's Bush
+Market/Wood Lane" keeps both places, and below the floor each place elides on its own rather than all but
 the first behind one trailing `…`), then, for a name no word maps, drops to its **floor** — the first word
 in full with each later word an initial (`Battersea Power`→`Battersea P.`) — and only below the
 floor does it **elide with a single `…`** — never a mid-glyph cut, and the **terminus yields before

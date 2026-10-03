@@ -32,19 +32,23 @@ private val LINE_PARENTHETICAL = Regex("""\s*\([^()]*\bLines?\)\s*$""", RegexOpt
  *
  * A bus stop named with its cross street carries the suffix on either part ("Parkside Station  /
  * High Road", "Market Place / Riverside Station"): each part is cleaned the same way
- * ("Parkside / High Road"; maintainer, 2026-09-27: "Station" is stripped everywhere). A road
- * named for one ("Station Road") has no suffix to strip. TfL pads that slash with a run of spaces,
- * so runs of whitespace fold to one.
+ * ("Parkside/High Road"; maintainer, 2026-09-27: "Station" is stripped everywhere), and the slash
+ * loses the spaces TfL pads it with (maintainer, 2026-10-03), so a narrow row fits more of each
+ * place. A road named for one ("Station Road") has no suffix to strip. Runs of whitespace fold to one.
  */
 fun cleanStopName(raw: String): String {
     val name = raw.trim().replace(WHITESPACE_RUN, " ")
-    return name.split(CROSS_STREET).joinToString(CROSS_STREET, transform = ::cleanPart)
+    return name.split(CROSS_STREET).joinToString("/", transform = ::cleanPart)
 }
 
 private val WHITESPACE_RUN = Regex("\\s+")
 
-/** Between a bus stop's own name and the street or place it's by: "Aldwych / Somerset House". */
-private const val CROSS_STREET = " / "
+/**
+ * Between a bus stop's own name and the street or place it's by: TfL's "Aldwych / Somerset House",
+ * however spaced. Cleaned, the slash is unspaced ("Aldwych/Somerset House"), so a narrow row shows
+ * more of each place.
+ */
+private val CROSS_STREET = Regex("\\s*/\\s*")
 
 // One place name: its type suffix, then a trailing line parenthetical ([cleanStopName]).
 private fun cleanPart(part: String): String {
