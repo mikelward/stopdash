@@ -270,6 +270,11 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
 - **per-refresh request counts and timing**: how many TfL requests a refresh made, of which
   kinds, how long it took, and how long it waited on the app's own rate limit — counts and
   milliseconds only, no stop or place,
+- **a slow or retried network request**: who it went to (TfL or National Rail), the
+  endpoint's kind with every identifier and anything typed left out (e.g. `StopPoint/…/Disruption`), how long it
+  took to get a connection, to start answering and to finish, whether the connection was new,
+  each failed connect attempt's address family (IPv4 or IPv6) and failure class, and how long a
+  request waited for a free slot — milliseconds and names only, never a stop, address or key,
 - **which disruption/status lookup was unknown and why** (e.g. a line TfL returned no
   status for, or a prediction with no line id to check),
 - **a failed timetable lookup**: the line id and stop ID whose timetable couldn't be fetched

@@ -1,6 +1,7 @@
 package app.stopdash.widget
 
 import app.stopdash.data.KtorDarwinClient
+import app.stopdash.data.logNetworkWarning
 import app.stopdash.data.RailStationCodesStore
 import app.stopdash.data.RejectedApiKey
 import app.stopdash.domain.ArrivalsCache
@@ -387,7 +388,7 @@ internal suspend fun refreshStoredSnapshot(
         keys ?: throw java.io.IOException("keys unreadable")
         val userKey = keys.tfl
         val railKey = keys.rail
-        val http = KtorTflClient.defaultHttpClient()
+        val http = KtorTflClient.defaultHttpClient(warn = ::logNetworkWarning)
         // The one-off lookups of which way a new line alert applies run here, so they finish before
         // [http] is closed; the shared cache they fill serves the app and the next widget refresh.
         // A supervisor, so a lookup that fails can't cancel the refresh; it's logged, and the

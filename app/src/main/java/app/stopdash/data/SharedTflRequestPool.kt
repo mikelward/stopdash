@@ -16,5 +16,7 @@ object SharedTflRequestPool {
      */
     const val MAX_CONCURRENT = 10
 
-    val pool: TflRequestPool by lazy { TflRequestPool(MAX_CONCURRENT) }
+    val pool: TflRequestPool by lazy {
+        TflRequestPool(MAX_CONCURRENT, onSlowWait = { ms -> logNetworkWarning("waited $ms ms for a free request slot") })
+    }
 }

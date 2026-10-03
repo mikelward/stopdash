@@ -44,4 +44,28 @@ class TflRequestPoolTest {
         runCatching { pool.run { throw IllegalStateException("boom") } }
         assertEquals("ok", pool.run { "ok" })
     }
+
+    @Test
+    fun `a request kept waiting for a slot says how long, one let straight in says nothing`() = runTest {
+        val waits = mutableListOf<Long>()
+        val pool = TflRequestPool(1, onSlowWait = { waits += it }, elapsedMillis = { testScheduler.currentTime })
+        val first = launch { pool.run { kotlinx.coroutines.delay(10_000) } }
+        runCurrent()
+        // Waits behind the first for its whole 10 s.
+        pool.run { }
+        first.join()
+        // A free slot: no wait to tell.
+        pool.run { }
+        assertEquals(listOf(10_000L), waits)
+    }
+
+    @Test
+    fun `a short wait for a slot is not told`() = runTest {
+        val waits = mutableListOf<Long>()
+        val pool = TflRequestPool(1, onSlowWait = { waits += it }, elapsedMillis = { testScheduler.currentTime })
+        launch { pool.run { kotlinx.coroutines.delay(TflRequestPool.SLOW_WAIT_MILLIS - 1) } }
+        runCurrent()
+        pool.run { }
+        assertEquals(emptyList<Long>(), waits)
+    }
 }
