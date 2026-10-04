@@ -73,8 +73,8 @@ exercises the whole spine the widget later renders from.
       `emptyStateUncertain` ages its stops on the worker each tick; the route page's saved journeys here,
       lift check and step-free levels are worked out on the worker.)
 - [ ] Clear the `WorkerThreadCall` lint baseline (`app/lint-baseline.xml`): composition that reaches a
-      `@WorkerThread` domain function, directly or through a helper, today MainScreen's near-me rows,
-      journey cards and alert placement, TripScreen's line rows and card helpers, the widget's model (built in Glance's `provideContent`) and, in
+      `@WorkerThread` domain function, directly or through a helper, today the list's stop grouping,
+      a stop card's destination lines, TripScreen's line rows and card helpers, the widget's model (built in Glance's `provideContent`) and, in
       `wear/lint-baseline.xml`, the complication picker's choices. (The view models' dismissal checks
       moved to their worker.)
       Each moves off the main thread, worked out with the data it comes from and published with it,

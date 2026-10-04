@@ -3,57 +3,13 @@
 
     <issue
         id="WorkerThreadCall"
-        message="`Journeys.segment` is marked @WorkerThread but called on the main thread, in composable `MainScreen`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="        cardJourneys.associate { j -> j.key to starSequences[j.lineId]?.let { Journeys.segment(j, it) } }"
-        errorLine2="                                                                              ~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="434"
-            column="79"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`Journeys.siblingPoles` is marked @WorkerThread but called on the main thread, in composable `MainScreen`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="            j.key to Journeys.siblingPoles(j, originId, poles, journeySequences)"
-        errorLine2="                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="592"
-            column="22"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
         message="`StopGrouping.groupByStop` is marked @WorkerThread but called on the main thread, in composable `DepartureList`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
         errorLine1="        StopGrouping.groupByStop(rows, warningsLead = stopDistanceMeters.isEmpty())"
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="1971"
+            line="2239"
             column="9"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`StopGrouping.groupByStop` is marked @WorkerThread but called 3 times on the main thread (through `journeyItems()`), in composable `DepartureList`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="        journeyItems(journeyCards)"
-        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2222"
-            column="9"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`StopGrouping.groupByStop` is marked @WorkerThread but called 3 times on the main thread (through `journeyItems()`), in composable `DepartureList`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="            journeyItems(farJourneyCards, farJourneyMeters)"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="2552"
-            column="13"/>
     </issue>
 
     <issue
@@ -63,7 +19,7 @@
         errorLine2="                                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="3745"
+            line="4025"
             column="40"/>
     </issue>
 
@@ -74,19 +30,8 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4382"
+            line="4664"
             column="9"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`Journeys.segment` is marked @WorkerThread but called on the main thread, in composable `RouteDetailScreen`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                            Journeys.segment(cand, seq, row.lineId)?.takeIf { it.originId == row.stopId }?.destinationIds"
-        errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4674"
-            column="29"/>
     </issue>
 
     <issue
@@ -96,7 +41,7 @@
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/TripScreen.kt"
-            line="1871"
+            line="2334"
             column="35"/>
     </issue>
 
@@ -107,7 +52,7 @@
         errorLine2="                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/TripScreen.kt"
-            line="2722"
+            line="3940"
             column="37"/>
     </issue>
 

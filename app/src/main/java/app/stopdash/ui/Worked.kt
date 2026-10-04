@@ -9,6 +9,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import app.stopdash.domain.AlertPlacement
+import app.stopdash.domain.JourneySegment
+import app.stopdash.domain.SiblingPoles
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
@@ -45,6 +47,12 @@ internal class Inputs(vararg val parts: Any?) {
 internal class Worked<K, T>(val key: K, val value: T)
 
 /**
+ * Each journey's [segments] by key (null where its route can't place it), and the [unplaced] lines:
+ * those of a journey whose loaded route couldn't place it.
+ */
+internal class JourneySegments(val segments: Map<String, JourneySegment?>, val unplaced: Set<String>)
+
+/**
  * The near-me list's answers worked out on [LocalWorker], one slot per stage. Hoisted above the
  * overlays and the route page with the list's scroll position, so a return to the list draws its last
  * rows at once, not a spinner while they are worked out again.
@@ -56,6 +64,10 @@ class ListWork {
     internal val rows: MutableState<Worked<ListInputs, ListRows?>?> = mutableStateOf(null)
     internal val shown: MutableState<Worked<ListInputs, ShownRows?>?> = mutableStateOf(null)
     internal val platform: MutableState<Worked<PlatformInputs, PlatformView?>?> = mutableStateOf(null)
+
+    // The journey cards' segments and neighboring poles, by journey key.
+    internal val segments: MutableState<Worked<Inputs, JourneySegments>?> = mutableStateOf(null)
+    internal val siblings: MutableState<Worked<Inputs, Map<String, SiblingPoles>>?> = mutableStateOf(null)
 }
 
 /**
