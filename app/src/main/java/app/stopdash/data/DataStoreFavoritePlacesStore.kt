@@ -11,13 +11,16 @@ import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlaces
 import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FavoritePlacesStore
+import app.stopdash.domain.Workers
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.serialization.json.Json
@@ -39,6 +42,9 @@ class DataStoreFavoritePlacesStore internal constructor(
     // preserving a newer-version file rather than overwriting it. The message stays a bare fact and
     // never carries a coordinate (SPEC *Privacy*).
     private val warn: (String) -> Unit = {},
+    // Where the stored file is turned into the app's values: work that grows with what's stored, never
+    // on the collector's thread, which can be the main one (AGENTS.md *Main thread: read and dispatch only*).
+    private val compute: CoroutineDispatcher = Workers.compute,
 ) : FavoritePlacesStore {
 
     // Absent (null) → an empty list the user can add to. A discard tombstone (written when a corrupt
@@ -63,6 +69,8 @@ class DataStoreFavoritePlacesStore internal constructor(
                     else -> FavoritePlacesSet.Loaded(domain)
                 }
             }
+            // Only the reading and mapping: the retries below keep the collector's clock.
+            .flowOn(compute)
             .onEach {
                 backoff = READ_RETRY_MILLIS
                 loggedThisOutage = false

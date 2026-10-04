@@ -68,11 +68,8 @@ exercises the whole spine the widget later renders from.
       favorite places in `remember`; the search and lookup results worked over after their requests
       (`StationSearchViewModel.start`'s filter and map, `StationStopsViewModel.retry`'s centered stops,
       `FavoritePlacesViewModel.onPick`'s `FixedLocation.centerOf` and `startSearch`'s
-      `withBundledPositions`); and the DataStore stores mapping their data on the main collector, with no `flowOn`: the starred rows
-      (`DataStoreStarredRowsStore`), the starred journeys (`DataStoreStarredJourneysStore.journeys`,
-      collected in `MainActivity`), the dismissed alerts, the alerts behind, and the favorite places
-      (`DataStoreFavoritePlacesStore.places`, collected on `FavoritePlacesViewModel`'s
-      `viewModelScope`). Not a closed list: sweep the screens, the stores, and every view-model
+      `withBundledPositions`). The DataStore stores (starred rows and journeys, dismissed alerts, alerts
+      behind, favorite places) now read and map on the worker (#538). Not a closed list: sweep the screens, the stores, and every view-model
       function a click handler or effect calls, for any pass over a collection that grows with its
       input on the main thread (the licenses dialog's scan of every library in `remember`,
       `LicensesScreen`, among them) before checking it off.
