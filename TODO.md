@@ -55,8 +55,7 @@ exercises the whole spine the widget later renders from.
       (`rememberHereOrigin`) followed onto the worker. A relocation that keeps the same cluster set
       (`MainViewModel.reconcile`, with `reconcileSameSet`'s journey checks) is worked out on the
       worker too, and applied, prune first, before its refetch.
-- [ ] The smaller per-tick and per-recomposition passes: the route page's stop ids, `journeysHere`, `byLift` and `stepFree`
-      (every recomposition); the On the way screen's rows (every tick); `MainActivity`'s saved
+- [ ] The smaller per-tick and per-recomposition passes: the On the way screen's rows (every tick); `MainActivity`'s saved
       journeys mapped, oriented and measured (`shownJourneys`, `farJourneyMeters`), its farther
       cards built (`fartherCards`, `fartherDistanceMeters`, `openedStates`, and
       `FartherCardsViewModel`'s `retain` and `open` after their lookups) and the farther stations
@@ -71,7 +70,8 @@ exercises the whole spine the widget later renders from.
       as an opened farther card's model calls it, `refresh`'s nearby places (`nearbyPlacesOf`), and
       `setJourneyStops`' comparisons. (The licenses dialog now opens the tapped
       library as it is, and finds a restored one again on the worker; the main screen's
-      `emptyStateUncertain` ages its stops on the worker each tick.)
+      `emptyStateUncertain` ages its stops on the worker each tick; the route page's saved journeys here,
+      lift check and step-free levels are worked out on the worker.)
 - [ ] Clear the `WorkerThreadCall` lint baseline (`app/lint-baseline.xml`): composition that reaches a
       `@WorkerThread` domain function, directly or through a helper, today MainScreen's near-me rows,
       journey cards and alert placement, TripScreen's line rows and card helpers, the widget's model (built in Glance's `provideContent`) and, in
@@ -592,6 +592,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
           out (SPEC *Step-free access → Lifts out of service*).
       - [ ] **Say why a mark came off**: today it just goes. TfL's notice names the lift and often
             another entrance; a line under the station could carry it.
+    - [ ] **Keep each rail row's mark space while its marks are re-worked** (Codex, #555): a shown
+          rail drops its marks while a new answer is out (a lift newly out, the row's mode filled in),
+          since the last ones may be wrong; a fixed slot per row would keep the names from reflowing.
   - [x] **Tap a route row → all stops for that route** (maintainer, 2026-09-22). Extends the
         route-detail tap to show the route's full stop sequence, not just star + disruption text.
         *Done: the route page lists every station from the boarding stop to where the soonest train

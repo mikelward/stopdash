@@ -189,6 +189,7 @@ import app.stopdash.ui.LocalOnTheWayBanner
 import app.stopdash.ui.LocalRouteStops
 import app.stopdash.ui.LocalRouteTopology
 import app.stopdash.ui.LocalStepFree
+import app.stopdash.ui.LocalStepFreeLoading
 import app.stopdash.ui.LocationBanner
 import app.stopdash.ui.LocationGate
 import app.stopdash.ui.MainScreen
@@ -494,10 +495,16 @@ class MainActivity : ComponentActivity() {
             ) {
                 // TfL's step-free table, read once off the main thread: the route page marks its
                 // stations from it (SPEC *Step-free access*), and nothing until it's read.
+                var stepFreeRead by remember { mutableStateOf(false) }
                 val stepFree by produceState<StepFreeAccess?>(null) {
                     value = withContext(Dispatchers.IO) { StepFreeStore.load(applicationContext) }
+                    stepFreeRead = true
                 }
-                CompositionLocalProvider(LocalStepFree provides stepFree, LocalLiftsOut provides liftOutages) {
+                CompositionLocalProvider(
+                    LocalStepFree provides stepFree,
+                    LocalStepFreeLoading provides !stepFreeRead,
+                    LocalLiftsOut provides liftOutages,
+                ) {
                 val nearby by nearbyViewModel.state.collectAsStateWithLifecycle()
 
                 // True once a request has come back denied with the rationale suppressed —

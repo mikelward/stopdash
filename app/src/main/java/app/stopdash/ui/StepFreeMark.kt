@@ -23,6 +23,13 @@ import app.stopdash.domain.StepFreeLevel
 val LocalStepFree = staticCompositionLocalOf<StepFreeAccess?> { null }
 
 /**
+ * Whether [LocalStepFree] is still being read: its null then means "not yet", not "none", so a route
+ * page holds its rail rather than draw it unmarked and mark it a moment later (Codex on #555). False
+ * by default, where no table is provided at all.
+ */
+val LocalStepFreeLoading = staticCompositionLocalOf { false }
+
+/**
  * TfL's lift outages, so a station's mark comes off while a lift its step-free route needs is out
  * (SPEC *Step-free access*): the last answer, to draw a first frame from, and a fresh one when it's
  * due. Asked only for a list with a station only a lift makes step-free. Null (a test, a preview)
