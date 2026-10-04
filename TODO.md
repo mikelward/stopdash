@@ -83,9 +83,8 @@ exercises the whole spine the widget later renders from.
       what they let go of on the worker and drop it from the set atomically (#519), and the store
       lets go of only the dismissals the check saw, so one made after it (of a notice a newer
       refresh found back) is neither pruned in memory nor written away.
-  - [ ] The widget's own line check (`reconcileWidgetDismissals`) still prunes the whole stored
-        set: it holds no set in memory, so a line alert dismissed in the app while it runs can be
-        written away. Reading the set before its request and passing it as what it saw would close it.
+  - [x] The widget's own line check (`reconcileWidgetDismissals`) reads the dismissal count before
+        its requests, so a line alert dismissed in the app while it runs isn't written away.
   - [ ] A check settles every place and line on its oldest answer's dismissal count, so one
         reused closure or line answer keeps its fresh verdicts elsewhere from letting go of a
         dismissal made after that answer, until the reused one ages out (minutes). Keeping a count per
