@@ -284,7 +284,9 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   failure reason,
 - **which departure couldn't be checked against its line's route and why**, where a trip, a
   *To…* page or a journey card says some routes couldn't be checked — its line id, the stop ID
-  it boards at and the reason (e.g. its destination matches no route) — and, by line id only,
+  it boards at, the reason (e.g. its destination matches no route) and the destination TfL shows
+  for that train or bus (e.g. "Sutton (London)": where the vehicle ends, never where you get off) —
+  and, by line id only,
   a starred journey its line's route can't place (never its two ends together, which would
   record a route you travel),
 - **why a trip route's arrival is withheld** ("arrival unknown"): which of its legs (by number),

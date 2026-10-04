@@ -206,7 +206,7 @@ internal fun rememberRouteStops(row: DepartureRow, next: Departure?, retry: Int)
         // could already be the next state, which then logs twice.
         val shown = state
         LaunchedEffect(shown) {
-            (shown as? RouteStopsUi.Unavailable)?.let { repository.reportUnresolved(row.lineId, row.stopId, it.reason) }
+            (shown as? RouteStopsUi.Unavailable)?.let { repository.reportUnresolved(row.lineId, row.stopId, it.reason, destination) }
         }
         shown
     }

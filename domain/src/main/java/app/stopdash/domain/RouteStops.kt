@@ -150,11 +150,17 @@ interface StopAreaSource {
 
 /**
  * A departure a filter left out because it couldn't be checked against its line's route: the line,
- * the stop it boards at, and why ([RouteStops.Resolution], never [RouteStops.Resolution.Found]).
- * Ids only, so it can go in the debug log as it stands. A route that failed to load isn't one: its
- * fetch failure is logged where it happened.
+ * the stop it boards at, why ([RouteStops.Resolution], never [RouteStops.Resolution.Found]), and
+ * the [destination] TfL gave it (its terminus label, blank where none) — public TfL data, so it can
+ * go in the debug log as it stands. A route that failed to load isn't one: its fetch failure is
+ * logged where it happened.
  */
-data class RouteMiss(val lineId: String, val stopId: String, val reason: RouteStops.Resolution)
+data class RouteMiss(
+    val lineId: String,
+    val stopId: String,
+    val reason: RouteStops.Resolution,
+    val destination: String = "",
+)
 
 object RouteStops {
     private val DIRECTIONS = listOf("inbound", "outbound")
@@ -752,10 +758,16 @@ class RouteStopsRepository(
     /**
      * Logs why a fetched sequence gave no stop list for a train on [lineId] at [stopId] — the page
      * shows only "unavailable", so this line is what explains it in a bug report (SPEC principle 2).
-     * Ids and the reason only; the destination is TfL's label, kept out as it adds nothing the ids
-     * don't.
+     * With the [destination] TfL gave the train, where known: a miss is a working the line's routes
+     * don't model, and which one can't be told from the ids (maintainer, 2026-10-04, reversing the
+     * ids-only rule). It's the train's terminus, never where the rider gets off. Formatted and
+     * logged on [compute]: its callers ask from the main thread (AGENTS.md *Main thread*).
      */
-    fun reportUnresolved(lineId: String, stopId: String, resolution: RouteStops.Resolution) {
+    suspend fun reportUnresolved(lineId: String, stopId: String, resolution: RouteStops.Resolution, destination: String = "") =
+        withContext(compute) { logUnresolved(lineId, stopId, resolution, destination) }
+
+    @WorkerThread
+    private fun logUnresolved(lineId: String, stopId: String, resolution: RouteStops.Resolution, destination: String) {
         val reason = when (resolution) {
             is RouteStops.Resolution.Found -> return
             RouteStops.Resolution.NoDestination -> "no destination"
@@ -767,16 +779,19 @@ class RouteStopsRepository(
             RouteStops.Resolution.UnknownLine -> "line not known to TfL"
             RouteStops.Resolution.NoLine -> "no line id"
         }
-        warn("route stops unavailable for line ${lineId.ifBlank { "(none)" }} at stop $stopId: $reason")
+        val bound = destination.trim().takeIf { it.isNotEmpty() }?.let { " (bound for $it)" }.orEmpty()
+        warn("route stops unavailable for line ${lineId.ifBlank { "(none)" }} at stop $stopId: $reason$bound")
     }
 
     /**
      * Logs each departure a trip, To… page or journey card left out as unchecked ([misses]), as
      * [reportUnresolved] does for a followed train: those screens show only "Some routes couldn't be
-     * checked", so this is what says which line, at which stop, and why (SPEC principle 2).
+     * checked", so this is what says which line, at which stop, and why (SPEC principle 2). On
+     * [compute], as [reportUnresolved].
      */
-    fun reportMisses(misses: Collection<RouteMiss>) {
-        misses.forEach { reportUnresolved(it.lineId, it.stopId, it.reason) }
+    suspend fun reportMisses(misses: Collection<RouteMiss>) {
+        if (misses.isEmpty()) return
+        withContext(compute) { misses.forEach { logUnresolved(it.lineId, it.stopId, it.reason, it.destination) } }
     }
 
     /**

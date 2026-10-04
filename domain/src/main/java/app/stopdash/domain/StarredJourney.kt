@@ -324,7 +324,7 @@ object Journeys {
         val misses = LinkedHashSet<RouteMiss>()
         atOrigin.filter { it.lineId.isBlank() && it.upcoming.isNotEmpty() }.forEach { row ->
             unresolved = true
-            misses += RouteMiss(row.lineId, row.stopId, RouteStops.Resolution.NoLine)
+            misses += RouteMiss(row.lineId, row.stopId, RouteStops.Resolution.NoLine, row.destination)
         }
         val kept = atOrigin
             .filter { it.lineId.isNotBlank() }
@@ -387,7 +387,7 @@ object Journeys {
                             ways.isNotEmpty() && ways.all { it.isEmpty() } -> return@filter false
                             else -> {
                                 unresolved = true
-                                misses += RouteMiss(row.lineId, segment.originId, resolution)
+                                misses += RouteMiss(row.lineId, segment.originId, resolution, departure.destination)
                             }
                         }
                     }

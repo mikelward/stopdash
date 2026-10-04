@@ -406,7 +406,7 @@ private fun legFilter(
     if (leg.fromId == leg.toId) return LegJudgement(DirectTrips.Result(emptyList(), pending = false, unresolved = false), emptyList())
     // No line to follow: they may well call there, so never a silent "no".
     if (leg.lineId.isBlank()) {
-        val miss = RouteMiss(leg.lineId, leg.fromId, RouteStops.Resolution.NoLine)
+        val miss = RouteMiss(leg.lineId, leg.fromId, RouteStops.Resolution.NoLine, leg.headings.firstOrNull().orEmpty())
         return LegJudgement(DirectTrips.Result(emptyList(), pending = false, unresolved = true, misses = setOf(miss)), emptyList())
     }
     if (leg.lineId !in sequences) return CHECKING
@@ -2661,7 +2661,10 @@ internal fun rememberLegRouteStops(leg: TripLeg, retry: Int): RouteStopsUi {
         // could already be the next state, which then logs twice.
         val shown = state
         LaunchedEffect(shown) {
-            (shown as? RouteStopsUi.Unavailable)?.let { repository.reportUnresolved(leg.lineId, leg.fromId, it.reason) }
+            // The Planner's terminus for the leg, never its toName: that's where the rider gets off.
+            (shown as? RouteStopsUi.Unavailable)?.let {
+                repository.reportUnresolved(leg.lineId, leg.fromId, it.reason, leg.headings.firstOrNull().orEmpty())
+            }
         }
         shown
     }

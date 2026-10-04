@@ -2922,7 +2922,7 @@ class TripViewModelTest {
         val estimates = checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap()))
         val sequences = mapOf("blue" to blue)
         assertEquals(TripMessage.INCOMPLETE, tripCheckState(state, estimates, now, sequences))
-        assertEquals(setOf(RouteMiss("blue", "B", RouteStops.Resolution.NoMatch)), tripMisses(state, estimates, now, sequences))
+        assertEquals(setOf(RouteMiss("blue", "B", RouteStops.Resolution.NoMatch, "Nowhere")), tripMisses(state, estimates, now, sequences))
     }
 
     // A line forking after B: on to C, or to D.

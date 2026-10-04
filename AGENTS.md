@@ -116,7 +116,8 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   returning to one neighborhood. This governs new work; existing data isn't rewritten to fit
   it. When unsure, ask in chat, never on GitHub.
 - **The on-device debug log is one exception, and narrow**: coarse diagnostics only —
-  a stop ID, a line id, an HTTP status — never a raw coordinate or the API key. `docs/
+  a stop ID, a line id, an HTTP status, a vehicle's TfL destination (its terminus, never where the
+  rider gets off) — never a raw coordinate or the API key. `docs/
   PRIVACY.md` must describe what the log carries before it ships.
 - **A user-initiated, consent-gated bug report is the other exception** (maintainer,
   2026-09-20): it may carry the **exact location**, per-stop distances, and a **screenshot

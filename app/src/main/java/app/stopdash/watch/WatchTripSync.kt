@@ -161,7 +161,7 @@ internal object WatchTripSync {
     // Each train maps to the pole it boards at ([pole]) when the pair has other poles read, as the
     // trip's screen heads each pole's trains; else to none. Keyed by identity: two poles can list equal
     // departures, and each keeps its own pole.
-    private fun trainsFor(context: Context, trip: ActiveTrip, board: ActiveTripTracker.NextBoard?, now: Instant): Pair<FoundTrains, String> {
+    private suspend fun trainsFor(context: Context, trip: ActiveTrip, board: ActiveTripTracker.NextBoard?, now: Instant): Pair<FoundTrains, String> {
         val none = FoundTrains(emptyList(), emptyMap())
         val ride = OnTheWay.upcomingRide(trip) ?: return none to ""
         val res = context.resources
