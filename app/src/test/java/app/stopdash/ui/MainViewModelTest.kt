@@ -1499,6 +1499,174 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `a journey destination's cards are worked out off the main thread`() = runTest(dispatcher) {
+        // A worker of its own, on the test's scheduler, that marks the work it runs.
+        val onWorker = ThreadLocal.withInitial { false }
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) = dispatcher.dispatch(context) {
+                onWorker.set(true)
+                try {
+                    block.run()
+                } finally {
+                    onWorker.set(false)
+                }
+            }
+        }
+        val client = ReuseCountingClient()
+        client.closures[ksxId] = listOf(StopDisruption("Station closed"))
+        val vm = MainViewModel(client, listOf(seeds.first()), clock = { now }, io = dispatcher, compute = worker)
+        advanceUntilIdle()
+        // Where each walk of the destinations ran (each element read; asking whether there are any is
+        // no walk): building their cards from the answers walks them on the worker, not the caller's (the
+        // main) thread. Matching them to their requests is still the main thread's (TODO.md).
+        val walked = mutableListOf<Boolean>()
+        val destination = StopRef(ksxId, "King's Cross St. Pancras")
+        val reported = object : AbstractList<StopRef>() {
+            override val size: Int get() = 1
+            override fun get(index: Int): StopRef = destination.also { walked += onWorker.get() }
+        }
+        vm.setJourneyDestinations(reported)
+        advanceUntilIdle()
+        assertEquals(listOf(StopDisruption("Station closed")), vm.journeyDestinationStops.value.single().disruptions)
+        assertTrue("$walked", walked.lastOrNull() == true)
+    }
+
+    @Test
+    fun `a lookup kept while the destination cards are worked out is shown, not marked unknown`() = runTest(dispatcher) {
+        // A destination already cached isn't asked for; while the worker builds its card, another screen
+        // keeps a newer lookup of it. The card shows that, rather than calling the stop unknown.
+        val held = mutableListOf<Pair<CoroutineContext, Runnable>>()
+        var holding = false
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (holding) held += context to block else dispatcher.dispatch(context, block)
+            }
+        }
+        fun release() {
+            val blocks = held.toList()
+            held.clear()
+            blocks.forEach { (context, block) -> dispatcher.dispatch(context, block) }
+        }
+        val client = ReuseCountingClient()
+        var current = now
+        val shared = StopClosureCache()
+        val vm = MainViewModel(
+            client, listOf(seeds.first()), clock = { current }, io = dispatcher, compute = worker,
+            disruptionCache = shared, disruptionReuse = DISRUPTION_REUSE,
+        )
+        advanceUntilIdle()
+        shared.keep(ksxId, shared.ask(now), listOf(StopDisruption("Station closed")))
+        holding = true
+        vm.setJourneyDestinations(listOf(StopRef(ksxId, "King's Cross St. Pancras")))
+        advanceUntilIdle()
+        // The report, then the cards (nothing asked: it's cached), each held on the worker.
+        release()
+        advanceUntilIdle()
+        assertTrue(held.isNotEmpty())
+        current = now.plusSeconds(30)
+        shared.keep(ksxId, shared.ask(current), listOf(StopDisruption("Station closed until 10:00")))
+        holding = false
+        release()
+        advanceUntilIdle()
+        assertEquals(null, client.disruptionCalls[ksxId])
+        assertEquals(listOf(StopDisruption("Station closed until 10:00")), vm.journeyDestinationStops.value.single().disruptions)
+        assertTrue(vm.journeyDestinationsUnknown.value.isEmpty())
+    }
+
+    @Test
+    fun `a lookup kept while the cards are worked out wins over the fetch's failure`() = runTest(dispatcher) {
+        // The fetch the destination check waited on failed the stop's closure; while the worker builds its
+        // card, another screen keeps a lookup of it. The card shows that, rather than calling it unknown.
+        val held = mutableListOf<Pair<CoroutineContext, Runnable>>()
+        var holding = false
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (holding) held += context to block else dispatcher.dispatch(context, block)
+            }
+        }
+        fun release() {
+            val blocks = held.toList()
+            held.clear()
+            blocks.forEach { (context, block) -> dispatcher.dispatch(context, block) }
+        }
+        val client = ReuseCountingClient()
+        var current = now
+        val shared = StopClosureCache()
+        val vm = MainViewModel(
+            client, listOf(seeds.first()), clock = { current }, io = dispatcher, compute = worker,
+            disruptionCache = shared, disruptionReuse = DISRUPTION_REUSE,
+        )
+        advanceUntilIdle()
+        // A refresh in flight, its closure lookup of the stop to fail; the destination check waits on it.
+        client.failingDisruptions += oxcId
+        val gate = CompletableDeferred<Unit>()
+        client.arrivalsGate = gate
+        current = now.plus(DISRUPTION_REUSE).plusSeconds(1)
+        vm.refresh()
+        runCurrent()
+        vm.setJourneyDestinations(listOf(StopRef(oxcId, "Oxford Circus")))
+        runCurrent()
+        holding = true
+        gate.complete(Unit)
+        advanceUntilIdle()
+        // The refresh's own work on the worker, step by step until it's done.
+        while (vm.refreshing.value) {
+            release()
+            advanceUntilIdle()
+        }
+        // The cards (nothing asked: it failed in the fetch), held on the worker.
+        assertTrue(held.isNotEmpty())
+        current = current.plusSeconds(30)
+        shared.keep(oxcId, shared.ask(current), listOf(StopDisruption("Station closed")))
+        holding = false
+        release()
+        advanceUntilIdle()
+        assertEquals(listOf(StopDisruption("Station closed")), vm.journeyDestinationStops.value.single().disruptions)
+        assertTrue(vm.journeyDestinationsUnknown.value.isEmpty())
+    }
+
+    @Test
+    fun `a destination's answer overtaken by a later failed lookup leaves it unknown`() = runTest(dispatcher) {
+        // The destination's request comes back clear; while the worker builds its card, another screen's
+        // lookup, asked later, fails. The cache then knows nothing of the stop, so neither does the card.
+        val held = mutableListOf<Pair<CoroutineContext, Runnable>>()
+        var holding = false
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (holding) held += context to block else dispatcher.dispatch(context, block)
+            }
+        }
+        fun release() {
+            val blocks = held.toList()
+            held.clear()
+            blocks.forEach { (context, block) -> dispatcher.dispatch(context, block) }
+        }
+        val client = ReuseCountingClient()
+        var current = now
+        val shared = StopClosureCache()
+        val vm = MainViewModel(
+            client, listOf(seeds.first()), clock = { current }, io = dispatcher, compute = worker,
+            disruptionCache = shared, disruptionReuse = DISRUPTION_REUSE,
+        )
+        advanceUntilIdle()
+        holding = true
+        vm.setJourneyDestinations(listOf(StopRef(ksxId, "King's Cross St. Pancras")))
+        advanceUntilIdle()
+        // The report; then its request comes back, and the cards are held.
+        release()
+        advanceUntilIdle()
+        assertEquals(1, client.disruptionCalls[ksxId])
+        assertTrue(held.isNotEmpty())
+        current = now.plusSeconds(30)
+        shared.settle(ksxId, shared.ask(current), Result.failure(java.io.IOException("offline")))
+        holding = false
+        release()
+        advanceUntilIdle()
+        assertEquals(setOf(ksxId), vm.journeyDestinationsUnknown.value)
+        assertTrue(vm.journeyDestinationStops.value.isEmpty())
+    }
+
+    @Test
     fun `a refresh's stops are merged off the main thread`() = runTest(dispatcher) {
         // A worker of its own, on the test's scheduler, that marks the work it runs.
         val onWorker = ThreadLocal.withInitial { false }

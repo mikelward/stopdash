@@ -37,15 +37,17 @@ exercises the whole spine the widget later renders from.
         what comes back (`sharedClosures` among it; the verdict checks that move `failures` are on `io`
         already), and the callbacks the page's effects make into it as routes and estimates
         change (`boardAt`, `noteWithheld`, `checkShownStops`).
-- [ ] The near-me list's refresh off the main thread, before its requests: `checkJourneyDestinations` (the
-      destinations filtered, batched and merged back), `refresh`'s own setup ahead of `fetchBatch` (the prior stops by id, `recentlyFetched`, both id sets, `fetchedStops`),
+- [ ] The near-me list's refresh off the main thread, before its requests: `checkJourneyDestinations`'
+      choice of which to ask and its request bookkeeping (each matched to its request in
+      `destinationRequests`, a main-thread map a request removes itself from when done; worked out off
+      the thread, a request can land between the choice and the match), `refresh`'s own setup ahead of `fetchBatch` (the prior stops by id, `recentlyFetched`, both id sets, `fetchedStops`),
       `fetchBatch`'s setup (the shared arrivals taken, the lines declared, each stop's request and the
       pole batches built from `stops`) and the widget's snapshot and journey checks (`forWidget`, `widgetLineChecks`, `setWidgetJourneys`/`writeWidgetJourneys` ahead of their write,
       which read the line-status caches main-thread code writes) still run on `viewModelScope` at each
       refresh. Work them out on `compute` and publish the result, as a cold load's progress is (#527).
       The per-stop merge and the list build moved in #534; the dismissal pass is #532's; the screen's
       journey-stop and destination reports (`setJourneyStops`, `setJourneyDestinations`) are worked out on
-      the worker, applied in order.
+      the worker, applied in order; so are a destination check's cards.
 - [x] The trip tracker off the main thread (#536): `restore`, `start`, `goTo`, `end` and `refresh`
       each hop to `compute` before taking the tracker's lock, so a refresh's step, a tap's move, a
       start and a restore walk the trip's route on the worker.
@@ -100,7 +102,9 @@ exercises the whole spine the widget later renders from.
       refreshes and journey-destination checks keep separate turns (`Turns`), so a stop that's both
       on the board and a destination can be settled by an older destination check after a newer
       refresh found its closure back. A per-place queue of pending verdicts, shared by every kind of
-      check and settled newest-first as each lands, would close both.
+      check and settled newest-first as each lands, would close both. It would also close a card
+      built from a lookup that another screen's later, failed lookup overtakes in the instant before
+      the card is shown: until the next check, the card shows the earlier answer.
 - [ ] Finish marking `@WorkerThread`: the first sweep marked the route, alert, journey and board-wide
       work; smaller loops the UI still calls in composition (a row's `Countdown.entries`, and the like)
       aren't marked yet, so `WorkerThreadCall` can't see them. Mark each as its screen moves off the

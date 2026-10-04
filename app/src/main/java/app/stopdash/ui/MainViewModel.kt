@@ -535,49 +535,99 @@ class MainViewModel(
             // The dismissals so far, before anything is asked ([reconcileDismissals]), and each stop's
             // answer's own as it's taken: a cached or shared one may be older than this check.
             val since = dismissedStore.mark()
-            val stopAsks = HashMap<String, StopClosureCache.Ask>()
             fun lookup(id: String) = disruptionCache[id]?.takeIf { isWithin(it.at, now, disruptionReuse) }
+            // As the cache holds it now, by the clock read after it: a lookup kept since this check began
+            // (another screen's) is never dated after the time it's judged by.
+            fun latest(id: String) = disruptionCache[id]?.takeIf { isWithin(it.at, clock(), disruptionReuse) }
             fun cached(id: String) = lookup(id)?.notices
             fun failedInFetch(id: String) = joinedFetchAt != null && disruptionFailedAt[id] == joinedFetchAt
+            // Which to ask, matched to the requests in flight in the same step, as the map they're kept in is
+            // the main thread's: still on it (TODO.md).
             val toAsk = stops.map { it.id }.distinct().filter { cached(it) == null && !failedInFetch(it) }
             requestDestinationDisruptions(toAsk.filter { it !in destinationRequests })
             // Taken before any await: a request that finishes leaves the map.
             val requests = toAsk.associateWith { destinationRequests.getValue(it) }
             val fetched: Map<String, Result<StopClosureCache.Lookup>> = requests.mapValues { (_, request) -> request.await() }
-            val prior = _journeyDestinationStops.value.associateBy { it.stopId }
-            val failed = HashSet<String>()
-            val checked = ArrayList<StopArrivals>()
-            _journeyDestinationStops.value = stops.distinctBy { it.id }.mapNotNull { stop ->
-                if (cached(stop.id) == null && failedInFetch(stop.id)) {
-                    // The fetch logged it already.
-                    failed += stop.id
-                    return@mapNotNull prior[stop.id]
-                }
-                val disruptions = lookup(stop.id)?.also { stopAsks[stop.id] = it.ask }?.notices ?: fetched[stop.id]?.fold(
-                    // Kept by the request as it landed; this is what the cache held then.
-                    onSuccess = { found ->
-                        stopAsks[stop.id] = found.ask
-                        found.notices
-                    },
-                    onFailure = {
-                        // Logged by the request.
-                        failed += stop.id
-                        return@mapNotNull prior[stop.id]
-                    },
-                ).orEmpty()
-                // Its own stop as the place: a check covers only this stop, so only this stop's
-                // dismissal can be reconciled (below) — an area-wide one could stay hidden forever. At
-                // worst the same notice on the near-me list is dismissed separately; never hidden.
-                StopArrivals(stop.id, stop.name, emptyList(), SteadyClock.stamp(now), disruptions = disruptions)
-                    .also { checked += it }
+            val shown = _journeyDestinationStops.value
+            // The cards, worked out on the worker from the answers, each as the cache holds it then, else as
+            // it did when this check began; published back here, unless a changed destination set started a
+            // newer check meanwhile, which cancels this one.
+            val merged = withContext(compute) {
+                mergeDestinations(stops, shown, fetched, now, { latest(it) ?: lookup(it) }, { disruptionCache[it] != null }, ::failedInFetch)
             }
+            _journeyDestinationStops.value = merged.shown
             // Every failed check is unknown now, even with an earlier result still shown: that result
             // may be out of date, so the card says it couldn't check rather than pass it off as current.
-            _journeyDestinationsUnknown.value = failed
+            _journeyDestinationsUnknown.value = merged.failed
             // A dismissed destination closure that has since cleared is forgotten, so the same notice
             // recurring later shows again; a place whose check failed keeps its dismissals.
-            reconcileDismissals(stops.distinctBy { it.id }.map { it.copy(clusterId = "", hubId = "") }, checked, emptyMap(), emptySet(), failed, since, destinationSettles, stopAsks)
+            reconcileDismissals(merged.queried, merged.checked, emptyMap(), emptySet(), merged.failed, since, destinationSettles, merged.asks)
         }
+    }
+
+    /** What a destination check found ([mergeDestinations]), to publish. */
+    private class MergedDestinations(
+        val shown: List<StopArrivals>,
+        val failed: Set<String>,
+        val checked: List<StopArrivals>,
+        val asks: Map<String, StopClosureCache.Ask>,
+        val queried: List<StopRef>,
+    )
+
+    // The destinations' cards from what the check found ([checkJourneyDestinations]): each from the cache
+    // or its request, else its last card kept and it counted as failed.
+    @WorkerThread
+    private fun mergeDestinations(
+        stops: List<StopRef>,
+        shown: List<StopArrivals>,
+        fetched: Map<String, Result<StopClosureCache.Lookup>>,
+        now: Instant,
+        lookup: (String) -> StopClosureCache.Lookup?,
+        // Whether the cache holds any lookup of the stop now: none once a lookup asked later has failed.
+        held: (String) -> Boolean,
+        failedInFetch: (String) -> Boolean,
+    ): MergedDestinations {
+        val stopAsks = HashMap<String, StopClosureCache.Ask>()
+        val prior = shown.associateBy { it.stopId }
+        val failed = HashSet<String>()
+        val checked = ArrayList<StopArrivals>()
+        val cards = stops.distinctBy { it.id }.mapNotNull { stop ->
+            // Failed in the fetch this check waited on, and nothing kept since (another screen's lookup).
+            if (lookup(stop.id) == null && failedInFetch(stop.id)) {
+                // The fetch logged it already.
+                failed += stop.id
+                return@mapNotNull prior[stop.id]
+            }
+            val disruptions = lookup(stop.id)?.also { stopAsks[stop.id] = it.ask }?.notices ?: fetched[stop.id]?.fold(
+                // Kept by the request as it landed; this is what the cache held then.
+                onSuccess = { found ->
+                    // Not if a lookup asked later has failed since: the cache holds nothing for it then, as
+                    // that failure leaves its closure unknown again.
+                    if (!held(stop.id)) {
+                        failed += stop.id
+                        return@mapNotNull prior[stop.id]
+                    }
+                    stopAsks[stop.id] = found.ask
+                    found.notices
+                },
+                onFailure = {
+                    // Logged by the request.
+                    failed += stop.id
+                    return@mapNotNull prior[stop.id]
+                },
+            ) ?: run {
+                // Neither asked for nor held now (its lookup replaced by a newer one as this ran): unknown,
+                // never passed off as open.
+                failed += stop.id
+                return@mapNotNull prior[stop.id]
+            }
+            // Its own stop as the place: a check covers only this stop, so only this stop's
+            // dismissal can be reconciled (below) — an area-wide one could stay hidden forever. At
+            // worst the same notice on the near-me list is dismissed separately; never hidden.
+            StopArrivals(stop.id, stop.name, emptyList(), SteadyClock.stamp(now), disruptions = disruptions)
+                .also { checked += it }
+        }
+        return MergedDestinations(cards, failed, checked, stopAsks, stops.distinctBy { it.id }.map { it.copy(clusterId = "", hubId = "") })
     }
 
     private val _state = MutableStateFlow<DeparturesUiState>(DeparturesUiState.Loading)
@@ -648,7 +698,8 @@ class MainViewModel(
     // When each stop's closure lookup last failed, stamped with its fetch's `now`, and the `now` of
     // the latest [fetchBatch]: a journey destination check that waited on that fetch doesn't ask
     // again for a stop it just failed on (one attempt per refresh, not two, under rate limiting).
-    private val disruptionFailedAt = mutableMapOf<String, Instant>()
+    // Read on the worker too ([checkJourneyDestinations]).
+    private val disruptionFailedAt: MutableMap<String, Instant> = ConcurrentHashMap()
     private var lastFetchAt: Instant? = null
 
     // A cold load has been part-shown and no whole batch has landed since. Outlives [cancelFetch]
