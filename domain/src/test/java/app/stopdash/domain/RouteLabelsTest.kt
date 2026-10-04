@@ -81,15 +81,15 @@ class RouteLabelsTest {
     }
 
     @Test
-    fun `the card walking clearly less than the first walks least`() {
+    fun `every card walking least is labeled so`() {
         // A bus to the station rather than the twelve-minute walk there: a change, but four minutes on foot.
         assertEquals(
             listOf(listOf(RouteLabel.FASTEST, RouteLabel.SIMPLEST), none, leastWalking),
             routeLabels(listOf(card(1, 30, walk = 12), card(2, 33, walk = 10), card(2, 36, walk = 4))),
         )
-        // Of two walking as little, the earliest shown.
+        // Two walking as little: both.
         assertEquals(
-            listOf(fastest, leastWalking, none),
+            listOf(fastest, leastWalking, leastWalking),
             routeLabels(listOf(card(2, 30, walk = 12), card(2, 33, walk = 4), card(2, 36, walk = 4))),
         )
         // The one walking least can also ride fewest.
@@ -97,16 +97,23 @@ class RouteLabelsTest {
             listOf(fastest, listOf(RouteLabel.SIMPLEST, RouteLabel.LEAST_WALKING)),
             routeLabels(listOf(card(2, 30, walk = 12), card(1, 36, walk = 4))),
         )
+        // However little less: a minute's walk saved still walks least.
+        assertEquals(listOf(fastest, leastWalking), routeLabels(listOf(card(2, 30, walk = 5), card(2, 33, walk = 4))))
     }
 
     @Test
-    fun `none walks least when the saving is small or the first walks least`() {
-        // Four minutes less is no reason to pick it.
-        assertEquals(listOf(fastest, none), routeLabels(listOf(card(2, 30, walk = 12), card(2, 33, walk = 8))))
-        // The first card already walks least: Fastest says all there is.
-        assertEquals(listOf(fastest, none), routeLabels(listOf(card(2, 30, walk = 2), card(2, 33, walk = 10))))
-        // Exactly five minutes less counts, however short the first walk.
-        assertEquals(listOf(fastest, leastWalking), routeLabels(listOf(card(2, 30, walk = 6), card(2, 33, walk = 1))))
+    fun `the first card walking least says so beside fastest`() {
+        // The top card walks as little as any (maintainer, 2026-10-04): "Fastest · Least walking", and
+        // the card tied with it says so too.
+        assertEquals(
+            listOf(listOf(RouteLabel.FASTEST, RouteLabel.LEAST_WALKING), none, leastWalking),
+            routeLabels(listOf(card(2, 30, walk = 2), card(2, 33, walk = 16), card(2, 36, walk = 2))),
+        )
+    }
+
+    @Test
+    fun `none walks least when every card walks as much`() {
+        assertEquals(listOf(fastest, none, none), routeLabels(listOf(card(2, 30, walk = 6), card(2, 33, walk = 6), card(2, 36, walk = 6))))
     }
 
     @Test

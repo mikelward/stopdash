@@ -1101,10 +1101,11 @@ earliest shown on a tie), or **Fastest · Simplest** heads one card that is both
 card whose arrival is withheld, and Simplest only when the cards don't all ride as often. The cards
 headed so come first, Fastest then Simplest, and the rest follow in their own order under one
 **Other** header (maintainer, 2026-09-30), so a Simplest card arriving later moves up beside Fastest
-rather than splitting the rest in two. **Least walking** (maintainer, 2026-10-03) heads the card
-walking least by the Planner's times (at the rider's pace), when it walks **5 minutes or more less**
-than the first card, after Simplest and sharing a header with it the same way ("Simplest · Least
-walking"): each plan also asks the Planner for its least-walking routes beside the quickest and the
+rather than splitting the rest in two. **Least walking** (maintainer, 2026-10-03) heads **every** card
+walking least by the Planner's times (at the rider's pace), the first card included (maintainer,
+2026-10-04: "Fastest · Least walking" on the top card when it walks as little as any), unless every
+card walks as much; after Fastest and Simplest, sharing a header with them the same way ("Simplest ·
+Least walking"): each plan also asks the Planner for its least-walking routes beside the quickest and the
 fewest changes, so the bus to the station is offered beside the long walk there. Such a route stays
 on the list though it changes more and arrives later (below), and is timed past the cap on routes
 timed. With none of these headers shown, no card is headed Other. Routes riding the

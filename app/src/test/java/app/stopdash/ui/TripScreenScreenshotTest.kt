@@ -325,8 +325,10 @@ class TripScreenScreenshotTest {
             composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
 
             gate.countDown()
+            // Judged, the card's times follow in the worker's next run.
             composeRule.waitUntil(timeoutMillis = 5_000) {
-                composeRule.onAllNodesWithText("Checking routes…").fetchSemanticsNodes().isEmpty()
+                composeRule.onAllNodesWithText("Checking routes…").fetchSemanticsNodes().isEmpty() &&
+                    composeRule.onAllNodesWithText("27 min · ~08:29").fetchSemanticsNodes().isNotEmpty()
             }
             composeRule.onNodeWithText("27 min · ~08:29").assertIsDisplayed()
         } finally {
@@ -378,6 +380,103 @@ class TripScreenScreenshotTest {
                 composeRule.onAllNodesWithText("2 · 6 · 10 min").fetchSemanticsNodes().size == 2
             }
             composeRule.onAllNodesWithText("3 · 7 · 11 min").assertCountEquals(0)
+        } finally {
+            // Opened whatever happened, so a failed check can't leave the worker's thread waiting.
+            gate.countDown()
+            worker.close()
+        }
+    }
+
+    @Test
+    fun the_route_headers_are_worked_out_on_the_page_worker_never_in_composition() {
+        // A worker held shut: until it runs, the cards stand unheaded. Had composition labeled them,
+        // the headers would show at once.
+        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val worker = threads.asCoroutineDispatcher()
+        val gate = CountDownLatch(1)
+        threads.execute { gate.await() }
+        try {
+            show(planned, worker = worker)
+            composeRule.onAllNodes(hasTestTag("rideStopName"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty().let(::assertTrue)
+            composeRule.onAllNodesWithTag("routeLabel").assertCountEquals(0)
+            // Released, the worker labels the cards.
+            gate.countDown()
+            composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodesWithTag("routeLabel").fetchSemanticsNodes().size == 2 }
+        } finally {
+            // Opened whatever happened, so a failed check can't leave the worker's thread waiting.
+            gate.countDown()
+            worker.close()
+        }
+    }
+
+    @Test
+    fun new_cards_wait_for_their_own_headers_never_the_last_ones() {
+        // The clock moving on with the worker held: the last cards stand in whole, each under its own
+        // header, rather than the last headers landing on cards ranked otherwise. A new plan's cards
+        // show at once, unheaded: a route it dropped never lingers.
+        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val worker = threads.asCoroutineDispatcher()
+        val gate = CountDownLatch(1)
+        var state by mutableStateOf(planned)
+        var shownAt by mutableStateOf(now)
+        try {
+            composeRule.setContent {
+                StopDashTheme(dynamicColor = false) {
+                    CompositionLocalProvider(LocalWorker provides worker) {
+                        TripScreen(
+                            title = "To Canary Wharf",
+                            state = state,
+                            now = shownAt,
+                            access = Duration.ofMinutes(2),
+                            routeStops = RouteStopsRepository(source),
+                            onBack = {},
+                            onRetry = {},
+                        )
+                    }
+                }
+            }
+            fun fastestAbove(text: String): Boolean {
+                val fastest = composeRule.onAllNodesWithText("Fastest").fetchSemanticsNodes().singleOrNull() ?: return false
+                val card = composeRule.onAllNodesWithText(text).fetchSemanticsNodes().firstOrNull() ?: return false
+                val headers = composeRule.onAllNodesWithTag("routeLabel").fetchSemanticsNodes().map { it.boundsInRoot.top }
+                // The nearest header above the card is Fastest's.
+                return headers.filter { it < card.boundsInRoot.top }.maxOrNull() == fastest.boundsInRoot.top
+            }
+            // Headed, and its times in (each from its own run on the worker).
+            composeRule.waitUntil(timeoutMillis = 5_000) { fastestAbove("27 min · ~08:29") }
+
+            threads.execute { gate.await() }
+            shownAt = now.plusSeconds(10)
+            composeRule.waitForIdle()
+            assertTrue("the last cards stand in under their own headers", fastestAbove("27 min · ~08:29"))
+            gate.countDown()
+            composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodesWithTag("routeLabel").fetchSemanticsNodes().size == 2 }
+
+            // A new plan dropping the fastest route, the worker held again: its cards show at once,
+            // unheaded until the worker heads them.
+            val replanned = CountDownLatch(1)
+            threads.execute { replanned.await() }
+            try {
+                state = planned.copy(routes = listOf(viaStratford, viaWhitechapel))
+                composeRule.waitForIdle()
+                composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
+                composeRule.onAllNodesWithTag("routeLabel").assertCountEquals(0)
+            } finally {
+                replanned.countDown()
+            }
+            composeRule.waitForIdle()
+
+            // No routes left, the worker held again: the last cards don't stand beside "No routes".
+            val held = CountDownLatch(1)
+            threads.execute { held.await() }
+            try {
+                state = planned.copy(routes = emptyList())
+                composeRule.waitForIdle()
+                composeRule.onAllNodesWithText("38 min · ~08:40").assertCountEquals(0)
+                composeRule.onAllNodesWithTag("routeLabel").assertCountEquals(0)
+            } finally {
+                held.countDown()
+            }
         } finally {
             // Opened whatever happened, so a failed check can't leave the worker's thread waiting.
             gate.countDown()

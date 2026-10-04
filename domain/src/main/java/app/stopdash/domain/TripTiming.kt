@@ -375,8 +375,10 @@ object TripTiming {
         route.walking.plus(LESS_WALKING) <= than.walking
 
     /**
-     * The least walking a route has to save to be worth a change of its own, or the *Least walking*
-     * header ([routeLabels]) (maintainer, 2026-10-03): a minute or two is no reason to pick it.
+     * The least walking a route has to save to be worth a change of its own ([withoutSlowerChanges])
+     * (maintainer, 2026-10-03): a minute or two is no reason to change more and arrive later. The
+     * *Least walking* header doesn't use it: every card tied for the least walking carries it
+     * ([routeLabels]; maintainer, 2026-10-04).
      */
     val LESS_WALKING: Duration = Duration.ofMinutes(5)
 
