@@ -54,8 +54,7 @@ exercises the whole spine the widget later renders from.
       (`rememberHereOrigin`) followed onto the worker. A relocation that keeps the same cluster set
       (`MainViewModel.reconcile`, with `reconcileSameSet`'s journey checks) is worked out on the
       worker too, and applied, prune first, before its refetch.
-- [ ] The smaller per-tick and per-recomposition passes: the main screen's `emptyStateUncertain`
-      (every stop, every tick); the route page's stop ids, `journeysHere`, `byLift` and `stepFree`
+- [ ] The smaller per-tick and per-recomposition passes: the route page's stop ids, `journeysHere`, `byLift` and `stepFree`
       (every recomposition); the On the way screen's rows (every tick); `MainActivity`'s saved
       journeys mapped, oriented and measured (`shownJourneys`, `farJourneyMeters`), its farther
       cards built (`fartherCards`, `fartherDistanceMeters`, `openedStates`, and
@@ -70,7 +69,8 @@ exercises the whole spine the widget later renders from.
       input on the main thread before checking it off. Known still there: `MainViewModel.remeasure`
       as an opened farther card's model calls it, `refresh`'s nearby places (`nearbyPlacesOf`), and
       `setJourneyStops`' comparisons. (The licenses dialog now opens the tapped
-      library as it is, and finds a restored one again on the worker.)
+      library as it is, and finds a restored one again on the worker; the main screen's
+      `emptyStateUncertain` ages its stops on the worker each tick.)
 - [ ] Clear the `WorkerThreadCall` lint baseline (`app/lint-baseline.xml`): composition that reaches a
       `@WorkerThread` domain function, directly or through a helper, today MainScreen's near-me rows,
       journey cards and alert placement, OnTheWayScreen's next trains, TripScreen's line rows and

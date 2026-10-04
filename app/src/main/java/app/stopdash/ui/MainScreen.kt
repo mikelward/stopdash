@@ -2,37 +2,13 @@
 
 package app.stopdash.ui
 
-import androidx.compose.ui.platform.LocalConfiguration
-import app.stopdash.domain.PlannedAlert
-import java.time.format.DateTimeFormatter
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.LinkAnnotation
-import androidx.compose.ui.text.LinkInteractionListener
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLinkStyles
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withLink
-import androidx.compose.ui.text.withStyle
-import app.stopdash.domain.AlertLinks
-import app.stopdash.domain.AlertStart
-import app.stopdash.domain.AlertsBehind
-import app.stopdash.domain.AlertMarks
-import app.stopdash.domain.RouteStop
-import app.stopdash.domain.RouteStops
-import app.stopdash.domain.RouteStopsRepository
-import app.stopdash.domain.ClosedNotice
-import app.stopdash.domain.NoticePlan
-import app.stopdash.domain.isPole
-import app.stopdash.domain.planNotices
-import app.stopdash.domain.CollapsedPlaces
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.core.net.toUri
-import androidx.compose.ui.platform.LocalContext
+import androidx.annotation.WorkerThread
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -41,24 +17,24 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -71,21 +47,16 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.toggleableState
-import androidx.compose.ui.state.ToggleableState
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.unit.Dp
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
@@ -97,24 +68,22 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.snapshotFlow
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.repeatOnLifecycle
-import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -125,87 +94,118 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
 import androidx.compose.ui.semantics.traversalIndex
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.LinkInteractionListener
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import app.stopdash.R
-import app.stopdash.domain.cleanDisruptionBody
-import app.stopdash.domain.serviceName
-import app.stopdash.domain.takesLineSuffix
+import app.stopdash.domain.AlertLinks
+import app.stopdash.domain.AlertMarks
+import app.stopdash.domain.AlertStart
+import app.stopdash.domain.AlertsBehind
+import app.stopdash.domain.AvoidedLines
+import app.stopdash.domain.ClosedNotice
+import app.stopdash.domain.CollapsedPlaces
 import app.stopdash.domain.Connections
 import app.stopdash.domain.Countdown
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureLabels
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
-import app.stopdash.domain.FartherBuses
 import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.DismissedAlert
-import app.stopdash.domain.AvoidedLines
-import app.stopdash.domain.HiddenModes
-import app.stopdash.domain.lineLabel
-import app.stopdash.domain.ModeGroups
-import app.stopdash.domain.NoTimes
 import app.stopdash.domain.EmptyTimes
-import app.stopdash.domain.NATIONAL_RAIL_MODE
-import app.stopdash.domain.RelativeTime
-import app.stopdash.domain.RouteMiss
-import app.stopdash.domain.Staleness
-import app.stopdash.domain.StarredRow
+import app.stopdash.domain.FartherBuses
 import app.stopdash.domain.FavoritePlace
-import app.stopdash.domain.TripDestination
+import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.JourneyCall
 import app.stopdash.domain.JourneyChange
 import app.stopdash.domain.JourneyEnd
-import app.stopdash.domain.WidgetJourneyCheck
+import app.stopdash.domain.JourneySegment
+import app.stopdash.domain.JourneyTrains
+import app.stopdash.domain.Journeys
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSequence
+import app.stopdash.domain.ModeGroups
+import app.stopdash.domain.NATIONAL_RAIL_MODE
+import app.stopdash.domain.NoTimes
+import app.stopdash.domain.NoticePlan
+import app.stopdash.domain.PlannedAlert
+import app.stopdash.domain.PlatformDirection
+import app.stopdash.domain.RelativeTime
+import app.stopdash.domain.RouteFocus
+import app.stopdash.domain.RouteMiss
+import app.stopdash.domain.RouteStop
+import app.stopdash.domain.RouteStops
+import app.stopdash.domain.RouteStopsRepository
+import app.stopdash.domain.Staleness
 import app.stopdash.domain.StarredJourney
-import app.stopdash.domain.Journeys
+import app.stopdash.domain.StarredRow
+import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopDistance
 import app.stopdash.domain.StopGroup
 import app.stopdash.domain.StopGrouping
 import app.stopdash.domain.StopLocation
-import app.stopdash.domain.StopArrivals
-import app.stopdash.domain.JourneySegment
-import app.stopdash.domain.JourneyTrains
-import app.stopdash.domain.WidgetJourneys
-import app.stopdash.domain.TflException
-import app.stopdash.domain.UsageEvent
-import app.stopdash.telemetry.UsageEvents
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import androidx.compose.runtime.mutableStateMapOf
-import app.stopdash.domain.stopPlaceKey
 import app.stopdash.domain.StopQualifier
+import app.stopdash.domain.TflException
+import app.stopdash.domain.TripDestination
+import app.stopdash.domain.UntimedTrain
+import app.stopdash.domain.UsageEvent
+import app.stopdash.domain.WidgetJourneyCheck
+import app.stopdash.domain.WidgetJourneys
 import app.stopdash.domain.abbreviateBranch
-import app.stopdash.domain.RouteFocus
+import app.stopdash.domain.cleanDisruptionBody
 import app.stopdash.domain.followedDeparture
-import app.stopdash.domain.PlatformDirection
+import app.stopdash.domain.hasTrains
+import app.stopdash.domain.isPole
+import app.stopdash.domain.lineLabel
+import app.stopdash.domain.planNotices
 import app.stopdash.domain.routeDepartures
 import app.stopdash.domain.routeUntimed
-import app.stopdash.domain.UntimedTrain
-import app.stopdash.domain.hasTrains
+import app.stopdash.domain.serviceName
+import app.stopdash.domain.stopPlaceKey
+import app.stopdash.domain.takesLineSuffix
+import app.stopdash.telemetry.UsageEvents
 import app.stopdash.ui.theme.LocalStarredBorderColor
 import java.time.Instant
+import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Test tag on the red "update available" dot overlaying the overflow menu icon. */
 internal const val UPDATE_AVAILABLE_DOT_TAG = "update_available_dot"
@@ -1594,16 +1594,7 @@ private fun LoadedContent(
     // stop's age and the partial/failure flags — not the freshest-stop stamp, which would
     // let one fresh stop mask a stale one's uncertainty. Per-row staleness (the withhold)
     // is decided per stop inside the card from that row's own age.
-    val emptyStateUncertain = remember(state.stops, state.fetchedAt, state.partialRefresh, state.refreshFailure, now) {
-        state.refreshFailure != null ||
-            state.partialRefresh ||
-            state.stops.any {
-                Staleness.isStale(it.fetchedAt, now)
-            } ||
-            // No retained stops to age individually — fall back to the snapshot stamp, so an
-            // aged empty snapshot (e.g. one restored from storage) still prompts a refresh.
-            (state.stops.isEmpty() && Staleness.isStale(state.fetchedAt, now))
-    }
+    val emptyStateUncertain = rememberEmptyStateUncertain(state, now)
     // Pull-to-refresh over the whole loaded surface (SPEC D6).
     PullToRefreshBox(isRefreshing = refreshing, onRefresh = onRefresh, modifier = modifier) {
         Column(Modifier.fillMaxSize()) {
@@ -1788,6 +1779,50 @@ private fun LoadedContent(
         }
     }
 }
+
+/**
+ * Whether an empty list can't be trusted as a real "no departures" at [now] ([emptyStateUncertain]).
+ * The pass over the stops, finding the oldest and newest stamps, runs on the worker once per state
+ * (AGENTS.md *Main thread: read and dispatch only*). Each tick then reads only those two and the
+ * state's flags, so it is exact at once. While a new state's stamps are being worked out, an empty
+ * list isn't trusted (SPEC principle 1; Codex on #553).
+ */
+@Composable
+internal fun rememberEmptyStateUncertain(state: DeparturesUiState.Loaded, now: Instant): Boolean {
+    val slot = remember { mutableStateOf<Worked<Inputs, StopStamps>?>(null) }
+    val stamps = rememberWorked(slot, Inputs(state.stops)) { stopStamps(state.stops) } ?: return true
+    return emptyStateUncertain(state, stamps, now)
+}
+
+/** The oldest and newest of some stops' fetch stamps; both null for none. */
+internal class StopStamps(val oldest: Instant?, val newest: Instant?)
+
+/** [stops]' oldest and newest fetch stamps: a pass over every stop, so never in composition. */
+@WorkerThread
+internal fun stopStamps(stops: List<StopArrivals>): StopStamps {
+    var oldest: Instant? = null
+    var newest: Instant? = null
+    for (stop in stops) {
+        if (oldest == null || stop.fetchedAt < oldest) oldest = stop.fetchedAt
+        if (newest == null || stop.fetchedAt > newest) newest = stop.fetchedAt
+    }
+    return StopStamps(oldest, newest)
+}
+
+/**
+ * Whether an empty list can't be trusted as a real "no departures" at [now]: the refresh failed or
+ * was partial, or any retained stop is stale. Every stop's age counts, not the freshest stop's stamp.
+ * Every stop is aged by the same clock, so the oldest stop is the first past the threshold, and the
+ * newest is the first stamped ahead of the clock ([Staleness.isFromFuture]): those two stand for all.
+ */
+internal fun emptyStateUncertain(state: DeparturesUiState.Loaded, stamps: StopStamps, now: Instant): Boolean =
+    state.refreshFailure != null ||
+        state.partialRefresh ||
+        stamps.oldest?.let { Staleness.isStale(it, now) } == true ||
+        stamps.newest?.let { Staleness.isStale(it, now) } == true ||
+        // No retained stops to age individually — fall back to the snapshot stamp, so an
+        // aged empty snapshot (e.g. one restored from storage) still prompts a refresh.
+        (state.stops.isEmpty() && Staleness.isStale(state.fetchedAt, now))
 
 @Composable
 private fun FreshnessStamp(state: DeparturesUiState, now: Instant, onRefresh: () -> Unit) {
