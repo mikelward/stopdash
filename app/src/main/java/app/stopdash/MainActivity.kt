@@ -18,9 +18,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -38,6 +40,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -215,9 +218,9 @@ import app.stopdash.ui.fartherCardsKey
 import app.stopdash.ui.fartherReached
 import app.stopdash.ui.favoriteRouteName
 import app.stopdash.ui.hereAnchor
-import app.stopdash.ui.hereOriginIds
 import app.stopdash.ui.reachedStopIds
 import app.stopdash.ui.rememberFarReveal
+import app.stopdash.ui.rememberHereOrigin
 import app.stopdash.ui.rememberLastPull
 import app.stopdash.ui.rememberListStateFor
 import app.stopdash.ui.rememberListWork
@@ -1354,14 +1357,16 @@ class MainActivity : ComponentActivity() {
                                 // re-locate on return apply to it as they do to the list.
                                 is NearbyStopsViewModel.State.Ready -> if (hereTripOpen) {
                                     val hidden by HiddenModesSetting.changes.collectAsStateWithLifecycle()
-                                    NearMeTrip(
-                                        // Worked out from the current set, so a re-locate moves the
-                                        // trip with the rider; none left (all hidden) ends it.
-                                        origin = remember(state, hidden) {
-                                            val byId = state.nearbyStops.associateBy { it.id }
-                                            hereOriginIds(state.eagerStops, state.nearbyStops, state.distanceMeters, hidden)
-                                                .mapNotNull { byId[it] }
-                                        },
+                                    // Worked out from the current set, off the main thread, so a re-locate
+                                    // moves the trip with the rider; none left (all hidden) ends it. A
+                                    // placeholder until it's in, never an empty origin, which would end it.
+                                    val hereOrigin = rememberHereOrigin(
+                                        state, hidden, viewModel(viewModelStoreOwner = this@MainActivity, key = "here-origin-shown-places"),
+                                    )
+                                    if (hereOrigin == null) {
+                                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                                    } else NearMeTrip(
+                                        origin = hereOrigin,
                                         // The nearest stop of any mode, hidden or not, keys the trip; the
                                         // Planner starts from where the rider is ([here]).
                                         anchors = state.nearbyStops,
@@ -1876,6 +1881,11 @@ class MainActivity : ComponentActivity() {
             // Readable places whose chips aren't worked out yet: the list waits for them.
             val shownPlacesPending = chipsPending(favoritePlacesRead, favoritePlaces, shownPlacesOrPending)
             val hiddenModes by HiddenModesSetting.changes.collectAsStateWithLifecycle()
+            // Where a To… from here would start, for whether it's offered at all.
+            // Held by the activity, with the key the near-me To… shares, so opening it has its origin at once.
+            val hereOriginNow = rememberHereOrigin(
+                ready, hiddenModes, viewModel(viewModelStoreOwner = this@MainActivity, key = "here-origin-$shownPlacesKey"),
+            )
             // The nearest station of each rail line nothing nearby reaches, from the
             // bundled index (read off the main thread, once per process): no request.
             // Null until the picks are worked out (the bundled list loads off the main thread), so a
@@ -2251,10 +2261,9 @@ class MainActivity : ComponentActivity() {
                     onFindStation = onFindStation,
                     stationTitle = stationTitle,
                     onCloseStation = onCloseStation,
-                    // Offered only while some nearby stop could start a trip (not every mode hidden).
-                    onPlanTo = if (
-                        hereOriginIds(ready.eagerStops, ready.nearbyStops, ready.distanceMeters, hiddenModes).isEmpty()
-                    ) {
+                    // Offered only while some nearby stop could start a trip (not every mode hidden), as
+                    // worked out off the main thread; not offered for the moment that takes.
+                    onPlanTo = if (hereOriginNow.isNullOrEmpty()) {
                         null
                     } else {
                         { onPlanTo() }
@@ -2534,18 +2543,19 @@ class MainActivity : ComponentActivity() {
             )
             return
         }
-        val origin = remember(ready, hidden) {
-            val byId = ready.nearbyStops.associateBy { it.id }
-            hereOriginIds(ready.eagerStops, ready.nearbyStops, ready.distanceMeters, hidden)
-                .mapNotNull { byId[it] }
-        }
+        // Worked out off the main thread: null until it's in. Only the trip waits on it (a placeholder,
+        // never an empty origin, which would read as nowhere to start); the station's own page shows
+        // at once (Codex on #544).
+        val origin = rememberHereOrigin(ready, hidden, viewModel(viewModelStoreOwner = this@MainActivity, key = "here-origin-shown-places-station"))
         // Mid-change of start, a station with nothing to start from (every mode there hidden) shows
         // its own page, which says so and offers "Show all"; once there is somewhere to start, the
         // trip opens at the To… the change carries rather than leaving the rider to pick it again.
-        if (!to.open && changeTo != null && origin.isNotEmpty()) {
+        if (!to.open && changeTo != null && !origin.isNullOrEmpty()) {
             LaunchedEffect(Unit) { onTo(changeTo) }
         }
-        if (to.open) {
+        if (to.open && origin == null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        } else if (to.open && origin != null) {
             HereTripArea(
                 origin = origin,
                 distanceMeters = ready.distanceMeters,
