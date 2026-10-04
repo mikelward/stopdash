@@ -277,6 +277,7 @@ class TripScreenScreenshotTest {
         worker: CoroutineDispatcher? = null,
         // Where a test swaps in a later state, as the page's loads land; [state] if none.
         held: MutableState<TripViewModel.State>? = null,
+        onListShown: (String) -> Unit = {},
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -292,6 +293,7 @@ class TripScreenScreenshotTest {
                         onRetry = {},
                         menu = menu,
                         ends = ends,
+                        onListShown = onListShown,
                     )
                 }
             }
@@ -3325,6 +3327,26 @@ class TripScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(100)
         composeRule.onNodeWithTag("tripRoutes").assertExists()
+    }
+
+    @Test
+    fun a_trip_list_says_once_how_long_it_took_to_show_and_what_it_waited_for() {
+        // A slow trip page says where the time went: one debug-log line when the list first shows,
+        // never again on a refresh, and naming no stop or line.
+        val lines = mutableListOf<String>()
+        val held = mutableStateOf(planned)
+        show(planned, held = held, onListShown = { lines += it })
+        composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodesWithTag("tripRoutes").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.waitForIdle()
+        assertEquals(lines.toString(), 1, lines.size)
+        assertTrue(lines.single(), Regex("^trip list shown after \\d+ ms \\(routes in at \\d+ ms\\), last waited for .+$").matches(lines.single()))
+        assertTrue(lines.single(), planned.routes.orEmpty().flatMap { it.legs }.none { it.fromId in lines.single() || it.lineId.isNotBlank() && " ${it.lineId} " in lines.single() })
+        // A refresh landing: the list stays shown, and says nothing more.
+        held.value = planned.copy(refreshing = true)
+        composeRule.waitForIdle()
+        held.value = planned.copy(refreshing = false)
+        composeRule.waitForIdle()
+        assertEquals(1, lines.size)
     }
 
     @Test

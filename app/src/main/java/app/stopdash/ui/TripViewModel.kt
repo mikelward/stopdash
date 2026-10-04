@@ -497,6 +497,9 @@ class TripViewModel(
     // Each route whose arrival was last withheld, by its key, to the leg and reason logged for it.
     private val withheldLogged = HashMap<String, String>()
 
+    /** How long the trip's list took to show and what it last waited for ([RevealLog]), for the debug log. */
+    fun noteListShown(line: String) = warn(line)
+
     /**
      * Logs why each route's arrival is withheld ([TripTiming.Withheld]), once per route while the
      * same leg withholds it for the same reason, so the minute tick doesn't repeat it (SPEC principle

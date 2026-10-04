@@ -53,6 +53,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -870,6 +871,9 @@ internal fun TripScreen(
     // and what the page worked out for another never stands in for it, though the screen stays put as a
     // re-locate moves the trip to another model.
     journey: Any? = null,
+    // One line for the debug log when the list first shows: how long it took and what it last waited
+    // for ([RevealLog]), so a slow trip page says where the time went.
+    onListShown: (String) -> Unit = {},
 ) {
     val statuses = rememberStatusesAsOf(state.statuses, state.statusesSortedOn, now)
     val state = remember(state, statuses) { state.copy(statuses = statuses) }
@@ -906,6 +910,7 @@ internal fun TripScreen(
             onPlacedStands,
             avoided = TripAvoided(avoidedLines, onAvoidLine, onStopAvoiding, avoidedLinesWriteFailed, onAvoidedLinesWriteFailureShown),
             tripKey = journey,
+            onListShown = onListShown,
         )
     }
 }
@@ -1033,6 +1038,7 @@ private fun TripContent(
     onPlacedStands: (Set<PlacedStand>) -> Unit = {},
     avoided: TripAvoided = TripAvoided(),
     tripKey: Any? = null,
+    onListShown: (String) -> Unit = {},
 ) {
     // What the routes leave out: the hidden modes and lines, and the lines avoided ([AvoidedLines]).
     // Only the hidden ones are the "hidden" banner's: an avoided line is said by its own chip.
@@ -1544,6 +1550,22 @@ private fun TripContent(
             val row = cards?.let {
                 rememberTripRow(it, liveRideLines, liveState, tickNow, liveSequences, alerts.dismissed, loads.loading, listCheck == TripMessage.CHECKING, rowWork, hold = revealedState.value)
             }
+            // What the list waits for, each by name for the reveal's log line ([RevealLog]).
+            val bannerSettled = open != null || incomplete == (check == TripMessage.INCOMPLETE)
+            // The pill columns measured for the cards about to show, not the last plan's.
+            val widthsIn = widths != null && listView != null && widths.isFor(listView, pillWidth)
+            val rowIn = row?.checking == false
+            val revealLog = remember(planKey) { RevealLog() }
+            if (!revealedState.value) {
+                val waiting = revealLog.waitingFor(
+                    liveState.routes != null, cards != null, liveState.refreshing, liveState.planning, listCheck == TripMessage.CHECKING,
+                    bannerSettled, headed != null, widthsIn, rowIn, loads.loading.size,
+                )
+                SideEffect { revealLog.note(liveState.routes != null, waiting) }
+            }
+            LaunchedEffect(revealLog, revealedState.value) {
+                if (revealedState.value) revealLog.shown()?.let(onListShown)
+            }
             rememberRevealed(
                 revealedState,
                 cards != null,
@@ -1557,10 +1579,7 @@ private fun TripContent(
                 // Everything the list draws is in: its banner, its cards' order, its disruptions, and every
                 // route loaded (a line with no trains predicted can't make the check wait on it, Codex, #543).
                 // The banner shown is an open route's, not the list's: the list's own settles at once on return.
-                settledAround = (open != null || incomplete == (check == TripMessage.INCOMPLETE)) && headed != null &&
-                    // The pill columns measured for the cards about to show, not the last plan's.
-                    widths != null && listView != null && widths.isFor(listView, pillWidth) &&
-                    row?.checking == false && loads.loading.isEmpty(),
+                settledAround = bannerSettled && headed != null && widthsIn && rowIn && loads.loading.isEmpty(),
             )
             val revealed = revealedState.value
             Box(Modifier.fillMaxSize()) {
@@ -1689,6 +1708,71 @@ private fun rememberRevealed(
             while (withFrameMillis { it } - start < REVEAL_CAP_MILLIS) Unit
         }
         revealed = true
+    }
+}
+
+/**
+ * How long a trip's list took to show and what it last waited for, for one debug-log line ([shown]):
+ * timed from when the page asked for this plan's list, with when its plan's routes came. What it waits for
+ * is named by kind only (the plan, its cards' times, a refresh, the line checks, its banner, its cards' order, their pill
+ * columns, the disruptions row, line routes and how many), never a stop, a line or a place.
+ */
+internal class RevealLog(private val started: kotlin.time.TimeMark = kotlin.time.TimeSource.Monotonic.markNow()) {
+    private var routesAt: Long? = null
+    private var waiting: List<String> = emptyList()
+    private var lastWaited: List<String> = emptyList()
+    private var logged = false
+
+    /**
+     * What's still out, by kind: cheap checks, read in composition only until the list shows. The plan
+     * ([hasPlan]) and the cards timed from it on the worker ([hasCards]) are told apart, so a slow frame is
+     * never charged to the Planner (Codex, #563).
+     */
+    fun waitingFor(
+        hasPlan: Boolean,
+        hasCards: Boolean,
+        refreshing: Boolean,
+        planning: Boolean,
+        checking: Boolean,
+        bannerSettled: Boolean,
+        ordered: Boolean,
+        widthsIn: Boolean,
+        rowIn: Boolean,
+        routesLoading: Int,
+    ): List<String> = buildList {
+        if (!hasPlan) add("the plan") else if (!hasCards) add("its cards' times")
+        if (planning) add("a re-plan")
+        if (refreshing) add("a refresh")
+        if (checking) add("the line checks")
+        if (!bannerSettled) add("its banner")
+        if (!ordered) add("its cards' order")
+        if (!widthsIn) add("its pill columns")
+        if (!rowIn) add("the disruptions row")
+        if (routesLoading > 0) add("line routes ($routesLoading)")
+    }
+
+    /** What the page waits for as it is now, and whether its plan's routes are in. */
+    fun note(hasPlan: Boolean, waiting: List<String>) {
+        if (hasPlan && routesAt == null) routesAt = started.elapsedNow().inWholeMilliseconds
+        if (waiting.isNotEmpty()) lastWaited = waiting
+        this.waiting = waiting
+    }
+
+    /**
+     * The log line for the list shown now, once: its time and its routes', and what it last waited
+     * for, or what it was still waiting for when [REVEAL_CAP_MILLIS] showed it anyway. Null after the first.
+     */
+    fun shown(): String? {
+        if (logged) return null
+        logged = true
+        val at = started.elapsedNow().inWholeMilliseconds
+        val routes = routesAt?.let { " (routes in at $it ms)" }.orEmpty()
+        val why = if (waiting.isNotEmpty()) {
+            "at its cap, still waiting for ${waiting.joinToString()}"
+        } else {
+            "last waited for ${lastWaited.joinToString().ifEmpty { "nothing" }}"
+        }
+        return "trip list shown after $at ms$routes, $why"
     }
 }
 
