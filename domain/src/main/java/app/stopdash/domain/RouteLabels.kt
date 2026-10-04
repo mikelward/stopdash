@@ -1,5 +1,7 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
+
 /**
  * A header over a card in a trip's routes (maintainer, 2026-09-30): which route gets there soonest,
  * which takes the fewest rides and which walks least (maintainer, 2026-10-03), so a rider choosing
@@ -20,11 +22,13 @@ data class HeadedCard(val index: Int, val header: List<RouteLabel>)
  *   withheld, which can't be called fastest.
  * - **Simplest** is the card with the fewest rides, the earliest shown where several tie, and only
  *   when the cards don't all ride the same number of times: otherwise none is simpler.
- * - **Least walking** is the card walking least by the Planner's times, the earliest shown where
- *   several tie, and only when it walks [TripTiming.LESS_WALKING] or more less than the first card
- *   ([TripTiming.walksLess]). So it's never the first card.
+ * - **Least walking** is every card walking least by the Planner's times, all of them where several
+ *   tie, the first card included (maintainer, 2026-10-04: "Fastest · Least walking" on the top card
+ *   when it walks as little as any), and only when the cards don't all walk as much: otherwise none
+ *   walks less.
  * - A card that is several says so once, in that order.
  */
+@WorkerThread
 fun routeLabels(cards: List<TripTiming.Estimate>): List<List<RouteLabel>> {
     val labels = List(cards.size) { mutableListOf<RouteLabel>() }
     if (cards.size < 2) return labels
@@ -32,8 +36,8 @@ fun routeLabels(cards: List<TripTiming.Estimate>): List<List<RouteLabel>> {
     val rides = cards.map { it.route.rides.size }
     rides.indexOf(rides.min()).takeIf { rides.min() < rides.max() }?.let { labels[it] += RouteLabel.SIMPLEST }
     val walking = cards.map { it.route.walking }
-    walking.indexOf(walking.min()).takeIf { TripTiming.walksLess(cards[it].route, cards[0].route) }
-        ?.let { labels[it] += RouteLabel.LEAST_WALKING }
+    val least = walking.min()
+    if (least < walking.max()) walking.forEachIndexed { i, walk -> if (walk == least) labels[i] += RouteLabel.LEAST_WALKING }
     return labels
 }
 
@@ -45,6 +49,7 @@ fun routeLabels(cards: List<TripTiming.Estimate>): List<List<RouteLabel>> {
  * being split around it. With no card labeled, nothing is "other" than anything, so the cards keep
  * their order under no header at all.
  */
+@WorkerThread
 fun headedCards(cards: List<TripTiming.Estimate>): List<HeadedCard> {
     val labels = routeLabels(cards)
     if (labels.all { it.isEmpty() }) return cards.indices.map { HeadedCard(it, emptyList()) }

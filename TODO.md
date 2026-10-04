@@ -1231,9 +1231,16 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
                   neither Fastest nor Simplest, after those two (`headedCards`), so Simplest moves
                   up beside Fastest; no Other where neither of those is shown.
       - [x] **Least walking** (maintainer, 2026-10-03): a third Planner request per plan
-            (`journeyPreference=leastwalking`), merged; a "Least walking" header over the card
-            walking 5+ min less than the first, kept past the fewer-changes pruning and the timing
+            (`journeyPreference=leastwalking`), merged; a "Least walking" header over every card
+            tied for the least walking, the first included (2026-10-04); a route walking 5+ min
+            less is kept past the fewer-changes pruning, and the least walking past the timing
             cap. Needs a device check that a trip with a long walk to its station now offers a bus.
+            - [ ] **A hidden route's card lingers one worker run** (Codex, #535): the headers are
+                  worked out on the worker, and within one plan the last cards stand in, each under
+                  its own header, until they're in, so the headers don't blink on every 10 s tick. A
+                  route just hidden or avoided can show (tap ignored) for that run. Closing it means
+                  telling the cards' routes alike without per-card work in composition: a route-set
+                  stamp built with the cards on the worker, once the card work moves there.
       - [ ] **Step-free trips** (maintainer, 2026-09-30; after the intermediate work): a dropdown
             atop a trip, **Step-free: Any / Station / Fully** (Station: step-free from the street to
             the platform; Fully: to the train as well; the maintainer's names, 2026-09-30), planning
