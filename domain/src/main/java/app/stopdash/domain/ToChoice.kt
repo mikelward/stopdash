@@ -33,6 +33,13 @@ data class ToChoice(
     /** Forget the destination (the search stays as it was). */
     fun clearDestination(): ToChoice = copy(stopId = null, name = "", place = null)
 
+    /**
+     * Where a saved place with no stop in range opens ([PlaceStart]): it has no list to show, so its
+     * trip, from the coordinate alone — the To… a change of start carries ([changeTo]), else its To…
+     * search. Null when the trip is already open, so nothing changes.
+     */
+    fun openedWithoutStops(changeTo: ToChoice?): ToChoice? = if (open) null else changeTo ?: startPicking()
+
     companion object {
         val NONE = ToChoice()
 

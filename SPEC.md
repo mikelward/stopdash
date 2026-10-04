@@ -1088,8 +1088,12 @@ the rider's position unless they picked a station with *From…* or changed it f
 (*Where a trip starts*, above). **"Here"** as a pick appears only in the *From…* search, as the first
 chip of the same chip row the *To…* search's places sit in (behind the crosshair, shown before the
 rider's saved stops are read), and taps back to the rider's position; never among the *To…* search's
-or the near-me list's place chips, since a trip to where the rider already is goes nowhere. The *From…* row holds no saved places yet: what a place as a start should do is
-undecided (`TODO.md`). The trip opens on a **list of routes, best first**: ordered first by how far StopDash
+or the near-me list's place chips, since a trip to where the rider already is goes nowhere. The saved
+places follow "Here" in the *From…* row too (maintainer, 2026-10-04): a tap starts there as a picked
+station does — the near-me list as if the rider stood at the place's coordinate, with no stop of its
+own, and *To…* from it plans from the place's coordinate as *To…* from "Here" does from the rider's,
+even with no stop in range (it then opens straight on its *To…* search) — so setting out from Home is
+one tap. The trip opens on a **list of routes, best first**: ordered first by how far StopDash
 stands behind each route (tiers, below — usable before not, fully live before "est."), and within a
 tier by the earliest end-to-end arrival, worked out leg by leg from live trains (below); an estimate
 goes ahead of a live route only when it is sooner even at the latest end of its range (below). The

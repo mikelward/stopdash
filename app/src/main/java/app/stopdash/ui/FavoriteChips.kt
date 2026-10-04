@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -71,6 +72,8 @@ internal fun FavoriteChips(
     // Overrides each place's own choice of what its chip shows: the To… and From… searches have room
     // for the icon and the name (SPEC *Routing from the near-me list*). Null follows the place.
     labelOverride: ChipLabel? = null,
+    // What TalkBack hears a place chip do, %1$s its name: plan a trip there, or (From…) start from it.
+    @StringRes actionDescription: Int = R.string.favorite_place_route_description,
 ) {
     val editLabel = stringResource(R.string.favorite_places_edit_action)
     LazyRow(
@@ -95,7 +98,7 @@ internal fun FavoriteChips(
             // An icon this build can't draw falls back to the name.
             val shows = if (hasPlaceIcon(place.icon)) labelOverride ?: place.chipLabel else ChipLabel.NAME
             // TalkBack hears the action, not just the name, as on the Settings row.
-            val description = stringResource(R.string.favorite_place_route_description, name)
+            val description = stringResource(actionDescription, name)
             PlaceChip(
                 onClick = { onRouteTo(TripDestination.Place(place.coordinate, name)) },
                 onLongClick = onEditPlaces,

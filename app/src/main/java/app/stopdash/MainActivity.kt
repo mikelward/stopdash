@@ -127,6 +127,7 @@ import app.stopdash.domain.ON_THE_WAY_FIX_DISTANCE_METERS
 import app.stopdash.domain.ON_THE_WAY_FIX_EVERY
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.OriginChange
+import app.stopdash.domain.PlaceStart
 import app.stopdash.domain.PlanTargets
 import app.stopdash.domain.RailAwareTflClient
 import app.stopdash.domain.RecentPositions
@@ -2358,6 +2359,8 @@ class MainActivity : ComponentActivity() {
                         loadIndex = { StationIndexStore.load(appContext) },
                         // The user's own stops, from the device: listed before typing, matched as they type.
                         loadYours = { loadYourStops(appContext, recents) },
+                        // The saved places, chips after "Here" to start from (maintainer, 2026-10-04).
+                        loadPlaces = { loadFavoritePlaces(appContext) },
                         recordOpen = { recents.add(it) },
                         warn = ::logDepartureWarning,
                     )
@@ -2396,11 +2399,49 @@ class MainActivity : ComponentActivity() {
                 // From…'s "Here": start from the rider's position again — the near-me list, or its
                 // To… search when a From row opened this one.
                 onPickHere = closeSearch,
+                // A saved place's chip starts there, as a picked station does, standing at its
+                // coordinate ([PlaceStart]); not a recent pick, as a place's chip isn't on To… either.
+                onStartFromPlace = { place ->
+                    onOpenStation(StationMatch(PlaceStart.id(place.coordinate), place.name))
+                },
+                onRetryPlaces = search::refreshYours,
+                // No long press to edit the places here: the places screen routes *to* a place, which
+                // From… can't show over its search (Codex on #558).
             )
             return
         }
+        // Leaving the station (or place) for the search drops its models, as closing it does, and
+        // starts the search with nothing typed, so "Here" heads it.
+        val changeFrom = onChangeFrom?.let { change ->
+            {
+                stores.clearAll()
+                search.clear()
+                change()
+            }
+        }
         val storeOwner = remember(stationId) { stores.ownerFor(stationId, this@MainActivity) }
         CompositionLocalProvider(LocalViewModelStoreOwner provides storeOwner) {
+            // A saved place to start from: no stops of its own to look up, so its page stands at its
+            // coordinate at once, the stops around it found as a station's are.
+            // Decoded once per id (a fixed two-number id, not a collection), never on each recomposition.
+            val placeCenter = remember(stationId) { PlaceStart.coordinate(stationId) }
+            if (placeCenter != null) {
+                FromStationArea(
+                    stationName = stationName,
+                    center = placeCenter,
+                    stationStopIds = emptySet(),
+                    planFrom = placeCenter,
+                    onClose = closeStation,
+                    onBackToNearMe = closeSearch,
+                    to = to,
+                    onTo = onTo,
+                    onEditPlaces = onEditPlaces,
+                    onStartReached = onStartReached,
+                    changeTo = changeTo,
+                    onChangeFrom = changeFrom,
+                )
+                return@CompositionLocalProvider
+            }
             val stopsModel: StationStopsViewModel = viewModel(
                 factory = viewModelFactory {
                     initializer { StationStopsViewModel(stationFinder, stationId, warn = ::logDepartureWarning) }
@@ -2441,15 +2482,7 @@ class MainActivity : ComponentActivity() {
                 onEditPlaces = onEditPlaces,
                 onStartReached = onStartReached,
                 changeTo = changeTo,
-                // Leaving the station for the search drops its models, as closing it does, and starts
-                // the search with nothing typed, so "Here" heads it.
-                onChangeFrom = onChangeFrom?.let { change ->
-                    {
-                        stores.clearAll()
-                        search.clear()
-                        change()
-                    }
-                },
+                onChangeFrom = changeFrom,
             )
         }
     }
@@ -2467,6 +2500,9 @@ class MainActivity : ComponentActivity() {
         stationName: String,
         center: Coordinates,
         stationStopIds: Set<String>,
+        // A saved place's coordinate (From… a place): its trip plans from there, as one from Here plans
+        // from the rider, walking to whichever stop serves it best. Null plans from a station's stop.
+        planFrom: Coordinates? = null,
         onClose: () -> Unit,
         // The crosshairs: "use my location" leaves the station for the near-me list.
         onBackToNearMe: () -> Unit,
@@ -2521,10 +2557,73 @@ class MainActivity : ComponentActivity() {
             onReturnWithoutSet = { fromNearby.locateAfterLeftBehind() },
         )
         val closeTrip = { onTo(to.closePicker().clearDestination()) }
+        // The page's trip (its To… search, then the routes): from the stops around it, or, from a saved
+        // place with none in range, from the place's coordinate alone ([noneNearby]).
+        @Composable
+        fun Trip(
+            origin: List<StopRef>,
+            distanceMeters: Map<String, Double>,
+            clusters: List<NearbySelection.NearbyCluster>,
+            noneNearby: Boolean,
+        ) {
+            // With no stop in range the page has nothing but the trip, so leaving it leaves the page.
+            val leave = if (noneNearby) onClose else closeTrip
+            HereTripArea(
+                origin = origin,
+                distanceMeters = distanceMeters,
+                clusters = clusters,
+                hiddenModes = hidden,
+                picking = to.picking,
+                toId = to.stopId,
+                toName = to.name,
+                favorite = to.place,
+                onPlanTo = { onTo(to.startPicking()) },
+                onPickTo = { onTo(to.pickStop(it)) },
+                // A place picked here routes to its coordinate, as the near-me To… does (SPEC D9).
+                onOpenPlace = { onTo(to.pickPlace(it)) },
+                onClosePicker = { if (to.hasDestination) onTo(to.closePicker()) else leave() },
+                onClose = leave,
+                foregroundReturnPending = returnPending,
+                onForegroundReturnConsumed = { returnPending = false },
+                isRelocating = { fromNearby.relocating.value },
+                returnBusy = fromNearby::relocatingSinceLeft,
+                relocate = { fromNearby.relocate() },
+                showAllModes = {
+                    HiddenModesSetting.showAll()
+                    fromNearby.refilter()
+                    nearMeRefilter()
+                },
+                relocating = fromNearby.relocating,
+                repicked = fromNearby.repicked,
+                locationBanner = fromNearby.locationBanner,
+                keyPrefix = "from",
+                fromName = stationName,
+                fromStopIds = stationStopIds,
+                onLocate = onBackToNearMe,
+                onEditPlaces = onEditPlaces,
+                onChangeFrom = onChangeFrom,
+                onShown = onStartReached,
+                keepSearchOnEmptyOrigin = changeTo != null,
+                here = planFrom,
+                noneNearby = noneNearby,
+            )
+        }
         val ready = state as? NearbyStopsViewModel.State.Ready
         // The page's held loading cards ([PendingTracker]), held here — above the To… flow, which
         // takes the list out of composition — so closing it keeps them; following the stop set.
         val listTracker = rememberPendingTracker(ready?.clusterSetKey)
+        if (state is NearbyStopsViewModel.State.Empty && planFrom != null) {
+            // A saved place with no stop in range has no list to show, but a trip plans from its
+            // coordinate alone, as one from Here does with none nearby (Codex on #558): straight to
+            // its To… search (or the To… a change of start carries), and leaving that leaves the page.
+            val opened = to.openedWithoutStops(changeTo)
+            if (opened != null) {
+                LaunchedEffect(Unit) { onTo(opened) }
+                return
+            }
+            Trip(emptyList(), emptyMap(), emptyList(), noneNearby = true)
+            return
+        }
         if (ready == null) {
             // Nothing to show from yet (or the lookup failed): the station's placeholder, whose
             // retry looks again. Any list or trip kept from before is dropped, so a recovered page
@@ -2563,43 +2662,7 @@ class MainActivity : ComponentActivity() {
         if (to.open && origin == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         } else if (to.open && origin != null) {
-            HereTripArea(
-                origin = origin,
-                distanceMeters = ready.distanceMeters,
-                clusters = ready.eager + ready.more,
-                hiddenModes = hidden,
-                picking = to.picking,
-                toId = to.stopId,
-                toName = to.name,
-                favorite = to.place,
-                onPlanTo = { onTo(to.startPicking()) },
-                onPickTo = { onTo(to.pickStop(it)) },
-                // A place picked here routes to its coordinate, as the near-me To… does (SPEC D9).
-                onOpenPlace = { onTo(to.pickPlace(it)) },
-                onClosePicker = { if (to.hasDestination) onTo(to.closePicker()) else closeTrip() },
-                onClose = closeTrip,
-                foregroundReturnPending = returnPending,
-                onForegroundReturnConsumed = { returnPending = false },
-                isRelocating = { fromNearby.relocating.value },
-                returnBusy = fromNearby::relocatingSinceLeft,
-                relocate = { fromNearby.relocate() },
-                showAllModes = {
-                    HiddenModesSetting.showAll()
-                    fromNearby.refilter()
-                    nearMeRefilter()
-                },
-                relocating = fromNearby.relocating,
-                repicked = fromNearby.repicked,
-                locationBanner = fromNearby.locationBanner,
-                keyPrefix = "from",
-                fromName = stationName,
-                fromStopIds = stationStopIds,
-                onLocate = onBackToNearMe,
-                onEditPlaces = onEditPlaces,
-                onChangeFrom = onChangeFrom,
-                onShown = onStartReached,
-                keepSearchOnEmptyOrigin = changeTo != null,
-            )
+            Trip(origin, ready.distanceMeters, ready.eager + ready.more, noneNearby = false)
         } else {
             DeparturesForStops(
                 ready = ready,

@@ -71,4 +71,23 @@ class ToChoiceTest {
     fun `a trip kept before its destination was is planned again to where its route ends`() {
         assertEquals(ToChoice(stopId = "940GZZLUKSX", name = "King's Cross"), ToChoice.of(trip))
     }
+
+    @Test
+    fun `a place with no stop in range opens on its To search`() {
+        val opened = ToChoice.NONE.openedWithoutStops(changeTo = null)
+        assertEquals(ToChoice.NONE.startPicking(), opened)
+        assertTrue(opened!!.open)
+    }
+
+    @Test
+    fun `a place with no stop in range keeps the To a change of start carries`() {
+        val carried = ToChoice.NONE.pickStop(bank)
+        assertEquals(carried, ToChoice.NONE.openedWithoutStops(changeTo = carried))
+    }
+
+    @Test
+    fun `a place with no stop in range leaves an open trip as it is`() {
+        assertNull(ToChoice.NONE.startPicking().openedWithoutStops(changeTo = null))
+        assertNull(ToChoice.NONE.pickPlace(place).openedWithoutStops(changeTo = ToChoice.NONE.pickStop(bank)))
+    }
 }

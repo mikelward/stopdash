@@ -121,6 +121,9 @@ fun StationSearchScreen(
     // list before anything is typed, and taps back to the rider's position (maintainer, 2026-09-28).
     // Null leaves it out, as the To… destination search does.
     onPickHere: (() -> Unit)? = null,
+    // Set with [onPickHere] on From…: the saved places follow "Here" as chips, and a tap starts the
+    // trip from that place's coordinate rather than routing to it. Null leaves them out.
+    onStartFromPlace: ((TripDestination.Place) -> Unit)? = null,
     // A long press on a place chip opens the saved places to edit them, as on the near-me list's
     // chips (SPEC *Routing from the near-me list*). Null offers none.
     onEditPlaces: (() -> Unit)? = null,
@@ -247,6 +250,7 @@ fun StationSearchScreen(
                             onPlacePicked = onPlacePicked,
                             onRetryPlaces = onRetryPlaces,
                             onPickHere = onPickHere,
+                            onStartFromPlace = onStartFromPlace,
                             onEditPlaces = onEditPlaces,
                             chipsStart = chipsStart,
                             chipsTop = if (onChangeFrom != null) 0.dp else 8.dp,
@@ -352,6 +356,7 @@ private fun YourStopsList(
     onPlacePicked: (PlaceHit) -> Unit,
     onRetryPlaces: (() -> Unit)?,
     onPickHere: (() -> Unit)? = null,
+    onStartFromPlace: ((TripDestination.Place) -> Unit)? = null,
     onEditPlaces: (() -> Unit)? = null,
     // Where the chips start: the screen's margin, or the To field's edge under the From/To bar.
     chipsStart: Dp = 16.dp,
@@ -367,23 +372,30 @@ private fun YourStopsList(
             .scrollEdgeCue(listState, scrollCueColors(MaterialTheme.colorScheme.background)),
         state = listState,
     ) {
-        // One row of chips at the top: "Here" first on From…, then the saved places on To… (maintainer,
-        // 2026-09-28). Places lead so a rider routing home taps once without typing.
-        val places = if (onOpenPlace != null) favoritePlaces else emptyList()
+        // One row of chips at the top: "Here" first on From…, then the saved places, on To… and on
+        // From… (maintainer, 2026-09-28, 2026-10-04). Places lead so a rider routing home, or setting
+        // out from home, taps once without typing.
+        val onPlace = onOpenPlace ?: onStartFromPlace
+        val places = if (onPlace != null) favoritePlaces else emptyList()
         if (onPickHere != null || places.isNotEmpty()) {
             item(key = "chips") {
                 FavoriteChips(
                     places = places,
-                    onRouteTo = { onOpenPlace?.invoke(it) },
+                    onRouteTo = { onPlace?.invoke(it) },
                     modifier = Modifier.padding(top = chipsTop, bottom = 8.dp),
                     contentPadding = PaddingValues(start = chipsStart, end = 16.dp),
                     onEditPlaces = onEditPlaces,
                     onHere = onPickHere,
                     labelOverride = ChipLabel.BOTH,
+                    actionDescription = if (onOpenPlace == null) {
+                        R.string.favorite_place_start_description
+                    } else {
+                        R.string.favorite_place_route_description
+                    },
                 )
             }
         }
-        if (onOpenPlace != null && favoritePlaces.isEmpty() && favoritePlacesFailed) {
+        if (onPlace != null && favoritePlaces.isEmpty() && favoritePlacesFailed) {
             // Read failed (not genuinely empty): say so honestly with a Retry, rather than hide the
             // places as "none" (SPEC principle 2). Station search below stays usable.
             item(key = "places-error") {
