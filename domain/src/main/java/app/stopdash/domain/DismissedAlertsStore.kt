@@ -50,27 +50,28 @@ interface DismissedAlertsStore {
     fun mark(): Long = 0L
 
     /**
-     * Of [alerts], the ones not dismissed again since [mark] `since`: what a check that read its set
-     * then may still let go of, in memory as in the store. Asked as the in-memory set is updated, so a
-     * tap that adds an alert back (counted before it's added) is never taken away by an older prune.
+     * Of [alerts], the ones not dismissed again since their place's or line's [mark] in `since`: what a
+     * check that read its set then may still let go of, in memory as in the store. Asked as the in-memory
+     * set is updated, so a tap that adds an alert back (counted before it's added) is never taken away
+     * by an older prune.
      */
-    fun stillSeen(alerts: Set<DismissedAlert>, since: Long): Set<DismissedAlert> = alerts
+    fun stillSeen(alerts: Set<DismissedAlert>, since: DismissalMarks): Set<DismissedAlert> = alerts
 
     /**
-     * Of [alerts], the ones dismissed again since [mark] `since` and written: what a check that let
-     * them go of should take back. Waits for any such dismissal still being written, so one whose
+     * Of [alerts], the ones dismissed again since their [mark] in `since` and written: what a check that
+     * let them go of should take back. Waits for any such dismissal still being written, so one whose
      * write fails is never taken back as made.
      */
-    suspend fun dismissedAgain(alerts: Set<DismissedAlert>, since: Long): Set<DismissedAlert> =
+    suspend fun dismissedAgain(alerts: Set<DismissedAlert>, since: DismissalMarks): Set<DismissedAlert> =
         alerts - stillSeen(alerts, since)
 
     /**
      * [reconcile], letting go only of dismissals in [seen], the set the check settled in memory, and
-     * not made again since [mark] `since`, read before the check asked anything: one made since (of a
-     * notice a newer check found back), even of the same alert again, isn't written away by the
-     * older check's verdict.
+     * not made again since their [mark] in `since`, read before the check asked about their place or
+     * line: one made since (of a notice a newer check found back), even of the same alert again, isn't
+     * written away by the older check's verdict.
      */
-    suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: Long) =
+    suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: DismissalMarks) =
         reconcile(live, checkedPlaces)
 
     companion object {

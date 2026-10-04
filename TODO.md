@@ -85,10 +85,8 @@ exercises the whole spine the widget later renders from.
       refresh found back) is neither pruned in memory nor written away.
   - [x] The widget's own line check (`reconcileWidgetDismissals`) reads the dismissal count before
         its requests, so a line alert dismissed in the app while it runs isn't written away.
-  - [ ] A check settles every place and line on its oldest answer's dismissal count, so one
-        reused closure or line answer keeps its fresh verdicts elsewhere from letting go of a
-        dismissal made after that answer, until the reused one ages out (minutes). Keeping a count per
-        place and line would let each verdict settle on its own.
+  - [x] Each place and line settles on its own answer's dismissal count, so a reused closure or line
+        answer no longer keeps the fresh verdicts elsewhere in the same check from letting go.
   - [ ] A tap's in-memory add lands after its store write, so a check that started after the tap was
         counted and settled in that instant can have its prune undone in memory, hiding the alert's
         recurrence until a later check lets it go. Not reachable in practice (the check must ask TfL

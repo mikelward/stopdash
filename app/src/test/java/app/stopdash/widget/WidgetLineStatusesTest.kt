@@ -114,13 +114,13 @@ class WidgetLineStatusesTest {
                 live: Set<app.stopdash.domain.DismissedAlert>,
                 checkedPlaces: Set<String>,
                 seen: Set<app.stopdash.domain.DismissedAlert>,
-                since: Long,
+                since: app.stopdash.domain.DismissalMarks,
             ) {
                 stored = app.stopdash.domain.Dismissed.reconcile(stored, live, checkedPlaces, stillSeen(seen, since))
             }
             override fun mark() = count
-            override fun stillSeen(alerts: Set<app.stopdash.domain.DismissedAlert>, since: Long) =
-                alerts.filterTo(HashSet()) { (counted[it] ?: 0L) <= since }
+            override fun stillSeen(alerts: Set<app.stopdash.domain.DismissedAlert>, since: app.stopdash.domain.DismissalMarks) =
+                alerts.filterTo(HashSet()) { (counted[it] ?: 0L) <= since.of(it) }
         }
         val good = listOf(LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service"))
         val since = store.mark()

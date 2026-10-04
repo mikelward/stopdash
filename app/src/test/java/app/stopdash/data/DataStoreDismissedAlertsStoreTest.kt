@@ -1,6 +1,7 @@
 package app.stopdash.data
 
 import androidx.datastore.core.DataStore
+import app.stopdash.domain.DismissalMarks
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.SteadyClock
 import kotlinx.coroutines.async
@@ -99,7 +100,7 @@ class DataStoreDismissedAlertsStoreTest {
         val since = store.mark()
         val seen = store.dismissed().first()
         store.dismiss(closure)
-        store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX", "490G000A"), seen = seen, since = since)
+        store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX", "490G000A"), seen = seen, since = DismissalMarks(since))
         assertEquals(setOf(closure), store.dismissed().first())
     }
 
@@ -112,11 +113,11 @@ class DataStoreDismissedAlertsStoreTest {
         val since = store.mark()
         val seen = store.dismissed().first()
         store.dismiss(closure)
-        store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX"), seen = seen, since = since)
+        store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX"), seen = seen, since = DismissalMarks(since))
         assertEquals(setOf(closure), store.dismissed().first())
         // Not dismissed again since a check read the set: its verdict lets go of it.
         val later = store.mark()
-        store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX"), seen = store.dismissed().first(), since = later)
+        store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX"), seen = store.dismissed().first(), since = DismissalMarks(later))
         assertEquals(emptySet<DismissedAlert>(), store.dismissed().first())
     }
 
@@ -129,7 +130,7 @@ class DataStoreDismissedAlertsStoreTest {
         val seen = store.dismissed().first()
         // The same alert dismissed again once the check's write is asked for, its write landing first.
         data.ahead = { store.dismiss(closure) }
-        store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX"), seen = seen, since = since)
+        store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX"), seen = seen, since = DismissalMarks(since))
         assertEquals(setOf(closure), store.dismissed().first())
     }
 
@@ -140,7 +141,21 @@ class DataStoreDismissedAlertsStoreTest {
         store.dismiss(busStop)
         val since = store.mark()
         store.dismiss(closure)
-        assertEquals(setOf(busStop), store.stillSeen(setOf(closure, busStop), since))
+        assertEquals(setOf(busStop), store.stillSeen(setOf(closure, busStop), DismissalMarks(since)))
+    }
+
+    @Test
+    fun `each place is still the check's to let go of by its own answer's mark`() = runTest {
+        val store = DataStoreDismissedAlertsStore(FakeDataStore(null))
+        val older = store.mark()
+        store.dismiss(closure)
+        store.dismiss(busStop)
+        val newer = store.mark()
+        // The interchange's answer was asked before its closure was dismissed, the bus stop's after:
+        // only the bus stop's dismissal is the check's to let go of.
+        val marks = DismissalMarks(newer, mapOf("HUBKGX" to older))
+        assertEquals(setOf(busStop), store.stillSeen(setOf(closure, busStop), marks))
+        assertEquals(setOf(closure), store.dismissedAgain(setOf(closure, busStop), marks))
     }
 
     @Test
@@ -156,7 +171,7 @@ class DataStoreDismissedAlertsStoreTest {
         } catch (_: java.io.IOException) {
             // The caller says the dismiss failed; asserted below that it isn't kept as one.
         }
-        assertEquals(setOf(closure), store.stillSeen(setOf(closure), since))
+        assertEquals(setOf(closure), store.stillSeen(setOf(closure), DismissalMarks(since)))
     }
 
     @Test
@@ -193,7 +208,7 @@ class DataStoreDismissedAlertsStoreTest {
         assertTrue(first.await().isFailure)
         gates.removeFirst().complete(Unit)
         assertTrue(second.await().isFailure)
-        assertEquals(setOf(closure), store.stillSeen(setOf(closure), since))
+        assertEquals(setOf(closure), store.stillSeen(setOf(closure), DismissalMarks(since)))
     }
 
     @Test
@@ -217,7 +232,7 @@ class DataStoreDismissedAlertsStoreTest {
         val since = store.mark()
         holding = true
         val tap = async { runCatching { store.dismiss(closure) } }
-        val asked = async { store.dismissedAgain(setOf(closure), since) }
+        val asked = async { store.dismissedAgain(setOf(closure), DismissalMarks(since)) }
         testScheduler.advanceUntilIdle()
         // Still being written: not answered yet.
         assertFalse(asked.isCompleted)
@@ -233,8 +248,8 @@ class DataStoreDismissedAlertsStoreTest {
         store.dismiss(closure)
         val since = store.mark()
         store.dismiss(closure)
-        assertEquals(setOf(closure), store.dismissedAgain(setOf(closure), since))
-        assertEquals(emptySet<DismissedAlert>(), store.dismissedAgain(setOf(closure), store.mark()))
+        assertEquals(setOf(closure), store.dismissedAgain(setOf(closure), DismissalMarks(since)))
+        assertEquals(emptySet<DismissedAlert>(), store.dismissedAgain(setOf(closure), DismissalMarks(store.mark())))
     }
 
     @Test
@@ -246,9 +261,9 @@ class DataStoreDismissedAlertsStoreTest {
         val older = store.mark()
         store.dismiss(closure)
         val newer = store.mark()
-        store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX"), seen = setOf(closure), since = newer)
+        store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX"), seen = setOf(closure), since = DismissalMarks(newer))
         assertEquals(emptySet<DismissedAlert>(), store.dismissed().first())
-        assertEquals(emptySet<DismissedAlert>(), store.dismissedAgain(setOf(closure), older))
+        assertEquals(emptySet<DismissedAlert>(), store.dismissedAgain(setOf(closure), DismissalMarks(older)))
     }
 
     @Test
@@ -260,10 +275,10 @@ class DataStoreDismissedAlertsStoreTest {
         store.dismiss(closure)
         val since = store.mark()
         data.behind = { store.dismiss(closure) }
-        store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX"), seen = setOf(closure), since = since)
+        store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX"), seen = setOf(closure), since = DismissalMarks(since))
         assertEquals(setOf(closure), store.dismissed().first())
-        assertEquals(emptySet<DismissedAlert>(), store.stillSeen(setOf(closure), since))
-        assertEquals(setOf(closure), store.dismissedAgain(setOf(closure), since))
+        assertEquals(emptySet<DismissedAlert>(), store.stillSeen(setOf(closure), DismissalMarks(since)))
+        assertEquals(setOf(closure), store.dismissedAgain(setOf(closure), DismissalMarks(since)))
     }
 
     @Test
@@ -275,11 +290,11 @@ class DataStoreDismissedAlertsStoreTest {
         store.dismiss(closure)
         val older = store.mark()
         data.behind = {
-            store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX"), seen = setOf(closure), since = store.mark())
+            store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX"), seen = setOf(closure), since = DismissalMarks(store.mark()))
         }
         store.dismiss(closure)
         assertEquals(emptySet<DismissedAlert>(), store.dismissed().first())
-        assertEquals(emptySet<DismissedAlert>(), store.dismissedAgain(setOf(closure), older))
+        assertEquals(emptySet<DismissedAlert>(), store.dismissedAgain(setOf(closure), DismissalMarks(older)))
     }
 
     @Test
@@ -303,7 +318,7 @@ class DataStoreDismissedAlertsStoreTest {
                 pool.shutdown()
             }
             kotlinx.coroutines.runBlocking {
-                store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX"), seen = setOf(closure), since = store.mark() - 1)
+                store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX"), seen = setOf(closure), since = DismissalMarks(store.mark() - 1))
                 assertEquals(setOf(closure), store.dismissed().first())
             }
         }

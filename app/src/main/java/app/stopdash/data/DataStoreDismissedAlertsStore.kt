@@ -7,6 +7,7 @@ import androidx.datastore.core.DataStoreFactory
 import androidx.datastore.core.Serializer
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.dataStoreFile
+import app.stopdash.domain.DismissalMarks
 import app.stopdash.domain.Dismissals
 import app.stopdash.domain.Dismissed
 import app.stopdash.domain.DismissedAlert
@@ -77,12 +78,12 @@ class DataStoreDismissedAlertsStore internal constructor(
 
     override fun mark(): Long = dismissals.get()
 
-    override fun stillSeen(alerts: Set<DismissedAlert>, since: Long): Set<DismissedAlert> =
-        alerts.filterTo(HashSet()) { latest(it) <= since }
+    override fun stillSeen(alerts: Set<DismissedAlert>, since: DismissalMarks): Set<DismissedAlert> =
+        alerts.filterTo(HashSet()) { latest(it) <= since.of(it) }
 
-    override suspend fun dismissedAgain(alerts: Set<DismissedAlert>, since: Long): Set<DismissedAlert> {
-        ended.first { alerts.none { alert -> writing[alert]?.any { it > since } == true } }
-        return alerts.filterTo(HashSet()) { (written[it] ?: 0L) > since }
+    override suspend fun dismissedAgain(alerts: Set<DismissedAlert>, since: DismissalMarks): Set<DismissedAlert> {
+        ended.first { alerts.none { alert -> writing[alert]?.any { it > since.of(alert) } == true } }
+        return alerts.filterTo(HashSet()) { (written[it] ?: 0L) > since.of(it) }
     }
 
     // [alert]'s latest dismissal by count, written or being written; 0 for none this process made.
@@ -120,7 +121,7 @@ class DataStoreDismissedAlertsStore internal constructor(
     override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) =
         settle { current -> Dismissed.reconcile(current, live, checkedPlaces) }
 
-    override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: Long) =
+    override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: DismissalMarks) =
         settle { current ->
             // An alert dismissed again since the check read the set is the rider's newer word: kept.
             // Told inside the update, after any dismissal written before it, which counted itself first.
