@@ -58,29 +58,11 @@ object DirectTrips {
             val routes = HashMap<String, LineSequence?>()
             fun routeOf(lineId: String): LineSequence? = routes.getOrPut(lineId) { sequenceAt(stop, lineId) }
             val departures = stop.departures.filter { departure ->
-                val lineId = departure.lineId
-                when {
-                    HiddenModes.isHidden(departure.mode, lineId, hidden) -> false
-                    // No line to follow: it may well call there, so never a silent "no".
-                    lineId.isBlank() -> {
-                        unresolved = true
-                        misses += RouteMiss(lineId, stop.stopId, RouteStops.Resolution.NoLine, departure.destination)
-                        false
-                    }
-                    lineId !in sequences -> {
-                        pending = true
-                        false
-                    }
-                    else -> when (val verdict = judge(departure, stop.stopId, routeOf(lineId), destinationIds)) {
-                        Verdict.Reaches -> true
-                        Verdict.Misses -> false
-                        is Verdict.Unknown -> {
-                            unresolved = true
-                            verdict.miss?.let { misses += it }
-                            false
-                        }
-                    }
-                }
+                val judged = judgeDeparture(departure, stop.stopId, destinationIds, sequences, hidden, ::routeOf)
+                if (judged.pending) pending = true
+                if (judged.unresolved) unresolved = true
+                judged.miss?.let { misses += it }
+                judged.kept
             }
             val lines = stop.lines.filter { line ->
                 if (HiddenModes.isHidden(line, hidden)) return@filter false
@@ -98,6 +80,59 @@ object DirectTrips {
             stop.copy(departures = departures, lines = lines)
         }.filter { it.departures.isNotEmpty() || it.lines.isNotEmpty() || it.disruptions.isNotEmpty() }
         return Result(kept, pending, unresolved, misses)
+    }
+
+    /**
+     * What [filter] makes of one departure: whether it's [kept], or left out because its line's route
+     * is still loading ([pending]) or it couldn't be checked ([unresolved], named in [miss] when there's
+     * a path to name). A departure left out for neither is a sure "no", or of a hidden mode.
+     */
+    data class Judged(val kept: Boolean, val pending: Boolean = false, val unresolved: Boolean = false, val miss: RouteMiss? = null)
+
+    /**
+     * [filter]'s verdict on each of [stop]'s departures, in their order, each judged on its own as
+     * [filter] judges it, with [destination] and each line's route at [stop] worked out once for them
+     * all: for a caller that needs to know which departure was kept, loading or unchecked.
+     */
+    @WorkerThread
+    fun judgeEach(
+        stop: StopArrivals,
+        destination: List<End>,
+        sequences: Map<String, LineSequence?>,
+        hubs: Map<String, String> = emptyMap(),
+        hidden: Set<String> = emptySet(),
+    ): List<Judged> {
+        val destinationIds = destination.mapTo(HashSet()) { it.id }
+        // The origin itself is no destination: From and To the same station is no trip.
+        if (stop.stopId in destinationIds) return stop.departures.map { Judged(kept = false) }
+        val routes = HashMap<String, LineSequence?>()
+        fun routeOf(lineId: String): LineSequence? = routes.getOrPut(lineId) {
+            sequences[lineId]?.let { routeAt(it, stop.stopId, hubs[stop.stopId] ?: stop.hubId, stop.stopName, destination) }
+        }
+        return stop.departures.map { judgeDeparture(it, stop.stopId, destinationIds, sequences, hidden, ::routeOf) }
+    }
+
+    /** [departure] from [stopId] judged as [filter] judges it, its line's route from [routeOf]. */
+    private fun judgeDeparture(
+        departure: Departure,
+        stopId: String,
+        destinationIds: Set<String>,
+        sequences: Map<String, LineSequence?>,
+        hidden: Set<String>,
+        routeOf: (String) -> LineSequence?,
+    ): Judged {
+        val lineId = departure.lineId
+        return when {
+            HiddenModes.isHidden(departure.mode, lineId, hidden) -> Judged(kept = false)
+            // No line to follow: it may well call there, so never a silent "no".
+            lineId.isBlank() -> Judged(kept = false, unresolved = true, miss = RouteMiss(lineId, stopId, RouteStops.Resolution.NoLine, departure.destination))
+            lineId !in sequences -> Judged(kept = false, pending = true)
+            else -> when (val verdict = judge(departure, stopId, routeOf(lineId), destinationIds)) {
+                Verdict.Reaches -> Judged(kept = true)
+                Verdict.Misses -> Judged(kept = false)
+                is Verdict.Unknown -> Judged(kept = false, unresolved = true, miss = verdict.miss)
+            }
+        }
     }
 
     /** A departure judged on its line's route ([judge]). */

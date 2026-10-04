@@ -453,6 +453,7 @@ object OnTheWay {
      * never a blank id (a departure TfL names no line for is unresolved without one, and asking for
      * a blank line's route only spends requests on an answer that can't come).
      */
+    @WorkerThread
     fun boardLineIds(ride: TripLeg, departures: List<Departure>): List<String> =
         departures.filter { it.mode.equals(ride.mode, ignoreCase = true) }
             .map { it.lineId }.filter { it.isNotBlank() }.distinct().sorted()
@@ -490,6 +491,85 @@ object OnTheWay {
         val result = routed(ride, sameMode, fetchedAt, sequences)
         val kept = result.stops.firstOrNull()?.departures.orEmpty().sortedBy { it.expectedArrival }
         return BoardTrains(kept, result.pending, result.unresolved, result.misses)
+    }
+
+    /**
+     * [boardTrains] for [ride]'s board at every instant from [from] on, worked out once: each of its
+     * trains judged on its own ([DirectTrips.judgeEach]: a train is kept or not, and its route loading
+     * or unplaced, whatever else the board lists), so the trains still to come at a later instant are a suffix of them, and
+     * what [BoardTrains] says of them is gathered from the end. The same answer as [boardTrains] at
+     * each instant, without routing the board again for each.
+     */
+    @WorkerThread
+    fun placeTrains(
+        ride: TripLeg,
+        departures: List<Departure>,
+        fetchedAt: Instant,
+        sequences: Map<String, LineSequence?>,
+        from: Instant,
+    ): PlacedTrains {
+        val trains = Countdown.upcoming(departures.filter { it.mode.equals(ride.mode, ignoreCase = true) }, from)
+        // The ride's ends and each line's route worked out once for the board, each train judged on them
+        // (Codex on #557).
+        val judged = DirectTrips.judgeEach(StopArrivals(ride.fromId, ride.fromName, trains, fetchedAt), ends(ride, sequences), sequences)
+        return PlacedTrains(trains, judged.map { it.kept }, judged.map { it.pending }, judged.map { it.unresolved }, judged.map { it.miss })
+    }
+
+    /**
+     * A board's trains as [placeTrains] routed them, soonest first, each with whether it's kept, its
+     * route loading ([pending]) or it couldn't be checked ([unresolved]), and what couldn't be placed.
+     */
+    class PlacedTrains(
+        private val trains: List<Departure>,
+        kept: List<Boolean>,
+        pending: List<Boolean>,
+        unresolved: List<Boolean>,
+        // Each train's, kept as they are: a set for every suffix would be quadratic (Codex on #557).
+        private val misses: List<RouteMiss?>,
+    ) {
+        // The kept trains, soonest first, and how many of them come before each train of the board.
+        private val keptTrains = trains.filterIndexed { i, _ -> kept[i] }
+        private val keptBefore = IntArray(trains.size + 1).also { counts ->
+            for (i in trains.indices) counts[i + 1] = counts[i] + if (kept[i]) 1 else 0
+        }
+
+        // From the end: whether any train from each on is pending or unresolved, and their misses.
+        private val pendingFrom = BooleanArray(trains.size + 1).also { from ->
+            for (i in trains.indices.reversed()) from[i] = pending[i] || from[i + 1]
+        }
+        private val unresolvedFrom = BooleanArray(trains.size + 1).also { from ->
+            for (i in trains.indices.reversed()) from[i] = unresolved[i] || from[i + 1]
+        }
+
+        /** The instants something said of the board changes: each train's that's kept, loading or unplaced. */
+        val changes: List<Instant> = trains.filterIndexed { i, _ -> kept[i] || pending[i] || unresolved[i] }.map { it.expectedArrival }
+
+        /** [boardTrains] at [now]: the trains not yet gone from it on, as the board routed them. */
+        @WorkerThread
+        fun at(now: Instant): BoardTrains = trainsAt(now).copy(misses = missesAt(now))
+
+        /** [at] without its [BoardTrains.misses], in constant time past the search: for every instant of a timeline. */
+        @WorkerThread
+        fun trainsAt(now: Instant): BoardTrains {
+            val low = firstNotGone(now)
+            return BoardTrains(keptTrains.subList(keptBefore[low], keptTrains.size), pendingFrom[low], unresolvedFrom[low])
+        }
+
+        /** [at]'s [BoardTrains.misses]: what couldn't be placed of the trains not yet gone at [now]. */
+        @WorkerThread
+        fun missesAt(now: Instant): Set<RouteMiss> =
+            misses.subList(firstNotGone(now), misses.size).filterNotNullTo(LinkedHashSet())
+
+        // The first train not yet gone at [now]: the board is soonest first, so every one after it is too.
+        private fun firstNotGone(now: Instant): Int {
+            var low = 0
+            var high = trains.size
+            while (low < high) {
+                val mid = (low + high) ushr 1
+                if (Countdown.hasDeparted(trains[mid], now)) low = mid + 1 else high = mid
+            }
+            return low
+        }
     }
 
     /**

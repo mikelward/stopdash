@@ -2068,5 +2068,38 @@ class OnTheWayTest {
         assertTrue(lost.unresolved)
         assertEquals(setOf("red"), lost.misses.map { it.lineId }.toSet())
     }
-}
 
+    @Test
+    fun `a board's trains placed once say at every instant what the board routed then would`() {
+        // Kept, another branch, a line loading (blue), a blank line and an unplaced destination, and
+        // another mode, in no order: at every instant the trains still to come, and what's said of
+        // them, are boardTrains' own, and only the ones that change the answer are instants to look at.
+        val red = LineSequence(
+            listOf(LineRoute("A-C", listOf("A", "B", "C")), LineRoute("A-Z", listOf("A", "Y", "Z"))),
+            mapOf("A" to "A", "B" to "B", "C" to "C", "Y" to "Y", "Z" to "Z"),
+        )
+        val sequences = mapOf("red" to red)
+        val board = listOf(
+            Departure("red", "Red", "outbound", "C", null, at(9), "tube"),
+            Departure("red", "Red", "outbound", "Z", null, at(4), "tube"),
+            Departure("blue", "Blue", "outbound", "C", null, at(6), "tube"),
+            Departure("", "", "outbound", "C", null, at(2), "tube"),
+            Departure("red", "Red", "outbound", "Nowhere", null, at(7), "tube"),
+            Departure("red", "Red", "outbound", "C", null, at(3), "tube"),
+            Departure("99", "99", "outbound", "C", null, at(5), "bus"),
+        )
+        val placed = OnTheWay.placeTrains(ride, board, t0, sequences, t0)
+        for (seconds in (0L..660L step 30) + listOf(119L, 120L, 121L, 179L, 180L, 181L, 359L, 360L, 361L, 419L, 420L)) {
+            val now = t0.plusSeconds(seconds)
+            val expected = OnTheWay.boardTrains(ride, board, t0, sequences, now)
+            val actual = placed.at(now)
+            assertEquals("trains at +${seconds}s", expected.trains, actual.trains)
+            assertEquals("pending at +${seconds}s", expected.pending, actual.pending)
+            assertEquals("unresolved at +${seconds}s", expected.unresolved, actual.unresolved)
+            assertEquals("misses at +${seconds}s", expected.misses, actual.misses)
+            assertEquals("trainsAt at +${seconds}s", actual.copy(misses = emptySet()), placed.trainsAt(now))
+        }
+        // The other-branch train going changes nothing said; every other one does.
+        assertEquals(listOf(at(2), at(3), at(6), at(7), at(9)), placed.changes)
+    }
+}

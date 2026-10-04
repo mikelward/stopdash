@@ -392,7 +392,7 @@ class OnTheWayScreenScreenshotTest {
         // they round alike rather than reading 5 and 4 (maintainer's report, 2026-09-29).
         val due = at(4).plusSeconds(30)
         val train = Departure("mildmay", "Mildmay", "outbound", "Stratford", null, due, "overground")
-        show(trip, TripProgress.Waiting(mildmay, due), nextTrains = NextTrains(mildmay, listOf(train), readyAt = now))
+        show(trip, TripProgress.Waiting(mildmay, due), nextTrains = NextTrains(mildmay, listOf(train), readyAt = now).withGroups(now))
         composeRule.onNodeWithText("4 min · 08:06").assertIsDisplayed()
         composeRule.onNodeWithText("4 min").assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithText("Due in 5 min").fetchSemanticsNodes().isEmpty())
@@ -406,7 +406,7 @@ class OnTheWayScreenScreenshotTest {
         val walking = trip.copy(legIndex = 1)
         val trains = listOf(jubileeTrain("Stanmore", 21), jubileeTrain("Stanmore", 24), jubileeTrain("Wembley Park", 27))
         // The walk ends at 24: the 21-minute train leaves first, so it's grayed.
-        show(walking, TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, trains, readyAt = at(24)))
+        show(walking, TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, trains, readyAt = at(24)).withGroups(now))
         composeRule.onNodeWithText("21 · 24 min").assertIsDisplayed()
         // Right under the card, over the route (maintainer, 2026-10-03): the board the rider is heading for.
         val board = composeRule.onNodeWithTag("onTheWayTrains").getUnclippedBoundsInRoot()
@@ -425,7 +425,7 @@ class OnTheWayScreenScreenshotTest {
         // (maintainer, 2026-09-29).
         val bus = TripLeg("bus", "25", "25", "490000000001D", "Stratford", "490000000002A", "Bow", at(4), at(20))
         val buses = listOf(Departure("25", "25", "outbound", "Bow", null, at(6), "bus"))
-        show(trip.copy(route = TripRoute(listOf(bus))), TripProgress.Waiting(bus, at(6)), nextTrains = NextTrains(bus, buses, readyAt = now, stopLetter = "D", towards = "Bow"))
+        show(trip.copy(route = TripRoute(listOf(bus))), TripProgress.Waiting(bus, at(6)), nextTrains = NextTrains(bus, buses, readyAt = now, stopLetter = "D", towards = "Bow").withGroups(now))
         composeRule.onNodeWithText("Stop D", substring = true).assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithText("➔", substring = true).fetchSemanticsNodes().isEmpty())
         captureSnapshot("on-the-way-bus-board-stop-letter.png")
@@ -436,7 +436,7 @@ class OnTheWayScreenScreenshotTest {
         // A pole TfL gives no letter: its sign's "towards" heads the board, not where its buses go.
         val bus = TripLeg("bus", "25", "25", "490000000001D", "Stratford", "490000000002A", "Liverpool Street", at(4), at(20))
         val buses = listOf(Departure("25", "25", "outbound", "Oxford Circus", null, at(6), "bus"))
-        show(trip.copy(route = TripRoute(listOf(bus))), TripProgress.Waiting(bus, at(6)), nextTrains = NextTrains(bus, buses, readyAt = now, towards = "Liverpool Street Or Bank", bearing = "W"))
+        show(trip.copy(route = TripRoute(listOf(bus))), TripProgress.Waiting(bus, at(6)), nextTrains = NextTrains(bus, buses, readyAt = now, towards = "Liverpool Street Or Bank", bearing = "W").withGroups(now))
         composeRule.onNodeWithText("➔ Liverpool Street", substring = true).assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithText("➔ Oxford Circus", substring = true).fetchSemanticsNodes().isEmpty())
     }
@@ -446,7 +446,7 @@ class OnTheWayScreenScreenshotTest {
         // No towards: the bearing, and never the bus's destination.
         val bus = TripLeg("bus", "25", "25", "490000000001D", "Stratford", "490000000002A", "Liverpool Street", at(4), at(20))
         val buses = listOf(Departure("25", "25", "outbound", "Oxford Circus", null, at(6), "bus"))
-        show(trip.copy(route = TripRoute(listOf(bus))), TripProgress.Waiting(bus, at(6)), nextTrains = NextTrains(bus, buses, readyAt = now, bearing = "W"))
+        show(trip.copy(route = TripRoute(listOf(bus))), TripProgress.Waiting(bus, at(6)), nextTrains = NextTrains(bus, buses, readyAt = now, bearing = "W").withGroups(now))
         composeRule.onNodeWithText("Westbound", substring = true).assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithText("➔ Oxford Circus", substring = true).fetchSemanticsNodes().isEmpty())
     }
@@ -460,7 +460,7 @@ class OnTheWayScreenScreenshotTest {
         val across = PoleTrains("490000000001E", "Stratford", listOf(Departure("86", "86", "outbound", "Bow", null, at(8), "bus")), stopLetter = "E", towards = "Bow")
         show(
             trip.copy(route = TripRoute(listOf(bus))), TripProgress.Waiting(bus, at(6)),
-            nextTrains = NextTrains(bus, buses, readyAt = now, stopLetter = "D", towards = "Bow", others = listOf(across)),
+            nextTrains = NextTrains(bus, buses, readyAt = now, stopLetter = "D", towards = "Bow", others = listOf(across)).withGroups(now),
         )
         val own = composeRule.onNodeWithText("Stop D", substring = true).assertIsDisplayed().getUnclippedBoundsInRoot()
         val other = composeRule.onNodeWithText("Stop E", substring = true).assertIsDisplayed().getUnclippedBoundsInRoot()
@@ -492,28 +492,28 @@ class OnTheWayScreenScreenshotTest {
     @Test
     fun on_the_way_next_trains_too_old_say_updating() {
         val walking = trip.copy(legIndex = 1)
-        show(walking, TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, listOf(jubileeTrain("Stanmore", 21)), stale = true))
+        show(walking, TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, listOf(jubileeTrain("Stanmore", 21)), stale = true).withGroups(now))
         composeRule.onNodeWithText("Updating…").assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithText("21 min").fetchSemanticsNodes().isEmpty())
     }
 
     @Test
     fun on_the_way_no_next_trains_says_so() {
-        show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, emptyList()))
+        show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, emptyList()).withGroups(now))
         composeRule.onNodeWithText("None going to Canary Wharf").assertIsDisplayed()
     }
 
     @Test
     fun on_the_way_next_trains_say_when_an_update_failed() {
         // The last good board still shown, the failure said beside it.
-        show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, listOf(jubileeTrain("Stanmore", 21)), failed = true))
+        show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, listOf(jubileeTrain("Stanmore", 21)), failed = true).withGroups(now))
         composeRule.onNodeWithText("21 min").assertIsDisplayed()
         composeRule.onNodeWithText("Couldn't update just now").assertIsDisplayed()
     }
 
     @Test
     fun on_the_way_next_trains_never_read_say_so_not_none() {
-        show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, emptyList(), failed = true))
+        show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, emptyList(), failed = true).withGroups(now))
         composeRule.onNodeWithText("Couldn't update just now").assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithText("None going to Canary Wharf").fetchSemanticsNodes().isEmpty())
     }
@@ -532,14 +532,14 @@ class OnTheWayScreenScreenshotTest {
 
     @Test
     fun on_the_way_next_trains_say_when_a_line_is_still_being_checked() {
-        show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, listOf(jubileeTrain("Stanmore", 21)), pending = true))
+        show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, listOf(jubileeTrain("Stanmore", 21)), pending = true).withGroups(now))
         composeRule.onNodeWithText("21 min").assertIsDisplayed()
         composeRule.onNodeWithText("Checking more lines…").assertIsDisplayed()
     }
 
     @Test
     fun on_the_way_next_trains_that_couldnt_be_checked_arent_called_none() {
-        show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, emptyList(), unresolved = true))
+        show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, emptyList(), unresolved = true).withGroups(now))
         composeRule.onNodeWithText("Couldn't check every line").assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithText("None going to Canary Wharf").fetchSemanticsNodes().isEmpty())
     }
@@ -568,7 +568,7 @@ class OnTheWayScreenScreenshotTest {
         show(
             trip.copy(boarded = true),
             TripProgress.Riding(mildmay, "Hackney Central", 4, at(16), getOffSoon = false, seen = false),
-            nextTrains = NextTrains(mildmay, listOf(train), readyAt = now),
+            nextTrains = NextTrains(mildmay, listOf(train), readyAt = now).withGroups(now),
         )
         onCard("Take the train to Stratford").assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithText("4 stops · next Hackney Central").fetchSemanticsNodes().isEmpty())
@@ -922,7 +922,7 @@ class OnTheWayScreenScreenshotTest {
     fun a_train_followed_gone_by_times_the_trip_from_the_boards_next() {
         // The train followed past its time, the board's next due in 10 min: timed from it (maintainer, 2026-10-03).
         val gone = TripProgress.Waiting(mildmay, at(-1))
-        show(trip, gone, nextTrains = NextTrains(mildmay, emptyList(), readyAt = now, nextDue = at(10)))
+        show(trip, gone, nextTrains = NextTrains(mildmay, emptyList(), readyAt = now, nextDue = at(10)).withGroups(now))
         composeRule.onNodeWithTag("onTheWayEta").assertTextEquals("est. 37 min · 08:39")
     }
 
@@ -939,7 +939,7 @@ class OnTheWayScreenScreenshotTest {
                 StopDashTheme(dynamicColor = false) {
                     OnTheWayScreen(
                         trip, gone, false, now, {}, {},
-                        nextTrains = NextTrains(mildmay, emptyList(), readyAt = now, nextDue = at(10)),
+                        nextTrains = NextTrains(mildmay, emptyList(), readyAt = now, nextDue = at(10)).withGroups(now),
                         onGoTo = { _, _ -> },
                     )
                 }
@@ -1129,7 +1129,7 @@ class OnTheWayScreenScreenshotTest {
     @Test
     fun another_rides_board_doesnt_time_the_trip() {
         // The board shown is the ride after a walk's: its trains aren't the one the rider waits for.
-        show(trip, TripProgress.Waiting(mildmay, at(-1)), nextTrains = NextTrains(jubilee, emptyList(), nextDue = at(10)))
+        show(trip, TripProgress.Waiting(mildmay, at(-1)), nextTrains = NextTrains(jubilee, emptyList(), nextDue = at(10)).withGroups(now))
         composeRule.onNodeWithTag("onTheWayEta").assertDoesNotExist()
     }
 

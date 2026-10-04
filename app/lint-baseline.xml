@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <issues format="6" by="lint 9.4.1" type="baseline" client="gradle" dependencies="false" name="AGP (9.4.1)" variant="all" version="9.4.1">
 
-
-
     <issue
         id="WorkerThreadCall"
         message="`Journeys.segment` is marked @WorkerThread but called on the main thread, in composable `MainScreen`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
@@ -93,41 +91,6 @@
 
     <issue
         id="WorkerThreadCall"
-        message="`OnTheWay.boardTrains` is marked @WorkerThread but called on the main thread, in composable `rememberNextTrains`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="    val found = OnTheWay.boardTrains(board.ride, board.departures, fetchedAt, sequences, now)"
-        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/OnTheWayScreen.kt"
-            line="364"
-            column="17"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`OnTheWay.boardTrains` is marked @WorkerThread but called on the main thread, in composable `rememberNextTrains`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="        other to OnTheWay.boardTrains(ride, other.departures, fetchedAt, sequences, now)"
-        errorLine2="                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/OnTheWayScreen.kt"
-            line="369"
-            column="18"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`StopGrouping.groupByStop` is marked @WorkerThread but called on the main thread, in composable `NextTrainsSection`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="        StopGrouping.groupByStop("
-        errorLine2="        ^">
-        <location
-            file="src/main/java/app/stopdash/ui/OnTheWayScreen.kt"
-            line="458"
-            column="9"/>
-    </issue>
-
-
-
-    <issue
-        id="WorkerThreadCall"
         message="`DepartureRows.stopStatusFolded` is marked @WorkerThread but called on the main thread (through `cardClosures()`), in composable `RideStops`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
         errorLine1="                val stopNotices = cardClosures(card, index, closures, rideLines).map { closure ->"
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
@@ -136,8 +99,6 @@
             line="1871"
             column="35"/>
     </issue>
-
-
 
     <issue
         id="WorkerThreadCall"
