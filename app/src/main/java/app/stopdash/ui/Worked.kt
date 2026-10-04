@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import androidx.annotation.WorkerThread
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -60,7 +61,7 @@ internal fun <K : Any, T> rememberWorked(
     slot: MutableState<Worked<K, T>?>,
     key: K,
     keep: (held: K, wanted: K) -> Boolean = { _, _ -> false },
-    compute: () -> T,
+    @WorkerThread compute: () -> T,
 ): T? {
     val worker = LocalWorker.current
     LaunchedEffect(slot, key, worker) {
