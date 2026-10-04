@@ -176,6 +176,8 @@ dependencies {
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.robolectric)
     testImplementation(libs.roborazzi)
+    // The renderer's own timeline lookup, so a test checks which entry the watch would show.
+    testImplementation(libs.androidx.wear.tiles.renderer)
     testImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

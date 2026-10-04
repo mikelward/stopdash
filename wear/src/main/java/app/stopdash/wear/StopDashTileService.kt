@@ -72,20 +72,10 @@ class StopDashTileService : TileService() {
                     val topology = RouteTopologyStore.over(this, envelope?.routePatterns().orEmpty())
                     val schedule = TileTimeline.schedule(envelope, now, topology, screen)
                     val notices = RefreshPolicy.notices(WatchRefresh.state.value, now)
-                    val timeline = TimelineBuilders.Timeline.Builder()
-                    for (entry in TileTimeline.withNotice(schedule.entries, notices)) {
-                        val validity = TimelineBuilders.TimeInterval.Builder().setStartMillis(entry.start.toEpochMilli())
-                        entry.end?.let { validity.setEndMillis(it.toEpochMilli()) }
-                        timeline.addTimelineEntry(
-                            TimelineBuilders.TimelineEntry.Builder()
-                                .setValidity(validity.build())
-                                .setLayout(LayoutElementBuilders.Layout.Builder().setRoot(TileLayout.root(this, entry.frame, entry.notice)).build())
-                                .build(),
-                        )
-                    }
+                    val timeline = tileTimeline(this, TileTimeline.withNotice(schedule.entries, notices))
                     val tile = TileBuilders.Tile.Builder()
                         .setResourcesVersion(RESOURCES_VERSION)
-                        .setTileTimeline(timeline.build())
+                        .setTileTimeline(timeline)
                     // The entry cap cut the timeline short: ask to be re-rendered where it stops.
                     schedule.refreshAt?.let {
                         tile.setFreshnessIntervalMillis(Duration.between(Instant.now(), it).toMillis().coerceAtLeast(MIN_FRESHNESS_MS))
@@ -161,7 +151,27 @@ class StopDashTileService : TileService() {
     }
 }
 
-/** The tile's layout for one [TileFrame]. */
+/**
+ * The Tiles timeline for [entries], each drawn by [TileLayout]. An open-ended entry carries no
+ * validity at all, the renderer's default for any time no other entry covers: a start with no end
+ * reads to the renderer as a zero-width interval it never shows, which left the tile blank once every
+ * stop was stale, and before the phone first synced.
+ */
+internal fun tileTimeline(context: Context, entries: List<TileEntry>): TimelineBuilders.Timeline {
+    val timeline = TimelineBuilders.Timeline.Builder()
+    for (entry in entries) {
+        val layout = LayoutElementBuilders.Layout.Builder().setRoot(TileLayout.root(context, entry.frame, entry.notice)).build()
+        val built = TimelineBuilders.TimelineEntry.Builder().setLayout(layout)
+        entry.end?.let { end ->
+            built.setValidity(
+                TimelineBuilders.TimeInterval.Builder().setStartMillis(entry.start.toEpochMilli()).setEndMillis(end.toEpochMilli()).build(),
+            )
+        }
+        timeline.addTimelineEntry(built.build())
+    }
+    return timeline.build()
+}
+
 /**
  * What a screen reader says for [planned]'s calendar, on the tile and in the watch app: "Planned
  * Part Closure from 13 Oct", the day short and in the watch's own locale, as the app says it.
