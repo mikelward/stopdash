@@ -11,8 +11,9 @@ Conventions for AI agents working in this repository.
 `CLAUDE.md` and `GEMINI.md` are symlinks to this file, so every agent reads the same
 conventions. Edit `AGENTS.md`. Bump `last_modified` in the front matter whenever you edit it.
 
-**At the start of every session, print the path of the `AGENTS.md` you loaded and its
-`last_modified` date**, so a stale or wrong copy is caught before it steers the work.
+**At the start of every session, print the full absolute path of the `AGENTS.md` you
+loaded and its `last_modified` date**, so a stale or wrong copy is caught before it
+steers the work.
 
 StopDash is an Android app (Kotlin + Compose; `:app`, a pure-Kotlin `:domain`, `:shared`,
 and a Wear OS `:wear`) that shows live TfL departures for watched stops on the lock screen,
