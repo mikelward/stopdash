@@ -1,27 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <issues format="6" by="lint 9.4.1" type="baseline" client="gradle" dependencies="false" name="AGP (9.4.1)" variant="all" version="9.4.1">
 
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called on the main thread (through `activeTrip$app()`), in composable `StopDashAppRoot { }`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                val tracker = remember { activeTrip(applicationContext) }"
-        errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="817"
-            column="42"/>
-    </issue>
 
-    <issue
-        id="WorkerThreadCall"
-        message="`RouteDisruption.signals` is marked @WorkerThread but called on the main thread (through `activeTrip$app()`), in composable `StopDashAppRoot { }`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                val tracker = remember { activeTrip(applicationContext) }"
-        errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="817"
-            column="42"/>
-    </issue>
 
     <issue
         id="WorkerThreadCall"
@@ -144,27 +124,7 @@
             column="9"/>
     </issue>
 
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called on the main thread (through `routeClosures()`), in composable `RouteList`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                                    found + routeClosures(estimate.route, state, now, dismissed, sequences, rideLines) { routeStops?.hubOf(it) }"
-        errorLine2="                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/TripScreen.kt"
-            line="1484"
-            column="45"/>
-    </issue>
 
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.stopStatusFolded` is marked @WorkerThread but called on the main thread (through `routeClosures()`), in composable `RouteList`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                                    found + routeClosures(estimate.route, state, now, dismissed, sequences, rideLines) { routeStops?.hubOf(it) }"
-        errorLine2="                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/TripScreen.kt"
-            line="1484"
-            column="45"/>
-    </issue>
 
     <issue
         id="WorkerThreadCall"
@@ -177,27 +137,7 @@
             column="35"/>
     </issue>
 
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called on the main thread (through `routeClosures()`), in composable `RouteLegs`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="        routeClosures(estimate.route, state, now, dismissed, sequences, rideLines) { routeStops?.hubOf(it) }"
-        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/TripScreen.kt"
-            line="2093"
-            column="9"/>
-    </issue>
 
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.stopStatusFolded` is marked @WorkerThread but called on the main thread (through `routeClosures()`), in composable `RouteLegs`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="        routeClosures(estimate.route, state, now, dismissed, sequences, rideLines) { routeStops?.hubOf(it) }"
-        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/TripScreen.kt"
-            line="2093"
-            column="9"/>
-    </issue>
 
     <issue
         id="WorkerThreadCall"

@@ -17,6 +17,8 @@ import app.stopdash.domain.LineSequence
 import app.stopdash.domain.NearestStops
 import app.stopdash.domain.TflException
 import java.time.Instant
+import kotlinx.collections.immutable.PersistentSet
+import kotlinx.collections.immutable.persistentSetOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -36,14 +38,19 @@ internal fun rememberLineSequences(lineIds: List<String>, now: Instant): Map<Str
  * meanwhile. A retry is a check running again, not one that failed. [version] changes with each load
  * stored, so a route replaced in place still reads as new.
  */
-internal class LineLoads(val sequences: Map<String, LineSequence?>, val loading: Set<String>, val version: Int = 0)
+internal class LineLoads(val sequences: Map<String, LineSequence?>, val loading: Set<String>, val version: Int = 0, val loadingVersion: Int = 0)
 
 /** [rememberLineSequences], saying which lines' loads are under way ([LineLoads]). */
 @Composable
 internal fun rememberLineLoads(lineIds: List<String>, now: Instant): LineLoads {
     val repository = LocalRouteStops.current
     val loaded = remember { mutableStateMapOf<String, LineSequence?>() }
-    val loading = remember { mutableStateMapOf<String, Unit>() }
+    // The lines loading, one persistent set for each change, a line added or removed without copying
+    // the rest, and never changed once handed out: work under way on the worker reads the set of its own
+    // moment, never a later one (Codex, #529). What keys on it keys on [loadingVersion], bumped on each
+    // change, never on its contents. A load is canceled (and so leaves it) when [lineIds] change.
+    val loading = remember { mutableStateOf<PersistentSet<String>>(persistentSetOf()) }
+    val loadingVersion = remember { mutableIntStateOf(0) }
     // Bumped on each load stored, a retry's included, so what's worked out from the routes can key on it
     // without comparing them (Codex, PR #520).
     val version = remember { mutableIntStateOf(0) }
@@ -57,7 +64,8 @@ internal fun rememberLineLoads(lineIds: List<String>, now: Instant): LineLoads {
                 val held = loaded[lineId]
                 if (held != null && routes.cached(lineId, "") != null) continue
                 launch {
-                    loading[lineId] = Unit
+                    loading.value = loading.value.add(lineId)
+                    loadingVersion.intValue++
                     try {
                         loaded[lineId] = (routes.cached(lineId, "") ?: try {
                             routes.load(lineId, "")
@@ -69,13 +77,14 @@ internal fun rememberLineLoads(lineIds: List<String>, now: Instant): LineLoads {
                             held
                         }).also { version.intValue++ }
                     } finally {
-                        loading.remove(lineId)
+                        loading.value = loading.value.remove(lineId)
+                        loadingVersion.intValue++
                     }
                 }
             }
         }
     }
-    return LineLoads(lineIds.filter { it in loaded }.associateWith { loaded[it] }, lineIds.filterTo(HashSet()) { it in loading }, version.intValue)
+    return LineLoads(lineIds.filter { it in loaded }.associateWith { loaded[it] }, loading.value, version.intValue, loadingVersion.intValue)
 }
 
 /**

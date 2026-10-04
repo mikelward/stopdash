@@ -662,11 +662,14 @@ class TripViewModelTest {
         trip.refreshFor(null)
         advanceUntilIdle()
         assertEquals(2, client.asked.size)
+        val before = trip.state.value.failures
         key.value = "EXAMPLE"
         advanceUntilIdle()
         // Nothing fetched under the old key stays up, and nothing is fetched while the trip is away.
         assertTrue(trip.state.value.live.isEmpty())
         assertEquals(2, client.asked.size)
+        // Withdrawn as a failure is, so a frame drawn from them never stands in (Codex, #529).
+        assertEquals(before + 1, trip.state.value.failures)
         // Shown again for the same re-pick, it fetches afresh.
         trip.refreshFor(null)
         advanceUntilIdle()
@@ -692,6 +695,41 @@ class TripViewModelTest {
         key.value = "EXAMPLE"
         runCurrent()
         gate.complete(Unit)
+        advanceUntilIdle()
+        assertTrue(trip.state.value.live.isEmpty())
+    }
+
+    @Test
+    fun `a trip's arrivals in when the National Rail key changes during their check aren't shown`() = runTest(dispatcher) {
+        val key = MutableStateFlow<String?>(null)
+        val base = FakeClient(mutableMapOf("A" to listOf(train("red", "B", 9))))
+        // Once every request is answered, the next hop to the worker (the check of what they changed) is
+        // held, and the key changes while it is.
+        var answered = 0
+        var hold = false
+        val held = mutableListOf<Pair<CoroutineContext, Runnable>>()
+        val io = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (hold) held += context to block else dispatcher.dispatch(context, block)
+            }
+        }
+        val client = object : TflClient by base {
+            override suspend fun arrivals(stopId: String): List<Departure> = base.arrivals(stopId).also { if (++answered == 3) hold = true }
+            override suspend fun arrivals(stopId: String, railBoard: Boolean): List<Departure> = arrivals(stopId)
+            override suspend fun lineStatuses(lineIds: Collection<String>): List<LineStatus> =
+                base.lineStatuses(lineIds).also { if (++answered == 3) hold = true }
+        }
+        val trip = TripViewModel(
+            FakePlanner(listOf(route)), client, "A", listOf(TripDestination.Stop("C")), clock = { now }, plans = TripPlans(), io = io,
+            departureSourceChanges = key,
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue("nothing held", held.isNotEmpty())
+        key.value = "EXAMPLE"
+        advanceUntilIdle()
+        hold = false
+        held.toList().also { held.clear() }.forEach { (context, block) -> dispatcher.dispatch(context, block) }
         advanceUntilIdle()
         assertTrue(trip.state.value.live.isEmpty())
     }
@@ -1437,6 +1475,8 @@ class TripViewModelTest {
         advanceUntilIdle()
         assertEquals(listOf(route), trip.state.value.routes)
         assertTrue(trip.state.value.planIncomplete)
+        // A plan failing in part moves the failure generation (Codex, #529).
+        assertTrue(trip.state.value.failures >= 1)
         assertNull(trip.state.value.planError)
         assertNull(plans.get("A", listOf("C", "D").map { TripDestination.Stop(it) }))
     }
@@ -1871,6 +1911,33 @@ class TripViewModelTest {
         // blank, as any failed refresh does (SPEC *When something is wrong*).
         assertEquals(listOf("A", "A", "B", "B"), client.asked.sorted())
         assertEquals(TripViewModel.StopLive(before, now.minusSeconds(30), failed = true), trip.state.value.live["A"])
+    }
+
+    @Test
+    fun `a new failure moves the failure generation, a repeated one doesn't`() = runTest(dispatcher) {
+        // What's drawn from an earlier state tells by it that something has since failed, even when as
+        // many things fail as before (Codex, #529).
+        val client = FakeClient(mutableMapOf("A" to listOf(train("red", "B", 9))))
+        val trip = model(FakePlanner(listOf(route)), client)
+        trip.refresh()
+        advanceUntilIdle()
+        val start = trip.state.value.failures
+        client.failStops = setOf("A")
+        now = now.plusSeconds(30)
+        trip.pullRefresh()
+        advanceUntilIdle()
+        assertEquals(start + 1, trip.state.value.failures)
+        // A again: nothing new has failed.
+        now = now.plusSeconds(30)
+        trip.pullRefresh()
+        advanceUntilIdle()
+        assertEquals(start + 1, trip.state.value.failures)
+        // A answers, B fails: as many fail as before, but B newly.
+        client.failStops = setOf("B")
+        now = now.plusSeconds(30)
+        trip.pullRefresh()
+        advanceUntilIdle()
+        assertEquals(start + 2, trip.state.value.failures)
     }
 
     @Test
@@ -2518,9 +2585,23 @@ class TripViewModelTest {
         assertFalse("As" in client.asked)
         // Not fetched, the screen keeps the Planner's stand.
         assertEquals("As2", onPoles(trip.state.value, mapOf("1" to atStation)).routes.orEmpty().single().legs.single().fromId)
+        val before = trip.state.value.failures
         trip.boardAt(setOf(atRouteStand))
         advanceUntilIdle()
         assertEquals(listOf(north), trip.state.value.live["As"]?.departures)
+        // The leg moves to it now it's fetched: what was drawn from the Planner's stand no longer stands
+        // (Codex, #529).
+        assertTrue(trip.state.value.failures > before)
+        // Let go of while fetched, and placed again with its arrivals still held (no fetch): each moves the
+        // leg at once, so each moves the generation too (Codex, #529).
+        val placedBefore = trip.state.value.failures
+        trip.boardAt(emptySet())
+        advanceUntilIdle()
+        assertTrue(trip.state.value.failures > placedBefore)
+        val againBefore = trip.state.value.failures
+        trip.boardAt(setOf(atRouteStand))
+        advanceUntilIdle()
+        assertTrue(trip.state.value.failures > againBefore)
         // Logged once, by stop and line ids, for a bug report to show whether the move was made.
         assertEquals(listOf("trip bus 1 boards at the route's stand As, not the Planner's As2"), logged.filter { "route's stand" in it })
         // Fetched, the leg boards there and its bus times it.
@@ -2569,6 +2650,35 @@ class TripViewModelTest {
         assertFalse(legLoading(planners, fromStand, mapOf("1" to calls)))
         // The route failed: the Planner's stand's times stand, as at a stop pair.
         assertFalse(legLoading(planners, fromStand, mapOf("1" to null)))
+    }
+
+    @Test
+    fun `a stop pair placed after its lookup failed moves the failure generation`() = runTest(dispatcher) {
+        // Its lookup failing, the ride boards at the Planner's stop; placed on the next refresh, it moves
+        // to its pole, so what was drawn from the Planner's stop no longer stands (Codex, #529).
+        var lookupFails = true
+        var t = now
+        val client = FakeClient(mutableMapOf("Bs" to emptyList(), "Bn" to emptyList()))
+        val trip = TripViewModel(
+            FakePlanner(listOf(TripRoute(listOf(plannerBus)))), client, "A", listOf(TripDestination.Stop("C")), clock = { t },
+            plans = TripPlans(), io = dispatcher,
+            poles = { if (lookupFails) throw TflException.Offline(null) else listOf("Bn", "Bs") },
+        )
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue(trip.state.value.areaPoles.isEmpty())
+        val before = trip.state.value.failures
+        lookupFails = false
+        t = t.plus(Duration.ofMinutes(2))
+        // Held at the new pole's arrivals: the state as placed, before this refresh's answers are in.
+        val held = CompletableDeferred<Unit>()
+        client.gates["Bn"] = held
+        trip.refresh()
+        runCurrent()
+        assertEquals(listOf("Bn", "Bs"), trip.state.value.areaPoles["BG"])
+        assertEquals(before + 1, trip.state.value.failures)
+        held.complete(Unit)
+        advanceUntilIdle()
     }
 
     @Test
@@ -2632,6 +2742,8 @@ class TripViewModelTest {
         trip.boardAt(setOf(atRouteStand))
         advanceUntilIdle()
         assertEquals(true, trip.state.value.live["As"]?.failed)
+        // Told by a new failure generation, for what's drawn from an earlier state (Codex, #529).
+        assertTrue(trip.state.value.failures >= 1)
     }
 
     @Test
@@ -3158,6 +3270,126 @@ class TripViewModelTest {
         advanceUntilIdle()
         assertTrue("green" !in fresh.state.value.statuses)
         assertEquals(emptySet<String>(), fresh.state.value.statusUnknown)
+    }
+
+    @Test
+    fun `a status check failing wholly after failing in part moves the failure generation`() = runTest(dispatcher) {
+        // One line failed already; then the whole check fails, every line newly failed but the one
+        // (Codex, #529).
+        // Line ids long enough that TfL needs a request for each (LineStatusBatch), so one can fail alone.
+        val first = "red-" + "x".repeat(150)
+        val second = "blue-" + "y".repeat(150)
+        val long = TripRoute(listOf(leg(first, "A", "B", 5, 15), leg(second, "B", "C", 20, 30)))
+        val client = FakeClient(mutableMapOf())
+        val trip = model(FakePlanner(listOf(long)), client)
+        client.failLines = setOf(second)
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(setOf(second), trip.state.value.statusFailedLines)
+        val before = trip.state.value.failures
+        client.failStatus = true
+        now = now.plus(Duration.ofMinutes(2))
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue(trip.state.value.statusFailed)
+        assertEquals(before + 1, trip.state.value.failures)
+    }
+
+    @Test
+    fun `a status answered differently moves the failure generation, the same answer doesn't`() = runTest(dispatcher) {
+        // A line now disrupted: what was drawn from it running well can't stand (Codex, #529). The same
+        // answer again leaves the generation be, so a refresh doesn't drop what's drawn for nothing.
+        val client = FakeClient(mutableMapOf("A" to listOf(train("red", "End", 2))))
+        val trip = model(FakePlanner(listOf(route)), client)
+        trip.refresh()
+        advanceUntilIdle()
+        val before = trip.state.value.failures
+        now = now.plus(Duration.ofMinutes(2))
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(before, trip.state.value.failures)
+        client.disruptedLines = setOf("red")
+        now = now.plus(Duration.ofMinutes(2))
+        trip.refresh()
+        advanceUntilIdle()
+        assertEquals(before + 1, trip.state.value.failures)
+    }
+
+    @Test
+    fun `a line TfL leaves out of a later answer moves the failure generation`() = runTest(dispatcher) {
+        // Answered before, then left out: its status goes, so what was drawn from it can't stand
+        // (Codex, #529).
+        val client = FakeClient(mutableMapOf("A" to listOf(train("red", "End", 2))))
+        val trip = model(FakePlanner(listOf(route)), client)
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue("red" in trip.state.value.statuses)
+        val before = trip.state.value.failures
+        client.omitLines = setOf("red")
+        now = now.plus(Duration.ofMinutes(2))
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue("red" in trip.state.value.statusUnknown)
+        assertEquals(before + 1, trip.state.value.failures)
+    }
+
+    @Test
+    fun `another line at a boarding stop TfL leaves out of a later answer moves the failure generation`() = runTest(dispatcher) {
+        // Not one of the plan's lines, but its status goes all the same (Codex, #529).
+        val client = FakeClient(mutableMapOf("A" to listOf(train("red", "End", 2), train("green", "End", 3))))
+        val trip = model(FakePlanner(listOf(route)), client)
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue("green" in trip.state.value.statuses)
+        val before = trip.state.value.failures
+        client.omitLines = setOf("green")
+        now = now.plus(Duration.ofMinutes(2))
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue("green" !in trip.state.value.statuses)
+        assertEquals(before + 1, trip.state.value.failures)
+    }
+
+    @Test
+    fun `a line first seen in arrivals whose own check fails moves the failure generation`() = runTest(dispatcher) {
+        // Its late check fails alone: what's drawn from an earlier state tells it has (Codex, #529).
+        val arrivals = mutableMapOf("A" to listOf(train("red", "End", 2)))
+        val client = FakeClient(arrivals)
+        val trip = model(FakePlanner(listOf(route)), client)
+        trip.refresh()
+        advanceUntilIdle()
+        val before = trip.state.value.failures
+        arrivals["A"] = listOf(train("red", "End", 2), train("green", "End", 3))
+        client.failLines = setOf("green")
+        now = now.plus(Duration.ofMinutes(2))
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue("green" in trip.state.value.statusFailedLines)
+        assertEquals(before + 1, trip.state.value.failures)
+    }
+
+    @Test
+    fun `a line held before that a late check leaves out moves the failure generation`() = runTest(dispatcher) {
+        // Green's status held from before; it comes back to the board and its own late check leaves it
+        // out: its status goes, so what was drawn from it can't stand (Codex, #529).
+        val arrivals = mutableMapOf("A" to listOf(train("red", "End", 2), train("green", "End", 3)))
+        val client = FakeClient(arrivals)
+        val trip = model(FakePlanner(listOf(route)), client)
+        trip.refresh()
+        advanceUntilIdle()
+        arrivals["A"] = listOf(train("red", "End", 2))
+        now = now.plus(Duration.ofMinutes(2))
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue("green" in trip.state.value.statuses)
+        val before = trip.state.value.failures
+        arrivals["A"] = listOf(train("red", "End", 2), train("green", "End", 3))
+        client.omitLines = setOf("green")
+        now = now.plus(Duration.ofMinutes(2))
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue("green" !in trip.state.value.statuses)
+        assertEquals(before + 1, trip.state.value.failures)
     }
 
     @Test
