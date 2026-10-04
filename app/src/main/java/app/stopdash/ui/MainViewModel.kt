@@ -2137,23 +2137,42 @@ class MainViewModel(
      * past the walking reach refresh less often, and the shown stops take their new nearer places
      * now, before any refetch returns, so the rows hide by where the rider is rather than where they
      * were ([Terminating]); the widget's stored copy too, whether or not that refetch succeeds.
-     * [reconcile] runs it; so does an opened farther card's model when the rider moves.
+     * [reconcile] runs it; so does an opened farther card's model when the rider moves. The shown
+     * stops' places are worked out on [compute], over the nearby stops as held now, and published if
+     * no newer fix has come since; one worked out from a state replaced meanwhile is worked out again.
      */
     fun remeasure(newDistanceMeters: Map<String, Double>) {
         stopDistanceMeters = newDistanceMeters
+        val asked = ++remeasures
         // The nearest-first order and the stop each line shows from, stored at every fix so the widget
         // folds by where the rider is now whether or not the refresh that follows succeeds (Codex on
         // #473); the distances themselves are never stored. The choices can change with no change of
         // order (a route's directions kept together within a few meters); the store writes only what
         // changed.
-        updateWidgetNearestFirst(widgetChoicesInput(newDistanceMeters))
-        (_state.value as? DeparturesUiState.Loaded)?.let { loaded ->
-            remeasured(loaded, nearbyPlaces())?.let { moved ->
-                _state.value = moved
-                updateWidgetNearer(moved.stops.associate { it.stopId to it.nearer })
+        val choicesFrom = widgetChoicesInput(newDistanceMeters)
+        updateWidgetNearestFirst(choicesFrom)
+        viewModelScope.launch {
+            while (true) {
+                val loaded = _state.value as? DeparturesUiState.Loaded ?: return@launch
+                val moved = withContext(compute) {
+                    val places = nearbyPlacesOf(choicesFrom.eager, choicesFrom.more, newDistanceMeters)
+                    remeasured(loaded, places)?.let { it to it.stops.associate { stop -> stop.stopId to stop.nearer } }
+                }
+                // A newer fix's own pass owns the places now.
+                if (asked != remeasures) return@launch
+                // The state changed while this was out (a refresh landed): worked out again from it.
+                if (_state.value !== loaded) continue
+                moved?.let { (state, nearer) ->
+                    _state.value = state
+                    updateWidgetNearer(nearer)
+                }
+                return@launch
             }
         }
     }
+
+    // How many fixes [remeasure] has taken: a pass for an older one doesn't publish.
+    private var remeasures = 0
 
     /**
      * What the widget's order and line choices are worked out from at [distances]: this model's nearby

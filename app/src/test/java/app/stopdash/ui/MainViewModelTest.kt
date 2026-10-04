@@ -66,6 +66,7 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -4001,12 +4002,39 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `a relocation while an opened card is measured measures it from the new fix`() = runTest(dispatcher) {
+        val scheduler = kotlinx.coroutines.test.TestCoroutineScheduler()
+        val held = kotlinx.coroutines.test.StandardTestDispatcher(scheduler)
+        // The stop sits at the new fix.
+        val cards = FartherCardsViewModel(
+            stationStops = { listOf(fartherStop.copy(latitude = 51.51)) },
+            newModel = { stops, distances -> MainViewModel(twoStopClient(), stops, clock = { now }, io = dispatcher, stopDistanceMeters = distances) },
+            io = dispatcher,
+            compute = held,
+        )
+        cards.open(fartherPlace, Coordinates(51.5, 0.0))
+        advanceUntilIdle()
+        scheduler.advanceUntilIdle()
+        advanceUntilIdle()
+        // The lookup is in; its stops are being measured from the old fix when the rider moves.
+        cards.retain(listOf(fartherPlace), Coordinates(51.51, 0.0))
+        repeat(10) {
+            scheduler.advanceUntilIdle()
+            advanceUntilIdle()
+        }
+        val open = cards.cards.value[fartherPlace.key] as FartherLoad.Open
+        assertEquals(0.0, open.distanceMeters.getValue("MA"), 1.0)
+        assertEquals(0.0, openModel(cards).distanceMeters.getValue("MA"), 1.0)
+    }
+
+    @Test
     fun `a farther station no longer offered closes, and its model with it`() = runTest(dispatcher) {
         val cards = fartherCards { listOf(fartherStop) }
         cards.open(fartherPlace, Coordinates(0.0, 0.0))
         advanceUntilIdle()
         val model = openModel(cards)
         cards.retain(emptyList(), Coordinates(0.0, 0.0))
+        advanceUntilIdle()
         assertTrue(cards.cards.value.isEmpty())
         assertFalse("the closed card's model is cleared", model.viewModelScope.coroutineContext[kotlinx.coroutines.Job]!!.isActive)
     }
@@ -4414,6 +4442,7 @@ class MainViewModelTest {
         advanceUntilIdle()
         assertEquals(1_112.0, openModel(cards).distanceMeters.getValue("MA"), 5.0)
         cards.retain(listOf(fartherPlace), Coordinates(51.51, 0.0))
+        advanceUntilIdle()
         assertEquals(0.0, openModel(cards).distanceMeters.getValue("MA"), 1.0)
     }
 
@@ -5258,6 +5287,101 @@ class MainViewModelTest {
             assertEquals(listOf("E"), shownIds(vm))
             assertTrue(reads.isNotEmpty())
             assertEquals(setOf("reconcile-worker"), reads.toSet())
+        } finally {
+            store.clear()
+            worker.close(this)
+        }
+    }
+
+    @Test
+    fun `a relocation's farther cards are re-measured on the worker thread`() = runTest(dispatcher) {
+        // The offered places, in a list that notes each thread going through it, are gone through on
+        // the worker, never on the main thread the relocation is reported on.
+        val worker = TestWorker("retain-worker")
+        val store = androidx.lifecycle.ViewModelStore()
+        try {
+            val cards = androidx.lifecycle.ViewModelProvider.create(
+                store,
+                androidx.lifecycle.viewmodel.viewModelFactory {
+                    initializer {
+                        FartherCardsViewModel(
+                            stationStops = { listOf(fartherStop) },
+                            newModel = { stops, distances ->
+                                MainViewModel(twoStopClient(), stops, clock = { now }, io = dispatcher, stopDistanceMeters = distances)
+                            },
+                            io = dispatcher,
+                            compute = worker,
+                        )
+                    }
+                },
+            )[FartherCardsViewModel::class]
+            cards.open(fartherPlace, Coordinates(0.0, 0.0))
+            repeat(50) {
+                if (cards.cards.value[fartherPlace.key] is FartherLoad.Open) return@repeat
+                worker.flush()
+                advanceUntilIdle()
+            }
+            val opened = cards.cards.value[fartherPlace.key] as FartherLoad.Open
+            assertEquals(0.0, opened.distanceMeters.getValue("MA"), 0.001)
+            val reads = java.util.Collections.synchronizedList(mutableListOf<String>())
+            cards.retain(NotingList(listOf(fartherPlace), reads), Coordinates(0.001, 0.0))
+            // Nothing is worked out on the caller's thread: the card stands as it was until the worker answers.
+            assertSame(opened, cards.cards.value[fartherPlace.key])
+            repeat(50) {
+                if (cards.cards.value[fartherPlace.key] !== opened) return@repeat
+                worker.flush()
+                advanceUntilIdle()
+            }
+            val moved = cards.cards.value[fartherPlace.key] as FartherLoad.Open
+            assertTrue("measured from the new fix: ${moved.distanceMeters}", moved.distanceMeters.getValue("MA") > 100.0)
+            assertTrue(reads.isNotEmpty())
+            assertEquals(setOf("retain-worker"), reads.toSet())
+        } finally {
+            store.clear()
+            worker.close(this)
+        }
+    }
+
+    @Test
+    fun `a farther card's model takes a new fix's places on the worker thread`() = runTest(dispatcher) {
+        // The model's nearby stops, in a list that notes each thread going through it, are gone
+        // through on the worker when a new fix re-measures them.
+        val worker = TestWorker("remeasure-worker")
+        val store = androidx.lifecycle.ViewModelStore()
+        try {
+            val reads = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val stops = NotingList(listOf(StopRef("E", "E"), StopRef("MA", "MA")), reads)
+            val vm = androidx.lifecycle.ViewModelProvider.create(
+                store,
+                androidx.lifecycle.viewmodel.viewModelFactory {
+                    initializer {
+                        MainViewModel(
+                            twoStopClient(), stops, clock = { now }, io = worker, compute = worker,
+                            stopDistanceMeters = mapOf("E" to 100.0, "MA" to 900.0),
+                        )
+                    }
+                },
+            )[MainViewModel::class]
+            vm.state.first { it is DeparturesUiState.Loaded && it.pendingStops.isEmpty() }
+            // The first refresh done, with nothing left of it to run: its own setup goes through the
+            // stops on the main thread still (TODO.md), and it isn't what's checked here.
+            var rounds = 0
+            while (vm.refreshing.value && rounds++ < 50) {
+                worker.flush()
+                advanceUntilIdle()
+            }
+            worker.flush()
+            advanceUntilIdle()
+            assertFalse(vm.refreshing.value)
+            reads.clear()
+            vm.remeasure(mapOf("E" to 900.0, "MA" to 100.0))
+            worker.flush()
+            advanceUntilIdle()
+            worker.flush()
+            advanceUntilIdle()
+            assertEquals(mapOf("E" to 900.0, "MA" to 100.0), vm.distanceMeters)
+            assertTrue(reads.isNotEmpty())
+            assertEquals(setOf("remeasure-worker"), reads.toSet())
         } finally {
             store.clear()
             worker.close(this)
