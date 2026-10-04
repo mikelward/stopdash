@@ -120,6 +120,7 @@ import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTiming
 import app.stopdash.domain.riderLineName
+import app.stopdash.domain.HeadedCard
 import app.stopdash.domain.headedCards
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.MaxWalk
@@ -1499,8 +1500,24 @@ private fun RouteList(
 ) {
     // Which card gets there soonest, which rides fewest and which walks least, over each, then
     // the rest under "Other" (maintainer, 2026-09-30): worked out once per set of cards, not on
-    // every recomposition (off the main thread with the rest of the card work, TODO.md).
-    val shown = remember(cards) { headedCards(cards.map { it.first() }) }
+    // every recomposition, on the worker (Codex, #535). As the clock moves the cards on, the last
+    // cards stand in with their own headers for the moment the new ones take, never the last headers
+    // over the new cards, which may rank otherwise; before any are in, the cards stand in their own
+    // order, unheaded, rather than a blank list.
+    val headedWork = remember { mutableStateOf<Worked<Inputs, Pair<List<List<TripTiming.Estimate>>, List<HeadedCard>>>?>(null) }
+    // Only within one plan (the clock's ticks and refreshes), never across plans, where a route gone
+    // would linger; nor across no cards and some, where the last cards would stand beside "No
+    // routes", or none in for new ones. A route hidden or avoided can stand for one worker run
+    // (TODO.md); judging the cards' routes alike here would be the per-card work the worker is for.
+    val headed = rememberWorked(
+        headedWork,
+        Inputs(cards, cards.isEmpty(), state.routes),
+        keep = { held, wanted -> held.parts[1] == false && wanted.parts[1] == false && held.parts[2] === wanted.parts[2] },
+    ) {
+        cards to headedCards(cards.map { it.first() })
+    }
+    val listed = headed?.first ?: cards
+    val order = headed?.second
     // The width of the list's widest pill ([pillSlotWidthPx]), worked out on the worker: each row's pill
     // column is that wide, so every stop name starts in one place down the list, a cut pill's row too
     // (maintainer, 2026-10-04). Never the last list's, which may be narrower than a pill now shown:
@@ -1556,14 +1573,17 @@ private fun RouteList(
         // row per ride, and the first ride's times for every line together. The card is one choice
         // (maintainer, 2026-09-27): tapping it opens the best of its routes, and a long press
         // anywhere offers to hide each group any of its legs rides.
-        items(shown, key = { cardKey(cards[it.index].first().route) }) { headed ->
-            val card = cards[headed.index]
+        // Each card under its header once that's in (one call either way, so a card keeps what it
+        // worked out as its header comes in).
+        items(listed.size, key = { cardKey(listed[order?.get(it)?.index ?: it].first().route) }) { position ->
+            val header = order?.get(position)?.header.orEmpty()
+            val card = listed[order?.get(position)?.index ?: position]
             val modes = remember(card) { cardModes(card) }
             var menuOpen by remember { mutableStateOf(false) }
             val onLongPress = if (onHideMode != null && modes.isNotEmpty()) ({ menuOpen = true }) else null
             val moreLabel = stringResource(R.string.more_actions)
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (headed.header.isNotEmpty()) RouteLabelHeader(headed.header)
+                if (header.isNotEmpty()) RouteLabelHeader(header)
                 Box {
                     // Each row takes the card's tap and long press itself: a clickable card would merge
                     // its rows into one, and a screen reader would lose the rows' own times.
