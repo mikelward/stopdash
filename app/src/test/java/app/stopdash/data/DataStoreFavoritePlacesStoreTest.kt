@@ -159,4 +159,16 @@ class DataStoreFavoritePlacesStoreTest {
         assertEquals(future, backing.data.first())
         assertTrue(warnings.isNotEmpty())
     }
+
+    @Test
+    fun `the favorite places are mapped off the caller's thread`() {
+        // Mapped on the store's worker, never the collector's (main) thread (AGENTS.md *Main thread: read
+        // and dispatch only*): collected from a thread of its own, the stored list is read on the worker's.
+        OffMainReads().use { reads ->
+            val stored = PersistedFavoritePlaces(places = reads.recorded(PersistedFavoritePlace("p", "CUSTOM", "Place", 0.0, 0.0)))
+            reads.fromCaller { DataStoreFavoritePlacesStore(reads.dataStore<PersistedFavoritePlaces?>(stored), compute = reads.worker).places().first() }
+            assertTrue(reads.reads.isNotEmpty())
+            assertEquals(setOf(OffMainReads.WORKER), reads.reads.toSet())
+        }
+    }
 }

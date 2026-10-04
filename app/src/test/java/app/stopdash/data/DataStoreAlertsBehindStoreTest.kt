@@ -15,6 +15,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -104,5 +105,17 @@ class DataStoreAlertsBehindStoreTest {
         assertEquals(mapOf(verdict to t0), back?.toDomain())
         // An empty file is nothing saved yet.
         assertSame(null, AlertsBehindSerializer.readFrom(ByteArrayInputStream(ByteArray(0))))
+    }
+
+    @Test
+    fun `the verdicts are mapped off the caller's thread`() {
+        // Mapped on the store's worker, never the collector's (main) thread (AGENTS.md *Main thread: read
+        // and dispatch only*): collected from a thread of its own, the stored list is read on the worker's.
+        OffMainReads().use { reads ->
+            val stored = PersistedAlertsBehind(verdicts = reads.recorded(PersistedAlertBehind("victoria", "fingerprint", "940GZZLUKSX", atMillis = 0)))
+            reads.fromCaller { DataStoreAlertsBehindStore(reads.dataStore<PersistedAlertsBehind?>(stored), compute = reads.worker).verdicts().first() }
+            assertTrue(reads.reads.isNotEmpty())
+            assertEquals(setOf(OffMainReads.WORKER), reads.reads.toSet())
+        }
     }
 }
