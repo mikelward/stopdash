@@ -2037,43 +2037,49 @@ class MainActivity : ComponentActivity() {
                     // sets the banner before calling here, so a retained or last-known fix (banner
                     // up) holds nothing back, as on the screen.
                     val fixConfirmed = locationBanner.value == null
-                    val drop = Journeys.stopIdsToHoldBack(
-                        savedJourneys.orEmpty(),
-                        fresh.location.latitude,
-                        fresh.location.longitude,
-                        fixConfirmed = fixConfirmed,
-                        revealed = shownFarReveal.revealed,
-                        stopIdsByJourney = journeyStopIds.value,
-                        openJourneyKey = openJourneyKey.value,
-                    )
-                    // One the fix releases (back in range, or an unconfirmed fix that holds nothing
-                    // back) waits for the screen to report its stops, so the refresh runs once with
-                    // them (its new card always changes that report). One the screen already shows
-                    // (revealed, or its own view open) isn't waited on. Nor, the same way, is the
-                    // old origin of a shown journey the fix turns round: its turned card reports
-                    // the other end, rather than the refresh starting on the old one and again.
+                    // Read here; the journeys are weighed on the worker with the rest of the reconcile.
+                    val journeys = savedJourneys.orEmpty()
+                    val revealed = shownFarReveal.revealed
+                    val stopIdsByJourney = journeyStopIds.value
+                    val openKey = openJourneyKey.value
+                    val farKeys = farJourneyMeters.keys
                     val shownFix = journeyStopsFix.value
-                    val await = Journeys.releasesHeldJourney(
-                        savedJourneys.orEmpty(),
-                        fresh.location.latitude,
-                        fresh.location.longitude,
-                        fixConfirmed = fixConfirmed,
-                        heldNow = farJourneyMeters.keys - journeyStopIds.value.keys,
-                    ) || Journeys.turnsShownJourney(
-                        savedJourneys.orEmpty(),
-                        shownFix?.latitude,
-                        shownFix?.longitude,
-                        fresh.location.latitude,
-                        fresh.location.longitude,
-                        shown = journeyStopIds.value.keys,
-                    )
                     viewModel.reconcile(
                         fresh.eager,
                         fresh.more,
                         fresh.distanceMeters,
-                        dropJourneyStopIds = drop,
-                        awaitJourneyStops = await,
-                    )
+                    ) {
+                        val drop = Journeys.stopIdsToHoldBack(
+                            journeys,
+                            fresh.location.latitude,
+                            fresh.location.longitude,
+                            fixConfirmed = fixConfirmed,
+                            revealed = revealed,
+                            stopIdsByJourney = stopIdsByJourney,
+                            openJourneyKey = openKey,
+                        )
+                        // One the fix releases (back in range, or an unconfirmed fix that holds nothing
+                        // back) waits for the screen to report its stops, so the refresh runs once with
+                        // them (its new card always changes that report). One the screen already shows
+                        // (revealed, or its own view open) isn't waited on. Nor, the same way, is the
+                        // old origin of a shown journey the fix turns round: its turned card reports
+                        // the other end, rather than the refresh starting on the old one and again.
+                        val await = Journeys.releasesHeldJourney(
+                            journeys,
+                            fresh.location.latitude,
+                            fresh.location.longitude,
+                            fixConfirmed = fixConfirmed,
+                            heldNow = farKeys - stopIdsByJourney.keys,
+                        ) || Journeys.turnsShownJourney(
+                            journeys,
+                            shownFix?.latitude,
+                            shownFix?.longitude,
+                            fresh.location.latitude,
+                            fresh.location.longitude,
+                            shown = stopIdsByJourney.keys,
+                        )
+                        MainViewModel.JourneyChanges(drop, await)
+                    }
                     // The opened farther cards refresh with the list; a relocation that stops
                     // offering one closes it once the picks are redone ([FartherCardsViewModel.retain]).
                     fartherModels.refresh()

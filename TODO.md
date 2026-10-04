@@ -48,13 +48,12 @@ exercises the whole spine the widget later renders from.
 - [x] The trip tracker off the main thread (#536): `restore`, `start`, `goTo`, `end` and `refresh`
       each hop to `compute` before taking the tracker's lock, so a refresh's step, a tap's move, a
       start and a restore walk the trip's route on the worker.
-- [ ] Nearby stops chosen off the main thread: #537 moved `resolveFrom`'s work after its lookup to
+- [x] Nearby stops chosen off the main thread: #537 moved `resolveFrom`'s work after its lookup to
       the worker, and made `State.Ready`'s `eagerStops`, `nearbyStops`, `clusterSetKey` and the
       widget's `eagerStopIds` values worked out with the set; the trip origins worked out from it
-      (`rememberHereOrigin`) followed onto the worker. Still on the main thread: a relocation that
-      keeps the same cluster set: `reconcileSameSet` (the saved journeys through
-      `stopIdsToHoldBack`, `releasesHeldJourney`, `turnsShownJourney`) and `MainViewModel.reconcile`
-      (the fetched-stop sets, the eager tier, the loaded stops filtered and measured again).
+      (`rememberHereOrigin`) followed onto the worker. A relocation that keeps the same cluster set
+      (`MainViewModel.reconcile`, with `reconcileSameSet`'s journey checks) is worked out on the
+      worker too, and applied, prune first, before its refetch.
 - [ ] The smaller per-tick and per-recomposition passes: the main screen's `emptyStateUncertain`
       (every stop, every tick); the route page's stop ids, `journeysHere`, `byLift` and `stepFree`
       (every recomposition); the On the way screen's rows (every tick); `MainActivity`'s saved
@@ -68,7 +67,9 @@ exercises the whole spine the widget later renders from.
       `withBundledPositions`). The DataStore stores (starred rows and journeys, dismissed alerts, alerts
       behind, favorite places) now read and map on the worker (#538). Not a closed list: sweep the screens, the stores, and every view-model
       function a click handler or effect calls, for any pass over a collection that grows with its
-      input on the main thread before checking it off. (The licenses dialog now opens the tapped
+      input on the main thread before checking it off. Known still there: `MainViewModel.remeasure`
+      as an opened farther card's model calls it, `refresh`'s nearby places (`nearbyPlacesOf`), and
+      `setJourneyStops`' comparisons. (The licenses dialog now opens the tapped
       library as it is, and finds a restored one again on the worker.)
 - [ ] Clear the `WorkerThreadCall` lint baseline (`app/lint-baseline.xml`): composition that reaches a
       `@WorkerThread` domain function, directly or through a helper, today MainScreen's near-me rows,

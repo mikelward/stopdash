@@ -184,6 +184,7 @@ object Journeys {
      * one, wouldn't re-report a stop dropped on it. Nor the [openJourneyKey] journey's, which the
      * screen keeps however far while its own view is open.
      */
+    @WorkerThread
     fun stopIdsToHoldBack(
         journeys: List<StarredJourney>,
         latitude: Double?,
@@ -203,6 +204,7 @@ object Journeys {
      * (held back and not on screen), so the screen will add its stops: one now within a mile, or
      * any on a fix that isn't [fixConfirmed], which holds nothing back.
      */
+    @WorkerThread
     fun releasesHeldJourney(
         journeys: List<StarredJourney>,
         latitude: Double?,
@@ -221,6 +223,7 @@ object Journeys {
      * them): its other end is now the nearer, so its origin, and the stops to fetch, change. The new
      * origin isn't known until the screen builds the turned card, so the refresh waits for that report.
      */
+    @WorkerThread
     fun turnsShownJourney(
         journeys: List<StarredJourney>,
         shownLatitude: Double?,

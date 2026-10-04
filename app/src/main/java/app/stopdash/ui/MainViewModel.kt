@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import androidx.annotation.WorkerThread
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.stopdash.domain.ArrivalsCache
@@ -238,13 +239,7 @@ class MainViewModel(
     internal val distanceMeters: Map<String, Double> get() = stopDistanceMeters
     private var more: List<NearbySelection.NearbyCluster> = initialMore
 
-    private fun nearbyPlaces(): List<Terminating.Place> {
-        val all = eagerStops.map { Triple(it.id, it.clusterId, it.name) } +
-            more.flatMap { cluster -> cluster.stops.map { Triple(it.id, it.clusterId, it.name) } }
-        return all.mapNotNull { (id, cluster, name) ->
-            stopDistanceMeters[id]?.let { Terminating.Place(id, cluster, name, it) }
-        }
-    }
+    private fun nearbyPlaces(): List<Terminating.Place> = nearbyPlacesOf(eagerStops, more, stopDistanceMeters)
 
     // The near-me set actually fetched and shown: the eager tier.
     private val nearStops: List<StopRef>
@@ -259,18 +254,15 @@ class MainViewModel(
     private var refreshAwaitsJourneyStops = false
 
     private val fetchedStops: List<StopRef>
-        get() {
-            val near = nearStops
-            val nearIds = near.mapTo(HashSet()) { it.id }
-            // A nearby stop that is also a journey origin declares the journey's lines too, so their
-            // status is checked (a suspended one with no predictions still shows on the card).
-            val journeyLines = journeyStops.associate { it.id to it.lines }
-            val merged = near.map { stop ->
-                val extra = journeyLines[stop.id] ?: return@map stop
-                stop.copy(lines = (stop.lines + extra).distinctBy { it.id })
-            }
-            return merged + journeyStops.filter { it.id !in nearIds }
-        }
+        get() = fetchedOf(nearStops, journeyStops)
+
+    // A same-set reconcile worked out on the worker and not yet applied: a refresh waits for it
+    // ([reconcile]), and the screen's journey-stop report is noted for it.
+    private var reconcileJob: Job? = null
+    private var reconcilePending = false
+    private var reportedDuringReconcile = false
+    // The journey stops the screen reported while it was on the worker: newer than its journey checks.
+    private var journeyStopsSetDuringReconcile = false
 
     // The widget's journey pins (SPEC *Journeys*) live in the stored snapshot, not here: each report
     // from the screen is applied to what is stored, atomically ([SnapshotStore.updateWidgetJourneys]),
@@ -384,6 +376,7 @@ class MainViewModel(
      */
     fun setJourneyStops(stops: List<StopRef>) {
         if (stops.toSet() == journeyStops.toSet()) return
+        if (reconcilePending) journeyStopsSetDuringReconcile = true
         val newIds = stops.mapTo(HashSet()) { it.id }
         val nearIds = nearStops.mapTo(HashSet()) { it.id }
         val dropped = journeyStops.any { it.id !in newIds && it.id !in nearIds }
@@ -731,6 +724,12 @@ class MainViewModel(
         // fetch run and save during a re-locate's fix window.
         initLoadJob?.cancel()
         fetchJob?.cancel()
+        // A same-set reconcile still on the worker is for the fix this relocation replaces: it must
+        // not apply that fix's stops and refresh in the new one's window (Codex on #548).
+        reconcileJob?.cancel()
+        reconcilePending = false
+        reportedDuringReconcile = false
+        journeyStopsSetDuringReconcile = false
         _refreshing.value = false
         // A cold load cut short keeps the stops it showed and names the ones it never got, rather
         // than leave them "Loading" with nothing coming (SPEC principle 2).
@@ -1608,6 +1607,9 @@ class MainViewModel(
      * within [farArrivalsReuse] — see [recentlyFetched].
      */
     fun refresh(automatic: Boolean = false) {
+        // A same-set reconcile on its way refreshes once it lands, with the new tiers; one now would
+        // fetch the old ones.
+        if (reconcilePending) return
         // A pull-to-refresh asks afresh for every stop, reusing none ([forceNextFetch]).
         val force = forceNext
         forceNext = false
@@ -1918,17 +1920,21 @@ class MainViewModel(
         fetchJob = job
         // Clear the in-flight flag only when this job settles — a job superseded by a
         // newer refresh doesn't clear the newer one's indicator.
-        job.invokeOnCompletion { if (fetchJob === job) _refreshing.value = false }
+        // Nor does a fetch that finishes while a reconcile is on the worker: that reconcile is under way
+        // and its own refresh clears it (Codex on #548).
+        job.invokeOnCompletion { if (fetchJob === job && !reconcilePending) _refreshing.value = false }
         // The journeys' far ends too, after this fetch (which caches any it covers).
         checkJourneyDestinations()
     }
 
     /**
      * Reconcile the tiers to a fresh fix of the SAME nearby set (both tiers, order-independent — see
-     * [NearbyStopsViewModel.State.Ready.clusterSetKey]) without rebuilding this model. Updates the
-     * tiers, **synchronously prunes** a stop that left the eager tier from the shown state (before
-     * the re-fetch, so it can't linger with stale departures through the fetch window — SPEC D4 /
-     * principle 1), then re-fetches, which fetches any stop that joined it.
+     * [NearbyStopsViewModel.State.Ready.clusterSetKey]) without rebuilding this model. Worked out on
+     * the worker (AGENTS.md *Main thread: read and dispatch only*), then applied at once on the main
+     * thread: updates the tiers, **prunes** a stop that left the eager tier from the shown state
+     * **before the re-fetch starts**, so it can't linger with stale departures through the fetch
+     * window (SPEC D4 / principle 1), then re-fetches, which fetches any stop that joined it. A newer
+     * reconcile supersedes one still being worked out, and a refresh asked for meanwhile waits for it.
      */
     fun reconcile(
         newEager: List<NearbySelection.NearbyCluster>,
@@ -1943,18 +1949,115 @@ class MainViewModel(
         // builds its card, so the refresh waits for the screen's next report ([setJourneyStops],
         // then [journeyStopsReported]) and runs once with them, rather than now and again then.
         awaitJourneyStops: Boolean = false,
+        // Both of those, worked out on the worker with the rest when the caller's are a pass of its own.
+        @WorkerThread journeyChanges: () -> JourneyChanges = { JourneyChanges(dropJourneyStopIds, awaitJourneyStops) },
     ) {
-        val before = fetchedStops.mapTo(mutableSetOf()) { it.id }
-        if (dropJourneyStopIds.isNotEmpty()) journeyStops = journeyStops.filter { it.id !in dropJourneyStopIds }
-        eagerStops = newEager.flatMap { cluster -> cluster.stops.map { it.toStopRef() } }
-        more = newMore
-        _shownNearStops.value = nearStops
-        remeasure(newDistanceMeters ?: stopDistanceMeters)
-        val departed = before - fetchedStops.mapTo(mutableSetOf()) { it.id }
-        if (departed.isNotEmpty()) {
-            (_state.value as? DeparturesUiState.Loaded)?.let { loaded ->
-                val kept = loaded.stops.filterNot { it.stopId in departed }
-                _state.value = if (kept.isEmpty()) {
+        reconcileJob?.cancel()
+        // A report noted for a superseded reconcile was for its fix, not this one's (Codex on #548).
+        reportedDuringReconcile = false
+        journeyStopsSetDuringReconcile = false
+        reconcilePending = true
+        // Busy from here, not only once the refetch starts, so the pull-to-refresh indicator and the
+        // foreground and timer checks see the relocation under way while the worker has it (Codex on #548).
+        _refreshing.value = true
+        reconcileJob = viewModelScope.launch {
+            var changes: JourneyChanges? = null
+            while (true) {
+                // Read here, worked out there; applied only if nothing changed in between, else again.
+                val eager0 = eagerStops
+                val journey0 = journeyStops
+                val dist0 = stopDistanceMeters
+                val state0 = _state.value
+                val asked = changes
+                // Journey stops the screen reported since this began are what it shows now (a journey
+                // revealed or opened meanwhile, say): the checks, worked out from before, drop none of
+                // them (Codex on #548).
+                val reportedSince = journeyStopsSetDuringReconcile
+                val (worked, plan) = withContext(compute) {
+                    val worked = asked ?: journeyChanges()
+                    val drop = if (reportedSince) emptySet() else worked.drop
+                    worked to planReconcile(eager0, journey0, dist0, state0, newEager, newMore, newDistanceMeters ?: dist0, drop)
+                }
+                changes = worked
+                if (eagerStops !== eager0 || journeyStops !== journey0 || stopDistanceMeters !== dist0 || _state.value !== state0) continue
+                journeyStops = plan.journeyStops
+                eagerStops = plan.eagerStops
+                more = newMore
+                _shownNearStops.value = nearStops
+                // Stored when it changes, so the widget folds by where the rider is now whether or not
+                // the refresh that follows succeeds (Codex on #473); the distances themselves never are.
+                plan.nearestFirst?.let(::updateWidgetNearestFirst)
+                stopDistanceMeters = newDistanceMeters ?: dist0
+                plan.state?.let { _state.value = it }
+                plan.nearer?.let(::updateWidgetNearer)
+                // Remove the departed stops from the widget snapshot NOW — at prune time, on a scope
+                // that outlives both the re-fetch below and this per-set ViewModel (a different-set
+                // relocation discards it via NearbyDeparturesStores.ownerFor). Coupling the removal to
+                // the re-fetch's save left a departed stop on disk whenever that save was skipped
+                // (a non-authoritative or Error cycle), canceled, or lost with the ViewModel — three
+                // findings on one mechanism (#87). A direct, save-independent removal closes the class
+                // (SPEC D4 / principle 1).
+                if (plan.departed.isNotEmpty()) pruneDepartedFromWidget(plan.departed)
+                break
+            }
+            reconcilePending = false
+            val reported = reportedDuringReconcile
+            reportedDuringReconcile = false
+            journeyStopsSetDuringReconcile = false
+            if (changes?.await == true && !reported) {
+                refreshAwaitsJourneyStops = true
+                _refreshing.value = false
+            } else {
+                refresh()
+            }
+        }
+    }
+
+    /** What a same-set [reconcile] changes about the starred journeys' stops. */
+    class JourneyChanges(val drop: Set<String>, val await: Boolean)
+
+    /** A same-set [reconcile] worked out: what it sets, each null when it changes nothing. */
+    private class ReconcilePlan(
+        val eagerStops: List<StopRef>,
+        val journeyStops: List<StopRef>,
+        val departed: Set<String>,
+        val state: DeparturesUiState?,
+        val nearestFirst: List<String>?,
+        val nearer: Map<String, Terminating.Nearer>?,
+    )
+
+    /** [reconcile]'s passes over the tiers and the shown stops, from what it read. */
+    @WorkerThread
+    private fun planReconcile(
+        eager: List<StopRef>,
+        journey: List<StopRef>,
+        oldDistances: Map<String, Double>,
+        shown: DeparturesUiState,
+        newEager: List<NearbySelection.NearbyCluster>,
+        newMore: List<NearbySelection.NearbyCluster>,
+        distances: Map<String, Double>,
+        drop: Set<String>,
+    ): ReconcilePlan {
+        val before = fetchedOf(eager, journey).mapTo(HashSet()) { it.id }
+        val newJourney = if (drop.isEmpty()) journey else journey.filter { it.id !in drop }
+        val newEagerStops = newEager.flatMap { cluster -> cluster.stops.map { it.toStopRef() } }
+        val near = newEagerStops.map { it.id }
+        val order = nearestFirstOf(near, distances)
+        val nearestFirst = order.takeIf { it != nearestFirstOf(near, oldDistances) }
+        val fetched = fetchedOf(newEagerStops, newJourney).mapTo(HashSet()) { it.id }
+        val departed = before - fetched
+        var state: DeparturesUiState? = null
+        var nearer: Map<String, Terminating.Nearer>? = null
+        (shown as? DeparturesUiState.Loaded)?.let { loaded ->
+            val moved = remeasured(loaded, nearbyPlacesOf(newEagerStops, newMore, distances))
+            if (moved != null) {
+                state = moved
+                nearer = moved.stops.associate { it.stopId to it.nearer }
+            }
+            if (departed.isNotEmpty()) {
+                val current = moved ?: loaded
+                val kept = current.stops.filterNot { it.stopId in departed }
+                state = if (kept.isEmpty()) {
                     // Every shown stop departed; don't leave a trusted, recent-stamped empty
                     // "No departures" up through the replacement fetch (which hasn't been checked)
                     // — show the loading placeholder until it returns (SPEC principle 2; Codex).
@@ -1963,30 +2066,20 @@ class MainViewModel(
                     // The shown set just lost stops and a re-fetch is pending, so it is genuinely
                     // incomplete — flag it partial rather than pass the reduced list off as a
                     // complete, uniformly-fresh whole (SPEC principle 2).
-                    loaded.copy(
+                    current.copy(
                         stops = kept,
-                        fetchedAt = kept.maxOfOrNull { it.fetchedAt } ?: loaded.fetchedAt,
+                        fetchedAt = kept.maxOfOrNull { it.fetchedAt } ?: current.fetchedAt,
                         partialRefresh = true,
                         // A still-fetched stop that had failed still has, whether or not it has a row
                         // yet; the stops taking the departed ones' place are pending, not failed, so
-                        // they aren't named. Re-sorted by the new fix's distances ([remeasure]).
-                        partialStops = fetchedStops.mapTo(HashSet()) { it.id }.let { still ->
-                            byDistance(loaded.partialStops.filterKeys { it in still }, stopDistanceMeters)
-                        },
+                        // they aren't named. Sorted by the new fix's distances.
+                        partialStops = byDistance(current.partialStops.filterKeys { it in fetched }, distances),
                         partialUnnamed = true,
                     )
                 }
             }
-            // Remove the departed stops from the widget snapshot NOW — at prune time, on a scope
-            // that outlives both the re-fetch below and this per-set ViewModel (a different-set
-            // relocation discards it via NearbyDeparturesStores.ownerFor). Coupling the removal to
-            // the re-fetch's save left a departed stop on disk whenever that save was skipped
-            // (a non-authoritative or Error cycle), canceled, or lost with the ViewModel — three
-            // findings on one mechanism (#87). A direct, save-independent removal closes the class
-            // (SPEC D4 / principle 1).
-            pruneDepartedFromWidget(departed)
         }
-        if (awaitJourneyStops) refreshAwaitsJourneyStops = true else refresh()
+        return ReconcilePlan(newEagerStops, newJourney, departed, state, nearestFirst, nearer)
     }
 
     /**
@@ -2004,14 +2097,9 @@ class MainViewModel(
         if (order != nearestFirstOf(near, stopDistanceMeters)) updateWidgetNearestFirst(order)
         stopDistanceMeters = newDistanceMeters
         (_state.value as? DeparturesUiState.Loaded)?.let { loaded ->
-            val places = nearbyPlaces()
-            val moved = loaded.stops.map { stop ->
-                val nearer = Terminating.nearer(stop.stopId, places)
-                if (nearer == stop.nearer) stop else stop.copy(nearer = nearer)
-            }
-            if (moved != loaded.stops) {
-                _state.value = loaded.copy(stops = moved)
-                updateWidgetNearer(moved.associate { it.stopId to it.nearer })
+            remeasured(loaded, nearbyPlaces())?.let { moved ->
+                _state.value = moved
+                updateWidgetNearer(moved.stops.associate { it.stopId to it.nearer })
             }
         }
     }
@@ -2021,6 +2109,10 @@ class MainViewModel(
      * changed): run a refresh a reconcile left waiting on this report, if that didn't already.
      */
     fun journeyStopsReported() {
+        if (reconcilePending) {
+            reportedDuringReconcile = true
+            return
+        }
         if (refreshAwaitsJourneyStops) refresh()
     }
 
@@ -2457,6 +2549,43 @@ internal object WidgetJourneysWrites {
  * Failed [stops] nearest first by [distanceMeters], dropping blank names. A stop with no distance
  * (a watched or journey stop) keeps its place after those with one (a stable sort).
  */
+/**
+ * The stops a model fetches: the nearby ones, each declaring its journeys' lines too so their status
+ * is checked (a suspended one with no predictions still shows on the card), then the journey origins
+ * not already near.
+ */
+private fun fetchedOf(near: List<StopRef>, journeyStops: List<StopRef>): List<StopRef> {
+    val nearIds = near.mapTo(HashSet()) { it.id }
+    val journeyLines = journeyStops.associate { it.id to it.lines }
+    val merged = near.map { stop ->
+        val extra = journeyLines[stop.id] ?: return@map stop
+        stop.copy(lines = (stop.lines + extra).distinctBy { it.id })
+    }
+    return merged + journeyStops.filter { it.id !in nearIds }
+}
+
+/** Where else the rider may be: both tiers' stops, each with its distance. */
+private fun nearbyPlacesOf(
+    eager: List<StopRef>,
+    more: List<NearbySelection.NearbyCluster>,
+    distanceMeters: Map<String, Double>,
+): List<Terminating.Place> {
+    val all = eager.map { Triple(it.id, it.clusterId, it.name) } +
+        more.flatMap { cluster -> cluster.stops.map { Triple(it.id, it.clusterId, it.name) } }
+    return all.mapNotNull { (id, cluster, name) ->
+        distanceMeters[id]?.let { Terminating.Place(id, cluster, name, it) }
+    }
+}
+
+/** [loaded] with each stop's nearer places taken from [places], or null when none moved. */
+private fun remeasured(loaded: DeparturesUiState.Loaded, places: List<Terminating.Place>): DeparturesUiState.Loaded? {
+    val moved = loaded.stops.map { stop ->
+        val nearer = Terminating.nearer(stop.stopId, places)
+        if (nearer == stop.nearer) stop else stop.copy(nearer = nearer)
+    }
+    return if (moved != loaded.stops) loaded.copy(stops = moved) else null
+}
+
 private fun byDistance(
     stops: Map<String, DeparturesUiState.FailedStop>,
     distanceMeters: Map<String, Double>,
