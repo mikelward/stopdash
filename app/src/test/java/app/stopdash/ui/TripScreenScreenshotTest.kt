@@ -3098,6 +3098,35 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun a_cards_pill_column_is_in_before_its_rows_show() {
+        // Each card's pill column is measured behind "Checking routes…", so the list first shows with
+        // every card's stops in one column, never at a lone pill's width and then shifting sideways as
+        // the cut pill is measured (Codex, #543). The worker steps one run at a time, and the list is
+        // looked at after each.
+        val queued = java.util.concurrent.LinkedBlockingQueue<Runnable>()
+        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val worker = java.util.concurrent.Executor { queued.add(it) }.asCoroutineDispatcher()
+        // Frames by hand: an idling clock would run out the reveal's cap ([REVEAL_CAP_MILLIS]) while the
+        // worker waits on the test, and show the list for that instead.
+        composeRule.mainClock.autoAdvance = false
+        try {
+            showSharedFirstLeg(worker)
+            while (stopLefts().size < 6) {
+                assertTrue("the list shows within the reveal's cap", composeRule.mainClock.currentTime < REVEAL_CAP_MILLIS)
+                // One run, to its end, if one is waiting; then a frame, then a look at the list.
+                queued.poll()?.let { threads.submit(it).get() }
+                composeRule.mainClock.advanceTimeByFrame()
+                composeRule.waitForIdle()
+            }
+            assertTrue("the cut pill's card lines up as it first shows: ${stopLefts()}", stopLefts().take(3).inOneColumn())
+            assertTrue("each card on its own pills: ${stopLefts()}", stopLefts()[0] > stopLefts()[3] + 1f)
+        } finally {
+            generateSequence { queued.poll() }.forEach { threads.execute(it) }
+            threads.shutdown()
+        }
+    }
+
+    @Test
     fun a_cards_stops_hold_still_while_the_page_loads() {
         // The page's loads land one after another (a line's status, its route, a stop's trains), each
         // a new state. While the worker answers, the stops keep their columns: the rows shuffled

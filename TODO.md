@@ -2444,14 +2444,10 @@ Builds on Phase 1's minimal line-status marking.
       It predates the hold-still work. Decided (maintainer, 2026-10-04, mock C): it moves into the
       disruptions row, which always holds its place, under "Unknown:" with the pill of each line whose
       trains couldn't be checked; the expand view says what that means. The banner goes.
-- [ ] **Build the trip list hidden behind its placeholder, then show it** (Codex, PR #543). The reveal
-      gate lists what the list draws (order and headers, the disruptions row, every route and check)
-      and Codex keeps finding the next thing it doesn't list. The cards' times, order and headers now
-      come in #529's frame, so a re-plan with the same options brings its cards headed; what's left is
-      each card's pill width, measured only once the list shows, so a card's rows can shift sideways as
-      it lands. Composing the list unseen (no touch, no semantics) behind "Checking routes…" lets it
-      warm, and the gate becomes "its work is in" rather than a list that grows with every finding.
-      Planned by the maintainer (2026-10-04).
+- [x] **Build the trip list hidden behind its placeholder, then show it** (Codex, PR #543). Everything
+      the list draws is now worked out before it shows: the cards' times, order and headers in #529's
+      frame, the disruptions row, and each card's pill width, measured behind "Checking routes…" and
+      waited on by the reveal. Composing the list unseen stayed unneeded.
 - [ ] **Option: every line's status at the top of the home screen** (maintainer, 2026-10-04). A
       setting, off by default, to show disruption status for all lines, not just the watched stops'
       — with a choice of which modes to include. TfL's `/Line/Mode/{modes}/Status` returns a mode's

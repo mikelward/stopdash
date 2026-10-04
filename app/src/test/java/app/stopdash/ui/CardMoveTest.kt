@@ -210,4 +210,23 @@ class CardMoveTest {
         composeRule.onNodeWithText("a").performClick()
         assertEquals(2, taps)
     }
+
+    @Test
+    fun a_list_waits_for_its_own_pill_columns_at_the_scale_it_shows_at() {
+        // A pinch while the list waits behind its placeholder: the widths measured at the old scale, for
+        // this very list, aren't the ones it shows with (Codex, #561); nor another list's at this scale.
+        val resolver = androidx.compose.ui.text.font.createFontFamilyResolver(composeRule.activity)
+        fun scale(fontScale: Float) = PillWidth(
+            androidx.compose.ui.unit.Density(2f, fontScale),
+            androidx.compose.ui.text.TextStyle.Default,
+            resolver,
+            androidx.compose.ui.unit.LayoutDirection.Ltr,
+        )
+        fun list() = TripListView(TripFraming(null, emptySet(), emptyList()), emptyList(), emptyMap(), listedCards(emptyList(), null))
+        val shown = list()
+        val widths = CardPillWidths(shown, scale(1f), emptyMap())
+        org.junit.Assert.assertTrue(widths.isFor(shown, scale(1f)))
+        org.junit.Assert.assertFalse(widths.isFor(shown, scale(1.5f)))
+        org.junit.Assert.assertFalse(widths.isFor(list(), scale(1f)))
+    }
 }
