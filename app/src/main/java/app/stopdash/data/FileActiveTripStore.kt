@@ -273,6 +273,8 @@ private data class PersistedActiveTrip(
     val boardWarned: String = "",
     // Absent from a trip kept before it was stored: nothing heard yet, so what's known is said.
     val disruptionsHeard: List<String> = emptyList(),
+    // Absent from a trip kept before it was stored: nothing dismissed, so what's known is shown.
+    val disruptionsDismissed: List<String> = emptyList(),
     // Absent from a trip kept before it was stored: its train is on the ride's own line, the only
     // one followed then, and named and checked as it.
     val vehicleLeg: PersistedTripLeg? = null,
@@ -309,6 +311,7 @@ private data class PersistedActiveTrip(
         seenAlongStop = seenAlongStop,
         boardWarned = boardWarned,
         disruptionsHeard = disruptionsHeard.toSet(),
+        disruptionsDismissed = disruptionsDismissed.toSet(),
         vehicleLeg = vehicleLeg?.toLeg(),
         heldFrom = heldFrom?.let(Instant::parse),
         // One this build can't read (a kind a later one added) is dropped rather than failing the trip.
@@ -338,6 +341,7 @@ private data class PersistedActiveTrip(
             seenAlongStop = trip.seenAlongStop,
             boardWarned = trip.boardWarned,
             disruptionsHeard = trip.disruptionsHeard.sorted(),
+            disruptionsDismissed = trip.disruptionsDismissed.sorted(),
             vehicleLeg = trip.vehicleLeg?.let { PersistedTripLeg.of(it) },
             heldFrom = trip.heldFrom?.toString(),
             destinations = trip.destinations.map { PersistedTripDestination.of(it) },

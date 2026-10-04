@@ -65,6 +65,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -2140,24 +2141,32 @@ class MainViewModel(
         checkedLineIds: Set<String>,
         stopsDisruptionUnknown: Set<String>,
     ) {
-        // Includes each near-me folded card's identity, so its dismissal isn't pruned as not-live.
-        val live = DepartureRows.liveStopClosureAlerts(DepartureRows.across(shownStops, clock(), lineStatuses)) +
-            DepartureRows.liveLineStatusAlerts(lineStatuses, clock())
-        fun placeOf(stop: StopRef) = stopPlaceKey(stop.hubId, stop.clusterId, stop.name, stop.id)
-        // A place with any member whose disruption lookup failed this cycle is not fully known, so it
-        // is excluded from the checked set and its dismissals are retained.
-        val unknownPlaces = queriedStops.asSequence()
-            .filter { it.id in stopsDisruptionUnknown }
-            .mapTo(mutableSetOf()) { placeOf(it) }
-        val checkedPlaces = queriedStops.asSequence()
-            .map { placeOf(it) }
-            .filterTo(mutableSetOf()) { it !in unknownPlaces } +
-            // A line still waiting on which way its alerts apply isn't split yet, so a dismissal of
-            // one direction's alert can't be matched against it: retained until the split lands.
-            checkedLineIds.filterNot { lineStatuses[it]?.awaitingDirections == true }.map { lineAlertKey(it) }
-        // Reconcile the in-memory set first — safe regardless of whether the persist below succeeds.
-        val pruned = Dismissed.reconcile(_dismissed.value, live, checkedPlaces)
-        if (pruned != _dismissed.value) _dismissed.value = pruned
+        val now = clock()
+        val dismissed = _dismissed.value
+        // Worked out on [io]: every live alert, each line's under way ones included, and every dismissal,
+        // never on the caller's (the main) thread (Codex on #519).
+        val (live, checkedPlaces) = withContext(io) {
+            // Includes each near-me folded card's identity, so its dismissal isn't pruned as not-live.
+            val live = DepartureRows.liveStopClosureAlerts(DepartureRows.across(shownStops, now, lineStatuses)) +
+                DepartureRows.liveLineStatusAlerts(lineStatuses, now)
+            fun placeOf(stop: StopRef) = stopPlaceKey(stop.hubId, stop.clusterId, stop.name, stop.id)
+            // A place with any member whose disruption lookup failed this cycle is not fully known, so it
+            // is excluded from the checked set and its dismissals are retained.
+            val unknownPlaces = queriedStops.asSequence()
+                .filter { it.id in stopsDisruptionUnknown }
+                .mapTo(mutableSetOf()) { placeOf(it) }
+            val checkedPlaces = queriedStops.asSequence()
+                .map { placeOf(it) }
+                .filterTo(mutableSetOf()) { it !in unknownPlaces } +
+                // A line still waiting on which way its alerts apply isn't split yet, so a dismissal of
+                // one direction's alert can't be matched against it: retained until the split lands.
+                checkedLineIds.filterNot { lineStatuses[it]?.awaitingDirections == true }.map { lineAlertKey(it) }
+            // Reconcile the in-memory set first — safe regardless of whether the persist below succeeds:
+            // what's let go of, from what's dismissed now, so one made meanwhile stays (Codex on #519).
+            val gone = dismissed - Dismissed.reconcile(dismissed, live, checkedPlaces)
+            if (gone.isNotEmpty()) _dismissed.update { it - gone }
+            live to checkedPlaces
+        }
         try {
             // NonCancellable, as a dismissal's write is: leaving while it's written would otherwise
             // leave the ended notice's dismissal stored, to hide the same notice coming back (Codex,

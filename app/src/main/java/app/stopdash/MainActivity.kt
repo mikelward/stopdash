@@ -984,6 +984,7 @@ class MainActivity : ComponentActivity() {
                                     endFailed = endFailed,
                                     appOpenOnly = appOpenOnly,
                                     disruptions = routeDisruptions?.at(now).orEmpty(),
+                                    cards = routeDisruptions?.cardsAt(now).orEmpty(),
                                     replanFrom = replanFrom,
                                     // The trip list from the station still ahead nearest the rider to where
                                     // they chose to go, as the From… search opens one (maintainer, 2026-10-02):
@@ -999,6 +1000,10 @@ class MainActivity : ComponentActivity() {
                                             replanning = true
                                             onTheWayOpen = false
                                         }
+                                    },
+                                    // Read and kept going: in the app's scope, so a rotation can't cut the save short.
+                                    onDismissDisruptions = { shown ->
+                                        ((application as? StopdashApp)?.applicationScope ?: onTheWayScope).launch { tracker.dismissDisruptions(shown) }
                                     },
                                     // The rider at a step the trip couldn't tell they'd reached (maintainer, 2026-09-28).
                                     onGoTo = { from, to ->

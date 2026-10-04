@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -117,11 +118,17 @@ internal fun OnTheWayScreen(
     // What's wrong on the route ahead ([ActiveTripTracker.routeDisruptions]), worst first: what the
     // route disruption alert says, here in full, so tapping it finds where and how (maintainer, 2026-10-01).
     disruptions: List<RouteDisruption.Signal> = emptyList(),
+    // [disruptions] as cards, each thing known once ([RouteDisruption.cards]), worked out off the main
+    // thread with them ([ActiveTripTracker.KnownDisruptions.cards]): drawn here, never worked out.
+    cards: List<RouteDisruption.Signal> = disruptions,
     // While something is known wrong ahead, the station still ahead nearest the rider
     // ([ActiveTripTracker.replanFrom]), and the trip list from there to where they chose to go
     // ([onPlanAgain], maintainer 2026-10-02). Null leaves it out.
     replanFrom: ReplanOrigin.Stop? = null,
     onPlanAgain: ((ReplanOrigin.Stop) -> Unit)? = null,
+    // The rider read [disruptions] and keeps going ([ActiveTripTracker.dismissDisruptions], maintainer
+    // 2026-10-03), as shown. Null leaves Keep going out.
+    onDismissDisruptions: ((List<RouteDisruption.Signal>) -> Unit)? = null,
 ) {
     BackHandler(onBack = onBack)
     val destination = trip?.destinationName
@@ -205,20 +212,36 @@ internal fun OnTheWayScreen(
                 }
             }
             if (trip != null) {
-                // Each thing known once, as the alert has it: two legs on one line read as one.
-                disruptions.distinctBy { DisruptionKey.of(it) }.forEach { signal ->
-                    item(key = "disruption/${signal.key}") { DisruptionCard(signal, trip.route.legs.getOrNull(signal.legIndex)?.let { RouteDisruption.rideAt(trip, signal.legIndex, it) }) }
+                // Each thing known once, as the alert has it: two legs on one line read as one ([cards]).
+                // Registered by count, not walked here: each card is read only as it's drawn (Codex on #519).
+                items(cards, key = { signal -> "disruption/${signal.key}" }) { signal ->
+                    DisruptionCard(signal, trip.route.legs.getOrNull(signal.legIndex)?.let { RouteDisruption.rideAt(trip, signal.legIndex, it) })
                 }
                 // Only while it's still ahead of the trip as shown: worked out by the last check, it can lag
                 // a step the trip has since taken, and a stop now behind the rider is never offered (Codex on #479).
                 val planFrom = replanFrom?.takeIf { it.id in ReplanOrigin.stopsAhead(trip, ReplanOrigin.rideAhead(trip, progress)) }
-                if (disruptions.isNotEmpty() && planFrom != null && onPlanAgain != null) {
+                val planAgain = planFrom?.takeIf { onPlanAgain != null }
+                if (disruptions.isNotEmpty() && (planAgain != null || onDismissDisruptions != null)) {
+                    // Plan again, or Keep going as planned (maintainer, 2026-10-03), side by side
+                    // under the cards they answer; Keep going alone sits at the end.
                     item(key = "planAgain") {
-                        OutlinedButton(
-                            onClick = { onPlanAgain(planFrom) },
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("onTheWayPlanAgain"),
-                        ) {
-                            Text(stringResource(R.string.on_the_way_plan_again, planFrom.name))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            if (planAgain != null && onPlanAgain != null) {
+                                OutlinedButton(
+                                    onClick = { onPlanAgain(planAgain) },
+                                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("onTheWayPlanAgain"),
+                                ) {
+                                    Text(stringResource(R.string.on_the_way_plan_again, planAgain.name))
+                                }
+                            }
+                            if (onDismissDisruptions != null) {
+                                OutlinedButton(
+                                    onClick = { onDismissDisruptions(disruptions) },
+                                    modifier = Modifier.heightIn(min = 48.dp).testTag("onTheWayKeepGoing"),
+                                ) {
+                                    Text(stringResource(R.string.on_the_way_keep_going))
+                                }
+                            }
                         }
                     }
                 }
@@ -772,15 +795,6 @@ private fun LegLine(leg: TripLeg, rides: List<TripLeg>, current: Boolean, done: 
         color = color,
         onTap = onTap,
     )
-}
-
-// What makes two signals the same thing to the rider: the alert's own words ([RouteDisruptionAlert.text]).
-private object DisruptionKey {
-    fun of(signal: RouteDisruption.Signal): Any = when (signal) {
-        is RouteDisruption.Signal.Line -> Triple(signal.lineId, signal.status.description, signal.status.fullText)
-        is RouteDisruption.Signal.Stop -> Pair(signal.stopId, signal.closed)
-        is RouteDisruption.Signal.Unpredicted -> Pair(signal.lineId, signal.stopId)
-    }
 }
 
 /**

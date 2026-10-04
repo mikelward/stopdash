@@ -49,6 +49,9 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.cancel
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -548,6 +551,46 @@ class MainViewModelTest {
         override suspend fun stopDisruptions(stopId: String): List<StopDisruption> {
             if (stopId in closureFails) throw TflException.Unreachable("boom", null)
             return emptyList()
+        }
+    }
+
+    @Test
+    fun `the list settles its dismissals off the caller's thread`() = runTest(dispatcher) {
+        // AGENTS.md *Main thread*: every alert under way on a line, in a list that notes each thread
+        // reading it, is gone through on the worker when the list settles its dismissals, not on the
+        // main thread its loads run on (Codex on #519). Made-up words.
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }
+        val worker = executor.asCoroutineDispatcher()
+        val store = androidx.lifecycle.ViewModelStore()
+        try {
+            val read = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val alerts = listOf(
+                app.stopdash.domain.LineAlert(6, "Severe Delays", "Severe delays northbound."),
+                app.stopdash.domain.LineAlert(9, "Minor Delays", "Minor delays southbound."),
+            )
+            val ready = CompletableDeferred<Unit>().apply { complete(Unit) }
+            val client = LinedClient("none", ready, statusOf = {
+                if (it == "victoria") LineStatus(it, 6, "Severe Delays", alerts.first().fullText, underWay = Watched(alerts, read))
+                else status(it, LineStatus.GOOD_SERVICE, "Good Service")
+            })
+            val vm = androidx.lifecycle.ViewModelProvider.create(
+                store,
+                androidx.lifecycle.viewmodel.viewModelFactory { initializer { MainViewModel(client, lined, clock = { now }, io = worker) } },
+            )[MainViewModel::class]
+            vm.state.first { it is DeparturesUiState.Loaded && !it.statusPending && it.pendingStops.isEmpty() }
+            // Let the worker and Main hand the load's settling back and forth until it has run.
+            repeat(50) {
+                if (read.isNotEmpty()) return@repeat
+                executor.submit {}.get()
+                advanceUntilIdle()
+            }
+            assertTrue(read.isNotEmpty())
+            assertEquals(setOf("worker"), read.toSet())
+        } finally {
+            store.clear()
+            executor.shutdown()
+            check(executor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS)) { "worker didn't stop" }
+            advanceUntilIdle()
         }
     }
 

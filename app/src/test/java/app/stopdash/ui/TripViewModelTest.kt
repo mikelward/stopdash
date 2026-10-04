@@ -3462,6 +3462,9 @@ class TripViewModelTest {
         assertTrue(trip.state.value.statuses.isNotEmpty())
         assertEquals(trip.state.value.statuses.keys, trip.state.value.statusesAt.keys)
         assertTrue(trip.state.value.statusesAt.values.all { it == now })
+        // And sorted on the day they were fetched, for the screen to tell when they need bringing up to
+        // its own (Codex on #519).
+        assertEquals(now.atZone(app.stopdash.domain.AlertStart.ZONE).toLocalDate(), trip.state.value.statusesSortedOn)
     }
 
     @Test

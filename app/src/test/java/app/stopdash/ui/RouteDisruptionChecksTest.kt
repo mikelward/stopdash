@@ -16,6 +16,7 @@ import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripRoute
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -120,6 +121,44 @@ class RouteDisruptionChecksTest {
         assertEquals(1, statusReads)
         assertEquals(listOf("A", "C"), closureReads.sorted())
         assertEquals(now.plus(Duration.ofMinutes(5)), found.until)
+        // Each signal with its own time, so letting go of one leaves the rest by theirs (Codex on #519).
+        assertEquals(found.signals.map { it.key }.toSet(), found.stands.keys)
+    }
+
+    @Test
+    fun `a check weighs its alerts from a single-thread caller, on the worker`() {
+        // AGENTS.md *Main thread*: the service refreshes from Main; the signals are worked out on [io]
+        // (Codex on #519).
+        val caller = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "caller") }.asCoroutineDispatcher()
+        val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }.asCoroutineDispatcher()
+        try {
+            val checks = checks(StopClosureCache(), worker)
+            // A bus line's several alerts, in a list that notes each thread reading it: weighing them for
+            // the dismissals, the routes and the signals is only ever done on the worker (Codex on #519).
+            val bus = TripLeg("bus", "99", "99", "b3", "b3", "b4", "b4", at(5), at(15))
+            val busTrip = ActiveTrip(TripRoute(listOf(bus)), "b4", startedAt = t0)
+            routes = mapOf(
+                "99" to LineSequence(
+                    listOf(app.stopdash.domain.LineRoute("North", listOf("b1", "b2", "b3", "b4"))),
+                    mapOf("b1" to "Alpha Road", "b2" to "Example Street", "b3" to "Gamma Road", "b4" to "Beta Road"),
+                ),
+            )
+            val read = mutableListOf<String>()
+            val alerts = listOf(
+                app.stopdash.domain.LineAlert(6, "Diversion", "Bus stop 'Alpha Road' will not be served."),
+                app.stopdash.domain.LineAlert(6, "Diversion", "Bus stop 'Beta Road' will not be served."),
+            )
+            statuses = mapOf("99" to LineStatus("99", 6, "Diversion", alerts.first().fullText, underWay = Watched(alerts, read)))
+            // The rider's dismissals too, settled against what's live there (Codex on #519).
+            dismissed = WatchedSet(setOf(DismissedAlert("line:elsewhere", "Minor Delays")), read)
+            val found = kotlinx.coroutines.runBlocking(caller) { checks.check(busTrip, TripProgress.Waiting(bus, at(5)), emptyMap()) }
+            assertEquals(listOf("Bus stop 'Beta Road' will not be served."), found.signals.filterIsInstance<RouteDisruption.Signal.Line>().map { it.status.fullText })
+            assertTrue(read.isNotEmpty())
+            assertEquals(setOf("worker"), read.toSet())
+        } finally {
+            caller.close()
+            worker.close()
+        }
     }
 
     @Test
@@ -352,4 +391,13 @@ class RouteDisruptionChecksTest {
         assertEquals(0, statusReads)
         assertEquals(emptyList<String>(), closureReads)
     }
+}
+
+// [items], noting the thread of each read in [read], as [Watched] does for a list.
+private class WatchedSet<T>(private val items: Set<T>, private val read: MutableList<String>) : AbstractSet<T>() {
+    private fun seen() { synchronized(read) { read += Thread.currentThread().name.substringBefore(" @") } }
+
+    override val size: Int get() = items.size.also { seen() }
+
+    override fun iterator(): Iterator<T> = items.iterator().also { seen() }
 }

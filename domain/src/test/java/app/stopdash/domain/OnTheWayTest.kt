@@ -1771,6 +1771,13 @@ class OnTheWayTest {
         assertEquals(onBoard.legStartedAt, back.legStartedAt)
         assertEquals(onBoard.boardsAt, back.boardsAt)
         assertNull(back.leftRide)
+        // Keep going on the walk, then Back: what was let go of, and heard, stays so, not the snapshot's
+        // older sets (Codex on #519).
+        val keptGoing = walking.copy(disruptionsDismissed = setOf("line/2/x"), disruptionsHeard = setOf("line/2/x"))
+        val keptBack = OnTheWay.atStep(keptGoing, OnTheWay.Step(0, onBoard = true), at(9))
+        assertEquals("8", keptBack.vehicleId)
+        assertEquals(setOf("line/2/x"), keptBack.disruptionsDismissed)
+        assertEquals(setOf("line/2/x"), keptBack.disruptionsHeard)
         // Only straight back: a step further on, the ride's getting off is picked afresh.
         val further = OnTheWay.atStep(walking, OnTheWay.Step(2), at(10))
         assertEquals("", OnTheWay.atStep(further, OnTheWay.Step(0, onBoard = true), at(11)).vehicleId)

@@ -1818,10 +1818,16 @@ them there:
   "Station", so no stop quoted with its cross street had matched). Any other wording places
   nothing, and so does an alert that also says stops are missed in other words, since reading free prose for where service is affected kept
   misreading it, and a stop merely named may be an aside. And only when every stretch the alert
-  gives is one of these, only while it's the line's one alert under way (TfL's
-  others' words aren't kept, and may reach the ride), and only for a status about part of the route (a
+  gives is one of these, and only for a status about part of the route (a
   diversion, curtailment or part closure, with no route-wide words such as delays): a suspension or
-  severe delays is the whole line's, whatever stretch it also names. Unknown counts as on. A tube or
+  severe delays is the whole line's, whatever stretch it also names. With several alerts under way
+  on the line (a bus route often has a handful at once, each about another stretch), each is read on
+  its own words (maintainer, 2026-10-03): each one off the ride is left out, and each that reaches
+  it, or can't be placed, is shown and alerted as **its own** card, named and identified for itself
+  as its Dismiss identifies it (severity, label and TfL's words), so Keep going lets go of the
+  ones seen on this ride and the others still show. One TfL scopes to the
+  other way only is off a ride whose every route runs it this way, however it names its stops.
+  Unknown counts as on. A tube or
   rail line's alert never is: its delays spread along the line. TfL places a part
   closure by the stops it names as affected, taken section by section: each unbroken run of them
   along a route TfL says it affects, in the order that route runs, the section's two ends included.
@@ -1897,6 +1903,12 @@ them there:
   on the way's place (one trip at a time otherwise opens the one on the way). The list plans from
   now, not from when the rider reaches that station, so a route leaving before then is theirs to
   pass over (`TODO.md`).
+- **Keep going** (maintainer, 2026-10-03) sits beside Plan again, and alone where there's nowhere to
+  plan from: the rider has read what's wrong and stays on the route. What it answers is no longer
+  shown or alerted, for **this trip only** (kept with the trip, so through a restart, and gone when
+  it ends); something new still is, a worse status for the same line included, and so is a line's
+  other live alert that the one let go of had been shown ahead of. The alert comes down with it,
+  since what it said has been read.
 - **Where it shows:** the trip's own screen (the next step over the route), a **card pinned at the
   top of the main view** (the near-me list, under the top bar, not scrolling with it; a station's
   page, and a station, platform or starred journey opened from the list, are each their own view),

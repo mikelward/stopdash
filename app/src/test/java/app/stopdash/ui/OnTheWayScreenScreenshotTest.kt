@@ -80,18 +80,39 @@ class OnTheWayScreenScreenshotTest {
         nextTrains: NextTrains? = null,
         onGoTo: (OnTheWay.Step, OnTheWay.Step) -> Unit = { _, _ -> },
         disruptions: List<RouteDisruption.Signal> = emptyList(),
+        // As the tracker hands them over, worked out before the screen draws them.
+        cards: List<RouteDisruption.Signal> = RouteDisruption.cards(disruptions),
         replanFrom: ReplanOrigin.Stop? = null,
         onPlanAgain: ((ReplanOrigin.Stop) -> Unit)? = null,
+        onDismissDisruptions: ((List<RouteDisruption.Signal>) -> Unit)? = null,
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 OnTheWayScreen(
                     trip, progress, failed, now, onEnd, onBack, current = current, notKept = notKept, endFailed = endFailed, alertsOff = alertsOff,
-                    appOpenOnly = appOpenOnly, nextTrains = nextTrains, onGoTo = onGoTo, disruptions = disruptions,
-                    replanFrom = replanFrom, onPlanAgain = onPlanAgain,
+                    appOpenOnly = appOpenOnly, nextTrains = nextTrains, onGoTo = onGoTo, disruptions = disruptions, cards = cards,
+                    replanFrom = replanFrom, onPlanAgain = onPlanAgain, onDismissDisruptions = onDismissDisruptions,
                 )
             }
         }
+    }
+
+    @Test
+    fun on_the_way_reads_only_the_disruption_cards_it_draws() {
+        // A bus line with many alerts: registered by count, not walked on every recomposition, so the
+        // main thread reads only the cards near the screen (the lazy list keys a bounded window around
+        // what's shown), however many there are (Codex on #519). Made-up words.
+        val signals = (1..1000).map { n ->
+            RouteDisruption.Signal.Line(2, "jubilee", "Jubilee", LineStatus("jubilee", 6, "Severe Delays", fullText = "Alert $n."), RouteDisruption.Tier.HIGH, placed = true)
+        }
+        val read = mutableSetOf<Int>()
+        val cards = object : AbstractList<RouteDisruption.Signal>() {
+            override val size: Int get() = signals.size
+            override fun get(index: Int): RouteDisruption.Signal = signals[index].also { read += index }
+        }
+        show(trip, TripProgress.Waiting(mildmay, at(4)), disruptions = signals, cards = cards)
+        composeRule.onNodeWithText("Alert 1.").assertIsDisplayed()
+        assertTrue("read ${read.size} of 1000", read.size < 200)
     }
 
     @Test
@@ -121,6 +142,31 @@ class OnTheWayScreenScreenshotTest {
         composeRule.onNodeWithText("Plan again from Highbury & Islington").assertIsDisplayed().performClick()
         assertEquals(listOf(from), asked)
         captureSnapshot("on-the-way-plan-again.png")
+    }
+
+    @Test
+    fun keep_going_sits_beside_plan_again() {
+        // Read and keeping going (maintainer, 2026-10-03): Keep going hands over every signal shown. Made-up words.
+        val status = LineStatus("jubilee", 3, "Part Suspended", fullText = "No service between Stratford and Canary Wharf.")
+        val signal = RouteDisruption.Signal.Line(2, "jubilee", "Jubilee", status, RouteDisruption.Tier.HIGH, placed = true)
+        val dismissed = mutableListOf<List<RouteDisruption.Signal>>()
+        show(
+            trip, TripProgress.Waiting(mildmay, at(4)), disruptions = listOf(signal),
+            replanFrom = ReplanOrigin.Stop("910GHGHI", "Highbury & Islington"), onPlanAgain = {}, onDismissDisruptions = { dismissed += it },
+        )
+        composeRule.onNodeWithTag("onTheWayPlanAgain").assertIsDisplayed()
+        captureSnapshot("on-the-way-keep-going.png")
+        composeRule.onNodeWithText("Keep going").assertIsDisplayed().performClick()
+        assertEquals(listOf(listOf(signal)), dismissed)
+    }
+
+    @Test
+    fun a_disruption_with_nowhere_to_plan_from_still_offers_keep_going() {
+        val status = LineStatus("jubilee", 3, "Part Suspended", fullText = "No service between Stratford and Canary Wharf.")
+        val signal = RouteDisruption.Signal.Line(2, "jubilee", "Jubilee", status, RouteDisruption.Tier.HIGH, placed = true)
+        show(trip, TripProgress.Waiting(mildmay, at(4)), disruptions = listOf(signal), onDismissDisruptions = {})
+        composeRule.onNodeWithTag("onTheWayPlanAgain").assertDoesNotExist()
+        composeRule.onNodeWithTag("onTheWayKeepGoing").assertIsDisplayed()
     }
 
     @Test

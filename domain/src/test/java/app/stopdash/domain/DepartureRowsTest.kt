@@ -993,6 +993,17 @@ class DepartureRowsTest {
     }
 
     @Test
+    fun `an alert under way behind the one shown stays live, and so does its dismissal`() {
+        // Dismissed while it showed, then a worse one shown over it: still under way, so not pruned
+        // (Codex on #519). Made-up words.
+        val milder = LineAlert(6, "Diversion", "Bus stop 'Alpha Road' will not be served.")
+        val worse = LineAlert(3, "Part Suspended", "No buses between Alpha Road and Beta Road.")
+        val statuses = mapOf("99" to LineStatus("99", 3, "Part Suspended", worse.fullText, underWay = listOf(worse, milder)))
+        val dismissed = DismissedAlert.ofLineStatus(LineStatus("99", 6, "Diversion", milder.fullText))
+        assertTrue(dismissed in DepartureRows.liveLineStatusAlerts(statuses))
+    }
+
+    @Test
     fun `dismissing a status-only row's disruption keeps its undismissed planned work`() {
         val planned = PlannedAlert("Part Closure", "No service on Saturday 3 October.", java.time.LocalDate.of(2026, 10, 3))
         val suspended = LineStatus("victoria", 2, "Suspended", planned = listOf(planned))

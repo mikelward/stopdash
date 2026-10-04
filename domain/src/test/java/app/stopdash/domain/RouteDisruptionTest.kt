@@ -267,6 +267,44 @@ class RouteDisruptionTest {
     }
 
     @Test
+    fun `the line's next alert stands in for one let go of with Keep going`() {
+        // A part closure placed on the ride, picked ahead of severe delays: Keep going lets go of the
+        // closure, and the delays still come, rather than the line going quiet for the trip (Codex on #519).
+        val closure = PartClosure(11, "Part Closed", "No trains B to C", listOf(listOf("A", "B", "C")))
+        val severe = status("red", 6, "Severe Delays").copy(closures = listOf(closure))
+        val statuses = mapOf("red" to severe, "blue" to good("blue"))
+        val picked = signals(statuses = statuses).single() as Signal.Line
+        assertEquals("Part Closed", picked.status.description)
+        val keptGoing = trip.copy(disruptionsDismissed = setOf(picked.dismissKey))
+        val next = signals(trip = keptGoing, statuses = statuses).single() as Signal.Line
+        assertEquals("Severe Delays", next.status.description)
+        // Let go of too, nothing's left.
+        assertEquals(emptyList<Signal>(), signals(trip = keptGoing.copy(disruptionsDismissed = setOf(picked.dismissKey, next.dismissKey)), statuses = statuses))
+        // Only on its own leg: the same alert let go of on another leg doesn't count here.
+        val elsewhere = trip.copy(disruptionsDismissed = setOf(picked.copy(legIndex = 2).dismissKey))
+        assertEquals("Part Closed", (signals(trip = elsewhere, statuses = statuses).single() as Signal.Line).status.description)
+    }
+
+    @Test
+    fun `the line's next alert under way stands in for one let go of with Keep going`() {
+        // A suspension shown ahead of severe delays, both under way: Keep going lets go of the suspension,
+        // and the delays come in its place (Codex on #519).
+        val suspended = status("red", 4, "Suspended")
+        val statuses = mapOf(
+            "red" to suspended.copy(underWay = listOf(LineAlert(4, "Suspended", "Suspended on the line"), LineAlert(6, "Severe Delays", "Severe Delays on the line"))),
+            "blue" to good("blue"),
+        )
+        val picked = signals(statuses = statuses).single() as Signal.Line
+        assertEquals("Suspended", picked.status.description)
+        val keptGoing = trip.copy(disruptionsDismissed = setOf(picked.dismissKey))
+        val next = signals(trip = keptGoing, statuses = statuses).single() as Signal.Line
+        assertEquals(listOf("Severe Delays", Tier.MEDIUM), listOf(next.status.description, next.tier))
+        // Let go of too, nothing's left; likewise dismissed on the list.
+        assertEquals(emptyList<Signal>(), signals(trip = keptGoing.copy(disruptionsDismissed = setOf(picked.dismissKey, next.dismissKey)), statuses = statuses))
+        assertEquals(emptyList<Signal>(), signals(statuses = statuses, dismissed = setOf(DismissedAlert.ofLineStatus(picked.status), DismissedAlert.ofLineStatus(next.status))))
+    }
+
+    @Test
     fun `an alert already high isn't heard again for a closure placed on the ride`() {
         val suspended = status("red", 2, "Suspended")
         val closure = PartClosure(5, "Part Closure", "No trains B to C", listOf(listOf("A", "B", "C")))
@@ -444,13 +482,28 @@ class RouteDisruptionTest {
         assertNull(RouteDisruption.unpredicted(2, second.copy(lineId = ""), emptyList(), listOf(second.copy(lineId = "")), emptyMap()))
     }
     @Test
+    fun `each thing known is one card, however many legs it's on`() {
+        val status = status("red", 2, "Suspended")
+        val line = Signal.Line(0, "red", "Red", status, Tier.HIGH)
+        val other = Signal.Line(0, "red", "Red", status.copy(fullText = "Another alert."), Tier.HIGH)
+        assertEquals(listOf<Signal>(line, other), RouteDisruption.cards(listOf(line, line.copy(legIndex = 2), other)))
+        // Same words, another severity: another alert, its own card, as Keep going lets each go (Codex on #519).
+        val worse = Signal.Line(0, "red", "Red", status.copy(severity = 1), Tier.HIGH)
+        assertEquals(listOf<Signal>(line, worse), RouteDisruption.cards(listOf(line, worse)))
+    }
+
+    @Test
     fun `a signal added to what's known is said in order and stands no longer than either`() {
         val line = Signal.Line(0, "red", "Red", status("red", 2, "Suspended"), Tier.HIGH)
         val none = Signal.Unpredicted(2, "blue", "Blue", "D", "D")
-        assertEquals(RouteDisruption.Found(listOf(none), at(4)), RouteDisruption.Found.NONE.with(none, at(4)))
+        assertEquals(RouteDisruption.Found(listOf(none), at(4), mapOf(none.key to at(4))), RouteDisruption.Found.NONE.with(none, at(4)))
         val both = RouteDisruption.Found(listOf(line), at(6)).with(none, at(4))
         assertEquals(listOf<Signal>(line, none), both.signals)
         assertEquals(at(4), both.until)
+        // Each stands as long as its own: the added one by its time, the rest by the whole's (Codex on #519).
+        assertEquals(at(4), both.standsUntil(none))
+        assertEquals(at(4), both.standsUntil(line))
+        assertEquals(at(6), RouteDisruption.Found(listOf(line), at(6)).with(none, at(9)).standsUntil(line))
         assertEquals(at(6), RouteDisruption.Found(listOf(line), at(6)).with(none, at(9)).until)
         // Heard once for the leg, whatever the board lists between.
         assertEquals(none.key, none.copy().key)
@@ -479,6 +532,62 @@ class RouteDisruptionTest {
         assertFalse(RouteDisruption.offRide(bus("b1", "b5"), sole(diversion), busRoute))
         assertFalse(RouteDisruption.offRide(bus("b2", "b6"), sole(diversion), busRoute))
         assertFalse(RouteDisruption.offRide(bus("b3", "b4"), sole(diversion), busRoute))
+    }
+
+    @Test
+    fun `a bus line's several alerts are off the ride only when each one is`() {
+        // A route with several alerts under way, each about its far end, flagged a ride none of them
+        // reached (maintainer, 2026-10-03). Made-up words.
+        val missed = "Bus stop 'Example Street' will not be served."
+        fun several(vararg texts: String) = LineStatus(
+            "99", 5, "Diversion", texts.first(), soleAlert = false,
+            underWay = texts.map { LineAlert(5, "Diversion", it) },
+        )
+        assertTrue(RouteDisruption.scopableOnRide(several(diversion, missed)))
+        assertTrue(RouteDisruption.offRide(bus("b4", "b6"), several(diversion, missed), busRoute))
+        // One of them reaching the ride keeps the line on it.
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), several(diversion, "Bus stop 'Beta Road' will not be served."), busRoute))
+        // As does one about the whole route, or one giving no stretch.
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), several(diversion).copy(underWay = listOf(LineAlert(5, "Diversion", diversion), LineAlert(6, "Severe Delays", "Severe delays."))), busRoute))
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), several(diversion, "Buses are diverted near Moorgate Station."), busRoute))
+        // Several under way whose words weren't kept: unknown, so on.
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), sole(diversion).copy(soleAlert = false), busRoute))
+        assertFalse(RouteDisruption.scopableOnRide(sole(diversion).copy(soleAlert = false)))
+    }
+
+    @Test
+    fun `a bus alert TfL scopes to the other way is off a ride this way`() {
+        // TfL tags each alert with the way it affects; one naming a stop the ride's route lists under
+        // another name, the other way only, kept the line on (maintainer, 2026-10-03). Made-up words.
+        val bothWays = busRoute.copy(
+            routes = listOf(
+                busRoute.routes.single().copy(direction = "inbound"),
+                LineRoute("North End - Bank", listOf("b6", "b5", "b4", "b3", "b2", "b1"), "outbound"),
+            ),
+        )
+        val elsewhere = "Buses are diverted via Example Lane. Bus stop 'Example Lane / Alpha Road' (K) will not be served."
+        fun status(vararg alerts: LineAlert) = LineStatus("99", 5, "Diversion", alerts.first().fullText, underWay = alerts.toList())
+        val outboundOnly = LineAlert(5, "Diversion", elsewhere, setOf("outbound"))
+        val moorgate = LineAlert(5, "Diversion", diversion, setOf("inbound"))
+        assertTrue(RouteDisruption.offRide(bus("b4", "b6"), status(moorgate, outboundOnly), bothWays))
+        // Not known which way it goes, or this way: it can't be placed, so it stays on.
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), status(moorgate, outboundOnly.copy(directions = null)), bothWays))
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), status(moorgate, outboundOnly.copy(directions = setOf("inbound"))), bothWays))
+        // A ride the other way is off the inbound one, but the outbound one, unplaced, keeps it on.
+        assertFalse(RouteDisruption.offRide(bus("b6", "b4"), status(moorgate, outboundOnly), bothWays))
+        // The other way only is off whatever its words: route-wide delays, or prose that places nothing
+        // (Codex on #519), as the line's sole alert too.
+        val delays = LineAlert(6, "Severe Delays", "Severe delays throughout the route.", setOf("outbound"))
+        assertTrue(RouteDisruption.offRide(bus("b4", "b6"), status(moorgate, delays), bothWays))
+        val soleDelays = LineStatus("99", 6, "Severe Delays", delays.fullText, soleAlert = true, underWay = listOf(delays))
+        assertTrue(RouteDisruption.offRide(bus("b4", "b6"), soleDelays, bothWays))
+        assertFalse(RouteDisruption.offRide(bus("b4", "b6"), soleDelays.copy(underWay = listOf(delays.copy(directions = null))), bothWays))
+        // So its route is worth reading, though its words could never place it.
+        val busTrip = ActiveTrip(TripRoute(listOf(bus("b4", "b6"))), "North End", startedAt = t0)
+        assertEquals(setOf("99"), RouteDisruption.routesWanted(busTrip, mapOf("99" to soleDelays), emptyMap(), emptySet(), at(3)))
+        // Not once Keep going let go of it on this trip (Codex on #519).
+        val keptGoing = busTrip.copy(disruptionsDismissed = setOf(Signal.Line(0, "99", "99", soleDelays, RouteDisruption.Tier.MEDIUM).dismissKey))
+        assertEquals(emptySet<String>(), RouteDisruption.routesWanted(keptGoing, mapOf("99" to soleDelays), emptyMap(), emptySet(), at(3)))
     }
 
     @Test
@@ -653,5 +762,75 @@ class RouteDisruptionTest {
         assertEquals(listOf(0), left)
         // Without the route it's heard, as before.
         assertEquals(1, found(emptyMap()).size)
+    }
+
+    @Test
+    fun `a bus line's split alert TfL places on the ride is high, as a whole line's is`() {
+        // A part closure TfL places on the ride's stretch, beside other alerts: High and placed, as
+        // [lineSignal] has it, not Medium for being split (Codex on #519). Made-up words.
+        val leg = bus("b4", "b6").copy(path = listOf("b5", "b6"))
+        val busTrip = ActiveTrip(TripRoute(listOf(leg)), "North End", startedAt = t0)
+        val closed = LineAlert(11, "Part Closed", "No buses b4 to b6.")
+        val delays = LineAlert(6, "Severe Delays", "Severe delays.")
+        fun found(sections: List<List<String>>) = RouteDisruption.signals(
+            busTrip, TripProgress.Waiting(leg, at(5)),
+            mapOf("99" to LineStatus("99", 6, "Severe Delays", "Severe delays.", underWay = listOf(closed, delays),
+                closures = listOf(PartClosure(11, "Part Closed", "No buses b4 to b6.", sections)))),
+            emptyMap(), emptyMap(), emptyMap(), emptySet(), at(3),
+        ).filterIsInstance<Signal.Line>().associate { it.status.description to (it.tier to it.placed) }
+        assertEquals(mapOf("Part Closed" to (Tier.HIGH to true), "Severe Delays" to (Tier.MEDIUM to false)), found(listOf(listOf("b3", "b4", "b5", "b6"))))
+        // Placed elsewhere on the route, it's Medium, as any part closure is.
+        assertEquals(Tier.MEDIUM to false, found(listOf(listOf("x1", "x2", "x3")))["Part Closed"])
+    }
+
+    @Test
+    fun `each of a bus line's several alerts that may reach the ride is a signal of its own`() {
+        // Keep going lets go of the one seen, by its own identity, and the others still show
+        // (maintainer, 2026-10-03). Made-up words.
+        val leg = bus("b4", "b6")
+        val busTrip = ActiveTrip(TripRoute(listOf(leg)), "North End", startedAt = t0)
+        val beta = "Bus stop 'Beta Road' will not be served."
+        val north = "Bus stop 'North End' will not be served."
+        val status = LineStatus(
+            "99", 6, "Diversion", diversion,
+            underWay = listOf(LineAlert(6, "Diversion", diversion), LineAlert(6, "Diversion", beta), LineAlert(6, "Diversion", north)),
+        )
+        val left = mutableListOf<Int>()
+        fun found(dismissed: Set<DismissedAlert> = emptySet()) = RouteDisruption.signals(
+            busTrip, TripProgress.Waiting(leg, at(5)), mapOf("99" to status), emptyMap(), emptyMap(), emptyMap(), dismissed, at(3),
+            mapOf("99" to busRoute),
+        ) { left += it }
+        // The diversion at Bank is off the ride, and told; the two stops on it are each named for themselves.
+        val signals = found().filterIsInstance<Signal.Line>()
+        assertEquals(listOf(0), left)
+        assertEquals(listOf(beta, north), signals.map { it.status.fullText })
+        assertEquals(2, signals.map { it.key }.distinct().size)
+        // Each keyed by its own words, as its Dismiss is: one dismissed leaves the other.
+        val one = DismissedAlert.ofLineStatus(signals.first().status)
+        assertEquals(listOf(north), found(setOf(one)).filterIsInstance<Signal.Line>().map { it.status.fullText })
+        // The one the list shows dismissed there doesn't take the others with it (Codex on #519).
+        val showsBeta = status.copy(fullText = beta)
+        fun foundFor(shown: LineStatus, dismissed: Set<DismissedAlert>, sequences: Map<String, LineSequence> = mapOf("99" to busRoute)) =
+            RouteDisruption.signals(
+                busTrip, TripProgress.Waiting(leg, at(5)), mapOf("99" to shown), emptyMap(), emptyMap(), emptyMap(), dismissed, at(3), sequences,
+            ).filterIsInstance<Signal.Line>().map { it.status.fullText }
+        val betaDismissed = setOf(DismissedAlert.ofLineStatus(LineStatus("99", 6, "Diversion", beta)))
+        assertEquals(listOf(north), foundFor(showsBeta, betaDismissed))
+        assertEquals(setOf("99"), RouteDisruption.routesWanted(busTrip, mapOf("99" to showsBeta), emptyMap(), betaDismissed, at(3)))
+        // Alerts that never sound ask for no route, though their way is known (Codex on #519).
+        val minor = LineStatus(
+            "99", 9, "Minor Delays", "Minor delays.",
+            underWay = listOf(LineAlert(9, "Minor Delays", "Minor delays.", setOf("outbound")), LineAlert(9, "Minor Delays", "Slow traffic.", setOf("inbound"))),
+        )
+        assertEquals(emptySet<String>(), RouteDisruption.routesWanted(busTrip, mapOf("99" to minor), emptyMap(), emptySet(), at(3)))
+        // Nor once Keep going let go of every one on this trip (Codex on #519); a new one still asks.
+        val keptGoing = busTrip.copy(disruptionsDismissed = status.underWay.map { Signal.Line(0, "99", "99", LineStatus("99", it.severity, it.description, it.fullText), RouteDisruption.Tier.MEDIUM).dismissKey }.toSet())
+        assertEquals(emptySet<String>(), RouteDisruption.routesWanted(keptGoing, mapOf("99" to status), emptyMap(), emptySet(), at(3)))
+        val another = status.copy(underWay = status.underWay + LineAlert(6, "Diversion", "Bus stop 'Gamma Road' will not be served."))
+        assertEquals(setOf("99"), RouteDisruption.routesWanted(keptGoing, mapOf("99" to another), emptyMap(), emptySet(), at(3)))
+        // No route to place them on: each may reach the ride, each its own.
+        assertEquals(listOf(diversion, beta, north), foundFor(status, emptySet(), emptyMap()))
+        // The same alert keys the same however many others are under way.
+        assertEquals(signals.first().key, Signal.Line(0, "99", "99", LineStatus("99", 6, "Diversion", beta, soleAlert = true), RouteDisruption.Tier.MEDIUM).key)
     }
 }

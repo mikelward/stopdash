@@ -52,6 +52,7 @@ class FileActiveTripStoreTest {
         waitFrom = Instant.parse("2026-09-26T08:01:00Z"),
         boardWarned = "0/162",
         disruptionsHeard = setOf("line/0/red/6/Severe Delays", "stop/1/C/closed"),
+        disruptionsDismissed = setOf("line/0/red/6/Severe Delays"),
         // A Jubilee ride followed on another line's train, as that line runs it: by its own stops between.
         vehicleLeg = jubilee.copy(
             lineId = "metropolitan", lineName = "Metropolitan", path = listOf("940GZZLUWLO"), pathNames = listOf("Waterloo"),
