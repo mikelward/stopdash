@@ -5,6 +5,7 @@ package app.stopdash.ui
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.util.Log
+import android.util.LruCache
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.annotation.WorkerThread
@@ -173,6 +174,8 @@ import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.StarredJourney
 import app.stopdash.domain.StarredRow
+import app.stopdash.domain.StepFreeAccess
+import app.stopdash.domain.StepFreeLevel
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopDistance
 import app.stopdash.domain.StopGroup
@@ -1120,6 +1123,7 @@ fun MainScreen(
                 onDismissAlert(detailRow.copy(status = null, stopDisruption = null, plannedAlerts = listOf(planned)))
             },
             journeys = journeys,
+            journeysLoading = journeysLoading,
             onToggleJourney = onToggleJourney,
             onDismissJourneyTip = onDismissJourneyTip,
         )
@@ -1823,6 +1827,208 @@ internal fun emptyStateUncertain(state: DeparturesUiState.Loaded, stamps: StopSt
         // No retained stops to age individually — fall back to the snapshot stamp, so an
         // aged empty snapshot (e.g. one restored from storage) still prompts a refresh.
         (state.stops.isEmpty() && Staleness.isStale(state.fetchedAt, now))
+
+/** Each saved journey that boards at a route page's stop, with the page's stops it ends at, and all of those. */
+internal class JourneysHere(val byJourney: Map<StarredJourney, Set<String>>, val starredStopIds: Set<String>) {
+    companion object {
+        val NONE = JourneysHere(emptyMap(), emptySet())
+    }
+}
+
+/**
+ * [JourneysHere] as a route page shows it (a stand-in for the same stop and line included), and whether
+ * it's [current]: worked out for exactly the journeys and stops the page has now. Only a current answer
+ * takes a tap or readies the rail (Codex on #555).
+ */
+internal class JourneysShown(val here: JourneysHere, val current: Boolean)
+
+/**
+ * [journeysHere], worked out on the worker (AGENTS.md *Main thread: read and dispatch only*). The last
+ * answer stands in for this same stop and line while the next is worked out (a journey starred, the
+ * stops landing), so a star doesn't blink off and back; none for another row's. Only a [current]
+ * answer may serve a tap: a stand-in, or none, could miss the saved journey the tap should take off and
+ * star a second one instead (Codex on #555).
+ */
+@Composable
+internal fun rememberJourneysHere(
+    journeys: List<StarredJourney>,
+    stops: RouteStopsUi,
+    stopId: String,
+    lineId: String,
+): JourneysShown {
+    val key = Inputs(stopId, lineId, journeys, stops)
+    // The same page reopened finds its last answer at once ([JourneysMemo]), so its stars are there in
+    // its first frame rather than inserted after, rewrapping a row (Codex on #555).
+    val slot = remember { mutableStateOf(JourneysMemo.get(key)) }
+    val here = rememberWorked(slot, key, keep = ::sameRowAndLine) {
+        journeysHere(journeys, stops as? RouteStopsUi.Loaded, stopId, lineId)
+    } ?: return JourneysShown(JourneysHere.NONE, current = false)
+    val answered = slot.value
+    SideEffect { if (answered != null) JourneysMemo.put(answered) }
+    return JourneysShown(here, current = answered?.key == key)
+}
+
+/** [liftDependent], worked out on the worker; false until it's in. */
+@Composable
+internal fun rememberLiftDependent(table: StepFreeAccess?, listed: List<RouteStop>): Boolean {
+    val slot = remember { mutableStateOf<Worked<Inputs, Boolean>?>(null) }
+    return rememberWorked(slot, Inputs(table, listed)) { liftDependent(table, listed) } == true
+}
+
+/**
+ * [stepFreeLevels], worked out on the worker with the lifts out applied to the whole table; null until
+ * there's an answer for these stops, so the page holds its placeholder rather than draw the rail
+ * unmarked and mark it a moment later (Codex on #555). An earlier answer stands in only where it's
+ * exact: for the same table, lifts out, line and mode a station's level is the same whatever list it's
+ * in, so a refreshed copy of the stops keeps its marks ([sameLevels]). Never across lifts newly out:
+ * one may take a station's mark away, so while that's worked out none shows rather than one that may
+ * be wrong (Codex on #555); a rail already shown stays ([rememberRailState]). Lifts only back in service
+ * ([cleared]) can only add marks, so the last ones stay meanwhile rather than all blinking off (Codex on
+ * #555). The last answers app-wide are kept ([StepFreeMemo]), so a page reopened has its marks in its
+ * first frame.
+ */
+@Composable
+internal fun rememberStepFreeLevels(
+    table: StepFreeAccess?,
+    liftsOut: Set<String>,
+    listed: List<RouteStop>,
+    lineId: String,
+    mode: String,
+    cleared: LiftsCleared? = null,
+): StepFreeShown {
+    // No table: none to mark by, unless it's still being read, when the answer is still to come.
+    if (table == null) {
+        val reading = LocalStepFreeLoading.current
+        return StepFreeShown(if (reading) null else emptyMap(), known = !reading)
+    }
+    val key = Inputs(table, liftsOut, listed, lineId, mode)
+    val slot = remember { mutableStateOf(StepFreeMemo.get(key)) }
+    val levels = rememberWorked(slot, key, keep = { held, wanted -> sameLevels(held, wanted, cleared) }) { stepFreeLevels(table, liftsOut, listed, lineId, mode) }
+    val answered = slot.value
+    SideEffect { if (answered != null) StepFreeMemo.put(answered) }
+    // Known only once worked out for exactly these inputs: a stand-in shows its marks, but never
+    // readies a waiting rail, for a new route or new lifts out (Codex on #555).
+    return StepFreeShown(levels, known = answered?.key == key)
+}
+
+/**
+ * A route page's step-free marks: [levels] to show (a stand-in included; null while there's none), and
+ * whether they're [known] for the inputs as they are now.
+ */
+internal class StepFreeShown(val levels: Map<String, StepFreeLevel>?, val known: Boolean)
+
+/**
+ * What a route page's rail shows: [stops], but held behind the list's own placeholder until its marks
+ * are ready (the first step-free answer and the saved journeys' stars, [marksReady]), so the rail
+ * doesn't shift as they land. Once these stops' rail has shown it stays, whatever answer is pending
+ * after (the step-free table loading late, say), so the list being read never goes back to the
+ * placeholder (Codex on #555); marks still to come land on it. Kept per page and followed route ([page]),
+ * not per stops object, so a refresh that hands the same page a new copy of its stops (a cached
+ * route's stops resolved again) never takes the rail away either; and never by the stops' contents,
+ * which would walk the route on the main thread. A route that goes back to loading (the followed train
+ * now another branch or destination) starts afresh: its new stops wait for their own marks.
+ */
+@Composable
+internal fun rememberRailState(stops: RouteStopsUi, marksReady: Boolean, page: String): RouteStopsUi {
+    var shown by remember(page) { mutableStateOf(false) }
+    val rail = if (!marksReady && stops is RouteStopsUi.Loaded && !shown) RouteStopsUi.Loading else stops
+    if (rail is RouteStopsUi.Loaded && !shown) SideEffect { shown = true }
+    if (stops !is RouteStopsUi.Loaded && shown) SideEffect { shown = false }
+    return rail
+}
+
+/**
+ * Whether a step-free answer for [held] may stand in for [wanted]'s stations: the same table, line and
+ * mode, whatever the list of stops, and the same set of lifts out (by identity), exact; or the set
+ * before lifts only came back ([cleared]), which can only lack a mark, never show a wrong one.
+ */
+private fun sameLevels(held: Inputs, wanted: Inputs, cleared: LiftsCleared?): Boolean {
+    val lifts = held.parts[1] === wanted.parts[1] ||
+        (cleared != null && held.parts[1] === cleared.from && wanted.parts[1] === cleared.to)
+    return held.parts[0] === wanted.parts[0] && lifts && held.parts[3] == wanted.parts[3] && held.parts[4] == wanted.parts[4]
+}
+
+/** Lifts out [to] after an answer that only brought some of [from] back into service. */
+internal class LiftsCleared(val from: Set<String>, val to: Set<String>)
+
+/**
+ * The last route pages' answers by their exact inputs, so a page reopened finds its own, however many
+ * others were opened since, up to [MAX_ENTRIES] (Codex on #555). A lookup hashes a key of a few parts,
+ * never a pass over a list.
+ */
+internal open class AnswerMemo<T> {
+    private val held = LruCache<Inputs, Worked<Inputs, T>>(MAX_ENTRIES)
+
+    fun get(key: Inputs): Worked<Inputs, T>? = held.get(key)
+
+    fun put(answer: Worked<Inputs, T>) {
+        held.put(answer.key, answer)
+    }
+
+    companion object {
+        const val MAX_ENTRIES = RouteStopsMemo.MAX_ENTRIES
+    }
+}
+
+/** Saved-journeys answers for route pages reopened ([rememberJourneysHere]). */
+internal object JourneysMemo : AnswerMemo<JourneysHere>()
+
+/** Step-free answers for route pages reopened ([rememberStepFreeLevels]). */
+internal object StepFreeMemo : AnswerMemo<Map<String, StepFreeLevel>>()
+
+/** Whether two route-page keys are for the same stop and line, so one answer may stand in for the other. */
+internal fun sameRowAndLine(held: Inputs, wanted: Inputs): Boolean =
+    held.parts[0] == wanted.parts[0] && held.parts[1] == wanted.parts[1]
+
+/**
+ * Each of [journeys] that boards at [stopId] on [lineId]'s route page, with the stops on [page] it ends
+ * at: by id, or placed on the page's route the way the journey card places it (a bus's way back boards
+ * across the road).
+ */
+@WorkerThread
+internal fun journeysHere(
+    journeys: List<StarredJourney>,
+    page: RouteStopsUi.Loaded?,
+    stopId: String,
+    lineId: String,
+): JourneysHere {
+    val pageSequence = page?.sequence
+    val pageStopIds = page?.stops?.mapTo(HashSet()) { it.id }.orEmpty()
+    val byJourney = journeys.mapNotNull { j ->
+        // The saved ids only when the other end is itself on this page's list; a bus's
+        // way back may board at a saved pole but alight across the road.
+        val byId = when (stopId) {
+            j.from.stopId -> setOf(j.to.stopId)
+            j.to.stopId -> setOf(j.from.stopId)
+            else -> null
+        }?.takeIf { pageSequence == null || it.any { id -> id in pageStopIds } }
+        val placed = byId ?: pageSequence?.let { seq ->
+            listOf(j, j.reversed()).firstNotNullOfOrNull { cand ->
+                Journeys.segment(cand, seq, lineId)?.takeIf { it.originId == stopId }?.destinationIds
+            }
+        }
+        placed?.let { j to it }
+    }.toMap()
+    return JourneysHere(byJourney, byJourney.values.flatMapTo(HashSet()) { it })
+}
+
+/** Whether any of [listed] is step-free only by a lift in [table], so a lift outage can change it. */
+@WorkerThread
+internal fun liftDependent(table: StepFreeAccess?, listed: List<RouteStop>): Boolean =
+    table != null && listed.any { table.byLift(it.id) }
+
+/** Each of [listed]'s step-free level for [lineId] in [table], with the lifts in [liftsOut] out. */
+@WorkerThread
+internal fun stepFreeLevels(
+    table: StepFreeAccess?,
+    liftsOut: Set<String>,
+    listed: List<RouteStop>,
+    lineId: String,
+    mode: String,
+): Map<String, StepFreeLevel> {
+    val withOut = table?.withLiftsOut(liftsOut) ?: return emptyMap()
+    return listed.mapNotNull { stop -> withOut.levelFor(stop.id, lineId, mode)?.let { stop.id to it } }.toMap()
+}
 
 @Composable
 private fun FreshnessStamp(state: DeparturesUiState, now: Instant, onRefresh: () -> Unit) {
@@ -4335,6 +4541,8 @@ internal fun RouteDetailScreen(
     // starred, and tapping a station stars or unstars the journey there. Null (a bus, whose return
     // leaves from another pole, or a caller without journeys) leaves the stations inert.
     journeys: List<StarredJourney> = emptyList(),
+    // True while the saved journeys are still being read: an empty [journeys] isn't yet "none saved".
+    journeysLoading: Boolean = false,
     onToggleJourney: ((StarredJourney) -> Unit)? = null,
     // Dismisses the tip on starring a journey from the stop list; null shows none.
     onDismissJourneyTip: (() -> Unit)? = null,
@@ -4696,25 +4904,7 @@ internal fun RouteDetailScreen(
             // back boards across the road).
             // The row's mode, from any of its departures when TfL left it off the soonest one.
             val rowMode = row.mode.ifBlank { row.upcoming.firstOrNull { it.mode.isNotBlank() }?.mode.orEmpty() }
-            val pageSequence = (stops as? RouteStopsUi.Loaded)?.sequence
-            val pageStopIds = (stops as? RouteStopsUi.Loaded)?.stops?.mapTo(HashSet()) { it.id }.orEmpty()
-            val journeysHere = remember(journeys, pageSequence, pageStopIds, row.stopId, row.lineId) {
-                journeys.mapNotNull { j ->
-                    // The saved ids only when the other end is itself on this page's list; a bus's
-                    // way back may board at a saved pole but alight across the road.
-                    val byId = when (row.stopId) {
-                        j.from.stopId -> setOf(j.to.stopId)
-                        j.to.stopId -> setOf(j.from.stopId)
-                        else -> null
-                    }?.takeIf { pageSequence == null || it.any { id -> id in pageStopIds } }
-                    val placed = byId ?: pageSequence?.let { seq ->
-                        listOf(j, j.reversed()).firstNotNullOfOrNull { cand ->
-                            Journeys.segment(cand, seq, row.lineId)?.takeIf { it.originId == row.stopId }?.destinationIds
-                        }
-                    }
-                    placed?.let { j to it }
-                }.toMap()
-            }
+            val journeysHere = rememberJourneysHere(journeys, stops, row.stopId, row.lineId)
             // Each listed station's step-free level for this line, from TfL's bundled table (SPEC
             // *Step-free access*); nothing until the table is read. Where a station is step-free only
             // by a lift, TfL's lift outages are asked for once the list is up, and again when that
@@ -4726,28 +4916,49 @@ internal fun RouteDetailScreen(
             val liftOutages = LocalLiftsOut.current
             val lifecycleOwner = LocalLifecycleOwner.current
             val listed = (stops as? RouteStopsUi.Loaded)?.stops.orEmpty()
-            val byLift = remember(stepFreeTable, listed) { stepFreeTable != null && listed.any { stepFreeTable.byLift(it.id) } }
+            val byLift = rememberLiftDependent(stepFreeTable, listed)
             // The first frame draws from TfL's last answer, held in memory, so a page opened (or
             // turned) while a lift is out never shows its mark, even before the fresh ask returns.
             var liftsOut by remember(liftOutages) { mutableStateOf(liftOutages?.known.orEmpty()) }
-            LaunchedEffect(liftOutages, byLift, lifecycleOwner) {
+            var liftsCleared by remember(liftOutages) { mutableStateOf<LiftsCleared?>(null) }
+            val liftWorker = LocalWorker.current
+            LaunchedEffect(liftOutages, byLift, lifecycleOwner, liftWorker) {
                 if (!byLift || liftOutages == null) return@LaunchedEffect
                 lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
                     while (true) {
                         val answer = liftOutages.current()
-                        liftsOut = answer.ids
+                        // The same outages keep the same set, so the marks aren't worked out again (and
+                        // hidden meanwhile) on every ask; compared on the worker, never here.
+                        val held = liftsOut
+                        val (changed, onlyCleared) = withContext(liftWorker) {
+                            val changed = answer.ids != held
+                            changed to (changed && held.containsAll(answer.ids))
+                        }
+                        if (changed) {
+                            liftsCleared = if (onlyCleared) LiftsCleared(held, answer.ids) else null
+                            liftsOut = answer.ids
+                        }
                         // At least a second apart, whatever an answer says, so nothing can spin.
                         delay(answer.askAgainIn.toMillis().coerceAtLeast(1_000))
                     }
                 }
             }
-            val stepFree = remember(stepFreeTable, liftsOut, listed, row.lineId, rowMode) {
-                val table = stepFreeTable?.withLiftsOut(liftsOut) ?: return@remember emptyMap()
-                listed.mapNotNull { stop -> table.levelFor(stop.id, row.lineId, rowMode)?.let { stop.id to it } }.toMap()
-            }
+            val stepFree = rememberStepFreeLevels(stepFreeTable, liftsOut, listed, row.lineId, rowMode, liftsCleared)
+            // No saved journeys (a trip's route page, say) and no star still shown from before the last was
+            // taken off: there's nothing to wait for, nor any star a tap could take off (Codex on #555).
+            val noJourneysHere = journeys.isEmpty() && journeysHere.here.byJourney.isEmpty()
+            // Not before the saved journeys are read, when an empty list only means unread.
+            val starsReady = !journeysLoading && (journeysHere.current || noJourneysHere)
+            // The page and the route it follows, as the route's stops are keyed ([rememberRouteStops]): a
+            // refresh of the same route keeps its rail up; another (the followed train gone, its next on
+            // another branch, or under the bus rule, even from the memo) waits for its own marks.
+            val railKey = "${row.stopId}|${row.lineId}|${row.direction}|${rowMode.equals("bus", ignoreCase = true)}|" +
+                "${followed?.destination}|${followed?.branch}|${followed?.platform}|${followed?.direction}|" +
+                "${followed?.destinationId}|${followed?.via}"
+            val railState = rememberRailState(stops, marksReady = stepFree.known && starsReady, page = railKey)
             // Every station from here to where the soonest train terminates (SPEC *Route detail*).
             RouteStopsSection(
-                state = stops,
+                state = railState,
                 railColor = railColorFor(row),
                 onRetry = { routeStopsRetry++ },
                 modifier = Modifier.padding(top = 16.dp),
@@ -4757,10 +4968,14 @@ internal fun RouteDetailScreen(
                 // By segment, whatever line or direction it was starred from: the 43 and the 134
                 // between two shared stops are one journey, and so is its way back from the poles
                 // across the road — so any of those pages shows (and toggles) the same star.
-                starredStopIds = journeysHere.values.flatMapTo(mutableSetOf()) { it },
+                starredStopIds = journeysHere.here.starredStopIds,
                 alertStopIds = alertStretchIds,
-                stepFree = stepFree,
+                stepFree = stepFree.levels.orEmpty(),
                 onDismissJourneyTip = onDismissJourneyTip,
+                // Not until the page's journeys are worked out for what it shows: a tap goes by them.
+                // With none here, a tap can only star: the first lands at once. A star still shown after the
+                // last was taken off waits, or a second tap would put it back.
+                journeyTapsReady = journeysHere.current || noJourneysHere,
                 onToggleJourneyTo = onToggleJourney
                     ?.takeIf { row.lineId.isNotBlank() && (Connections.isRail(rowMode, row.lineId) || rowMode.equals("bus", ignoreCase = true)) }
                     ?.let { toggle ->
@@ -4774,7 +4989,8 @@ internal fun RouteDetailScreen(
                                 JourneyEnd(id, name.ifBlank { id }, positions[id]?.first, positions[id]?.second, areas[id].orEmpty())
                             // A saved journey this stop already ends on this page is toggled (off) as
                             // itself, rather than starred again under this direction's pole ids.
-                            val existing = journeysHere.entries.firstOrNull { stop.id in it.value }?.key
+                            // A tap's own lookup, over this row's few saved journeys.
+                            val existing = journeysHere.here.byJourney.entries.firstOrNull { stop.id in it.value }?.key
                             toggle(
                                 existing ?: StarredJourney(
                                     end(row.stopId, row.stopName), end(stop.id, stop.name), row.lineId, row.lineName, rowMode,

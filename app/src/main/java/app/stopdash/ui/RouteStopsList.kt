@@ -270,6 +270,9 @@ internal fun RouteStopsSection(
     // Dismisses the tip atop a starrable list that tapping a stop stars a journey; null shows none
     // (already dismissed, or not yet known to be undismissed).
     onDismissJourneyTip: (() -> Unit)? = null,
+    // Whether a stop tap may star now: false while the page's saved journeys, which a tap goes by, are
+    // still being worked out. The tip stays put meanwhile, so the rail under it never shifts.
+    journeyTapsReady: Boolean = true,
 ) {
     val note = when (state) {
         RouteStopsUi.Hidden -> return
@@ -301,7 +304,7 @@ internal fun RouteStopsSection(
                     starred = index > 0 && stop.id in starredStopIds,
                     inAlert = stop.id in alertStopIds,
                     stepFree = stepFree[stop.id],
-                    onClick = if (index > 0) onToggleJourneyTo?.let { toggle -> { toggle(stop) } } else null,
+                    onClick = if (index > 0 && journeyTapsReady) onToggleJourneyTo?.let { toggle -> { toggle(stop) } } else null,
                 )
             }
         } else if (note != null) {
