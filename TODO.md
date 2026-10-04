@@ -64,8 +64,7 @@ exercises the whole spine the widget later renders from.
       cards built (`fartherCards`, `fartherDistanceMeters`, `openedStates`, and
       `FartherCardsViewModel`'s `retain` and `open` after their lookups) and the farther stations
       reached (`reachedStopIds`, `fartherReached`, and `FartherBuses.stationStops`/`candidates`
-      before their `produceState` hops), all in composition; `FavoriteChips`' two passes over the
-      favorite places in `remember`; the search and lookup results worked over after their requests
+      before their `produceState` hops), all in composition; the search and lookup results worked over after their requests
       (`StationSearchViewModel.start`'s filter and map, `StationStopsViewModel.retry`'s centered stops,
       `FavoritePlacesViewModel.onPick`'s `FixedLocation.centerOf` and `startSearch`'s
       `withBundledPositions`); and the DataStore stores mapping their data on the main collector, with no `flowOn`: the starred rows
@@ -87,7 +86,9 @@ exercises the whole spine the widget later renders from.
 - [ ] Finish marking `@WorkerThread`: the first sweep marked the route, alert, journey and board-wide
       work; smaller loops the UI still calls in composition (a row's `Countdown.entries`, and the like)
       aren't marked yet, so `WorkerThreadCall` can't see them. Mark each as its screen moves off the
-      main thread, its calls joining the baseline until then.
+      main thread, its calls joining the baseline until then. `FavoriteShortcuts.hiddenIds`/`shown`
+      run in `rememberWorked` since the favorite chips moved off the main thread: mark them once `WorkerThreadCall` reads a
+      `rememberWorked` lambda as off the main thread (#535).
 - [ ] Sharpen `WorkerThreadCall` where it still guesses: a helper's default argument doing the work
       (`fun rows(v = RouteStops.resolve(…))`) isn't followed, and a local function or stored lambda is
       matched to its calls by name, so a shadowing local of the same name is attributed to it. A
