@@ -4,10 +4,14 @@ import androidx.glance.appwidget.testing.unit.runGlanceAppWidgetUnitTest
 import androidx.compose.ui.unit.DpSize
 import androidx.test.core.app.ApplicationProvider
 import androidx.compose.ui.unit.dp
+import androidx.glance.appwidget.testing.unit.hasRunCallbackClickAction
+import androidx.glance.testing.unit.hasAnyDescendant
 import androidx.glance.testing.unit.hasContentDescription
+import androidx.glance.testing.unit.hasStartActivityClickAction
 import androidx.glance.testing.unit.hasContentDescriptionEqualTo
 import androidx.glance.testing.unit.hasText
 import androidx.glance.testing.unit.hasTextEqualTo
+import app.stopdash.MainActivity
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
@@ -353,5 +357,73 @@ class WidgetContentTest {
         // The stamp invites a refresh, and the withheld countdown is "?" (never a live number).
         onNode(hasText("Tap to refresh")).assertExists()
         onNode(hasText("?")).assertExists()
+    }
+
+    @Test
+    fun `the header refreshes and the departures open the app`() = runGlanceAppWidgetUnitTest {
+        provideComposable {
+            WidgetContent(
+                WidgetModel(
+                    hasData = true,
+                    stale = true, uncertain = true,
+                    stamp = "Updated 12 min ago",
+                    rows = listOf(rowModel(row("victoria", 120, now.minusSeconds(900)))),
+                ),
+                now,
+            )
+        }
+        val refresh = hasRunCallbackClickAction<RefreshWidgetAction>()
+        // "Tap to refresh" does what it says: the header it sits in refreshes in place.
+        onNode(refresh.and(hasAnyDescendant(hasText("Tap to refresh")))).assertExists()
+        onNode(refresh.and(hasAnyDescendant(hasText("StopDash")))).assertExists()
+        // The departures aren't under it; they open the app.
+        onAllNodes(refresh.and(hasAnyDescendant(hasText("Brixton")))).assertCountEquals(0)
+        onNode(hasStartActivityClickAction<MainActivity>().and(hasAnyDescendant(hasText("Brixton")))).assertExists()
+    }
+
+    @Test
+    fun `with no data nothing refreshes, and the widget opens the app`() = runGlanceAppWidgetUnitTest {
+        provideComposable {
+            WidgetContent(WidgetModel(hasData = false, stale = false, uncertain = false, stamp = null, rows = emptyList()), now)
+        }
+        onAllNodes(hasRunCallbackClickAction<RefreshWidgetAction>()).assertCountEquals(0)
+        onNode(hasStartActivityClickAction<MainActivity>()).assertExists()
+    }
+
+    @Test
+    fun `a tap's refresh is said in the note, over the stale one`() = runGlanceAppWidgetUnitTest {
+        setContext(ApplicationProvider.getApplicationContext())
+        provideComposable {
+            WidgetContent(
+                WidgetModel(
+                    hasData = true,
+                    stale = true, uncertain = true,
+                    stamp = "Updated 12 min ago",
+                    rows = listOf(rowModel(row("victoria", 120, now.minusSeconds(900)))),
+                    tap = WidgetTapNote.REFRESHING,
+                ),
+                now,
+            )
+        }
+        onNode(hasText("Refreshing…")).assertExists()
+        onAllNodes(hasText("Tap to refresh")).assertCountEquals(0)
+    }
+
+    @Test
+    fun `a tap that got nothing says why`() = runGlanceAppWidgetUnitTest {
+        setContext(ApplicationProvider.getApplicationContext())
+        provideComposable {
+            WidgetContent(
+                WidgetModel(
+                    hasData = true,
+                    stale = true, uncertain = true,
+                    stamp = "Updated 12 min ago",
+                    rows = listOf(rowModel(row("victoria", 120, now.minusSeconds(900)))),
+                    tap = WidgetTapNote.UNREACHABLE,
+                ),
+                now,
+            )
+        }
+        onNode(hasText("Couldn't refresh: TfL unreachable")).assertExists()
     }
 }
