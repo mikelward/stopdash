@@ -265,15 +265,16 @@
     <!-- A route's door-to-door time and arrival, from live trains plus the Planner's run times, so
          "about" (~). %1$d is minutes, %2$s a clock time. -->
     <string name="trip_duration_arrival">%1$d min · ~%2$s</string>
-    <!-- The same, with a leg timed from the Planner's timetable because no live train is known yet. -->
-    <string name="trip_duration_arrival_estimated">%1$d min · est. %2$s</string>
+    <!-- The same, with a leg timed from the Planner's timetable because no live train is known yet:
+         "est." leads, before the duration (maintainer, 2026-10-04). -->
+    <string name="trip_duration_arrival_estimated">est. %1$d min · %2$s</string>
     <!-- An estimated arrival that may be some minutes later, waiting for a frequent line: the
          duration's range, then the arrival's (%3$s–%4$s, the end without its hour when that's the
          same: "11:26–34"). -->
-    <string name="trip_duration_arrival_range">%1$d–%2$d min · est. %3$s–%4$s</string>
+    <string name="trip_duration_arrival_range">est. %1$d–%2$d min · %3$s–%4$s</string>
     <!-- An estimated arrival a longer wait for a frequent line could make later by an amount nothing
          times (it could miss a connection): "or later", as "+". %1$d is minutes, %2$s a clock time. -->
-    <string name="trip_duration_arrival_open">%1$d+ min · est. %2$s+</string>
+    <string name="trip_duration_arrival_open">est. %1$d+ min · %2$s+</string>
     <!-- A route whose Planner train is missed with no live train known: no honest arrival to give. -->
     <string name="trip_arrival_unknown">Arrival unknown</string>
     <!-- Between a leg's card and the next: how far it rides. %1$d stops, %2$s where it gets off. -->
@@ -618,9 +619,10 @@
          "About" (~): TfL's prediction where the rider gets off, with only walks after. -->
     <!-- TODO: translate -->
     <string name="on_the_way_trip_eta" tools:ignore="MissingTranslation">%2$d min · ~%1$s</string>
-    <!-- As on_the_way_trip_eta, partly estimated from the plan. -->
+    <!-- As on_the_way_trip_eta, partly estimated from the plan: "est." leads, and is the first thing
+         the card drops when the row is short (maintainer, 2026-10-04). -->
     <!-- TODO: translate -->
-    <string name="on_the_way_trip_eta_estimated" tools:ignore="MissingTranslation">%2$d min · est. %1$s</string>
+    <string name="on_the_way_trip_eta_estimated" tools:ignore="MissingTranslation">est. %2$d min · %1$s</string>
     <!-- The step at hand on the card, beside a ride's stops: %2$d the minutes until it's done, then %1$s the clock time. -->
     <!-- TODO: translate -->
     <string name="on_the_way_step_time" tools:ignore="MissingTranslation">%2$d min · %1$s</string>

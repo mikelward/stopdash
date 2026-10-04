@@ -767,15 +767,62 @@ object OnTheWay {
      * rider can catch is due at the ride's boarding stop, as its board lists it ([nextDue]), for a rider
      * still to board whose train followed has gone by or isn't known.
      */
+    @WorkerThread
     fun eta(trip: ActiveTrip, progress: TripProgress?, now: Instant, nextDue: Instant? = null): Eta? {
+        // [etaFrom]'s cheap exits first, before [etaTail] goes over the route (Codex, #526).
+        if (progress == TripProgress.Arrived || ridingUnmatched(trip)) return null
+        val anchor = etaSource(trip, progress, now, nextDue)?.first ?: return null
+        if (anchor.isBefore(now)) return null
+        return etaFrom(trip, progress, now, etaTail(trip) ?: return null, nextDue)
+    }
+
+    /**
+     * What follows [trip]'s current leg to the end ([rest]: the legs ahead and the changes between them)
+     * and whether that's walks only with no change ([walksOnly]), which an arrival can stay live through;
+     * null with no current leg. It goes over the route's legs, so it's worked out off the main thread and
+     * held while the trip's at the same leg; [etaFrom] then times it from progress at once.
+     */
+    class EtaTail(val rest: Duration, val walksOnly: Boolean)
+
+    /** [EtaTail] for [trip] at its current leg: over the route's legs, so off the main thread. */
+    @WorkerThread
+    fun etaTail(trip: ActiveTrip): EtaTail? {
+        val leg = trip.leg ?: return null
+        val ahead = trip.route.legs.drop(trip.legIndex + 1)
+        // Changes only between legs: the last leg's is to no next leg, as the route leaves it out (Codex, PR #449).
+        val changes = (listOf(leg) + ahead).dropLast(1).fold(Duration.ZERO) { sum, it -> sum.plus(it.changeAfter) }
+        val rest = ahead.fold(changes) { sum, next -> sum.plus(next.run) }
+        return EtaTail(rest, ahead.all { it.isWalk } && changes.isZero)
+    }
+
+    /**
+     * [trip]'s [Eta] at [now] from where it stands ([progress]) and what follows its current leg ([tail],
+     * from [etaTail] for the same leg), without going over the route: a held [tail] times the latest
+     * progress at once.
+     */
+    fun etaFrom(trip: ActiveTrip, progress: TripProgress?, now: Instant, tail: EtaTail, nextDue: Instant? = null): Eta? {
         if (progress == TripProgress.Arrived) return null
         // On board by where they were seen, with no train: counted stops only, which stand still between
         // fixes, so a time from them would slide later as the clock runs (Codex, PR #449).
         if (ridingUnmatched(trip)) return null
+        val (anchor, after, live) = etaSource(trip, progress, now, nextDue) ?: return null
+        // Gone by with nothing newer (a train still listed past its time, a walk running long): no
+        // arrival, rather than one lifted to now that slides later as the clock runs, live or not
+        // (Codex, PR #449).
+        if (anchor.isBefore(now)) return null
+        // A change still ahead is the Planner's time, as a ride is: estimated (Codex, PR #449).
+        return Eta(anchor.plus(after).plus(tail.rest), live && tail.walksOnly)
+    }
+
+    /**
+     * What [eta] times [trip] from at [now] (its source: TfL's time where the rider gets off, the
+     * train's at the boarding stop, or the end of a change or walk), what follows it on the current leg,
+     * and whether it's live; null with none. An arrival worked out earlier stands only while its source
+     * is still to come.
+     */
+    fun etaSource(trip: ActiveTrip, progress: TripProgress?, now: Instant, nextDue: Instant? = null): Triple<Instant, Duration, Boolean>? {
         val leg = trip.leg ?: return null
-        // What it's timed from, and what follows that on the current leg: TfL's time where they get off,
-        // the train's at the boarding stop, or the end of a change or walk.
-        val (anchor, after, live) = when (progress) {
+        return when (progress) {
             // Its stop beyond TfL's predictions: no time for it, as the step claims none (maintainer,
             // 2026-09-29), rather than one counted from now that slides later between stops (Codex, PR #449).
             is TripProgress.Riding -> Triple(progress.getOffAt ?: return null, Duration.ZERO, true)
@@ -788,18 +835,8 @@ object OnTheWay {
             is TripProgress.Lost if !trip.boarded -> Triple(upcoming(nextDue, now) ?: return null, leg.run, false)
             is TripProgress.Changing -> Triple(progress.until, leg.run, false)
             is TripProgress.Walking -> Triple(progress.until, Duration.ZERO, false)
-            else -> return null
+            else -> null
         }
-        // Gone by with nothing newer (a train still listed past its time, a walk running long): no
-        // arrival, rather than one lifted to now that slides later as the clock runs, live or not
-        // (Codex, PR #449).
-        if (anchor.isBefore(now)) return null
-        val ahead = trip.route.legs.drop(trip.legIndex + 1)
-        // Changes only between legs: the last leg's is to no next leg, as the route leaves it out (Codex, PR #449).
-        val changes = (listOf(leg) + ahead).dropLast(1).fold(Duration.ZERO) { sum, it -> sum.plus(it.changeAfter) }
-        val rest = ahead.fold(changes) { sum, next -> sum.plus(next.run) }
-        // A change still ahead is the Planner's time, as a ride is: estimated (Codex, PR #449).
-        return Eta(anchor.plus(after).plus(rest), live && ahead.all { it.isWalk } && changes.isZero)
     }
 
     // [at] when it's still to come at [now].

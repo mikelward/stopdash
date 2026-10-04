@@ -944,6 +944,27 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `a trip with no arrival to give never goes over its route`() {
+        // Arrived, or nothing to time it from: answered before the legs ahead are summed, as the trip
+        // screen asks in composition (Codex, #526).
+        var walked = 0
+        val counted = object : AbstractList<TripLeg>() {
+            override val size get() = trip.route.legs.size
+            override fun get(index: Int) = trip.route.legs[index]
+            override fun iterator(): Iterator<TripLeg> = also { walked++ }.let { super.iterator() }
+            override fun listIterator(index: Int): ListIterator<TripLeg> = also { walked++ }.let { super.listIterator(index) }
+        }
+        val countedTrip = trip.copy(route = TripRoute(counted))
+        assertNull(OnTheWay.eta(countedTrip, TripProgress.Arrived, at(6)))
+        assertNull(OnTheWay.eta(countedTrip, TripProgress.Waiting(ride, null), at(6)))
+        assertNull(OnTheWay.eta(countedTrip, TripProgress.Waiting(ride, at(8)), at(9)))
+        assertEquals(0, walked)
+        // One to give does.
+        assertEquals(OnTheWay.Eta(at(31), live = false), OnTheWay.eta(countedTrip, TripProgress.Waiting(ride, at(8)), at(6)))
+        assertTrue(walked > 0)
+    }
+
+    @Test
     fun `a train followed gone by times the trip from the next the board lists`() {
         // The train followed still listed past its time, with the board's next due at 15: timed from it
         // (maintainer, 2026-10-03), the Planner's after, as from any train.
