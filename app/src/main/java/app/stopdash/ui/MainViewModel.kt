@@ -763,6 +763,9 @@ class MainViewModel(
         val disrupted: Map<String, LineStatus> get() = statuses.filter { it.hasAlerts }.associateBy { it.lineId }
     }
 
+    /** A stop as [fetchBatch] merged it off the main thread, and its fetch stamp when it was asked for. */
+    private class MergedStop(val stop: StopArrivals?, val fetchedAt: Instant?)
+
     /** A cold load so far, as [fetchBatch] reports it to its onProgress while stops are still out. */
     private data class BatchProgress(
         // The stops landed (their arrivals back, their closure check maybe still out), or shown from before.
@@ -810,6 +813,9 @@ class MainViewModel(
         // taken into [closureShown] only once the batch is published, since one superseded before
         // then shows nothing.
         val closureAsks: Map<String, StopClosureCache.Ask>,
+        // The lines TfL doesn't know, as this batch's last line check copied them ([LineCheck.unknown]),
+        // so the list can be worked out off the main thread without copying the live set there.
+        val unknownLineIds: Set<String> = emptySet(),
     )
 
     /**
@@ -1232,19 +1238,63 @@ class MainViewModel(
             hubIds.map { hubId -> async { hubId to hubOf(hubId) } }.awaitAll().toMap()
         }
 
-        // Merge in stop order, so the first error, the logs and the merged list read the same as a
+        // Each stop merged, with its fetch stamp, worked out off the main thread ([compute]): a merge
+        // walks the stop's departures, and the line ids gathered after it walk every stop's. Only the
+        // bookkeeping below (the first error, the logs, the stamps kept) runs here.
+        val mergedOf = withContext(compute) {
+            stops.indices.map { i ->
+                val stop = stops[i]
+                val nearer = Terminating.nearer(stop.id, places)
+                val arrivalResult = arrivalResults[i]
+                val disruptionResult = disruptionResults[i]
+                if (arrivalResult == null || disruptionResult == null) {
+                    // Reused: carried over as it was, neither a fresh result nor a failure — but with the
+                    // lines it declares now (a journey origin can gain one), so their status is checked.
+                    // Its nearer places too: the rider may have moved since, and the rows hide by them.
+                    val carried = prior.getValue(stop.id).let { p ->
+                        if (p.lines == stop.lines && p.nearer == nearer) p else p.copy(lines = stop.lines, nearer = nearer)
+                    }
+                    return@map MergedStop(carried, fetchedAt = null)
+                }
+                val departures = arrivalResult.getOrNull()
+                val disruptions = disruptionResult.getOrNull()?.notices
+                // As old as the oldest part of its arrivals (a National Rail board another screen fetched,
+                // say), both on screen and in what a later refresh carries over by: the two must match.
+                val fetchedAt = shared[i]?.fetchedAt ?: client.stampOf(stop.id, stamp)
+                val hub = if (stop.hubId.isNotBlank() && !disruptions.isNullOrEmpty()) hubs[stop.hubId] ?: HubInfo() else HubInfo()
+                MergedStop(
+                    Snapshot.mergeStop(
+                        stopId = stop.id,
+                        stopName = stop.name,
+                        clusterId = stop.clusterId,
+                        lines = stop.lines,
+                        freshDepartures = departures,
+                        freshDisruptions = disruptions,
+                        prior = prior[stop.id],
+                        now = fetchedAt,
+                        hubId = stop.hubId,
+                        hubName = hub.name,
+                        placeAliases = hub.aliases,
+                        stopLetter = stop.stopLetter,
+                        bearing = stop.bearing,
+                        towards = stop.towards,
+                        nearer = nearer,
+                        freshRailFeed = railFeedOf(stop.id, departures, shared[i]),
+                        freshUntimed = untimedOf(stop.id, departures, shared[i]),
+                    ),
+                    fetchedAt,
+                )
+            }
+        }
+
+        // Kept in stop order, so the first error, the logs and the merged list read the same as a
         // one-at-a-time fetch would, whatever order the responses came back in.
         stops.forEachIndexed { i, stop ->
             val arrivalResult = arrivalResults[i]
             val disruptionResult = disruptionResults[i]
+            val mergedStop = mergedOf[i]
             if (arrivalResult == null || disruptionResult == null) {
-                // Reused: carried over as it was, neither a fresh result nor a failure — but with the
-                // lines it declares now (a journey origin can gain one), so their status is checked.
-                // Its nearer places too: the rider may have moved since, and the rows hide by them.
-                val nearer = Terminating.nearer(stop.id, places)
-                merged += prior.getValue(stop.id).let { p ->
-                    if (p.lines == stop.lines && p.nearer == nearer) p else p.copy(lines = stop.lines, nearer = nearer)
-                }
+                merged += checkNotNull(mergedStop.stop)
                 return@forEachIndexed
             }
             val departures = arrivalResult.getOrElse { e ->
@@ -1254,9 +1304,6 @@ class MainViewModel(
                 warn("arrivals fetch failed for stop ${stop.id}: ${reason(e)}")
                 null
             }
-            // The places no farther from the rider than this stop, saved with it: the rows hide a
-            // service ending at one ([Terminating], [DepartureRows.across]), in the app and widget.
-            val nearer = Terminating.nearer(stop.id, places)
             val closure = disruptionResult.getOrElse { e ->
                 if (firstError == null) firstError = e
                 stopsDisruptionUnknown += stop.id
@@ -1265,40 +1312,13 @@ class MainViewModel(
             }
             closure?.let { closureAsks[stop.id] = it.ask }
             val disruptions = closure?.notices
-            // As old as the oldest part of its arrivals (a National Rail board another screen fetched,
-            // say), both on screen and in what a later refresh carries over by: the two must match.
-            val fetchedAt = shared[i]?.fetchedAt ?: client.stampOf(stop.id, stamp)
             if (departures != null) {
                 freshArrivalStopIds += stop.id
-                arrivalsFetchedAt[stop.id] = fetchedAt
+                arrivalsFetchedAt[stop.id] = checkNotNull(mergedStop.fetchedAt)
                 if (stop.id in skippedNow) boardSkipped += stop.id else boardSkipped -= stop.id
             }
             if (departures != null || (disruptions != null && !disruptionFromCache[i])) anyFreshData = true
-            val hub =
-                if (stop.hubId.isNotBlank() && !disruptions.isNullOrEmpty()) {
-                    hubs[stop.hubId] ?: HubInfo()
-                } else {
-                    HubInfo()
-                }
-            Snapshot.mergeStop(
-                stopId = stop.id,
-                stopName = stop.name,
-                clusterId = stop.clusterId,
-                lines = stop.lines,
-                freshDepartures = departures,
-                freshDisruptions = disruptions,
-                prior = prior[stop.id],
-                now = fetchedAt,
-                hubId = stop.hubId,
-                hubName = hub.name,
-                placeAliases = hub.aliases,
-                stopLetter = stop.stopLetter,
-                bearing = stop.bearing,
-                towards = stop.towards,
-                nearer = nearer,
-                freshRailFeed = railFeedOf(stop.id, departures, shared[i]),
-                freshUntimed = untimedOf(stop.id, departures, shared[i]),
-            )?.let { merged += it }
+            mergedStop.stop?.let { merged += it }
         }
 
         // Check the status of every line we're about to show, so a disrupted line is
@@ -1315,15 +1335,18 @@ class MainViewModel(
         var determinedLineIds = emptySet<String>()
         var lateLines: LineCheck? = null
         if (merged.isNotEmpty()) {
-            val predictedLineIds = merged.flatMap { it.departures }.map { it.lineId }
-            val shownDeclared = merged.flatMap { it.lines }.map { it.id }
-            val lineIds = (predictedLineIds + shownDeclared)
-                .filterTo(mutableSetOf()) { it.isNotBlank() }
+            // Gathered off the main thread, as the merge is: every stop's departures and lines. Nothing
+            // else touches [merged] meanwhile.
+            val (lineIds, blankLineIdCount) = withContext(compute) {
+                val predictedLineIds = merged.flatMap { it.departures }.map { it.lineId }
+                val shownDeclared = merged.flatMap { it.lines }.map { it.id }
+                (predictedLineIds + shownDeclared).filterTo(mutableSetOf()) { it.isNotBlank() } to
+                    predictedLineIds.count { it.isBlank() }
+            }
             // A departure whose line TfL didn't identify (blank id) can't have its
             // status checked, so its presence alone leaves the disruption state
             // unknown — never shown as verified-clean (SPEC principle 1). This also
             // covers the all-blank case, where no status request is made at all.
-            val blankLineIdCount = predictedLineIds.count { it.isBlank() }
             if (blankLineIdCount > 0) {
                 // Per-stop attribution (a blank prediction on the stop that showed it) is done
                 // below; this logs the batch-wide count so a persistent "couldn't check for
@@ -1367,6 +1390,9 @@ class MainViewModel(
             closureAsks = closureAsks,
             firstError = firstError,
             arrivalsErrors = arrivalsErrors,
+            // The latest check's copy holds every line known unknown by then. With no check at all, no
+            // stop shows a line to check, so none is needed.
+            unknownLineIds = (lateLines ?: earlyLines)?.unknown.orEmpty(),
         )
     }
 
@@ -1732,12 +1758,14 @@ class MainViewModel(
             val lineStatuses = batch.lineStatuses
             val determinedLineIds = batch.determinedLineIds
             val stopsDisruptionUnknown = batch.stopsDisruptionUnknown
-            // Screen-wide "status unknown" derives from the merged set and this batch's provenance
-            // ([disruptionUnknownOf]).
-            val disruptionUnknown = disruptionUnknownOf(merged, determinedLineIds, stopsDisruptionUnknown, unknownLineIds)
             val partial = if (anyFreshData) anyArrivalsFailed else priorPartial
-
-            val newState = when {
+            // The list worked out off the main thread ([compute]), from what this fetch was for: the stops
+            // it asked for ([toFetch]), how far each is, and the lines TfL doesn't know as its line
+            // check copied them, so nothing is copied or rebuilt here first.
+            val seeds = toFetch
+            val distances = stopDistanceMeters
+            val unknown = batch.unknownLineIds
+            val newState = withContext(compute) { when {
                 merged.isNotEmpty() ->
                     // Grouping into rows is the screen's job, recomputed from the live
                     // clock (SPEC D4) — the snapshot is the merged stops, each at its age.
@@ -1760,18 +1788,20 @@ class MainViewModel(
                         // than leave the rider guessing (SPEC principle 6). A stop that failed this
                         // attempt gets this attempt's reason; one carried over unfetched keeps its own.
                         partialStops = if (partial) {
-                            incompleteStops(merged, batch.arrivalsErrors, priorLoaded?.partialStops.orEmpty())
+                            incompleteStops(merged, batch.arrivalsErrors, priorLoaded?.partialStops.orEmpty(), seeds, distances)
                         } else {
                             emptyMap()
                         },
-                        partialUnnamed = partial && unnamedIncomplete(merged),
+                        partialUnnamed = partial && unnamedIncomplete(merged, seeds),
                         // Nothing fresh came back at all (every request failed) but a prior
                         // snapshot was kept — carry the failure so the screen says "couldn't
                         // refresh" rather than passing the aged rows off as fresh (SPEC D4 /
                         // principle 2). Cleared by the next refresh that gets anything.
                         refreshFailure = if (!anyFreshData && firstError != null) kindOf(firstError) else null,
                         lineStatuses = lineStatuses,
-                        disruptionUnknown = disruptionUnknown,
+                        // Screen-wide "status unknown" derives from the merged set and this batch's
+                        // provenance ([disruptionUnknownOf]).
+                        disruptionUnknown = disruptionUnknownOf(merged, determinedLineIds, stopsDisruptionUnknown, unknown),
                         determinedLineIds = determinedLineIds,
                         stopsDisruptionUnknown = stopsDisruptionUnknown,
                         unavailableStopIds = toFetch.mapTo(HashSet()) { it.id } - merged.mapTo(HashSet()) { it.stopId },
@@ -1783,7 +1813,7 @@ class MainViewModel(
                 // Every stop failed on a first load with no prior snapshot to fall back on
                 // → an honest error, not an empty or stale list (SPEC principles 1–2).
                 else -> DeparturesUiState.Error(kindOf(firstError))
-            }
+            } }
             _state.value = newState
             closureShown += batch.closureAsks
             coldLoadUnfinished = false
@@ -2208,9 +2238,10 @@ class MainViewModel(
      * states — present-and-fresh, present-and-carried-stale, or missing — so this is the
      * complete incompleteness test.
      */
-    private fun isIncomplete(stops: List<StopArrivals>): Boolean =
-        fetchedStops.any { seed -> stops.none { it.stopId == seed.id } } ||
-            stops.any { !it.arrivalsFresh }
+    private fun isIncomplete(stops: List<StopArrivals>, seeds: List<StopRef> = fetchedStops): Boolean {
+        val shown = stops.mapTo(HashSet()) { it.stopId }
+        return seeds.any { it.id !in shown } || stops.any { !it.arrivalsFresh }
+    }
 
     /**
      * The stops that make [stops] incomplete (see [isIncomplete]) — missing, or kept at an older
@@ -2222,10 +2253,13 @@ class MainViewModel(
         stops: List<StopArrivals>,
         failedNow: Map<String, DeparturesUiState.Error.Kind> = emptyMap(),
         prior: Map<String, DeparturesUiState.FailedStop> = emptyMap(),
+        // The stops asked for, and their distances: passed in where this runs off the main thread.
+        seeds: List<StopRef> = fetchedStops,
+        distances: Map<String, Double> = stopDistanceMeters,
     ): Map<String, DeparturesUiState.FailedStop> {
         fun failed(id: String, name: String) = id to DeparturesUiState.FailedStop(name, failedNow[id] ?: prior[id]?.reason)
         val byId = stops.associateBy { it.stopId }
-        val seeded = fetchedStops.mapNotNull { seed ->
+        val seeded = seeds.mapNotNull { seed ->
             val shown = byId[seed.id]
             when {
                 shown == null -> failed(seed.id, seed.name)
@@ -2233,18 +2267,18 @@ class MainViewModel(
                 else -> null
             }
         }
-        val seedIds = fetchedStops.mapTo(HashSet()) { it.id }
+        val seedIds = seeds.mapTo(HashSet()) { it.id }
         val unseeded = stops.filter { it.stopId !in seedIds && !it.arrivalsFresh }.map { failed(it.stopId, it.stopName) }
         // [fetchedStops] is in tier order, not distance order (a journey's stop comes after every
         // near one, and one cluster's stop can be farther than the next cluster's), so order by distance.
-        return byDistance((seeded + unseeded).toMap(), stopDistanceMeters)
+        return byDistance((seeded + unseeded).toMap(), distances)
     }
 
     /** Whether some stop that makes [stops] incomplete has no name to show ([incompleteStops] drops it). */
-    private fun unnamedIncomplete(stops: List<StopArrivals>): Boolean {
+    private fun unnamedIncomplete(stops: List<StopArrivals>, seeds: List<StopRef> = fetchedStops): Boolean {
         val byId = stops.associateBy { it.stopId }
-        val seedIds = fetchedStops.mapTo(HashSet()) { it.id }
-        return fetchedStops.any { seed ->
+        val seedIds = seeds.mapTo(HashSet()) { it.id }
+        return seeds.any { seed ->
             val shown = byId[seed.id]
             (shown == null && seed.name.isBlank()) ||
                 (shown != null && !shown.arrivalsFresh && shown.stopName.isBlank() && seed.name.isBlank())
