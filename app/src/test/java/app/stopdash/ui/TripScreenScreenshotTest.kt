@@ -2561,6 +2561,87 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun a_plan_starting_afresh_never_shows_the_last_plans_couldnt_check_banner() {
+        // The Jubilee's route fails: the routes can't all be checked, and the banner says so.
+        val failing = object : RouteSequenceSource {
+            override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                if (lineId == "jubilee") throw app.stopdash.domain.TflException.Offline(null)
+                return sequences.getValue(lineId)
+            }
+        }
+        val inline = kotlinx.coroutines.Dispatchers.Unconfined
+        val held = mutableStateOf(planned)
+        composeRule.mainClock.autoAdvance = false
+        show(planned, routeStops = RouteStopsRepository(failing, io = inline, compute = inline), worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher(), held = held)
+        composeRule.mainClock.advanceTimeBy(3_000)
+        composeRule.onNodeWithText("Some routes couldn't be checked").assertExists()
+        // A new plan: no cards while it's planned. The last plan's failure never stands over its
+        // placeholder for the banner's hold (Codex, #543).
+        held.value = planned.copy(routes = null, planning = true)
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeBy(100)
+        composeRule.onNodeWithText("Some routes couldn't be checked").assertDoesNotExist()
+    }
+
+    @Test
+    fun a_line_avoided_takes_its_couldnt_check_banner_with_it() {
+        // The Jubilee's route fails: the routes can't all be checked, and the banner says so.
+        val failing = object : RouteSequenceSource {
+            override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                if (lineId == "jubilee") throw app.stopdash.domain.TflException.Offline(null)
+                return sequences.getValue(lineId)
+            }
+        }
+        val inline = kotlinx.coroutines.Dispatchers.Unconfined
+        val avoided = mutableStateOf(emptySet<String>())
+        val state = mutableStateOf(planned)
+        composeRule.mainClock.autoAdvance = false
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalWorker provides java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher()) {
+                    TripScreen(
+                        title = "To Canary Wharf", state = state.value, now = now, access = Duration.ofMinutes(2),
+                        routeStops = RouteStopsRepository(failing, io = inline, compute = inline), onBack = {}, onRetry = {},
+                        avoidedLines = avoided.value,
+                    )
+                }
+            }
+        }
+        composeRule.mainClock.advanceTimeBy(3_000)
+        composeRule.onNodeWithText("Some routes couldn't be checked").assertExists()
+        // The Jubilee avoided, and the trip planned without it: the route left was all checked, and the
+        // banner goes at once, never standing over it for its hold (Codex, #543).
+        avoided.value = setOf("jubilee")
+        state.value = planned.copy(routes = listOf(viaWhitechapel))
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeBy(100)
+        composeRule.onNodeWithText("Some routes couldn't be checked").assertDoesNotExist()
+    }
+
+    @Test
+    fun a_trip_list_waits_for_every_route_even_once_one_has_failed() {
+        // The Jubilee's route fails at once; the Windrush's waits on the test. One failure already says
+        // "couldn't be checked", but the Windrush's route can still change the cards (Codex, #543).
+        val windrush = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val gated = object : RouteSequenceSource {
+            override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                if (lineId == "jubilee") throw app.stopdash.domain.TflException.Offline(null)
+                if (lineId == "windrush") windrush.await()
+                return sequences.getValue(lineId)
+            }
+        }
+        val inline = kotlinx.coroutines.Dispatchers.Unconfined
+        composeRule.mainClock.autoAdvance = false
+        show(planned, routeStops = RouteStopsRepository(gated, io = inline, compute = inline), worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
+        composeRule.mainClock.advanceTimeBy(3_000)
+        composeRule.onAllNodes(hasTestTag("tripRoutes")).assertCountEquals(0)
+        windrush.complete(Unit)
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeBy(2_000)
+        composeRule.onNodeWithTag("tripRoutes").assertExists()
+    }
+
+    @Test
     fun a_trip_list_waits_again_for_a_plan_starting_afresh() {
         val held = mutableStateOf(planned)
         composeRule.mainClock.autoAdvance = false
@@ -2595,6 +2676,295 @@ class TripScreenScreenshotTest {
         inRow(hasText("None")).assertExists()
         // A pill coming or going never moves the cards under the row (Codex, #543).
         assertEquals(withPill, composeRule.onNodeWithTag("tripDisruptions").fetchSemanticsNode().size.height)
+    }
+
+    @Test
+    fun an_open_route_shows_its_settled_disruptions_at_once() {
+        val lines = planned.routes.orEmpty().flatMap { route -> route.rides.map { it.lineId } } +
+            planned.live.values.flatMap { stop -> stop.departures.map { it.lineId } }
+        val running = planned.copy(statuses = lines.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") })
+        val disrupted = running.copy(statuses = running.statuses + ("jubilee" to LineStatus("jubilee", 9, "Minor Delays")))
+        show(disrupted, worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
+        inRow(hasContentDescription("Jubilee")).assertExists()
+        // The trip has settled: opening a route draws its row as it is, never "Checking…" held for a
+        // moment first (Codex, #543).
+        composeRule.mainClock.autoAdvance = false
+        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.waitForIdle()
+        // A few frames for the route's own row to be worked out, well inside the hold.
+        composeRule.mainClock.advanceTimeBy(100)
+        composeRule.onAllNodes(hasTestTag("tripRoutes")).assertCountEquals(0)
+        composeRule.onNodeWithTag("tripDisruptions").assertExists()
+        inRow(hasText("Checking…")).assertDoesNotExist()
+    }
+
+    @Test
+    fun another_journeys_open_route_never_shows_the_last_ones_disruptions() {
+        val lines = planned.routes.orEmpty().flatMap { route -> route.rides.map { it.lineId } } +
+            planned.live.values.flatMap { stop -> stop.departures.map { it.lineId } }
+        val running = planned.copy(statuses = lines.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") })
+        val disrupted = running.copy(statuses = running.statuses + ("jubilee" to LineStatus("jubilee", 9, "Minor Delays")))
+        val state = mutableStateOf(disrupted)
+        val journey = mutableStateOf("A>B")
+        // A route riding the Jubilee open, as the trip holds it.
+        val openRoute = mutableStateOf<String?>(openRouteOf(viaCanadaWater, disrupted, emptyMap()).encode())
+        val inline = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher()
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalWorker provides inline) {
+                    TripScreen(
+                        title = "To Canary Wharf", state = state.value, now = now, access = Duration.ofMinutes(2),
+                        routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {}, journey = journey.value,
+                        openRoute = openRoute,
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        inRow(hasContentDescription("Jubilee")).assertExists()
+        // A new nearest stop: another journey, whose trip already has another route open.
+        composeRule.mainClock.autoAdvance = false
+        journey.value = "C>B"
+        state.value = running
+        openRoute.value = openRouteOf(viaWhitechapel, running, emptyMap()).encode()
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeBy(100)
+        // Its row is its own, never the last journey's Jubilee held for a moment (Codex, #543).
+        inRow(hasContentDescription("Jubilee")).assertDoesNotExist()
+    }
+
+    @Test
+    fun the_disruptions_row_comes_back_as_it_was_from_an_open_route() {
+        val lines = planned.routes.orEmpty().flatMap { route -> route.rides.map { it.lineId } } +
+            planned.live.values.flatMap { stop -> stop.departures.map { it.lineId } }
+        val running = planned.copy(statuses = lines.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") })
+        val disrupted = running.copy(statuses = running.statuses + ("jubilee" to LineStatus("jubilee", 9, "Minor Delays")))
+        show(disrupted, worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
+        inRow(hasContentDescription("Jubilee")).assertExists()
+        composeRule.onNodeWithText("28 min · ~08:30").performClick()
+        composeRule.waitForIdle()
+        // The route open: the list has left the screen.
+        composeRule.onAllNodes(hasTestTag("tripRoutes")).assertCountEquals(0)
+        // Back to the list: the row is as it was, never "Checking…" while it settles again (Codex, #543).
+        composeRule.mainClock.autoAdvance = false
+        composeRule.runOnUiThread { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeByFrame()
+        composeRule.onNodeWithTag("tripRoutes").assertExists()
+        inRow(hasContentDescription("Jubilee")).assertExists()
+        inRow(hasText("Checking…")).assertDoesNotExist()
+    }
+
+    @Test
+    fun a_plan_starting_afresh_never_shows_the_last_plans_disruptions() {
+        val lines = planned.routes.orEmpty().flatMap { route -> route.rides.map { it.lineId } } +
+            planned.live.values.flatMap { stop -> stop.departures.map { it.lineId } }
+        val running = planned.copy(statuses = lines.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") })
+        val disrupted = running.copy(statuses = running.statuses + ("jubilee" to LineStatus("jubilee", 9, "Minor Delays")))
+        val held = mutableStateOf(disrupted)
+        show(disrupted, held = held, worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
+        inRow(hasContentDescription("Jubilee")).assertExists()
+        // A new plan: no cards while it's planned, then its own, with nothing disrupted.
+        composeRule.mainClock.autoAdvance = false
+        held.value = running.copy(routes = null, planning = true)
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeBy(100)
+        held.value = running
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeBy(100)
+        // The last plan's Jubilee never stands over the new cards (Codex, #543).
+        composeRule.onNodeWithTag("tripRoutes").assertExists()
+        inRow(hasContentDescription("Jubilee")).assertDoesNotExist()
+    }
+
+    @Test
+    fun a_trip_list_shows_its_disruptions_as_it_appears() {
+        val lines = planned.routes.orEmpty().flatMap { route -> route.rides.map { it.lineId } } +
+            planned.live.values.flatMap { stop -> stop.departures.map { it.lineId } }
+        val running = planned.copy(statuses = lines.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") })
+        val disrupted = running.copy(statuses = running.statuses + ("jubilee" to LineStatus("jubilee", 9, "Minor Delays")))
+        composeRule.mainClock.autoAdvance = false
+        show(disrupted, worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
+        composeRule.mainClock.advanceTimeBy(100)
+        // The row is worked out behind the placeholder: the list appears with it, never with "Checking…"
+        // that gives way to pills under the rider a moment later (Codex, #543).
+        composeRule.onNodeWithTag("tripRoutes").assertExists()
+        inRow(hasContentDescription("Jubilee")).assertExists()
+        inRow(hasText("Checking…")).assertDoesNotExist()
+    }
+
+    @Test
+    fun a_plan_switched_to_never_shows_the_last_plans_disruptions() {
+        val lines = planned.routes.orEmpty().flatMap { route -> route.rides.map { it.lineId } } +
+            planned.live.values.flatMap { stop -> stop.departures.map { it.lineId } }
+        val running = planned.copy(statuses = lines.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") })
+        val disrupted = running.copy(statuses = running.statuses + ("jubilee" to LineStatus("jubilee", 9, "Minor Delays")))
+        val state = mutableStateOf(disrupted)
+        val speed = mutableStateOf(WalkingSpeed.AVERAGE)
+        val inline = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher()
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalWorker provides inline) {
+                    TripScreen(
+                        title = "To Canary Wharf", state = state.value, now = now, access = Duration.ofMinutes(2),
+                        routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {}, walkingSpeed = speed.value,
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        inRow(hasContentDescription("Jubilee")).assertExists()
+        // Another pace's plan, kept from before, replaces the cards at once, with no gap without them.
+        composeRule.mainClock.autoAdvance = false
+        speed.value = WalkingSpeed.SLOW
+        state.value = running
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeBy(100)
+        // The last plan's Jubilee never stands over the new plan's cards (Codex, #543).
+        inRow(hasContentDescription("Jubilee")).assertDoesNotExist()
+    }
+
+    @Test
+    fun a_journey_switched_to_waits_and_never_shows_the_last_journeys_disruptions() {
+        val lines = planned.routes.orEmpty().flatMap { route -> route.rides.map { it.lineId } } +
+            planned.live.values.flatMap { stop -> stop.departures.map { it.lineId } }
+        val running = planned.copy(statuses = lines.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") })
+        val disrupted = running.copy(statuses = running.statuses + ("jubilee" to LineStatus("jubilee", 9, "Minor Delays")))
+        val state = mutableStateOf(disrupted)
+        val journey = mutableStateOf("A>B")
+        val inline = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher()
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalWorker provides inline) {
+                    TripScreen(
+                        title = "To Canary Wharf", state = state.value, now = now, access = Duration.ofMinutes(2),
+                        routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {}, journey = journey.value,
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        inRow(hasContentDescription("Jubilee")).assertExists()
+        // A new nearest stop: another journey, its plan cached, so its cards come at once with the
+        // same options (Codex, #543).
+        composeRule.mainClock.autoAdvance = false
+        journey.value = "C>B"
+        state.value = running.copy(refreshing = true)
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeBy(100)
+        // It waits behind its placeholder rather than show its cards raw under the last journey's row.
+        composeRule.onAllNodes(hasTestTag("tripRoutes")).assertCountEquals(0)
+        state.value = running
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeBy(100)
+        composeRule.onNodeWithTag("tripRoutes").assertExists()
+        inRow(hasContentDescription("Jubilee")).assertDoesNotExist()
+    }
+
+    @Test
+    fun a_line_avoided_never_leaves_its_pill_in_the_disruptions_row() {
+        val lines = planned.routes.orEmpty().flatMap { route -> route.rides.map { it.lineId } } +
+            planned.live.values.flatMap { stop -> stop.departures.map { it.lineId } }
+        val running = planned.copy(statuses = lines.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") })
+        val disrupted = running.copy(statuses = running.statuses + ("jubilee" to LineStatus("jubilee", 9, "Minor Delays")))
+        val avoided = mutableStateOf(emptySet<String>())
+        val inline = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher()
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalWorker provides inline) {
+                    TripScreen(
+                        title = "To Canary Wharf", state = disrupted, now = now, access = Duration.ofMinutes(2),
+                        routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {}, avoidedLines = avoided.value,
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        inRow(hasContentDescription("Jubilee")).assertExists()
+        // The Jubilee avoided: only the Whitechapel route is left, and the row never shows the
+        // Jubilee's pill over it (Codex, #543).
+        composeRule.mainClock.autoAdvance = false
+        avoided.value = setOf("jubilee")
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeBy(100)
+        composeRule.onNodeWithTag("tripRoutes").assertExists()
+        inRow(hasContentDescription("Jubilee")).assertDoesNotExist()
+    }
+
+    @Test
+    fun a_plan_switched_to_still_shows_within_its_cap() {
+        // No route ever loads: each plan's list shows by its cap, the one switched to as well (Codex, #543).
+        val never = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val gated = object : RouteSequenceSource {
+            override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                never.await()
+                return sequences.getValue(lineId)
+            }
+        }
+        val inline = kotlinx.coroutines.Dispatchers.Unconfined
+        val speed = mutableStateOf(WalkingSpeed.AVERAGE)
+        val worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher()
+        composeRule.mainClock.autoAdvance = false
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalWorker provides worker) {
+                    TripScreen(
+                        title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
+                        routeStops = RouteStopsRepository(gated, io = inline, compute = inline), onBack = {}, onRetry = {},
+                        walkingSpeed = speed.value,
+                    )
+                }
+            }
+        }
+        composeRule.mainClock.advanceTimeBy(2_000)
+        speed.value = WalkingSpeed.SLOW
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeBy(REVEAL_CAP_MILLIS + 1_000)
+        composeRule.onNodeWithTag("tripRoutes").assertExists()
+    }
+
+    @Test
+    fun a_trip_list_waits_for_its_work_again_after_a_rotation() {
+        // No route ever loads, so the list shows only by its cap.
+        val never = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val gated = object : RouteSequenceSource {
+            override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                never.await()
+                return sequences.getValue(lineId)
+            }
+        }
+        val inline = kotlinx.coroutines.Dispatchers.Unconfined
+        val worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher()
+        // A rotation as composition sees it: the screen leaves and comes back, its saved state kept
+        // ([androidx.compose.runtime.saveable.SaveableStateHolder]), everything only remembered lost.
+        val shown = mutableStateOf(true)
+        composeRule.mainClock.autoAdvance = false
+        composeRule.setContent {
+            val holder = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalWorker provides worker) {
+                    if (shown.value) {
+                        holder.SaveableStateProvider("trip") {
+                            TripScreen(
+                                title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
+                                routeStops = RouteStopsRepository(gated, io = inline, compute = inline), onBack = {}, onRetry = {},
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        composeRule.mainClock.advanceTimeBy(REVEAL_CAP_MILLIS + 1_000)
+        composeRule.onNodeWithTag("tripRoutes").assertExists()
+        shown.value = false
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeByFrame()
+        shown.value = true
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeBy(100)
+        // The list's work went with the composition, so the list waits for it again rather than come
+        // back as raw cards that settle under the rider (Codex, #543).
+        composeRule.onAllNodes(hasTestTag("tripRoutes")).assertCountEquals(0)
     }
 
     @Test

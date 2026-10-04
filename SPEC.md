@@ -1328,8 +1328,9 @@ cards may not bear out. The "Checking routes…" banner over the list is held th
 
 **Once the list is showing, its cards re-sort as their times move** (maintainer, 2026-10-04): the
 soonest stays on top. A card slides to its new place rather than jumping, so the eye can follow it,
-and a tap or long press while the cards slide is dropped, since it could land on the card that just
-moved under the finger.
+and a tap or long press on a card while it moves is dropped, since it could land on the card that
+just moved under the finger. That holds whatever moved it: a re-sort, a note or header coming in
+above it, or a scroll (maintainer, 2026-10-04).
 
 **TfL's Journey Planner chooses the lines and changes; StopDash's live arrivals give the times**
 (principle 1). The first leg counts down like any row. From "Here", the rider still has to reach the

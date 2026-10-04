@@ -2792,6 +2792,19 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `a disrupted line the Planner gave no name to goes by its id, never a blank pill`() {
+        val unnamed = TripRoute(listOf(leg("blue", "A", "B", 5, 15).copy(lineName = "")))
+        val state = TripViewModel.State(routes = listOf(unnamed), statuses = mapOf("blue" to LineStatus("blue", 9, "Minor Delays")))
+        val estimates = checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap()))
+        val row = tripRow(estimates.map { listOf(it) }, emptyMap(), state, now, emptyMap(), emptySet())
+        // Its pill names it, as the route-disruption alert does (Codex, #543).
+        assertEquals(listOf("blue"), row.lines.map { it.lineName })
+        // So does what couldn't be checked, once its status is in doubt.
+        val doubted = state.copy(statuses = emptyMap())
+        assertEquals(listOf("blue"), unchecked(estimates, doubted, now, emptyMap(), emptyMap()).first.map { it.lineName })
+    }
+
+    @Test
     fun `a trip still checking one line says so even once another has failed`() {
         val state = TripViewModel.State(
             routes = listOf(route),
