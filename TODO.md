@@ -64,8 +64,7 @@ exercises the whole spine the widget later renders from.
       cards built (`fartherCards`, `fartherDistanceMeters`, `openedStates`, and
       `FartherCardsViewModel`'s `retain` and `open` after their lookups) and the farther stations
       reached (`reachedStopIds`, `fartherReached`, and `FartherBuses.stationStops`/`candidates`
-      before their `produceState` hops), all in composition; `FavoriteChips`' two passes over the
-      favorite places in `remember`; the search and lookup results worked over after their requests
+      before their `produceState` hops), all in composition; the search and lookup results worked over after their requests
       (`StationSearchViewModel.start`'s filter and map, `StationStopsViewModel.retry`'s centered stops,
       `FavoritePlacesViewModel.onPick`'s `FixedLocation.centerOf` and `startSearch`'s
       `withBundledPositions`). The DataStore stores (starred rows and journeys, dismissed alerts, alerts

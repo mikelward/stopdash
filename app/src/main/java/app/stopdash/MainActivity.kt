@@ -56,18 +56,17 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.lifecycleScope
-import androidx.work.WorkManager
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.work.WorkManager
 import app.stopdash.data.AndroidLocationProvider
-import app.stopdash.data.logNetworkWarning
+import app.stopdash.data.AvoidedLinesSetting
 import app.stopdash.data.DataStoreAlertsBehindStore
 import app.stopdash.data.DataStoreAppSettings
-import app.stopdash.ui.WatchInstallActions
-import app.stopdash.watch.WatchInstall
 import app.stopdash.data.DataStoreDismissedAlertsStore
 import app.stopdash.data.DataStoreFavoritePlacesStore
 import app.stopdash.data.DataStoreNearbySetStore
@@ -75,11 +74,6 @@ import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.data.DataStoreStarredJourneysStore
 import app.stopdash.data.DataStoreStarredRowsStore
 import app.stopdash.data.DistanceUnitsSetting
-import app.stopdash.data.WalkingSpeedSetting
-import app.stopdash.data.MaxWalkSetting
-import app.stopdash.data.StepFreeSetting
-import app.stopdash.data.TripModesSetting
-import app.stopdash.data.AvoidedLinesSetting
 import app.stopdash.data.FileActiveTripStore
 import app.stopdash.data.FileNearbyStopsStore
 import app.stopdash.data.FileRecentStationsStore
@@ -89,20 +83,25 @@ import app.stopdash.data.HiddenModesSetting
 import app.stopdash.data.KtorDarwinClient
 import app.stopdash.data.KtorTflClient
 import app.stopdash.data.LineAlertDirections
+import app.stopdash.data.MaxWalkSetting
 import app.stopdash.data.RailApiKeySetting
 import app.stopdash.data.RailStationCodesStore
-import app.stopdash.data.StepFreeStore
 import app.stopdash.data.RecentSearches
 import app.stopdash.data.RejectedApiKey
 import app.stopdash.data.RouteTopologyStore
 import app.stopdash.data.SharedTflRateLimiter
 import app.stopdash.data.SharedTflRequestPool
 import app.stopdash.data.StationIndexStore
+import app.stopdash.data.StepFreeSetting
+import app.stopdash.data.StepFreeStore
+import app.stopdash.data.TripModesSetting
 import app.stopdash.data.UserApiKeySetting
+import app.stopdash.data.WalkingSpeedSetting
 import app.stopdash.data.logAppSettingsWarning
-import app.stopdash.domain.OnTheWay
+import app.stopdash.data.logNetworkWarning
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.ArrivalsCache
+import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.BugReport
 import app.stopdash.domain.CachingStopFinder
 import app.stopdash.domain.CachingTflClient
@@ -116,105 +115,102 @@ import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FixedLocation
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.Journeys
+import app.stopdash.domain.LiftOutages
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.MoveFollow
-import app.stopdash.domain.askedAgainWhenEnded
 import app.stopdash.domain.NearbySelection
 import app.stopdash.domain.NearbyStopsCache
+import app.stopdash.domain.ON_THE_WAY_FIX_DISTANCE_METERS
+import app.stopdash.domain.ON_THE_WAY_FIX_EVERY
+import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.OriginChange
 import app.stopdash.domain.PlanTargets
-import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.RailAwareTflClient
 import app.stopdash.domain.RecentPositions
 import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RouteStopsRepository
-import app.stopdash.domain.TimetableRepository
+import app.stopdash.domain.SavedTrip
 import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.StarredJourney
-import app.stopdash.domain.StepFreeAccess
 import app.stopdash.domain.StarredRowSet
 import app.stopdash.domain.StationMatch
+import app.stopdash.domain.StepFreeAccess
 import app.stopdash.domain.StopClosureCache
 import app.stopdash.domain.StopMap
 import app.stopdash.domain.TflClient
-import app.stopdash.domain.LiftOutages
-import app.stopdash.domain.OriginChange
-import app.stopdash.domain.SavedTrip
+import app.stopdash.domain.TimetableRepository
 import app.stopdash.domain.ToChoice
 import app.stopdash.domain.TripDestination
-import app.stopdash.domain.TripOrigin
-import app.stopdash.domain.ON_THE_WAY_FIX_DISTANCE_METERS
-import app.stopdash.domain.ON_THE_WAY_FIX_EVERY
 import app.stopdash.domain.TripFixes
+import app.stopdash.domain.TripOrigin
 import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTiming
 import app.stopdash.domain.UsageEvent
 import app.stopdash.domain.YourStops
+import app.stopdash.domain.askedAgainWhenEnded
 import app.stopdash.domain.currentPatterns
 import app.stopdash.domain.stopPlace
 import app.stopdash.telemetry.TelemetryConsent
 import app.stopdash.telemetry.UsageEvents
 import app.stopdash.ui.ARRIVALS_REUSE
-import app.stopdash.ui.ActiveTripTracker
 import app.stopdash.ui.AboutDialog
+import app.stopdash.ui.ActiveTripTracker
+import app.stopdash.ui.AlertsBehindRecorder
 import app.stopdash.ui.AppMenuActions
-import app.stopdash.ui.HideUndoCarrier
 import app.stopdash.ui.BugReportConsentDialog
 import app.stopdash.ui.DISRUPTION_REUSE
-import app.stopdash.ui.RideLineChecks
-import app.stopdash.ui.RouteDisruptionChecks
-import app.stopdash.ui.StopClosureChecks
 import app.stopdash.ui.DeparturesUiState
 import app.stopdash.ui.FAR_ARRIVALS_REUSE
 import app.stopdash.ui.FarRevealState
 import app.stopdash.ui.FartherCard
 import app.stopdash.ui.FartherCardsViewModel
+import app.stopdash.ui.FartherFor
 import app.stopdash.ui.FartherLoad
 import app.stopdash.ui.FavoritePlacesScreen
 import app.stopdash.ui.FavoritePlacesViewModel
 import app.stopdash.ui.FollowActiveTrip
-import app.stopdash.ui.rememberNextTrains
 import app.stopdash.ui.FontSizeSetting
+import app.stopdash.ui.HideUndoCarrier
 import app.stopdash.ui.KeyRejectedFrame
 import app.stopdash.ui.LINE_STATUS_REUSE
 import app.stopdash.ui.LicensesScreen
+import app.stopdash.ui.ListWork
+import app.stopdash.ui.LocalAlertsBehind
 import app.stopdash.ui.LocalAppMenu
 import app.stopdash.ui.LocalHideUndoCarrier
+import app.stopdash.ui.LocalLiftsOut
 import app.stopdash.ui.LocalOnTheWay
 import app.stopdash.ui.LocalOnTheWayBanner
 import app.stopdash.ui.LocalRouteStops
-import app.stopdash.ui.LocalLiftsOut
-import app.stopdash.ui.LocalStepFree
-import app.stopdash.ui.LocalAlertsBehind
-import app.stopdash.ui.AlertsBehindRecorder
 import app.stopdash.ui.LocalRouteTopology
+import app.stopdash.ui.LocalStepFree
 import app.stopdash.ui.LocationBanner
 import app.stopdash.ui.LocationGate
-import app.stopdash.ui.rememberShownPlaces
-import app.stopdash.ui.tripRepickId
-import app.stopdash.ui.tripStartId
 import app.stopdash.ui.MainScreen
 import app.stopdash.ui.MainViewModel
 import app.stopdash.ui.NearbyStopsViewModel
-import app.stopdash.ui.widgetNearbySet
 import app.stopdash.ui.OnTheWayActions
 import app.stopdash.ui.OnTheWayBannerState
 import app.stopdash.ui.OnTheWayScreen
-import app.stopdash.ui.FartherFor
-import app.stopdash.ui.ListWork
 import app.stopdash.ui.PendingTracker
 import app.stopdash.ui.ProvideDistanceSystem
 import app.stopdash.ui.ProvideEmptyTimes
+import app.stopdash.ui.RideLineChecks
+import app.stopdash.ui.RouteDisruptionChecks
 import app.stopdash.ui.SettingsScreen
 import app.stopdash.ui.StationPlaceholderScreen
 import app.stopdash.ui.StationSearchScreen
 import app.stopdash.ui.StationSearchViewModel
 import app.stopdash.ui.StationStopsViewModel
+import app.stopdash.ui.StopClosureChecks
 import app.stopdash.ui.StopRef
 import app.stopdash.ui.TripEnds
 import app.stopdash.ui.TripScreen
 import app.stopdash.ui.TripViewModel
+import app.stopdash.ui.WatchInstallActions
 import app.stopdash.ui.WriteFailures
+import app.stopdash.ui.chipsPending
 import app.stopdash.ui.fartherCardsKey
 import app.stopdash.ui.fartherReached
 import app.stopdash.ui.favoriteRouteName
@@ -225,9 +221,15 @@ import app.stopdash.ui.rememberFarReveal
 import app.stopdash.ui.rememberLastPull
 import app.stopdash.ui.rememberListStateFor
 import app.stopdash.ui.rememberListWork
+import app.stopdash.ui.rememberNextTrains
 import app.stopdash.ui.rememberPendingTracker
-import app.stopdash.ui.theme.StopDashTheme
+import app.stopdash.ui.rememberShownPlaces
 import app.stopdash.ui.rememberWithOpenedFarther
+import app.stopdash.ui.theme.StopDashTheme
+import app.stopdash.ui.tripRepickId
+import app.stopdash.ui.tripStartId
+import app.stopdash.ui.widgetNearbySet
+import app.stopdash.watch.WatchInstall
 import app.stopdash.widget.LiveWidgetRefreshResult
 import app.stopdash.widget.StopDashWidget
 import app.stopdash.widget.WidgetSnapshotStore
@@ -248,6 +250,7 @@ import java.time.LocalDate
 import java.time.ZonedDateTime
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -257,7 +260,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
-import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -719,9 +722,14 @@ class MainActivity : ComponentActivity() {
                 // loss, so it reads as empty.
                 // Today, for the places whose chip shows only on some days; rolls over at midnight.
                 val today = rememberToday()
-                val savedPlaces: List<FavoritePlace>? by remember(favoritePlacesStore) {
-                    favoritePlacesStore.places().map { set -> savedPlacesOf(set) }
-                }.collectAsStateWithLifecycle(initialValue = null)
+                // Held by a view model, so a recreated screen (a rotation) starts from the places it
+                // last had, the same list, rather than none until the store answers again: the
+                // chips worked out for them ([ShownPlacesWork]) stand in its first frame (Codex on #539).
+                val savedPlacesModel: SavedPlacesModel = viewModel(
+                    factory = viewModelFactory { initializer { SavedPlacesModel(favoritePlacesStore) } },
+                )
+                val savedPlacesState by savedPlacesModel.state.collectAsStateWithLifecycle()
+                val savedPlaces = savedPlacesState.places
                 // Which of those the rider was last found at (FavoriteShortcuts' hysteresis memory).
                 // Held here, above the overlays and saved across recreation, so a trip into Settings
                 // or a rotation doesn't bring back a place still inside the 200–250 m band. Keys only
@@ -1387,6 +1395,8 @@ class MainActivity : ComponentActivity() {
                                             herePicking = true
                                         },
                                         favoritePlaces = savedPlaces,
+                                        favoritePlacesRead = savedPlacesState.read,
+                                        shownPlacesKey = "shown-places",
                                         today = today,
                                         onRouteToPlace = routeToPlace,
                                         // A long press on a chip edits the places (maintainer, 2026-09-28).
@@ -1446,12 +1456,17 @@ class MainActivity : ComponentActivity() {
                                     // carries a banner here too, so it hides none.
                                     val gateRiderFix by nearbyViewModel.riderFix.collectAsStateWithLifecycle()
                                     val emptyAt = (state as? NearbyStopsViewModel.State.Empty)?.location
-                                    val gatePlaces = if (emptyAt == null) emptyList() else rememberShownPlaces(
+                                    val gatePlacesOrPending = if (emptyAt == null) emptyList() else rememberShownPlaces(
                                         savedPlaces, emptyAt, gateRiderFix, gateBanner, hiddenPlaceIds.toSet(),
                                         { hiddenPlaceIds = it.toList() }, today,
+                                        viewModel(viewModelStoreOwner = this@MainActivity, key = "shown-places-empty"),
                                     )
+                                    val gatePlaces = gatePlacesOrPending.orEmpty()
+                                    // "No stops nearby" waits on its chips as the list does, on the locating
+                                    // placeholder, so it never shows without the row it heads (Codex on #539).
+                                    val gatePending = emptyAt != null && chipsPending(savedPlacesState.read, savedPlaces, gatePlacesOrPending)
                                     LocationGate(
-                                        state = state,
+                                        state = if (gatePending) NearbyStopsViewModel.State.Locating else state,
                                         now = tickingNow(),
                                         approximate = gateBanner == LocationBanner.COARSE,
                                         permanentlyDenied = permissionPermanentlyDenied,
@@ -1711,6 +1726,11 @@ class MainActivity : ComponentActivity() {
         // Today, for the places whose chip shows only on some days; null shows every place. Applied
         // to the displayed row only: the hysteresis runs over every saved place, so a place off today
         // keeps its "already there" memory for its next day (Codex).
+        // Whether the store has been read yet ([SavedPlaces.read]): until then the list waits, as for its chips.
+        favoritePlacesRead: Boolean = true,
+        // Where this page keeps its chips' last answer ([ShownPlacesWork]): the near-me list's own, so a
+        // station's page (no chips) never replaces it and a return to the list has its chips at once.
+        shownPlacesKey: String = "shown-places-station",
         today: DayOfWeek? = null,
         onRouteToPlace: (TripDestination.Place) -> Unit = {},
         onEditFavoritePlaces: (() -> Unit)? = null,
@@ -1847,9 +1867,14 @@ class MainActivity : ComponentActivity() {
             val refreshing = departuresRefreshing || relocatingNow
             val locationBannerNow by locationBanner.collectAsStateWithLifecycle()
             val riderFixNow by riderFix.collectAsStateWithLifecycle()
-            val shownPlaces = rememberShownPlaces(
+            // Held by the activity, not this set's store, so a new set starts from the last chips.
+            val shownPlacesOrPending = rememberShownPlaces(
                 favoritePlaces, ready.location, riderFixNow, locationBannerNow, hiddenPlaceIds, onHiddenPlaceIds, today,
+                viewModel(viewModelStoreOwner = this@MainActivity, key = shownPlacesKey),
             )
+            val shownPlaces = shownPlacesOrPending.orEmpty()
+            // Readable places whose chips aren't worked out yet: the list waits for them.
+            val shownPlacesPending = chipsPending(favoritePlacesRead, favoritePlaces, shownPlacesOrPending)
             val hiddenModes by HiddenModesSetting.changes.collectAsStateWithLifecycle()
             // The nearest station of each rail line nothing nearby reaches, from the
             // bundled index (read off the main thread, once per process): no request.
@@ -2249,6 +2274,7 @@ class MainActivity : ComponentActivity() {
                     onSendBugReport = onSendBugReport,
                     locationBanner = locationBannerNow,
                     favoritePlaces = shownPlaces,
+                    favoritePlacesPending = shownPlacesPending,
                     onRouteToPlace = onRouteToPlace,
                     onEditFavoritePlaces = onEditFavoritePlaces,
                     // Stored as the Settings switch stores it, so the two never disagree.
@@ -4092,6 +4118,25 @@ private const val MIDNIGHT_SLACK_MILLIS = 1_000L
  * can't be read right now — a newer-schema file or a retried read outage — so the caller shows no row
  * and keeps its "already there" memory rather than treating the places as deleted.
  */
+/**
+ * The saved places as [savedPlacesOf] reads them, and whether the store has been read yet. Compared by
+ * identity, not as a data class: the state flow holding it compares each new value with the last on the
+ * main thread, which mustn't walk the places (AGENTS.md *Main thread: read and dispatch only*).
+ */
+internal class SavedPlaces(val read: Boolean, val places: List<FavoritePlace>?) {
+    companion object {
+        /** Before the store's first answer: not read, so not "can't be read" either. */
+        val UNREAD = SavedPlaces(read = false, places = null)
+    }
+}
+
+/** The saved places ([SavedPlaces]), held across a recreated screen. */
+internal class SavedPlacesModel(store: app.stopdash.domain.FavoritePlacesStore) : androidx.lifecycle.ViewModel() {
+    val state: kotlinx.coroutines.flow.StateFlow<SavedPlaces> = store.places()
+        .map { set -> SavedPlaces(read = true, places = savedPlacesOf(set)) }
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, SavedPlaces.UNREAD)
+}
+
 internal fun savedPlacesOf(set: FavoritePlacesSet): List<FavoritePlace>? = when (set) {
     is FavoritePlacesSet.Loaded -> set.places
     FavoritePlacesSet.Discarded -> emptyList()

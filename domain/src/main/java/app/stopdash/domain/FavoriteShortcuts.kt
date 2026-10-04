@@ -1,5 +1,6 @@
 package app.stopdash.domain
 
+import androidx.annotation.WorkerThread
 import java.time.DayOfWeek
 
 /**
@@ -50,6 +51,7 @@ object FavoriteShortcuts {
      * next precise fix in the 200–250 m band must still find the place hidden. Only keys still among
      * [places] are kept, so a deleted or moved favorite drops out.
      */
+    @WorkerThread
     fun hiddenIds(
         places: List<FavoritePlace>,
         at: Coordinates?,
@@ -79,6 +81,7 @@ object FavoriteShortcuts {
      * memory, rather than to the places [hiddenIds] sees: a place off today keeps its "already there"
      * state, so it doesn't come back inside the 200–250 m band on its next day (Codex).
      */
+    @WorkerThread
     fun shown(
         places: List<FavoritePlace>,
         hidden: Set<String>,

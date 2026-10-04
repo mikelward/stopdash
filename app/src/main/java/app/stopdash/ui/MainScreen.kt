@@ -376,6 +376,9 @@ fun MainScreen(
     // from the near-me list*), already less the ones the rider is at; [onRouteToPlace] plans a trip
     // to the one tapped. Empty (the default, and on a station's page) shows no row.
     favoritePlaces: List<FavoritePlace> = emptyList(),
+    // The chips aren't worked out yet for places that can be read: the list waits on them as on its rows,
+    // so the row is there when the list is.
+    favoritePlacesPending: Boolean = false,
     onRouteToPlace: (TripDestination.Place) -> Unit = {},
     // A long press on a chip opens the places' own screen, to edit them; null offers no long press.
     onEditFavoritePlaces: (() -> Unit)? = null,
@@ -793,7 +796,7 @@ fun MainScreen(
     val journeyRowsShown = shown?.cardRows.orEmpty()
     val rows = shown?.rows.orEmpty()
     val dismissedClosures = shown?.dismissedClosures.orEmpty()
-    val listPending = rowsPending || loaded != null && shown == null
+    val listPending = rowsPending || loaded != null && (shown == null || favoritePlacesPending)
     // What the screen draws against: the snapshot and time the drawn rows were built from, so rows
     // held while new ones are built are never drawn against a newer clock (a train just gone would
     // read "0 min") or a newer snapshot's checks or loading cards (Codex, #524).
