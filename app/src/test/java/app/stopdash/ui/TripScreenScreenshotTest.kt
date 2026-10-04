@@ -17,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
@@ -55,6 +56,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.AvoidedLines
@@ -88,6 +90,8 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.asCoroutineDispatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -1472,7 +1476,10 @@ class TripScreenScreenshotTest {
             }
         }
         composeRule.onNodeWithText("27 min · ~08:29").performClick()
-        composeRule.waitForIdle()
+        // Worked out off the main thread ([rememberStartCheck]): Start holds its place until then.
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("Can't follow National Rail trains yet").fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText("Start").assertDoesNotExist()
         composeRule.onNodeWithText("Can't follow National Rail trains yet").assertIsDisplayed()
     }
@@ -1498,6 +1505,119 @@ class TripScreenScreenshotTest {
             assertTrue(opened)
             assertFalse(started)
         }
+    }
+
+    /** Waits for Start to be enabled: whether it can start is worked out off the main thread ([rememberStartCheck]). */
+    private fun waitForStart() {
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("Start").fetchSemanticsNodes().any { SemanticsProperties.Disabled !in it.config }
+        }
+    }
+
+    @Test
+    fun a_route_can_replace_the_trip_on_the_way_once_confirmed() {
+        var started = false
+        var replaced: TripRoute? = null
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {},
+                    onStart = { started = true }, onOpenTrip = {}, onReplaceTrip = { replaced = it },
+                )
+            }
+        }
+        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Open current trip").assertIsDisplayed()
+        // Start asks first: ending the trip on the way can't be undone. Cancel leaves it be.
+        waitForStart()
+        composeRule.onNodeWithText("Start").performClick()
+        composeRule.onNodeWithText("Replace current trip?").assertIsDisplayed()
+        composeRule.onNodeWithText("Cancel").performClick()
+        composeRule.onNodeWithText("Replace current trip?").assertDoesNotExist()
+        composeRule.runOnIdle { assertNull(replaced) }
+        composeRule.onNodeWithText("Start").performClick()
+        composeRule.onNodeWithText("Replace").performClick()
+        composeRule.runOnIdle {
+            assertNotNull(replaced)
+            assertFalse(started)
+        }
+    }
+
+    @Test
+    fun the_replace_question_goes_with_the_trip_it_asked_about() {
+        var onTheWay by mutableStateOf(true)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {},
+                    onStart = {},
+                    onOpenTrip = if (onTheWay) ({}) else null,
+                    onReplaceTrip = if (onTheWay) ({}) else null,
+                )
+            }
+        }
+        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        waitForStart()
+        composeRule.onNodeWithText("Start").performClick()
+        composeRule.onNodeWithText("Replace current trip?").assertIsDisplayed()
+        // The trip on the way arrives while it's asked, then the rider starts this one: not asked again.
+        onTheWay = false
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Replace current trip?").assertDoesNotExist()
+        onTheWay = true
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Replace current trip?").assertDoesNotExist()
+    }
+
+    @Test
+    fun the_paired_buttons_grow_together_for_a_large_font() {
+        composeRule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
+                StopDashTheme(dynamicColor = false) {
+                    TripScreen(
+                        title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
+                        routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {},
+                        onStart = {}, onOpenTrip = {}, onReplaceTrip = {},
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.waitForIdle()
+        // "Open current trip" wraps at twice the font size: both grow past 56dp, as one, unclipped.
+        val open = composeRule.onNodeWithText("Open current trip").fetchSemanticsNode().boundsInRoot
+        val start = composeRule.onNodeWithText("Start").fetchSemanticsNode().boundsInRoot
+        val minPx = with(composeRule.density) { 56.dp.toPx() }
+        assertTrue("open ${open.height} > $minPx", open.height > minPx)
+        assertEquals(open.height, start.height, 0.5f)
+        assertEquals(open.top, start.top, 0.5f)
+    }
+
+    @Test
+    fun the_replace_question_survives_a_configuration_change() {
+        val restoration = StateRestorationTester(composeRule)
+        var replaced: TripRoute? = null
+        restoration.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {},
+                    onStart = {}, onOpenTrip = {}, onReplaceTrip = { replaced = it },
+                )
+            }
+        }
+        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.waitForIdle()
+        waitForStart()
+        composeRule.onNodeWithText("Start").performClick()
+        restoration.emulateSavedInstanceStateRestore()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Replace").performClick()
+        composeRule.runOnIdle { assertNotNull(replaced) }
     }
 
     @Test
