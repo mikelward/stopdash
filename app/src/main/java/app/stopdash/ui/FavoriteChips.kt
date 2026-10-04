@@ -23,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshots.Snapshot
@@ -169,6 +170,9 @@ private fun PlaceChip(
 // Material's chip icon size.
 private val CHIP_ICON_SIZE = 18.dp
 
+// [rememberShownPlaces]' answer: the memory after this fix, and the chips it leaves.
+private class ShownPlaces(val hiddenIds: Set<String>, val shown: List<FavoritePlace>)
+
 /** The name a favorite is known by: its label, or its resolved place name when the label is blank
  *  (as the Settings route-to and the To… picker name it). */
 internal fun favoriteRouteName(place: FavoritePlace): String = place.label.ifBlank { place.placeName.orEmpty() }
@@ -198,19 +202,21 @@ internal fun rememberShownPlaces(
     val riderAt = rider?.at ?: location
     val riderAccurate = banner == null && rider?.accurate == true
     val latestHiddenPlaceIds by rememberUpdatedState(hiddenPlaceIds)
-    val hiddenPlaceIdsNow = remember(places, riderAt, riderAccurate) {
+    // Worked out on the worker (AGENTS.md *Main thread: read and dispatch only*): every saved place
+    // measured from the rider, then filtered for the day. Until the answer for these inputs is in, the
+    // last chips stand in, so a moved fix doesn't blank the row for a frame.
+    val slot = remember { mutableStateOf<Worked<Inputs, ShownPlaces?>?>(null) }
+    val key = Inputs(places, riderAt, riderAccurate, today)
+    // The memory as the answer is asked for, read unobserved, as before.
+    val hiddenBefore = Snapshot.withoutReadObservation { latestHiddenPlaceIds }
+    val worked = rememberWorked(slot, key, keep = { _, _ -> true }) {
         places?.let {
-            FavoriteShortcuts.hiddenIds(
-                it,
-                riderAt,
-                precise = riderAccurate,
-                hiddenBefore = Snapshot.withoutReadObservation { latestHiddenPlaceIds },
-            )
+            val hidden = FavoriteShortcuts.hiddenIds(it, riderAt, precise = riderAccurate, hiddenBefore = hiddenBefore)
+            ShownPlaces(hidden, FavoriteShortcuts.shown(it, hidden, precise = riderAccurate, today = today))
         }
     }
-    SideEffect { if (hiddenPlaceIdsNow != null && hiddenPlaceIdsNow != hiddenPlaceIds) onHiddenPlaceIds(hiddenPlaceIdsNow) }
-    return remember(places, hiddenPlaceIdsNow, riderAccurate, today) {
-        if (places == null || hiddenPlaceIdsNow == null) emptyList()
-        else FavoriteShortcuts.shown(places, hiddenPlaceIdsNow, precise = riderAccurate, today = today)
-    }
+    // Only the answer for these very inputs updates the memory: one standing in is a step behind it.
+    val current = slot.value?.takeIf { it.key == key }?.value
+    SideEffect { if (current != null && current.hiddenIds != hiddenPlaceIds) onHiddenPlaceIds(current.hiddenIds) }
+    return worked?.shown.orEmpty()
 }
