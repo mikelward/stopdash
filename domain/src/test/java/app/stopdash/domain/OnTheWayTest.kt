@@ -847,6 +847,42 @@ class OnTheWayTest {
     }
 
     @Test
+    fun `on board by where they were seen, get off soon comes one stop out by the Planner's time with no fix to place them`() {
+        val named = ride.copy(pathNames = listOf("Bee", "Cee"))
+        val waiting = OnTheWay.follow(trip.copy(route = TripRoute(listOf(named, walk, second))), train("9", 8))
+        // Seen short of B at 7, two stops left. The ride's 10 minutes over its two stops is 5 a stop,
+        // counted from A, behind where they were seen: one stop out (at B) by 12 (maintainer, 2026-10-04).
+        val short = OnTheWay.onBoardAlong(waiting, OnTheWay.Along(0, atStop = false), at(7))
+        assertEquals(at(7), short.seenAlongAt)
+        assertEquals(at(12), OnTheWay.oneStopOutBy(short, named, 2))
+        assertEquals(TripProgress.Riding(named, "Bee", 2, null, false, byPosition = true), OnTheWay.advance(short, null, at(11)).second)
+        // Still counted from where they were seen: the step names B, two stops, no time claimed.
+        assertEquals(TripProgress.Riding(named, "Bee", 2, null, true, byPosition = true), OnTheWay.advance(short, null, at(12)).second)
+        // Seen there again (a train held short of B), the clock starts again: not one stop out until 15
+        // (Codex, #572). Seen further on, it starts from there too.
+        val held = OnTheWay.onBoardAlong(short, OnTheWay.Along(0, atStop = false), at(10))
+        assertEquals(at(10), held.seenAlongAt)
+        assertFalse((OnTheWay.advance(held, null, at(12)).second as TripProgress.Riding).getOffSoon)
+        assertTrue((OnTheWay.advance(held, null, at(15)).second as TripProgress.Riding).getOffSoon)
+        // Said by 12 before the hold was seen: it no longer stands, and once due again it does (Codex, #572).
+        val saidEarly = OnTheWay.warned(held)
+        assertTrue(OnTheWay.warningWithdrawn(saidEarly, OnTheWay.advance(saidEarly, null, at(12)).second))
+        assertFalse(OnTheWay.warningWithdrawn(saidEarly, OnTheWay.advance(saidEarly, null, at(15)).second))
+        assertFalse(OnTheWay.warningWithdrawn(held, OnTheWay.advance(held, null, at(12)).second))
+        assertEquals(at(10), OnTheWay.onBoardAlong(short, OnTheWay.Along(0, atStop = true), at(10)).seenAlongAt)
+        // One further back is a fix's error, not the train going back: the clock stands.
+        val atB = OnTheWay.onBoardAlong(short, OnTheWay.Along(0, atStop = true), at(9))
+        assertEquals(at(9), OnTheWay.onBoardAlong(atB, OnTheWay.Along(0, atStop = false), at(11)).seenAlongAt)
+        // With no time on board planned there's nothing to count: only a fix says one stop out.
+        val untimed = OnTheWay.onBoardAlong(
+            OnTheWay.follow(trip.copy(route = TripRoute(listOf(named.copy(arrival = named.departure), walk, second))), train("9", 8)),
+            OnTheWay.Along(0, atStop = false), at(7),
+        )
+        assertNull(OnTheWay.oneStopOutBy(untimed, untimed.leg!!, 2))
+        assertFalse((OnTheWay.advance(untimed, null, at(30)).second as TripProgress.Riding).getOffSoon)
+    }
+
+    @Test
     fun `seen along the ride with no train of theirs found, the rider is on board by where they were seen`() {
         val named = ride.copy(pathNames = listOf("Bee", "Cee"))
         val waiting = OnTheWay.follow(trip.copy(route = TripRoute(listOf(named, walk, second))), train("9", 8))

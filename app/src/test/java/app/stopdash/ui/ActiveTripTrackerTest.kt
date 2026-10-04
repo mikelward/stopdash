@@ -2640,6 +2640,58 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `on board by where they were seen, seen at the same stop again restarts the Planner's clock`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(6)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        now = at(7)
+        tracker.refresh(fixAt(51.51))
+        assertEquals(at(7), tracker.trip.value?.seenAlongAt)
+        // Still at B two minutes on (a train held there): counted again from now (Codex, #572).
+        now = at(9)
+        tracker.refresh(fixAt(51.51))
+        assertEquals(at(9), tracker.trip.value?.seenAlongAt)
+        // Seen short of B after that is a fix's error: the clock stands.
+        now = at(10)
+        tracker.refresh(fixAt(51.505))
+        assertEquals(at(9), tracker.trip.value?.seenAlongAt)
+    }
+
+    @Test
+    fun `get off soon said by the Planner's time is taken back when the train is seen held, and said again in time`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        sequences["red"] = redLine
+        departures["A"] = listOf(train("9", 8))
+        trains["9"] = listOf(call("A", 8), call("B", 10), call("C", 14))
+        now = at(6)
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // Seen short of B at 7: the ride's 10 minutes over its two stops is 5 a stop, so one stop out by 12.
+        now = at(7)
+        tracker.refresh(fixAt(51.505))
+        assertFalse((tracker.progress.value as TripProgress.Riding).getOffSoon)
+        now = at(12)
+        tracker.refresh()
+        assertEquals("said C", alerts.last())
+        val said = alerts.size
+        // Seen short of B again at 13, after that time: the train is held there, so the alert is taken
+        // back and the leg can warn again (Codex, #572).
+        now = at(13)
+        tracker.refresh(fixAt(51.505))
+        assertFalse((tracker.progress.value as TripProgress.Riding).getOffSoon)
+        assertEquals(listOf("done"), alerts.drop(said))
+        assertEquals(-1, tracker.trip.value?.warnedLeg)
+        // Due one stop out from there by 18: said again.
+        now = at(18)
+        tracker.refresh()
+        assertEquals(listOf("done", "said C"), alerts.drop(said))
+    }
+
+    @Test
     fun `on board by where they were seen, a fix further on moves them on though TfL is down`() = runTest {
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         sequences["red"] = redLine
