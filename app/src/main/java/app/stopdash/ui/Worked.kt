@@ -9,10 +9,10 @@ import app.stopdash.domain.AlertPlacement
 import kotlinx.coroutines.withContext
 
 /**
- * Inputs compared part by part: a collection, a map or a screen state by identity, so a snapshot's
- * lists count as changed when they are new objects, never by comparing their elements, which grows
- * with the list (Codex, #505); anything else (a time, a day, a string) by value. A collection rebuilt with equal
- * contents only costs one more run on the worker.
+ * Inputs compared part by part: a plain value (a string, a number, a time, a day, a duration) by
+ * value, and anything else (a collection, a map, a screen state) by identity, so a snapshot counts as
+ * changed when it's a new object, never by comparing its contents, which grows with it (Codex, #505).
+ * A part rebuilt with equal contents only costs one more run on the worker.
  */
 internal class Inputs(vararg val parts: Any?) {
     override fun equals(other: Any?): Boolean =
@@ -21,7 +21,10 @@ internal class Inputs(vararg val parts: Any?) {
     override fun hashCode(): Int = parts.fold(1) { hash, part -> hash * 31 + if (byIdentity(part)) System.identityHashCode(part) else part.hashCode() }
 
     private companion object {
-        fun byIdentity(part: Any?): Boolean = part is Collection<*> || part is Map<*, *> || part is DeparturesUiState
+        fun byIdentity(part: Any?): Boolean = part != null && !plain(part)
+        fun plain(part: Any): Boolean =
+            part is String || part is Number || part is Boolean || part is Char || part is Enum<*> ||
+                part is java.time.temporal.Temporal || part is java.time.temporal.TemporalAmount
         fun same(a: Any?, b: Any?): Boolean = if (byIdentity(a) || byIdentity(b)) a === b else a == b
     }
 }

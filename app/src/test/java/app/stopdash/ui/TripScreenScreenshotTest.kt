@@ -328,6 +328,55 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun a_cards_times_are_worked_out_on_the_worker_and_drawn_against_their_own_time() {
+        // The worker on a thread of its own, which the test can hold: worked out on the main thread, a
+        // card's times would move with the clock however that thread was held.
+        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val worker = threads.asCoroutineDispatcher()
+        val gate = CountDownLatch(1)
+        var shownAt by mutableStateOf(now)
+        try {
+            composeRule.setContent {
+                StopDashTheme(dynamicColor = false) {
+                    CompositionLocalProvider(LocalWorker provides worker) {
+                        TripScreen(
+                            title = "To Canary Wharf",
+                            state = planned,
+                            now = shownAt,
+                            access = Duration.ofMinutes(2),
+                            routeStops = RouteStopsRepository(source),
+                            onBack = {},
+                            onRetry = {},
+                        )
+                    }
+                }
+            }
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodesWithText("3 · 7 · 11 min").fetchSemanticsNodes().size == 2
+            }
+
+            // A minute on, with the worker's thread held: the cards keep their last times, drawn against
+            // the time they were worked out for, never a newer clock.
+            threads.execute { gate.await() }
+            shownAt = now.plusSeconds(60)
+            composeRule.waitForIdle()
+            composeRule.onAllNodesWithText("3 · 7 · 11 min").assertCountEquals(2)
+            composeRule.onAllNodesWithText("2 · 6 · 10 min").assertCountEquals(0)
+
+            // Released, the worker works them out for the new time.
+            gate.countDown()
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodesWithText("2 · 6 · 10 min").fetchSemanticsNodes().size == 2
+            }
+            composeRule.onAllNodesWithText("3 · 7 · 11 min").assertCountEquals(0)
+        } finally {
+            // Opened whatever happened, so a failed check can't leave the worker's thread waiting.
+            gate.countDown()
+            worker.close()
+        }
+    }
+
+    @Test
     fun the_first_route_is_headed_fastest_and_the_rest_other() {
         // Every route here rides twice, so the first card is fastest, none is simplest, and the
         // other two share one "Other" header.

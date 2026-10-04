@@ -798,10 +798,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
   - [ ] **The rest of the main screen's loops off the main thread**: the widget journey checks and
         boarding keys, `journeySiblings`, `journeyOrigins`, `fartherShown` and `placeModesShown` still
         loop over cards, rows or stops in composition. Move them to the list's worker the same way.
-  - [ ] **Work a trip card's times out off the main thread**: `TripScreen`'s `cardTimes` runs in a
-        `remember` in composition and reaches `RouteStops.ahead` per live train (via `legTrains` →
-        `leavesAlongLeg`), a path scan that grows with the line's routes, more so with a National
-        Rail train's via to match (Codex, #515). Precompute it with the trip state, on the worker.
+  - [x] **Work a trip card's times out off the main thread**: each card's `cardTimes` is worked out
+        on the page's worker (`rememberWorked`); its last times stand in meanwhile, drawn against the
+        time they were worked out for. The card's statuses and closures, and the page's estimates,
+        are the Phase 0 item *Trip page: work out its per-tick values off the main thread*.
   - [ ] **Group a route page's rail countdowns by the path their via resolves to**, not the via's
         text (`routeDepartures`/`routeUntimed`): two trains running one path under different via
         wording ("Horsham", "Horsham & Arundel") now split, the page showing only the followed one's.
