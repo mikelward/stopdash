@@ -26,6 +26,15 @@ class CountdownTest {
         )
 
     @Test
+    fun `a stale line shows its soonest train's time in London as a guess`() {
+        // 08:02 UTC on 18 September is 09:02 British Summer Time.
+        assertEquals("09:02?", Countdown.staleLabel(listOf(departure(offsetSeconds = 120), departure(offsetSeconds = 600))))
+        val winter = departure(offsetSeconds = 0).copy(expectedArrival = Instant.parse("2026-12-01T21:14:00Z"))
+        assertEquals("21:14?", Countdown.staleLabel(listOf(winter)))
+        assertEquals("?", Countdown.staleLabel(emptyList()))
+    }
+
+    @Test
     fun `inside the last minute reads 0 min, otherwise whole minutes`() {
         assertEquals("0 min", Countdown.label(departure(offsetSeconds = 30), now))
         assertEquals("0 min", Countdown.label(departure(offsetSeconds = 59), now))

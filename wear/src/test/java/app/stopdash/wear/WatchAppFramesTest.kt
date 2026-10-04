@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -129,7 +130,14 @@ class WatchAppFramesTest {
         runCurrent()
         assertTrue(frames.isNotEmpty())
         assertTrue(frames.all { (it as TileFrame.Rows).stale })
-        assertTrue("nothing changes once stale, so the ticker ends", job.isCompleted)
+        // Stale at once, it waits only for its guesses' trains (an hour ahead by this clock), not
+        // the stop's own boundary; once they're due, nothing's left to change and the ticker ends.
+        assertEquals(1, frames.size)
+        assertFalse(job.isCompleted)
+        advanceTimeBy(3_600_000L + 200_000L + 1)
+        runCurrent()
+        assertTrue(frames.all { (it as TileFrame.Rows).stale })
+        assertTrue("nothing changes once its guesses are due, so the ticker ends", job.isCompleted)
     }
 
     @Test

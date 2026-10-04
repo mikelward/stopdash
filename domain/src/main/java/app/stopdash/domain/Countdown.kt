@@ -2,6 +2,8 @@ package app.stopdash.domain
 
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 /**
  * Turns [Departure]s into what a surface shows, applying SPEC D4's client-side
@@ -101,6 +103,18 @@ object Countdown {
      * it, since it hasn't left (its board drops it once it has, and a stale stop withholds it as any).
      */
     fun stillShown(train: UntimedTrain, now: Instant): Boolean = !train.canceled || !hasDeparted(train.train, now)
+
+    /**
+     * What a stale line shows in place of its countdown (SPEC D4): its soonest train's predicted time
+     * in London, marked as a guess ("21:14?"), so the surface still says roughly when without a
+     * live-looking count. A clock time, unlike a countdown, doesn't read as recomputed from now.
+     * [departures] are soonest-first, any already gone left out ([upcoming]); with none, just "?".
+     */
+    fun staleLabel(departures: List<Departure>): String =
+        departures.firstOrNull()?.let { STALE_CLOCK.format(it.expectedArrival.atZone(LONDON)) + "?" } ?: "?"
+
+    private val LONDON: ZoneId = ZoneId.of("Europe/London")
+    private val STALE_CLOCK: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
     /** [departures] that have not yet gone, soonest-first (ties broken by line for stability). */
     fun upcoming(departures: List<Departure>, now: Instant): List<Departure> =

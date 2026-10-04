@@ -46,7 +46,7 @@ class WatchHomeScreenshotTest {
     )
 
     private fun stale(lines: List<TileLine>) = lines.map { line ->
-        if (line is TileLine.Departure) line.copy(row = line.row.copy(countdown = "?", stale = true)) else line
+        if (line is TileLine.Departure) line.copy(row = line.row.copy(countdown = "21:14?", stale = true)) else line
     }
 
     // A trip on the way: a walk to King's Cross, then the Victoria line to Victoria. Stock stations.

@@ -342,7 +342,7 @@ class WidgetContentTest {
     }
 
     @Test
-    fun `a stale row withholds its countdown as a question mark`() = runGlanceAppWidgetUnitTest {
+    fun `a stale row shows its train's predicted time as a guess, not a countdown`() = runGlanceAppWidgetUnitTest {
         provideComposable {
             WidgetContent(
                 WidgetModel(
@@ -354,9 +354,10 @@ class WidgetContentTest {
                 now,
             )
         }
-        // The stamp invites a refresh, and the withheld countdown is "?" (never a live number).
+        // The stamp invites a refresh, and the withheld countdown is the train's predicted time,
+        // marked as a guess (never a live number): 08:02 UTC is 09:02 in London in September.
         onNode(hasText("Tap to refresh")).assertExists()
-        onNode(hasText("?")).assertExists()
+        onNode(hasText("09:02?")).assertExists()
     }
 
     @Test

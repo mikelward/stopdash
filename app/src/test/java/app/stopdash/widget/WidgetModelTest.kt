@@ -467,6 +467,15 @@ class WidgetModelTest {
     }
 
     @Test
+    fun `a stale line's guess is due when its soonest train is, and a fresh line has none`() {
+        val departures = listOf(departure("victoria", 300), departure("central", 120))
+        val stale = DeparturesSnapshot(listOf(stop("490000001A", departures, now.minusSeconds(900))), now.minusSeconds(900))
+        assertEquals(now.plusSeconds(120), widgetModel(stale, now).guessExpiresAt)
+        val fresh = DeparturesSnapshot(listOf(stop("490000001A", departures, now)), now)
+        assertNull(widgetModel(fresh, now).guessExpiresAt)
+    }
+
+    @Test
     fun `a single place draws no stop header`() {
         val snapshot = DeparturesSnapshot(
             stops = listOf(

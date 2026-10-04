@@ -127,8 +127,9 @@ class WatchTripStateTest {
     }
 
     @Test
-    fun `out of date, the trains' times read as a question mark`() {
-        assertEquals("?", trainRows(sentAgo(10), now, stale = true).single().row.countdown)
+    fun `out of date, the trains read as the soonest's time, marked as a guess`() {
+        val countdown = trainRows(sentAgo(10), now, stale = true).single().row.countdown
+        assertTrue(countdown, Regex("\\d\\d:\\d\\d\\?").matches(countdown))
     }
 
     @Test
