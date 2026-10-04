@@ -20,9 +20,12 @@ class StopClosureCache {
     /**
      * A lookup's place in line, taken before it's sent: when it was asked ([at], stamped by the
      * steady clock as a fetch is, [SteadyClock], so its age for reuse isn't changed by setting the
-     * device's clock) and in what order.
+     * device's clock) and in what order. [dismissals] is the dismissed alerts' count when it was asked
+     * ([DismissedAlertsStore.mark]): a dismissal counted after is newer than its answer, so a check
+     * settling dismissals on it never lets that one go. 0 (none known) lets go only of dismissals
+     * this process hasn't counted.
      */
-    class Ask internal constructor(val at: Instant, internal val order: Long)
+    class Ask internal constructor(val at: Instant, internal val order: Long, val dismissals: Long = 0L)
 
     /**
      * A kept lookup: what it found ([notices]) and its place in line ([ask]). A caller that shows
@@ -40,9 +43,12 @@ class StopClosureCache {
     private val failures = LinkedHashMap<String, Ask>()
     private var asked = 0L
 
-    /** A place in line for a lookup about to be sent at the wall time [at]: later than every one taken before it. */
+    /**
+     * A place in line for a lookup about to be sent at the wall time [at]: later than every one taken
+     * before it. [dismissals]: the dismissed alerts' count now ([Ask.dismissals]).
+     */
     @Synchronized
-    fun ask(at: Instant): Ask = Ask(SteadyClock.stamp(at), ++asked)
+    fun ask(at: Instant, dismissals: Long = 0L): Ask = Ask(SteadyClock.stamp(at), ++asked, dismissals)
 
     /**
      * [stopId]'s last successful lookup, or null when none is kept, or when a lookup asked after it

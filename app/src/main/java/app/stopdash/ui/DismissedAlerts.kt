@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 
 /** The base backoff before restarting a failed dismissed-set read; doubled each attempt, and reset
@@ -72,11 +73,19 @@ internal suspend fun dismissAlert(
     io: CoroutineDispatcher,
     failed: MutableStateFlow<Boolean>,
     warn: (String) -> Unit,
+    // The caller's dismissed set, which follows the store: told too, as a store already holding the
+    // alert (a check let go of it in memory, its write not yet in) changes nothing and says nothing.
+    into: MutableStateFlow<Set<DismissedAlert>>? = null,
 ) {
     val alert = DismissedAlert.of(row) ?: return
     try {
         // NonCancellable, like a star: a dismiss tapped just before leaving the page still lands.
-        withContext(NonCancellable + io) { store.dismiss(alert) }
+        withContext(NonCancellable + io) {
+            store.dismiss(alert)
+            // On [io] too: adding copies the whole set, never on the caller's (the main) thread. Already
+            // there (the store's write came through first), the set is left as it is.
+            into?.update { if (alert in it) it else it + alert }
+        }
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -103,12 +112,15 @@ internal suspend fun reconcileLineDismissals(
     io: CoroutineDispatcher,
     warn: (String) -> Unit,
     what: String,
+    // The store's [DismissedAlertsStore.mark] before the check asked anything.
+    since: Long,
     pruned: (Set<DismissedAlert>) -> Unit,
+    restored: (Set<DismissedAlert>) -> Unit = {},
 ) {
     // Every live alert's identity, each line's under way ones included: on [io], never the caller's (the
     // main) thread (Codex on #519).
     val (live, checked) = withContext(io) { lineDismissalCheck(answered, answeredIds, now) }
-    reconcileDismissals(dismissed, live, checked, store, io, warn, what, pruned)
+    reconcileDismissals(dismissed, live, checked, store, io, warn, what, since, pruned, restored)
 }
 
 /**
@@ -156,22 +168,40 @@ internal suspend fun reconcileDismissals(
     io: CoroutineDispatcher,
     warn: (String) -> Unit,
     what: String,
+    // The store's [DismissedAlertsStore.mark] before the check asked anything: one dismissed after
+    // is newer than its verdict, so it stays.
+    since: Long,
     pruned: (Set<DismissedAlert>) -> Unit,
+    // Told on [io], once the store is written, of any it let go of that was dismissed again
+    // meanwhile ([settledBack]), to take back into the caller's set.
+    restored: (Set<DismissedAlert>) -> Unit = {},
 ) {
     if (checked.isEmpty()) return
     // Settled on [io]: it goes through every dismissal and live alert, never on the caller's (the main)
     // thread (Codex on #519).
-    withContext(io) {
-        val gone = dismissed - Dismissed.reconcile(dismissed, live, checked)
-        if (gone.isNotEmpty()) pruned(gone)
+    val gone = withContext(io) {
+        (dismissed - Dismissed.reconcile(dismissed, live, checked)).also { if (it.isNotEmpty()) pruned(it) }
     }
     try {
-        withContext(NonCancellable + io) { store.reconcile(live, checked) }
+        // Only what was dismissed when it settled: one made since stays stored, as in memory.
+        withContext(NonCancellable + io) { store.reconcile(live, checked, dismissed, since) }
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
         warn("$what dismissal reconcile failed: ${e::class.simpleName}")
     }
+    if (gone.isNotEmpty()) withContext(io) { settledBack(store, gone, since).takeIf { it.isNotEmpty() }?.let(restored) }
 }
+
+/**
+ * Of [gone], what a check let go of in memory, the ones dismissed again since its mark [since], asked
+ * once its store write is in. Another screen dismissing one again while the check pruned leaves the
+ * store as it was (it still held the alert), so this screen's set hears nothing of it; asked after
+ * the write, any dismissed again before it is caught here, and one after either finds the store
+ * without it (a write that tells every screen) or kept (caught here). One still being written is
+ * waited for, and taken back only if written ([DismissedAlertsStore.dismissedAgain]).
+ */
+internal suspend fun settledBack(store: DismissedAlertsStore, gone: Set<DismissedAlert>, since: Long): Set<DismissedAlert> =
+    store.dismissedAgain(gone, since)
 
 private fun reason(e: Throwable): String = (e as? TflException)?.message ?: e::class.simpleName.orEmpty()

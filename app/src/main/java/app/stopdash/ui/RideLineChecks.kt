@@ -53,6 +53,9 @@ internal class RideLineChecks(
     private val client: TflClient,
     private val closures: StopClosureChecks,
     private val closureCache: StopClosureCache,
+    // The dismissed alerts' count ([app.stopdash.domain.DismissedAlertsStore.mark]), kept with each
+    // lookup this asks, so a check reusing it settles dismissals only as far as it can vouch.
+    private val dismissals: () -> Long = { 0L },
     // A line's route (the day's): which lines run between the ride's two stops, and by which stops.
     private val sequence: suspend (String) -> LineSequence?,
     // The modes and lines the rider hides, an avoided line among them.
@@ -87,7 +90,7 @@ internal class RideLineChecks(
         // The Planner's alone: nothing to check, as the trip followed before.
         if (lines.legs.size == 1) return RideLinesNow(lines.legs, routeUnread)
         val now = clock()
-        val ticket = closureCache.ask(now)
+        val ticket = closureCache.ask(now, dismissals())
         // The other lines' own stops: the Planner's line is judged where the route is ranked, as on the cards.
         val stops = lines.legs.drop(1).flatMap { listOf(it.fromId, it.toId) }.distinct()
         val (asked, checked) = coroutineScope {

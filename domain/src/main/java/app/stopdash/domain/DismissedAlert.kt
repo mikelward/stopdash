@@ -159,6 +159,18 @@ object Dismissed {
         current.filterTo(mutableSetOf()) { it in live || it.alertKey !in checkedPlaces }
 
     /**
+     * [reconcile], letting go only of what's in [seen] (the dismissals the check saw): one made since
+     * is kept, whatever the check found, as its verdict is older than the dismissal.
+     */
+    fun reconcile(
+        current: Set<DismissedAlert>,
+        live: Set<DismissedAlert>,
+        checkedPlaces: Set<String>,
+        seen: Set<DismissedAlert>,
+    ): Set<DismissedAlert> =
+        current.filterTo(mutableSetOf()) { it in live || it.alertKey !in checkedPlaces || it !in seen }
+
+    /**
      * The dismissed set after a reconcile, and the [ended] line dismissals in it: ones a refresh saw
      * end, kept for a while in case what the widget has stored still holds their alert, each with
      * when that was seen.

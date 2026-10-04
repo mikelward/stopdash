@@ -56,12 +56,16 @@ internal class RouteDisruptionChecks(
         val lines = RouteDisruption.comingLines(trip)
         val stops = RouteDisruption.comingStops(trip, progress).map { it.value }.distinctBy { it.id }
         val now = clock()
-        val ticket = closureCache.ask(now)
+        // The dismissals so far, before anything is asked: one made after is newer than this check's
+        // verdict, so its settling never lets go of it ([reconcileDismissals]).
+        val ticket = closureCache.ask(now, dismissedStore.mark())
         val (statuses, checked) = coroutineScope {
             val statuses = async { statuses(lines) }
             val checked = async { closures.check(stops.map { it.id }, ticket, now) }
             statuses.await() to checked.await()
         }
+        // As old as its oldest answer, a stop's reused lookup perhaps.
+        val since = checked.dismissals
         var cleared = try {
             dismissedStore.dismissed().first()
         } catch (e: CancellationException) {
@@ -87,9 +91,11 @@ internal class RouteDisruptionChecks(
             val stopCheck = stopDismissalCheck(current, at)
             (lineCheck.first + stopCheck.first) to (lineCheck.second + stopCheck.second)
         }
-        reconcileDismissals(cleared, live, checkedPlaces, dismissedStore, io, warn, "on the way") { gone ->
-            cleared = cleared - gone
-        }
+        reconcileDismissals(
+            cleared, live, checkedPlaces, dismissedStore, io, warn, "on the way", since,
+            pruned = { gone -> cleared = cleared - gone },
+            restored = { back -> cleared = cleared + back },
+        )
         // The routes of the coming bus lines whose alert could be left out for naming only stops off
         // the ride ([RouteDisruption.offRide]), read exactly as [RouteDisruption.signals] reads them —
         // the same day, direction and dismissals — so one that can't change the answer costs no route;

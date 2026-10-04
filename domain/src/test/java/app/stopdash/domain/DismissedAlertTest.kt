@@ -144,6 +144,15 @@ class DismissedAlertTest {
     }
 
     @Test
+    fun `reconcile lets go only of the dismissals the check saw`() {
+        // The check saw only the first dismissed; the second was dismissed since, of a notice a newer
+        // check found back, so this older verdict keeps it.
+        val seen = DismissedAlert("P", "S1")
+        val since = DismissedAlert("P", "S2")
+        assertEquals(setOf(since), Dismissed.reconcile(setOf(seen, since), live = emptySet(), checkedPlaces = setOf("P"), seen = setOf(seen)))
+    }
+
+    @Test
     fun `reconcile keeps concurrent notices both still shown`() {
         val first = DismissedAlert("P", "S1")
         val second = DismissedAlert("P", "S2")

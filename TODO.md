@@ -79,14 +79,21 @@ exercises the whole spine the widget later renders from.
       moved to their worker.)
       Each moves off the main thread, worked out with the data it comes from and published with it,
       one screen per PR.
-- [ ] Prune the saved dismissals off the main thread: `Dismissed.reconcile` still filters the whole
-      dismissed set on the main thread after each check settles, in the list, the trip and the line
-      checks. The set is small (only alerts the rider dismissed, expiring daily), but it grows with
-      use. Moving it needs the set updated atomically (`_dismissed.update`) by dismissing and pruning
-      alike, so a dismissal made while the worker prunes isn't lost. The same goes for the store: a
-      check's write lands after its in-memory prune, so a dismissal made in between (of a notice a
-      newer refresh found back) can be written away; pruning by what the check saw, not the whole
-      set, would close it.
+- [x] Prune the saved dismissals off the main thread: the list, the trip and the line checks settle
+      what they let go of on the worker and drop it from the set atomically (#519), and the store
+      lets go of only the dismissals the check saw, so one made after it (of a notice a newer
+      refresh found back) is neither pruned in memory nor written away.
+  - [ ] The widget's own line check (`reconcileWidgetDismissals`) still prunes the whole stored
+        set: it holds no set in memory, so a line alert dismissed in the app while it runs can be
+        written away. Reading the set before its request and passing it as what it saw would close it.
+  - [ ] A check settles every place and line on its oldest answer's dismissal count, so one
+        reused closure or line answer keeps its fresh verdicts elsewhere from letting go of a
+        dismissal made after that answer, until the reused one ages out (minutes). Keeping a count per
+        place and line would let each verdict settle on its own.
+  - [ ] A tap's in-memory add lands after its store write, so a check that started after the tap was
+        counted and settled in that instant can have its prune undone in memory, hiding the alert's
+        recurrence until a later check lets it go. Not reachable in practice (the check must ask TfL
+        and settle between two statements); counting, adding and writing as one step would close it.
 - [ ] Settle stop closures by a single owner per place: the trip's checks take each stop over before
       their request (`closureAsks`) and hand it back if canceled first, but a check that has already
       settled without a stop it lost doesn't take it back, so one left unanswered by a canceled
