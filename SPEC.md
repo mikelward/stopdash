@@ -1822,7 +1822,12 @@ them there:
 - **Get off soon**, from **one stop, or two minutes, out**, said once per leg, titled "Get off at …": once the stop is
   next, the next step on the trip's card, the main view's card and the ongoing notification says so too,
   while the step's own row keeps "Ride to …" (maintainer, 2026-10-01). An answer too old to stand
-  behind goes back to "Ride to …": the stop being next is no longer known.
+  behind goes back to "Ride to …": the stop being next is no longer known. On board by where they
+  were seen, with no train's time, one stop out is when a fix places them there, or, as a fallback for
+  fixes that don't come underground, when the Planner's time for the ride, spread evenly over its stops
+  and counted on from where they were last placed, says they're there (maintainer, 2026-10-04): a
+  stop early or late at worst, never a time claimed. Said that way, then a fix finding them held short
+  of that stop takes it back, and it's said again when they're due one stop out from there.
 - **Time to board** (maintainer, 2026-09-27), from **two minutes before the train followed is due**
   at the boarding stop, while the rider waits for it: heard once for each train, so the next one is said
   for in its time when they're left behind by the first. It names the ride ("Board Jubilee at Bond

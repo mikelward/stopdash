@@ -1132,6 +1132,11 @@ class ActiveTripTracker(
         if (progress is TripProgress.Lost && next.warnedLeg == next.legIndex) {
             next = next.copy(warnedLeg = -1, alertLeft = true)
         }
+        // Said by the Planner's time, then seen held short of that stop: taken back, and said again
+        // when they're due one stop out from where they were seen (Codex, #572).
+        if (OnTheWay.warningWithdrawn(next, progress)) {
+            next = next.copy(warnedLeg = -1, alertLeft = true)
+        }
         // Said again, silently, when the stop's time moves, so the alert's deadline follows it.
         val saidAt = (_progress.value as? TripProgress.Riding)?.takeIf { next.warnedLeg == next.legIndex }?.getOffAt
         val moved = progress is TripProgress.Riding && progress.getOffSoon && next.warnedLeg == next.legIndex &&
@@ -1253,7 +1258,9 @@ class ActiveTripTracker(
             val ahead = OnTheWay.ahead(along)
             if (trip.seenAlongStop > ahead || (trip.seenAlongStop == ahead && along.atStop)) {
                 note(leg, along)
-                return SeenAlong(trip)
+                // Seen as far as before (a train held at a stop): the Planner's time per stop is counted
+                // again from now, not spent standing (Codex, #572). Further back changes nothing.
+                return SeenAlong(if (trip.seenAlongStop == ahead) OnTheWay.onBoardAlong(trip, along, now, on = leg) else trip)
             }
         }
         // Gone from the latest board, or due by now: left the stop (the rider, seen away from it, is on one).

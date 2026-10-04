@@ -59,6 +59,8 @@ class FileActiveTripStoreTest {
             headings = emptyList(), fromAt = null, toAt = null,
         ),
         heldFrom = Instant.parse("2026-09-26T08:01:30Z"),
+        seenAlongStop = 0,
+        seenAlongAt = Instant.parse("2026-09-26T08:05:00Z"),
         // Waterloo as the trip list planned to it: the station complex's stops, each to the stop it stands for.
         destinations = listOf(TripDestination.Stop("940GZZLUWLO"), TripDestination.Stop("910GWLOO")),
         destinationIds = mapOf("940GZZLUWLO" to "940GZZLUWLO", "910GWLOO" to "910GWLOO", "490000254W" to "910GWLOO"),
