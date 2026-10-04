@@ -29,12 +29,58 @@ exercises the whole spine the widget later renders from.
       routes on the worker (`TripVerdicts`), but each tick still passes over a leg's board on the main
       thread: the upcoming trains (`Countdown.upcoming`), their verdicts gathered (`legFilter`), and
       the routes timed (`tripEstimates`, the card helpers, `headedCards`). Move them to the trip's view model,
-      published with the data they come from, so the page only reads.
+      published with the data they come from, so the page only reads. The route setup ahead of them
+      goes too, run in composition on each plan or route update: `sequenceLineIds`, `onPoles`,
+      `placedStands`/`shownRoutes`, `withThroughRoutes`, `plannedLegs` and `rideLines`. So does
+      `TripViewModel`'s own refresh on `viewModelScope`: the setup before its first request
+      (`timedRoutes`, `lookUpPoles`, `stopsOf`, `rideLineIds`, `closureStops`) and the merging of
+      what comes back, and the callbacks the page's effects make into it as routes and estimates
+      change (`boardAt`, `noteWithheld`, `checkShownStops`).
+- [ ] The near-me list's refresh off the main thread, before its requests: `setJourneyStops` (the
+      journey origins' sets, `fetchedStops` rebuilt, the declared lines, the loaded stops scanned)
+      ahead of the refresh it starts, `setJourneyDestinations` and `checkJourneyDestinations` (the
+      destinations filtered, batched and merged back), `refresh`'s own setup ahead of `fetchBatch` (the prior stops by id, `recentlyFetched`, both id sets, `fetchedStops`),
+      `fetchBatch`'s setup (the shared arrivals taken, the lines declared, each stop's request and the
+      pole batches built from `stops`) and the widget's snapshot and journey checks (`forWidget`, `widgetLineChecks`, `setWidgetJourneys`/`writeWidgetJourneys` ahead of their write,
+      which read the line-status caches main-thread code writes) still run on `viewModelScope` at each
+      refresh. Work them out on `compute` and publish the result, as a cold load's progress is (#527).
+      The per-stop merge and the list build moved in #534; the dismissal pass is #532's.
+- [x] The trip tracker off the main thread (#536): `restore`, `start`, `goTo`, `end` and `refresh`
+      each hop to `compute` before taking the tracker's lock, so a refresh's step, a tap's move, a
+      start and a restore walk the trip's route on the worker.
+- [ ] Nearby stops chosen off the main thread: #537 moved `resolveFrom`'s work after its lookup to
+      the worker, and made `State.Ready`'s `eagerStops`, `nearbyStops`, `clusterSetKey` and the
+      widget's `eagerStopIds` values worked out with the set. Still on the main thread: the trip
+      origins worked out from the set (`hereOriginIds` across the nearby stops and their lines, in
+      `MainActivity`'s composition for To… and a From page, once without `remember`; it depends on
+      the hidden modes now, so it's worked out on the worker as either changes), and a relocation
+      that keeps the same cluster set: `reconcileSameSet` (the saved journeys through
+      `stopIdsToHoldBack`, `releasesHeldJourney`, `turnsShownJourney`) and `MainViewModel.reconcile`
+      (the fetched-stop sets, the eager tier, the loaded stops filtered and measured again).
+- [ ] The smaller per-tick and per-recomposition passes: the main screen's `emptyStateUncertain`
+      (every stop, every tick); the route page's stop ids, `journeysHere`, `byLift` and `stepFree`
+      (every recomposition); the On the way screen's rows (every tick); `MainActivity`'s saved
+      journeys mapped, oriented and measured (`shownJourneys`, `farJourneyMeters`), its farther
+      cards built (`fartherCards`, `fartherDistanceMeters`, `openedStates`, and
+      `FartherCardsViewModel`'s `retain` and `open` after their lookups) and the farther stations
+      reached (`reachedStopIds`, `fartherReached`, and `FartherBuses.stationStops`/`candidates`
+      before their `produceState` hops), all in composition; `FavoriteChips`' two passes over the
+      favorite places in `remember`; the search and lookup results worked over after their requests
+      (`StationSearchViewModel.start`'s filter and map, `StationStopsViewModel.retry`'s centered stops,
+      `FavoritePlacesViewModel.onPick`'s `FixedLocation.centerOf` and `startSearch`'s
+      `withBundledPositions`); and the DataStore stores mapping their data on the main collector, with no `flowOn`: the starred rows
+      (`DataStoreStarredRowsStore`), the starred journeys (`DataStoreStarredJourneysStore.journeys`,
+      collected in `MainActivity`), the dismissed alerts, the alerts behind, and the favorite places
+      (`DataStoreFavoritePlacesStore.places`, collected on `FavoritePlacesViewModel`'s
+      `viewModelScope`). Not a closed list: sweep the screens, the stores, and every view-model
+      function a click handler or effect calls, for any pass over a collection that grows with its
+      input on the main thread (the licenses dialog's scan of every library in `remember`,
+      `LicensesScreen`, among them) before checking it off.
 - [ ] Clear the `WorkerThreadCall` lint baseline (`app/lint-baseline.xml`): composition that reaches a
       `@WorkerThread` domain function, directly or through a helper, today MainScreen's near-me rows,
       journey cards and alert placement, OnTheWayScreen's next trains, TripScreen's line rows and
       card helpers, `MainViewModel`'s refresh and dismissal pruning (run on `viewModelScope`, the main
-      thread), the trip tracker's refresh (run from a `LaunchedEffect`), the widget's model (built in
+      thread), the widget's model (built in
       Glance's `provideContent`) and, in `wear/lint-baseline.xml`, the complication picker's choices.
       Each moves off the main thread, worked out with the data it comes from and published with it,
       one screen per PR.
