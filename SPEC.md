@@ -1427,9 +1427,10 @@ a plan by two seconds at most, then it plans with the defaults and plans again o
 walk is timed at the rider's **walking speed** — Slow, Medium or Fast (the Planner's `walkingSpeed`;
 Medium is its average and the default) — so a brisk walker isn't shown a ten-minute walk they do in
 six, nor told a train is out of reach that isn't (maintainer, 2026-09-28). It is one setting, chosen
-in Settings or from a dropdown atop a trip's routes or an opened route, and a change there plans the
-trip again at once, since every walk and the connections after it were timed at the old pace; an
-opened route stays open if the new plan still offers it. Plans are kept per pace.
+in Settings or from a dropdown atop a trip's routes, and a change there plans the trip again at once,
+since every walk and the connections after it were timed at the old pace. An opened route shows none
+of the trip's choices (walking speed, max walk, step-free, modes, avoided lines): it is the route
+chosen, so its page is its own legs (maintainer, 2026-10-04). Plans are kept per pace.
 The request names the Planner's modes (its own default set, walking among them): left to its
 defaults, the Planner accepts `walkingSpeed` but times every walk in a route that rides at its
 average, so the setting changed nothing (2026-09-28). Named, the pace times each walk and so which

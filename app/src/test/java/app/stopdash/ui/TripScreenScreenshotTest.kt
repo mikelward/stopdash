@@ -575,6 +575,37 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun an_open_route_shows_no_search_choices() {
+        // The pickers and chips choose among routes: on the list, not on the route chosen (maintainer,
+        // 2026-10-04). Back on the list, they're there again.
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                TripScreen(
+                    title = "To Canary Wharf",
+                    state = planned,
+                    now = now,
+                    access = Duration.ofMinutes(2),
+                    routeStops = RouteStopsRepository(source),
+                    onBack = {},
+                    onRetry = {},
+                    onWalkingSpeedChange = {},
+                    onMaxWalkChange = {},
+                    onStepFreeChange = {},
+                    onTripModesChange = {},
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("walkingSpeed").assertExists()
+        composeRule.onNodeWithText("27 min · ~08:29").performClick()
+        composeRule.waitForIdle()
+        listOf("walkingSpeed", "maxWalk", "stepFree", "tripModes").forEach { composeRule.onAllNodesWithTag(it).assertCountEquals(0) }
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        composeRule.waitForIdle()
+        listOf("walkingSpeed", "maxWalk", "stepFree", "tripModes").forEach { composeRule.onNodeWithTag(it).assertExists() }
+    }
+
+    @Test
     fun trip_walk_pickers_wait_for_the_stored_choices() {
         // Until the walking speed and max walk are read, neither picker shows a value or opens, so a
         // pick can't be saved over a choice not yet read.
@@ -739,9 +770,10 @@ class TripScreenScreenshotTest {
     }
 
     @Test
-    fun an_open_route_offers_the_walking_speed_too() {
-        // Its walks are timed at the speed as the list's are, so it can be changed from there.
-        var chosen: WalkingSpeed? = null
+    fun an_open_route_stays_open_through_a_new_plan_that_offers_it() {
+        // A plan made again (a walking speed changed in Settings, say): no routes while it runs, then
+        // the new plan, which still offers the route through Whitechapel, so it opens again. The
+        // route's page shows none of the trip's choices (maintainer, 2026-10-04).
         val state = mutableStateOf(planned)
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -754,22 +786,18 @@ class TripScreenScreenshotTest {
                     onBack = {},
                     onRetry = {},
                     walkingSpeed = WalkingSpeed.AVERAGE,
-                    onWalkingSpeedChange = { chosen = it },
+                    onWalkingSpeedChange = {},
                 )
             }
         }
         composeRule.onNodeWithText("28 min · ~08:30").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("6 stops to Whitechapel").assertIsDisplayed()
-        composeRule.onNodeWithText("Walking speed").assertIsDisplayed()
-        captureSnapshot("trip-route-legs-walking-speed.png")
-        composeRule.onNodeWithTag("walkingSpeed").performClick()
-        composeRule.onNodeWithTag("walkingSpeed-SLOW").performClick()
-        assertEquals(WalkingSpeed.SLOW, chosen)
-        // The pick plans again: no routes while it runs, then the new plan, which still offers the
-        // route through Whitechapel, so it opens again.
+        composeRule.onAllNodesWithText("Walking speed").assertCountEquals(0)
         state.value = planned.copy(routes = null, planning = true)
         composeRule.waitForIdle()
+        // Nor while the new plan runs (Codex, #545).
+        composeRule.onAllNodesWithText("Walking speed").assertCountEquals(0)
         state.value = planned
         composeRule.waitForIdle()
         composeRule.onNodeWithText("6 stops to Whitechapel").assertIsDisplayed()

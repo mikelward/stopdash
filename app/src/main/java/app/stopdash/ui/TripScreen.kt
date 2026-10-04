@@ -1350,26 +1350,30 @@ private fun TripContent(
             val misses = remember(state, shown, now, sequences) { shown?.let { tripMisses(state, it, now, sequences, rideLines) }.orEmpty() }
             val routeStops = LocalRouteStops.current
             LaunchedEffect(routeStops, misses) { routeStops?.reportMisses(misses) }
-            // The walking speed heads an open route too, as the maintainer asked (2026-09-28): its walks
-            // are timed at it as the list's are. A pick plans again; an open route stays
-            // open when the new plan still offers it ([routeKey] names lines and stops, not times).
-            if (onWalkingSpeedChange != null) {
-                WalkingSpeedPicker(walkingSpeed, onWalkingSpeedChange, enabled = planOptionsLoaded)
+            // The search's choices head the routes only: an opened route is the one chosen, so its page
+            // shows its own legs, not the pickers and chips that choose among routes (maintainer,
+            // 2026-10-04). By the route held open, not only the one found: while a new plan runs none is
+            // found, and the choices mustn't flash back above it (Codex, #545).
+            if (open == null && openRef == null) {
+                // The walking speed first: a pick plans again.
+                if (onWalkingSpeedChange != null) {
+                    WalkingSpeedPicker(walkingSpeed, onWalkingSpeedChange, enabled = planOptionsLoaded)
+                }
+                // The walk limit sits under it: the two decide together which walks the routes can take.
+                if (onMaxWalkChange != null) {
+                    MaxWalkPicker(maxWalk, onMaxWalkChange, enabled = planOptionsLoaded)
+                }
+                // Step-free under them: it too changes which routes the Planner offers.
+                if (onStepFreeChange != null) {
+                    StepFreePicker(stepFree, onStepFreeChange, enabled = planOptionsLoaded)
+                }
+                // The kinds of transport the routes may ride, last: chips, a tap each, rather than a menu.
+                if (onTripModesChange != null) {
+                    TripModeChips(tripModes, onTripModesChange, enabled = planOptionsLoaded)
+                }
+                // The lines avoided, under the modes: each a chip a tap stops avoiding.
+                avoided.onStopAvoiding?.let { AvoidedLineChips(avoided.lines, it) }
             }
-            // The walk limit sits under it: the two decide together which walks the routes can take.
-            if (onMaxWalkChange != null) {
-                MaxWalkPicker(maxWalk, onMaxWalkChange, enabled = planOptionsLoaded)
-            }
-            // Step-free under them: it too changes which routes the Planner offers.
-            if (onStepFreeChange != null) {
-                StepFreePicker(stepFree, onStepFreeChange, enabled = planOptionsLoaded)
-            }
-            // The kinds of transport the routes may ride, last: chips, a tap each, rather than a menu.
-            if (onTripModesChange != null) {
-                TripModeChips(tripModes, onTripModesChange, enabled = planOptionsLoaded)
-            }
-            // The lines avoided, under the modes: each a chip a tap stops avoiding.
-            avoided.onStopAvoiding?.let { AvoidedLineChips(avoided.lines, it) }
             TripBanners(shown, rideLines, state, check, locationBanner, onRelocate, hiddenModes, onShowAllModes)
             Box(Modifier.fillMaxSize()) {
                 when {
