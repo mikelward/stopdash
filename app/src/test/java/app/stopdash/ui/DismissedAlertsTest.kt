@@ -21,12 +21,12 @@ class DismissedAlertsTest {
 
     // What each write was told the check saw.
     private val written = mutableListOf<Set<DismissedAlert>>()
-    private val marks = mutableListOf<Long>()
+    private val marks = mutableListOf<app.stopdash.domain.DismissalMarks>()
     private val store = object : DismissedAlertsStore {
         override fun dismissed(): Flow<Set<DismissedAlert>> = flowOf(emptySet())
         override suspend fun dismiss(alert: DismissedAlert) = Unit
         override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) = error("the check's set is passed")
-        override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: Long) {
+        override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: app.stopdash.domain.DismissalMarks) {
             written += seen
             marks += since
         }
@@ -47,13 +47,13 @@ class DismissedAlertsTest {
             val ended = DismissedAlert.ofLineStatus(LineStatus("99", 6, "Diversion", "Bus stop 'Gamma Road' will not be served."))
             val gone = mutableListOf<Set<DismissedAlert>>()
             runBlocking(caller) {
-                reconcileLineDismissals(setOf(identity(behind), ended), mapOf("99" to status), setOf("99"), now, store, worker, {}, "test", since = 7, pruned = { gone += it })
+                reconcileLineDismissals(setOf(identity(behind), ended), mapOf("99" to status), setOf("99"), now, store, worker, {}, "test", since = app.stopdash.domain.DismissalMarks(7), pruned = { gone += it })
             }
             // The alert under way behind the one shown stays dismissed; the one that ended goes.
             assertEquals(listOf(setOf(ended)), gone)
             // The store lets go of only what the check saw, so one dismissed since stays stored too.
             assertEquals(listOf(setOf(identity(behind), ended)), written)
-            assertEquals(listOf(7L), marks)
+            assertEquals(listOf(app.stopdash.domain.DismissalMarks(7)), marks)
             assertTrue(read.isNotEmpty())
             assertEquals(setOf("worker"), read.toSet())
         } finally {
@@ -72,18 +72,18 @@ class DismissedAlertsTest {
             override fun dismissed(): Flow<Set<DismissedAlert>> = flowOf(emptySet())
             override suspend fun dismiss(alert: DismissedAlert) = Unit
             override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) = error("the check's set is passed")
-            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: Long) {
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: app.stopdash.domain.DismissalMarks) {
                 // The other screen's tap lands as the check writes.
                 again = setOf(ended)
             }
-            override fun stillSeen(alerts: Set<DismissedAlert>, since: Long) = alerts - again
+            override fun stillSeen(alerts: Set<DismissedAlert>, since: app.stopdash.domain.DismissalMarks) = alerts - again
         }
         val status = LineStatus("99", 3, "Part Suspended", shown.fullText)
         val pruned = mutableListOf<Set<DismissedAlert>>()
         val restored = mutableListOf<Set<DismissedAlert>>()
         runBlocking {
             reconcileLineDismissals(
-                setOf(ended), mapOf("99" to status), setOf("99"), now, tapped, kotlinx.coroutines.Dispatchers.Unconfined, {}, "test", since = 1,
+                setOf(ended), mapOf("99" to status), setOf("99"), now, tapped, kotlinx.coroutines.Dispatchers.Unconfined, {}, "test", since = app.stopdash.domain.DismissalMarks(1),
                 pruned = { pruned += it }, restored = { restored += it },
             )
         }

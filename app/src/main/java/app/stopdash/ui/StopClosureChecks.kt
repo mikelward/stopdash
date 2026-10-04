@@ -33,14 +33,14 @@ internal class StopClosureChecks(
     /**
      * What one check found: each stop's notices ([found]) and when they were looked up ([at], by the
      * steady clock), and the stops whose request failed with no later lookup kept ([failed]). [dismissals]
-     * is the oldest of the dismissed alerts' counts its answers were asked at ([StopClosureCache.Ask.dismissals]):
-     * a dismissal counted after is newer than all of them.
+     * is the dismissed alerts' count each found stop's answer was asked at ([StopClosureCache.Ask.dismissals]):
+     * a dismissal counted after is newer than that stop's answer.
      */
     class Result(
         val found: Map<String, List<StopDisruption>>,
         val at: Map<String, Instant>,
         val failed: Set<String>,
-        val dismissals: Long,
+        val dismissals: Map<String, Long>,
     )
 
     /**
@@ -51,7 +51,7 @@ internal class StopClosureChecks(
     suspend fun check(ids: List<String>, ticket: StopClosureCache.Ask, now: Instant): Result {
         val found = HashMap<String, List<StopDisruption>>()
         val at = HashMap<String, Instant>()
-        var dismissals = ticket.dismissals
+        val dismissals = HashMap<String, Long>()
         val ask = ids.filter { id ->
             // Aged by the steady clock it's stamped by ([StopClosureCache.Ask.at]). Dated after now (the
             // clock set back, across a reboot) is an age that can't be told, so asked again.
@@ -59,7 +59,7 @@ internal class StopClosureChecks(
             held?.let {
                 found[id] = it.notices
                 at[id] = it.at
-                dismissals = minOf(dismissals, it.ask.dismissals)
+                dismissals[id] = it.ask.dismissals
             }
             held == null
         }
@@ -80,7 +80,7 @@ internal class StopClosureChecks(
                     .onSuccess {
                         found[id] = it.notices
                         at[id] = it.at
-                        dismissals = minOf(dismissals, it.ask.dismissals)
+                        dismissals[id] = it.ask.dismissals
                     }
                     .onFailure { failed += id }
             }

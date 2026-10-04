@@ -11,6 +11,7 @@ import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.FoldChoice
+import app.stopdash.domain.DismissalMarks
 import app.stopdash.domain.Dismissed
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DismissedAlertsStore
@@ -490,9 +491,10 @@ class MainViewModel(
                 null
             }
             val now = clock()
-            // The dismissals so far, before anything is asked ([reconcileDismissals]), lowered to each
+            // The dismissals so far, before anything is asked ([reconcileDismissals]), and each stop's
             // answer's own as it's taken: a cached or shared one may be older than this check.
-            var since = dismissedStore.mark()
+            val since = dismissedStore.mark()
+            val stopAsks = HashMap<String, StopClosureCache.Ask>()
             fun lookup(id: String) = disruptionCache[id]?.takeIf { isWithin(it.at, now, disruptionReuse) }
             fun cached(id: String) = lookup(id)?.notices
             fun failedInFetch(id: String) = joinedFetchAt != null && disruptionFailedAt[id] == joinedFetchAt
@@ -510,10 +512,10 @@ class MainViewModel(
                     failed += stop.id
                     return@mapNotNull prior[stop.id]
                 }
-                val disruptions = lookup(stop.id)?.also { since = minOf(since, it.ask.dismissals) }?.notices ?: fetched[stop.id]?.fold(
+                val disruptions = lookup(stop.id)?.also { stopAsks[stop.id] = it.ask }?.notices ?: fetched[stop.id]?.fold(
                     // Kept by the request as it landed; this is what the cache held then.
                     onSuccess = { found ->
-                        since = minOf(since, found.ask.dismissals)
+                        stopAsks[stop.id] = found.ask
                         found.notices
                     },
                     onFailure = {
@@ -533,7 +535,7 @@ class MainViewModel(
             _journeyDestinationsUnknown.value = failed
             // A dismissed destination closure that has since cleared is forgotten, so the same notice
             // recurring later shows again; a place whose check failed keeps its dismissals.
-            reconcileDismissals(stops.distinctBy { it.id }.map { it.copy(clusterId = "", hubId = "") }, checked, emptyMap(), emptySet(), failed, since, destinationSettles)
+            reconcileDismissals(stops.distinctBy { it.id }.map { it.copy(clusterId = "", hubId = "") }, checked, emptyMap(), emptySet(), failed, since, destinationSettles, stopAsks)
         }
     }
 
@@ -798,9 +800,9 @@ class MainViewModel(
         // The lines TfL doesn't know ([unknownLineIds]) as of this check: a copy, so a cold load's
         // progress can be worked out off the main thread without reading the live set.
         val unknown: Set<String> = emptySet(),
-        // The oldest dismissed-alerts count its verdicts were asked at, a reused one's included
-        // ([lineStatusMarks]); none when it has no verdict.
-        val dismissals: Long = Long.MAX_VALUE,
+        // The dismissed-alerts count each line's verdict was asked at, a reused one's included
+        // ([lineStatusMarks]), by line id.
+        val dismissals: Map<String, Long> = emptyMap(),
     ) {
         val determined: Set<String> get() = statuses.mapTo(HashSet()) { it.lineId }
         val disrupted: Map<String, LineStatus> get() = statuses.filter { it.hasAlerts }.associateBy { it.lineId }
@@ -856,8 +858,9 @@ class MainViewModel(
         // taken into [closureShown] only once the batch is published, since one superseded before
         // then shows nothing.
         val closureAsks: Map<String, StopClosureCache.Ask>,
-        // The oldest dismissed-alerts count the batch's line verdicts were asked at ([LineCheck.dismissals]).
-        val lineDismissals: Long,
+        // The dismissed-alerts count each line's verdict was asked at, by line id, for each of the
+        // batch's line checks ([LineCheck.dismissals]).
+        val lineDismissals: List<Map<String, Long>>,
         // The lines TfL doesn't know, as this batch's last line check copied them ([LineCheck.unknown]),
         // so the list can be worked out off the main thread without copying the live set there.
         val unknownLineIds: Set<String> = emptySet(),
@@ -1433,7 +1436,7 @@ class MainViewModel(
             anyFreshData = anyFreshData,
             freshArrivalStopIds = freshArrivalStopIds,
             closureAsks = closureAsks,
-            lineDismissals = listOfNotNull(earlyLines, lateLines).minOfOrNull { it.dismissals } ?: Long.MAX_VALUE,
+            lineDismissals = listOfNotNull(earlyLines, lateLines).map { it.dismissals },
             firstError = firstError,
             arrivalsErrors = arrivalsErrors,
             // The latest check's copy holds every line known unknown by then. With no check at all, no
@@ -1460,7 +1463,7 @@ class MainViewModel(
             lineStatusOmitted[id]?.let { at -> isWithin(at, now, lineStatusReuse) } == true
         }
         val toQuery = lineIds - cachedStatuses.mapTo(HashSet()) { it.lineId } - unknownLineIds - recentlyOmitted
-        val cachedDismissals = cachedStatuses.minOfOrNull { lineStatusMarks[it.lineId] ?: 0L } ?: Long.MAX_VALUE
+        val cachedDismissals = cachedStatuses.associate { it.lineId to (lineStatusMarks[it.lineId] ?: 0L) }
         // With nothing left to ask, the cached verdicts stand on their own.
         if (toQuery.isEmpty()) {
             return LineCheck(lineIds, cachedStatuses, answered = false, requests = 0, unknown = unknownLineIds.toSet(), dismissals = cachedDismissals)
@@ -1522,7 +1525,7 @@ class MainViewModel(
                 // *Privacy*: line ids are allowed in the log).
                 warn("disruption status unknown: TfL returned no status for line(s) ${undetermined.joinToString(",")}")
             }
-            val dismissals = if (fetched.isEmpty()) cachedDismissals else minOf(cachedDismissals, askedAt)
+            val dismissals = cachedDismissals + fetched.associate { it.lineId to askedAt }
             LineCheck(lineIds, statuses, answered = true, requests = requests, unknown = unknownLineIds.toSet(), dismissals = dismissals)
         } catch (e: CancellationException) {
             throw e
@@ -1988,10 +1991,13 @@ class MainViewModel(
             // set ([fetchedStops]); the reconcile is scoped per place to only the queried stops whose
             // disruption lookup succeeded (see reconcileDismissals), so it prunes a resolved notice
             // without touching a place that failed to refresh or belongs to a different nearby set.
-            // As old as its oldest answer, a reused lookup or line status perhaps: a dismissal counted
-            // after stays.
-            val settledSince = batch.closureAsks.values.fold(minOf(since, batch.lineDismissals)) { oldest, ask -> minOf(oldest, ask.dismissals) }
-            reconcileDismissals(fetchedStops, merged, lineStatuses, determinedLineIds, stopsDisruptionUnknown, settledSince, refreshSettles)
+            // Each place and line as old as its own answer, a reused lookup or line status perhaps: a
+            // dismissal counted after stays.
+            reconcileDismissals(
+                fetchedStops, merged, lineStatuses, determinedLineIds, stopsDisruptionUnknown, since, refreshSettles,
+                stopAsks = batch.closureAsks,
+                lineMarks = batch.lineDismissals,
+            )
         }
         fetchJob = job
         // Clear the in-flight flag only when this job settles — a job superseded by a
@@ -2384,6 +2390,11 @@ class MainViewModel(
         // This kind of check's settlements, of which this is now the newest; null for one nothing
         // supersedes.
         turns: Turns? = null,
+        // The closure lookup each stop's answer came from, by stop id: one older than [since] (a reused
+        // or shared lookup) settles only the dismissals made before it ([StopClosureCache.Ask.dismissals]).
+        stopAsks: Map<String, StopClosureCache.Ask> = emptyMap(),
+        // The mark each line's status was asked at, by line id, for each line check the verdicts came from.
+        lineMarks: List<Map<String, Long>> = emptyList(),
     ) {
         val now = clock()
         // Still the newest once the worker hands the verdict back; one superseded meanwhile leaves the
@@ -2391,7 +2402,7 @@ class MainViewModel(
         val current = turns?.take() ?: { true }
         // Once the refresh's checks are in, settling them outlasts the list, as the write below does:
         // leaving while the worker has them would otherwise keep an ended notice's dismissal stored.
-        withContext(NonCancellable) { settleDismissals(queriedStops, shownStops, lineStatuses, checkedLineIds, stopsDisruptionUnknown, now, since, current) }
+        withContext(NonCancellable) { settleDismissals(queriedStops, shownStops, lineStatuses, checkedLineIds, stopsDisruptionUnknown, now, since, stopAsks, lineMarks, current) }
     }
 
     // [reconcileDismissals]'s work, run to the end once begun.
@@ -2402,13 +2413,15 @@ class MainViewModel(
         checkedLineIds: Set<String>,
         stopsDisruptionUnknown: Set<String>,
         now: Instant,
-        since: Long,
+        mark: Long,
+        stopAsks: Map<String, StopClosureCache.Ask>,
+        lineMarks: List<Map<String, Long>>,
         current: () -> Boolean,
     ) {
         val dismissed = _dismissed.value
         // Worked out across the whole board, so off the main thread: every live alert, each line's under
         // way ones included, and every dismissal (Codex on #519).
-        val (live, checkedPlaces, gone) = withContext(compute) {
+        val (since, settled) = withContext(compute) {
             // Includes each near-me folded card's identity, so its dismissal isn't pruned as not-live.
             val live = DepartureRows.liveStopClosureAlerts(DepartureRows.across(shownStops, now, lineStatuses)) +
                 DepartureRows.liveLineStatusAlerts(lineStatuses, now)
@@ -2424,9 +2437,14 @@ class MainViewModel(
                 // A line still waiting on which way its alerts apply isn't split yet, so a dismissal of
                 // one direction's alert can't be matched against it: retained until the split lands.
                 checkedLineIds.filterNot { lineStatuses[it]?.awaitingDirections == true }.map { lineAlertKey(it) }
+            // Each place as old as its oldest stop's answer, each line as its own; never newer than the check.
+            val marks = HashMap<String, Long>()
+            for (stop in queriedStops) stopAsks[stop.id]?.let { marks.merge(placeOf(stop), minOf(mark, it.dismissals), ::minOf) }
+            for (check in lineMarks) for ((line, at) in check) marks.merge(lineAlertKey(line), minOf(mark, at), ::minOf)
             // What's let go of, from what's dismissed now, so one made meanwhile stays (Codex on #519).
-            Triple(live, checkedPlaces, dismissed - Dismissed.reconcile(dismissed, live, checkedPlaces))
+            DismissalMarks(mark, marks) to Triple(live, checkedPlaces, dismissed - Dismissed.reconcile(dismissed, live, checkedPlaces))
         }
+        val (live, checkedPlaces, gone) = settled
         if (!current()) return
         // Reconcile the in-memory set first — safe regardless of whether the persist below succeeds.
         // The set left is worked out on the worker too, as it grows with every dismissal; published only

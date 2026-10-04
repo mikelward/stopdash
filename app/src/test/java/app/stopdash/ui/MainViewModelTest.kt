@@ -522,7 +522,7 @@ class MainViewModelTest {
                 backing.value = Dismissed.dismiss(backing.value, alert)
             }
             override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) = error("the refresh's set is passed")
-            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: Long) {
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: app.stopdash.domain.DismissalMarks) {
                 told += seen
                 backing.value = Dismissed.reconcile(backing.value, live, checkedPlaces, seen)
             }
@@ -567,10 +567,10 @@ class MainViewModelTest {
                 backing.value = Dismissed.dismiss(backing.value, alert)
             }
             override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) = error("the refresh's set is passed")
-            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: Long) {
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: app.stopdash.domain.DismissalMarks) {
                 backing.value = Dismissed.reconcile(backing.value, live, checkedPlaces, stillSeen(seen, since))
             }
-            override fun stillSeen(alerts: Set<DismissedAlert>, since: Long) = alerts - again
+            override fun stillSeen(alerts: Set<DismissedAlert>, since: app.stopdash.domain.DismissalMarks) = alerts - again
         }
         var closed = true
         val client = object : TflClient {
@@ -614,11 +614,11 @@ class MainViewModelTest {
                 backing.value = Dismissed.dismiss(backing.value, alert)
             }
             override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) = error("the refresh's set is passed")
-            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: Long) {
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: app.stopdash.domain.DismissalMarks) {
                 backing.value = Dismissed.reconcile(backing.value, live, checkedPlaces, stillSeen(seen, since))
             }
             override fun mark() = count
-            override fun stillSeen(alerts: Set<DismissedAlert>, since: Long) = alerts.filterTo(HashSet()) { (counted[it] ?: 0L) <= since }
+            override fun stillSeen(alerts: Set<DismissedAlert>, since: app.stopdash.domain.DismissalMarks) = alerts.filterTo(HashSet()) { (counted[it] ?: 0L) <= since.of(it) }
         }
         var closed = true
         var tapMeanwhile: DismissedAlert? = null
@@ -673,11 +673,11 @@ class MainViewModelTest {
                 backing.value = Dismissed.dismiss(backing.value, alert)
             }
             override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) = error("the refresh's set is passed")
-            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: Long) {
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: app.stopdash.domain.DismissalMarks) {
                 backing.value = Dismissed.reconcile(backing.value, live, checkedPlaces, stillSeen(seen, since))
             }
             override fun mark() = count
-            override fun stillSeen(alerts: Set<DismissedAlert>, since: Long) = alerts.filterTo(HashSet()) { (counted[it] ?: 0L) <= since }
+            override fun stillSeen(alerts: Set<DismissedAlert>, since: app.stopdash.domain.DismissalMarks) = alerts.filterTo(HashSet()) { (counted[it] ?: 0L) <= since.of(it) }
         }
         val shared = StopClosureCache()
         // Clear once asked again too: only the reused answer's age keeps the tap.
@@ -716,6 +716,68 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `a closure answer reused at one place doesn't hold back a fresh one at another`() = runTest(dispatcher) {
+        // One stop's answer is reused from before the rider dismissed the other stop's closure; the
+        // other is asked afresh and found clear. Its own answer is newer than the tap, so the dismissal
+        // goes, however old the reused answer at the first stop.
+        val backing = MutableStateFlow<Set<DismissedAlert>>(emptySet())
+        var count = 0L
+        val counted = HashMap<DismissedAlert, Long>()
+        val store = object : DismissedAlertsStore {
+            override fun dismissed() = backing
+            override suspend fun dismiss(alert: DismissedAlert) {
+                counted[alert] = ++count
+                backing.value = Dismissed.dismiss(backing.value, alert)
+            }
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) = error("the refresh's set is passed")
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: app.stopdash.domain.DismissalMarks) {
+                backing.value = Dismissed.reconcile(backing.value, live, checkedPlaces, stillSeen(seen, since))
+            }
+            override fun mark() = count
+            override fun stillSeen(alerts: Set<DismissedAlert>, since: app.stopdash.domain.DismissalMarks) = alerts.filterTo(HashSet()) { (counted[it] ?: 0L) <= since.of(it) }
+        }
+        val shared = StopClosureCache()
+        var closed = true
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) =
+                if (closed) listOf(StopDisruption("Bus Stop Closed")) else emptyList()
+        }
+        var clockNow = now
+        val vm = MainViewModel(
+            client,
+            listOf(
+                StopRef("490000001A", "Example Road", clusterId = "490G000EXAMPLE"),
+                StopRef("490000002B", "Sample Street", clusterId = "490G000SAMPLE"),
+            ),
+            clock = { clockNow },
+            io = dispatcher,
+            compute = dispatcher,
+            dismissedStore = store,
+            disruptionCache = shared,
+            disruptionReuse = java.time.Duration.ofMinutes(5),
+        )
+        advanceUntilIdle()
+        val closure = DepartureRows.across((vm.state.value as DeparturesUiState.Loaded).stops, now)
+            .first { it.stopDisruption != null && it.stopId == "490000002B" }
+        // Another screen asks about the first stop before the rider dismisses the second's closure.
+        clockNow = now.plusSeconds(400)
+        shared.keep("490000001A", shared.ask(clockNow, store.mark()), emptyList())
+        vm.dismissAlert(closure)
+        advanceUntilIdle()
+        val alert = DismissedAlert.ofStopClosure(closure)
+        assertEquals(setOf(alert), backing.value)
+        // Past the second stop's reuse window, not the first's: the second is asked afresh, found clear.
+        closed = false
+        clockNow = now.plusSeconds(600)
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(emptySet<DismissedAlert>(), backing.value)
+        assertEquals(emptySet<DismissedAlert>(), vm.dismissed.value)
+    }
+
+    @Test
     fun `a line status reused from before an alert was dismissed again never lets go of it`() = runTest(dispatcher) {
         // The refresh reuses a good-service verdict asked before the rider dismissed the line's alert
         // again (another screen saw it recur): its verdict is that old, so the tap stands.
@@ -729,11 +791,11 @@ class MainViewModelTest {
                 backing.value = Dismissed.dismiss(backing.value, alert)
             }
             override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) = error("the refresh's set is passed")
-            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: Long) {
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: app.stopdash.domain.DismissalMarks) {
                 backing.value = Dismissed.reconcile(backing.value, live, checkedPlaces, stillSeen(seen, since))
             }
             override fun mark() = count
-            override fun stillSeen(alerts: Set<DismissedAlert>, since: Long) = alerts.filterTo(HashSet()) { (counted[it] ?: 0L) <= since }
+            override fun stillSeen(alerts: Set<DismissedAlert>, since: app.stopdash.domain.DismissalMarks) = alerts.filterTo(HashSet()) { (counted[it] ?: 0L) <= since.of(it) }
         }
         val severe = LineStatus("victoria", 6, "Severe Delays", "Victoria line: severe delays.")
         var status = severe
@@ -788,11 +850,11 @@ class MainViewModelTest {
                 backing.value = Dismissed.dismiss(backing.value, alert)
             }
             override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) = error("the refresh's set is passed")
-            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: Long) {
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: app.stopdash.domain.DismissalMarks) {
                 tapAs?.let { again = setOf(it) }
                 backing.value = Dismissed.reconcile(backing.value, live, checkedPlaces, stillSeen(seen, since))
             }
-            override fun stillSeen(alerts: Set<DismissedAlert>, since: Long) = alerts - again
+            override fun stillSeen(alerts: Set<DismissedAlert>, since: app.stopdash.domain.DismissalMarks) = alerts - again
         }
         var closed = true
         val client = object : TflClient {

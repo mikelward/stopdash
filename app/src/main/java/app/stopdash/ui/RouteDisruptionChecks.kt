@@ -1,6 +1,7 @@
 package app.stopdash.ui
 
 import app.stopdash.domain.ActiveTrip
+import app.stopdash.domain.DismissalMarks
 import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.TripClosures
@@ -64,8 +65,9 @@ internal class RouteDisruptionChecks(
             val checked = async { closures.check(stops.map { it.id }, ticket, now) }
             statuses.await() to checked.await()
         }
-        // As old as its oldest answer, a stop's reused lookup perhaps.
-        val since = checked.dismissals
+        // Each stop as old as its own answer, a reused lookup perhaps (each stop is its own place,
+        // [stopDismissalCheck]); the lines, asked afresh, as old as this check.
+        val since = DismissalMarks(ticket.dismissals, checked.dismissals)
         var cleared = try {
             dismissedStore.dismissed().first()
         } catch (e: CancellationException) {

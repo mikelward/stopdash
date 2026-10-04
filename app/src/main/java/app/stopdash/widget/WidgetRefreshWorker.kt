@@ -36,6 +36,7 @@ import app.stopdash.domain.AlertsBehindStore
 import app.stopdash.domain.AppSettings
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.DismissalMarks
 import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.lineAlertKey
 import app.stopdash.domain.TflException
@@ -556,7 +557,7 @@ internal suspend fun reconcileWidgetDismissals(store: DismissedAlertsStore, answ
             // direction's alert yet, so it isn't counted as checked until the split lands.
             checkedPlaces = answered.filterNot { it.awaitingDirections }.mapTo(HashSet()) { lineAlertKey(it.lineId) },
             seen = store.dismissed().first(),
-            since = since,
+            since = DismissalMarks(since),
         )
     } catch (e: CancellationException) {
         throw e

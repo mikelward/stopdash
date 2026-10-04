@@ -11,6 +11,7 @@ import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.DismissalMarks
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.HiddenModes
@@ -1133,9 +1134,9 @@ class TripViewModel(
         val failed: Set<String>,
         val ids: List<String>,
         val ask: StopClosureCache.Ask,
-        // The dismissed alerts' count when its oldest answer was asked ([StopClosureChecks.Result.dismissals]):
-        // one dismissed after stays.
-        val since: Long,
+        // The dismissed alerts' count when each stop's answer was asked ([StopClosureChecks.Result.dismissals]),
+        // each stop its own place: one dismissed after stays.
+        val since: DismissalMarks,
     )
 
     /**
@@ -1163,14 +1164,14 @@ class TripViewModel(
             }
             throw e
         }
-        // As old as its oldest answer, a cached one perhaps: a dismissal counted after stays.
-        return ClosureCheck(checked.found, checked.at, checked.failed, ids, ticket, checked.dismissals)
+        // Each stop as old as its own answer, a cached one perhaps: a dismissal counted after stays.
+        return ClosureCheck(checked.found, checked.at, checked.failed, ids, ticket, DismissalMarks(ticket.dismissals, checked.dismissals))
     }
 
     // What a status check found: the statuses TfL returned, answered [at], the lines it gave a verdict
     // on ([answered], a status or none), and the lines in a request that failed.
     // [since]: the store's [DismissedAlertsStore.mark] before it asked anything: one dismissed after stays.
-    private class StatusCheck(val statuses: Map<String, LineStatus>, val answered: Set<String>, val failed: Set<String>, val at: Instant, val sortedOn: LocalDate, val since: Long) {
+    private class StatusCheck(val statuses: Map<String, LineStatus>, val answered: Set<String>, val failed: Set<String>, val at: Instant, val sortedOn: LocalDate, val since: DismissalMarks) {
         // Each returned line's answer time, for [State.statusesAt].
         fun answeredAt(): Map<String, Instant> = statuses.mapValues { at }
     }
@@ -1225,7 +1226,7 @@ class TripViewModel(
     private suspend fun fetchStatuses(lineIds: List<String>): StatusCheck? {
         // The day they're sorted on, read before they're asked for: never later than it was.
         val sortedOn = clock().atZone(AlertStart.ZONE).toLocalDate()
-        val since = dismissedStore.mark()
+        val since = DismissalMarks(dismissedStore.mark())
         val results = LineStatusBatch.request(lineIds) { chunk -> withContext(io) { client.lineStatuses(chunk) } }
         results.failure?.let { warn("trip line status failed for ${results.failed.size} line(s): ${it::class.simpleName}") }
         if (results.unknown.isNotEmpty()) warn("trip line status: TfL doesn't know ${results.unknown.size} line(s)")

@@ -3,6 +3,7 @@ package app.stopdash.ui
 import androidx.annotation.WorkerThread
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
+import app.stopdash.domain.DismissalMarks
 import app.stopdash.domain.Dismissed
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DismissedAlertsStore
@@ -112,8 +113,8 @@ internal suspend fun reconcileLineDismissals(
     io: CoroutineDispatcher,
     warn: (String) -> Unit,
     what: String,
-    // The store's [DismissedAlertsStore.mark] before the check asked anything.
-    since: Long,
+    // The store's [DismissedAlertsStore.mark] before the check asked about each line.
+    since: DismissalMarks,
     pruned: (Set<DismissedAlert>) -> Unit,
     restored: (Set<DismissedAlert>) -> Unit = {},
 ) {
@@ -168,9 +169,9 @@ internal suspend fun reconcileDismissals(
     io: CoroutineDispatcher,
     warn: (String) -> Unit,
     what: String,
-    // The store's [DismissedAlertsStore.mark] before the check asked anything: one dismissed after
-    // is newer than its verdict, so it stays.
-    since: Long,
+    // The store's [DismissedAlertsStore.mark] before the check asked about each place or line: one
+    // dismissed after is newer than its verdict there, so it stays.
+    since: DismissalMarks,
     pruned: (Set<DismissedAlert>) -> Unit,
     // Told on [io], once the store is written, of any it let go of that was dismissed again
     // meanwhile ([settledBack]), to take back into the caller's set.
@@ -194,14 +195,14 @@ internal suspend fun reconcileDismissals(
 }
 
 /**
- * Of [gone], what a check let go of in memory, the ones dismissed again since its mark [since], asked
+ * Of [gone], what a check let go of in memory, the ones dismissed again since their marks [since], asked
  * once its store write is in. Another screen dismissing one again while the check pruned leaves the
  * store as it was (it still held the alert), so this screen's set hears nothing of it; asked after
  * the write, any dismissed again before it is caught here, and one after either finds the store
  * without it (a write that tells every screen) or kept (caught here). One still being written is
  * waited for, and taken back only if written ([DismissedAlertsStore.dismissedAgain]).
  */
-internal suspend fun settledBack(store: DismissedAlertsStore, gone: Set<DismissedAlert>, since: Long): Set<DismissedAlert> =
+internal suspend fun settledBack(store: DismissedAlertsStore, gone: Set<DismissedAlert>, since: DismissalMarks): Set<DismissedAlert> =
     store.dismissedAgain(gone, since)
 
 private fun reason(e: Throwable): String = (e as? TflException)?.message ?: e::class.simpleName.orEmpty()
