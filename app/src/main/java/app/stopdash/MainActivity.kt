@@ -200,6 +200,7 @@ import app.stopdash.ui.widgetNearbySet
 import app.stopdash.ui.OnTheWayActions
 import app.stopdash.ui.OnTheWayBannerState
 import app.stopdash.ui.OnTheWayScreen
+import app.stopdash.ui.FartherFor
 import app.stopdash.ui.ListWork
 import app.stopdash.ui.PendingTracker
 import app.stopdash.ui.ProvideDistanceSystem
@@ -223,6 +224,7 @@ import app.stopdash.ui.reachedStopIds
 import app.stopdash.ui.rememberFarReveal
 import app.stopdash.ui.rememberLastPull
 import app.stopdash.ui.rememberListStateFor
+import app.stopdash.ui.rememberListWork
 import app.stopdash.ui.rememberPendingTracker
 import app.stopdash.ui.theme.StopDashTheme
 import app.stopdash.ui.rememberWithOpenedFarther
@@ -796,8 +798,9 @@ class MainActivity : ComponentActivity() {
                     (nearby as? NearbyStopsViewModel.State.Ready)?.clusterSetKey,
                 )
                 // The list's rows as last worked out off the main thread, held here too so a return
-                // from an overlay draws them at once; following the same set.
-                val departuresWork = remember((nearby as? NearbyStopsViewModel.State.Ready)?.clusterSetKey) { ListWork() }
+                // from an overlay draws them at once; following the same set, and kept while the set
+                // isn't ready (a re-locate that finds the same set doesn't rebuild them behind a spinner).
+                val departuresWork = rememberListWork((nearby as? NearbyStopsViewModel.State.Ready)?.clusterSetKey)
                 val bugReportConsent: BugReportConsentViewModel = viewModel()
                 val requestBugReport = {
                     if (skipBugReportConsent) shareBugReport(bugReportRequestFor(nearby))
@@ -1855,7 +1858,9 @@ class MainActivity : ComponentActivity() {
             val reachedStops = remember(shownNearStops, loadedStopIds) { fartherReached(shownNearStops, loadedStopIds) }
             // Every list offers them, near me and a From… station's page alike (SPEC *Finding stops
             // → Farther stations*): the cards are how farther stations and bus stops page in.
-            val farther by produceState<List<CollapsedPlaces.Place>?>(null, ready, hiddenModes, reachedStops) {
+            // Tagged with the set they were picked for: a re-locate to another set shows none (not
+            // worked out yet) until its own pick is in, not the last set's.
+            val fartherFor by produceState<FartherFor?>(null, ready, hiddenModes, reachedStops) {
                 // Each shown nearby stop's lines, and its ids: its index record says which route
                 // ends its services reach.
                 val reached = reachedStops
@@ -1864,13 +1869,17 @@ class MainActivity : ComponentActivity() {
                 // place records the eager stations it stands by; one the screen shows wins it a tie.
                 val stationStops = FartherBuses.stationStops(ready.eager, hiddenModes)
                 val buses = FartherBuses.candidates(ready.more, hiddenModes, stationStops).map { CollapsedPlaces.of(it) }
-                value = withContext(Dispatchers.IO) {
-                    val index = StationIndexStore.load(appContext)
-                    val stations = FartherStations.pick(index.stations, ready.location, reached, hiddenModes)
-                        .map { CollapsedPlaces.of(it, index.lineNames) }
-                    CollapsedPlaces.ordered(stations, buses)
-                }
+                value = FartherFor(
+                    ready.clusterSetKey,
+                    withContext(Dispatchers.IO) {
+                        val index = StationIndexStore.load(appContext)
+                        val stations = FartherStations.pick(index.stations, ready.location, reached, hiddenModes)
+                            .map { CollapsedPlaces.of(it, index.lineNames) }
+                        CollapsedPlaces.ordered(stations, buses)
+                    },
+                )
             }
+            val farther = fartherFor?.forSet(ready.clusterSetKey)
             val hiddenModesWriteFailed by HiddenModesSetting.writeFailed.collectAsStateWithLifecycle()
             val starred by viewModel.starred.collectAsStateWithLifecycle()
             // Starred journeys (SPEC *Journeys*): read from the device, each turned so its origin is
@@ -2562,6 +2571,8 @@ class MainActivity : ComponentActivity() {
                 foregroundReturnPending = returnPending,
                 onForegroundReturnConsumed = { returnPending = false },
                 storesKey = "from-list-stores",
+                // Back at the top for a new set (a refilter that changes it), as the near-me list is.
+                listState = rememberListStateFor(ready.clusterSetKey),
                 refilter = { onSameSet ->
                     fromNearby.refilter(onSameSet)
                     nearMeRefilter()

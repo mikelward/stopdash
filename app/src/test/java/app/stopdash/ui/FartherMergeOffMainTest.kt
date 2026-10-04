@@ -1,9 +1,13 @@
 package app.stopdash.ui
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createComposeRule
 import app.stopdash.domain.StopArrivals
 import java.time.Instant
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import kotlinx.coroutines.asCoroutineDispatcher
 import org.junit.After
@@ -63,6 +67,38 @@ class FartherMergeOffMainTest {
         assertEquals(listOf("E", "MA"), (shown as DeparturesUiState.Loaded).stops.map { it.stopId })
         assertTrue("merged on $threads", threads.isNotEmpty() && threads.all { it.startsWith("test-worker") })
         assertTrue(kept?.merged === shown)
+    }
+
+    @Test
+    fun aNewList_showsAloneUntilItsOwnMergeIsBack() {
+        // Another set's list, say: the last list's merge isn't this one's.
+        val other = DeparturesUiState.Loaded(stops = listOf(StopArrivals("K", "King's Cross", emptyList(), now)), fetchedAt = now)
+        var current by mutableStateOf(list)
+        val release = CountDownLatch(1)
+        var shown: DeparturesUiState = DeparturesUiState.Loading
+        val ids = setOf("MA")
+        composeRule.setContent {
+            CompositionLocalProvider(LocalWorker provides worker) {
+                shown = rememberWithOpenedFarther(
+                    current,
+                    listOf(ids to card),
+                    cached = null,
+                    onMerged = {},
+                    merge = { l, o ->
+                        if (l === other) release.await()
+                        withOpenedFarther(l, o)
+                    },
+                )
+            }
+        }
+        composeRule.waitUntil(timeoutMillis = 5_000) { (shown as? DeparturesUiState.Loaded)?.stops?.size == 2 }
+
+        current = other
+        composeRule.waitForIdle()
+        assertEquals(listOf("K"), (shown as DeparturesUiState.Loaded).stops.map { it.stopId })
+
+        release.countDown()
+        composeRule.waitUntil(timeoutMillis = 5_000) { (shown as? DeparturesUiState.Loaded)?.stops?.map { it.stopId } == listOf("K", "MA") }
     }
 
     @Test

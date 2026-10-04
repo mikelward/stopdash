@@ -6,6 +6,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import app.stopdash.domain.AlertPlacement
 import kotlinx.coroutines.withContext
 
@@ -45,6 +46,28 @@ class ListWork {
     internal val rows: MutableState<Worked<ListInputs, ListRows?>?> = mutableStateOf(null)
     internal val shown: MutableState<Worked<ListInputs, ShownRows?>?> = mutableStateOf(null)
     internal val platform: MutableState<Worked<PlatformInputs, PlatformView?>?> = mutableStateOf(null)
+}
+
+/**
+ * The [ListWork] for the list [listKey] names, kept while it's null (the set not ready yet) and
+ * replaced only for another list: a re-locate that finds the same set again draws its rows at once,
+ * not behind a spinner, while another set starts afresh.
+ */
+@Composable
+fun rememberListWork(listKey: String?): ListWork = remember { ListWorkHolder() }.workFor(listKey)
+
+/** The work [rememberListWork] keeps, and the list it belongs to. */
+internal class ListWorkHolder {
+    private var owner: String? = null
+    private var work = ListWork()
+
+    fun workFor(listKey: String?): ListWork {
+        if (listKey != null && listKey != owner) {
+            if (owner != null) work = ListWork()
+            owner = listKey
+        }
+        return work
+    }
 }
 
 /**
