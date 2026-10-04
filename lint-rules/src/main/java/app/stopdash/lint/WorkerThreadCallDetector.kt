@@ -52,7 +52,8 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * Off the main thread, and so not flagged: the block of the coroutines `withContext`, `launch` or `async`
  * handed a dispatcher other than `Dispatchers.Main` or `Dispatchers.Unconfined` (and not started
- * `UNDISPATCHED`, which runs on the caller's thread until it suspends), and a `Flow` operator's
+ * `UNDISPATCHED`, which runs on the caller's thread until it suspends), a lambda handed to a
+ * parameter marked `@WorkerThread` (a helper that runs it on a worker), and a `Flow` operator's
  * lambda whose chain then hops to such a dispatcher with `flowOn`. The innermost hop wins.
  *
  * A function reference (`let(DepartureRows::across)`) counts as a call where it's handed over. An
@@ -160,6 +161,52 @@ class WorkerThreadCallDetector : Detector(), SourceCodeScanner {
 
     private fun nameOf(method: PsiMethod): String? =
         if (method.isConstructor) method.containingClass?.name else "${method.containingClass?.name}.${method.name}"
+
+    // Whether [lambda] is handed to a parameter of [method] marked `@WorkerThread` that [method] is seen
+    // to run only off the main thread: a helper that runs the block it's given on a worker
+    // (`rememberWorked`'s `compute`). The mark alone isn't trusted (Codex, #535).
+    private fun workerBlock(context: JavaContext, call: UCallExpression, method: PsiMethod, lambda: ULambdaExpression): Boolean =
+        context.evaluator.computeArgumentMapping(call, method).entries.any { (arg, param) ->
+            arg.skipParenthesizedExprDown() == lambda && hasAnnotation(param, WORKER_THREAD) && runsOffMain(context, method, param.name)
+        }
+
+    // Whether [method]'s source uses its parameter [name] only by calling it inside a hop off the main
+    // thread (`withContext(worker) { compute() }`): never called in place, nor handed on. No source, no trust.
+    private fun runsOffMain(context: JavaContext, method: PsiMethod, name: String): Boolean {
+        val body = method.toUElementOfType<UMethod>()?.uastBody ?: return false
+        val uses = mutableListOf<UElement>()
+        body.accept(
+            object : AbstractUastVisitor() {
+                override fun visitCallExpression(node: UCallExpression): Boolean {
+                    if (node.methodIdentifier?.name == name) uses += node
+                    return super.visitCallExpression(node)
+                }
+
+                override fun visitSimpleNameReferenceExpression(node: USimpleNameReferenceExpression): Boolean {
+                    // A call's own name is counted with the call.
+                    if (node.identifier == name && (node.uastParent as? UCallExpression)?.methodIdentifier?.name != name) uses += node
+                    return super.visitSimpleNameReferenceExpression(node)
+                }
+            },
+        )
+        return uses.isNotEmpty() && uses.all { it is UCallExpression && offMainHop(context, it) }
+    }
+
+    // Whether [node] sits directly in the block of a hop off the main thread: its innermost lambda is that
+    // block. Any other lambda between them may be run later, back on the caller's thread
+    // (`val run = withContext(worker) { { compute() } }; run()`), so isn't trusted (Codex, #535).
+    private fun offMainHop(context: JavaContext, node: UElement): Boolean {
+        var element: UElement? = node.uastParent
+        while (element != null && element !is UMethod) {
+            if (element is ULambdaExpression) {
+                val call = element.uastParent as? UCallExpression ?: (element.uastParent?.uastParent as? UCallExpression)
+                val method = call?.resolve() ?: return false
+                return hop(context, call, method) == Hop.OFF_MAIN
+            }
+            element = element.uastParent
+        }
+        return false
+    }
 
     private fun hasAnnotation(owner: PsiModifierListOwner, qualifiedName: String): Boolean =
         owner.annotations.any { it.qualifiedName == qualifiedName }
@@ -302,8 +349,16 @@ class WorkerThreadCallDetector : Detector(), SourceCodeScanner {
                 val call = element.uastParent as? UCallExpression
                     ?: (element.uastParent?.uastParent as? UCallExpression)
                 val method = call?.resolve()
+                // A lambda handed to no call is kept to run later (`val run = { work() }`, or one a hop's
+                // block returns): wherever that is, no hop around where it's built decides (Codex, #535).
+                if (call == null) pinned = true
                 // The innermost hop wins: a `withContext(Main)` inside a worker block is the main thread.
-                when (if (call != null && method != null) hop(context, call, method) else Hop.INHERIT) {
+                val hopped = when {
+                    call == null || method == null -> Hop.INHERIT
+                    workerBlock(context, call, method, element) -> Hop.OFF_MAIN
+                    else -> hop(context, call, method)
+                }
+                when (hopped) {
                     Hop.OFF_MAIN -> if (!pinned) return emptyList()
                     Hop.MAIN -> {
                         onMain = true
