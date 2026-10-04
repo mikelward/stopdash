@@ -2782,6 +2782,16 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `a ride the Planner gave no line names no pill among what couldn't be checked`() {
+        val unnamed = TripRoute(listOf(leg("", "A", "B", 5, 15), leg("blue", "B", "C", 20, 30)))
+        val state = TripViewModel.State(routes = listOf(unnamed))
+        val estimates = checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap()))
+        // Neither line's status is in: the blue is named, the unnamed ride isn't drawn as a blank pill
+        // (Codex, #543); the row falls back to the plain "Unknown" when nothing else is named.
+        assertEquals(listOf("blue"), unchecked(estimates, state, now, emptyMap(), emptyMap()).first.map { it.lineId })
+    }
+
+    @Test
     fun `a train whose route can't be followed says so rather than pass as no live train`() {
         val state = TripViewModel.State(
             routes = listOf(route),

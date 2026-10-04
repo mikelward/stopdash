@@ -89,8 +89,21 @@
     <!-- Shown when arrivals loaded but the disruption lookup failed, so these times'
          disruption status was never checked (SPEC Disruptions: not verified-clean). -->
     <string name="disruptions_unknown">Couldn\'t check for disruptions</string>
-    <!-- A trip's routes: the lines and stops named ("Victoria, Oxford Circus") that couldn't be checked. -->
-    <string name="trip_disruptions_unknown_named">Couldn\'t check for disruptions: %1$s</string>
+    <!-- A trip's disruptions row, always shown over its routes; the line pills, "None", or the check's state follow. -->
+    <!-- TODO: translate -->
+    <string name="trip_disruptions_label" tools:ignore="MissingTranslation">Disruptions:</string>
+    <!-- After "Disruptions:" on a trip once every line and stop shown is checked and none is disrupted. -->
+    <!-- TODO: translate -->
+    <string name="trip_disruptions_none" tools:ignore="MissingTranslation">None</string>
+    <!-- After "Disruptions:" on a trip while its lines and stops are being checked. -->
+    <!-- TODO: translate -->
+    <string name="trip_disruptions_checking" tools:ignore="MissingTranslation">Checking…</string>
+    <!-- After "Disruptions:" on a trip when a check failed, with nothing to name. -->
+    <!-- TODO: translate -->
+    <string name="trip_disruptions_unknown" tools:ignore="MissingTranslation">Unknown</string>
+    <!-- After "Disruptions:" on a trip, before the line pills and stops that couldn't be checked. -->
+    <!-- TODO: translate -->
+    <string name="trip_disruptions_unknown_label" tools:ignore="MissingTranslation">Unknown:</string>
     <!-- While a cold load is still bringing stops in: line status is checked once they're all back. -->
     <string name="disruptions_checking">Checking for disruptions</string>
     <!-- Spoken after a near-me place's name while its closure check is still out (a spinner shows). -->
@@ -235,8 +248,6 @@
     <string name="trip_to">To %1$s</string>
     <!-- What a tap on the trip page's To row does, read out by TalkBack. -->
     <string name="trip_change_to">Change destination</string>
-    <!-- Over a To… list while lines' routes are still loading. -->
-    <string name="trip_checking">Checking routes…</string>
     <!-- A To… list with nothing that goes there directly. %1$s is the destination. -->
     <!-- Title of a To… from the near-me list: the direct trips from the stops near you. -->
     <string name="trip_title_here">To %1$s</string>

@@ -323,13 +323,13 @@ class TripScreenScreenshotTest {
                 }
             }
             composeRule.waitForIdle()
-            composeRule.onNodeWithText("Checking routes…").assertIsDisplayed()
+            inRow(hasText("Checking…")).assertExists()
             composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
 
             gate.countDown()
             // Judged, the card's times follow in the worker's next run.
             composeRule.waitUntil(timeoutMillis = 5_000) {
-                composeRule.onAllNodesWithText("Checking routes…").fetchSemanticsNodes().isEmpty() &&
+                composeRule.onAllNodes(hasText("Checking…") and hasAnyAncestor(hasTestTag("tripDisruptions")), useUnmergedTree = true).fetchSemanticsNodes().isEmpty() &&
                     composeRule.onAllNodesWithText("27 min · ~08:29").fetchSemanticsNodes().isNotEmpty()
             }
             composeRule.onNodeWithText("27 min · ~08:29").assertIsDisplayed()
@@ -1849,29 +1849,40 @@ class TripScreenScreenshotTest {
         captureSnapshot("trip-route-closure.png")
     }
 
+    // A note other than "checking" holds a moment before it's drawn ([NOTE_SETTLE_MILLIS]).
+    private fun settleNote() {
+        composeRule.mainClock.advanceTimeBy(NOTE_SETTLE_MILLIS)
+        composeRule.waitForIdle()
+    }
+
     @Test
     fun a_route_list_says_it_couldnt_check_only_for_a_stop_a_route_shown_uses() {
         // Every line checked as running, the routes' own and the others at their stops.
         val lines = planned.routes.orEmpty().flatMap { route -> route.rides.map { it.lineId } } +
             planned.live.values.flatMap { stop -> stop.departures.map { it.lineId } }
         val running = planned.copy(statuses = lines.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") })
-        val unknown = composeRule.activity.getString(R.string.disruptions_unknown)
+        val unknown = composeRule.activity.getString(R.string.trip_disruptions_unknown)
         // The failed check was for a stop no route shown uses (one of a hidden mode's, say).
         val state = androidx.compose.runtime.mutableStateOf(running.copy(closuresFailed = setOf("940GZZLUNONE")))
         showWith(state)
         composeRule.onNodeWithText(unknown, substring = true).assertDoesNotExist()
         // One a shown route gets off at: it can't vouch for that route, and names the stop.
         state.value = running.copy(closuresFailed = setOf(highbury.first))
-        composeRule.waitForIdle()
-        composeRule.onNodeWithText(composeRule.activity.getString(R.string.trip_disruptions_unknown_named, highbury.second)).assertExists()
+        settleNote()
+        inRow(hasText("Unknown:")).assertExists()
+        inRow(hasText(highbury.second)).assertExists()
     }
+
+    // A node in the disruptions row over the routes.
+    private fun inRow(matcher: androidx.compose.ui.test.SemanticsMatcher) =
+        composeRule.onNode(matcher and hasAnyAncestor(hasTestTag("tripDisruptions")), useUnmergedTree = true)
 
     @Test
     fun a_route_list_says_it_couldnt_check_only_for_a_line_a_route_shown_rides() {
         val lines = planned.routes.orEmpty().flatMap { route -> route.rides.map { it.lineId } } +
             planned.live.values.flatMap { stop -> stop.departures.map { it.lineId } }
         val running = planned.copy(statuses = lines.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") })
-        val unknown = composeRule.activity.getString(R.string.disruptions_unknown)
+        val unknown = composeRule.activity.getString(R.string.trip_disruptions_unknown)
         // The failed or unanswered line is one no route shown rides (a hidden mode's, say).
         val state = androidx.compose.runtime.mutableStateOf(
             running.copy(statusFailed = true, statusFailedLines = setOf("hidden"), statusUnknown = setOf("hidden")),
@@ -1879,17 +1890,19 @@ class TripScreenScreenshotTest {
         showWith(state)
         composeRule.onNodeWithText(unknown, substring = true).assertDoesNotExist()
         // One a shown route rides: it can't vouch for that route, and names the line.
-        val windrush = composeRule.activity.getString(R.string.trip_disruptions_unknown_named, "Windrush")
+        // "Unknown:" and the line's pill (maintainer, 2026-10-04).
         state.value = running.copy(statusFailed = true, statusFailedLines = setOf("windrush"))
-        composeRule.waitForIdle()
-        composeRule.onNodeWithText(windrush).assertExists()
+        settleNote()
+        inRow(hasText("Unknown:")).assertExists()
+        inRow(hasContentDescription("Windrush")).assertExists()
         state.value = running.copy(statusUnknown = setOf("windrush"))
-        composeRule.waitForIdle()
-        composeRule.onNodeWithText(windrush).assertExists()
-        // A line and a stop together: the line first.
+        settleNote()
+        inRow(hasContentDescription("Windrush")).assertExists()
+        // A line and a stop together: the line's pill, then the stop.
         state.value = running.copy(statusUnknown = setOf("windrush"), closuresFailed = setOf(highbury.first))
-        composeRule.waitForIdle()
-        composeRule.onNodeWithText(composeRule.activity.getString(R.string.trip_disruptions_unknown_named, "Windrush, ${highbury.second}")).assertExists()
+        settleNote()
+        inRow(hasContentDescription("Windrush")).assertExists()
+        inRow(hasText(highbury.second)).assertExists()
     }
 
     @Test
@@ -2347,6 +2360,138 @@ class TripScreenScreenshotTest {
             gate.countDown()
             worker.close()
         }
+    }
+
+    @Test
+    fun the_disruption_note_holds_still_while_the_checks_land() {
+        // The page's checks land one after another, and a moment between two can read as checked, or as
+        // couldn't check: the note held its word through those, rather than blinking on and off with the
+        // cards jumping under it (maintainer, 2026-10-04).
+        // Every line checked as running, the routes' own and the others at their stops.
+        val lines = planned.routes.orEmpty().flatMap { route -> route.rides.map { it.lineId } } +
+            planned.live.values.flatMap { stop -> stop.departures.map { it.lineId } }
+        val running = planned.copy(statuses = lines.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") })
+        val checking = running.copy(refreshing = true, statuses = running.statuses - "jubilee", statusUnknown = setOf("jubilee"))
+        val between = checking.copy(refreshing = false)
+        val held = mutableStateOf(checking)
+        // The worker inline, so the row's lines and stops are never behind the cards here: what's held
+        // is the check's word alone.
+        show(checking, held = held, worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
+        composeRule.onNodeWithText("Checking…").assertExists()
+        composeRule.mainClock.autoAdvance = false
+
+        // A moment between two checks: still checking, never "couldn't check".
+        held.value = between
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeBy(500)
+        composeRule.onNodeWithText("Checking…").assertExists()
+        inRow(hasText("Unknown", substring = true)).assertDoesNotExist()
+        held.value = checking
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeBy(2_000)
+        composeRule.onNodeWithText("Checking…").assertExists()
+        inRow(hasText("Unknown", substring = true)).assertDoesNotExist()
+
+        // Every line checked: "None" once that holds, not the moment it reads so, in the same row.
+        val rowTop = composeRule.onNodeWithTag("tripDisruptions").fetchSemanticsNode().boundsInRoot.top
+        held.value = running
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeBy(500)
+        composeRule.onNodeWithText("Checking…").assertExists()
+        composeRule.mainClock.advanceTimeBy(2_000)
+        composeRule.onNodeWithText("None").assertExists()
+        composeRule.onNodeWithText("Checking…").assertDoesNotExist()
+        inRow(hasText("Unknown", substring = true)).assertDoesNotExist()
+        assertEquals(rowTop, composeRule.onNodeWithTag("tripDisruptions").fetchSemanticsNode().boundsInRoot.top)
+
+        // A check that starts again says so at once.
+        held.value = checking
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeBy(100)
+        composeRule.onNodeWithText("Checking…").assertExists()
+
+        // And one that couldn't check says so once that holds.
+        held.value = between
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeBy(2_000)
+        inRow(hasText("Unknown", substring = true)).assertIsDisplayed()
+        composeRule.onNodeWithText("Checking…").assertDoesNotExist()
+    }
+
+    @Test
+    fun the_disruptions_row_never_holds_none_over_a_disruption_the_worker_has_not_caught_up_with() {
+        // Every line checked as running, the routes' own and the others at their stops.
+        val lines = planned.routes.orEmpty().flatMap { route -> route.rides.map { it.lineId } } +
+            planned.live.values.flatMap { stop -> stop.departures.map { it.lineId } }
+        val running = planned.copy(statuses = lines.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") })
+        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val worker = threads.asCoroutineDispatcher()
+        val gate = CountDownLatch(1)
+        val held = mutableStateOf(running)
+        try {
+            show(running, worker = worker, held = held)
+            composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodesWithText("None").fetchSemanticsNodes().isNotEmpty() }
+
+            // The Jubilee turns disrupted while the worker is held: the row's "None" is from the cards
+            // before. It may stand a moment, as a card's last times do, but then says it's checking.
+            threads.execute { gate.await() }
+            composeRule.mainClock.autoAdvance = false
+            held.value = running.copy(statuses = running.statuses + ("jubilee" to LineStatus("jubilee", 9, "Minor Delays")))
+            composeRule.waitForIdle()
+            composeRule.mainClock.advanceTimeBy(2_000)
+            composeRule.onNodeWithText("Checking…").assertExists()
+            composeRule.onNodeWithText("None").assertDoesNotExist()
+
+            // Released, the worker catches up: the Jubilee's pill, and no "None".
+            gate.countDown()
+            composeRule.mainClock.autoAdvance = true
+            composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodesWithText("Checking…").fetchSemanticsNodes().isEmpty() }
+            composeRule.onNodeWithText("None").assertDoesNotExist()
+            inRow(hasContentDescription("Jubilee")).assertExists()
+
+            // Back to running with the worker held again: the Jubilee's pill is for the cards before, so
+            // once the row says it's checking, the pill goes with it.
+            val gate2 = CountDownLatch(1)
+            try {
+                threads.execute { gate2.await() }
+                composeRule.mainClock.autoAdvance = false
+                held.value = running
+                composeRule.waitForIdle()
+                composeRule.mainClock.advanceTimeBy(2_000)
+                inRow(hasText("Checking…")).assertExists()
+                inRow(hasContentDescription("Jubilee")).assertDoesNotExist()
+            } finally {
+                gate2.countDown()
+            }
+        } finally {
+            // Opened whatever happened, so a failed check can't leave the worker's thread waiting.
+            gate.countDown()
+            worker.close()
+        }
+    }
+
+    @Test
+    fun the_disruptions_row_holds_a_line_clearing_before_it_says_none() {
+        // Every line checked as running, the routes' own and the others at their stops.
+        val lines = planned.routes.orEmpty().flatMap { route -> route.rides.map { it.lineId } } +
+            planned.live.values.flatMap { stop -> stop.departures.map { it.lineId } }
+        val running = planned.copy(statuses = lines.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") })
+        val disrupted = running.copy(statuses = running.statuses + ("jubilee" to LineStatus("jubilee", 9, "Minor Delays")))
+        val held = mutableStateOf(disrupted)
+        // The worker inline, so the row's lines are always the current cards': what's held is the change.
+        show(disrupted, held = held, worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
+        inRow(hasContentDescription("Jubilee")).assertExists()
+
+        // The Jubilee clears: its pill stays a moment, and "None" waits out the hold (Codex, #543).
+        composeRule.mainClock.autoAdvance = false
+        held.value = running
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeBy(500)
+        inRow(hasContentDescription("Jubilee")).assertExists()
+        inRow(hasText("None")).assertDoesNotExist()
+        composeRule.mainClock.advanceTimeBy(2_000)
+        inRow(hasContentDescription("Jubilee")).assertDoesNotExist()
+        inRow(hasText("None")).assertExists()
     }
 
     @Test

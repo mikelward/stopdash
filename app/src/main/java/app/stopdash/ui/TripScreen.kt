@@ -57,6 +57,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -1378,7 +1379,7 @@ private fun TripContent(
             Box(Modifier.fillMaxSize()) {
                 when {
                     cards == null -> TripPlaceholder(state, onRetry)
-                    open != null -> RouteLegs(open, rideLines, state, now, access, sequences, onRetry, alerts.dismissed, alerts.onDismiss, hideMode, ::openDetail, loads.loading)
+                    open != null -> RouteLegs(open, rideLines, state, now, access, sequences, onRetry, alerts.dismissed, alerts.onDismiss, hideMode, ::openDetail, loads.loading, check == TripMessage.CHECKING)
                     else -> {
                         val routes = @Composable {
                             RouteList(
@@ -1387,6 +1388,7 @@ private fun TripContent(
                                 onHideMode = hideMode,
                                 onAvoidLine = avoided.onAvoid,
                                 loading = loads.loading,
+                                routesChecking = check == TripMessage.CHECKING,
                             )
                         }
                         // Pulled down, the routes are planned again and every stop fetched afresh, from
@@ -1448,11 +1450,10 @@ private fun TripBanners(
         val which = if (failed.size == 1) failed[0] else stringResource(R.string.partial_refresh_more, failed[0], failed.size - 1)
         Banner(stringResource(R.string.partial_refresh_no_reason, which))
     }
-    when (check) {
-        TripMessage.CHECKING -> Banner(stringResource(R.string.trip_checking))
-        TripMessage.INCOMPLETE -> Banner(stringResource(R.string.journey_incomplete))
-        null -> Unit
-    }
+    // A route still loading says so in the disruptions row over the routes, which holds its place
+    // ([DisruptionsRow]), rather than in a banner that came and went over the list (maintainer,
+    // 2026-10-04). One that couldn't be checked says so here, once that has held ([settled]).
+    if (settled(check == TripMessage.INCOMPLETE, at = false)) Banner(stringResource(R.string.journey_incomplete))
     if (hiddenModes.isNotEmpty()) {
         ActionBanner(
             text = stringResource(R.string.modes_hidden, hiddenGroupsLabel(hiddenModes)),
@@ -1517,6 +1518,8 @@ private fun RouteList(
     onHideMode: ((String) -> Unit)?,
     // The lines whose route data is loading ([LineLoads.loading]), a retry included.
     loading: Set<String> = emptySet(),
+    // Whether a line's route is still loading, so the listed trains can't all be checked yet ([tripCheckState]).
+    routesChecking: Boolean = false,
     // A card's long press also offers to avoid each line it rides ([AvoidedLines]); null offers not.
     onAvoidLine: ((String) -> Unit)? = null,
 ) {
@@ -1540,6 +1543,9 @@ private fun RouteList(
     }
     val listed = headed?.first ?: cards
     val order = headed?.second
+    val routeStops = LocalRouteStops.current
+    // The row over the cards ([DisruptionsRow]), worked out on the worker and held as one ([rememberTripRow]).
+    val row = rememberTripRow(cards, rideLines, state, now, sequences, dismissed, loading, routesChecking)
     val density = LocalDensity.current
     // Remembered, so the keys below hold the same measure from one composition to the next.
     val pillWidth = rememberPillWidth()
@@ -1562,26 +1568,7 @@ private fun RouteList(
                 )
             }
         }
-        // Lines not yet checked rank as unchecked, and say so: checking while a check runs, and
-        // only a finished check says it couldn't.
-        // A route revealed since the last refresh (a mode shown again) counts by its own lines.
-        // So does another line shown with its trains grayed ([RideLines.unchecked]): once the check is
-        // over it isn't still "checking", it couldn't be.
-        val otherLines = RideLines.unchecked(cards.flatMap { card -> card.flatMap { it.route.rides } }.mapNotNull { rideLines[it] }, rideStatuses(state))
-        // Only the routes shown: a hidden mode's line or failed stop isn't these routes'.
-        val shownLines = cards.flatMap { card -> card.flatMap { it.route.rides } }.mapTo(HashSet()) { it.lineId }
-        statusNote(
-            state,
-            // A Planner line still unchecked says so even where another line keeps its route usable.
-            state.statusUnknown.any { it in shownLines } || shownLines.any { it !in state.statuses } || otherLines.isNotEmpty() ||
-                cards.any { card -> card.any { it.unchecked || otherLineStopsUnchecked(it.route, state, rideLines) } },
-            cards.any { card -> card.any { routeClosuresFailed(it.route, state, sequences, rideLines) } },
-            cards.any { card -> card.any { routeStatusFailed(it.route, rideLines, state) } },
-            awaitingRoutes(cards.flatten(), sequences, loading),
-        )?.let { checking ->
-            val names = if (checking) emptyList() else uncheckedNames(cards.flatten(), state, now, sequences, rideLines)
-            item(key = "status") { StatusUnknown(checking, names) }
-        }
+        if (cards.isNotEmpty()) item(key = "status") { DisruptionsRow(row) }
         if (cards.isEmpty()) {
             item(key = "none") { Text(stringResource(R.string.trip_no_routes), style = MaterialTheme.typography.bodyLarge) }
         }
@@ -1624,7 +1611,6 @@ private fun RouteList(
                             val walk = remember(card, access) { walkToStart(card.first().route, access) }
                             CardHeader(card, rideLines, statuses, walk)
                             // Every route's on the card: another line's ride may use another pole of the pair.
-                            val routeStops = LocalRouteStops.current
                             val closures = remember(card, state.closures, now, dismissed, sequences, rideLines, routeStops) {
                                 card.fold(emptyMap<String, DepartureRow>()) { found, estimate ->
                                     found + routeClosures(estimate.route, state, now, dismissed, sequences, rideLines) { routeStops?.hubOf(it) }
@@ -2234,8 +2220,14 @@ private fun RouteLegs(
     onOpenDetail: (TripLeg, DepartureRow, RouteFocus?) -> Unit,
     // The lines whose route data is loading ([LineLoads.loading]), a retry included.
     loading: Set<String> = emptySet(),
+    // Whether a line's route is still loading ([tripCheckState]), as the list's.
+    routesChecking: Boolean = false,
 ) {
     val routeStops = LocalRouteStops.current
+    // The row over the route's legs, as the list's ([rememberTripRow]).
+    // One list per estimate, not one per composition: the row's worker is keyed by it.
+    val asCards = remember(estimate) { listOf(listOf(estimate)) }
+    val row = rememberTripRow(asCards, rideLines, state, now, sequences, dismissed, loading, routesChecking)
     val closures = remember(estimate.route, state.closures, now, dismissed, sequences, rideLines, routeStops) {
         routeClosures(estimate.route, state, now, dismissed, sequences, rideLines) { routeStops?.hubOf(it) }
     }
@@ -2248,19 +2240,7 @@ private fun RouteLegs(
         state.planError?.let { error -> item(key = "error") { PlanFailure(error, state.planning, onRetry) } }
         if (state.planError == null && state.planIncomplete) item(key = "incomplete") { PlanIncomplete(state.planning, onRetry) }
         item(key = "summary") { RouteSummary(listOf(estimate), rideLines, shownStatuses(cardStatuses(listOf(estimate), rideLines, state, now, sequences), dismissed), Modifier.padding(vertical = 8.dp)) }
-        val otherLines = RideLines.unchecked(estimate.route.rides.mapNotNull { rideLines[it] }, rideStatuses(state))
-        // A Planner line still unchecked says so even where another line keeps the route ranked usable.
-        val plannerUnchecked = estimate.route.rides.any { it.lineId in state.statusUnknown || it.lineId !in state.statuses }
-        statusNote(
-            state,
-            estimate.unchecked || plannerUnchecked || otherLines.isNotEmpty() || otherLineStopsUnchecked(estimate.route, state, rideLines),
-            routeClosuresFailed(estimate.route, state, sequences, rideLines),
-            routeStatusFailed(estimate.route, rideLines, state),
-            awaitingRoutes(listOf(estimate), sequences, loading),
-        )?.let { checking ->
-            val names = if (checking) emptyList() else uncheckedNames(listOf(estimate), state, now, sequences, rideLines)
-            item(key = "status") { StatusUnknown(checking, names) }
-        }
+        item(key = "status") { DisruptionsRow(row) }
         val firstStop = estimate.route.legs.firstOrNull()?.fromName
         if (access > Duration.ZERO && firstStop != null) {
             item(key = "access") { WalkLink(stringResource(R.string.trip_walk_first, firstStop, access.toMinutes().toInt())) }
@@ -2420,15 +2400,28 @@ internal fun uncheckedNames(
     now: Instant,
     sequences: Map<String, LineSequence?>,
     rideLines: Map<TripLeg, RideLines>,
-): List<String> {
+): List<String> = unchecked(estimates, state, now, sequences, rideLines).let { (lines, stops) -> lines.map { it.lineName } + stops }
+    .filter { it.isNotBlank() }.distinct()
+
+/**
+ * What [uncheckedNames] names, apart: the lines (each once, as its pill names it) and the stops, so the
+ * disruptions row can draw the lines as their pills (maintainer, 2026-10-04: "Unknown: ‹pills›").
+ */
+internal fun unchecked(
+    estimates: List<TripTiming.Estimate>,
+    state: TripViewModel.State,
+    now: Instant,
+    sequences: Map<String, LineSequence?>,
+    rideLines: Map<TripLeg, RideLines>,
+): Pair<List<TripLeg>, List<String>> {
     val statuses = rideStatuses(state)
-    val lines = LinkedHashSet<String>()
+    val lines = LinkedHashMap<String, TripLeg>()
     val stops = LinkedHashSet<String>()
     for (route in estimates.map { it.route }) {
         val others = route.rides.flatMap { ride -> rideLines[ride]?.legs.orEmpty().filter { it != ride } }
         route.rides.filter { it.lineId in state.statusUnknown || it.lineId !in state.statuses || it.lineId in state.statusFailedLines }
-            .mapTo(lines) { it.lineName }
-        others.filter { it.lineId !in statuses }.mapTo(lines) { it.lineName }
+            .forEach { lines.putIfAbsent(it.lineId, it) }
+        others.filter { it.lineId !in statuses }.forEach { lines.putIfAbsent(it.lineId, it) }
         // Named as the route names a stop, else as the other line does ([routeClosures]).
         val names = (others + route.legs).flatMap { listOf(it.fromId to it.fromName, it.toId to it.toName) }.toMap()
         for (end in TripClosures.ends(route)) {
@@ -2438,7 +2431,8 @@ internal fun uncheckedNames(
         }
         otherLineStops(route, rideLines).filter { it !in state.closures || it in state.closuresFailed }.forEach { id -> names[id]?.let(stops::add) }
     }
-    return (lines + stops).filter { it.isNotBlank() }.distinct()
+    // A ride the Planner gave no line names nothing a pill could show: it's left to the plain "Unknown".
+    return lines.values.filter { it.lineId.isNotBlank() && it.lineName.isNotBlank() } to stops.filter { it.isNotBlank() }
 }
 
 /**
@@ -2558,22 +2552,180 @@ internal fun cardClosures(
         }
     }.distinctBy { it.stopId }.let(DepartureRows::stopStatusFolded)
 
+/** How long a change to the disruptions row holds before it's drawn, unless it's to "Checking…" ([settled]). */
+internal const val NOTE_SETTLE_MILLIS = 1_500L
+
 /**
- * A line shown without ⚠ may still be disrupted: its status is being checked, or couldn't be — then
- * naming the lines and stops that couldn't ([uncheckedNames]), where there are any to name.
+ * [value], but a change to it drawn only once it has held for [NOTE_SETTLE_MILLIS], unless [at] says
+ * this one shows at once: so a value that flips back within the moment is never drawn. Compared by
+ * [equals], so give it values whose equality is cheap.
  */
 @Composable
-private fun StatusUnknown(checking: Boolean, names: List<String> = emptyList()) {
-    Text(
-        when {
-            checking -> stringResource(R.string.disruptions_checking)
-            names.isEmpty() -> stringResource(R.string.disruptions_unknown)
-            else -> stringResource(R.string.trip_disruptions_unknown_named, names.joinToString(", "))
-        },
-        style = MaterialTheme.typography.bodyMedium,
-        color = if (checking) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
-        modifier = Modifier.padding(vertical = 4.dp),
+private fun <T> settled(value: T, at: Boolean): T {
+    var shown by remember { mutableStateOf(value) }
+    LaunchedEffect(value) {
+        // Timed on frames, not delay(): the frame clock is the one a screenshot test drives.
+        if (!at && shown != value) {
+            val start = withFrameMillis { it }
+            while (withFrameMillis { it } - start < NOTE_SETTLE_MILLIS) Unit
+        }
+        shown = value
+    }
+    return if (at) value else shown
+}
+
+/**
+ * What the disruptions row over a trip's routes draws ([DisruptionsRow]), worked out whole on the
+ * worker ([tripRow]): the disrupted [lines] (each once, as a card's pill names it) and the stops with
+ * a closure notice in force ([stops], joined); then [checking] while a check runs or a line's route
+ * loads, else [unknown] when one couldn't check, naming [unknownLines] (as pills) and [unknownStops].
+ * Compared by identity: the worker hands back the last one when nothing in it changed ([sameAs]), so
+ * holding the row never walks its lists on the main thread (Codex, #543).
+ */
+internal class TripRow(
+    val checking: Boolean,
+    val lines: List<TripLeg> = emptyList(),
+    val stops: String = "",
+    val unknown: Boolean = false,
+    val unknownLines: List<TripLeg> = emptyList(),
+    val unknownStops: String = "",
+) {
+    /** Whether [other] draws the same: on the worker only, as it walks both. */
+    @WorkerThread
+    fun sameAs(other: TripRow?): Boolean = other != null && checking == other.checking && unknown == other.unknown &&
+        stops == other.stops && unknownStops == other.unknownStops && lines == other.lines && unknownLines == other.unknownLines
+
+    companion object {
+        /** "Checking…" alone: before the first row is worked out, or once the last is too old to show. */
+        val CHECKING = TripRow(checking = true)
+    }
+}
+
+/**
+ * The disruptions row for [cards] ([TripRow]): each card's disrupted lines as its ⚠ judges them
+ * ([cardStatuses] along its rides, less what was [dismissed]) and its closure notices
+ * ([routeClosures]), then the check's word ([statusNote]): checking while a check runs or a line's
+ * route loads ([loading], [routesChecking]: the "Checking routes…" banner this row replaced,
+ * maintainer, 2026-10-04), else what couldn't be checked ([unchecked]). Judges trains along rides: on
+ * a worker only.
+ */
+@WorkerThread
+internal fun tripRow(
+    cards: List<List<TripTiming.Estimate>>,
+    rideLines: Map<TripLeg, RideLines>,
+    state: TripViewModel.State,
+    now: Instant,
+    sequences: Map<String, LineSequence?>,
+    dismissed: Set<DismissedAlert>,
+    loading: Set<String> = emptySet(),
+    routesChecking: Boolean = false,
+    hubOf: (String) -> String? = { null },
+): TripRow {
+    val lines = LinkedHashMap<String, TripLeg>()
+    val stops = LinkedHashSet<String>()
+    for (card in cards) {
+        val statuses = shownStatuses(cardStatuses(card, rideLines, state, now, sequences), dismissed)
+        card.first().route.rides.indices.flatMap { cardRideLines(card, it, rideLines) }
+            .filter { statuses[it.lineId]?.disrupted == true }
+            .forEach { lines.putIfAbsent(it.lineId, it) }
+        card.forEach { estimate -> routeClosures(estimate.route, state, now, dismissed, sequences, rideLines, hubOf).values.mapTo(stops) { it.stopName } }
+    }
+    // Lines not yet checked rank as unchecked, and say so: checking while a check runs, and only a
+    // finished check says it couldn't. A route revealed since the last refresh (a mode shown again)
+    // counts by its own lines; so does another line shown with its trains grayed ([RideLines.unchecked]):
+    // once the check is over it isn't still "checking", it couldn't be.
+    val estimates = cards.flatten()
+    val rides = estimates.flatMap { it.route.rides }
+    val otherLines = RideLines.unchecked(rides.mapNotNull { rideLines[it] }, rideStatuses(state))
+    // Only the routes shown: a hidden mode's line or failed stop isn't these routes'.
+    val shownLines = rides.mapTo(HashSet()) { it.lineId }
+    val note = statusNote(
+        state,
+        // A Planner line still unchecked says so even where another line keeps its route usable.
+        state.statusUnknown.any { it in shownLines } || shownLines.any { it !in state.statuses } || otherLines.isNotEmpty() ||
+            estimates.any { it.unchecked || otherLineStopsUnchecked(it.route, state, rideLines) },
+        estimates.any { routeClosuresFailed(it.route, state, sequences, rideLines) },
+        estimates.any { routeStatusFailed(it.route, rideLines, state) },
+        awaitingRoutes(estimates, sequences, loading),
     )
+    val disrupted = lines.values.toList()
+    val closed = stops.joinToString(", ")
+    if (note == true || routesChecking) return TripRow(checking = true, lines = disrupted, stops = closed)
+    if (note == null) return TripRow(checking = false, lines = disrupted, stops = closed)
+    val (unknownLines, unknownStops) = unchecked(estimates, state, now, sequences, rideLines)
+    return TripRow(false, disrupted, closed, unknown = true, unknownLines = unknownLines, unknownStops = unknownStops.joinToString(", "))
+}
+
+/**
+ * The disruptions row for [cards] ([tripRow]), worked out on the worker and held as one value
+ * (maintainer, 2026-10-04): a change to it is drawn only once it has held for [NOTE_SETTLE_MILLIS]
+ * ([settled]), unless it's to "Checking…", which shows at once. A trip's loads land one after another
+ * (the plan, the statuses and closures, each line's route), and a moment between two of them read as
+ * checked, or as couldn't check, so the row blinked and the cards under it jumped. The last row stands
+ * while the worker works out the next, as a card's last times do; if that takes longer than the hold,
+ * the row says "Checking…" alone rather than show what older cards said (Codex, #543).
+ */
+@Composable
+private fun rememberTripRow(
+    cards: List<List<TripTiming.Estimate>>,
+    rideLines: Map<TripLeg, RideLines>,
+    state: TripViewModel.State,
+    now: Instant,
+    sequences: Map<String, LineSequence?>,
+    dismissed: Set<DismissedAlert>,
+    loading: Set<String>,
+    routesChecking: Boolean,
+): TripRow {
+    val routeStops = LocalRouteStops.current
+    val work = remember { mutableStateOf<Worked<Inputs, TripRow>?>(null) }
+    val key = Inputs(cards, rideLines, state, now, sequences, dismissed, loading, routesChecking, routeStops)
+    val previous = work.value?.value
+    val latest = rememberWorked(work, key, keep = { _, _ -> true }) {
+        tripRow(cards, rideLines, state, now, sequences, dismissed, loading, routesChecking) { routeStops?.hubOf(it) }
+            .let { row -> if (previous != null && row.sameAs(previous)) previous else row }
+    }
+    val stale = work.value?.key != key
+    // Behind the cards for longer than the hold: "Checking…" alone until the worker catches up.
+    val stuck = settled(stale, at = !stale)
+    val target = if (latest == null || stuck) TripRow.CHECKING else latest
+    return settled(target, at = target.checking)
+}
+
+/**
+ * The row over a trip's routes, always there so nothing under it moves as the checks land
+ * (maintainer, 2026-10-04): "Disruptions:", then each disrupted line's pill and each closed stop,
+ * then the check's word: "Checking…" while it runs, "Unknown:" and what it couldn't check (in red,
+ * lines as their pills) when it couldn't, else "None" when there's nothing to show.
+ */
+@Composable
+private fun DisruptionsRow(row: TripRow) {
+    val style = MaterialTheme.typography.bodyMedium
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        itemVerticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("tripDisruptions"),
+    ) {
+        Text(stringResource(R.string.trip_disruptions_label), style = style, color = muted)
+        row.lines.forEach { LinePill(it.lineName, it.lineId, it.mode) }
+        if (row.stops.isNotEmpty()) Text(row.stops, style = style)
+        when {
+            row.checking -> Text(stringResource(R.string.trip_disruptions_checking), style = style, color = muted)
+            // What couldn't be checked, after "Unknown:", as the disrupted are drawn (maintainer, 2026-10-04).
+            row.unknown -> {
+                val error = MaterialTheme.colorScheme.error
+                if (row.unknownLines.isEmpty() && row.unknownStops.isEmpty()) {
+                    Text(stringResource(R.string.trip_disruptions_unknown), style = style, color = error)
+                } else {
+                    Text(stringResource(R.string.trip_disruptions_unknown_label), style = style, color = error)
+                    row.unknownLines.forEach { LinePill(it.lineName, it.lineId, it.mode) }
+                    if (row.unknownStops.isNotEmpty()) Text(row.unknownStops, style = style, color = error)
+                }
+            }
+            row.lines.isEmpty() && row.stops.isEmpty() -> Text(stringResource(R.string.trip_disruptions_none), style = style, color = muted)
+        }
+    }
 }
 
 @Composable
