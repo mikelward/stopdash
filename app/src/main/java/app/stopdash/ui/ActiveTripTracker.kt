@@ -80,8 +80,9 @@ class ActiveTripTracker(
     // A monotonic clock in ms, for timing a wait the wall clock could be set back during.
     private val elapsed: () -> Long = { System.nanoTime() / 1_000_000 },
     private val io: CoroutineDispatcher = Dispatchers.IO,
-    // Work that grows with its input (a station's entrances, measured), never on the caller's thread,
-    // which can be the main one (AGENTS.md *Main thread: read and dispatch only*; Codex, PR #521).
+    // Where the trip is worked out ([lock]'s holders): work that grows with its input (its route walked, a
+    // station's entrances measured), never on the caller's thread, which can be the main one (AGENTS.md
+    // *Main thread: read and dispatch only*; Codex, PR #521).
     private val compute: CoroutineDispatcher = Workers.compute,
     // Coarse facts only — a line id, an error kind, never a stop or where the rider is going.
     private val warn: (String) -> Unit = {},
@@ -217,6 +218,12 @@ class ActiveTripTracker(
     // A train's identity on a board of several lines: TfL's train ids are each line's own (Codex, PR #451).
     private fun seenKey(train: Departure) = "${train.lineId}\u001F${train.vehicleId}"
 
+    // Each entry point that takes it does so on [compute], the hop first and inline, so lint sees it
+    // (`WorkerThreadCall`): a refresh's step, a tap's move and a start walk the trip's route (its steps,
+    // a ride's stops, a train's calls) and grow with it, so none of it runs on the caller's thread, which
+    // is the main one (AGENTS.md *Main thread: read and dispatch only*). The lock keeps one at a time and
+    // hands this tracker's own state from one to the next; the flows it publishes to are read from any
+    // thread, and its alerts are posted from any.
     private val lock = Mutex()
 
     // Each bus boarding stop pair's poles once read ([stopPoles]), by the stop asked about; one that
@@ -306,7 +313,7 @@ class ActiveTripTracker(
 
     /** Read the kept trip, once; a trip started meanwhile wins. */
     /** Reads the kept trip, once; false when it couldn't be read, to be tried again. */
-    suspend fun restore(): Boolean = lock.withLock { restoreLocked() }
+    suspend fun restore(): Boolean = withContext(compute) { lock.withLock { restoreLocked() } }
 
     private suspend fun restoreLocked(): Boolean {
         if (restored) return true
@@ -378,36 +385,38 @@ class ActiveTripTracker(
         // One that can't be ended stays, and nothing is started ([endFailed] says so).
         replacing: Boolean = false,
         onEnded: () -> Unit = {},
-    ) = lock.withLock {
-        // One trip at a time: a kept one not read yet, or one on the way, stays. One that couldn't be
-        // read may be on the way, so none is started over it; the failure is said ([failed]).
-        if (!restoreLocked()) return@withLock
-        if (replacing && _trip.value != null) {
-            if (!endLocked()) return@withLock
-            onEnded()
+    ) = withContext(compute) {
+        lock.withLock {
+            // One trip at a time: a kept one not read yet, or one on the way, stays. One that couldn't be
+            // read may be on the way, so none is started over it; the failure is said ([failed]).
+            if (!restoreLocked()) return@withLock
+            if (replacing && _trip.value != null) {
+                if (!endLocked()) return@withLock
+                onEnded()
+            }
+            if (_trip.value != null) return@withLock
+            val now = clock()
+            // From the first leg, a walk included: the rider walks it first (maintainer, 2026-09-27), and
+            // the ride after it picks its train once the walk is done. The walk from where the rider is
+            // to where the route starts ([readyAt]) is a walk too, as the route shows it, whether the
+            // Planner's route starts with a ride or a walk of its own.
+            val first = route.legs.firstOrNull()
+            val trip = if (first != null && readyAt.isAfter(now)) {
+                val toStop = TripLeg(TripLeg.WALKING, "", "", "", "", first.fromId, first.fromName, now, readyAt)
+                ActiveTrip(TripRoute(listOf(toStop) + route.legs), destinationName, startedAt = now, legStartedAt = now, destinations = destinations, destinationIds = destinationIds, destinationStopId = destinationStopId)
+            } else {
+                ActiveTrip(route, destinationName, startedAt = now, legIndex = 0, legStartedAt = readyAt, destinations = destinations, destinationIds = destinationIds, destinationStopId = destinationStopId)
+            }.let { planned ->
+                // Which walks are changes on foot, decided once now and kept with the trip, so its steps
+                // never change on the way. Off the caller's thread: it may read the station index.
+                planned.copy(onFootChanges = withContext(io) { OnTheWay.changesOnFoot(planned.route, stations()) })
+            }
+            _updatedAt.value = null
+            boardSeenRide = null
+            boardSeen.clear()
+            rideDirections.clear()
+            keep(trip, OnTheWay.advance(trip, null, now).second)
         }
-        if (_trip.value != null) return@withLock
-        val now = clock()
-        // From the first leg, a walk included: the rider walks it first (maintainer, 2026-09-27), and
-        // the ride after it picks its train once the walk is done. The walk from where the rider is
-        // to where the route starts ([readyAt]) is a walk too, as the route shows it, whether the
-        // Planner's route starts with a ride or a walk of its own.
-        val first = route.legs.firstOrNull()
-        val trip = if (first != null && readyAt.isAfter(now)) {
-            val toStop = TripLeg(TripLeg.WALKING, "", "", "", "", first.fromId, first.fromName, now, readyAt)
-            ActiveTrip(TripRoute(listOf(toStop) + route.legs), destinationName, startedAt = now, legStartedAt = now, destinations = destinations, destinationIds = destinationIds, destinationStopId = destinationStopId)
-        } else {
-            ActiveTrip(route, destinationName, startedAt = now, legIndex = 0, legStartedAt = readyAt, destinations = destinations, destinationIds = destinationIds, destinationStopId = destinationStopId)
-        }.let { planned ->
-            // Which walks are changes on foot, decided once now and kept with the trip, so its steps
-            // never change on the way. Off the caller's thread: it may read the station index.
-            planned.copy(onFootChanges = withContext(io) { OnTheWay.changesOnFoot(planned.route, stations()) })
-        }
-        _updatedAt.value = null
-        boardSeenRide = null
-        boardSeen.clear()
-        rideDirections.clear()
-        keep(trip, OnTheWay.advance(trip, null, now).second)
     }
 
     private val _starting = MutableStateFlow(0)
@@ -442,50 +451,52 @@ class ActiveTripTracker(
      * The rider says they're at [to] ([OnTheWay.atStep]): **Next**, or a step tapped. The trip moves
      * there now, and a ride's train is picked at once, as a refresh would.
      */
-    suspend fun goTo(from: OnTheWay.Step, to: OnTheWay.Step) = lock.withLock {
-        val before = _trip.value ?: return@withLock
-        if (_progress.value == TripProgress.Arrived) return@withLock
-        // Asked from step [from], as the screen showed it: a refresh that moved the trip on while the
-        // tap waited makes it stale, and acting on it could send the trip back (Codex, PR #351).
-        if (OnTheWay.stepOf(before) != from) return@withLock
-        val now = clock()
-        // Never onto an arrival, which would forget the trip past any undoing ([OnTheWay.canGoTo]).
-        if (!OnTheWay.canGoTo(before, to, now)) return@withLock
-        // Leaving a leg whose "get off soon" was said, the move is saved marked as owing its
-        // take-back, which a restart settles if the app dies before it's done ([restore]). On board
-        // the same ride it was said for, it still stands.
-        val moved = OnTheWay.atStep(before, to, now).let { at ->
-            at.copy(alertLeft = before.warnedLeg == before.legIndex && at.warnedLeg != before.warnedLeg)
-        }
-        // Saved before it's made: a move that can't be kept isn't made, and says so ([notKept]). A
-        // move made but not kept would leave the "get off soon" at odds with the trip a restart
-        // brings back, with no way to tell a taken-back alert from one the rider tapped away
-        // (Codex, PR #351). One cut short may or may not have landed, so it's saved again later.
-        unsaved = true
-        val saved = withContext(io) { save(moved) }
-        unsaved = !saved
-        _notKept.value = !saved
-        if (!saved) return@withLock
-        // The "get off soon" said for the leg left is done with: the stop it named isn't where they
-        // are. Its mark is cleared in the next save.
-        if (moved.alertLeft) {
-            onGetOffSoonDone()
+    suspend fun goTo(from: OnTheWay.Step, to: OnTheWay.Step) = withContext(compute) {
+        lock.withLock {
+            val before = _trip.value ?: return@withLock
+            if (_progress.value == TripProgress.Arrived) return@withLock
+            // Asked from step [from], as the screen showed it: a refresh that moved the trip on while the
+            // tap waited makes it stale, and acting on it could send the trip back (Codex, PR #351).
+            if (OnTheWay.stepOf(before) != from) return@withLock
+            val now = clock()
+            // Never onto an arrival, which would forget the trip past any undoing ([OnTheWay.canGoTo]).
+            if (!OnTheWay.canGoTo(before, to, now)) return@withLock
+            // Leaving a leg whose "get off soon" was said, the move is saved marked as owing its
+            // take-back, which a restart settles if the app dies before it's done ([restore]). On board
+            // the same ride it was said for, it still stands.
+            val moved = OnTheWay.atStep(before, to, now).let { at ->
+                at.copy(alertLeft = before.warnedLeg == before.legIndex && at.warnedLeg != before.warnedLeg)
+            }
+            // Saved before it's made: a move that can't be kept isn't made, and says so ([notKept]). A
+            // move made but not kept would leave the "get off soon" at odds with the trip a restart
+            // brings back, with no way to tell a taken-back alert from one the rider tapped away
+            // (Codex, PR #351). One cut short may or may not have landed, so it's saved again later.
             unsaved = true
+            val saved = withContext(io) { save(moved) }
+            unsaved = !saved
+            _notKept.value = !saved
+            if (!saved) return@withLock
+            // The "get off soon" said for the leg left is done with: the stop it named isn't where they
+            // are. Its mark is cleared in the next save.
+            if (moved.alertLeft) {
+                onGetOffSoonDone()
+                unsaved = true
+            }
+            _trip.value = moved.copy(alertLeft = false)
+            // The step moved to has no answer of its own yet: the last one's isn't passed off as its
+            // (a ride's time, its next stop still blank), which waits for the pick below (Codex, PR #384).
+            _updatedAt.value = null
+            _progress.value = standing(moved, now, picking = true)
+            settleBoard()
+            val boards = HashMap<TripLeg, Result<NextBoard>>()
+            if (step(null, boards)) step(null, boards)
+            // What's ahead changed with the step: a stop now behind the rider is no longer theirs to reach.
+            checkDisruptions(boards)
         }
-        _trip.value = moved.copy(alertLeft = false)
-        // The step moved to has no answer of its own yet: the last one's isn't passed off as its
-        // (a ride's time, its next stop still blank), which waits for the pick below (Codex, PR #384).
-        _updatedAt.value = null
-        _progress.value = standing(moved, now, picking = true)
-        settleBoard()
-        val boards = HashMap<TripLeg, Result<NextBoard>>()
-        if (step(null, boards)) step(null, boards)
-        // What's ahead changed with the step: a stop now behind the rider is no longer theirs to reach.
-        checkDisruptions(boards)
     }
 
     /** End the trip: forgotten here and on the device. */
-    suspend fun end(): Boolean = lock.withLock { endLocked() }
+    suspend fun end(): Boolean = withContext(compute) { lock.withLock { endLocked() } }
 
     // [end], under [lock].
     private suspend fun endLocked(): Boolean {
@@ -521,18 +532,20 @@ class ActiveTripTracker(
      */
     suspend fun refresh(rider: LocationFix? = null) {
         val asked = elapsed()
-        lock.withLock {
-            // The fix aged while this waited behind another refresh: one no longer fresh enough is
-            // no evidence the rider was left behind ([OnTheWay.sureEnough]).
-            val fresh = rider?.let { fix -> aged(fix, Duration.ofMillis(elapsed() - asked)) }
-            // A leg just done (a walk, or a ride straight into another) picks the next ride's train at
-            // once: one due before the next refresh is still the rider's to catch.
-            // Each boarding stop's board is asked for at most once a refresh, answer or failure,
-            // however long TfL takes: the steps share this refresh's attempts.
-            val boards = HashMap<TripLeg, Result<NextBoard>>()
-            if (step(fresh, boards)) step(null, boards)
-            // The fix as given, with when: aged once, where it's used, for all the time since (Codex on #479).
-            checkDisruptions(boards, rider, asked)
+        withContext(compute) {
+            lock.withLock {
+                // The fix aged while this waited behind another refresh: one no longer fresh enough is
+                // no evidence the rider was left behind ([OnTheWay.sureEnough]).
+                val fresh = rider?.let { fix -> aged(fix, Duration.ofMillis(elapsed() - asked)) }
+                // A leg just done (a walk, or a ride straight into another) picks the next ride's train at
+                // once: one due before the next refresh is still the rider's to catch.
+                // Each boarding stop's board is asked for at most once a refresh, answer or failure,
+                // however long TfL takes: the steps share this refresh's attempts.
+                val boards = HashMap<TripLeg, Result<NextBoard>>()
+                if (step(fresh, boards)) step(null, boards)
+                // The fix as given, with when: aged once, where it's used, for all the time since (Codex on #479).
+                checkDisruptions(boards, rider, asked)
+            }
         }
     }
 
