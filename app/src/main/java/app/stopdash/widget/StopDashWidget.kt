@@ -1,6 +1,7 @@
 package app.stopdash.widget
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
@@ -15,6 +16,7 @@ import androidx.glance.ImageProvider
 import androidx.glance.LocalContext
 import androidx.glance.LocalSize
 import androidx.glance.action.actionStartActivity
+import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetManager
@@ -180,7 +182,14 @@ class StopDashWidget : GlanceAppWidget() {
         // with no widget never runs this, so a widgetless user is never scheduled for (SPEC D4).
         // A nearby set it couldn't read showed no stops; nothing else redraws the widget when the file
         // is readable again, so it looks again in a minute (sooner at a boundary), until it can.
-        scheduleStalenessRedrawFor(context, shown, now, within = NEARBY_SET_RETRY.takeIf { nearbyUnreadable })
+        // The last tap's refresh ("Refreshing…", or why it got nothing), judged against the stored
+        // snapshot's stamp, not the scoped one's: a failure speaks only while nothing newer was saved.
+        // "Refreshing…" is bounded, and nothing else redraws a widget whose refresh never ended (the
+        // process died), so the redraw is due by then too.
+        val elapsed = SystemClock.elapsedRealtime()
+        val (tap, tapExpiry) = WidgetTapRefresh.noteAndExpiry(elapsed, snapshot?.fetchedAt)
+        val within = listOfNotNull(NEARBY_SET_RETRY.takeIf { nearbyUnreadable }, tapExpiry).minOrNull()
+        scheduleStalenessRedrawFor(context, shown, now, within = within)
         // A widget render means a widget exists, so resume the opt-in live-refresh chain if the
         // setting is on and it isn't already running — the worker retires the chain when the last
         // widget is removed, and this restarts it after one is re-added (SPEC D5, Codex P1 on #56).
@@ -202,7 +211,7 @@ class StopDashWidget : GlanceAppWidget() {
         // before composing: building one walks every stop's rows (AGENTS.md *Main thread*), and the
         // host only ever draws one of [WIDGET_BUCKETS], so composition just looks its model up.
         val fontScale = context.resources.configuration.fontScale
-        val models = widgetModels(shown, now, starred, fontScale, topology, hiddenModes)
+        val models = widgetModels(shown, now, starred, fontScale, topology, hiddenModes, tap)
         provideContent {
             WidgetContent(models[LocalSize.current], now, fontScale)
         }
@@ -241,6 +250,7 @@ internal suspend fun widgetModels(
     fontScale: Float,
     topology: RouteTopology,
     hiddenModes: Set<String>,
+    tap: WidgetTapNote? = null,
     worker: CoroutineDispatcher = Dispatchers.Default,
 ): WidgetModels = withContext(worker) {
     val bySize = WIDGET_BUCKETS.associateWith { size ->
@@ -251,6 +261,7 @@ internal suspend fun widgetModels(
             geometry = WidgetGeometry(size.width, size.height, fontScale),
             topology = topology,
             hiddenModes = hiddenModes,
+            tap = tap,
         )
     }
     WidgetModels(bySize, fallback = bySize.getValue(WIDGET_SMALLEST_BUCKET))
@@ -291,6 +302,9 @@ internal data class WidgetModel(
     // the check aged out): the widget says so rather than let its countdown read as verified-clean
     // (SPEC D3), as the app's "Couldn't check for disruptions" banner does.
     val statusUnknown: Boolean = false,
+    // What the note says about the last tap's refresh (see [WidgetTapRefresh]): "Refreshing…" while
+    // it runs; why it got nothing, while the data it couldn't replace is still out of date; else null.
+    val tap: WidgetTapNote? = null,
 )
 
 /**
@@ -351,6 +365,8 @@ internal fun widgetModel(
     topology: RouteTopology = RouteTopology.EMPTY,
     // Modes hidden from the near-me list: left out here too, except on a journey's own rows.
     hiddenModes: Set<String> = emptySet(),
+    // The last tap's refresh ([WidgetTapRefresh.note]), said in the note line.
+    tap: WidgetTapNote? = null,
 ): WidgetModel {
     if (snapshot == null) {
         return WidgetModel(hasData = false, stale = false, uncertain = false, stamp = null, rows = emptyList())
@@ -365,6 +381,7 @@ internal fun widgetModel(
         uncertain = true,
         stamp = "Updated ${RelativeTime.formatAge(age)}",
         rows = emptyList(),
+        tap = tap,
     )
     if (snapshot.stops.isEmpty()) {
         return if (snapshot.missingStopIds.isNotEmpty()) {
@@ -498,13 +515,16 @@ internal fun widgetModel(
         // them (the watch tile too): see [BudgetedRows.select].
         return Triple(compact, budget, BudgetedRows.select(pinned, budget, WIDGET_MAX_TIMES, topology, ::grouped, costs))
     }
-    var (compact, budget, chosen) = layout(withNote = stale || uncertain)
+    // A failed tap is said only while what it couldn't replace is out of date (in place of "Tap to
+    // refresh" or "Some stops out of date"); over current data it has nothing to warn about.
+    val tapNote = tap.takeIf { it == WidgetTapNote.REFRESHING || stale || uncertain }
+    var (compact, budget, chosen) = layout(withNote = stale || uncertain || tapNote != null)
     // The unchecked note is judged on the rows that fit, not every candidate, so it never speaks for
     // a line the user can't see. It takes a line of the budget (the compact layout puts it in place
     // of the stamp instead), so the rows are chosen again with room for it and judged once more: a
     // row the note's line pushed out takes its note with it.
     var statusUnknown = unchecked(chosen)
-    if (statusUnknown && !stale && !uncertain && !compact) {
+    if (statusUnknown && !stale && !uncertain && tapNote == null && !compact) {
         val (c2, b2, again) = layout(withNote = true)
         compact = c2
         budget = b2
@@ -535,6 +555,7 @@ internal fun widgetModel(
         compact = compact,
         tooSmall = tooSmall,
         onlyHidden = onlyHidden,
+        tap = tapNote,
     )
 }
 
@@ -593,12 +614,21 @@ internal fun WidgetContent(
     // pills size to it without each reading a context the unit-test harness doesn't provide.
     fontScale: Float = 1f,
 ) {
+    // A tap on the header (the title, the stamp and the note under them, or the compact status line)
+    // refreshes the widget's stops in place (SPEC D5), as "Tap to refresh" says. With no data there
+    // is nothing to refresh, and the header opens the app like the rest.
+    val header = if (model.hasData) {
+        GlanceModifier.fillMaxWidth().clickable(actionRunCallback<RefreshWidgetAction>())
+    } else {
+        GlanceModifier.fillMaxWidth()
+    }
     GlanceTheme {
         Column(
             modifier = GlanceModifier
                 .fillMaxSize()
                 .background(GlanceTheme.colors.background)
                 .padding(12.dp)
+                // The departures open the app; the header above them refreshes (see below).
                 .clickable(actionStartActivity<MainActivity>()),
         ) {
             // The stamp reflects the *freshest* stop, so on a partial refresh (one stop fresh,
@@ -610,6 +640,7 @@ internal fun WidgetContent(
             // row stays short enough for the narrowest widget.
             val note = when {
                 model.stamp == null -> null
+                model.tap != null -> LocalContext.current.getString(tapNoteText(model.tap))
                 model.stale -> "Tap to refresh"
                 model.uncertain -> "Some stops out of date"
                 model.statusUnknown -> LocalContext.current.getString(R.string.disruptions_unknown)
@@ -627,16 +658,20 @@ internal fun WidgetContent(
                 // Short forms, so the warning stays readable at the large font that forced compact.
                 val status = when {
                     model.stamp == null -> null
+                    model.tap == WidgetTapNote.REFRESHING -> LocalContext.current.getString(R.string.widget_refreshing)
+                    model.tap != null -> LocalContext.current.getString(R.string.widget_refresh_failed_short)
                     model.stale -> "Tap to refresh"
                     model.uncertain -> "Partly stale"
                     model.statusUnknown -> LocalContext.current.getString(R.string.disruptions_unknown)
                     else -> stamp
                 }
-                status?.let { WidgetStatusLine(it) }
+                status?.let { Column(modifier = header) { WidgetStatusLine(it) } }
                 Spacer(GlanceModifier.height(4.dp))
             } else {
-                WidgetHeaderRow(stamp)
-                note?.let { WidgetStatusLine(it) }
+                Column(modifier = header) {
+                    WidgetHeaderRow(stamp)
+                    note?.let { WidgetStatusLine(it) }
+                }
                 Spacer(GlanceModifier.height(8.dp))
             }
             when {
@@ -705,6 +740,14 @@ private fun WidgetHeaderRow(stamp: String?) {
             )
         }
     }
+}
+
+/** The note line's words for the last tap's refresh. */
+internal fun tapNoteText(note: WidgetTapNote): Int = when (note) {
+    WidgetTapNote.REFRESHING -> R.string.widget_refreshing
+    WidgetTapNote.RATE_LIMITED -> R.string.widget_refresh_rate_limited
+    WidgetTapNote.UNREACHABLE -> R.string.widget_refresh_unreachable
+    WidgetTapNote.KEY_REJECTED -> R.string.widget_refresh_key_rejected
 }
 
 /** A small freshness line: the stale/partial note under the header, or the compact layout's status. */

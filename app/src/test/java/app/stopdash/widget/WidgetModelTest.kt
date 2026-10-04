@@ -447,6 +447,26 @@ class WidgetModelTest {
     }
 
     @Test
+    fun `a tap's refresh takes the note's line, even over fresh data`() {
+        val departures = (1..6).map { departure("line$it", it * 60L) }
+        val checks = (1..6).associate { "line$it" to LineStatusCheck(LineStatus("line$it", LineStatus.GOOD_SERVICE, "Good Service"), now) }
+        val fresh = DeparturesSnapshot(listOf(stop("490000001A", departures, now)), now, lineStatuses = checks)
+        val model = widgetModel(fresh, now, maxLines = 4, maxLinesWithNote = 3, tap = WidgetTapNote.REFRESHING)
+        assertEquals(WidgetTapNote.REFRESHING, model.tap)
+        assertEquals(3, model.rows.size)
+    }
+
+    @Test
+    fun `a failed tap is said only while the data it couldn't replace is out of date`() {
+        val departures = listOf(departure("victoria", 120))
+        val checks = mapOf("victoria" to LineStatusCheck(LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service"), now))
+        val fresh = DeparturesSnapshot(listOf(stop("490000001A", departures, now)), now, lineStatuses = checks)
+        val stale = DeparturesSnapshot(listOf(stop("490000001A", departures, now.minusSeconds(900))), now.minusSeconds(900))
+        assertNull(widgetModel(fresh, now, tap = WidgetTapNote.UNREACHABLE).tap)
+        assertEquals(WidgetTapNote.UNREACHABLE, widgetModel(stale, now, tap = WidgetTapNote.UNREACHABLE).tap)
+    }
+
+    @Test
     fun `a single place draws no stop header`() {
         val snapshot = DeparturesSnapshot(
             stops = listOf(

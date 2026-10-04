@@ -2773,11 +2773,18 @@ and these carry the rest as their own PRs:
       chain (`WidgetRefreshWorker`) that re-fetches the widget's persisted stops ~1/min and
       saves the snapshot, holding while the screen is on and deferred by Doze otherwise. That
       covers the screen-on kiosk/home case. Two pieces still remain:
+      - [x] **Tap the header to refresh in place** (maintainer, 2026-10-04): an expedited one-shot
+        refresh of the stored stops (`WidgetTapRefreshWorker`), "Refreshing…" and the failure
+        reason in the note; the departures still open the app. Needs a device check that a tap
+        from the home screen runs it at once.
       - [ ] **Refresh on unlock by default** (`ACTION_USER_PRESENT`, a manifest receiver —
         one fetch when the device is unlocked; battery-negligible because it piggybacks on
         active use rather than waking the radio from idle; cellular data is the only real cost,
         ~2–5 MB/day, gate on WiFi/charging if wanted). This is the default path for a user who
         never opts into the every-minute loop.
+        Check first: Android 8+ likely no longer delivers `ACTION_USER_PRESENT` to a
+        manifest-declared receiver (it isn't on the implicit-broadcast exemption list), which would
+        need a running process to hear it — verify on a device before building on it.
       - [ ] **Mechanism A — foreground service, the screen-off follow-up** (recorded as the
         maintainer asked: *start with B, record A as a possible follow-up if B doesn't work*,
         2026-09-20). B is Doze-deferred, so it does **not** guarantee the exact minute with the

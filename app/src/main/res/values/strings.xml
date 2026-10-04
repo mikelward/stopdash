@@ -89,6 +89,18 @@
     <!-- Shown when arrivals loaded but the disruption lookup failed, so these times'
          disruption status was never checked (SPEC Disruptions: not verified-clean). -->
     <string name="disruptions_unknown">Couldn\'t check for disruptions</string>
+    <!-- The widget's note while a tap's refresh of its stops runs, and why one fetched nothing. -->
+    <!-- TODO: translate -->
+    <string name="widget_refreshing" tools:ignore="MissingTranslation">Refreshing…</string>
+    <!-- TODO: translate -->
+    <string name="widget_refresh_rate_limited" tools:ignore="MissingTranslation">Couldn\'t refresh: rate-limited</string>
+    <!-- TODO: translate -->
+    <string name="widget_refresh_unreachable" tools:ignore="MissingTranslation">Couldn\'t refresh: TfL unreachable</string>
+    <!-- TODO: translate -->
+    <string name="widget_refresh_key_rejected" tools:ignore="MissingTranslation">Couldn\'t refresh: API key rejected</string>
+    <!-- The compact widget's short form of any of the three above. -->
+    <!-- TODO: translate -->
+    <string name="widget_refresh_failed_short" tools:ignore="MissingTranslation">Couldn\'t refresh</string>
     <!-- A trip's disruptions row, always shown over its routes; the line pills, "None", or the check's state follow. -->
     <!-- TODO: translate -->
     <string name="trip_disruptions_label" tools:ignore="MissingTranslation">Disruptions:</string>

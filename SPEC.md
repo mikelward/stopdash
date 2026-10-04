@@ -3186,6 +3186,16 @@ Mirrors the sibling fleet:
   a static widget on its own, the widget schedules one render-only redraw at its staleness
   boundary (a single bounded wake per snapshot) so it flips to the stale treatment when the
   app is closed (D4) — fetching new data on that schedule was the deferred part.
+  - **Tap the header to refresh (2026-10-04).** The widget's header — the title, its stamp,
+    and the note under them ("Tap to refresh") — refreshes the widget's stored stops in place,
+    location-free like the live refresh (D1), whatever that setting says; the departures below
+    open the app, which re-locates. The note says "Refreshing…" while it runs, and why a refresh
+    that fetched nothing failed (rate-limited, TfL unreachable, the key rejected) for as long as
+    the data it couldn't replace is still out of date (principle 2). It is an expedited one-shot
+    job, one at a time with the live refresh and a watch's request, so a tap costs one round of
+    requests and nothing in the background. Without it the widget, off by default, read "Tap to
+    refresh" whenever the app hadn't refreshed in the last five minutes, and the tap only opened
+    the app.
   - **Opt-in live refresh (off by default).** A Settings toggle, "refresh widget every
     minute", drives a self-rescheduling one-shot WorkManager chain that re-fetches
     arrivals for exactly the widget's persisted stops (location-free, D1) about once a
