@@ -248,6 +248,44 @@ class StationSearchScreenshotTest {
     }
 
     @Test
+    fun station_search_from_offers_places_after_here() {
+        // The From… search's saved places follow "Here" in its chip row (maintainer, 2026-10-04), and a
+        // tap starts from the place rather than routing to it. Synthetic coordinates and generic labels.
+        var started: TripDestination.Place? = null
+        composeRule.setContent {
+            StopDashTheme {
+                StationSearchScreen(
+                    state = StationSearchViewModel.State(
+                        favoritePlaces = listOf(
+                            FavoritePlace("home", FavoriteKind.HOME, "Home", Coordinates(51.5, -0.12)),
+                            FavoritePlace("work", FavoriteKind.WORK, "Work", Coordinates(51.51, -0.10)),
+                        ),
+                        recent = listOf(SearchEntry.Stop(StationMatch("940GZZLUOXC", "Oxford Circus", listOf("tube")))),
+                        yoursRead = true,
+                    ),
+                    onQueryChange = {},
+                    onOpenStation = {},
+                    onRetry = {},
+                    onBack = {},
+                    autoFocus = false,
+                    onPickHere = {},
+                    onStartFromPlace = { started = it },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        val here = composeRule.onNodeWithTag("stationSearchHere").fetchSemanticsNode().boundsInRoot
+        val home = composeRule.onNodeWithTag("favoriteChip-home").fetchSemanticsNode().boundsInRoot
+        assertEquals(here.top, home.top)
+        assertTrue(here.right < home.left)
+        // TalkBack hears it starts there, not that it plans a trip there.
+        composeRule.onNodeWithContentDescription("Start from Home").assertIsDisplayed()
+        captureSnapshot("station-search-from-places.png")
+        composeRule.onNodeWithTag("favoriteChip-home").performClick()
+        assertEquals(TripDestination.Place(Coordinates(51.5, -0.12), "Home"), started)
+    }
+
+    @Test
     fun station_search_from_offers_here_before_the_saved_stops_are_read() {
         // "Here" needs no read, so it shows on the first frame while the recent and starred stops load.
         composeRule.setContent {

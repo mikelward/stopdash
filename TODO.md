@@ -1107,12 +1107,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             chosen for now): type the new start into the From field itself (Maps-style) rather than
             through the *From…* search and a station's page, which would also retire the
             change-of-start bookkeeping (`OriginChange`) that drew four review findings on #356.
-      - [ ] **Decide: saved places in the *From…* chip row** (maintainer, 2026-09-28, undecided).
-            The *From…* and *To…* searches share one chip row at the top (Here first on *From…*,
-            then the places on *To…*); *From…* shows no places yet. The leading option: tapping one
-            starts planning a trip from that place (its coordinate, as `TripOrigin.Here` plans from
-            the rider's), since planning from a coordinate now works. The alternative: open the
-            departures around it, as a *From…* station does.
+      - [x] **Saved places in the *From…* chip row** (maintainer, 2026-10-04): after "Here", each
+            place's chip opens the departures around it, as a *From…* station does, its *To…*
+            planning from the stops there as from "Here".
       - [ ] **Borrow from the other search's recent list** (maintainer, 2026-09-26): *From…* and
             *To…* keep separate recents, ordered by last use; maybe a single button to swap in the
             other list, or a way to pick from it (the station you came from as the way home).
