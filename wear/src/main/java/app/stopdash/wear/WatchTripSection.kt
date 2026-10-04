@@ -103,7 +103,8 @@ internal data class TripTrainRow(val stop: String, val row: TileRow)
 
 /**
  * [trip]'s trains as the tile's rows draw them: a row per pole, line and destination with its next
- * times, or "?" when the trip is out of date, as a stop's rows read once stale (SPEC D4). Trains the
+ * times, or the soonest's time as a guess ("21:14?") when the trip is out of date, as a stop's rows
+ * read once stale (SPEC D4). Trains the
  * rider can't catch get their own muted row, so a grayed time never shares a row with a catchable
  * one. Rows keep the order of each one's soonest train, a pole's rows together.
  */
@@ -117,7 +118,7 @@ internal fun trainRows(trip: WatchTrip, now: Instant, stale: Boolean): List<Trip
         trains.groupBy { (d, t) -> listOf(t.missed, d.lineId, d.lineName, d.destination) }.map { (_, group) ->
             val first = group.first().first
             val missed = group.first().second.missed
-            val countdown = if (stale) "?" else Countdown.mergedLabel(group.map { it.first }, now)
+            val countdown = if (stale) Countdown.staleLabel(group.map { it.first }) else Countdown.mergedLabel(group.map { it.first }, now)
             TripTrainRow(stop, TileRow(first.lineName, first.lineId, first.mode, lineCode(first.lineName, first.mode, first.lineId), first.destination, countdown, starred = false, stale = stale, muted = missed))
         }
     }

@@ -5166,8 +5166,9 @@ private fun RowScope.DestinationLabelContent(label: String, branch: String?, mod
 
 /**
  * A service's merged countdown — "0 · 3 · 6 min" (SPEC D8, one line per destination).
- * Withheld as "?" once the stop is stale, since the underlying predictions are likely
- * wrong and a live-looking number would misrepresent them (SPEC D4). A National Rail train
+ * Withheld once the stop is stale, since the underlying predictions are likely wrong and a
+ * live-looking number would misrepresent them (SPEC D4): the soonest train's predicted time
+ * stands in, marked as a guess ("21:14?", [Countdown.staleLabel]). A National Rail train
  * its board lists with no time ([untimed]) takes its place among them as a word: "Canceled",
  * or "Delayed" for one with no estimate: a word, since "?" is a stale countdown
  * ([Countdown.entries]).
@@ -5204,7 +5205,7 @@ internal fun CountdownLabel(
     val spoken = if (stale || ((early == null || early.none { it }) && untimed.isEmpty())) null else spokenCountdown(entries, now, early)
     Text(
         text = when {
-            stale -> AnnotatedString(WITHHELD)
+            stale -> AnnotatedString(Countdown.staleLabel(departures))
             else -> buildAnnotatedString {
                 parts.forEachIndexed { i, part ->
                     if (i > 0) append(" · ")
@@ -5363,7 +5364,6 @@ private const val MAX_TIMES = 3
 // A stale stop's countdown is unknown, not zero, so it withholds the number as "?" — "—"
 // read as "none," which is a different thing (that's the no-departures status). The stamp
 // up top ("Tap to refresh") says why.
-private const val WITHHELD = "?"
 
 /**
  * The scroll positions of the drill-down views open from the full list (a station, a platform in

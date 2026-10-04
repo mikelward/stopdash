@@ -237,7 +237,13 @@ object TileTimeline {
                 for ((index, group) in chosen.groups.withIndex()) {
                     val label = DepartureLabels.destinationLabel(group.destination, row.directionKey) ?: "—"
                     val shown = if (group.branch != null) "$label/${group.branch}" else label
-                    val countdown = if (stale) "?" else Countdown.mergedLabel(group.times, now)
+                    // A withheld tail has no later entry to drop a guess once its train is due, so it
+                    // can't show one ("21:14?" past 21:14): just "?".
+                    val countdown = when {
+                        withhold -> "?"
+                        stale -> Countdown.staleLabel(group.times)
+                        else -> Countdown.mergedLabel(group.times, now)
+                    }
                     val calendar = planned.takeIf { index == 0 }
                     add(TileLine.Departure(TileRow(row.lineName, row.lineId, row.mode, code, shown, countdown, star, stale, calendar)))
                 }
@@ -283,7 +289,8 @@ object TileTimeline {
      * The entries from [now]: a new one at each instant the frame can change — every countdown
      * minute, every departure, every stop's staleness boundary, every disruption's expiry, every
      * minute of the age stamp — up
-     * to the moment every stop is stale, then one open-ended stale entry. A setup frame is a single
+     * to the moment every stop is stale; then a stale entry until each shown train's time, where its
+     * guess ("21:14?") goes, and an open-ended one once none is left. A setup frame is a single
      * open-ended entry: no stop has a boundary.
      *
      * Past [MAX_SCHEDULED], the timeline stops at the first instant it can't fit: from there it holds
@@ -324,21 +331,54 @@ object TileTimeline {
             start = at
             current = next
         }
-        if (horizon <= now) return TileSchedule(listOf(TileEntry(now, null, current)), refreshAt = null)
-        closed += TileEntry(start, horizon, current)
-        return TileSchedule(closed + TileEntry(horizon, null, frame(envelope, horizon, topology, screen = screen)), refreshAt = null)
+        // Past the horizon every stop is stale, each line showing its soonest train's time as a guess
+        // ("21:14?"); a guess goes once its train is due, as a departed countdown does, so the stale
+        // frame changes at each train's time until none is left.
+        val after = guessBreaks(envelope, maxOf(now, horizon))
+        if (horizon > now) {
+            closed += TileEntry(start, horizon, current)
+            start = horizon
+            current = frame(envelope, horizon, topology, screen = screen)
+        }
+        for ((evaluated, at) in after.withIndex()) {
+            val next = if (evaluated < MAX_CANDIDATES) frame(envelope, at, topology, screen = screen) else null
+            if (next == current) continue
+            if (next == null || closed.size + 1 > MAX_SCHEDULED - 2) {
+                closed += TileEntry(start, at, current)
+                val tail = TileEntry(at, null, frame(envelope, at, topology, withhold = true, screen = screen))
+                return TileSchedule(closed + tail, refreshAt = at)
+            }
+            closed += TileEntry(start, at, current)
+            start = at
+            current = next
+        }
+        return TileSchedule(closed + TileEntry(start, null, current), refreshAt = null)
+    }
+
+    /**
+     * The instants after [from] at which a stale line's guess ([Countdown.staleLabel]) can change:
+     * each shown train's time, when it goes. Hidden modes' trains never show, so they add none.
+     */
+    private fun guessBreaks(envelope: WatchEnvelope, from: Instant): SortedSet<Instant> {
+        val hidden = envelope.hiddenModes.toSet()
+        return envelope.stops.map { it.toDomain() }
+            .flatMap { it.departures }
+            .filterNot { HiddenModes.isHidden(it.mode, it.lineId, hidden) }
+            .map { it.expectedArrival }
+            .filterTo(sortedSetOf()) { it > from }
     }
 
     /**
      * The instant after [now] at which the frame can next change (a countdown minute, a departure,
-     * a stop's boundary, a disruption's expiry, a minute of the age stamp), or null once every stop is stale: what the
+     * a stop's boundary, a disruption's expiry, a minute of the age stamp, a stale guess's train
+     * going), or null once nothing is left to change: what the
      * watch app's foreground ticker waits for. Rows past the list's reach may add instants that
      * change nothing; a re-render there is cheap and never wrong.
      */
     fun nextChange(envelope: WatchEnvelope?, now: Instant): Instant? {
         if (envelope == null || envelope.stops.isEmpty()) return null
         val (breaks, horizon) = breaks(envelope, now)
-        return breaks.firstOrNull() ?: horizon.takeIf { it > now }
+        return breaks.firstOrNull() ?: horizon.takeIf { it > now } ?: guessBreaks(envelope, now).firstOrNull()
     }
 
     /** Every instant between [now] and the all-stale horizon at which a frame can change, and that horizon. */

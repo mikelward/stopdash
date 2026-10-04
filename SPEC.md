@@ -2799,7 +2799,7 @@ from the saved rows at the new distances, never kept from where the rider was. (
 widget follows the app's last refresh rather than waking on the OS's periodic schedule
 (battery). Because the widget's host never re-renders it on its own (no periodic update),
 the widget also schedules **one render-only redraw at its staleness boundary**, so a widget
-left untouched after the app closes flips itself to the stale `?` treatment instead of
+left untouched after the app closes flips itself to the stale treatment ("21:14?", D4) instead of
 holding live-looking countdowns forever (D4) — a single bounded wake per snapshot, not a
 polling cadence, and not a data refresh (fetching new data while the app isn't driving the
 widget stays deferred, D5). A setting of the device's clock redraws a placed widget at once too,
@@ -3179,6 +3179,18 @@ Mirrors the sibling fleet:
   the list rather than sticking at "0 min"; and a single shared staleness threshold (one
   tuned constant, not a per-surface number) decides when numbers are withheld for "tap
   to refresh".
+  - **The stale stand-in is a marked guess (maintainer, 2026-10-04).** Past the threshold, a
+    line shows its soonest train's predicted time in London, dimmed and marked "21:14?", in
+    place of a bare "?", on every surface that lists times: the app's cards (as they reload
+    after a while away), the widget, the watch tile and the watch's trip. It still says
+    roughly when, while the "?", the dimming and the age stamp say it's no longer live; a
+    clock time, unlike a countdown, doesn't read as recomputed from now. A guess goes once its
+    train is due, as a departed countdown does, so a surface that doesn't redraw on its own
+    redraws at those times: the widget schedules a render-only redraw at the soonest guess it
+    draws (a few bounded wakes after the boundary, none once no train is left), and the tile
+    adds a timeline entry at each, past which the frame is open-ended. Where the tile's entries
+    run out, its tail withholds every time as "?". The watch complication, too small for a time
+    and a mark, keeps "?".
 - **D5 — Widget refresh is opportunistic and bounded, not aggressive polling.** Tap,
   host update, and a bounded periodic schedule while plausibly visible; degrade to
   on-demand. The interval is a battery-tuning detail, not a spec guarantee. Keeping the

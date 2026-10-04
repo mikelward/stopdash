@@ -97,21 +97,31 @@ class TileTimelineTest {
         // A screen with room for both stops' headers and rows beside the notes.
         val entries = TileTimeline.schedule(envelope(older, newer), fetched, screen = TileScreen(454, 1f)).entries
         val justAfterOld = entries.at(fetched.plusSeconds(181)) as TileFrame.Rows
-        assertEquals("?", rows(justAfterOld).single { it.lineId == "victoria" }.countdown)
+        // Its countdown gives way to the train's predicted time, marked as a guess (SPEC D4).
+        val stale = rows(justAfterOld).single { it.lineId == "victoria" }.countdown
+        assertTrue(stale, Regex("\\d\\d:\\d\\d\\?").matches(stale))
         assertEquals("6 min", rows(justAfterOld).single { it.lineId == "central" }.countdown)
         assertFalse(justAfterOld.stale)
         assertTrue("a stale stop beside a fresh one is partial", justAfterOld.partial)
     }
 
     @Test
-    fun `the last entry is open-ended and stale, with every countdown withheld`() {
+    fun `past the boundary each countdown is a guess until its train is due, then the stale frame is open-ended`() {
         val entries = TileTimeline.entries(envelope(stop("940GA", listOf(departure(900)))), fetched)
+        // At the boundary: the train's predicted time in London, marked as a guess.
+        val atBoundary = entries.single { it.start == fetched.plusSeconds(300) }
+        assertEquals(fetched.plusSeconds(900), atBoundary.end)
+        val frame = atBoundary.frame as TileFrame.Rows
+        assertTrue(frame.stale)
+        assertEquals(listOf("09:15?"), rows(frame).map { it.countdown })
+        // Once it's due, the guess goes with it, as a departed countdown does, and nothing's left to change.
         val last = entries.last()
         assertNull(last.end)
-        assertEquals(fetched.plusSeconds(300), last.start)
-        val frame = last.frame as TileFrame.Rows
-        assertTrue(frame.stale)
-        assertEquals(listOf("?"), rows(frame).map { it.countdown })
+        assertEquals(fetched.plusSeconds(900), last.start)
+        assertTrue((last.frame as TileFrame.Rows).stale)
+        assertTrue(rows(last.frame).none { it.lineId == "victoria" && it.countdown.isNotEmpty() })
+        assertNull(TileTimeline.nextChange(envelope(stop("940GA", listOf(departure(900)))), fetched.plusSeconds(900)))
+        assertEquals(fetched.plusSeconds(900), TileTimeline.nextChange(envelope(stop("940GA", listOf(departure(900)))), fetched.plusSeconds(400)))
     }
 
     @Test
@@ -166,6 +176,7 @@ class TileTimelineTest {
         assertNull(tail.end)
         assertEquals(schedule.refreshAt, tail.start)
         assertTrue((tail.frame as TileFrame.Rows).stale)
+        // No later entry would drop a guess once its train is due, so the tail withholds it outright.
         assertTrue(rows(tail.frame).all { it.countdown == "?" })
         // Every entry before the cut is live and correct at its own start.
         assertFalse((schedule.entries.first().frame as TileFrame.Rows).stale)
@@ -521,9 +532,12 @@ class TileTimelineTest {
         val entries = TileTimeline.entries(env, fetched.plusSeconds(60))
         val afterStop = (entries.at(fetched.plusSeconds(330)) as TileFrame.Rows).lines
         assertTrue(afterStop.any { it is TileLine.Disruption })
+        val afterCheck = entries.single { it.start == fetched.plusSeconds(360) }
+        assertTrue((afterCheck.frame as TileFrame.Rows).lines.none { it is TileLine.Disruption })
+        // The stale guess's train is due later still: the timeline goes on to it, then ends.
         val last = entries.last()
         assertNull(last.end)
-        assertEquals(fetched.plusSeconds(360), last.start)
+        assertEquals(fetched.plusSeconds(900), last.start)
         assertTrue((last.frame as TileFrame.Rows).lines.none { it is TileLine.Disruption })
     }
 

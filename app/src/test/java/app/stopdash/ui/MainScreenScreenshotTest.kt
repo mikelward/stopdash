@@ -4045,10 +4045,17 @@ class MainScreenScreenshotTest {
                 {},
             )
         }
-        // The fresh stop shows a live countdown; the stale stop withholds its own ("?")
-        // while staying on screen, rather than vanishing or being shown as live.
+        // The fresh stop shows a live countdown; the stale stop withholds its own (its train's
+        // time, marked as a guess: "21:14?") while staying on screen, rather than vanishing or
+        // being shown as live.
         composeRule.onNodeWithText("Upminster").assertExists()
-        composeRule.onAllNodesWithText("?").onFirst().assertExists()
+        val guess = Regex("\\d\\d:\\d\\d\\?")
+        composeRule.onAllNodes(
+            androidx.compose.ui.test.SemanticsMatcher("a time marked as a guess") { node ->
+                node.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)
+                    ?.any { guess.matches(it.text) } == true
+            },
+        ).onFirst().assertExists()
     }
 
     @Test

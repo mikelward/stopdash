@@ -56,6 +56,7 @@ import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.data.DataStoreStarredRowsStore
 import app.stopdash.data.RouteTopologyStore
 import app.stopdash.domain.Countdown
+import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureLabels
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
@@ -83,7 +84,9 @@ import app.stopdash.ui.LineCosts
 import app.stopdash.ui.groupHeaderTitle
 import app.stopdash.ui.PillColors
 import app.stopdash.ui.pillColors
+import java.time.Duration as JavaDuration
 import java.time.Instant
+import kotlin.time.toKotlinDuration
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -188,8 +191,6 @@ class StopDashWidget : GlanceAppWidget() {
         // process died), so the redraw is due by then too.
         val elapsed = SystemClock.elapsedRealtime()
         val (tap, tapExpiry) = WidgetTapRefresh.noteAndExpiry(elapsed, snapshot?.fetchedAt)
-        val within = listOfNotNull(NEARBY_SET_RETRY.takeIf { nearbyUnreadable }, tapExpiry).minOrNull()
-        scheduleStalenessRedrawFor(context, shown, now, within = within)
         // A widget render means a widget exists, so resume the opt-in live-refresh chain if the
         // setting is on and it isn't already running — the worker retires the chain when the last
         // widget is removed, and this restarts it after one is re-added (SPEC D5, Codex P1 on #56).
@@ -212,6 +213,12 @@ class StopDashWidget : GlanceAppWidget() {
         // host only ever draws one of [WIDGET_BUCKETS], so composition just looks its model up.
         val fontScale = context.resources.configuration.fontScale
         val models = widgetModels(shown, now, starred, fontScale, topology, hiddenModes, tap)
+        // A stale line's guess ("21:14?") goes once its train is due, as a countdown drops a departed
+        // train; nothing else redraws a stale widget, so the redraw is due by the soonest one drawn.
+        val guessExpiry = models.guessExpiresAt?.let { JavaDuration.between(now, it).toKotlinDuration() }
+            ?.takeIf { it.isPositive() }
+        val within = listOfNotNull(NEARBY_SET_RETRY.takeIf { nearbyUnreadable }, tapExpiry, guessExpiry).minOrNull()
+        scheduleStalenessRedrawFor(context, shown, now, within = within)
         provideContent {
             WidgetContent(models[LocalSize.current], now, fontScale)
         }
@@ -274,6 +281,9 @@ internal suspend fun widgetModels(
  */
 internal class WidgetModels(val bySize: Map<DpSize, WidgetModel>, val fallback: WidgetModel) {
     operator fun get(size: DpSize): WidgetModel = bySize[size] ?: fallback
+
+    /** The soonest [WidgetModel.guessExpiresAt] of any bucket, whichever the host draws. */
+    val guessExpiresAt: Instant? get() = bySize.values.mapNotNull { it.guessExpiresAt }.minOrNull()
 }
 
 /**
@@ -305,6 +315,9 @@ internal data class WidgetModel(
     // What the note says about the last tap's refresh (see [WidgetTapRefresh]): "Refreshing…" while
     // it runs; why it got nothing, while the data it couldn't replace is still out of date; else null.
     val tap: WidgetTapNote? = null,
+    // When the soonest stale line's guess ("21:14?", [Countdown.staleLabel]) drawn here is due: its
+    // train has gone by then, so the widget redraws to drop it. Null with no stale line drawn.
+    val guessExpiresAt: Instant? = null,
 )
 
 /**
@@ -467,7 +480,7 @@ internal fun widgetModel(
     // geometry nothing stacks. The planned-work calendar sits before the first line's countdown.
     fun stacked(row: DepartureRow, line: DestinationGroup): Boolean {
         if (geometry == null) return false
-        val countdown = if (Staleness.isStale(row.fetchedAt, now)) "?" else Countdown.mergedLabel(line.times, now)
+        val countdown = if (Staleness.isStale(row.fetchedAt, now)) Countdown.staleLabel(line.times) else Countdown.mergedLabel(line.times, now)
         val calendar = row.status == null && row.plannedAlerts.isNotEmpty() &&
             DepartureRows.destinationLines(row, WIDGET_MAX_TIMES, topology).firstOrNull() == line
         return widgetRowStacked(listOf(countdown), calendar, geometry.width, geometry.fontScale)
@@ -556,6 +569,10 @@ internal fun widgetModel(
         tooSmall = tooSmall,
         onlyHidden = onlyHidden,
         tap = tapNote,
+        guessExpiresAt = rows
+            .filter { Staleness.isStale(it.row.fetchedAt, now) }
+            .mapNotNull { row -> row.groups.mapNotNull { it.times.firstOrNull()?.expectedArrival }.minOrNull() }
+            .minOrNull(),
     )
 }
 
@@ -817,7 +834,8 @@ private fun WidgetRow(rowModel: WidgetRowModel, now: Instant, fontScale: Float) 
     val row = rowModel.row
     // Withhold this row's countdown once ITS stop is stale (per-row, from the row's own fetch
     // age — a fresh stop beside a stale one stays live), so old predictions aren't shown as
-    // live-looking numbers (SPEC D4). "?" means "unknown", matching the in-app card.
+    // live-looking numbers (SPEC D4): the soonest train's predicted time, dimmed and marked "21:14?",
+    // stands in for it ([Countdown.staleLabel]), as on every surface.
     val stale = Staleness.isStale(row.fetchedAt, now)
     // A branching (service, direction) row keeps each destination — and each via-branch of one
     // terminus — on its own line with its own countdown, so a divergent train's time never sits
@@ -869,7 +887,7 @@ private fun WidgetRow(rowModel: WidgetRowModel, now: Instant, fontScale: Float) 
             if (index > 0) Spacer(GlanceModifier.height(4.dp))
             val label = widgetLineLabel(row, group)
             val spoken = widgetLineSpoken(row, group)
-            val countdown = if (stale) "?" else Countdown.mergedLabel(group.times, now)
+            val countdown = if (stale) Countdown.staleLabel(group.times) else Countdown.mergedLabel(group.times, now)
             val calendar = planned?.takeIf { index == 0 }
             if (rowModel.stackedLines.getOrElse(index) { false }) {
                 // Too narrow at this font for all three on one line: pill and countdown, then the
@@ -987,7 +1005,7 @@ private fun WidgetDestination(label: String, spoken: String?, modifier: GlanceMo
     )
 }
 
-/** A departure line's countdown, or "?" when its stop is too stale to show one (SPEC D4). */
+/** A departure line's countdown, or its stale stand-in ([Countdown.staleLabel]), dimmed (SPEC D4). */
 @androidx.compose.runtime.Composable
 private fun WidgetCountdown(text: String, stale: Boolean) {
     Text(

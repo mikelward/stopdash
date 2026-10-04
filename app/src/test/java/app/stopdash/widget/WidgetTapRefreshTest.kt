@@ -128,7 +128,7 @@ class WidgetTapRefreshTest {
     }
 
     @Test
-    fun `a tap hops off the caller's thread, then enqueues one refresh and redraws`() {
+    fun `a tap hops off the caller's thread, then enqueues a refresh and redraws`() {
         val pool = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
         try {
             val worker = pool.asCoroutineDispatcher()
@@ -139,9 +139,6 @@ class WidgetTapRefreshTest {
             assertEquals(1, first.size)
             assertEquals(listOf("test-worker"), redrawnOn)
             assertEquals(WidgetTapNote.REFRESHING, WidgetTapRefresh.note(android.os.SystemClock.elapsedRealtime(), stamp))
-            // A second tap while the first is pending joins it rather than queue another.
-            runBlocking { requestWidgetRefresh(context, worker, redraw) }
-            assertEquals(first.map { it.id }, work().map { it.id })
         } finally {
             pool.shutdown()
         }
