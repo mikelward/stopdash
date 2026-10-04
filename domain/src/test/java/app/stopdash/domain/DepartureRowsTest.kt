@@ -1548,6 +1548,91 @@ class DepartureRowsTest {
         assertEquals(setOf("ON", "OS"), deduped.mapTo(HashSet()) { it.stopId })
     }
 
+    // A second route on the pair's road, timed southbound only.
+    private fun otherRoute(stopId: String, name: String, clusterId: String = "") =
+        rowsFor(stopId, name, departure("77", "77", "outbound", "South", 300, mode = "bus"))
+            .map { it.copy(clusterId = clusterId) }
+
+    @Test
+    fun `nearbyDeduped joins a one-way route to the place its neighbors were kept together at`() {
+        // Route 55 runs both ways and is kept at the pair; route 77 shows only southbound, nearest
+        // at the lone pole but served by the pair's southbound pole within 50 m, so it joins the pair.
+        val deduped = DepartureRows.nearbyDeduped(
+            pairNorth + pairSouth + loneSouth + otherRoute("PS", "Pair Road", "490GPAIR") + otherRoute("LS", "Lone Avenue"),
+            mapOf("PN" to 100.0, "PS" to 128.0, "LS" to 98.0),
+        )
+        assertEquals(setOf("PS"), deduped.filter { it.lineId == "77" }.mapTo(HashSet()) { it.stopId })
+        assertEquals(setOf("PN", "PS"), deduped.mapTo(HashSet()) { it.stopId })
+    }
+
+    @Test
+    fun `nearbyDeduped leaves a one-way route at its nearest stop over 50 m away`() {
+        val deduped = DepartureRows.nearbyDeduped(
+            pairNorth + pairSouth + loneSouth + otherRoute("PS", "Pair Road", "490GPAIR") + otherRoute("LS", "Lone Avenue"),
+            mapOf("PN" to 100.0, "PS" to 140.0, "LS" to 60.0),
+        )
+        assertEquals(setOf("LS"), deduped.filter { it.lineId == "77" }.mapTo(HashSet()) { it.stopId })
+    }
+
+    @Test
+    fun `nearbyDeduped leaves a one-way route at its nearest stop when no route is anchored elsewhere`() {
+        // Route 55 is absent, so the pair hosts no anchored route and 77 keeps the nearer pole.
+        val deduped = DepartureRows.nearbyDeduped(
+            otherRoute("PS", "Pair Road", "490GPAIR") + otherRoute("LS", "Lone Avenue"),
+            mapOf("PS" to 128.0, "LS" to 98.0),
+        )
+        assertEquals(listOf("LS"), deduped.map { it.stopId })
+    }
+
+    @Test
+    fun `nearbyDeduped never joins a one-way route onto a closed stop`() {
+        val deduped = DepartureRows.nearbyDeduped(
+            pairNorth + pairSouth + otherRoute("PS", "Pair Road", "490GPAIR") + otherRoute("LS", "Lone Avenue") +
+                stopStatusRow("PS", "Pair Road", clusterId = "490GPAIR"),
+            mapOf("PN" to 100.0, "PS" to 128.0, "LS" to 98.0),
+        )
+        assertEquals(setOf("LS"), deduped.filter { it.lineId == "77" }.mapTo(HashSet()) { it.stopId })
+    }
+
+    @Test
+    fun `nearbyDeduped never joins a one-way route onto a stop with older data`() {
+        // The pair's southbound pole kept a stale snapshot after a partial refresh failure.
+        val stalePair = otherRoute("PS", "Pair Road", "490GPAIR").map { it.copy(fetchedAt = now.minusSeconds(600)) }
+        val deduped = DepartureRows.nearbyDeduped(
+            pairNorth + pairSouth + stalePair + otherRoute("LS", "Lone Avenue"),
+            mapOf("PN" to 100.0, "PS" to 128.0, "LS" to 98.0),
+        )
+        assertEquals(setOf("LS"), deduped.filter { it.lineId == "77" }.mapTo(HashSet()) { it.stopId })
+    }
+
+    @Test
+    fun `nearbyDeduped joins a line's no-times row to the place its timed rows were kept at`() {
+        // Route 77 is due northbound at the pair and disrupted southbound with no times: its
+        // southbound status row is nearest at the lone pole but joins the pair's southbound pole.
+        val north77 = rowsFor("PN", "Pair Road", departure("77", "77", "inbound", "North", 300, mode = "bus"))
+            .map { it.copy(clusterId = "490GPAIR") }
+        val pairStatus = lineStatusRow("PS", "Pair Road", "77").copy(clusterId = "490GPAIR", mode = "bus")
+        val loneStatus = lineStatusRow("LS", "Lone Avenue", "77").copy(mode = "bus")
+        val deduped = DepartureRows.nearbyDeduped(
+            north77 + pairStatus + loneStatus,
+            mapOf("PN" to 97.0, "PS" to 129.0, "LS" to 98.0),
+        )
+        assertEquals(setOf("PN", "PS"), deduped.filter { it.lineId == "77" }.mapTo(HashSet()) { it.stopId })
+    }
+
+    @Test
+    fun `nearbyDeduped leaves a no-times row at its nearest stop over 50 m away`() {
+        val north77 = rowsFor("PN", "Pair Road", departure("77", "77", "inbound", "North", 300, mode = "bus"))
+            .map { it.copy(clusterId = "490GPAIR") }
+        val pairStatus = lineStatusRow("PS", "Pair Road", "77").copy(clusterId = "490GPAIR", mode = "bus")
+        val loneStatus = lineStatusRow("LS", "Lone Avenue", "77").copy(mode = "bus")
+        val deduped = DepartureRows.nearbyDeduped(
+            north77 + pairStatus + loneStatus,
+            mapOf("PN" to 97.0, "PS" to 160.0, "LS" to 98.0),
+        )
+        assertEquals(setOf("PN", "LS"), deduped.filter { it.lineId == "77" }.mapTo(HashSet()) { it.stopId })
+    }
+
     @Test
     fun `nearbyDeduped keeps fully unresolved opposite directions at separate stops`() {
         // TfL gave neither direction nor destination; only the (stop-local) platform told the
