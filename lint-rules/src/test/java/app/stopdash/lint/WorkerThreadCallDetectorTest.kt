@@ -141,6 +141,13 @@ class WorkerThreadCallDetectorTest {
                     LaunchedEffect(stops) { withContext(Dispatchers.Default) { flow.collect { RouteStops.resolve(it) } } }
                     // Collected in place, on the worker.
                     LaunchedEffect(stops) { withContext(Dispatchers.Default) { flow.map { RouteStops.resolve(it) }.toList() } }
+                    // Handed to a helper that runs it on a worker.
+                    val worked = onWorker(stops) { RouteStops.resolve(stops) }
+                }
+                @Composable
+                fun <T> onWorker(key: Any, @WorkerThread compute: () -> T): T? {
+                    LaunchedEffect(key) { withContext(Dispatchers.Default) { compute() } }
+                    return null
                 }
                 fun <T> keep(value: T) = value
                 @WorkerThread fun helper(stops: List<String>) = RouteStops.resolve(stops)
@@ -191,6 +198,13 @@ class WorkerThreadCallDetectorTest {
                     }
                     scope.launch(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) { RouteStops.resolve(stops) }
                     val mode = CoroutineStart.UNDISPATCHED
+                    // A helper's parameter not marked @WorkerThread may run its block right here.
+                    val unmarked = inPlace(stops) { RouteStops.resolve(stops) }
+                    // Nor is the mark trusted where the helper runs the block in place, or hands it on.
+                    val marked = markedInPlace(stops) { RouteStops.resolve(stops) }
+                    val handed = markedHandedOn(stops) { RouteStops.resolve(stops) }
+                    // Nor where it builds the block's call on a worker but runs it after, back here.
+                    LaunchedEffect(stops) { markedDeferred(stops) { RouteStops.resolve(stops) } }
                     scope.launch(Dispatchers.Default, start = mode) { RouteStops.resolve(stops) }
                     val resolve = RouteStops::resolve
                     val invoked = resolve(stops)
@@ -213,9 +227,16 @@ class WorkerThreadCallDetectorTest {
                     later = CoroutineStart.UNDISPATCHED
                     scope.launch(Dispatchers.Default, start = later) { RouteStops.resolve(stops) }
                 }
+                fun <T> inPlace(key: Any, compute: () -> T): T = compute()
+                fun <T> markedInPlace(key: Any, @androidx.annotation.WorkerThread compute: () -> T): T = compute()
+                fun <T> markedHandedOn(key: Any, @androidx.annotation.WorkerThread compute: () -> T): T = inPlace(key, compute)
+                suspend fun <T> markedDeferred(key: Any, @androidx.annotation.WorkerThread compute: () -> T): T {
+                    val run = withContext(Dispatchers.Default) { { compute() } }
+                    return run()
+                }
                 """,
             ).indented(),
-        ).expectErrorCount(19)
+        ).expectErrorCount(23)
     }
 
     @Test
