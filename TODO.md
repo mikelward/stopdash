@@ -50,11 +50,9 @@ exercises the whole spine the widget later renders from.
       start and a restore walk the trip's route on the worker.
 - [ ] Nearby stops chosen off the main thread: #537 moved `resolveFrom`'s work after its lookup to
       the worker, and made `State.Ready`'s `eagerStops`, `nearbyStops`, `clusterSetKey` and the
-      widget's `eagerStopIds` values worked out with the set. Still on the main thread: the trip
-      origins worked out from the set (`hereOriginIds` across the nearby stops and their lines, in
-      `MainActivity`'s composition for To… and a From page, once without `remember`; it depends on
-      the hidden modes now, so it's worked out on the worker as either changes), and a relocation
-      that keeps the same cluster set: `reconcileSameSet` (the saved journeys through
+      widget's `eagerStopIds` values worked out with the set; the trip origins worked out from it
+      (`rememberHereOrigin`) followed onto the worker. Still on the main thread: a relocation that
+      keeps the same cluster set: `reconcileSameSet` (the saved journeys through
       `stopIdsToHoldBack`, `releasesHeldJourney`, `turnsShownJourney`) and `MainViewModel.reconcile`
       (the fetched-stop sets, the eager tier, the loaded stops filtered and measured again).
 - [ ] The smaller per-tick and per-recomposition passes: the main screen's `emptyStateUncertain`

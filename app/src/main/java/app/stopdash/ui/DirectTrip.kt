@@ -1,10 +1,15 @@
 package app.stopdash.ui
 
+import androidx.annotation.WorkerThread
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.DirectTrips
 import app.stopdash.domain.HiddenModes
@@ -80,6 +85,7 @@ internal fun rememberLineLoads(lineIds: List<String>, now: Instant): LineLoads {
  * 0.2 mi ([DirectTrips.originIds]), leaving out a stop that serves only [hidden] modes or has no
  * routes. Empty when every nearby stop is hidden.
  */
+@WorkerThread
 internal fun hereOriginIds(
     eager: List<StopRef>,
     nearby: List<StopRef>,
@@ -93,6 +99,33 @@ internal fun hereOriginIds(
         eager.filter(::shown).map { it.id },
         distanceMeters.filterKeys { it in candidates },
     ).filter { it in candidates || it !in distanceMeters }
+}
+
+/**
+ * The stops a To… from here starts from ([hereOriginIds]), as stops of [ready]'s set, without [hidden]
+ * modes. Worked out on [LocalWorker] (AGENTS.md *Main thread: read and dispatch only*): every nearby
+ * stop and its lines are walked. Null until the answer for this set and these modes is in, never the
+ * last set's or an empty list, which would read as "nowhere to start" and end the trip.
+ */
+@Composable
+internal fun rememberHereOrigin(
+    ready: NearbyStopsViewModel.State.Ready,
+    hidden: Set<String>,
+    // Where the answer is kept: held above the screens that ask, so the near-me list and the To… it
+    // opens share it and the trip has its origin in its first frame (Codex on #544).
+    work: HereOriginWork = viewModel(key = "here-origin"),
+): List<StopRef>? = rememberWorked(work.slot, Inputs(ready, hidden)) { hereOrigin(ready, hidden) }
+
+/** [rememberHereOrigin]'s last answer, held by a view model store rather than one screen's composition. */
+internal class HereOriginWork : ViewModel() {
+    internal val slot: MutableState<Worked<Inputs, List<StopRef>>?> = mutableStateOf(null)
+}
+
+/** [rememberHereOrigin]'s answer: [hereOriginIds] as [ready]'s own stops. */
+@WorkerThread
+internal fun hereOrigin(ready: NearbyStopsViewModel.State.Ready, hidden: Set<String>): List<StopRef> {
+    val byId = ready.nearbyStops.associateBy { it.id }
+    return hereOriginIds(ready.eagerStops, ready.nearbyStops, ready.distanceMeters, hidden).mapNotNull { byId[it] }
 }
 
 /**
