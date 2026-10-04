@@ -11,9 +11,12 @@ import app.stopdash.domain.Starred
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StarredRowSet
 import app.stopdash.domain.StarredRowsStore
+import app.stopdash.domain.Workers
 import java.io.InputStream
 import java.io.OutputStream
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
 
@@ -35,6 +38,9 @@ class DataStoreStarredRowsStore internal constructor(
     // stop/line id (canned identifiers, not user data — SPEC *Privacy*), but the message
     // stays a bare fact for consistency with the watched-stops store.
     private val warn: (String) -> Unit = {},
+    // Where the stored file is turned into the app's values: work that grows with what's stored, never
+    // on the collector's thread, which can be the main one (AGENTS.md *Main thread: read and dispatch only*).
+    private val compute: CoroutineDispatcher = Workers.compute,
 ) : StarredRowsStore {
 
     // Absent/discarded (null) → an empty set the user can add to. Present and readable → the
@@ -47,7 +53,7 @@ class DataStoreStarredRowsStore internal constructor(
                 else -> stored.toDomain()?.let { StarredRowSet.Loaded(it) }
                     ?: StarredRowSet.Unavailable
             }
-        }
+        }.flowOn(compute)
 
     override suspend fun toggle(row: StarredRow) {
         dataStore.updateData { stored ->

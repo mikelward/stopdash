@@ -11,12 +11,15 @@ import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.Journeys
 import app.stopdash.domain.StarredJourney
 import app.stopdash.domain.StarredJourneysStore
+import app.stopdash.domain.Workers
 import app.stopdash.domain.riderLineName
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -30,6 +33,9 @@ import kotlinx.serialization.json.Json
 class DataStoreStarredJourneysStore internal constructor(
     private val dataStore: DataStore<PersistedStarredJourneys?>,
     private val warn: (String) -> Unit = {},
+    // Where the stored file is turned into the app's values: work that grows with what's stored, never
+    // on the collector's thread, which can be the main one (AGENTS.md *Main thread: read and dispatch only*).
+    private val compute: CoroutineDispatcher = Workers.compute,
 ) : StarredJourneysStore {
 
     // A disk read failure (DataStore's IOException) reads as unavailable — starring journeys is
@@ -37,6 +43,7 @@ class DataStoreStarredJourneysStore internal constructor(
     override fun journeys(): Flow<List<StarredJourney>?> =
         dataStore.data
             .map { stored -> if (stored == null) emptyList() else stored.toDomain() }
+            .flowOn(compute)
             .catch { e ->
                 if (e !is IOException) throw e
                 warn("starred journeys read failed: ${e::class.simpleName}")

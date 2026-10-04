@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Store mapping, toggle, versioning, and JSON round-trip. Example stations and synthetic positions. */
@@ -84,5 +85,17 @@ class DataStoreStarredJourneysStoreTest {
         StarredJourneysSerializer.writeTo(listOf(journey).toPersisted(), out)
         val back = StarredJourneysSerializer.readFrom(ByteArrayInputStream(out.toByteArray()))
         assertEquals(listOf(journey), back!!.toDomain())
+    }
+
+    @Test
+    fun `the starred journeys are mapped off the caller's thread`() {
+        // Mapped on the store's worker, never the collector's (main) thread (AGENTS.md *Main thread: read
+        // and dispatch only*): collected from a thread of its own, the stored list is read on the worker's.
+        OffMainReads().use { reads ->
+            val stored = PersistedStarredJourneys(journeys = reads.recorded(PersistedStarredJourney(PersistedJourneyEnd("A", "A"), PersistedJourneyEnd("B", "B"), "victoria")))
+            reads.fromCaller { DataStoreStarredJourneysStore(reads.dataStore<PersistedStarredJourneys?>(stored), compute = reads.worker).journeys().first() }
+            assertTrue(reads.reads.isNotEmpty())
+            assertEquals(setOf(OffMainReads.WORKER), reads.reads.toSet())
+        }
     }
 }

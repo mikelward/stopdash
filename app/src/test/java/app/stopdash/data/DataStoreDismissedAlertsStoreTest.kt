@@ -222,4 +222,16 @@ class DataStoreDismissedAlertsStoreTest {
         store.reconcile(live = setOf(dismissal), checkedPlaces = victoria)
         assertEquals(setOf(dismissal), store.dismissed().first())
     }
+
+    @Test
+    fun `the dismissals are mapped off the caller's thread`() {
+        // Mapped on the store's worker, never the collector's (main) thread (AGENTS.md *Main thread: read
+        // and dispatch only*): collected from a thread of its own, the stored list is read on the worker's.
+        OffMainReads().use { reads ->
+            val stored = PersistedDismissedAlerts(alerts = reads.recorded(PersistedDismissedAlert("line:victoria", "signature")))
+            reads.fromCaller { DataStoreDismissedAlertsStore(reads.dataStore<PersistedDismissedAlerts?>(stored), compute = reads.worker).dismissed().first() }
+            assertTrue(reads.reads.isNotEmpty())
+            assertEquals(setOf(OffMainReads.WORKER), reads.reads.toSet())
+        }
+    }
 }

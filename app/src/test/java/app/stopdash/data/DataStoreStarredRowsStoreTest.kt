@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -64,5 +65,17 @@ class DataStoreStarredRowsStoreTest {
         store.toggle(central)
         assertEquals(future, backing.data.first())
         assertEquals(StarredRowSet.Unavailable, store.starred().first())
+    }
+
+    @Test
+    fun `the starred rows are mapped off the caller's thread`() {
+        // Mapped on the store's worker, never the collector's (main) thread (AGENTS.md *Main thread: read
+        // and dispatch only*): collected from a thread of its own, the stored list is read on the worker's.
+        OffMainReads().use { reads ->
+            val stored = PersistedStarredRows(rows = reads.recorded(PersistedStarredRow("940GZZLUKSX", "victoria", "southbound")))
+            reads.fromCaller { DataStoreStarredRowsStore(reads.dataStore<PersistedStarredRows?>(stored), compute = reads.worker).starred().first() }
+            assertTrue(reads.reads.isNotEmpty())
+            assertEquals(setOf(OffMainReads.WORKER), reads.reads.toSet())
+        }
     }
 }

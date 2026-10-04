@@ -12,10 +12,13 @@ import app.stopdash.domain.Dismissed
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.Staleness
+import app.stopdash.domain.Workers
 import java.io.InputStream
 import java.io.OutputStream
 import java.time.Instant
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
 
@@ -35,6 +38,9 @@ class DataStoreDismissedAlertsStore internal constructor(
     private val dataStore: DataStore<PersistedDismissedAlerts?>,
     private val clock: () -> Instant = Instant::now,
     private val warn: (String) -> Unit = {},
+    // Where the stored file is turned into the app's values: work that grows with what's stored, never
+    // on the collector's thread, which can be the main one (AGENTS.md *Main thread: read and dispatch only*).
+    private val compute: CoroutineDispatcher = Workers.compute,
 ) : DismissedAlertsStore {
 
     // Absent/discarded (null) or an unreadable newer version → an empty set (fails safe). Present
@@ -52,7 +58,7 @@ class DataStoreDismissedAlertsStore internal constructor(
             // an end taken across a reboot sits at the edge of ([ended]).
             val now = clock()
             Dismissals((stored?.toDomain() ?: emptySet()) - ended.keys, ended.filterValues { !Staleness.isFromFuture(Staleness.age(it, now)) })
-        }
+        }.flowOn(compute)
 
     override suspend fun dismiss(alert: DismissedAlert) {
         dataStore.updateData { stored ->
