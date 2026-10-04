@@ -1518,15 +1518,9 @@ private fun RouteList(
     }
     val listed = headed?.first ?: cards
     val order = headed?.second
-    // The width of the list's widest pill ([pillSlotWidthPx]), worked out on the worker: each row's pill
-    // column is that wide, so every stop name starts in one place down the list, a cut pill's row too
-    // (maintainer, 2026-10-04). Never the last list's, which may be narrower than a pill now shown:
-    // until it's in, a card aligns on its own pills.
     val density = LocalDensity.current
     // Remembered, so the keys below hold the same measure from one composition to the next.
     val pillWidth = rememberPillWidth()
-    val slotWork = remember { mutableStateOf<Worked<Inputs, Int?>?>(null) }
-    val slotWidthPx = rememberWorked(slotWork, Inputs(cards, rideLines, pillWidth)) { pillSlotWidthPx(cards, rideLines, pillWidth.measure()) }
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -1624,17 +1618,18 @@ private fun RouteList(
                             val timed = rememberWorked(slot, Inputs(card, state, now, access, sequences, rideLines), keep = { _, _ -> true }) {
                                 TimedCard(cardTimes(card, state, now, access, sequences, rideLines), now, card, rideLines)
                             } ?: TimedCard(CardTimes(emptyList(), emptySet(), now.plus(access), loading = true), now, card, rideLines)
-                            // The widest pill of the rides drawn, worked out on the worker apart from the times, so
-                            // a font scale changing (a pinch) measures again without timing the card again (Codex, #530).
+                            // The card's pill column: its widest pill ([pillSlotWidthPx]), so its rows' stop names
+                            // start in one place, a cut pill's row too. Per card, not across the list (maintainer,
+                            // 2026-10-04): a list-wide width fell back to each card's own, then to a lone pill's,
+                            // every time a line's status or route landed while the page loaded, and the rows
+                            // shuffled sideways for the first few seconds. Worked out on the worker apart from the
+                            // times, so a font scale changing (a pinch) measures again without timing the card again
+                            // (Codex, #530); the last width holds while a new one is worked out, since what loads
+                            // rarely changes a card's pills.
                             val widthSlot = remember { mutableStateOf<Worked<Inputs, Int?>?>(null) }
-                            val cardWidthPx = rememberWorked(widthSlot, Inputs(timed.card, timed.rideLines, pillWidth)) {
+                            val columnPx = rememberWorked(widthSlot, Inputs(timed.card, timed.rideLines, pillWidth), keep = { _, _ -> true }) {
                                 pillSlotWidthPx(listOf(timed.card), timed.rideLines, pillWidth.measure())
                             }
-                            // The pill column: the list's widest pill, but only while the rides drawn are the
-                            // ones it was worked out with; and never narrower than the card's own widest pill,
-                            // so a card's rows always line up together (maintainer, 2026-10-04).
-                            val current = timed.card === card && timed.rideLines === rideLines
-                            val columnPx = listOfNotNull(slotWidthPx?.takeIf { current }, cardWidthPx).maxOrNull()
                             // The rides drawn from the card and lines the times were worked out for, so a line
                             // just hidden never lends its trains to another until the new times are in (Codex, #525).
                             RideStops(timed.card, timed.rideLines, statuses, closures, timed.times, timed.now, walk, columnPx?.let { with(density) { it.toDp() } })
@@ -1694,8 +1689,8 @@ internal fun cardRidePill(card: List<TripTiming.Estimate>, index: Int, rideLines
 
 /**
  * The width, in pixels, of the widest pill among [cards]' ride rows, [widthPx] giving a pill's
- * ([sharedPillWidthPx]); null for none. Each row's pill column is that wide, so the stop names line up
- * down the whole list (maintainer, 2026-10-04: a cut pill's row stood out to the right). Every lone
+ * ([sharedPillWidthPx]); null for none. Each row of a card has its pill column that wide, so the card's
+ * stop names line up (maintainer, 2026-10-04: a cut pill's row stood out to the right). Every lone
  * pill is one width, so only each distinct cut pill is measured besides. Measures text: on a worker only.
  */
 internal fun pillSlotWidthPx(cards: List<List<TripTiming.Estimate>>, rideLines: Map<TripLeg, RideLines>, widthPx: (List<LineRef>) -> Int): Int? =

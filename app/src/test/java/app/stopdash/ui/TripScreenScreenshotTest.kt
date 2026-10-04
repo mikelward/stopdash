@@ -274,6 +274,8 @@ class TripScreenScreenshotTest {
         ends: TripEnds? = null,
         // The page's worker; the app's own unless a test holds one.
         worker: CoroutineDispatcher? = null,
+        // Where a test swaps in a later state, as the page's loads land; [state] if none.
+        held: MutableState<TripViewModel.State>? = null,
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -281,7 +283,7 @@ class TripScreenScreenshotTest {
                     // No outer provider: the screen checks its trains against the repository it's given.
                     TripScreen(
                         title = "To Canary Wharf",
-                        state = state,
+                        state = held?.value ?: state,
                         now = now,
                         access = access,
                         routeStops = routeStops,
@@ -1422,7 +1424,7 @@ class TripScreenScreenshotTest {
         openRouteOf(through, trip, throughLines).encode()
     }
 
-    private fun showThrough(state: androidx.compose.runtime.MutableState<TripViewModel.State>, openRoute: androidx.compose.runtime.MutableState<String?>) {
+    private fun showThrough(state: MutableState<TripViewModel.State>, openRoute: MutableState<String?>) {
         val routeStops = RouteStopsRepository(
             object : RouteSequenceSource {
                 override suspend fun routeSequence(lineId: String, direction: String): LineSequence = throughLines.getValue(lineId)
@@ -1511,7 +1513,7 @@ class TripScreenScreenshotTest {
         composeRule.onNodeWithText("3 stops to Cole").assertDoesNotExist()
     }
 
-    private fun showWith(state: androidx.compose.runtime.MutableState<TripViewModel.State>) {
+    private fun showWith(state: MutableState<TripViewModel.State>) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 TripScreen(
@@ -2190,7 +2192,10 @@ class TripScreenScreenshotTest {
 
     // Either bus from one stop to Canada Water, then the Jubilee (one card, a cut 47/188 pill), beside
     // the route via Whitechapel; shown on [worker] if given.
-    private fun showSharedFirstLeg(worker: CoroutineDispatcher? = null) {
+    private fun showSharedFirstLeg(
+        worker: CoroutineDispatcher? = null,
+        held: MutableState<TripViewModel.State>? = null,
+    ) {
         val busStop = "490000001A" to "Surrey Docks"
         val busStation = "490000002B" to "Canada Water Bus Station"
         fun bus(line: String, departs: Long) = TripRoute(
@@ -2215,20 +2220,28 @@ class TripScreenScreenshotTest {
                 now,
             )
             )
+        val state = planned.copy(
+            routes = listOf(bus("47", 4), bus("188", 6), viaWhitechapel),
+            live = busLive,
+            statuses = planned.statuses + listOf("47", "188").associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") },
+        )
         show(
-            planned.copy(
-                routes = listOf(bus("47", 4), bus("188", 6), viaWhitechapel),
-                live = busLive,
-                statuses = planned.statuses + listOf("47", "188").associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") },
-            ),
+            state,
             routeStops = RouteStopsRepository(
                 object : RouteSequenceSource {
                     override suspend fun routeSequence(lineId: String, direction: String): LineSequence = busSequences.getValue(lineId)
                 },
             ),
             worker = worker,
+            held = held?.also { it.value = state },
         )
     }
+
+    /** Each `rideStopName`'s left edge, in drawing order: two cards, each a walk row and two rides. */
+    private fun stopLefts() =
+        composeRule.onAllNodes(hasTestTag("rideStopName"), useUnmergedTree = true).fetchSemanticsNodes().map { it.boundsInRoot.left }
+
+    private fun List<Float>.inOneColumn() = max() - min() <= 1f
 
     @Test
     fun trip_shared_first_leg() {
@@ -2241,12 +2254,14 @@ class TripScreenScreenshotTest {
         // A screen reader still hears where each goes.
         composeRule.onAllNodesWithContentDescription("Catford", substring = true, useUnmergedTree = true).onFirst().assertExists()
         composeRule.onAllNodesWithContentDescription("North Greenwich", substring = true, useUnmergedTree = true).onFirst().assertExists()
-        // Every stop name starts in one place down the list, the cut pill's row and the walks too,
-        // though the cut pill is wider than a lone one (maintainer, 2026-10-04).
-        // Two cards, each a walk row and two rides.
-        fun lefts() = composeRule.onAllNodes(hasTestTag("rideStopName"), useUnmergedTree = true).fetchSemanticsNodes().map { it.boundsInRoot.left }
-        composeRule.waitUntil(timeoutMillis = 5_000) { lefts().size == 6 }
-        composeRule.waitUntil(timeoutMillis = 5_000) { lefts().let { it.max() - it.min() <= 1f } }
+        // Every stop name on a card starts in one place, the cut pill's row and the walk too, though
+        // the cut pill is wider than a lone one; each card on its own pills, not the list's widest
+        // (maintainer, 2026-10-04).
+        composeRule.waitUntil(timeoutMillis = 5_000) { stopLefts().size == 6 }
+        composeRule.waitUntil(timeoutMillis = 5_000) { stopLefts().take(3).inOneColumn() }
+        assertTrue("the lone pills' card lines up: ${stopLefts()}", stopLefts().drop(3).inOneColumn())
+        // The cut pill widens only its own card's column.
+        assertTrue("the cards share a column: ${stopLefts()}", stopLefts()[0] > stopLefts()[3] + 1f)
         captureSnapshot("trip-shared-first-leg.png")
     }
 
@@ -2260,12 +2275,45 @@ class TripScreenScreenshotTest {
         threads.execute { gate.await() }
         try {
             showSharedFirstLeg(worker)
-            fun lefts() = composeRule.onAllNodes(hasTestTag("rideStopName"), useUnmergedTree = true).fetchSemanticsNodes().map { it.boundsInRoot.left }
-            assertEquals(6, lefts().size)
-            assertTrue("aligned before the worker ran: ${lefts()}", lefts().max() - lefts().min() > 1f)
-            // Released, the worker measures the pills and every stop moves into one column.
+            assertEquals(6, stopLefts().size)
+            assertTrue("aligned before the worker ran: ${stopLefts()}", !stopLefts().take(3).inOneColumn())
+            // Released, the worker measures the pills and the card's stops move into one column.
             gate.countDown()
-            composeRule.waitUntil(timeoutMillis = 5_000) { lefts().let { it.max() - it.min() <= 1f } }
+            composeRule.waitUntil(timeoutMillis = 5_000) { stopLefts().take(3).inOneColumn() }
+        } finally {
+            // Opened whatever happened, so a failed check can't leave the worker's thread waiting.
+            gate.countDown()
+            worker.close()
+        }
+    }
+
+    @Test
+    fun a_cards_stops_hold_still_while_the_page_loads() {
+        // The page's loads land one after another (a line's status, its route, a stop's trains), each
+        // a new state. While the worker answers, the stops keep their columns: the rows shuffled
+        // sideways for the first few seconds when each landing dropped the column's width until the
+        // worker measured it again (maintainer, 2026-10-04).
+        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val worker = threads.asCoroutineDispatcher()
+        val gate = CountDownLatch(1)
+        val held = mutableStateOf(planned)
+        try {
+            showSharedFirstLeg(worker, held)
+            composeRule.waitUntil(timeoutMillis = 5_000) { stopLefts().size == 6 && stopLefts().take(3).inOneColumn() }
+            val settled = stopLefts()
+
+            // A status checked again lands with the worker held.
+            threads.execute { gate.await() }
+            held.value = held.value.copy(statusesAt = held.value.statusesAt.mapValues { now.plusSeconds(30) })
+            composeRule.waitForIdle()
+            assertEquals(settled, stopLefts())
+
+            // Released, the worker works the card out again; nothing it changes moves a stop.
+            gate.countDown()
+            composeRule.waitForIdle()
+            threads.submit {}.get()
+            composeRule.waitForIdle()
+            assertEquals(settled, stopLefts())
         } finally {
             // Opened whatever happened, so a failed check can't leave the worker's thread waiting.
             gate.countDown()
