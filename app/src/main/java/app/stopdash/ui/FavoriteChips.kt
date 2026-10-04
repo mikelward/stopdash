@@ -21,9 +21,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Alignment
@@ -36,6 +37,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import app.stopdash.R
 import app.stopdash.domain.ChipLabel
 import app.stopdash.domain.Coordinates
@@ -169,6 +172,41 @@ private fun PlaceChip(
 // Material's chip icon size.
 private val CHIP_ICON_SIZE = 18.dp
 
+// Whether [held] ([rememberShownPlaces]' key) may stand in for [wanted]: the same places on the same
+// day, only where the rider is, or how surely, having changed: a fix gaining or losing accuracy keeps the
+// row up rather than putting the list back on its placeholder. One losing it shows the answer's
+// [ShownPlaces.unhidden] at once; one gaining it hides nothing more until its own answer is in, a chip
+// shown a moment longer costing only space (SPEC leans towards showing).
+private fun sameButWhere(held: Inputs, wanted: Inputs): Boolean =
+    held.parts[0] === wanted.parts[0] && held.parts[3] == wanted.parts[3]
+
+/**
+ * Whether a chip row isn't ready to show with its surface: the saved places not read yet ([read]), or
+ * read, readable and not empty ([places]) with no chips worked out for them yet ([chips], [rememberShownPlaces]'
+ * answer). Places that can't be read show no row, so nothing is waited on for them.
+ */
+internal fun chipsPending(read: Boolean, places: List<FavoritePlace>?, chips: List<FavoritePlace>?): Boolean =
+    !read || !places.isNullOrEmpty() && chips == null
+
+// [rememberShownPlaces]' answer: the memory after this fix, and the chips it leaves.
+internal class ShownPlaces(
+    val hiddenIds: Set<String>,
+    val shown: List<FavoritePlace>,
+    // The chips on a fix that isn't accurate: the day's places with none hidden ([FavoriteShortcuts.shown],
+    // not precise), worked out with [shown] so a fix losing accuracy shows them at once, never an
+    // accurate fix's hiding a moment longer (SPEC: an imprecise fix hides nothing; Codex on #539).
+    val unhidden: List<FavoritePlace>,
+)
+
+/**
+ * [rememberShownPlaces]' last answer, held by the screen's view model store rather than its composition,
+ * so a screen recreated (a rotation) or drawn again (a return to the list) has its chips in its first
+ * frame, not a frame later from the worker (Codex on #539).
+ */
+internal class ShownPlacesWork : ViewModel() {
+    internal val slot: MutableState<Worked<Inputs, ShownPlaces?>?> = mutableStateOf(null)
+}
+
 /** The name a favorite is known by: its label, or its resolved place name when the label is blank
  *  (as the Settings route-to and the To… picker name it). */
 internal fun favoriteRouteName(place: FavoritePlace): String = place.label.ifBlank { place.placeName.orEmpty() }
@@ -182,7 +220,8 @@ internal fun favoriteRouteName(place: FavoritePlace): String = place.label.ifBla
  * makes it rough too. The previous answer, [hiddenPlaceIds], is read unobserved and handed back to
  * [onHiddenPlaceIds] after the frame, so the band holds a place's state from one fix to the next
  * without this frame recomposing on its own write. Null [places] (not read yet) offers none and leaves
- * the memory as it was. Shared by the near-me list and its "no stops nearby" state.
+ * the memory as it was. Shared by the near-me list and its "no stops nearby" state. Null until this
+ * row's first answer is in ([work]), for the list to wait on.
  */
 @Composable
 internal fun rememberShownPlaces(
@@ -193,24 +232,43 @@ internal fun rememberShownPlaces(
     hiddenPlaceIds: Set<String>,
     onHiddenPlaceIds: (Set<String>) -> Unit,
     today: DayOfWeek?,
-): List<FavoritePlace> {
+    // Where this chip row keeps its last answer: one per row, held by the activity rather than a list's
+    // own store, so a new nearby set (a store of its own) still starts from it.
+    work: ShownPlacesWork = viewModel(key = "shown-places"),
+): List<FavoritePlace>? {
     val rider = riderFix?.takeIf { it.from == location }
     val riderAt = rider?.at ?: location
     val riderAccurate = banner == null && rider?.accurate == true
     val latestHiddenPlaceIds by rememberUpdatedState(hiddenPlaceIds)
-    val hiddenPlaceIdsNow = remember(places, riderAt, riderAccurate) {
+    // Worked out on the worker (AGENTS.md *Main thread: read and dispatch only*): every saved place
+    // measured from the rider, then filtered for the day. Until the answer for these inputs is in, the
+    // last chips stand in when only the rider's fix has changed ([sameButWhere]), so a moved fix doesn't
+    // blank the row for a frame. Otherwise the row is pending (null) and its surface waits on it
+    // (maintainer, 2026-10-04: wait for the chips): a chip for a place no longer saved, or for another
+    // day, is never offered, and the list never shows without the row (Codex on #539).
+    val slot = work.slot
+    val key = Inputs(places, riderAt, riderAccurate, today)
+    // The memory as the answer is asked for, read unobserved, as before.
+    val hiddenBefore = Snapshot.withoutReadObservation { latestHiddenPlaceIds }
+    val worked = rememberWorked(slot, key, keep = { held, wanted -> places != null && sameButWhere(held, wanted) }) {
         places?.let {
-            FavoriteShortcuts.hiddenIds(
-                it,
-                riderAt,
-                precise = riderAccurate,
-                hiddenBefore = Snapshot.withoutReadObservation { latestHiddenPlaceIds },
+            val hidden = FavoriteShortcuts.hiddenIds(it, riderAt, precise = riderAccurate, hiddenBefore = hiddenBefore)
+            ShownPlaces(
+                hidden,
+                FavoriteShortcuts.shown(it, hidden, precise = riderAccurate, today = today),
+                FavoriteShortcuts.shown(it, hidden, precise = false, today = today),
             )
         }
     }
-    SideEffect { if (hiddenPlaceIdsNow != null && hiddenPlaceIdsNow != hiddenPlaceIds) onHiddenPlaceIds(hiddenPlaceIdsNow) }
-    return remember(places, hiddenPlaceIdsNow, riderAccurate, today) {
-        if (places == null || hiddenPlaceIdsNow == null) emptyList()
-        else FavoriteShortcuts.shown(places, hiddenPlaceIdsNow, precise = riderAccurate, today = today)
-    }
+    // Only the answer for these very inputs updates the memory: one standing in is a step behind it.
+    val current = slot.value?.takeIf { it.key == key }?.value
+    SideEffect { if (current != null && current.hiddenIds != hiddenPlaceIds) onHiddenPlaceIds(current.hiddenIds) }
+    // Null only before this row's first answer: the list waits on it, as on its rows, so the row is
+    // there when the list is (SPEC *Routing from the near-me list*; Codex on #539).
+    // No answer for these places that may stand in: readable places are waited on until their chips are
+    // in; unreadable or none saved show no row, so nothing is waited on.
+    if (worked == null) return if (places.isNullOrEmpty()) emptyList() else null
+    // An answer standing in from a fix of other accuracy shows what this one's would: none hidden unless
+    // this fix is accurate (an imprecise answer's [ShownPlaces.shown] hides none either).
+    return if (riderAccurate) worked.shown else worked.unhidden
 }

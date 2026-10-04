@@ -267,4 +267,31 @@ class ListRowsOffMainTest {
         composeRule.onAllNodesWithText("Couldn't check trains").assertCountEquals(0)
         composeRule.onAllNodesWithText("No trains to Warren Street soon").assertCountEquals(0)
     }
+
+    @Test
+    fun the_list_waits_for_its_first_chips_as_for_its_rows() {
+        // Readable places whose chips aren't worked out yet hold the list on its placeholder, so the
+        // chip row is there when the list is (Codex on #539).
+        val scheduler = TestCoroutineScheduler()
+        val held = StandardTestDispatcher(scheduler)
+        var chipsPending by mutableStateOf(true)
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides held) {
+                    MainScreen(
+                        state = DeparturesUiState.Loaded(stops = listOf(kingsCross), fetchedAt = now),
+                        now = now, onRefresh = {}, listKey = "kings-cross", favoritePlacesPending = chipsPending,
+                    )
+                }
+            }
+        }
+        settle(scheduler)
+        composeRule.onAllNodesWithText("Brixton").assertCountEquals(0)
+        spinners().assertCountEquals(1)
+        chipsPending = false
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithText("Brixton").assertCountEquals(1)
+        spinners().assertCountEquals(0)
+    }
 }
+

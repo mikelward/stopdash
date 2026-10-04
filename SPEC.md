@@ -1232,7 +1232,9 @@ approximate, coarse or not updated, a last-known fix (old, however tight), or on
 location grant allows, hides nothing,
 as a wrongly hidden chip costs the one-tap route while a wrongly shown one costs only space. The
 places are read from the first frame, from the device (no request), so the row is there when the
-list is; a place list that can't be read shows no row here — Settings and the To… picker are where
+list is: the list, and "No stops found nearby", wait on their placeholder until the places are read and
+the chips worked out (off the main thread), rather than drawing first and the row a moment later
+(maintainer, 2026-10-04); a place list that can't be read shows no row here — Settings and the To… picker are where
 that is said, with a Retry. Each place chooses the **days of the week** its chip shows on — Work on
 weekdays, say — in its editor, as one row of seven day toggles under "Show on main screen" (maintainer,
 2026-09-28). Every day is the default, so a place saved before the choice existed keeps its chip, and
