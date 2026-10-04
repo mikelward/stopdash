@@ -662,8 +662,7 @@ class MainViewModelTest {
         // AGENTS.md *Main thread*: every alert under way on a line, in a list that notes each thread
         // reading it, is gone through on the worker when the list settles its dismissals, not on the
         // main thread its loads run on (Codex on #519). Made-up words.
-        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }
-        val worker = executor.asCoroutineDispatcher()
+        val worker = TestWorker("worker")
         val store = androidx.lifecycle.ViewModelStore()
         try {
             val read = java.util.Collections.synchronizedList(mutableListOf<String>())
@@ -684,16 +683,14 @@ class MainViewModelTest {
             // Let the worker and Main hand the load's settling back and forth until it has run.
             repeat(50) {
                 if (read.isNotEmpty()) return@repeat
-                executor.submit {}.get()
+                worker.flush()
                 advanceUntilIdle()
             }
             assertTrue(read.isNotEmpty())
             assertEquals(setOf("worker"), read.toSet())
         } finally {
             store.clear()
-            executor.shutdown()
-            check(executor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS)) { "worker didn't stop" }
-            advanceUntilIdle()
+            worker.close(this)
         }
     }
 
@@ -5200,8 +5197,7 @@ class MainViewModelTest {
     fun `a same-set reconcile goes through the new tiers on the worker thread`() = runTest(dispatcher) {
         // The new tiers, in a list that notes each thread going through it, are gone through on the
         // worker, never on the main thread the reconcile is asked on.
-        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "reconcile-worker") }
-        val worker = executor.asCoroutineDispatcher()
+        val worker = TestWorker("reconcile-worker")
         val store = androidx.lifecycle.ViewModelStore()
         try {
             val reads = java.util.Collections.synchronizedList(mutableListOf<String>())
@@ -5220,7 +5216,7 @@ class MainViewModelTest {
             // Let the worker and Main hand the reconcile back and forth until it has landed.
             repeat(50) {
                 if ("MA" !in shownIds(vm)) return@repeat
-                executor.submit {}.get()
+                worker.flush()
                 advanceUntilIdle()
             }
             assertEquals(listOf("E"), shownIds(vm))
@@ -5228,9 +5224,44 @@ class MainViewModelTest {
             assertEquals(setOf("reconcile-worker"), reads.toSet())
         } finally {
             store.clear()
+            worker.close(this)
+        }
+    }
+
+    /**
+     * A worker on a real thread named [name], for a test that checks work runs off the caller's.
+     * [close] stops it only once nothing is left to hop between it and the test's queue: shutting it
+     * down sooner rejects a hop still to come, which kotlinx reruns on [Dispatchers.IO], where nothing
+     * waits for it, so it can reach Main after the test has reset it and fail whichever test is next.
+     */
+    private class TestWorker(name: String) : CoroutineDispatcher() {
+        private val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, name) }
+        private val inner = executor.asCoroutineDispatcher()
+        private val dispatched = java.util.concurrent.atomic.AtomicInteger()
+        private val late = java.util.concurrent.atomic.AtomicInteger()
+
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            if (executor.isShutdown) late.incrementAndGet()
+            dispatched.incrementAndGet()
+            inner.dispatch(context, block)
+        }
+
+        /** Waits until everything handed to the worker so far has run. */
+        fun flush() {
+            executor.submit {}.get()
+        }
+
+        /** Hands work back and forth with [scope]'s queue until a round hands the worker none, then stops it. */
+        fun close(scope: TestScope) {
+            do {
+                val before = dispatched.get()
+                scope.advanceUntilIdle()
+                flush()
+                scope.advanceUntilIdle()
+            } while (dispatched.get() != before)
             executor.shutdown()
             check(executor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS)) { "worker didn't stop" }
-            advanceUntilIdle()
+            check(late.get() == 0) { "work reached the worker after it stopped" }
         }
     }
 
