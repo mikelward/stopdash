@@ -2564,7 +2564,7 @@ Builds on Phase 1's minimal line-status marking.
   - [ ] **A closure found mid-load moves the list**: its notice card appears under the heading and
         pushes that place's departures down. Show it behind "Tap to see" when the place is on screen,
         as a late stop's card is (*Freshness → Cold load*).
-  - [ ] **Build a cold load's progress off the main thread**: each report while stops land rebuilds
+  - [x] **Build a cold load's progress off the main thread**: each report while stops land rebuilds
         the part-shown state on the main dispatcher, walking every shown stop (what failed, which
         lines are still checking, what's unknown). Build it on a worker and publish the result,
         newest wins (AGENTS *Main thread*).

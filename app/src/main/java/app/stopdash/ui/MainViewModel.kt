@@ -41,13 +41,16 @@ import app.stopdash.domain.WidgetJourneyCheck
 import app.stopdash.domain.WidgetJourneys
 import app.stopdash.domain.WidgetJourneysReport
 import app.stopdash.domain.WidgetRefresh
+import app.stopdash.domain.Workers
 import app.stopdash.telemetry.UsageEvents
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.ContinuationInterceptor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -144,6 +147,9 @@ class MainViewModel(
     initialMore: List<NearbySelection.NearbyCluster> = emptyList(),
     private val clock: () -> Instant = Instant::now,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    // Where a cold load's progress is worked out as its stops land ([fetchBatch]'s onProgress): off
+    // the main thread, which only publishes it (AGENTS.md *Main thread: read and dispatch only*).
+    private val compute: CoroutineDispatcher = Workers.compute,
     // Persists the last-good snapshot across sessions and to the widget. No-op by default so
     // tests and an unwired build run identically minus the restore.
     private val snapshotStore: SnapshotStore = SnapshotStore.NONE,
@@ -749,6 +755,9 @@ class MainViewModel(
         val answered: Boolean,
         // The requests it sent, for the per-fetch log line.
         val requests: Int,
+        // The lines TfL doesn't know ([unknownLineIds]) as of this check: a copy, so a cold load's
+        // progress can be worked out off the main thread without reading the live set.
+        val unknown: Set<String> = emptySet(),
     ) {
         val determined: Set<String> get() = statuses.mapTo(HashSet()) { it.lineId }
         val disrupted: Map<String, LineStatus> get() = statuses.filter { it.hasAlerts }.associateBy { it.lineId }
@@ -834,12 +843,18 @@ class MainViewModel(
         // the stops declare comes back ([BatchProgress]), so a cold load shows each stop as it
         // arrives rather than holding the spinner for the slowest (SPEC *Freshness → Cold load*).
         // Null skips it.
-        onProgress: ((BatchProgress) -> Unit)? = null,
+        // Called on [compute] (one at a time, in order), so the caller works its state out there and
+        // hops to the main thread only to publish it.
+        onProgress: (suspend (BatchProgress) -> Unit)? = null,
         // Whether a stop another screen fetched within [ArrivalsCache.TTL] is taken from
         // [sharedArrivals] rather than asked for; false on a pull-to-refresh, which asks afresh.
         useShared: Boolean = true,
     ): FetchBatch {
         lastFetchAt = now
+        // The caller's thread (the main one), and one [compute] worker at a time for the progress
+        // reports, so they're worked out in order, off the main thread.
+        val caller = checkNotNull(currentCoroutineContext()[ContinuationInterceptor])
+        val serial = compute.limitedParallelism(1)
         // This batch's fetches, stamped by the steady clock ([SteadyClock]) so setting the device's
         // clock doesn't change how old they read.
         val stamp = SteadyClock.stamp(now)
@@ -1084,9 +1099,10 @@ class MainViewModel(
                 }
             }
             if (onProgress != null) {
-                // Each stop as it lands, in stop order. Runs on the caller's (main) dispatcher, so
-                // these watchers take turns on [landed], [waiting] and [failed]. A stop whose
-                // arrivals failed is named as failed at once, not left "Loading".
+                // Each stop as it lands, in stop order. Run on one [compute] worker at a time
+                // ([serial]), off the main thread, so these watchers take turns on [landed],
+                // [waiting] and [failed]; only the hub lookup ([hubOf]) goes back to the caller's
+                // thread. A stop whose arrivals failed is named as failed at once, not left "Loading".
                 // A stop with a prior (reused, or shown by a cold load this one restarted) shows it
                 // until its answer lands, rather than going back to "Loading".
                 val landed = arrayOfNulls<StopArrivals>(stops.size)
@@ -1095,32 +1111,34 @@ class MainViewModel(
                 val closureUnknown = HashSet<String>()
                 val closurePending = HashSet<String>()
                 var lines: LineCheck? = null
-                fun report() = onProgress(
+                suspend fun report() = onProgress(
                     BatchProgress(landed.filterNotNull(), waiting.toSet(), failed.toMap(), closureUnknown.toSet(), lines, closurePending.toSet()),
                 )
-                stops.forEachIndexed { i, stop ->
-                    landed[i] = prior[stop.id]
-                    if (landed[i] == null) {
-                        waiting += stop.id
-                    } else if (disruptions[i] != null) {
-                        // Shown from before with its closure answer still to merge (a check follows the
-                        // stop's departures; even a cached answer waits on them): pending from the first
-                        // report, never passed off as checked.
-                        closurePending += stop.id
+                launch(serial) {
+                    stops.forEachIndexed { i, stop ->
+                        landed[i] = prior[stop.id]
+                        if (landed[i] == null) {
+                            waiting += stop.id
+                        } else if (disruptions[i] != null) {
+                            // Shown from before with its closure answer still to merge (a check follows the
+                            // stop's departures; even a cached answer waits on them): pending from the first
+                            // report, never passed off as checked.
+                            closurePending += stop.id
+                        }
                     }
+                    // What's already in hand shows at once, marked still checking — including a batch
+                    // that reuses every stop and so has no answer to wait for before its line status.
+                    if (landed.any { it != null }) report()
                 }
-                // What's already in hand shows at once, marked still checking — including a batch
-                // that reuses every stop and so has no answer to wait for before its line status.
-                if (landed.any { it != null }) report()
                 // The declared lines' verdicts as soon as they're back, so the stops shown stop
                 // reading "checking" without waiting for another to land.
-                launch {
+                launch(serial) {
                     lines = earlyCheck.await() ?: return@launch
                     report()
                 }
                 stops.forEachIndexed { i, stop ->
                     val arrival = arrivals[i] ?: return@forEachIndexed
-                    launch {
+                    launch(serial) {
                         val departures = arrival.await().getOrElse { e ->
                             waiting -= stop.id
                             failed[stop.id] = kindOf(e)
@@ -1182,7 +1200,8 @@ class MainViewModel(
                                 closurePending += stop.id
                                 report()
                             }
-                            hubOf(stop.hubId)
+                            // On the caller's thread, where the batch's other hub lookups are kept.
+                            withContext(caller) { hubOf(stop.hubId) }
                         } else {
                             HubInfo()
                         }
@@ -1370,7 +1389,7 @@ class MainViewModel(
         }
         val toQuery = lineIds - cachedStatuses.mapTo(HashSet()) { it.lineId } - unknownLineIds - recentlyOmitted
         // With nothing left to ask, the cached verdicts stand on their own.
-        if (toQuery.isEmpty()) return LineCheck(lineIds, cachedStatuses, answered = false, requests = 0)
+        if (toQuery.isEmpty()) return LineCheck(lineIds, cachedStatuses, answered = false, requests = 0, unknown = unknownLineIds.toSet())
         var requests = 0
         return try {
             // One call per request TfL accepts, each with its own outcome (LineStatusBatch), so
@@ -1424,14 +1443,14 @@ class MainViewModel(
                 // *Privacy*: line ids are allowed in the log).
                 warn("disruption status unknown: TfL returned no status for line(s) ${undetermined.joinToString(",")}")
             }
-            LineCheck(lineIds, statuses, answered = true, requests = requests)
+            LineCheck(lineIds, statuses, answered = true, requests = requests, unknown = unknownLineIds.toSet())
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             // Only the cached verdicts are determined, so every line this request was for
             // reads undetermined — the flag the callers derive is set (SPEC principle 1).
             warn("line status fetch failed for ${toQuery.joinToString(",")}: ${reason(e)}")
-            LineCheck(lineIds, cachedStatuses, answered = false, requests = requests)
+            LineCheck(lineIds, cachedStatuses, answered = false, requests = requests, unknown = unknownLineIds.toSet())
         }
     }
 
@@ -1492,12 +1511,14 @@ class MainViewModel(
         stops: List<StopArrivals>,
         determinedLineIds: Set<String>,
         stopsDisruptionUnknown: Set<String>,
+        // The lines TfL doesn't know: the live set on the main thread, a check's copy off it.
+        unknown: Set<String>,
     ): Boolean =
         stopsDisruptionUnknown.isNotEmpty() ||
             stops.any { s ->
                 s.departures.any { it.lineId.isBlank() } ||
                     (s.departures.map { it.lineId } + s.lines.map { it.id })
-                        .any { it.isNotBlank() && it !in determinedLineIds && it !in unknownLineIds }
+                        .any { it.isNotBlank() && it !in determinedLineIds && it !in unknown }
             }
 
     /**
@@ -1522,7 +1543,7 @@ class MainViewModel(
      * asked about came back undetermined (a failed request, or TfL gave it no status). None of these
      * is asked again before the load finishes, so the banner says it couldn't check, not that it's
      * checking ([DeparturesUiState.Loaded.checkFailed]). A line not asked about yet is still pending,
-     * and one TfL doesn't know ([unknownLineIds]) failed no check.
+     * and one TfL doesn't know (the check's [LineCheck.unknown]) failed no check.
      */
     private fun checkFailedOf(shown: List<StopArrivals>, progress: BatchProgress): Boolean {
         val lines = progress.lines
@@ -1531,7 +1552,7 @@ class MainViewModel(
                 stop.departures.any { it.lineId.isBlank() } ||
                     (lines != null &&
                         (stop.departures.map { it.lineId } + stop.lines.map { it.id })
-                            .any { it in lines.asked && it !in lines.determined && it !in unknownLineIds })
+                            .any { it in lines.asked && it !in lines.determined && it !in lines.unknown })
             }
     }
 
@@ -1638,25 +1659,18 @@ class MainViewModel(
                     coldLoadUnfinished = true
                 }
             }
+            // This (main) thread, where the state is published; the progress itself is worked out on
+            // [compute], one report at a time, in order ([fetchBatch]).
+            val publisher = checkNotNull(currentCoroutineContext()[ContinuationInterceptor])
             val batch = fetchBatch(toFetch, prior, now, reuse, useShared = !force, onProgress = if (!coldAtStart) null else { progress ->
                 val (shown, waiting, failed) = progress
-                val current = _state.value
-                val coldLoad = current is DeparturesUiState.Loading ||
-                    (current is DeparturesUiState.Loaded && (current.statusPending || coldLoadUnfinished)) ||
-                    (current is DeparturesUiState.Error && coldLoadUnfinished)
-                // The last stop too, so it doesn't wait on the line-status check below. A failure is
-                // shown even before any stop lands, while others are still out; once none are (every
-                // stop failed) the batch's own verdict follows at once.
-                if (coldLoad && shown.isEmpty() && waiting.isEmpty() && failed.isNotEmpty()) {
-                    // Every stop's arrivals failed: say so now rather than wait on closure checks
-                    // still out. The batch below has the last word (a closure alone still shows).
-                    _state.value = DeparturesUiState.Error(toFetch.firstNotNullOf { failed[it.id] })
-                    coldLoadUnfinished = true
-                    // Said at once, so the grace is over: a closure landing after it shows at once too.
-                    inGrace = false
-                    heldPartial = null
-                } else if (coldLoad && (shown.isNotEmpty() || (failed.isNotEmpty() && waiting.isNotEmpty()))) {
-                    val partial = DeparturesUiState.Loaded(
+                // Worked out here, off the main thread: whichever the screen turns out to show.
+                val allFailed = shown.isEmpty() && waiting.isEmpty() && failed.isNotEmpty()
+                val firstFailure = if (allFailed) toFetch.firstNotNullOf { failed[it.id] } else null
+                val partial = if (allFailed || (shown.isEmpty() && (failed.isEmpty() || waiting.isEmpty()))) {
+                    null
+                } else {
+                    DeparturesUiState.Loaded(
                         stops = shown,
                         fetchedAt = shown.maxOfOrNull { it.fetchedAt } ?: SteadyClock.stamp(now),
                         // The lines the stops declare are vouched for once their check is back; until
@@ -1664,7 +1678,7 @@ class MainViewModel(
                         // in), they're unchecked, as is a stop whose own closure check failed.
                         lineStatuses = progress.lines?.disrupted.orEmpty(),
                         determinedLineIds = progress.lines?.determined.orEmpty(),
-                        disruptionUnknown = progress.lines?.let { disruptionUnknownOf(shown, it.determined, progress.closureUnknown) } ?: true,
+                        disruptionUnknown = progress.lines?.let { disruptionUnknownOf(shown, it.determined, progress.closureUnknown, it.unknown) } ?: true,
                         stopsDisruptionUnknown = progress.closureUnknown,
                         checkFailed = checkFailedOf(shown, progress),
                         pendingStops = toFetch.filter { it.id in waiting },
@@ -1677,15 +1691,35 @@ class MainViewModel(
                             .associate { it.id to DeparturesUiState.FailedStop(it.name, failed.getValue(it.id)) },
                         unavailableStopIds = failed.keys - shown.mapTo(HashSet()) { it.stopId },
                     )
-                    // Every stop's departures in (or failed): painted now, whole, rather than held for
-                    // closure checks still out, which fill in where they land.
-                    if (inGrace && waiting.isNotEmpty()) {
-                        heldPartial = partial
-                    } else {
+                }
+                // Published on the main thread, which only decides what to show.
+                withContext(publisher) {
+                    val current = _state.value
+                    val coldLoad = current is DeparturesUiState.Loading ||
+                        (current is DeparturesUiState.Loaded && (current.statusPending || coldLoadUnfinished)) ||
+                        (current is DeparturesUiState.Error && coldLoadUnfinished)
+                    // The last stop too, so it doesn't wait on the line-status check below. A failure is
+                    // shown even before any stop lands, while others are still out; once none are (every
+                    // stop failed) the batch's own verdict follows at once.
+                    if (coldLoad && firstFailure != null) {
+                        // Every stop's arrivals failed: say so now rather than wait on closure checks
+                        // still out. The batch below has the last word (a closure alone still shows).
+                        _state.value = DeparturesUiState.Error(firstFailure)
+                        coldLoadUnfinished = true
+                        // Said at once, so the grace is over: a closure landing after it shows at once too.
                         inGrace = false
                         heldPartial = null
-                        _state.value = partial
-                        coldLoadUnfinished = true
+                    } else if (coldLoad && partial != null) {
+                        // Every stop's departures in (or failed): painted now, whole, rather than held for
+                        // closure checks still out, which fill in where they land.
+                        if (inGrace && waiting.isNotEmpty()) {
+                            heldPartial = partial
+                        } else {
+                            inGrace = false
+                            heldPartial = null
+                            _state.value = partial
+                            coldLoadUnfinished = true
+                        }
                     }
                 }
             })
@@ -1700,7 +1734,7 @@ class MainViewModel(
             val stopsDisruptionUnknown = batch.stopsDisruptionUnknown
             // Screen-wide "status unknown" derives from the merged set and this batch's provenance
             // ([disruptionUnknownOf]).
-            val disruptionUnknown = disruptionUnknownOf(merged, determinedLineIds, stopsDisruptionUnknown)
+            val disruptionUnknown = disruptionUnknownOf(merged, determinedLineIds, stopsDisruptionUnknown, unknownLineIds)
             val partial = if (anyFreshData) anyArrivalsFailed else priorPartial
 
             val newState = when {

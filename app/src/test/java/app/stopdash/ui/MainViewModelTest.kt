@@ -2,6 +2,8 @@ package app.stopdash.ui
 
 import app.stopdash.domain.ArrivalsCache
 import app.stopdash.domain.Departure
+import kotlinx.coroutines.CoroutineDispatcher
+import app.stopdash.domain.Workers
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DeparturesSnapshot
@@ -57,6 +59,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import kotlin.coroutines.CoroutineContext
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MainViewModelTest {
@@ -68,9 +71,20 @@ class MainViewModelTest {
         StopRef("940GZZLUKSX", "King's Cross St. Pancras"),
     )
 
-    @Before fun setUp() = Dispatchers.setMain(dispatcher)
+    // The worker a cold load's progress is worked out on: the test's own dispatcher, so virtual time
+    // drives it as it does the rest.
+    private var appCompute: CoroutineDispatcher = Workers.compute
 
-    @After fun tearDown() = Dispatchers.resetMain()
+    @Before fun setUp() {
+        Dispatchers.setMain(dispatcher)
+        appCompute = Workers.compute
+        Workers.compute = dispatcher
+    }
+
+    @After fun tearDown() {
+        Workers.compute = appCompute
+        Dispatchers.resetMain()
+    }
 
     private fun departure(lineId: String, lineName: String, offsetSeconds: Long) =
         Departure(
@@ -848,6 +862,46 @@ class MainViewModelTest {
         val done = vm.state.value as DeparturesUiState.Loaded
         assertTrue(done.closurePending.isEmpty())
         assertTrue(done.stops.first { it.stopId == seeds[0].id }.disruptions.isNotEmpty())
+    }
+
+    @Test
+    fun `a cold load's stops are worked out off the main thread as they land`() = runTest(dispatcher) {
+        // A worker of its own, on the test's scheduler, that marks the work it runs.
+        val onWorker = ThreadLocal.withInitial { false }
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) = dispatcher.dispatch(context) {
+                onWorker.set(true)
+                try {
+                    block.run()
+                } finally {
+                    onWorker.set(false)
+                }
+            }
+        }
+        val gate = CompletableDeferred<Unit>()
+        // Whether each stop's merge (which asks when its arrivals were fetched) ran on the worker.
+        val mergedOnWorker = mutableListOf<Boolean>()
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String): List<Departure> {
+                if (stopId == seeds[1].id) gate.await()
+                return listOf(departure("victoria", "Victoria", 120))
+            }
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
+            override fun fetchedAt(stopId: String): Instant? {
+                mergedOnWorker += onWorker.get()
+                return null
+            }
+        }
+        val vm = MainViewModel(client, seeds, clock = { now }, io = dispatcher, compute = worker)
+        advanceTimeBy(FIRST_PAINT_GRACE_MS + 1)
+        runCurrent()
+
+        // The first stop is shown while the second is still out, and was worked out off the main thread.
+        assertEquals(listOf(seeds[0].id), (vm.state.value as DeparturesUiState.Loaded).stops.map { it.stopId })
+        assertTrue("$mergedOnWorker", mergedOnWorker.isNotEmpty() && mergedOnWorker.all { it })
+        gate.complete(Unit)
+        advanceUntilIdle()
     }
 
     @Test
