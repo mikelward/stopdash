@@ -606,6 +606,9 @@
     <!-- In place of Start while another trip is on the way: opens that one. -->
     <string name="on_the_way_open_current">Open current trip</string>
     <string name="on_the_way_start">Start</string>
+    <!-- Asked when Start is tapped while another trip is on the way: that one ends. -->
+    <string name="on_the_way_replace_title">Replace current trip?</string>
+    <string name="on_the_way_replace">Replace</string>
     <string name="on_the_way_end">End trip</string>
     <!-- TODO: translate -->
     <string name="on_the_way_plan_again" tools:ignore="MissingTranslation">Plan again from %1$s</string>

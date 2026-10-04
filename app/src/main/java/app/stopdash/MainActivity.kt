@@ -914,7 +914,13 @@ class MainActivity : ComponentActivity() {
                         onSendBugReport = requestBugReport,
                         onOpenLicenses = openLicenses,
                     ),
-                    LocalOnTheWay provides OnTheWayActions(active = onTheWayTrip != null, open = { onTheWayOpen = true }) { route, destinationName, readyAt, destinations, destinationIds, destinationStopId ->
+                    LocalOnTheWay provides OnTheWayActions(
+                        active = onTheWayTrip != null,
+                        open = { onTheWayOpen = true },
+                        replace = { route, destinationName, readyAt, destinations, destinationIds, destinationStopId ->
+                            startOnTheWay(route, destinationName, readyAt, destinations, destinationIds, destinationStopId, true)
+                        },
+                    ) { route, destinationName, readyAt, destinations, destinationIds, destinationStopId ->
                         startOnTheWay(route, destinationName, readyAt, destinations, destinationIds, destinationStopId, false)
                     },
                     LocalOnTheWayBanner provides onTheWayTrip?.let { trip ->
@@ -2937,6 +2943,9 @@ class MainActivity : ComponentActivity() {
             // keeping where to as chosen, so the trip can be planned again from partway along.
             onStart = LocalOnTheWay.current?.let { onTheWay -> { route -> onTheWay.start(route, toName, Instant.now().plus(access), destinations, destinationIds, toId.orEmpty()) } },
             onOpenTrip = LocalOnTheWay.current?.takeIf { it.active }?.open,
+            onReplaceTrip = LocalOnTheWay.current?.takeIf { it.active }?.replace?.let { replace ->
+                { route -> replace(route, toName, Instant.now().plus(access), destinations, destinationIds, toId.orEmpty()) }
+            },
             onWithheld = trip::noteWithheld,
             onShownStops = trip::checkShownStops,
             onPlacedStands = trip::boardAt,

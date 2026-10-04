@@ -1692,7 +1692,9 @@ them there:
   its pill and a walk by a walker in the pills' column, so every leg's stops line up. A route with a **National Rail** train offers no
   Start but says it can't be followed yet: its times come from National Rail's boards, which name
   no train to follow. **One trip at a time:** while one is on the way, a route offers **Open current
-  trip** in Start's place; the trip is ended from its own screen.
+  trip** beside Start, and Start asks "Replace current trip?" before ending that one and starting
+  this route in its place (maintainer, 2026-10-04): ending a trip can't be undone. A route that
+  can't be followed offers only the open.
 - **The card at the top** leads with the whole trip, then the step at hand, with no labels
   (maintainer, 2026-10-03): where the trip goes ("To Canary Wharf") with, at the end of its row, how
   long is left and when it gets there; then the step ("Walk to Stratford"), the one large line, so it

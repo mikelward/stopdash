@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -27,6 +28,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -34,6 +36,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -295,6 +298,46 @@ internal fun legLoading(state: TripViewModel.State, leg: TripLeg, sequences: Map
  */
 internal fun canStart(route: TripRoute, sequences: Map<String, LineSequence?>, originUnconfirmed: Boolean): Boolean =
     !originUnconfirmed && busesSettled(route, sequences)
+
+/** Whether an open route can be followed on the way at all ([canFollow]), and can start now ([canStart]). */
+internal data class StartCheck(val canFollow: Boolean, val canStart: Boolean)
+
+/** A [StartCheck] with the very inputs it was worked out for, compared by identity so a read never walks them. */
+private class CheckedStart(
+    val route: TripRoute,
+    val sequences: Map<String, LineSequence?>,
+    val originUnconfirmed: Boolean,
+    val check: StartCheck,
+)
+
+/**
+ * [OnTheWay.canFollow] and [canStart] for [route], worked out on the screen's worker ([LocalWorker])
+ * whenever its inputs change: each walks the route, and a bus route's check its line routes' stops,
+ * too much for composition (AGENTS.md *Main thread: read and dispatch only*). Null until worked out
+ * for these very inputs, and with no route: an answer for inputs since changed (a relocation begun,
+ * another route opened) is never read, so Start waits rather than starting on a stale yes.
+ */
+@Composable
+internal fun rememberStartCheck(
+    route: TripRoute?,
+    sequences: Map<String, LineSequence?>,
+    originUnconfirmed: Boolean,
+    follow: (TripRoute) -> Boolean = OnTheWay::canFollow,
+    start: (TripRoute, Map<String, LineSequence?>, Boolean) -> Boolean = ::canStart,
+): StartCheck? {
+    val worker = LocalWorker.current
+    // Keyed by identity, as the guard below reads: a route rebuilt equal on a refresh is checked again,
+    // never left waiting on an answer the guard won't read.
+    val checked by produceState<CheckedStart?>(null, ByIdentity(route), ByIdentity(sequences), originUnconfirmed, worker) {
+        if (route == null) return@produceState
+        val check = withContext(worker) {
+            val canFollow = follow(route)
+            StartCheck(canFollow, canFollow && start(route, sequences, originUnconfirmed))
+        }
+        value = CheckedStart(route, sequences, originUnconfirmed, check)
+    }
+    return checked?.takeIf { it.route === route && it.sequences === sequences && it.originUnconfirmed == originUnconfirmed }?.check
+}
 
 /**
  * [state] with each route's legs [onPoles] — where the trip fetches the chosen pole: one of its
@@ -717,8 +760,10 @@ internal fun TripScreen(
     onDismissWriteFailureShown: () -> Unit = {},
     // Start an open route on the way (SPEC *On the way*); null offers no Start.
     onStart: ((TripRoute) -> Unit)? = null,
-    // With a trip already on the way, open it in Start's place rather than replace it.
+    // With a trip already on the way, open it beside Start, whose tap then asks before this route
+    // takes its place ([onReplaceTrip]; null offers only the open).
     onOpenTrip: (() -> Unit)? = null,
+    onReplaceTrip: ((TripRoute) -> Unit)? = null,
     // Why each timed route's arrival is withheld (null: it shows), by route key, for the debug log
     // ([TripViewModel.noteWithheld]).
     onWithheld: (Map<String, TripTiming.Withheld?>) -> Unit = {},
@@ -781,6 +826,7 @@ internal fun TripScreen(
             TripAlerts(dismissed, onDismissAlert, dismissWriteFailed, onDismissWriteFailureShown),
             onStart,
             onOpenTrip,
+            onReplaceTrip,
             onWithheld,
             walkingSpeed,
             onWalkingSpeedChange,
@@ -864,6 +910,7 @@ private fun TripContent(
     alerts: TripAlerts = TripAlerts(emptySet(), null, false) {},
     onStart: ((TripRoute) -> Unit)? = null,
     onOpenTrip: (() -> Unit)? = null,
+    onReplaceTrip: ((TripRoute) -> Unit)? = null,
     onWithheld: (Map<String, TripTiming.Withheld?>) -> Unit = {},
     walkingSpeed: WalkingSpeed = WalkingSpeed.AVERAGE,
     onWalkingSpeedChange: ((WalkingSpeed) -> Unit)? = null,
@@ -1138,20 +1185,80 @@ private fun TripContent(
             snackbarHostState.showSnackbar(tripModesWriteFailedMessage)
         }
     }
+    // The key of the route whose Start is asking to take the trip on the way's place, until answered:
+    // saved, so a rotation keeps the question, and asked only while that route is the one open
+    // ([openKey], already its key, so nothing is rebuilt here or on the tap).
+    var confirmReplace by rememberSaveable { mutableStateOf<String?>(null) }
+    // The question is about the trip on the way when it was asked: once that trip ends here (arrived,
+    // ended elsewhere), it goes, so a trip started next never reopens it. Not on a restored screen's
+    // first frame, where no trip is known yet; a plain Start below clears it for that case.
+    val replaceAvailable = onReplaceTrip != null
+    var hadReplace by remember { mutableStateOf(replaceAvailable) }
+    LaunchedEffect(replaceAvailable) {
+        if (hadReplace && !replaceAvailable) confirmReplace = null
+        hadReplace = replaceAvailable
+    }
+    // Whether the open route can be followed, and start now, for Start and Replace alike: not known
+    // (null) until worked out for what's shown now, when Start shows but waits.
+    val startCheck = rememberStartCheck(open?.route, sequences, originUnconfirmed)
+    val openCanStart = startCheck?.canStart == true
+    // Only a route known not to be followable drops Start: one not worked out yet keeps its place.
+    val cantFollow = startCheck?.canFollow == false
+    val replacement = open?.route?.takeIf { onReplaceTrip != null && confirmReplace != null && confirmReplace == openKey }
+    if (replacement != null) {
+        AlertDialog(
+            onDismissRequest = { confirmReplace = null },
+            title = { Text(stringResource(R.string.on_the_way_replace_title)) },
+            confirmButton = {
+                // As Start: not until the route can be followed, which a restored screen may not
+                // know yet (its buses' stands still loading).
+                TextButton(
+                    onClick = {
+                        confirmReplace = null
+                        onReplaceTrip?.invoke(replacement)
+                    },
+                    enabled = openCanStart,
+                ) { Text(stringResource(R.string.on_the_way_replace)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmReplace = null }) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         // An open route starts on the way from here: followed by its train to the destination. Above
         // the system navigation bar, as the app draws edge to edge.
         bottomBar = {
             if (open != null && onStart != null && onOpenTrip != null) {
-                // One trip at a time: the one on the way is ended from its own screen.
-                Button(
-                    onClick = onOpenTrip,
-                    modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp).height(56.dp),
+                // One trip at a time: the one on the way opens, or this route takes its place once the
+                // rider says so, since ending it can't be undone. A route that can't be followed only opens.
+                val replace = onReplaceTrip?.takeIf { !cantFollow }
+                // At least 56dp, growing as one for a label that wraps (a large font, a narrow phone),
+                // so neither is clipped and both stay the same height.
+                Row(
+                    modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp).height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Text(stringResource(R.string.on_the_way_open_current))
+                    val openModifier = Modifier.heightIn(min = 56.dp).fillMaxHeight().let { if (replace != null) it.weight(1f) else it.fillMaxWidth() }
+                    if (replace == null) {
+                        Button(onClick = onOpenTrip, modifier = openModifier) {
+                            Text(stringResource(R.string.on_the_way_open_current))
+                        }
+                    } else {
+                        OutlinedButton(onClick = onOpenTrip, modifier = openModifier) {
+                            Text(stringResource(R.string.on_the_way_open_current))
+                        }
+                        Button(
+                            onClick = { confirmReplace = openKey },
+                            enabled = openCanStart,
+                            modifier = Modifier.weight(1f).heightIn(min = 56.dp).fillMaxHeight(),
+                        ) {
+                            Text(stringResource(R.string.on_the_way_start))
+                        }
+                    }
                 }
-            } else if (open != null && onStart != null && !OnTheWay.canFollow(open.route)) {
+            } else if (open != null && onStart != null && cantFollow) {
                 Text(
                     stringResource(R.string.on_the_way_cant_follow_rail),
                     modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp),
@@ -1160,8 +1267,11 @@ private fun TripContent(
                 )
             } else if (open != null && onStart != null) {
                 Button(
-                    onClick = { onStart(open.route) },
-                    enabled = canStart(open.route, sequences, originUnconfirmed),
+                    onClick = {
+                        confirmReplace = null
+                        onStart(open.route)
+                    },
+                    enabled = openCanStart,
                     modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp).height(56.dp),
                 ) {
                     Text(stringResource(R.string.on_the_way_start))
