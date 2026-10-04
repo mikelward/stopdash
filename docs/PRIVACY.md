@@ -269,6 +269,10 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
   distances would pin down where you were),
 - on a trip on the way, **what a location fix saw you at** when it moved the trip on — the stop's
   placed point or one of the station's entrances — never which stop, how far, or where,
+- on a ride followed by where you're seen (no train matched), **how far along it each fix placed
+  you**, as a stop count ("stop 5 of 9", or not placed) with the fix's accuracy radius; and when a
+  "get off soon" alert is shown, the stops left and whether they were counted from the train
+  followed or from where you were seen — never which stop, or where,
 - **per-refresh request counts and timing**: how many TfL requests a refresh made, of which
   kinds, how long it took, and how long it waited on the app's own rate limit — counts and
   milliseconds only, no stop or place,

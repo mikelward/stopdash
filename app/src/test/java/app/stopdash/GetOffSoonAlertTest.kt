@@ -55,6 +55,19 @@ class GetOffSoonAlertTest {
         assertTrue(posted.flags and android.app.Notification.FLAG_ONLY_ALERT_ONCE != 0)
         val open = shadowOf(posted.contentIntent).savedIntent
         assertTrue(open.getBooleanExtra(GetOffSoonAlert.EXTRA_OPEN_ON_THE_WAY, false))
+        // Logged as shown, so a report can tell one heard from one never posted; no stop named.
+        assertEquals("on the way: get-off alert shown, 1 stop left, by train", logged.single())
+    }
+
+    @Test
+    fun `one counted from where the rider was seen is logged as such`() {
+        shadowOf(app).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        val along = riding.copy(getOffAt = null, byPosition = true)
+        assertTrue(GetOffSoonAlert.post(app, trip, along, now, logged::add))
+        assertEquals("on the way: get-off alert shown, 1 stop left, by where seen", logged.single())
+        // Counted from the train's calls with the stop beyond its predictions: still by the train.
+        GetOffSoonAlert.post(app, trip, riding.copy(getOffAt = null), now, logged::add)
+        assertEquals("on the way: get-off alert shown, 1 stop left, by train", logged.last())
     }
 
     @Test

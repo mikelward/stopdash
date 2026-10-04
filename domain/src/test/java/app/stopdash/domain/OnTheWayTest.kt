@@ -2102,4 +2102,19 @@ class OnTheWayTest {
         // The other-branch train going changes nothing said; every other one does.
         assertEquals(listOf(at(2), at(3), at(6), at(7), at(9)), placed.changes)
     }
+
+    @Test
+    fun `where a fix placed a rider seen along the ride is logged as a stop count, never a stop`() {
+        val long = ride.copy(path = listOf("B", "X", "C"))
+        val onBoard = trip.copy(onBoardSeen = true, boarded = true, seenAlongStop = 1)
+        assertEquals("on the way: seen at stop 2 of 3, fix accuracy 46 m", OnTheWay.seenAlongNote(onBoard, long, OnTheWay.Along(1, atStop = true), 46f))
+        assertEquals("on the way: seen short of stop 3 of 3, fix accuracy 20 m", OnTheWay.seenAlongNote(onBoard, long, OnTheWay.Along(2, atStop = false), 20f))
+        assertEquals("on the way: not placed along the ride, fix accuracy unknown", OnTheWay.seenAlongNote(onBoard, long, null, null))
+        // Seen where they get off: whether "get off soon" was said for the leg first.
+        val end = OnTheWay.Along(3, atStop = true, atEnd = true)
+        assertEquals("on the way: seen where they get off, get-off alert not said, fix accuracy 49 m", OnTheWay.seenAlongNote(onBoard, long, end, 49f))
+        assertEquals("on the way: seen where they get off, get-off alert said, fix accuracy 49 m", OnTheWay.seenAlongNote(onBoard.copy(warnedLeg = 0), long, end, 49f))
+        // A ride with no stops planned has none to count, not "stop 1 of 0".
+        assertEquals("on the way: seen along the ride, stops not counted, fix accuracy 30 m", OnTheWay.seenAlongNote(onBoard, long.copy(path = emptyList()), OnTheWay.Along(0, atStop = false), 30f))
+    }
 }

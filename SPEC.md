@@ -2957,8 +2957,10 @@ destination TfL shows for a train or bus whose route couldn't be checked (its te
 where the rider gets off: the ids alone can't say which working the routes don't model;
 maintainer, 2026-10-04), a failed Play update check's exception class, or a slow request's timing (who it went to, its
 endpoint with every identifier left out, its connection and answer times, a failed connect's
-address family and exception class, a wait for a request slot) — never a raw coordinate, anything
-typed, or the user's API key.
+address family and exception class, a wait for a request slot), or, on a ride followed by where the
+rider is seen, how far along it each fix placed them as a stop count ("stop 5 of 9") with the fix's
+accuracy, and a "get off soon" shown with its stops left and what they're counted from (maintainer,
+2026-10-04) — never a raw coordinate, anything typed, or the user's API key.
 
 **The Wear OS watch sync** (dev-docs/wear-os.md; maintainer, 2026-09-24): when a paired watch has
 the StopDash watch app, the phone sends it the widget's snapshot — its stops' names and IDs, their
