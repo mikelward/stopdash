@@ -2433,14 +2433,21 @@ Builds on Phase 1's minimal line-status marking.
       and cancellations of specific services where TfL exposes them.
 - [ ] Rich in-app disruption text; mark a disrupted line/stop even when predictions look
       normal (D3). Domain summarization JVM-tested.
-- [ ] **A trip's disruptions row is one line, with every line's status a tap away** (maintainer,
-      2026-10-04). The row shows the chips that fit, then "+N more", so it never wraps and pushes the
-      routes down (Codex, PR #543); it bounds the pills composed on the main thread too. An expand
-      button, always there, opens every line the trip rides with its status, disruptions at the top:
-      one row per line, showing that line's worst-severity status (maintainer, 2026-10-04), and the
-      lines whose trains couldn't be checked marked as such.
-      First try a bottom sheet (maintainer prefers against them but asked to try it); a full-screen
-      page is the fallback.
+- [ ] **A trip's disruptions row is one line** (maintainer, 2026-10-04). The row shows the chips that
+      fit, then "+N more", so it never wraps and pushes the routes down (Codex, PR #543); it bounds the
+      pills composed on the main thread too. The sheet below already lists everything the row cuts.
+- [x] **Every line a trip rides, with its status, a tap on the disruptions row away** (maintainer,
+      2026-10-04). Done as a page of its own (`TripLinesPage`, worked out with the row on the worker:
+      `tripLines`): one row per line with its worst-severity status, disruptions first, dismissed ones
+      toned down, unchecked lines marked with what that means, then the row's stops; a disrupted line's
+      reason on its own page. A sheet was tried first; the maintainer chose a full-screen dialog.
+  - [ ] **Open the lines page from the home screen too** (maintainer, 2026-10-04): the page reads only
+        the lines it's given and the app's menu, so the home screen supplies its own.
+  - [ ] **Check a bug report sent from the lines page** on a device: the report's screenshot is taken
+        of the app's window, which may leave out the dialog's.
+- [ ] **Route pages show station notices for the stations a ride boards and gets off at**
+      (maintainer, 2026-10-04). A line page can read "No disruptions reported" while the station it
+      boards at has a notice in force (an escalator out, say); the stop's own notice belongs there too.
 - [ ] **"Some routes couldn't be checked" moves the trip list when it comes or goes** (Codex, PR #543).
       Once the list is showing, a refresh that turns a check from checking to couldn't-check inserts
       the banner over the routes (after its 1.5 s hold), shifting every card; the reverse removes it.

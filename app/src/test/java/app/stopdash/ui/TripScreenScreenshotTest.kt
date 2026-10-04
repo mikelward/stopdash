@@ -2784,7 +2784,7 @@ class TripScreenScreenshotTest {
         show(planned.copy(routes = listOf(viaCanadaWater, byTestLine)), routeStops = RouteStopsRepository(withTestLine))
         // The card's pill names both lines as one ("Windrush or Test Line").
         composeRule.onAllNodes(
-            hasClickAction() and hasContentDescription("Test Line", substring = true) and hasContentDescription("Jubilee"),
+            hasClickAction() and hasContentDescription("Test Line", substring = true) and hasContentDescription("Jubilee") and !hasTestTag("tripDisruptions"),
         ).onFirst().performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(1)
@@ -2810,7 +2810,7 @@ class TripScreenScreenshotTest {
         val withTrain = live + (highbury.first to atHighbury.copy(departures = atHighbury.departures + train("testline", "Test Line", "overground", "Canada Water", 4, "Platform 2")))
         show(planned.copy(routes = listOf(viaCanadaWater, byTestLine), live = withTrain), routeStops = RouteStopsRepository(withTestLine))
         composeRule.onAllNodes(
-            hasClickAction() and hasContentDescription("Test Line", substring = true) and hasContentDescription("Jubilee"),
+            hasClickAction() and hasContentDescription("Test Line", substring = true) and hasContentDescription("Jubilee") and !hasTestTag("tripDisruptions"),
         ).onFirst().performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(1)
@@ -3493,6 +3493,177 @@ class TripScreenScreenshotTest {
         inRow(hasText("None")).assertExists()
         // A pill coming or going never moves the cards under the row (Codex, #543).
         assertEquals(withPill, composeRule.onNodeWithTag("tripDisruptions").fetchSemanticsNode().size.height)
+    }
+
+    @Test
+    fun the_disruptions_row_opens_every_line_with_its_status() {
+        val lines = planned.routes.orEmpty().flatMap { route -> route.rides.map { it.lineId } } +
+            planned.live.values.flatMap { stop -> stop.departures.map { it.lineId } }
+        val running = planned.copy(statuses = lines.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") })
+        val disrupted = running.copy(statuses = running.statuses + ("jubilee" to LineStatus("jubilee", 9, "Minor Delays")))
+        show(disrupted, worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
+        inRow(hasContentDescription("Jubilee")).assertExists()
+        composeRule.onNodeWithTag("tripDisruptions").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Line status").assertExists()
+        // The disrupted line heads the page, the rest under it with a good service.
+        composeRule.onNode(hasText("Minor Delays") and hasAnyAncestor(hasTestTag("tripLines")), useUnmergedTree = true).assertExists()
+        composeRule.onAllNodes(hasText("Good service") and hasAnyAncestor(hasTestTag("tripLines")), useUnmergedTree = true)
+            .fetchSemanticsNodes().let { assertTrue(it.isNotEmpty()) }
+    }
+
+    @Test
+    fun a_walking_trip_s_lines_page_says_it_has_no_lines_not_checking() {
+        composeRule.setContent { StopDashTheme { Surface { TripLinesContent(TripRow(checking = false)) } } }
+        composeRule.onNodeWithText("No lines on this trip").assertExists()
+        composeRule.onAllNodes(hasText("Checking…")).assertCountEquals(0)
+    }
+
+    @Test
+    fun a_line_turning_disrupted_never_moves_the_lines_under_it() {
+        fun line(id: String, name: String, status: LineStatus) =
+            TripLine(leg("tube", id, name, "A" to "King's Cross", "B" to "Euston", 0, 10, 2), status)
+        val good = TripRow(
+            checking = false,
+            every = listOf(line("jubilee", "Jubilee", LineStatus("jubilee", LineStatus.GOOD_SERVICE, "Good Service")), line("victoria", "Victoria", LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service"))),
+        )
+        var row by mutableStateOf(good)
+        composeRule.setContent { StopDashTheme { Surface { TripLinesContent(row) } } }
+        val below = { composeRule.onNode(hasContentDescription("Victoria"), useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top }
+        val before = below()
+        // The Jubilee's check lands disrupted, with TfL's reason: it opens only on a tap (Codex, #559).
+        row = TripRow(checking = false, every = listOf(line("jubilee", "Jubilee", LineStatus("jubilee", 6, "Severe Delays", fullText = "Jubilee line: Severe delays while we fix a signal failure.")), good.every[1]))
+        composeRule.waitForIdle()
+        assertEquals(before, below())
+        composeRule.onNodeWithText("Jubilee line: Severe delays while we fix a signal failure.").assertDoesNotExist()
+        // Only on its own page, a tap away.
+        composeRule.onAllNodes(hasClickAction() and hasText("Severe Delays")).assertCountEquals(0)
+    }
+
+    @Test
+    fun a_disrupted_line_opens_its_reason_on_a_page_and_back_returns_to_the_lines() {
+        fun line(id: String, name: String, status: LineStatus) =
+            TripLine(leg("tube", id, name, "A" to "King's Cross", "B" to "Euston", 0, 10, 2), status)
+        val row = TripRow(
+            checking = false,
+            every = listOf(
+                line("jubilee", "Jubilee", LineStatus("jubilee", 6, "Severe Delays", fullText = "Jubilee line: Severe delays while we fix a signal failure.")),
+                line("victoria", "Victoria", LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service")),
+            ),
+        )
+        composeRule.setContent { StopDashTheme { TripLinesPage(row, onClose = {}) } }
+        composeRule.onNodeWithText("Line status").assertExists()
+        composeRule.onNodeWithText("Jubilee line: Severe delays while we fix a signal failure.").assertDoesNotExist()
+        composeRule.onNodeWithText("Severe Delays").performClick()
+        composeRule.onNodeWithText("Jubilee line: Severe delays while we fix a signal failure.").assertExists()
+        composeRule.onAllNodes(hasContentDescription("Victoria"), useUnmergedTree = true).assertCountEquals(0)
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        composeRule.onNodeWithText("Line status").assertExists()
+        composeRule.onNodeWithText("Jubilee line: Severe delays while we fix a signal failure.").assertDoesNotExist()
+    }
+
+    @Test
+    fun a_restored_lines_page_shows_nothing_until_its_order_is_in() {
+        val row = TripRow(checking = false, stops = "Euston", every = emptyList())
+        composeRule.setContent { StopDashTheme { Surface { TripLinesContent(row, lines = null) } } }
+        // The notices under the lines wait with them (Codex, #559).
+        composeRule.onNodeWithText("Stop notices: Euston").assertDoesNotExist()
+    }
+
+    @Test
+    fun a_restored_lines_page_shows_its_saved_lines_at_once() {
+        val row = TripRow(checking = false, stops = "Euston", every = emptyList())
+        val pills = listOf("jubilee", "Jubilee", "tube", "victoria", "Victoria", "tube")
+        composeRule.setContent { StopDashTheme { Surface { TripLinesContent(row, lines = null, pending = pills) } } }
+        // Never a blank page (Codex, #559): each saved line in its saved place, claiming no status.
+        composeRule.onAllNodes(hasContentDescription("Jubilee"), useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onAllNodes(hasText("Checking…"), useUnmergedTree = true).assertCountEquals(0)
+        composeRule.onAllNodes(hasText("Good service"), useUnmergedTree = true).assertCountEquals(0)
+        composeRule.onNodeWithText("Stop notices: Euston").assertDoesNotExist()
+    }
+
+    @Test
+    fun the_lines_page_carries_the_app_menu() {
+        val menu = AppMenuActions(updateAvailable = false, onOpenAppListing = {}, onSendBugReport = {}, onOpenLicenses = {})
+        composeRule.setContent {
+            StopDashTheme { CompositionLocalProvider(LocalAppMenu provides menu) { TripLinesPage(TripRow(checking = false), onClose = {}) } }
+        }
+        composeRule.onNodeWithContentDescription(composeRule.activity.getString(R.string.menu_more)).performClick()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.menu_send_bug_report)).assertExists()
+    }
+
+    @Test
+    fun a_reason_page_restored_while_the_trip_checks_again_never_shows_its_saved_reason() {
+        fun line(id: String, name: String, status: LineStatus) =
+            TripLine(leg("tube", id, name, "A" to "King's Cross", "B" to "Euston", 0, 10, 2), status)
+        var row by mutableStateOf(
+            TripRow(
+                checking = false,
+                every = listOf(line("jubilee", "Jubilee", LineStatus("jubilee", 6, "Severe Delays", fullText = "Jubilee line: Severe delays while we fix a signal failure."))),
+            ),
+        )
+        val held = java.util.concurrent.Executor { }.asCoroutineDispatcher()
+        val restoration = StateRestorationTester(composeRule)
+        var worker: CoroutineDispatcher by mutableStateOf(java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
+        restoration.setContent { StopDashTheme { CompositionLocalProvider(LocalWorker provides worker) { TripLinesPage(row, onClose = {}) } } }
+        composeRule.onNodeWithText("Severe Delays").performClick()
+        composeRule.onNodeWithText("Jubilee line: Severe delays while we fix a signal failure.").assertExists()
+        // The app closed and came back: the trip checks again from nothing (Codex, #559).
+        worker = held
+        row = TripRow.CHECKING
+        restoration.emulateSavedInstanceStateRestore()
+        composeRule.onNodeWithText("Jubilee line: Severe delays while we fix a signal failure.").assertDoesNotExist()
+        composeRule.onNodeWithText("Checking…").assertExists()
+    }
+
+    @Test
+    fun a_reason_page_stays_up_through_a_rotation() {
+        fun line(id: String, name: String, status: LineStatus) =
+            TripLine(leg("tube", id, name, "A" to "King's Cross", "B" to "Euston", 0, 10, 2), status)
+        val row = TripRow(
+            checking = false,
+            every = listOf(
+                line("jubilee", "Jubilee", LineStatus("jubilee", 6, "Severe Delays", fullText = "Jubilee line: Severe delays while we fix a signal failure."))
+                    .copy(quieted = LineStatus("jubilee", 3, "Part Suspended", fullText = "No service between two stations.")),
+            ),
+        )
+        val held = java.util.concurrent.Executor { }.asCoroutineDispatcher()
+        val restoration = StateRestorationTester(composeRule)
+        var worker: CoroutineDispatcher by mutableStateOf(java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
+        restoration.setContent { StopDashTheme { CompositionLocalProvider(LocalWorker provides worker) { TripLinesPage(row, onClose = {}) } } }
+        composeRule.onNodeWithText("Severe Delays").performClick()
+        composeRule.onNodeWithText("Jubilee line: Severe delays while we fix a signal failure.").assertExists()
+        // Rotated, with the worker that applies the saved order held: the reason page stays, titled,
+        // never the lines for a moment (Codex, #559).
+        worker = held
+        restoration.emulateSavedInstanceStateRestore()
+        composeRule.onNodeWithText("Line status").assertDoesNotExist()
+        composeRule.onNodeWithText("Jubilee").assertExists()
+        // The reason the rider was reading stays (Codex, #559).
+        composeRule.onNodeWithText("Jubilee line: Severe delays while we fix a signal failure.").assertExists()
+        // So does the dismissed alert's reason under it (Codex, #559).
+        composeRule.onNodeWithText("No service between two stations.").assertExists()
+    }
+
+    @Test
+    fun trip_lines() {
+        fun line(mode: String, id: String, name: String) = leg(mode, id, name, "A" to "King's Cross", "B" to "Euston", 0, 10, 2)
+        val row = TripRow(
+            checking = false,
+            every = listOf(
+                TripLine(
+                    line("tube", "jubilee", "Jubilee"),
+                    LineStatus("jubilee", 6, "Severe Delays", fullText = "Jubilee line: Severe delays while we fix a signal failure. Tickets are accepted on local buses."),
+                ),
+                TripLine(line("tube", "victoria", "Victoria"), LineStatus("victoria", 9, "Minor Delays"), dismissed = true),
+                TripLine(line("tube", "northern", "Northern"), null, unknown = true),
+                TripLine(line("tube", "central", "Central"), LineStatus("central", LineStatus.GOOD_SERVICE, "Good Service")),
+            ),
+            unknown = true,
+        )
+        composeRule.setContent { StopDashTheme { Surface { TripLinesContent(row, modifier = Modifier.padding(vertical = 16.dp)) } } }
+        composeRule.onNodeWithText("Couldn't check").assertIsDisplayed()
+        captureSnapshot("trip-lines.png")
     }
 
     @Test

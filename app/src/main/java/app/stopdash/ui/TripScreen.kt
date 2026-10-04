@@ -4,6 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.annotation.WorkerThread
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,9 +32,16 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.Dialog
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
@@ -125,6 +134,7 @@ import app.stopdash.domain.RouteStops
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.StopArrivals
+import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.cleanDisruptionBody
 import app.stopdash.domain.StopGroup
@@ -2996,11 +3006,25 @@ internal class TripRow(
     val unknown: Boolean = false,
     val unknownLines: List<TripLeg> = emptyList(),
     val unknownStops: String = "",
+    // Every line the cards ride, each with its status, as the row's lines page lists them ([TripLine]).
+    val every: List<TripLine> = emptyList(),
 ) {
+    /** Whether a line in [every] couldn't be checked: the page's note says so, not for a stop alone. */
+    val linesUnknown: Boolean = every.any { it.unknown }
+
+    /**
+     * [every]'s line ids, in order, and each line's pill (id, name, mode in turn): what the lines page
+     * saves as it opens, worked out with the row, so a rotation before its own worker answers keeps the
+     * order it opened with (Codex, #559).
+     */
+    val everyIds: ArrayList<String> = every.mapTo(ArrayList(every.size)) { it.leg.lineId }
+    val everyPills: ArrayList<String> = ArrayList<String>(every.size * 3).apply { every.forEach { add(it.leg.lineId); add(it.leg.lineName); add(it.leg.mode) } }
+
     /** Whether [other] draws the same: on the worker only, as it walks both. */
     @WorkerThread
     fun sameAs(other: TripRow?): Boolean = other != null && checking == other.checking && unknown == other.unknown &&
-        stops == other.stops && unknownStops == other.unknownStops && lines == other.lines && unknownLines == other.unknownLines
+        stops == other.stops && unknownStops == other.unknownStops && lines == other.lines && unknownLines == other.unknownLines &&
+        every == other.every
 
     companion object {
         /** "Checking…" alone: before the first row is worked out, or once the last is too old to show. */
@@ -3057,10 +3081,140 @@ internal fun tripRow(
     )
     val disrupted = lines.values.toList()
     val closed = stops.joinToString(", ")
-    if (note == true || routesChecking) return TripRow(checking = true, lines = disrupted, stops = closed)
-    if (note == null) return TripRow(checking = false, lines = disrupted, stops = closed)
+    val checking = note == true || routesChecking
+    if (checking || note == null) {
+        return TripRow(checking, lines = disrupted, stops = closed, every = tripLines(cards, rideLines, state, now, sequences, dismissed, lines.keys, checking, emptySet()))
+    }
     val (unknownLines, unknownStops) = unchecked(estimates, state, now, sequences, rideLines)
-    return TripRow(false, disrupted, closed, unknown = true, unknownLines = unknownLines, unknownStops = unknownStops.joinToString(", "))
+    val every = tripLines(cards, rideLines, state, now, sequences, dismissed, lines.keys, false, unknownLines.mapTo(HashSet()) { it.lineId })
+    return TripRow(false, disrupted, closed, unknown = true, unknownLines = unknownLines, unknownStops = unknownStops.joinToString(", "), every = every)
+}
+
+/**
+ * A line a trip rides, as the disruptions row's page lists it (maintainer, 2026-10-04): its pill
+ * ([leg]) and the worst [status] any card shows for it, null while none is known. [dismissed] when
+ * the rider dismissed that alert, so the row leaves it out but the page still says it's there;
+ * [checking] while its status is still being checked, [unknown] once its check couldn't be made, even
+ * with a [status] kept from before.
+ */
+internal data class TripLine(
+    val leg: TripLeg,
+    val status: LineStatus?,
+    val dismissed: Boolean = false,
+    val checking: Boolean = false,
+    val unknown: Boolean = false,
+    // No longer among the trip's lines since the page opened: its place kept, saying so ([inOpenedOrder]).
+    val gone: Boolean = false,
+    // A worse alert on the line than [status] that the rider dismissed, while [status] still stands.
+    val quieted: LineStatus? = null,
+    // A stand-in while a restored page's order is applied: its pill alone, claiming no status.
+    val restoring: Boolean = false,
+) {
+    /** Whether the page shows [status]'s disruption: a line kept from before still warns of it. */
+    val disrupted: Boolean get() = status?.disrupted == true
+
+    /**
+     * TfL's reason for the disruption shown, null when there's none to show: worked out once, with the
+     * line, on the worker, so the page only reads it (Codex, #559).
+     */
+    val reason: String? = status?.takeIf { it.disrupted }?.fullText?.takeIf { it.isNotBlank() }
+
+    /** TfL's reason for the [quieted] alert, null when there's none to show. */
+    val quietedReason: String? = quieted?.fullText?.takeIf { it.isNotBlank() }
+}
+
+/**
+ * Worst first: a disruption over a good service, then a line not running over one running worse than
+ * usual, as a trip ranks them ([RouteDisruption.tierOf]: TfL's numbers alone put severe delays, 6, ahead
+ * of a closure, 20; Codex, #559), then TfL's graded statuses over a catch-all, then by severity.
+ */
+private val worstFirst = compareBy<LineStatus>(
+    { !it.disrupted },
+    { when (RouteDisruption.tierOf(it.severity)) { RouteDisruption.Tier.HIGH -> 0; RouteDisruption.Tier.MEDIUM -> 1; null -> 2 } },
+    { it.isFallback },
+    { it.severity },
+)
+
+/**
+ * Every line [cards] ride, once each, for the disruptions row's page ([TripLine]): the row's
+ * disrupted lines ([shown]) first, worst first, then the disruptions the rider dismissed, then the
+ * lines that couldn't be checked ([unknown]) or are still being checked ([checking]), then the rest.
+ * Each line shows the worst status any card shows for it: one card's ride can see a direction's
+ * alert another's doesn't ([cardStatuses]). Walks every card's rides: on a worker only.
+ */
+@WorkerThread
+internal fun tripLines(
+    cards: List<List<TripTiming.Estimate>>,
+    rideLines: Map<TripLeg, RideLines>,
+    state: TripViewModel.State,
+    now: Instant,
+    sequences: Map<String, LineSequence?>,
+    dismissed: Set<DismissedAlert>,
+    shown: Set<String>,
+    checking: Boolean,
+    unknown: Set<String>,
+): List<TripLine> {
+    val legs = LinkedHashMap<String, TripLeg>()
+    // Per line, the worst status as the cards show it (less what was dismissed), and as TfL gave it.
+    val worstShown = HashMap<String, LineStatus>()
+    val worstRaw = HashMap<String, LineStatus>()
+    // Per line, the worst alert a card's rider dismissed there, kept apart: tied with one standing on
+    // another card, it would otherwise never be named (Codex, #559).
+    val worstDismissed = HashMap<String, LineStatus>()
+    fun keep(into: HashMap<String, LineStatus>, id: String, status: LineStatus?) {
+        if (status == null) return
+        val held = into[id]
+        if (held == null || worstFirst.compare(status, held) < 0) into[id] = status
+    }
+    for (card in cards) {
+        val raw = cardStatuses(card, rideLines, state, now, sequences)
+        val statuses = shownStatuses(raw, dismissed)
+        for (leg in card.first().route.rides.indices.flatMap { cardRideLines(card, it, rideLines) }) {
+            if (leg.lineId.isBlank()) continue
+            legs.putIfAbsent(leg.lineId, pillNamed(leg))
+            keep(worstShown, leg.lineId, statuses[leg.lineId])
+            keep(worstRaw, leg.lineId, raw[leg.lineId])
+            val was = raw[leg.lineId]
+            val left = statuses[leg.lineId]
+            if (was != null && was.disrupted && (left == null || DismissedAlert.ofLineStatus(was) != DismissedAlert.ofLineStatus(left))) {
+                keep(worstDismissed, leg.lineId, was)
+            }
+        }
+    }
+    val current = rideStatuses(state)
+    val lines = legs.values.map { leg ->
+        val id = leg.lineId
+        // A status past its age ([Staleness]) is no current check either (Codex, #559): kept from before,
+        // it never reads as a good service now.
+        val inDoubt = id in state.statusUnknown || id !in current || !checkCurrent(state.statusesAt[id], now)
+        // TfL left it out of an answer already in: not still being checked, whatever else is (Codex, #559).
+        val omitted = id in state.statusOmitted
+        val raw = worstRaw[id]
+        val status = if (id in shown) worstShown[id] else raw
+        // A line whose latest check failed couldn't be checked until one succeeds, whatever else keeps
+        // the row checking: a refresh can go on for another line after its request failed (Codex, #559).
+        val pending = checking && inDoubt && id !in state.statusFailedLines && !omitted
+        TripLine(
+            leg = leg,
+            status = status,
+            dismissed = id !in shown && raw?.disrupted == true,
+            // A worse alert the rider dismissed while a milder one stands: still named (Codex, #559).
+            // As bad as the one standing counts too, if it's another alert (Codex, #559).
+            quieted = worstDismissed[id]?.takeIf {
+                id in shown && status != null && worstFirst.compare(it, status) <= 0 &&
+                    DismissedAlert.ofLineStatus(it) != DismissedAlert.ofLineStatus(status)
+            },
+            checking = pending,
+            // A finished check names what it couldn't check; a line with no current status is never
+            // passed off as a good service, whatever the note says.
+            unknown = id in unknown || (inDoubt && !pending),
+        )
+    }
+    return lines.sortedWith(
+        compareBy<TripLine>(
+            { if (it.disrupted && !it.dismissed) 0 else if (it.disrupted) 1 else if (it.unknown) 2 else if (it.checking) 3 else 4 },
+        ).thenComparator { a, b -> if (a.disrupted && b.disrupted) worstFirst.compare(checkNotNull(a.status), checkNotNull(b.status)) else 0 },
+    )
 }
 
 /**
@@ -3117,40 +3271,375 @@ private fun rememberTripRow(
  * The row over a trip's routes, always there so nothing under it moves as the checks land
  * (maintainer, 2026-10-04): "Disruptions:", then each disrupted line's pill and each closed stop,
  * then the check's word: "Checking…" while it runs, "Unknown:" and what it couldn't check (in red,
- * lines as their pills) when it couldn't, else "None" when there's nothing to show.
+ * lines as their pills) when it couldn't, else "None" when there's nothing to show. A tap, with its
+ * chevron always there, opens every line the trip rides with its status ([TripLinesPage]).
  */
 @Composable
 private fun DisruptionsRow(row: TripRow) {
     val style = MaterialTheme.typography.bodyMedium
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    var open by rememberSaveable { mutableStateOf(false) }
     // The row is at least a pill tall, whatever it says, so "Checking…" or "None" turning into a pill
     // never pushes the cards down (Codex, #543): a pill nobody sees sets the height.
-    Box(contentAlignment = Alignment.CenterStart, modifier = Modifier.testTag("tripDisruptions")) {
-        LinePill("", "", "bus", Modifier.alpha(0f).clearAndSetSemantics {}.padding(vertical = 4.dp))
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-            itemVerticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        ) {
-            Text(stringResource(R.string.trip_disruptions_label), style = style, color = muted)
-            row.lines.forEach { LinePill(it.lineName, it.lineId, it.mode) }
-            if (row.stops.isNotEmpty()) Text(row.stops, style = style)
-            when {
-                row.checking -> Text(stringResource(R.string.trip_disruptions_checking), style = style, color = muted)
-                // What couldn't be checked, after "Unknown:", as the disrupted are drawn (maintainer, 2026-10-04).
-                row.unknown -> {
-                    val error = MaterialTheme.colorScheme.error
-                    if (row.unknownLines.isEmpty() && row.unknownStops.isEmpty()) {
-                        Text(stringResource(R.string.trip_disruptions_unknown), style = style, color = error)
-                    } else {
-                        Text(stringResource(R.string.trip_disruptions_unknown_label), style = style, color = error)
-                        row.unknownLines.forEach { LinePill(it.lineName, it.lineId, it.mode) }
-                        if (row.unknownStops.isNotEmpty()) Text(row.unknownStops, style = style, color = error)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .testTag("tripDisruptions")
+            .clickable(onClickLabel = stringResource(R.string.trip_lines_open)) { open = true },
+    ) {
+        Box(contentAlignment = Alignment.CenterStart, modifier = Modifier.weight(1f)) {
+            LinePill("", "", "bus", Modifier.alpha(0f).clearAndSetSemantics {}.padding(vertical = 4.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                itemVerticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            ) {
+                Text(stringResource(R.string.trip_disruptions_label), style = style, color = muted)
+                row.lines.forEach { LinePill(it.lineName, it.lineId, it.mode) }
+                if (row.stops.isNotEmpty()) Text(row.stops, style = style)
+                when {
+                    row.checking -> Text(stringResource(R.string.trip_disruptions_checking), style = style, color = muted)
+                    // What couldn't be checked, after "Unknown:", as the disrupted are drawn (maintainer, 2026-10-04).
+                    row.unknown -> {
+                        val error = MaterialTheme.colorScheme.error
+                        if (row.unknownLines.isEmpty() && row.unknownStops.isEmpty()) {
+                            Text(stringResource(R.string.trip_disruptions_unknown), style = style, color = error)
+                        } else {
+                            Text(stringResource(R.string.trip_disruptions_unknown_label), style = style, color = error)
+                            row.unknownLines.forEach { LinePill(it.lineName, it.lineId, it.mode) }
+                            if (row.unknownStops.isNotEmpty()) Text(row.unknownStops, style = style, color = error)
+                        }
                     }
+                    row.lines.isEmpty() && row.stops.isEmpty() -> Text(stringResource(R.string.trip_disruptions_none), style = style, color = muted)
                 }
-                row.lines.isEmpty() && row.stops.isEmpty() -> Text(stringResource(R.string.trip_disruptions_none), style = style, color = muted)
             }
+        }
+        // Read out by the row's click label, so it says nothing of its own.
+        Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null, tint = muted, modifier = Modifier.padding(start = 8.dp))
+    }
+    if (open) TripLinesPage(row, onClose = { open = false })
+}
+
+/**
+ * Every line a trip rides with its status, as a full-screen dialog over the trip, with Back and the
+ * arrow to return (maintainer, 2026-10-04: a full-screen dialog, not a sheet; one the home screen can
+ * open too, so it reads only what it's given and the app's own menu). A line with a disruption opens
+ * its own page with TfL's reason ([TripLineReason]); Back returns to the lines, where they were. Reads
+ * the row as it was worked out on the worker ([TripRow.every]); nothing is worked out here.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun TripLinesPage(row: TripRow, onClose: () -> Unit) {
+    val held = rememberOpenedOrder(row)
+    val lines = held.lines
+    // The line whose reason is open, by its place, which holds while the page is open
+    // ([rememberOpenedOrder]): read straight off the list, its status as it is now.
+    var reasonAt by rememberSaveable { mutableStateOf<Int?>(null) }
+    var reasonId by rememberSaveable { mutableStateOf<String?>(null) }
+    // Its name, for the title while a restored order is still being applied (no lines yet).
+    var reasonName by rememberSaveable { mutableStateOf<String?>(null) }
+    // Its pill's mode and the reason last shown, so a restored reason page shows what the rider was
+    // reading while its line comes back (Codex, #559).
+    var reasonMode by rememberSaveable { mutableStateOf("") }
+    var reasonText by rememberSaveable { mutableStateOf<String?>(null) }
+    var quietedText by rememberSaveable { mutableStateOf<String?>(null) }
+    val reasonLine = reasonAt?.let { lines?.getOrNull(it) }?.takeIf { it.leg.lineId == reasonId }
+    if (reasonLine != null) {
+        SideEffect {
+            reasonMode = reasonLine.leg.mode
+            reasonText = reasonLine.reason
+            quietedText = reasonLine.quietedReason
+        }
+    }
+    // A reason page restored (a rotation) stays up, titled, until its line is in again: never the
+    // lines for a moment in between (Codex, #559).
+    val onReason = reasonLine != null || (reasonAt != null && lines == null)
+    val back = { if (reasonAt != null) reasonAt = null else onClose() }
+    val listState = rememberLazyListState()
+    // A page drawn in a window of its own over the trip, full screen: the trip under it keeps its
+    // place, its list and its work, for Back to return to.
+    Dialog(
+        onDismissRequest = back,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    navigationIcon = {
+                        IconButton(onClick = back) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                        }
+                    },
+                    title = {
+                        val title = if (onReason) reasonLine?.leg?.lineName ?: reasonName.orEmpty() else stringResource(R.string.trip_lines_title)
+                        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    },
+                    // The app's overflow, as on every screen: a report can start where the problem is seen.
+                    actions = { AppMenuOverflow() },
+                )
+            },
+            modifier = Modifier.testTag("tripLinesPage"),
+        ) { padding ->
+            if (onReason) {
+                if (reasonLine != null) {
+                    TripLineReason(reasonLine, Modifier.padding(padding))
+                } else {
+                    // Restoring: the line's pill and the reason as last shown, in their places, until the
+                    // line is back.
+                    val leg = TripLeg(
+                        mode = reasonMode, lineId = reasonId.orEmpty(), lineName = reasonName.orEmpty(),
+                        fromId = "", fromName = "", toId = "", toName = "", departure = Instant.EPOCH, arrival = Instant.EPOCH,
+                    )
+                    // The reason as last shown only while the trip's checks are settled, as after a rotation. Rebuilt
+                    // after the app was closed, the trip is checking again: the alert may have ended meanwhile, so
+                    // it says "Checking…" rather than pass the saved words off as current (Codex, #559).
+                    val settled = !row.checking
+                    TripLineReason(
+                        TripLine(leg, status = null, restoring = settled, checking = !settled),
+                        Modifier.padding(padding),
+                        reasonText.takeIf { settled },
+                        quietedText.takeIf { settled },
+                    )
+                }
+            } else {
+                TripLinesContent(
+                    row,
+                    Modifier.fillMaxSize().padding(padding),
+                    lines,
+                    pending = held.pending,
+                    state = listState,
+                    onOpenLine = { index, line ->
+                        reasonId = line.leg.lineId
+                        reasonName = line.leg.lineName
+                        reasonAt = index
+                    },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * A line's page off the trip's lines: its row as the lines show it, then TfL's reason for its
+ * disruption in full. Live: a disruption that clears says so, as the row does, and the reason goes.
+ */
+@Composable
+private fun TripLineReason(line: TripLine, modifier: Modifier = Modifier, restored: String? = null, restoredQuieted: String? = null) {
+    val reason = line.reason ?: restored
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
+        TripLineRow(line)
+        if (reason != null) {
+            Text(reason, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 16.dp))
+        }
+        // The worse alert the rider dismissed, under the one that stands, toned down.
+        (line.quietedReason ?: restoredQuieted)?.let {
+            Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 16.dp))
+        }
+    }
+}
+
+/**
+ * [row]'s lines ([TripRow.every]) in the order the page opened with, so a line never moves while the
+ * rider reads it or reaches to open its reason (Codex, #559): a check landing changes what a line
+ * says, not where it is. A line new since then goes after the rest, in the order it first appeared,
+ * and keeps that place too. The order is kept as line ids, saved with the page's open state, so a
+ * rotation with the page open keeps it as well. Taken, extended and applied on the worker
+ * ([inOpenedOrder]); until that's in, the last order stands, at first the one opened with. Null while
+ * a restored order is still being applied: the page draws no lines for that moment.
+ */
+@Composable
+internal fun rememberOpenedOrder(row: TripRow): OpenedLines {
+    val every = row.every
+    // Whether a line missing from [every] is gone from the trip: only once a check has settled. While the
+    // trip is still checking (rebuilt after the app was closed, a refresh under way), it's pending.
+    val settled = !row.checking
+    val opened = remember { every }
+    // Read-only once set; an [ArrayList] underneath, so it saves into the Bundle as it is.
+    // Saved as the page opens, from the row as it was then ([TripRow.everyIds]), never waiting on a worker.
+    var saved by rememberSaveable { mutableStateOf<List<String>?>(row.everyIds) }
+    // Each line's pill as seen while the page is open ([OpenedOrder.pills]), saved with the order, so a
+    // line gone before a rotation keeps its placeholder after it (Codex, #559).
+    var savedPills by rememberSaveable { mutableStateOf<List<String>?>(row.everyPills) }
+    // Whether the page was open before: restored (a rotation), not just opened.
+    var wasOpen by rememberSaveable { mutableStateOf(false) }
+    val restored = remember { wasOpen }
+    SideEffect { wasOpen = true }
+    val slot = remember { mutableStateOf<Worked<Inputs, OpenedOrder>?>(null) }
+    val ids = saved
+    val pills = savedPills
+    val worked = rememberWorked(slot, Inputs(every, opened, ids, settled), keep = { _, _ -> true }) {
+        // Every line seen while the page is open, with its pill, from the last answer, else as saved (in
+        // the saved order, then any line the page opened with): one that came after the page opened and
+        // went again keeps its place too (Codex, #559).
+        val seen = slot.value?.value?.seen ?: (seenFrom(pills) + inOpenedOrder(opened, emptyList()).seen)
+        inOpenedOrder(every, ids ?: inOpenedOrder(opened, emptyList()).ids, seen, settled)
+    }
+    // The order as it now stands, a line first seen since included: kept, so it holds from here on.
+    // The worker hands back the same ids and pills while nothing is new, so these compare by identity.
+    val order = worked?.ids
+    LaunchedEffect(order) { if (order != null && order !== saved) saved = order }
+    val seenPills = worked?.pills
+    LaunchedEffect(seenPills) { if (seenPills != null && seenPills !== savedPills) savedPills = seenPills }
+    // Restored (a rotation with the page open), the order is the saved ids, which only the worker
+    // applies: until it has, the saved pills stand in, in the saved order, each "Checking…", rather than
+    // a frame in another order or a blank page (Codex, #559).
+    val lines = worked?.lines ?: opened.takeUnless { restored }
+    return OpenedLines(lines, if (lines == null) pills else null)
+}
+
+/**
+ * The lines page's [lines] in their held order ([rememberOpenedOrder]); null while a restored order is
+ * applied, when [pending] holds the saved pills ([OpenedOrder.pills]) to stand in for them.
+ */
+internal class OpenedLines(val lines: List<TripLine>?, val pending: List<String>? = null)
+
+/**
+ * The page's [lines] in their held order, that order's line [ids], and every line [seen] while it's
+ * been open, by id, for a gone line's placeholder ([inOpenedOrder]).
+ */
+internal class OpenedOrder(val lines: List<TripLine>, val ids: List<String>, val seen: Map<String, TripLeg>) {
+    /** [seen] as it's saved: each line's id, name and mode in turn, in a list a Bundle holds. */
+    val pills: List<String> = ArrayList<String>(seen.size * 3).apply { seen.forEach { (id, leg) -> add(id); add(leg.lineName); add(leg.mode) } }
+}
+
+/** The pills [OpenedOrder.pills] saved, as legs a gone line's placeholder draws ([TripLine.gone]). */
+@WorkerThread
+internal fun seenFrom(pills: List<String>?): Map<String, TripLeg> =
+    pills.orEmpty().chunked(3).filter { it.size == 3 }.associateTo(LinkedHashMap()) { (id, name, mode) ->
+        id to TripLeg(mode = mode, lineId = id, lineName = name, fromId = "", fromName = "", toId = "", toName = "", departure = Instant.EPOCH, arrival = Instant.EPOCH)
+    }
+
+/**
+ * [lines] in [opened]'s order (line ids), each with its own status; a line not in [opened] after them,
+ * as [lines] has it, its id added to the order so it keeps that place. [opened] itself comes back
+ * when nothing was added. A line in [opened] no longer among [lines] (another line's trains gone from a
+ * stop) keeps its place as a row saying so ([TripLine.gone]), drawn from how it was last [seen], so
+ * the lines under it never move up while the page is open (Codex, #559), whenever it came.
+ */
+@WorkerThread
+internal fun inOpenedOrder(
+    lines: List<TripLine>,
+    opened: List<String>,
+    seen: Map<String, TripLeg> = emptyMap(),
+    // Whether a line missing from [lines] is gone, or only not back yet while the trip checks.
+    settled: Boolean = true,
+): OpenedOrder {
+    val known = HashSet(opened)
+    val added = lines.map { it.leg.lineId }.filter { it !in known }.distinct()
+    val ids = if (added.isEmpty()) opened else ArrayList<String>(opened.size + added.size).apply { addAll(opened); addAll(added) }
+    val now = HashMap<String, TripLine>()
+    lines.forEach { now.putIfAbsent(it.leg.lineId, it) }
+    // Each line's pill as last seen, kept for as long as the page is open.
+    // In the order first seen, which is [ids]' order, so the saved pills stand in for the lines in place.
+    val legs = if (now.keys.all { it in seen }) seen else LinkedHashMap(seen).apply { ids.forEach { id -> now[id]?.let { put(id, it.leg) } } }
+    val placed = HashSet<String>()
+    val ordered = ids.mapNotNull { id ->
+        if (!placed.add(id)) null else now[id] ?: legs[id]?.let { TripLine(it, status = null, gone = settled, checking = !settled) }
+    }
+    return OpenedOrder(ordered, ids, legs)
+}
+
+/**
+ * One line in the trip's lines: its pill and its status, one row high whatever the status says, so a
+ * check landing never pushes the lines under it down (Codex, #559). A line with TfL's reason for a
+ * disruption opens it on a tap ([onOpen]), on a page of its own, never inline.
+ */
+@Composable
+private fun TripLineRow(line: TripLine, onOpen: (() -> Unit)? = null) {
+    val style = MaterialTheme.typography.bodyMedium
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val status = line.status
+    val opens = onOpen.takeIf { line.reason != null || line.quietedReason != null }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth()
+            .then(if (opens != null) Modifier.clickable(onClickLabel = stringResource(R.string.trip_lines_reason)) { opens() } else Modifier),
+    ) {
+        LinePill(line.leg.lineName, line.leg.lineId, line.leg.mode)
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            when {
+                // The chip takes what's left after the word beside it, so "Couldn't check" always shows
+                // (Codex, #559); a long one ellipsizes.
+                status != null && line.disrupted && line.dismissed ->
+                    DisruptionChip(stringResource(R.string.trip_lines_dismissed, status.description), Modifier.weight(1f, fill = false), muted = true)
+                status != null && line.disrupted -> DisruptionChip(status.description, Modifier.weight(1f, fill = false))
+            }
+            line.quieted?.let { DisruptionChip(stringResource(R.string.trip_lines_dismissed, it.description), Modifier.weight(1f, fill = false), muted = true) }
+            when {
+                // Restoring after a rotation: the pill alone, in its place, no word for a status not back yet.
+                line.restoring -> Unit
+                line.gone -> Text(stringResource(R.string.trip_lines_gone), style = style, color = muted, maxLines = 1)
+                line.unknown -> Text(stringResource(R.string.trip_lines_unknown), style = style, color = MaterialTheme.colorScheme.error, maxLines = 1)
+                line.checking -> Text(stringResource(R.string.trip_disruptions_checking), style = style, color = muted, maxLines = 1)
+                !line.disrupted -> Text(stringResource(R.string.trip_lines_good), style = style, color = muted, maxLines = 1)
+            }
+        }
+        if (opens != null) {
+            // Read out by the row's click label.
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = muted)
+        }
+    }
+}
+
+/**
+ * The lines page's content ([TripLinesPage]): a line a row, disruptions at the top, each with its TfL
+ * reason a tap away; what couldn't be checked says what that means; then the stops the row names.
+ */
+@Composable
+internal fun TripLinesContent(
+    row: TripRow,
+    modifier: Modifier = Modifier,
+    lines: List<TripLine>? = row.every,
+    // While [lines] is null, the saved pills ([OpenedLines.pending]) to stand in for them.
+    pending: List<String>? = null,
+    state: LazyListState = rememberLazyListState(),
+    // A line with a reason tapped, at its place in [lines]: its own page.
+    onOpenLine: ((Int, TripLine) -> Unit)? = null,
+) {
+    val style = MaterialTheme.typography.bodyMedium
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val error = MaterialTheme.colorScheme.error
+    LazyColumn(
+        state = state,
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier.testTag("tripLines"),
+    ) {
+        // Null while a restored order is applied ([rememberOpenedOrder]): the saved lines stand in, in
+        // their saved places, each its pill alone (Codex, #559: no "Checking…" for a check not running), and the notices under them wait, so nothing moves when the
+        // lines come back and the page is never blank (Codex, #559). Each row reads only its own entry.
+        if (lines == null) {
+            if (pending != null) {
+                items(pending.size / 3, key = { pending[it * 3] }) { at ->
+                    val leg = TripLeg(
+                        mode = pending[at * 3 + 2], lineId = pending[at * 3], lineName = pending[at * 3 + 1],
+                        fromId = "", fromName = "", toId = "", toName = "", departure = Instant.EPOCH, arrival = Instant.EPOCH,
+                    )
+                    TripLineRow(TripLine(leg, status = null, restoring = true))
+                }
+            }
+            return@LazyColumn
+        }
+        if (lines.isEmpty()) {
+            // A trip with no ride (all walking) has no line to check: said so, never "Checking…" for good.
+            val none = if (row.checking) R.string.trip_disruptions_checking else R.string.trip_lines_none
+            item(key = "none") { Text(stringResource(none), style = style, color = muted) }
+        }
+        itemsIndexed(lines, key = { _, line -> line.leg.lineId }) { index, line ->
+            TripLineRow(line, onOpenLine?.let { open -> { open(index, line) } })
+        }
+        if (row.stops.isNotEmpty()) {
+            item(key = "stops") { Text(stringResource(R.string.trip_lines_stops, row.stops), style = style) }
+        }
+        if (row.unknownStops.isNotEmpty()) {
+            item(key = "unknownStops") { Text(stringResource(R.string.trip_lines_stops_unknown, row.unknownStops), style = style, color = error) }
+        }
+        // A line's status or trains, never a stop's closure check alone: that stop is named above. Last,
+        // so it coming or going never moves a line (Codex, #559).
+        if (row.linesUnknown) {
+            item(key = "unknown") { Text(stringResource(R.string.trip_lines_unknown_note), style = style, color = error) }
         }
     }
 }

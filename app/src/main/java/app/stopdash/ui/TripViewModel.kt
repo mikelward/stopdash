@@ -262,6 +262,10 @@ class TripViewModel(
         // The routes' lines with no status known: TfL left them out of its answer, or the check
         // failed before any was known. They can't be vouched for as running (ranked unchecked).
         val statusUnknown: Set<String> = emptySet(),
+        // The lines TfL left out of a status answer that came in, a ride's other lines and late ones
+        // included: settled as unchecked, not still being checked while other work runs (the trip's
+        // lines page).
+        val statusOmitted: Set<String> = emptySet(),
         val refreshing: Boolean = false,
         // The last plan reached only some of the trip's stops (a complex's other stations failed):
         // its routes stand, and the trip says it couldn't plan to every station, with a retry.
@@ -806,6 +810,8 @@ class TripViewModel(
                 // line now suspended, a stop now closed). Against the state as it stood: a change landing
                 // meanwhile only moves the generation once more.
                 val held = _state.value
+                // The lines asked that the answer left out, worked out on [io] too (AGENTS.md *Main thread*).
+                val omitted = fetched?.let { answer -> withContext(io) { (lines + others).filterTo(HashSet()) { it !in answer.statuses && it !in answer.failed } } }
                 val newVerdict = withContext(io) {
                     (fetched != null && (fetched.statuses.any { (id, status) -> held.statuses[id] != status } ||
                         held.statuses.keys.any { it !in fetched.statuses && it !in fetched.failed })) ||
@@ -829,6 +835,8 @@ class TripViewModel(
                         statusFailed = fetched == null || fetched.failed.isNotEmpty(),
                         statusFailedLines = fetched?.failed ?: (lines + others).toSet(),
                         statusUnknown = lines.filterTo(HashSet()) { it !in (fetched?.statuses ?: state.statuses) },
+                        // Every line asked, the rides' other lines too (Codex, #559).
+                        statusOmitted = omitted ?: state.statusOmitted,
                         // A stop whose check failed keeps its last known notices. Settled only for the
                         // stops no check since has asked about ([ClosureCheck.latest]): one checked
                         // again meanwhile keeps that check's verdict, and one it didn't ask about
@@ -860,6 +868,10 @@ class TripViewModel(
                 // A status answered differently, or one held before that TfL now leaves out, judged on [io]
                 // as in the refresh's own check (Codex, #529).
                 val heldNow = _state.value
+                // The late lines' verdict on what was left out, against the state as it stood, on [io].
+                val lateOmitted = found?.let { f ->
+                    withContext(io) { heldNow.statusOmitted - late.toSet() + late.filter { id -> id !in f.statuses && id !in f.failed } }
+                }
                 val newlyFailed = withContext(io) {
                     // Newly failed: a late line not already failed ([State.failures]; Codex, #529).
                     (found?.failed ?: late.toSet()).any { id -> id !in heldNow.statusFailedLines } ||
@@ -873,6 +885,8 @@ class TripViewModel(
                         statusesAt = found?.let { f -> judged(it.statusesAt, f) + f.answeredAt() } ?: it.statusesAt,
                         statusesSortedOn = found?.let { f -> earlier(it.statusesSortedOn, f.sortedOn) } ?: it.statusesSortedOn,
                         statusFailedLines = it.statusFailedLines - late.toSet() + (found?.failed ?: late.toSet()),
+                        // The late lines take this answer's verdict too: left out of it, settled (Codex, #559).
+                        statusOmitted = lateOmitted ?: it.statusOmitted,
                     )
                 }
                 found?.let { reconcileLineDismissals(it) }
