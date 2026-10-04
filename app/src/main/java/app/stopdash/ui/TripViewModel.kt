@@ -1128,10 +1128,9 @@ class TripViewModel(
          * [OpenRoute.keys]) is kept past the cap while [routes] offer it, so live times that move it
          * out of the soonest few never close it under the rider. So is the route walking least: the bus
          * to the station that spares the walk there arrives later, and would otherwise be cut before
-         * its *Least walking* card could show (maintainer, 2026-10-03). Whether it walks enough less
-         * is judged on the live ranking ([routeLabels]), whose first card may not be the timetable's
-         * soonest, so it's kept whatever it saves. One route more at most, so the cap still bounds
-         * the requests.
+         * its *Least walking* card could show (maintainer, 2026-10-03). The header goes on whichever
+         * cards walk least on the live ranking ([routeLabels]), with no threshold, so it's kept
+         * whatever it saves. One route more at most, so the cap still bounds the requests.
          */
         internal fun bestOf(routes: List<TripRoute>, keep: Collection<String>): List<TripRoute> {
             val soonest = routes.sortedBy { it.legs.lastOrNull()?.arrival ?: Instant.MAX }
