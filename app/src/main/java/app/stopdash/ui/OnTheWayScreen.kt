@@ -1,6 +1,7 @@
 package app.stopdash.ui
 
 import android.content.res.Resources
+import androidx.annotation.WorkerThread
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -73,6 +74,8 @@ import app.stopdash.domain.RouteDisruption
 import app.stopdash.RouteDisruptionAlert
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopGrouping
+import app.stopdash.domain.StopGroup
+import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.Staleness
@@ -353,6 +356,9 @@ data class NextTrains(
     // When the soonest train the rider can catch is due, of every pole's ([OnTheWay.nextDue]): what the
     // trip's time falls back on once the train followed has gone by. Null with none, or a board too old.
     val nextDue: Instant? = null,
+    // [trains] and [others] as the board draws them, a header per pole ([nextTrainsGroups]): worked out
+    // with them on the worker, so the section only draws them.
+    val groups: List<StopGroup> = emptyList(),
 ) {
     /** Whether no pole has a train listed: the board's own ([trains]) nor any of [others]. */
     val none: Boolean get() = trains.isEmpty() && others.all { it.trains.isEmpty() }
@@ -385,40 +391,237 @@ internal fun rememberNextTrains(
     // board is in, rather than appear only once TfL answers.
     ride: TripLeg? = board?.ride,
 ): NextTrains? {
-    val lineIds = board?.let { OnTheWay.boardLineIds(it.ride, it.boards.values.flatten()) }.orEmpty()
-    val loads = rememberLineLoads(lineIds, now)
-    val sequences = loads.sequences
-    // No board of this ride's yet (just started, or back after a restart): its section, loading.
-    if (board == null || board.ride != ride) return ride?.let { NextTrains(it, emptyList(), pending = true, readyAt = readyAt) }
-    // Never read: nothing to show but that the update failed.
-    val fetchedAt = board.fetchedAt ?: return NextTrains(board.ride, emptyList(), failed = board.failed, readyAt = readyAt)
-    val found = OnTheWay.boardTrains(board.ride, board.departures, fetchedAt, sequences, now)
-    // Each other pole's, as the ride boards there: only another line's way to the same stop shows, not
-    // a line's way back across the road.
-    val others = board.others.map { other ->
-        val ride = board.ride.copy(fromId = other.pole.id, fromName = other.pole.name.ifBlank { board.ride.fromName })
-        other to OnTheWay.boardTrains(ride, other.departures, fetchedAt, sequences, now)
+    val worker = LocalWorker.current
+    // The lines whose routes the board's trains are checked against, read off its departures on the
+    // worker too: the last board's held meanwhile, as its routes are what a new board of the ride needs.
+    var lineIds by remember { mutableStateOf(BoardLines(null, emptyList())) }
+    LaunchedEffect(board?.let(::BoardKey), worker) {
+        // No board (the rider seen on board): no lines, so a route load under way for the last one is
+        // canceled and nothing is rechecked through the ride (Codex on #557).
+        val read = board ?: run {
+            lineIds = BoardLines(null, emptyList())
+            return@LaunchedEffect
+        }
+        if (lineIds.board === read) return@LaunchedEffect
+        lineIds = BoardLines(read, withContext(worker) { OnTheWay.boardLineIds(read.ride, read.boards.values.flatten()) })
     }
-    val misses = found.misses + others.flatMap { it.second.misses }
-    // A train its route couldn't place, logged where every trip filter logs it, so "Couldn't check
-    // every line" can be explained.
+    val loads = rememberLineLoads(lineIds.ids, now)
+    val sequences = loads.sequences
     val routes = LocalRouteStops.current
-    LaunchedEffect(routes, misses) { routes?.reportMisses(misses) }
-    val stale = Staleness.isStale(fetchedAt, now)
-    val nextDue = rememberNextDue(board, sequences, loads.version, readyAt, now).takeIf { !stale }
-    return NextTrains(
-        board.ride, found.trains,
-        pending = found.pending || others.any { it.second.pending },
-        unresolved = found.unresolved || others.any { it.second.unresolved },
-        stale = stale,
-        // A pole of the pair left unread is said too: a train there went unseen.
-        failed = board.failed || board.partial,
-        readyAt = readyAt, fetchedAt = fetchedAt, stopLetter = board.pole?.stopLetter.orEmpty(), towards = board.pole?.towards.orEmpty(),
-        bearing = board.pole?.bearing.orEmpty(),
-        others = others.map { (other, trains) ->
-            PoleTrains(other.pole.id, other.pole.name.ifBlank { board.ride.fromName }, trains.trains, other.pole.stopLetter, other.pole.towards, other.pole.bearing)
+    val currentSequences by rememberUpdatedState(sequences)
+    // The board's trains are worked out on the worker, from each instant one departs ([trainsTimeline]),
+    // keyed by the board itself (a new one each read) and its routes, so composition compares no
+    // departures and only picks the entry for now (AGENTS.md *Main thread: read and dispatch only*).
+    // Only once its own lines are read: the last board's may leave out a line it brings back, already
+    // loaded, so its routes would be missed with no new load to work the board out again (Codex on #557).
+    val key = board?.takeIf { it.fetchedAt != null && lineIds.board === it && sameRide(it.ride, ride) }?.let { TrainsKey(it, loads.version) }
+    var held by remember { mutableStateOf<HeldTrains?>(null) }
+    LaunchedEffect(key, worker) {
+        key ?: return@LaunchedEffect
+        if (held?.key == key) return@LaunchedEffect
+        val at = now
+        val timeline = withContext(worker) { trainsTimeline(key.board, currentSequences, at) }
+        held = HeldTrains(key, timeline, index = 0)
+        // A train its route couldn't place, logged where every trip filter logs it, so "Couldn't check
+        // every line" can be explained. Later entries hold fewer trains, so the first has every miss.
+        routes?.reportMisses(timeline.misses)
+    }
+    // No board of this ride's yet (just started, or back after a restart): its section, loading.
+    if (board == null || !sameRide(board.ride, ride)) return ride?.let { NextTrains(it, emptyList(), pending = true, readyAt = readyAt) }
+    // Never read: nothing to show but that the update failed.
+    if (board.fetchedAt == null) return NextTrains(board.ride, emptyList(), failed = board.failed, readyAt = readyAt)
+    // This board's trains, or while they're worked out the last board's of this ride, each dropped as it
+    // departs as a refresh would drop it; none worked out yet for this ride: loading.
+    // Whether this refresh failed is the current board's to say, at once, whatever rows show or while
+    // none do yet (Codex on #557): a pole of the pair left unread is said too, as a train there went unseen.
+    val failed = board.failed || board.partial
+    val shown = held?.takeIf { it.key == key || sameRide(it.key.board.ride, board.ride) }
+        ?: return NextTrains(board.ride, emptyList(), pending = true, failed = failed, readyAt = readyAt)
+    // The entry held, or the one after it from the moment it starts: two comparisons, no search on the
+    // main thread. Past both (the page back after a while), the worker finds the entry for now, and
+    // meanwhile the section says it's loading rather than show a train that's gone.
+    val timeline = shown.timeline
+    val lapsed = timeline.endedBy(shown.index, now)
+    val skipped = lapsed && timeline.endedBy(shown.index + 1, now)
+    // The clock set back before the held entry began (Codex on #557): trains it had dropped may be to
+    // come again, so the worker finds the entry for now, or works the board out afresh from before its
+    // timeline began, and meanwhile the section says it's loading.
+    val rewound = timeline.startsAfter(shown.index, now)
+    LaunchedEffect(shown, lapsed, rewound, worker) {
+        if (!lapsed && !rewound) return@LaunchedEffect
+        val at = now
+        val rebuilt = timeline.startsAfter(0, at)
+        val (index, window) = withContext(worker) {
+            val from = if (rebuilt) trainsTimeline(shown.key.board, currentSequences, at) else timeline
+            from.indexAt(at).let { it to from.around(it) }
+        }
+        if (held !== shown) return@LaunchedEffect
+        held = HeldTrains(shown.key, window, index)
+        // Worked out afresh from before, it may hold trains the first timeline had already dropped, so
+        // its misses are logged too (Codex on #557).
+        if (rebuilt) routes?.reportMisses(window.misses)
+    }
+    if (skipped || rewound) return NextTrains(board.ride, emptyList(), pending = true, failed = failed, readyAt = readyAt)
+    // The next entry's rows came with the held one's, so a departure never waits on the worker.
+    val next = timeline.entry(if (lapsed) shown.index + 1 else shown.index)
+        ?: return NextTrains(board.ride, emptyList(), pending = true, failed = failed, readyAt = readyAt)
+    val stale = Staleness.isStale(next.fetchedAt ?: now, now)
+    // The current board's, not the held one's, and only once its own lines are read: before, the routes
+    // may be the last board's, and a line it brings back, already loaded, bumps no version to work it
+    // out again (Codex on #557). None until the worker has it.
+    val linesRead = lineIds.board === board
+    val nextDue = rememberNextDue(board, sequences, if (linesRead) loads.version else LINES_UNREAD, readyAt, now)
+        .takeIf { linesRead && !stale }
+    return next.copy(stale = stale, readyAt = readyAt, nextDue = nextDue, failed = failed)
+}
+
+/**
+ * Whether [a] and [b] are the same ride, as a board of it goes: the same line, stops and times, by its
+ * fields alone, never its path (a [TripLeg]'s equality walks it), so composition compares a few
+ * values, not a route (Codex on #557).
+ */
+internal fun sameRide(a: TripLeg?, b: TripLeg?): Boolean = a === b || (
+    a != null && b != null && a.mode == b.mode && a.lineId == b.lineId && a.fromId == b.fromId && a.toId == b.toId &&
+        a.toArea == b.toArea && a.departure == b.departure && a.arrival == b.arrival
+    )
+
+// A routes version for [rememberNextDue] before a board's own lines are read: never a real one, so
+// the answer is worked out again once they are.
+private const val LINES_UNREAD = -1
+
+// A board by identity (a new one each read), so a key compares no departures.
+private class BoardKey(val board: ActiveTripTracker.NextBoard) {
+    override fun equals(other: Any?): Boolean = other is BoardKey && other.board === board
+    override fun hashCode(): Int = System.identityHashCode(board)
+}
+
+// The line ids read off [board]'s departures ([OnTheWay.boardLineIds]); none before the first board.
+private class BoardLines(val board: ActiveTripTracker.NextBoard?, val ids: List<String>)
+
+// What a board's trains are worked out from: the board by identity (a new one each read), so the key
+// compares no departures, and its routes' [LineLoads.version].
+private class TrainsKey(val board: ActiveTripTracker.NextBoard, val routes: Int) {
+    override fun equals(other: Any?): Boolean = other is TrainsKey && other.board === board && other.routes == routes
+    override fun hashCode(): Int = System.identityHashCode(board) * 31 + routes
+}
+
+// A board's timeline and the entry of it in force when last looked up ([index]).
+private class HeldTrains(val key: TrainsKey, val timeline: TrainsTimeline, val index: Int)
+
+/**
+ * A board's trains as [rememberNextTrains] shows them, from each instant on ([starts], ascending):
+ * an entry per instant the list shown changes, each with the trains still to come then. Only the
+ * entries around the one in force carry their rows ([groups], [around]): the next one's are ready the
+ * moment it starts, and a busy board's later entries aren't all grouped ahead of time (Codex on #557).
+ */
+internal class TrainsTimeline(
+    private val starts: List<Instant>,
+    private val entries: List<NextTrains>,
+    val misses: Set<RouteMiss>,
+    private val groups: Map<Int, List<StopGroup>> = emptyMap(),
+) {
+    /** Entry [index] (or the last, once past it) with its rows, or null if they aren't worked out. */
+    fun entry(index: Int): NextTrains? {
+        val at = index.coerceAtMost(entries.lastIndex)
+        return groups[at]?.let { entries[at].copy(groups = it) }
+    }
+
+    /** Whether entry [index] starts after [now]: the clock set back before it. */
+    fun startsAfter(index: Int, now: Instant): Boolean = now.isBefore(starts[index.coerceAtMost(starts.lastIndex)])
+
+    /** Whether entry [index] has given way to a later one by [now] (the last never does). */
+    fun endedBy(index: Int, now: Instant): Boolean = index + 1 < starts.size && !now.isBefore(starts[index + 1])
+
+    /** The index of the entry in force at [now]: the last to start by then, else the first. */
+    @WorkerThread
+    fun indexAt(now: Instant): Int {
+        val found = starts.binarySearch(now)
+        return if (found >= 0) found else (-found - 2).coerceAtLeast(0)
+    }
+
+    /** This timeline with the rows of entry [index] and the one after it, the only ones kept. */
+    @WorkerThread
+    fun around(index: Int): TrainsTimeline {
+        val window = (index..(index + 1).coerceAtMost(entries.lastIndex)).associateWith { i ->
+            groups[i] ?: nextTrainsGroups(entries[i], starts[i])
+        }
+        return TrainsTimeline(starts, entries, misses, window)
+    }
+
+    /** The entry in force at [now] ([indexAt]), with its rows. */
+    @WorkerThread
+    fun at(now: Instant): NextTrains {
+        val index = indexAt(now)
+        return entries[index].withGroups(starts[index])
+    }
+}
+
+/**
+ * [rememberNextTrains]' work, off the main thread: [board]'s trains as [nextTrainsAt] keeps them, from
+ * [at] and again from each instant the list shown changes (a train kept, loading or unplaced goes).
+ * Each pole's trains are routed once ([OnTheWay.placeTrains]), and each entry taken from them, so a
+ * busy board isn't routed again for every departure (Codex on #557).
+ */
+@WorkerThread
+internal fun trainsTimeline(board: ActiveTripTracker.NextBoard, sequences: Map<String, LineSequence?>, at: Instant): TrainsTimeline {
+    val fetchedAt = checkNotNull(board.fetchedAt) { "a board never read has no trains" }
+    val own = OnTheWay.placeTrains(board.ride, board.departures, fetchedAt, sequences, at)
+    val others = board.others.map { other ->
+        other to OnTheWay.placeTrains(otherRide(board, other), other.departures, fetchedAt, sequences, at)
+    }
+    val instants = (listOf(at) + own.changes + others.flatMap { it.second.changes }).filter { !it.isBefore(at) }.distinct().sorted()
+    val entries = instants.map { instant -> nextTrainsAt(board, own.trainsAt(instant), others.map { (other, placed) -> other to placed.trainsAt(instant) }) }
+    // Misses are reported once per board, so only the first instant's are gathered.
+    return TrainsTimeline(instants, entries, own.missesAt(at) + others.flatMap { it.second.missesAt(at) }).around(0)
+}
+
+/** [board]'s ride as it boards at [other], another pole of the pair: only another line's way to the same stop. */
+private fun otherRide(board: ActiveTripTracker.NextBoard, other: ActiveTripTracker.PoleBoard): TripLeg =
+    board.ride.copy(fromId = other.pole.id, fromName = other.pole.name.ifBlank { board.ride.fromName })
+
+/**
+ * [board] ([ActiveTripTracker.nextBoard]) as [NextTrains] at an instant, from what its poles' routes
+ * kept then ([found] for its own, [others] for the pair's others): trains whose line's route reaches
+ * the ride's alighting stop, each other pole's as the ride boards there. Its rows are left for
+ * [TrainsTimeline.around], and [NextTrains.stale], [NextTrains.readyAt] and [NextTrains.nextDue] for
+ * the caller, who knows them as it draws.
+ */
+@WorkerThread
+internal fun nextTrainsAt(
+    board: ActiveTripTracker.NextBoard,
+    found: OnTheWay.BoardTrains,
+    others: List<Pair<ActiveTripTracker.PoleBoard, OnTheWay.BoardTrains>>,
+): NextTrains = NextTrains(
+    board.ride, found.trains,
+    pending = found.pending || others.any { it.second.pending },
+    unresolved = found.unresolved || others.any { it.second.unresolved },
+    // A pole of the pair left unread is said too: a train there went unseen.
+    failed = board.failed || board.partial,
+    fetchedAt = board.fetchedAt, stopLetter = board.pole?.stopLetter.orEmpty(), towards = board.pole?.towards.orEmpty(),
+    bearing = board.pole?.bearing.orEmpty(),
+    others = others.map { (other, trains) ->
+        PoleTrains(other.pole.id, other.pole.name.ifBlank { board.ride.fromName }, trains.trains, other.pole.stopLetter, other.pole.towards, other.pole.bearing)
+    },
+)
+
+/** These trains with their [NextTrains.groups] worked out at [now] ([nextTrainsGroups]). */
+@WorkerThread
+internal fun NextTrains.withGroups(now: Instant): NextTrains = copy(groups = nextTrainsGroups(this, now))
+
+/** [next]'s trains as the board draws them at [now]: the ride's own pole first, then the pair's others, each its own header ("Stop N"). */
+@WorkerThread
+internal fun nextTrainsGroups(next: NextTrains, now: Instant): List<StopGroup> {
+    val fetchedAt = next.fetchedAt ?: SteadyClock.stamp(now)
+    return StopGrouping.groupByStop(
+        DepartureRows.forStop(
+            next.ride.fromId, next.ride.fromName, next.trains, now, fetchedAt = fetchedAt,
+            stopLetter = next.stopLetter, towards = next.towards, bearing = next.bearing,
+        ) + next.others.flatMap { pole ->
+            DepartureRows.forStop(
+                pole.stopId, pole.stopName, pole.trains, now, fetchedAt = fetchedAt,
+                stopLetter = pole.stopLetter, towards = pole.towards, bearing = pole.bearing,
+            )
         },
-        nextDue = nextDue,
     )
 }
 
@@ -483,21 +686,7 @@ internal fun nextDueOf(board: ActiveTripTracker.NextBoard, sequences: Map<String
  */
 @Composable
 private fun NextTrainsSection(next: NextTrains, now: Instant) {
-    val groups = remember(next, now) {
-        val fetchedAt = next.fetchedAt ?: SteadyClock.stamp(now)
-        // The ride's own pole first, then the pair's others, each its own header ("Stop N").
-        StopGrouping.groupByStop(
-            DepartureRows.forStop(
-                next.ride.fromId, next.ride.fromName, next.trains, now, fetchedAt = fetchedAt,
-                stopLetter = next.stopLetter, towards = next.towards, bearing = next.bearing,
-            ) + next.others.flatMap { pole ->
-                DepartureRows.forStop(
-                    pole.stopId, pole.stopName, pole.trains, now, fetchedAt = fetchedAt,
-                    stopLetter = pole.stopLetter, towards = pole.towards, bearing = pole.bearing,
-                )
-            },
-        )
-    }
+    val groups = next.groups
     Column(Modifier.fillMaxWidth().testTag("onTheWayTrains"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         // A failed update is said whatever else shows: the rows may be the last good board's.
         if (next.failed) NoteText(stringResource(R.string.on_the_way_failed))
