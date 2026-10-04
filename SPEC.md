@@ -2907,8 +2907,10 @@ it carries before anything leaves. Without the opt-in, the one off-device call t
 TfL request is the release-only Play update-availability check (*Update indicator*): a Play
 Services query about the app's own version that carries no user data and adds no Data Safety
 surface. With it, Firebase is the other. The on-device
-debug log carries coarse diagnostics only: a stop ID, a line id, an HTTP status, a
-failed Play update check's exception class, or a slow request's timing (who it went to, its
+debug log carries coarse diagnostics only: a stop ID, a line id, an HTTP status, the
+destination TfL shows for a train or bus whose route couldn't be checked (its terminus, never
+where the rider gets off: the ids alone can't say which working the routes don't model;
+maintainer, 2026-10-04), a failed Play update check's exception class, or a slow request's timing (who it went to, its
 endpoint with every identifier left out, its connection and answer times, a failed connect's
 address family and exception class, a wait for a request slot) — never a raw coordinate, anything
 typed, or the user's API key.

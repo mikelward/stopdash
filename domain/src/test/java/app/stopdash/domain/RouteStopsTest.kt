@@ -282,40 +282,47 @@ class RouteStopsTest {
     }
 
     @Test
-    fun `an unresolved list is logged with its reason, a resolved one is not`() {
+    fun `an unresolved list is logged with its reason, a resolved one is not`() = runTest {
         val warnings = mutableListOf<String>()
         val repository = RouteStopsRepository(
             source = object : RouteSequenceSource {
                 override suspend fun routeSequence(lineId: String, direction: String) = labeledBus
             },
             warn = { warnings += it },
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
         )
         repository.reportUnresolved("43", "P", RouteStops.Resolution.Found(emptyList()))
         repository.reportUnresolved("43", "P", RouteStops.Resolution.Ambiguous(2))
         repository.reportUnresolved("43", "P", RouteStops.Resolution.NoMatch)
         repository.reportUnresolved("43", "P", RouteStops.Resolution.EndsHere)
+        repository.reportUnresolved("43", "P", RouteStops.Resolution.NoMatch, "Elsewhere")
+        repository.reportUnresolved("43", "P", RouteStops.Resolution.NoMatch, " ")
         assertEquals(
             listOf(
                 "route stops unavailable for line 43 at stop P: 2 possible paths",
                 "route stops unavailable for line 43 at stop P: destination matches no route",
                 "route stops unavailable for line 43 at stop P: ends at this stop",
+                // The train's destination says which working the routes don't model; a blank one adds nothing.
+                "route stops unavailable for line 43 at stop P: destination matches no route (bound for Elsewhere)",
+                "route stops unavailable for line 43 at stop P: destination matches no route",
             ),
             warnings,
         )
     }
 
     @Test
-    fun `misses and an unplaced journey are logged with their ids and reasons`() {
+    fun `misses and an unplaced journey are logged with their ids and reasons`() = runTest {
         val warnings = mutableListOf<String>()
         val repository = RouteStopsRepository(
             source = object : RouteSequenceSource {
                 override suspend fun routeSequence(lineId: String, direction: String) = labeledBus
             },
             warn = { warnings += it },
+            compute = kotlinx.coroutines.Dispatchers.Unconfined,
         )
         repository.reportMisses(
             listOf(
-                RouteMiss("43", "P", RouteStops.Resolution.NoMatch),
+                RouteMiss("43", "P", RouteStops.Resolution.NoMatch, "Elsewhere"),
                 RouteMiss("", "P", RouteStops.Resolution.NoLine),
             ),
         )
@@ -323,7 +330,7 @@ class RouteStopsTest {
         repository.reportUnplaced("43")
         assertEquals(
             listOf(
-                "route stops unavailable for line 43 at stop P: destination matches no route",
+                "route stops unavailable for line 43 at stop P: destination matches no route (bound for Elsewhere)",
                 "route stops unavailable for line (none) at stop P: no line id",
                 "journey not placed on line 43: no single boarding stop before the far end",
             ),
@@ -683,6 +690,33 @@ class RouteStopsTest {
             assertEquals(4, ranOn.size)
             // Debug coroutines append " @coroutine#n" to the name; the thread is what matters.
             assertEquals(setOf("test-worker"), ranOn.mapTo(HashSet()) { it.substringBefore(" @") })
+        } finally {
+            caller.close()
+            worker.close()
+        }
+    }
+
+    @Test
+    fun `a miss is formatted and logged on the worker, not a single-thread caller`() {
+        // AGENTS.md *Main thread: read and dispatch only*: the screens report misses from a
+        // LaunchedEffect on the main thread, and formatting walks TfL's destination text.
+        val caller = Executors.newSingleThreadExecutor { Thread(it, "test-caller") }.asCoroutineDispatcher()
+        val worker = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }.asCoroutineDispatcher()
+        try {
+            val loggedOn = mutableListOf<String>()
+            val repository = RouteStopsRepository(
+                source = object : RouteSequenceSource {
+                    override suspend fun routeSequence(lineId: String, direction: String) = labeledBus
+                },
+                warn = { loggedOn += Thread.currentThread().name },
+                compute = worker,
+            )
+            runBlocking(caller) {
+                repository.reportUnresolved("43", "P", RouteStops.Resolution.NoMatch, "Elsewhere")
+                repository.reportMisses(listOf(RouteMiss("43", "P", RouteStops.Resolution.NoMatch, "Elsewhere")))
+            }
+            assertEquals(2, loggedOn.size)
+            assertEquals(setOf("test-worker"), loggedOn.mapTo(HashSet()) { it.substringBefore(" @") })
         } finally {
             caller.close()
             worker.close()

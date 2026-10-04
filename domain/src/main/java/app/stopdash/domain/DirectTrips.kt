@@ -64,7 +64,7 @@ object DirectTrips {
                     // No line to follow: it may well call there, so never a silent "no".
                     lineId.isBlank() -> {
                         unresolved = true
-                        misses += RouteMiss(lineId, stop.stopId, RouteStops.Resolution.NoLine)
+                        misses += RouteMiss(lineId, stop.stopId, RouteStops.Resolution.NoLine, departure.destination)
                         false
                     }
                     lineId !in sequences -> {
@@ -160,7 +160,7 @@ object DirectTrips {
             // Ending here, it goes nowhere: a sure "no", not a gap in the check.
             resolution == RouteStops.Resolution.EndsHere -> Verdict.Misses
             agreed != null -> if (agreed) Verdict.Reaches else Verdict.Misses
-            else -> Verdict.Unknown(resolution?.let { RouteMiss(lineId, stopId, it) })
+            else -> Verdict.Unknown(resolution?.let { RouteMiss(lineId, stopId, it, departure.destination) })
         }
     }
 

@@ -432,7 +432,7 @@ class JourneysTest {
         val trains = Journeys.trains(segment, rowsAt("TOP", departure("Bottom A", 60, lineId = "")), mapOf("example" to rail))
         assertTrue(trains.rows.isEmpty())
         assertTrue(trains.unresolved)
-        assertEquals(setOf(RouteMiss("", "TOP", RouteStops.Resolution.NoLine)), trains.misses)
+        assertEquals(setOf(RouteMiss("", "TOP", RouteStops.Resolution.NoLine, "Bottom A")), trains.misses)
     }
 
     @Test
@@ -458,7 +458,7 @@ class JourneysTest {
         )
         assertTrue(sideTrains.rows.isEmpty())
         assertTrue(sideTrains.unresolved)
-        assertEquals(setOf(RouteMiss("example", "TOP", RouteStops.Resolution.NoDestination)), sideTrains.misses)
+        assertEquals(setOf(RouteMiss("example", "TOP", RouteStops.Resolution.NoDestination, "Check Front of Train")), sideTrains.misses)
     }
 
     @Test
@@ -488,7 +488,7 @@ class JourneysTest {
         val unknown = Journeys.trains(segment, rowsAt("TOP", departure("Nowhere", 120)), sequences)
         assertTrue(unknown.rows.isEmpty())
         assertTrue(unknown.unresolved)
-        assertEquals(setOf(RouteMiss("example", "TOP", RouteStops.Resolution.NoMatch)), unknown.misses)
+        assertEquals(setOf(RouteMiss("example", "TOP", RouteStops.Resolution.NoMatch, "Nowhere")), unknown.misses)
         val otherBranch = Journeys.trains(segment, rowsAt("TOP", departure("Bottom B", 60)), sequences)
         assertTrue(otherBranch.rows.isEmpty())
         assertFalse(otherBranch.unresolved)

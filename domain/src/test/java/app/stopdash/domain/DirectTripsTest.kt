@@ -96,12 +96,12 @@ class DirectTripsTest {
 
     @Test
     fun `each train left out unchecked is named with its reason, a failed route is not`() {
-        val top = stop("TOP", "Top", departure("Nowhere", 60), departure("", 90, lineId = ""), departure("Bottom A", 120))
+        val top = stop("TOP", "Top", departure("Nowhere", 60), departure("Elsewhere", 90, lineId = ""), departure("Bottom A", 120))
         val result = DirectTrips.filter(listOf(top), listOf(station("BOTA", "Bottom A")), mapOf("rail" to rail))
         assertEquals(
             setOf(
-                RouteMiss("rail", "TOP", RouteStops.Resolution.NoMatch),
-                RouteMiss("", "TOP", RouteStops.Resolution.NoLine),
+                RouteMiss("rail", "TOP", RouteStops.Resolution.NoMatch, "Nowhere"),
+                RouteMiss("", "TOP", RouteStops.Resolution.NoLine, "Elsewhere"),
             ),
             result.misses,
         )
