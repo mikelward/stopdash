@@ -10,6 +10,12 @@ import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
 import java.time.Instant
+import java.util.concurrent.Executors
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Runnable
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -31,6 +37,25 @@ class ComplicationChoicesTest {
 
     private val victoria = stop("940GA", "victoria", "Brixton")
     private val central = stop("940GB", "central", "Ealing")
+
+    @Test
+    fun `the picker's rows are worked out on the worker, not the caller's thread`() {
+        val env = WatchEnvelope(stops = listOf(victoria, central).map { it.toPersisted() })
+        val pool = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        try {
+            val base = pool.asCoroutineDispatcher()
+            var ranOn: String? = null
+            val worker = object : CoroutineDispatcher() {
+                override fun dispatch(context: CoroutineContext, block: Runnable) =
+                    base.dispatch(context) { ranOn = Thread.currentThread().name; block.run() }
+            }
+            val choices = runBlocking { ComplicationChoices.load(env, fetched, worker = worker) }
+            assertEquals("test-worker", ranOn)
+            assertEquals(ComplicationChoices.of(env, fetched), choices)
+        } finally {
+            pool.shutdown()
+        }
+    }
 
     @Test
     fun `the picker lists the widget's rows, starred first, labeled like the tile`() {

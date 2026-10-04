@@ -4,6 +4,7 @@ import app.stopdash.data.WatchEnvelope
 import app.stopdash.data.toDomain
 import app.stopdash.domain.Countdown
 import app.stopdash.domain.DepartureLabels
+import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.NoTimes
@@ -200,11 +201,14 @@ object TileTimeline {
         val statuses = if (withhold) emptyMap() else envelope.liveLineStatuses(now)
         // Fresh rows ahead of stale ones (as the widget orders its cap), then favorites first.
         // A suspension's status row stays while its own check is live, past the stop's boundary.
+        val stale: (DepartureRow) -> Boolean = { staleStop[it.stopId] == true }
         val ordered = DepartureRows.freshFirst(
             DepartureRows.across(stops, now, statuses, splitPlatforms = false, statusRowsWhenStale = true),
-        ) { staleStop[it.stopId] == true }
-        // Less the modes hidden from the near-me list, as the widget leaves them out.
-        val shown = HiddenModes.rows(ordered, envelope.hiddenModes.toSet())
+            stale,
+        )
+        // A line several nearby stops serve shows once, from the nearest, as on the widget and the
+        // in-app list, then less the modes hidden from the near-me list, as the widget leaves them out.
+        val shown = HiddenModes.rows(DepartureRows.glanceFolded(ordered, envelope.nearestFirst, stale), envelope.hiddenModes.toSet())
         val pinned = DepartureRows.pinStarred(shown, starred)
         // Judged on the rows drawn with a live countdown, as the widget judges it: a line that
         // didn't fit is never spoken for. Its note takes a line, so the rows are chosen again with

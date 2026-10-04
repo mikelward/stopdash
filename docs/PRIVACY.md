@@ -72,7 +72,7 @@ carries your saved data under your control, and a bug report carries what you co
 **Your Wear OS watch (optional).** If a watch paired with your phone has the
 StopDash watch app installed, the phone sends it what your home-screen widget shows, so the watch
 can show it too: the widget's stops (their names and IDs, and the nearby stops each is compared
-against, which are worked out from your phone's last location), their departures, TfL's public
+against, which are worked out from your phone's last location), the order they sit nearest you, never how far each is, so the watch shows a line once, from its nearest stop, as the widget does, their departures, TfL's public
 service status for their lines (such as "Severe Delays") and the work TfL has announced on them
 for a later day (such as a weekend closure), for each direction where TfL says an
 alert only affects one way, whether you dismissed it in the app, and which of those stops a bus alert is wholly behind (worked out on the phone from TfL's routes), which rows you've starred, and which kinds of transport you've hidden, plus TfL's current routes for a branching line where they differ from the ones built into the app (public data, the same for everyone). It never sends your coordinates or your API keys, and the watch never contacts TfL,

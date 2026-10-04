@@ -2815,7 +2815,9 @@ Delays" under the service (a suspension with no countdown as its status alone), 
 complication shows "⚠" by the line code and the status beside the line's name in its long form. A
 live countdown whose line has no current check makes the tile and the app say "Couldn't check for
 disruptions", as the widget does, and the tile's foot offers Refresh; the complication has no room
-for that note.
+for that note. As on the widget, a line two nearby stops both serve shows once, from the nearer,
+by the nearest-first order the phone sends with the snapshot (never the distances), on the tile,
+the app and the complication's default row alike, through the widget's own fold.
 
 **The complication** puts one row's next departure on the watch face: the line and its countdown,
 with the destination when there's room. It shows the row the user picks for it in the watch

@@ -16,7 +16,13 @@ import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.Terminating
 import java.time.Instant
 import java.time.LocalDate
+import java.util.concurrent.Executors
+import kotlin.coroutines.CoroutineContext
 import kotlin.time.toJavaDuration
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Runnable
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -51,6 +57,36 @@ class ComplicationTimelineTest {
 
     private fun List<ComplicationEntry>.at(t: Instant): ComplicationContent =
         single { it.start <= t && (it.end == null || t < it.end) }.content
+
+    @Test
+    fun `the default row is a line's nearest copy, as the tile folds it`() {
+        val a = stop("940GA", listOf(departure(60)))
+        val b = stop("940GB", listOf(departure(120)))
+        val folded = envelope(a, b).copy(nearestFirst = listOf("940GB", "940GA"))
+        assertEquals(listOf("940GB"), ComplicationTimeline.widgetRows(folded, fetched).map { it.stopId })
+        assertEquals("940GB", ComplicationTimeline.defaultRow(folded, fetched)?.stopId)
+        // With no order, the sooner stop's copy leads and both are choices.
+        assertEquals(listOf("940GA", "940GB"), ComplicationTimeline.widgetRows(envelope(a, b), fetched).map { it.stopId })
+    }
+
+    @Test
+    fun `the timeline is worked out on the worker, not the caller's thread`() {
+        val env = envelope(stop("940GA", listOf(departure(60))))
+        val pool = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        try {
+            val base = pool.asCoroutineDispatcher()
+            var ranOn: String? = null
+            val worker = object : CoroutineDispatcher() {
+                override fun dispatch(context: CoroutineContext, block: Runnable) =
+                    base.dispatch(context) { ranOn = Thread.currentThread().name; block.run() }
+            }
+            val entries = runBlocking { ComplicationTimeline.load(env, fetched, worker = worker) }
+            assertEquals("test-worker", ranOn)
+            assertEquals(ComplicationTimeline.entries(env, fetched), entries)
+        } finally {
+            pool.shutdown()
+        }
+    }
 
     @Test
     fun `nothing to show is the no-data dash`() {

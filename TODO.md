@@ -2830,12 +2830,19 @@ and these carry the rest as their own PRs:
       put the rider's position in the backed-up snapshot), and the widget folds by it. Without the
       distances a route's directions aren't kept together at a slightly farther stop, so the widget
       can show them from two stops where the app shows one.*
-  - [ ] **The watch folds a line to its nearest stop too** (Codex on #473). The tile, the watch app
+  - [x] **The watch folds a line to its nearest stop too** (Codex on #473). The tile, the watch app
         and the default complication mirror the widget's rows but still render
         `DepartureRows.across` unfolded, so they can show a farther stop's copy of a line the widget
         folded away. Carry `nearestFirst` through `WatchEnvelope` and apply the same fold in
         `TileTimeline` and `ComplicationTimeline` (both sides of the phone/watch build, so an older
         watch build ignores the field).
+        *Done: `WatchEnvelope.nearestFirst` carries the order for the stops sent, and the tile, the
+        watch app and the complication fold with the widget's own `DepartureRows.glanceFolded`.*
+  - [ ] **Does a saved complication pick follow the fold?** (Codex on #549, #550; maintainer's
+        call.) A pick made for a line at stop A keeps showing A after a move folds that line to
+        stop B on the widget, tile and default complication. Kept as picked for now: dropping the
+        pick falls back to the top row, which can be another line altogether. Alternatives: remap
+        the pick to the folded stop's row for the same line and direction, or drop it.
 - [x] **Scope the widget snapshot to its nearby set (own PR, Codex P1 on #44).** The widget
       snapshot is written only on an *authoritative* arrivals cycle, so if the user moves and
       the new set's fetch fails (offline/rate-limited), the previous location's departures stay

@@ -1,6 +1,7 @@
 package app.stopdash.data
 
 import app.stopdash.domain.AlertStart
+import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.HiddenModes
@@ -56,6 +57,11 @@ data class WatchEnvelope(
      *  labels branching rows as the widget does. TfL's public data, nothing about the user. Additive:
      *  an older watch app ignores it and groups by its own asset. */
     val routeLines: Map<String, List<PersistedRoutePattern>> = emptyMap(),
+    /** The carried stops nearest the rider first ([DeparturesSnapshot.nearestFirst]), so the watch
+     *  shows a line once, from its nearest stop, as the widget and the in-app list do
+     *  ([DepartureRows.glanceFolded]). An order, never the distances. Additive: an older watch app
+     *  ignores it and shows every stop's rows, and an older phone sends none, which folds nothing. */
+    val nearestFirst: List<String> = emptyList(),
 ) {
     /** [routeLines] as the topology reads them, a line with a pattern that doesn't read left out. */
     fun routePatterns(): Map<String, List<RoutePattern>> = routeLines.toPatterns()
@@ -279,6 +285,11 @@ object WatchEnvelopes {
                     )
                 }
         }
+        // The nearest-first order of the stops sent: a stop trimmed from the envelope isn't named in it.
+        fun orderFor(kept: List<PersistedStop>): List<String> {
+            val ids = kept.mapTo(HashSet()) { it.stopId }
+            return snapshot.nearestFirst.filter { it in ids }
+        }
         // Kept whatever stops go: a few KB at most, and only while TfL's routes differ from the asset.
         val lines = routeLines.toSortedMap().mapValues { (_, patterns) -> patterns.map(PersistedRoutePattern::of) }
         var envelope = WatchEnvelope(
@@ -288,11 +299,12 @@ object WatchEnvelopes {
             hiddenModes = hidden,
             lineStatuses = statusesFor(stops),
             routeLines = lines,
+            nearestFirst = orderFor(stops),
         )
         var bytes = encode(envelope)
         if (bytes.size <= dataItemBudget) return WatchPayload(envelope, bytes, asAsset = false)
         if (bytes.size <= transferCeiling) return WatchPayload(envelope, bytes, asAsset = true)
-        val ranked = rankedStopIds(snapshot.stops.filterNot { it.stopId in snapshot.journeyOnlyStopIds }, starred, hiddenModes, threshold, now, snapshot.liveLineStatuses(now))
+        val ranked = rankedStopIds(snapshot.stops.filterNot { it.stopId in snapshot.journeyOnlyStopIds }, starred, hiddenModes, threshold, now, snapshot.liveLineStatuses(now), snapshot.nearestFirst)
         val dropOrder = ranked.reversed().let { low -> low.filterNot { it in protectedStops } + low.filter { it in protectedStops } }
         // The watch reads only whether any stop is missing, so past the ceiling one id keeps the
         // flag, and the list can't hold the payload over the bound on its own.
@@ -312,6 +324,7 @@ object WatchEnvelopes {
                 hiddenModes = hidden,
                 lineStatuses = statusesFor(kept),
                 routeLines = lines,
+                nearestFirst = orderFor(kept),
             )
             bytes = encode(envelope)
         }
@@ -328,15 +341,17 @@ object WatchEnvelopes {
         now: Instant,
         // A suspended line's status row ranks its stop as the widget would.
         lineStatuses: Map<String, LineStatus>,
+        // Folded as the watch folds them, so a stop whose every line shows from a nearer one ranks last.
+        nearestFirst: List<String>,
     ): List<String> {
         val staleStop = stops.associate { it.stopId to Staleness.isStale(it.fetchedAt, now, threshold) }
         // Fresh first as the widget orders them, a live suspension's status row counting as fresh.
-        val rows = DepartureRows.freshFirst(
-            HiddenModes.rows(
-                DepartureRows.across(stops, now, lineStatuses, splitPlatforms = false, statusRowsWhenStale = true),
-                hiddenModes,
-            ),
-        ) { staleStop[it.stopId] == true }
+        val stale: (DepartureRow) -> Boolean = { staleStop[it.stopId] == true }
+        val ordered = DepartureRows.freshFirst(
+            DepartureRows.across(stops, now, lineStatuses, splitPlatforms = false, statusRowsWhenStale = true),
+            stale,
+        )
+        val rows = HiddenModes.rows(DepartureRows.glanceFolded(ordered, nearestFirst, stale), hiddenModes)
         val byRow = DepartureRows.pinStarred(rows, starred, warningsLead = false).map { it.stopId }.distinct()
         return byRow + stops.map { it.stopId }.filterNot { it in byRow }
     }
