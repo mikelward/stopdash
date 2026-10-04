@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,6 +51,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -261,9 +263,12 @@ fun StationSearchScreen(
                     TextButton(onClick = onRetry) { Text(stringResource(R.string.route_stops_retry)) }
                 }
                 is StationSearchViewModel.Result.Matches -> {
-                    val listState = rememberLazyListState()
+                    // A new query's matches start at the top, best match first, not where the last
+                    // query's list was scrolled to.
+                    val listState = rememberSaveable(state.query, saver = LazyListState.Saver) { LazyListState() }
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize().scrollEdgeCue(listState, scrollCueColors(MaterialTheme.colorScheme.background)),
+                        modifier = Modifier.fillMaxSize().scrollEdgeCue(listState, scrollCueColors(MaterialTheme.colorScheme.background))
+                            .testTag("stationSearchMatches"),
                         state = listState,
                     ) {
                         // Stops and geocoded places in the order the search listed them: ranked by how well

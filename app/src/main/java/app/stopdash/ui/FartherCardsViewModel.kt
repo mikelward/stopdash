@@ -276,6 +276,12 @@ internal fun withOpenedFarther(
 }
 
 /** [merged], the list [list] with [opened]'s cards merged in by [withOpenedFarther]. */
+/** Farther cards ([places]) as picked for the nearby set [key]. */
+internal class FartherFor(val key: String, val places: List<CollapsedPlaces.Place>) {
+    /** The cards if they were picked for [set], else null: another set's aren't this one's. */
+    fun forSet(set: String): List<CollapsedPlaces.Place>? = places.takeIf { key == set }
+}
+
 internal class MergedFarther(
     val list: DeparturesUiState.Loaded,
     val opened: List<Pair<Set<String>, DeparturesUiState>>,
@@ -314,12 +320,14 @@ internal fun rememberWithOpenedFarther(
     val worker = LocalWorker.current
     // Keyed by identity, so a recomposition doesn't compare the states' stops to see if they changed.
     val key = MergeKey(list, opened)
-    val shown by produceState(initialValue = cached?.takeIf { it.isOf(list, opened) }?.merged ?: list, key) {
-        val merged = withContext(worker) { merge(list, opened) }
-        onMerged(MergedFarther(list, opened, merged))
-        value = merged
+    // Tagged with the states it merged, so a new list (another set's, say) shows alone until its own
+    // merge is back rather than the last one's.
+    val merged by produceState(initialValue = cached?.takeIf { it.isOf(list, opened) }, key) {
+        val done = MergedFarther(list, opened, withContext(worker) { merge(list, opened) })
+        onMerged(done)
+        value = done
     }
-    return shown
+    return merged?.takeIf { it.isOf(list, opened) }?.merged ?: list
 }
 
 /** The merge's inputs, equal only to the same ones ([sameStates]). */
