@@ -2745,11 +2745,14 @@ divergent trains each keep their own countdown — and the user's **starred** se
 pinned to the top (D8), sharing the domain's grouping and pinning so the two surfaces can't
 drift. It shows the via-branch in the same normalized short form as the app ("Charing X"):
 the label is one short form per trunk on every surface, so neither has to measure a fuller
-name. As in the app, a line two nearby stops both serve shows once, from the nearer: the app
-saves the nearby stops' order nearest first with the snapshot — the order, never the distances,
-which together would pin down where the rider was. Without the distances a route's two
-directions are each shown from their own nearest stop rather than kept together at one a few
-steps farther. (Reordering the widget's rows closest-first is not mirrored.) The app pushes an update whenever it fetches, so the
+name. As in the app, a line two nearby stops both serve shows once, from the stop the app shows
+it from: the app saves with the snapshot the nearby stops' order nearest first and, for each line,
+the stop its list chose — stop ids, never the distances, which together would pin down where the
+rider was. So a route's two directions kept together at a stop a few steps farther stay together
+on the widget too. A line the saved choices don't name (one that has appeared since the app last
+worked them out) folds by the order alone, to its nearest stop. The choices follow the rider
+whether or not a refresh succeeds: at each fix, and when the app starts, they're worked out again
+from the saved rows at the new distances, never kept from where the rider was. (Reordering the widget's rows closest-first is not mirrored.) The app pushes an update whenever it fetches, so the
 widget follows the app's last refresh rather than waking on the OS's periodic schedule
 (battery). Because the widget's host never re-renders it on its own (no periodic update),
 the widget also schedules **one render-only redraw at its staleness boundary**, so a widget
@@ -2815,9 +2818,10 @@ Delays" under the service (a suspension with no countdown as its status alone), 
 complication shows "⚠" by the line code and the status beside the line's name in its long form. A
 live countdown whose line has no current check makes the tile and the app say "Couldn't check for
 disruptions", as the widget does, and the tile's foot offers Refresh; the complication has no room
-for that note. As on the widget, a line two nearby stops both serve shows once, from the nearer,
-by the nearest-first order the phone sends with the snapshot (never the distances), on the tile,
-the app and the complication's default row alike, through the widget's own fold.
+for that note. As on the widget, a line two nearby stops both serve shows once, from the stop the
+phone's list shows it from, by the order and line choices the phone sends with the snapshot (never
+the distances), on the tile, the app and the complication's default row alike, through the
+widget's own fold.
 
 **The complication** puts one row's next departure on the watch face: the line and its countdown,
 with the destination when there's room. It shows the row the user picks for it in the watch

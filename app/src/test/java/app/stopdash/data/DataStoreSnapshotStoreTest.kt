@@ -1,6 +1,7 @@
 package app.stopdash.data
 
 import androidx.datastore.core.DataStore
+import app.stopdash.domain.FoldChoice
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.JourneyCall
@@ -393,6 +394,48 @@ class DataStoreSnapshotStoreTest {
         val store = DataStoreSnapshotStore(FakeDataStore(stored.toPersisted()))
         store.updateNearestFirst(listOf("940GZZLUOXC", "940GZZLUKSX"))
         assertEquals(listOf("940GZZLUOXC", "940GZZLUKSX"), store.load()!!.nearestFirst)
+    }
+
+    private val atKsx = FoldChoice("victoria", "inbound", "940GZZLUKSX")
+    private val atOxc = FoldChoice("victoria", "inbound", "940GZZLUOXC")
+
+    @Test
+    fun `the line choices round-trip with the snapshot`() = runTest {
+        val store = DataStoreSnapshotStore(FakeDataStore(null))
+        store.saveKeepingJourneys(twoStopSnapshot().copy(nearestFirst = listOf("940GZZLUKSX", "940GZZLUOXC"), nearbyChoices = listOf(atKsx)))
+        assertEquals(listOf(atKsx), store.load()!!.nearbyChoices)
+    }
+
+    @Test
+    fun `updateNearestFirst stores new line choices for the stops it ranks`() = runTest {
+        val stored = twoStopSnapshot().copy(nearestFirst = listOf("940GZZLUOXC", "940GZZLUKSX"), nearbyChoices = listOf(atOxc))
+        val store = DataStoreSnapshotStore(FakeDataStore(stored.toPersisted()))
+        var workedFrom: List<String>? = null
+        store.updateNearestFirst(listOf("940GZZLUKSX", "940GZZLUOXC")) { held ->
+            workedFrom = held.stops.map { it.stopId }
+            listOf(atKsx, FoldChoice("central", "outbound", "940GZZLUGONE"))
+        }
+        // Worked out from the stored rows, and kept only for the stops the order ranks.
+        assertEquals(stored.stops.map { it.stopId }, workedFrom)
+        assertEquals(listOf(atKsx), store.load()!!.nearbyChoices)
+    }
+
+    @Test
+    fun `an order with no choices clears the stored ones, even an unchanged order`() = runTest {
+        val stored = twoStopSnapshot().copy(nearestFirst = listOf("940GZZLUOXC", "940GZZLUKSX"), nearbyChoices = listOf(atOxc))
+        val store = DataStoreSnapshotStore(FakeDataStore(stored.toPersisted()))
+        // Worked out for where the rider was: without rows to work them out again, they go.
+        store.updateNearestFirst(listOf("940GZZLUOXC", "940GZZLUKSX"))
+        assertEquals(emptyList<FoldChoice>(), store.load()!!.nearbyChoices)
+        assertEquals(listOf("940GZZLUOXC", "940GZZLUKSX"), store.load()!!.nearestFirst)
+    }
+
+    @Test
+    fun `a pruned stop's line choices go with it`() = runTest {
+        val stored = twoStopSnapshot().copy(nearestFirst = listOf("940GZZLUOXC", "940GZZLUKSX"), nearbyChoices = listOf(atOxc, FoldChoice("northern", "outbound", "940GZZLUKSX")))
+        val store = DataStoreSnapshotStore(FakeDataStore(stored.toPersisted()))
+        store.pruneStops(listOf("940GZZLUOXC"))
+        assertEquals(listOf(FoldChoice("northern", "outbound", "940GZZLUKSX")), store.load()!!.nearbyChoices)
     }
 
     @Test

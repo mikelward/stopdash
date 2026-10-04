@@ -1490,6 +1490,34 @@ class DepartureRowsTest {
     }
 
     @Test
+    fun `nearbyChoices names the stop the fold keeps each line at, directions kept together`() {
+        val distances = mapOf("PN" to 100.0, "PS" to 128.0, "LS" to 103.0)
+        assertEquals(
+            listOf(FoldChoice("55", "inbound", "PN"), FoldChoice("55", "outbound", "PS")),
+            DepartureRows.nearbyChoices(pairNorth + pairSouth + loneSouth, distances),
+        )
+    }
+
+    @Test
+    fun `glanceFolded follows the app's choices where the order alone would split a route`() {
+        val rows = pairNorth + pairSouth + loneSouth
+        val order = listOf("PN", "LS", "PS")
+        // By the order alone, southbound shows from the lone pole, a step nearer.
+        assertEquals(setOf("PN", "LS"), DepartureRows.glanceFolded(rows, order) { false }.mapTo(HashSet()) { it.stopId })
+        // With the app's choices, both directions show from the pair, as on the in-app list.
+        val choices = DepartureRows.nearbyChoices(rows, mapOf("PN" to 100.0, "PS" to 128.0, "LS" to 103.0))
+        assertEquals(setOf("PN", "PS"), DepartureRows.glanceFolded(rows, order, choices) { false }.mapTo(HashSet()) { it.stopId })
+    }
+
+    @Test
+    fun `glanceFolded falls back to the order where a chosen stop has no row for the line`() {
+        val rows = pairNorth + loneSouth
+        // The app chose the pair's southbound pole, which the glance surface no longer has.
+        val choices = listOf(FoldChoice("55", "inbound", "PN"), FoldChoice("55", "outbound", "PS"))
+        assertEquals(setOf("PN", "LS"), DepartureRows.glanceFolded(rows, listOf("PN", "LS"), choices) { false }.mapTo(HashSet()) { it.stopId })
+    }
+
+    @Test
     fun `nearbyDeduped splits a route when the other place is over 50 m nearer`() {
         val deduped = DepartureRows.nearbyDeduped(
             pairNorth + pairSouth + loneSouth,

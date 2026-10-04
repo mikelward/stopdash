@@ -1,5 +1,6 @@
 package app.stopdash.wear
 
+import app.stopdash.data.PersistedFoldChoice
 import app.stopdash.data.WatchEnvelope
 import app.stopdash.data.WatchStarKey
 import app.stopdash.data.toPersisted
@@ -203,6 +204,17 @@ class TileTimelineTest {
         assertEquals(listOf("2 min"), rows(TileTimeline.frame(folded, fetched)).map { it.countdown })
         // With no order (an older phone), every stop's copy still shows.
         assertEquals(2, rows(TileTimeline.frame(envelope(a, b), fetched)).size)
+    }
+
+    @Test
+    fun `a line shows from the stop the phone's list chose, where the order alone would pick another`() {
+        val a = stop("940GA", listOf(departure(60)))
+        val b = stop("940GB", listOf(departure(120)))
+        val env = envelope(a, b).copy(
+            nearestFirst = listOf("940GA", "940GB"),
+            nearbyChoices = listOf(PersistedFoldChoice("victoria", "inbound", "940GB")),
+        )
+        assertEquals(listOf("2 min"), rows(TileTimeline.frame(env, fetched)).map { it.countdown })
     }
 
     @Test

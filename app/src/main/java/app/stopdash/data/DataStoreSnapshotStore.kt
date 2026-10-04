@@ -8,6 +8,7 @@ import androidx.datastore.core.Serializer
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.dataStoreFile
 import app.stopdash.domain.DeparturesSnapshot
+import app.stopdash.domain.FoldChoice
 import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.SteadyClock
@@ -144,8 +145,10 @@ class DataStoreSnapshotStore internal constructor(
                 // Line checks per line, newest wins: the app may have checked a line since this
                 // caller loaded, and an older verdict mustn't replace it.
                 lineStatuses = newestStatuses(current.lineStatuses, desired.lineStatuses, desired.stops, now),
-                // So is the stops' nearest-first order, for the same reason as the nearer places.
+                // So is the stops' nearest-first order, for the same reason as the nearer places,
+                // and the stop the app shows each line from.
                 nearestFirst = current.nearestFirst,
+                nearbyChoices = current.nearbyChoices,
             )
         }
         val written = update(now) { current ->
@@ -168,7 +171,7 @@ class DataStoreSnapshotStore internal constructor(
         }
     }
 
-    override suspend fun updateNearestFirst(order: List<String>) {
+    override suspend fun updateNearestFirst(order: List<String>, choicesFor: ((DeparturesSnapshot) -> List<FoldChoice>)?) {
         // A pure function of `current` and the immutable list, atomic under the write lock like
         // [updateNearer]. Only stops the snapshot holds take a place in it.
         update { current ->
@@ -187,7 +190,15 @@ class DataStoreSnapshotStore internal constructor(
             val ranked = order.filter { it in held }
             val rankedIds = ranked.toHashSet()
             val next = ranked + current.nearestFirst.filter { it in nearby && it !in rankedIds }
-            if (next == current.nearestFirst) current else current.copy(nearestFirst = next)
+            // Worked out afresh from the stored rows, for the stops it ranks; none given clears the
+            // stored ones, worked out for where the rider was.
+            val choices = choicesFor?.let { work -> current.toDomain()?.let(work) }.orEmpty()
+            val nextChoices = choices.filter { it.stopId in rankedIds }.map(PersistedFoldChoice::of)
+            if (next == current.nearestFirst && nextChoices == current.nearbyChoices) {
+                current
+            } else {
+                current.copy(nearestFirst = next, nearbyChoices = nextChoices)
+            }
         }
     }
 
@@ -235,6 +246,7 @@ class DataStoreSnapshotStore internal constructor(
                     lineStatuses = linesOfPersisted(kept).let { lines -> current.lineStatuses.filter { it.lineId in lines } },
                     // A departed stop is no longer nearby, so it leaves the order, a demoted origin too.
                     nearestFirst = current.nearestFirst.filterNot { it in departed },
+                    nearbyChoices = current.nearbyChoices.filterNot { it.stopId in departed },
                 )
             }
         }

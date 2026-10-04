@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.glance.appwidget.updateAll
 import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.domain.DeparturesSnapshot
+import app.stopdash.domain.FoldChoice
 import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.StopArrivals
@@ -73,9 +74,10 @@ class WidgetSnapshotStore(context: Context) : SnapshotStore {
         pokeWidget()
     }
 
-    override suspend fun updateNearestFirst(order: List<String>) {
-        // The widget folds a line to its nearest stop by this order, so re-render once it's stored.
-        delegate.updateNearestFirst(order)
+    override suspend fun updateNearestFirst(order: List<String>, choicesFor: ((DeparturesSnapshot) -> List<FoldChoice>)?) {
+        // The widget folds a line to its nearest stop by this order and these choices, so re-render
+        // once they're stored.
+        delegate.updateNearestFirst(order, choicesFor)
         pokeWidget()
     }
 

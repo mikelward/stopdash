@@ -1821,6 +1821,7 @@ class MainActivity : ComponentActivity() {
                             client = departuresClient(appContext),
                             departureSourceChanges = RailApiKeySetting.changes,
                             hiddenModes = { HiddenModesSetting.current },
+                            hiddenModeChanges = HiddenModesSetting.changes,
                             seedStops = ready.eagerStops,
                             initialMore = ready.more,
                             // Save-only snapshot store: the app writes each fresh snapshot for

@@ -55,7 +55,7 @@ usage stats** you can opt in to (see below): off unless you turn them on, they s
 details, app interactions, device details and identifiers, and the approximate region Google
 derives from your IP address, but never your location, stops or journeys. The second is **your
 own Android backup and device-to-device transfer**, if you have it enabled: like any app's data, your saved stopdash
-data (your settings and its last-good departures snapshot, which lists the widget's nearby stops nearest first but never how far each was) rides it, so a phone swap keeps your
+data (your settings and its last-good departures snapshot, which lists the widget's nearby stops nearest first, and which of them the app shows each line from, but never how far each was) rides it, so a phone swap keeps your
 setup — all but the crash-report opt-in, which stays with the install, the rows your watch's complications show, which the phone relearns from the watch, and the stops the app last found near you, which say where you are now and are kept on the phone only. That is Android's channel, tied to your Google account — not something stopdash sends.
 The third is a **bug report you choose to send** (see *Sending a bug report* below): it hands
 the app you pick a diagnostic report that, unlike everything else here, **includes your exact
@@ -72,7 +72,7 @@ carries your saved data under your control, and a bug report carries what you co
 **Your Wear OS watch (optional).** If a watch paired with your phone has the
 StopDash watch app installed, the phone sends it what your home-screen widget shows, so the watch
 can show it too: the widget's stops (their names and IDs, and the nearby stops each is compared
-against, which are worked out from your phone's last location), the order they sit nearest you, never how far each is, so the watch shows a line once, from its nearest stop, as the widget does, their departures, TfL's public
+against, which are worked out from your phone's last location), the order they sit nearest you and which of them the app shows each line from, never how far each is, so the watch shows each line once, from the same stop as the app, their departures, TfL's public
 service status for their lines (such as "Severe Delays") and the work TfL has announced on them
 for a later day (such as a weekend closure), for each direction where TfL says an
 alert only affects one way, whether you dismissed it in the app, and which of those stops a bus alert is wholly behind (worked out on the phone from TfL's routes), which rows you've starred, and which kinds of transport you've hidden, plus TfL's current routes for a branching line where they differ from the ones built into the app (public data, the same for everyone). It never sends your coordinates or your API keys, and the watch never contacts TfL,

@@ -2,6 +2,7 @@ package app.stopdash.data
 
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DeparturesSnapshot
+import app.stopdash.domain.FoldChoice
 import app.stopdash.domain.JourneyCall
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
@@ -69,6 +70,10 @@ data class PersistedSnapshot(
     // ([DeparturesSnapshot.nearestFirst]). Defaulted: an older snapshot reads back with none (every
     // stop's rows shown, as before), and an older build ignores it.
     val nearestFirst: List<String> = emptyList(),
+    // The stop the in-app list shows each line from ([DeparturesSnapshot.nearbyChoices]). Defaulted:
+    // an older snapshot reads back with none (folded by [nearestFirst] alone), and an older build
+    // ignores it.
+    val nearbyChoices: List<PersistedFoldChoice> = emptyList(),
 ) {
     companion object {
         /**
@@ -506,6 +511,7 @@ fun DeparturesSnapshot.toPersisted(): PersistedSnapshot =
         // verdicts on alerts behind a stop ([DeparturesSnapshot.withAlertsBehind]).
         lineStatuses = lineStatuses.toPersistedStatuses().map { it.undismissed() },
         nearestFirst = nearestFirst,
+        nearbyChoices = nearbyChoices.map(PersistedFoldChoice::of),
     )
 
 /**
@@ -528,7 +534,18 @@ fun PersistedSnapshot.toDomain(): DeparturesSnapshot? {
         // A flag an earlier build stored is ignored, as [toPersisted] no longer writes one.
         lineStatuses = lineStatuses.associate { it.lineId to it.undismissed().toDomain() },
         nearestFirst = nearestFirst,
+        nearbyChoices = nearbyChoices.map { it.toDomain() },
     )
+}
+
+/** A [FoldChoice] as stored, and as sent to the watch. */
+@Serializable
+data class PersistedFoldChoice(val lineId: String, val direction: String, val stopId: String) {
+    fun toDomain(): FoldChoice = FoldChoice(lineId, direction, stopId)
+
+    companion object {
+        fun of(choice: FoldChoice): PersistedFoldChoice = PersistedFoldChoice(choice.lineId, choice.direction, choice.stopId)
+    }
 }
 
 fun StopArrivals.toPersisted(): PersistedStop =

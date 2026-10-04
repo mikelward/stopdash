@@ -10,6 +10,7 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DeparturesSnapshot
+import app.stopdash.domain.FoldChoice
 import app.stopdash.domain.Dismissed
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DismissedAlertsStore
@@ -68,6 +69,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -225,6 +227,9 @@ class MainViewModel(
     // The modes and lines the rider has hidden right now (SPEC *Finding stops → Hiding a mode*): with
     // National Rail among them, a station's board isn't asked for where nothing shown runs on it.
     private val hiddenModes: () -> Set<String> = { emptySet() },
+    // [hiddenModes] as it changes: its current value is ignored, and each later change works the
+    // widget's line choices out again, since a hidden mode changes which stop the list shows a line from.
+    hiddenModeChanges: Flow<Any?> = emptyFlow(),
     // Usage events, categories only (UsageEvent): a star or unstar, never which row. Sent only while
     // the rider has opted in.
     private val usage: (UsageEvent) -> Unit = UsageEvents::log,
@@ -650,7 +655,9 @@ class MainViewModel(
         // The order this model starts from, stored at once: a model made after a move (a new process,
         // say) starts from the new distances, and its first refresh may fail before saving. The store
         // writes only a change ([SnapshotStore.updateNearestFirst]).
-        nearestFirstOf(nearStops.map { it.id }, stopDistanceMeters).takeIf { it.isNotEmpty() }?.let(::updateWidgetNearestFirst)
+        // The line choices are worked out again from the stored rows, so a first refresh that fails
+        // leaves the widget folding as the app does, not by the order alone.
+        updateWidgetNearestFirst(widgetChoicesInput(stopDistanceMeters))
         viewModelScope.launch {
             departureSourceChanges.drop(1).collect {
                 arrivalsFetchedAt.clear()
@@ -691,6 +698,22 @@ class MainViewModel(
         }
         // Every alert shown until the dismissed set is read; followed for the model's life.
         viewModelScope.launch { followDismissed(dismissedStore, _dismissed, warn) }
+        // The widget's line choices read the dismissed alerts and the hidden modes as the list does,
+        // so each change to either (the dismissed set's first read included, which lands after the
+        // order was first stored) works them out again from the stored rows. Each emission is
+        // compared with what the last write actually read, not dropped by position: a value that
+        // loaded between the startup write's read and this subscription arrives as the first
+        // emission and still counts (Codex on #550), while one the last write already used (or
+        // will, while its read is still to come) writes nothing, so a replaced model doesn't
+        // write over its successor's order.
+        viewModelScope.launch {
+            merge(_dismissed, hiddenModeChanges).collect {
+                val used = choiceFiltersUsed ?: return@collect
+                if (!used.sameAs(ChoiceFilters(_dismissed.value, hiddenModes()))) {
+                    updateWidgetNearestFirst(widgetChoicesInput(stopDistanceMeters))
+                }
+            }
+        }
         // Show the persisted last-good at once (a stamped placeholder, aged), then refresh.
         // The read is off the main thread and the first frame is already the Loading
         // placeholder, so nothing blocks on the DataStore read (SPEC snapshot-render). The
@@ -1863,7 +1886,27 @@ class MainViewModel(
                     // persisted during the fix window (SPEC D4 / principle 1).
                     // Keeping the stored journey pins, and any stop the widget's live refresh stored
                     // newer (a pinned origin this fetch didn't cover, say).
-                    withContext(io) { snapshotStore.saveKeepingJourneys(toSave) }
+                    // With the stop the near-me list shows each line from, worked out here off the
+                    // main thread, so the widget and the watch show it from the same one.
+                    val loaded = newState as DeparturesUiState.Loaded
+                    val distances = stopDistanceMeters
+                    val dismissedNow = _dismissed.value
+                    val hiddenUsed = withContext(io) {
+                        val hidden = hiddenModes()
+                        val choices = widgetChoicesOf(loaded.stops, loaded.lineStatuses, nearIds, distances, now, dismissedNow, hidden)
+                        snapshotStore.saveKeepingJourneys(toSave.copy(nearbyChoices = choices))
+                        hidden
+                    }
+                    // A fix or a filter that changed while this save was on its way had its own write,
+                    // which may have landed first and been overwritten here. So when any input the
+                    // choices were worked out from has moved on (each compared by reference, so this
+                    // costs nothing on the main thread), they're worked out again from the rows just
+                    // saved and the inputs as they are now (Codex on #550).
+                    if (stopDistanceMeters !== distances ||
+                        !ChoiceFilters(dismissedNow, hiddenUsed).sameAs(ChoiceFilters(_dismissed.value, hiddenModes()))
+                    ) {
+                        updateWidgetNearestFirst(widgetChoicesInput(stopDistanceMeters))
+                    }
                     // save() pokes the widget itself (WidgetSnapshotStore), so it re-renders with
                     // the fresh snapshot; no separate redraw needed on this path.
                 } catch (e: CancellationException) {
@@ -1891,6 +1934,9 @@ class MainViewModel(
                 val write: suspend (Map<String, LineStatusCheck>) -> Unit = {
                     wrote = true
                     withContext(io) { snapshotStore.updateLineStatuses(it) }
+                    // The line choices read the statuses (a warning's row, say), so they're worked
+                    // out again from the stored rows with the statuses just stored (Codex on #550).
+                    updateWidgetNearestFirst(widgetChoicesInput(stopDistanceMeters))
                 }
                 try {
                     if (widgetSnapshot == null) {
@@ -1986,7 +2032,11 @@ class MainViewModel(
                 _shownNearStops.value = nearStops
                 // Stored when it changes, so the widget folds by where the rider is now whether or not
                 // the refresh that follows succeeds (Codex on #473); the distances themselves never are.
-                plan.nearestFirst?.let(::updateWidgetNearestFirst)
+                // New distances store fresh choices even when the order holds: crossing the 50 m
+                // together-slack moves the fold's stop without moving the order (Codex on #550).
+                if (plan.nearestFirst != null || newDistanceMeters != null) {
+                    updateWidgetNearestFirst(widgetChoicesInput(newDistanceMeters ?: dist0), order = plan.nearestFirst)
+                }
                 stopDistanceMeters = newDistanceMeters ?: dist0
                 plan.state?.let { _state.value = it }
                 plan.nearer?.let(::updateWidgetNearer)
@@ -2090,12 +2140,13 @@ class MainViewModel(
      * [reconcile] runs it; so does an opened farther card's model when the rider moves.
      */
     fun remeasure(newDistanceMeters: Map<String, Double>) {
-        val near = nearStops.map { it.id }
-        val order = nearestFirstOf(near, newDistanceMeters)
-        // Stored when it changes, so the widget folds by where the rider is now whether or not the
-        // refresh that follows succeeds (Codex on #473); the distances themselves are never stored.
-        if (order != nearestFirstOf(near, stopDistanceMeters)) updateWidgetNearestFirst(order)
         stopDistanceMeters = newDistanceMeters
+        // The nearest-first order and the stop each line shows from, stored at every fix so the widget
+        // folds by where the rider is now whether or not the refresh that follows succeeds (Codex on
+        // #473); the distances themselves are never stored. The choices can change with no change of
+        // order (a route's directions kept together within a few meters); the store writes only what
+        // changed.
+        updateWidgetNearestFirst(widgetChoicesInput(newDistanceMeters))
         (_state.value as? DeparturesUiState.Loaded)?.let { loaded ->
             remeasured(loaded, nearbyPlaces())?.let { moved ->
                 _state.value = moved
@@ -2103,6 +2154,12 @@ class MainViewModel(
             }
         }
     }
+
+    /**
+     * What the widget's order and line choices are worked out from at [distances]: this model's nearby
+     * stops as held, read here and handed over whole, so nothing walks them on the caller's thread.
+     */
+    private fun widgetChoicesInput(distances: Map<String, Double>) = WidgetChoicesInput(distances, nearStops, more)
 
     /**
      * The screen has reported its journey stops ([setJourneyStops] ran first, refreshing if they
@@ -2136,17 +2193,50 @@ class MainViewModel(
         }
     }
 
-    /** Store [order] in the widget snapshot, off this ViewModel's lifecycle, like [updateWidgetNearer]. */
-    private fun updateWidgetNearestFirst(order: List<String>) {
+    /**
+     * Store [order] in the widget snapshot, off this ViewModel's lifecycle, like [updateWidgetNearer],
+     * with the stop each line shows from worked out again from the stored rows ([choicesFrom]), off
+     * the main thread, each stop given its nearer places at these distances first, as the list's are.
+     * The order is worked out there too, from [choicesFrom], unless [order] is given (a reconcile's
+     * plan has it); an empty one stores nothing.
+     */
+    /**
+     * The dismissed alerts and hidden modes a widget write read, to tell a change from a repeat. Compared
+     * by reference, not by contents, so the check on the main thread costs nothing however many alerts
+     * have been dismissed (Codex on #550): each setting hands out the same set until it changes, and a
+     * new set with the same contents costs only a repeat write.
+     */
+    private class ChoiceFilters(val dismissed: Set<DismissedAlert>, val hidden: Set<String>) {
+        fun sameAs(other: ChoiceFilters) = dismissed === other.dismissed && hidden === other.hidden
+    }
+
+    // What the latest widget write read; null until the first has read them.
+    private var choiceFiltersUsed: ChoiceFilters? = null
+
+    private fun updateWidgetNearestFirst(choicesFrom: WidgetChoicesInput, order: List<String>? = null) {
         // A model that doesn't feed the widget (a farther card, a station's page) stores nothing, so it
         // takes no number: one would supersede the near-me model's write and write nothing itself.
         if (snapshotStore === SnapshotStore.NONE) return
         val asked = NearestFirstWrites.asked.incrementAndGet()
         viewModelScope.launch {
             try {
+                val now = clock()
+                val dismissedNow = _dismissed.value
+                val hidden = hiddenModes()
+                choiceFiltersUsed = ChoiceFilters(dismissedNow, hidden)
+                val choicesFor: (DeparturesSnapshot) -> List<FoldChoice> = { stored ->
+                    val places = nearbyPlacesOf(choicesFrom.eager, choicesFrom.more, choicesFrom.distances)
+                    val stops = stored.stops.map { stop ->
+                        val nearer = Terminating.nearer(stop.stopId, places)
+                        if (nearer == stop.nearer) stop else stop.copy(nearer = nearer)
+                    }
+                    widgetChoicesOf(stops, stored.liveLineStatuses(now), choicesFrom.eager.map { it.id }, choicesFrom.distances, now, dismissedNow, hidden)
+                }
                 withContext(NonCancellable + io) {
+                    val nearestFirst = order ?: nearestFirstOf(choicesFrom.eager.map { it.id }, choicesFrom.distances)
+                    if (nearestFirst.isEmpty()) return@withContext
                     NearestFirstWrites.lock.withLock {
-                        if (asked == NearestFirstWrites.asked.get()) snapshotStore.updateNearestFirst(order)
+                        if (asked == NearestFirstWrites.asked.get()) snapshotStore.updateNearestFirst(nearestFirst, choicesFor)
                     }
                 }
             } catch (e: CancellationException) {
@@ -2594,6 +2684,36 @@ private fun byDistance(
         .filter { it.value.name.isNotBlank() }
         .sortedBy { distanceMeters[it.key] ?: Double.MAX_VALUE }
         .associateTo(LinkedHashMap()) { it.key to it.value }
+
+/** What [MainViewModel] works the widget's line choices out from: the nearby stops and their distances. */
+private class WidgetChoicesInput(
+    val distances: Map<String, Double>,
+    val eager: List<StopRef>,
+    val more: List<NearbySelection.NearbyCluster>,
+)
+
+/**
+ * The stop the near-me list shows each line from ([DepartureRows.nearbyChoices]), as [listRowsOf]
+ * folds it: the nearby stops' rows less the hidden modes, with the dismissed alerts. Saved with the
+ * widget's snapshot so the widget and the watch show each line from the same stop. On a worker.
+ */
+@WorkerThread
+private fun widgetChoicesOf(
+    stops: List<StopArrivals>,
+    lineStatuses: Map<String, LineStatus>,
+    nearIds: Collection<String>,
+    distances: Map<String, Double>,
+    now: Instant,
+    dismissed: Set<DismissedAlert>,
+    hidden: Set<String>,
+): List<FoldChoice> {
+    // As a set here, on the worker: the caller only hands over what it already holds.
+    val ids = nearIds as? Set<String> ?: nearIds.toHashSet()
+    val near = stops.filter { it.stopId in ids && it.stopId in distances }
+    if (near.isEmpty()) return emptyList()
+    val rows = HiddenModes.rows(DepartureRows.across(near, now, lineStatuses), hidden)
+    return DepartureRows.nearbyChoices(rows, distances, dismissed)
+}
 
 /** [ids] that have a distance in [distanceMeters], nearest first (a tie by id, so the order is stable). */
 internal fun nearestFirstOf(ids: Collection<String>, distanceMeters: Map<String, Double>): List<String> =
