@@ -17,6 +17,7 @@ import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.HubInfo
+import app.stopdash.domain.HubInfoCache
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusBatch
@@ -202,6 +203,14 @@ class MainViewModel(
     // a stop another screen fetched within [ArrivalsCache.TTL] is shown from it rather than asked for
     // again. Null (tests) reads none; the app passes [ArrivalsCache.SHARED].
     private val sharedArrivals: ArrivalsCache? = null,
+    // Resolved interchange info (hubId → name + member aliases), so a hub with a disruption is
+    // looked up once and reused across refreshes and across the stops sharing it (King's Cross and
+    // St Pancras both resolve `HUBKGX` from one call). Only a real result is cached here — a failed
+    // or blank lookup is retried on a later refresh rather than pinned. Within a single refresh a
+    // failure is memoized separately (see `resolveHubInfo`), so a failing hub is not re-requested
+    // once per member. Shared with a trip on the way ([HubInfoCache.SHARED] in
+    // the app); a test gets its own.
+    private val hubNames: HubInfoCache = HubInfoCache(),
     // Monotonic milliseconds for timing a fetch, and the shared rate limiter's running total of
     // time spent waiting — both only feed the per-fetch debug-log line ([LoadStats]).
     private val elapsedMillis: () -> Long = { System.nanoTime() / 1_000_000 },
@@ -604,14 +613,6 @@ class MainViewModel(
     private val refreshSettles = Turns()
     private val destinationSettles = Turns()
 
-    // Resolved interchange info (hubId → name + member aliases), so a hub with a disruption is
-    // looked up once and reused across refreshes and across the stops sharing it (King's Cross and
-    // St Pancras both resolve `HUBKGX` from one call). Only a real result is cached here — a failed
-    // or blank lookup is retried on a later refresh rather than pinned. Within a single refresh a
-    // failure is memoized separately (see `resolveHubInfo`), so a failing hub is not re-requested
-    // once per member. In-memory only; hub names are public TfL place names, never persisted.
-    private val hubInfoCache = mutableMapOf<String, HubInfo>()
-
     // When each stop's closure lookup last failed, stamped with its fetch's `now`, and the `now` of
     // the latest [fetchBatch]: a journey destination check that waited on that fetch doesn't ask
     // again for a stop it just failed on (one attempt per refresh, not two, under rate limiting).
@@ -983,9 +984,9 @@ class MainViewModel(
             hubLookups[hubId]?.let { return it.await() }
             val lookup = CompletableDeferred<HubInfo>()
             hubLookups[hubId] = lookup
-            if (hubId !in hubInfoCache) hubRequests++
             val info = try {
-                resolveHubInfo(hubId)
+                // Counted only when this batch sends it, not when it waits on another's (Codex, #567).
+                resolveHubInfo(hubId) { hubRequests++ }
             } catch (e: CancellationException) {
                 lookup.cancel()
                 throw e
@@ -2622,7 +2623,7 @@ class MainViewModel(
      * lookup, so a folded near-me disruption alert titles by the interchange and the strip can drop
      * a redundant leading name in any member spelling (SPEC *Disruptions*).
      *
-     * The durable [hubInfoCache] holds successes across refreshes; a failure is never cached, so the
+     * The durable [hubNames] holds successes across refreshes; a failure is never cached, so the
      * next refresh retries rather than the title being permanently blanked. Within one refresh the
      * caller deduplicates hub ids before calling, so a hub shared by several disrupted stops costs
      * at most one call even when it fails, and every member agrees on the result.
@@ -2631,21 +2632,20 @@ class MainViewModel(
      * Rethrows [CancellationException] first (structured concurrency). The log carries only the hub
      * id — a public TfL place identifier, like a stop id (SPEC *Privacy*).
      */
-    private suspend fun resolveHubInfo(hubId: String): HubInfo {
-        hubInfoCache[hubId]?.let { return it }
-        val info = try {
-            withContext(io) { client.hubInfo(hubId) }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            warn("hub lookup failed for $hubId: ${reason(e)}")
-            HubInfo()
+    private suspend fun resolveHubInfo(hubId: String, sent: () -> Unit = {}): HubInfo =
+        // A success is durable; an empty isn't cached, so the next refresh retries. One already in
+        // flight (a trip on the way's, say) is waited on rather than asked again.
+        hubNames.load(hubId) {
+            sent()
+            try {
+                withContext(io) { client.hubInfo(hubId) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                warn("hub lookup failed for $hubId: ${reason(e)}")
+                HubInfo()
+            }
         }
-        // A success is durable; an empty isn't cached, so the next refresh retries. Written on the
-        // main thread (viewModelScope), so parallel lookups don't race on the map.
-        if (info.name.isNotBlank()) hubInfoCache[hubId] = info
-        return info
-    }
 
     /**
      * Runs one TfL [block], capturing an ordinary failure as a [Result] so a parallel sibling isn't

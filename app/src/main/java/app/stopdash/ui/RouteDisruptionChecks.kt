@@ -4,6 +4,8 @@ import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.DismissalMarks
 import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.DismissedAlert
+import app.stopdash.domain.HubInfo
+import app.stopdash.domain.HubInfoCache
 import app.stopdash.domain.TripClosures
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
@@ -19,10 +21,12 @@ import kotlin.time.toJavaDuration
 import kotlin.time.toKotlinDuration
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -37,6 +41,10 @@ internal class RouteDisruptionChecks(
     private val client: TflClient,
     private val closures: StopClosureChecks,
     private val closureCache: StopClosureCache,
+    // Interchanges' names, shared with the list ([HubInfoCache.SHARED]), for titling a station's note.
+    private val hubNames: HubInfoCache,
+    // Where an interchange's names are looked up, past the check that wanted them: never waited on.
+    private val background: CoroutineScope,
     // The rider's dismissals, read on each check and settled against the lines it answered.
     private val dismissedStore: DismissedAlertsStore,
     // A line's route (the day's), for where a stop sits ([RouteDisruption.StopPlace]); null when it can't be had.
@@ -107,12 +115,32 @@ internal class RouteDisruptionChecks(
         // its own concurrent fetches (Codex, PR #455).
         val sequences = coroutineScope { alerted.map { line -> async { lookUp(line)?.let { line to it } } }.awaitAll() }
             .filterNotNull().toMap()
+        // The coming stations' other notices, shown on the trip's screen, never alerted (maintainer,
+        // 2026-10-04): found first unnamed, to know which interchanges to name.
+        val unnamed = withContext(io) { RouteDisruption.stationNotes(trip, progress, current, places, cleared, at) }
+        val notePlaces = withContext(io) { named(unnamed, places) }
         var leftOff = 0
         // Every alert of every coming line weighed against the ride, and how long what's found stands: on
         // [io], never the caller's (the main) thread (Codex on #519).
         val found = withContext(io) {
             val signals = RouteDisruption.signals(trip, progress, statuses?.statuses.orEmpty(), directions, current, places, cleared, at, sequences) { leftOff++ }
-            if (signals.isEmpty()) return@withContext RouteDisruption.Found.NONE
+            fun staleAt(stamp: Instant) = at.plus(Staleness.remainingUntilStale(SteadyClock.age(stamp, at).toKotlinDuration()).toJavaDuration())
+            // Each note stands no longer than its stop's check, nor than its notices in force there.
+            val notes = (if (notePlaces === places) unnamed else RouteDisruption.stationNotes(trip, progress, current, notePlaces, cleared, at))
+                // Each of its notices as long as the latest check of the stops listing it, and the note as long
+                // as the first of them (Codex, #567).
+                .map { note ->
+                    // Each stop vouches for a notice as long as both its check and its own listing of it last;
+                    // a notice stands on the latest of its stops, and the note on the first notice to go
+                    // (Codex, #567). One with no checked stop vouching stands no longer than now.
+                    val notices = note.support.map { stops ->
+                        stops.mapNotNull { (id, ends) -> checked.at[id]?.let(::staleAt)?.let { stale -> ends?.let { minOf(it, stale) } ?: stale } }
+                            .maxOrNull() ?: at
+                    }
+                    note.copy(until = notices.minOrNull() ?: at)
+                }
+            val notesUntil = notes.mapNotNull { it.until }.minOrNull()
+            if (signals.isEmpty()) return@withContext RouteDisruption.Found(emptyList(), null, notes = notes, notesUntil = notesUntil)
             // Stale no later than the oldest check behind a signal.
             val stamps = signals.mapNotNull { signal ->
                 when (signal) {
@@ -122,7 +150,6 @@ internal class RouteDisruptionChecks(
                     is RouteDisruption.Signal.Unpredicted -> null
                 }
             }
-            fun staleAt(stamp: Instant) = at.plus(Staleness.remainingUntilStale(SteadyClock.age(stamp, at).toKotlinDuration()).toJavaDuration())
             val stale = stamps.minOrNull()?.let(::staleAt)
             // Nor past the end of a notice in force at a stop it names: one ending changes what that
             // stop's card says, so it isn't left standing as current until a check notices (Codex, PR #441).
@@ -142,7 +169,7 @@ internal class RouteDisruptionChecks(
                     is RouteDisruption.Signal.Unpredicted -> null
                 }?.let { signal.key to it }
             }.toMap()
-            RouteDisruption.Found(signals, listOfNotNull(stale, ends.minOrNull()).minOrNull(), stands)
+            RouteDisruption.Found(signals, listOfNotNull(stale, ends.minOrNull()).minOrNull(), stands, notes, notesUntil)
         }
         // Said, never quietly dropped (principle 1): which stops it named stays out of the log.
         if (leftOff > 0) warn("on the way: $leftOff line alert(s) left out, naming only stops off the ride")
@@ -179,6 +206,31 @@ internal class RouteDisruptionChecks(
             end.id to RouteDisruption.StopPlace(area = route?.stopAreas?.get(end.id) ?: end.area, hub = hub)
         }
     }
+
+    // [places] with the names of each interchange a note is at ([HubInfo]), so the note is titled by it
+    // and leads with none of them (Codex, #567): only those already known ([hubNames], the list's too).
+    // One not yet known is looked up in the [background] for a later check, never waited on, so naming
+    // a note never holds up an alert (Codex, #567); until then the note keeps the stop's own name.
+    private fun named(notes: List<RouteDisruption.StationNote>, places: Map<String, RouteDisruption.StopPlace>): Map<String, RouteDisruption.StopPlace> {
+        val hubs = notes.mapNotNullTo(LinkedHashSet()) { note -> places[note.stopId]?.hub?.takeIf { it.isNotEmpty() } }
+        if (hubs.isEmpty()) return places
+        val infos = hubs.mapNotNull { hub -> hubNames[hub]?.let { hub to it } }.toMap()
+        hubs.filter { it !in infos }.forEach { hub -> background.launch { hubNames.load(hub) { hubInfo(hub) } } }
+        if (infos.isEmpty()) return places
+        return places.mapValues { (_, place) -> infos[place.hub]?.let { place.copy(hubName = it.name, aliases = it.aliases) } ?: place }
+    }
+
+    // An interchange's names from TfL ([TflClient.hubInfo]); empty when it can't be had, so a later
+    // check asks again.
+    private suspend fun hubInfo(hubId: String): HubInfo =
+        try {
+            withContext(io) { client.hubInfo(hubId) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            warn("on the way: hub lookup failed: ${e::class.simpleName}")
+            HubInfo()
+        }
 
     private suspend fun lookUp(line: String): LineSequence? =
         try {

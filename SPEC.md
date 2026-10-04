@@ -1956,6 +1956,12 @@ them there:
   it ends); something new still is, a worse status for the same line included, and so is a line's
   other live alert that the one let go of had been shown ahead of. The alert comes down with it,
   since what it said has been read.
+- **Station notes** (maintainer, 2026-10-04): a station still ahead (where the rider boards, changes
+  or gets off) with a notice in force that neither closes nor moves it, a lift or an escalator out or
+  an exit shut, gets a quiet card on the trip's screen under anything that may stop the trip: the
+  station, then TfL's words. Never alerted, never a reason to plan again: it changes how the rider
+  walks through the station, not which train to take. Checked with the route's closures, standing
+  only while that check is current; one the rider dismissed on a list is left out here too.
 - **Where it shows:** the trip's own screen (the next step over the route), a **card pinned at the
   top of the main view**, the trip screen's own card (where to and when, then the next step;
   maintainer, 2026-10-04), its arrival without the board's next train, which only the trip screen

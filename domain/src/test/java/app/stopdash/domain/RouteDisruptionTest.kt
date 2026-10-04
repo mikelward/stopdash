@@ -334,6 +334,94 @@ class RouteDisruptionTest {
     }
 
     @Test
+    fun `a coming station's notice that neither closes nor moves it is a note, never a signal`() {
+        val closures = mapOf(
+            "C" to listOf(StopDisruption("Station closed due to strike action")),
+            "E" to listOf(StopDisruption("Stop B moved to Example Road")),
+            "D" to listOf(StopDisruption("Lift out of order")),
+        )
+        fun notes(progress: TripProgress? = waiting, dismissed: Set<DismissedAlert> = emptySet(), trip: ActiveTrip = this.trip) =
+            RouteDisruption.stationNotes(trip, progress, closures, emptyMap(), dismissed, at(3))
+        // Only the lift: the closure and the move are signals of their own (maintainer, 2026-10-04).
+        assertEquals(listOf(Triple(2, "D", "Lift out of order")), notes().map { Triple(it.legIndex, it.stopId, it.text) })
+        // Dismissed on the trip's list, it's let go of here too.
+        val dismissed = RouteDisruption.closureCards(trip, waiting, mapOf("D" to closures.getValue("D")), emptyMap(), at(3))
+            .map { DismissedAlert.ofStopClosure(it) }.toSet()
+        assertEquals(emptyList<RouteDisruption.StationNote>(), notes(dismissed = dismissed))
+        // Arrived, nothing is ahead.
+        assertEquals(emptyList<RouteDisruption.StationNote>(), notes(progress = TripProgress.Arrived))
+        // A station behind the rider is no note: on board, the one boarded at is behind.
+        val boarding = mapOf("A" to listOf(StopDisruption("Lift out of order")))
+        assertEquals(1, RouteDisruption.stationNotes(trip, waiting, boarding, emptyMap(), emptySet(), at(3)).size)
+        assertEquals(0, RouteDisruption.stationNotes(trip, riding, boarding, emptyMap(), emptySet(), at(3)).size)
+        // A lift notice beside a closure at the same station is still noted; the closure alerts (Codex, #567).
+        val both = mapOf("C" to listOf(StopDisruption("Station closed due to strike action"), StopDisruption("Lift out of order")))
+        assertEquals(listOf("Lift out of order"), RouteDisruption.stationNotes(trip, waiting, both, emptyMap(), emptySet(), at(3)).map { it.text })
+        // Listed under two overlapping windows beside a closure: said once, and held until the later
+        // one ends, not the earlier (Codex, #567).
+        val windows = mapOf(
+            "C" to listOf(
+                StopDisruption("Station closed due to strike action"),
+                StopDisruption("Lift out of order", at(0), at(10)),
+                StopDisruption("Lift out of order", at(5), at(40)),
+            ),
+        )
+        assertEquals(
+            listOf("Lift out of order" to at(40)),
+            RouteDisruption.stationNotes(trip, waiting, windows, emptyMap(), emptySet(), at(6)).map { it.text to it.until },
+        )
+        // An interchange's notice, listed by its stops under different windows, stands while either does
+        // (Codex, #567).
+        val hubWide = RouteDisruption.StopPlace(hub = "HUBX", hubName = "Example Hub")
+        val members = mapOf(
+            "C" to listOf(StopDisruption("Lift out of order", at(0), at(10))),
+            "D" to listOf(StopDisruption("Lift out of order", at(5), at(40))),
+        )
+        val hubNote = RouteDisruption.stationNotes(trip, waiting, members, mapOf("C" to hubWide, "D" to hubWide), emptySet(), at(6))
+        assertEquals(listOf("Lift out of order" to at(40)), hubNote.map { it.text to it.until })
+        // And on both stops' checks, so it stands while either is current (Codex, #567).
+        // Each stop with its own listing's end, so a check is never paired with another stop's window (Codex, #567).
+        assertEquals(listOf(listOf(mapOf("C" to at(10), "D" to at(40)))), hubNote.map { it.support })
+        // A notice only one of them lists stands on that one's check alone (Codex, #567).
+        val partly = mapOf(
+            "C" to listOf(StopDisruption("Lift out of order"), StopDisruption("Escalator out of order")),
+            "D" to listOf(StopDisruption("Lift out of order")),
+        )
+        assertEquals(
+            listOf(listOf(setOf("C", "D"), setOf("C"))),
+            RouteDisruption.stationNotes(trip, waiting, partly, mapOf("C" to hubWide, "D" to hubWide), emptySet(), at(6)).map { note -> note.support.map { it.keys } },
+        )
+        // One outage each stop leads with its own member name for is said once (Codex, #567).
+        val kgx = RouteDisruption.StopPlace(
+            hub = "HUBKGX", hubName = "King's Cross & St Pancras International",
+            aliases = listOf("King's Cross St. Pancras", "St Pancras International"),
+        )
+        val prefixed = mapOf(
+            "C" to listOf(StopDisruption("King's Cross St. Pancras: Lift out of order")),
+            "D" to listOf(StopDisruption("St Pancras International: Lift out of order")),
+        )
+        assertEquals(
+            listOf(Triple("King's Cross & St Pancras International", "Lift out of order", listOf(setOf("C", "D")))),
+            RouteDisruption.stationNotes(trip, waiting, prefixed, mapOf("C" to kgx, "D" to kgx), emptySet(), at(3))
+                .map { note -> Triple(note.stopName, note.text, note.support.map { it.keys }) },
+        )
+        // Two places of one name each keep their own note (Codex, #567).
+        val sameName = ActiveTrip(
+            TripRoute(listOf(TripLeg("tube", "red", "Red", "A", "A", "C", "High Street", at(5), at(15), path = listOf("C")), walk.copy(fromName = "High Street"), second.copy(fromName = "High Street"))),
+            "E", startedAt = t0,
+        )
+        val lifts = mapOf("C" to listOf(StopDisruption("Lift out of order")), "D" to listOf(StopDisruption("Lift out of order")))
+        assertEquals(listOf("C", "D"), RouteDisruption.stationNotes(sameName, waiting, lifts, emptyMap(), emptySet(), at(3)).map { it.stopId })
+        // Said once at an interchange, though only one of its stops is also closed (Codex, #567).
+        val hub = RouteDisruption.StopPlace(hub = "HUBX", hubName = "Example Hub")
+        val shared = both + ("D" to listOf(StopDisruption("Lift out of order")))
+        assertEquals(
+            listOf("Example Hub" to "Lift out of order"),
+            RouteDisruption.stationNotes(trip, waiting, shared, mapOf("C" to hub, "D" to hub), emptySet(), at(3)).map { it.stopName to it.text },
+        )
+    }
+
+    @Test
     fun `the boarding stop counts until the rider boards`() {
         val closures = mapOf("A" to listOf(StopDisruption("Station closed")))
         assertEquals(listOf("A"), signals(closures = closures).map { (it as Signal.Stop).stopId })

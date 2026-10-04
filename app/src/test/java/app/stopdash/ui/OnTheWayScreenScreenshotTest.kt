@@ -19,6 +19,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -91,16 +92,28 @@ class OnTheWayScreenScreenshotTest {
         replanFrom: ReplanOrigin.Stop? = null,
         onPlanAgain: ((ReplanOrigin.Stop) -> Unit)? = null,
         onDismissDisruptions: ((List<RouteDisruption.Signal>) -> Unit)? = null,
+        notes: List<RouteDisruption.StationNote> = emptyList(),
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
                 OnTheWayScreen(
                     trip, progress, failed, now, onEnd, onBack, current = current, notKept = notKept, endFailed = endFailed, alertsOff = alertsOff,
                     appOpenOnly = appOpenOnly, nextTrains = nextTrains, onGoTo = onGoTo, disruptions = disruptions, cards = cards,
-                    replanFrom = replanFrom, onPlanAgain = onPlanAgain, onDismissDisruptions = onDismissDisruptions,
+                    replanFrom = replanFrom, onPlanAgain = onPlanAgain, onDismissDisruptions = onDismissDisruptions, notes = notes,
                 )
             }
         }
+    }
+
+    @Test
+    fun on_the_way_notes_a_coming_station_s_notice_without_alerting() {
+        // A made-up lift notice where the trip changes: said, quietly, with nothing to plan again over.
+        val note = RouteDisruption.StationNote(2, "940GZZLUSTD", "Stratford", "Lift to the Jubilee line platforms out of service.")
+        show(trip, TripProgress.Waiting(mildmay, at(4)), notes = listOf(note), onDismissDisruptions = {})
+        composeRule.onNodeWithText("Lift to the Jubilee line platforms out of service.").assertExists()
+        composeRule.onAllNodes(hasTestTag("onTheWayDisruption")).assertCountEquals(0)
+        composeRule.onAllNodes(hasTestTag("onTheWayKeepGoing")).assertCountEquals(0)
+        captureSnapshot("on-the-way-station-note.png")
     }
 
     @Test

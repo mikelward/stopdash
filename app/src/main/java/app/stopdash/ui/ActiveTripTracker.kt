@@ -211,6 +211,18 @@ class ActiveTripTracker(
      * tapping the alert finds where and how (maintainer, 2026-10-01), with how long its evidence
      * stands ([KnownDisruptions.until]). Null once nothing is known.
      */
+    /**
+     * The coming stations' other notices ([RouteDisruption.StationNote]) and until when they stand, in the
+     * steady frame as [KnownDisruptions.until]: shown on the trip's screen, never alerted.
+     */
+    data class KnownNotes(val notes: List<RouteDisruption.StationNote>, val until: Instant) {
+        /** [notes] while they stand at the wall time [now], else none. */
+        fun at(now: Instant): List<RouteDisruption.StationNote> = if (SteadyClock.stamp(now).isBefore(until)) notes else emptyList()
+    }
+
+    private val _stationNotes = MutableStateFlow<KnownNotes?>(null)
+    val stationNotes: StateFlow<KnownNotes?> = _stationNotes.asStateFlow()
+
     private val _routeDisruptions = MutableStateFlow<KnownDisruptions?>(null)
     val routeDisruptions: StateFlow<KnownDisruptions?> = _routeDisruptions.asStateFlow()
 
@@ -604,6 +616,7 @@ class ActiveTripTracker(
         _endFailed.value = false
         _endFailures.value = 0
         _trip.value = null
+        _stationNotes.value = null
         forgetFixes()
         _progress.value = null
         _nextBoard.value = null
@@ -669,6 +682,7 @@ class ActiveTripTracker(
         val trip = _trip.value
         val progress = _progress.value
         if (trip == null || progress == null || progress == TripProgress.Arrived) {
+            _stationNotes.value = null
             takeDisruptionDown()
             return
         }
@@ -686,6 +700,11 @@ class ActiveTripTracker(
         // follows the trip (the app closed with no ongoing notification), and at once with a refresh that
         // failed, as the trip's times stop being shown as live then (Codex, PR #441).
         val answered = _updatedAt.value
+        // The stations' notes stand as long as their evidence, and no longer than the trip's own answer,
+        // whatever the alert does: none while there's no answer to show them against.
+        _stationNotes.value = found.notesUntil?.takeIf { found.notes.isNotEmpty() }?.let { evidence ->
+            answered?.let { KnownNotes(found.notes, SteadyClock.stamp(minOf(evidence, it.plus(CURRENT_FOR)))) }
+        }
         // No train predicted where the rider changes, from a board read for this refresh's answer only:
         // none read once the refresh failed. It stands as long as that answer does.
         val change = answered?.let { changeSignal(trip, progress, boards) }
@@ -935,6 +954,7 @@ class ActiveTripTracker(
                 _endFailed.value = false
                 _endFailures.value = 0
                 _trip.value = null
+                _stationNotes.value = null
                 forgetFixes()
             }
             return false
@@ -1168,6 +1188,7 @@ class ActiveTripTracker(
             _endFailed.value = false
             _endFailures.value = 0
             _trip.value = null
+            _stationNotes.value = null
             forgetFixes()
             // Forgotten: no trip left for an alert to belong to.
             if (next.alertLeft) onGetOffSoonDone()

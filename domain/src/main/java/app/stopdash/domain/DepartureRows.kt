@@ -1111,7 +1111,7 @@ object DepartureRows {
     private const val WINDOW_ENTRY_SEPARATOR = "\u001E"
 
     /** The merged run of overlapping or touching [windows] that contains [now], or null if none does. */
-    private fun spanAt(windows: List<Pair<Instant, Instant>>, now: Instant): Pair<Instant, Instant>? {
+    internal fun spanAt(windows: List<Pair<Instant, Instant>>, now: Instant): Pair<Instant, Instant>? {
         var current: Pair<Instant, Instant>? = null
         for (w in windows.sortedBy { it.first }) {
             val c = current

@@ -2449,9 +2449,14 @@ Builds on Phase 1's minimal line-status marking.
         the lines it's given and the app's menu, so the home screen supplies its own.
   - [ ] **Check a bug report sent from the lines page** on a device: the report's screenshot is taken
         of the app's window, which may leave out the dialog's.
-- [ ] **Route pages show station notices for the stations a ride boards and gets off at**
-      (maintainer, 2026-10-04). A line page can read "No disruptions reported" while the station it
-      boards at has a notice in force (an escalator out, say); the stop's own notice belongs there too.
+- [x] **On the way notes the coming stations' notices** (maintainer, 2026-10-04): a notice that neither
+      closes nor moves a station still ahead gets a quiet card on the trip's screen, never an alert
+      (`RouteDisruption.stationNotes`, carried with the route check).
+- [ ] **The home screen's line page shows its boarding station's notice** (maintainer, 2026-10-04). A
+      line page can read "No disruptions reported" while the station it boards at has a notice in
+      force (an escalator out, say); the stop's own notice belongs there too.
+- [ ] **An opened trip route shows each station's notice where it reaches it**, as closures are shown
+      (maintainer's pick, third of three, 2026-10-04); the list's cards stay without them.
 - [ ] **"Some routes couldn't be checked" moves the trip list when it comes or goes** (Codex, PR #543).
       Once the list is showing, a refresh that turns a check from checking to couldn't-check inserts
       the banner over the routes (after its 1.5 s hold), shifting every card; the reverse removes it.

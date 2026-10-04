@@ -12,6 +12,7 @@ import app.stopdash.domain.Dismissed
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DismissedAlertsStore
 import app.stopdash.domain.HubInfo
+import app.stopdash.domain.HubInfoCache
 import app.stopdash.domain.JourneyCall
 import app.stopdash.domain.CollapsedPlaces
 import app.stopdash.domain.Coordinates
@@ -37,6 +38,7 @@ import app.stopdash.domain.WidgetJourneysReport
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -5104,6 +5106,43 @@ class MainViewModelTest {
         advanceUntilIdle()
 
         assertTrue(logged.toString(), logged.single().contains(", 1 hub)"))
+    }
+
+    @Test
+    fun `a hub another caller is already looking up is waited on, not counted`() = runTest(dispatcher) {
+        val logged = mutableListOf<String>()
+        var hubCalls = 0
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String): List<StopDisruption> =
+                if (stopId == seeds[0].id) listOf(StopDisruption("Station closed until further notice")) else emptyList()
+            override suspend fun hubInfo(hubId: String): HubInfo {
+                hubCalls++
+                return HubInfo("Oxford Circus Interchange")
+            }
+        }
+        // A trip on the way's lookup of the same hub, in flight when the list asks (Codex, #567).
+        val hubNames = HubInfoCache()
+        val answer = CompletableDeferred<HubInfo>()
+        val other = async { hubNames.load("HUBOXC") { answer.await() } }
+        advanceUntilIdle()
+        MainViewModel(
+            client,
+            listOf(seeds[0].copy(hubId = "HUBOXC"), seeds[1]),
+            clock = { now },
+            io = dispatcher,
+            elapsedMillis = { 0L },
+            logStats = { logged += it },
+            hubNames = hubNames,
+        )
+        advanceUntilIdle()
+        answer.complete(HubInfo("Oxford Circus Interchange"))
+        other.await()
+        advanceUntilIdle()
+
+        assertEquals(0, hubCalls)
+        assertTrue(logged.toString(), logged.single().contains(", 0 hub)"))
     }
 
     @Test

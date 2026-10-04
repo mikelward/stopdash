@@ -134,6 +134,9 @@ internal fun OnTheWayScreen(
     // The rider read [disruptions] and keeps going ([ActiveTripTracker.dismissDisruptions], maintainer
     // 2026-10-03), as shown. Null leaves Keep going out.
     onDismissDisruptions: ((List<RouteDisruption.Signal>) -> Unit)? = null,
+    // The coming stations' other notices ([ActiveTripTracker.stationNotes]): a lift or an escalator out,
+    // an exit shut. Shown, never alerted (maintainer, 2026-10-04); worked out off the main thread.
+    notes: List<RouteDisruption.StationNote> = emptyList(),
 ) {
     BackHandler(onBack = onBack)
     val destination = trip?.destinationName
@@ -256,6 +259,11 @@ internal fun OnTheWayScreen(
                         }
                     }
                 }
+            }
+            if (trip != null) {
+                // Each coming station's notice that neither closes nor moves it, after anything that may stop
+                // the trip, quieter than it: worth knowing on the way, no reason to change plans.
+                items(notes, key = { note -> "note/${note.legIndex}/${note.stopId}" }) { note -> StationNoteCard(note) }
             }
             if (endFailed && trip != null) {
                 item(key = "endFailed") {
@@ -1080,6 +1088,21 @@ private fun DisruptionCard(signal: RouteDisruption.Signal, leg: TripLeg?) {
                     Text(stringResource(R.string.on_the_way_leg, leg.fromName, leg.toName), style = MaterialTheme.typography.bodyMedium)
                 }
             }
+        }
+    }
+}
+
+/**
+ * A coming station's notice that neither closes nor moves it ([RouteDisruption.StationNote]): headed by
+ * the station, then TfL's words. Muted, as a medium alert's card, and never sounded.
+ */
+@Composable
+private fun StationNoteCard(note: RouteDisruption.StationNote) {
+    val colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
+    Card(colors = colors, modifier = Modifier.fillMaxWidth().testTag("onTheWayStationNote")) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(note.stopName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(note.text, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
