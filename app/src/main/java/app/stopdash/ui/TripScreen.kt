@@ -24,6 +24,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -1581,20 +1585,25 @@ private fun RouteList(
     // cards stand in with their own headers for the moment the new ones take, never the last headers
     // over the new cards, which may rank otherwise; before any are in, the cards stand in their own
     // order, unheaded, rather than a blank list.
-    val headedWork = remember { mutableStateOf<Worked<Inputs, Pair<List<List<TripTiming.Estimate>>, List<HeadedCard>>>?>(null) }
+    val headedWork = remember { mutableStateOf<Worked<Inputs, ListedCards>?>(null) }
     // Only within one plan (the clock's ticks and refreshes), never across plans, where a route gone
     // would linger; nor across no cards and some, where the last cards would stand beside "No
     // routes", or none in for new ones. A route hidden or avoided can stand for one worker run
     // (TODO.md); judging the cards' routes alike here would be the per-card work the worker is for.
+    val previousOrder = headedWork.value?.value?.keys
     val headed = rememberWorked(
         headedWork,
         Inputs(cards, cards.isEmpty(), state.routes),
         keep = { held, wanted -> held.parts[1] == false && wanted.parts[1] == false && held.parts[2] === wanted.parts[2] },
     ) {
-        cards to headedCards(cards.map { it.first() })
+        listedCards(cards, previousOrder)
     }
-    val listed = headed?.first ?: cards
-    val order = headed?.second
+    val listed = headed?.cards ?: cards
+    val order = headed?.order
+    // Cards re-sort as their times move (maintainer, 2026-10-04), sliding to their new places rather
+    // than jumping, and a tap while they slide is dropped: it could land on the card that just moved
+    // under the finger ([rememberMoving]).
+    val moving = rememberMoving(headed?.keys)
     val routeStops = LocalRouteStops.current
     // The row over the cards ([DisruptionsRow]), worked out on the worker and held as one ([rememberTripRow]).
     val row = rememberTripRow(cards, rideLines, state, now, sequences, dismissed, loading, routesChecking)
@@ -1637,8 +1646,10 @@ private fun RouteList(
             var menuOpen by remember { mutableStateOf(false) }
             val onLongPress = if (onHideMode != null && modes.isNotEmpty()) ({ menuOpen = true }) else null
             val moreLabel = stringResource(R.string.more_actions)
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (header.isNotEmpty()) RouteLabelHeader(header)
+            Column(
+                modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null, placementSpec = tween(CARD_MOVE_MILLIS.toInt())),
+            ) {
+                CardHeader(header)
                 Box {
                     // Each row takes the card's tap and long press itself: a clickable card would merge
                     // its rows into one, and a screen reader would lose the rows' own times.
@@ -1649,6 +1660,7 @@ private fun RouteList(
                         Column(
                             modifier = Modifier
                                 .combinedClickable(
+                                    enabled = !moving,
                                     onLongClickLabel = onLongPress?.let { moreLabel },
                                     onLongClick = onLongPress,
                                     onClick = { onOpen(card.first()) },
@@ -1708,6 +1720,27 @@ private fun RouteList(
                 }
             }
         }
+    }
+}
+
+/**
+ * A card's header ([RouteLabelHeader]), grown and shrunk over a slide's time ([CARD_MOVE_MILLIS]) as it
+ * comes and goes. The card's own place in the list may not move, so its placement animation alone
+ * would leave the card jumping by the header's height (Codex, #543). One shown with the card isn't
+ * animated in; one going keeps its last labels until it has shrunk away.
+ */
+@Composable
+internal fun CardHeader(header: List<RouteLabel>) {
+    // Not state: it's read only while [header] itself recomposes this.
+    val last = remember { arrayOf(header) }
+    if (header.isNotEmpty()) last[0] = header
+    AnimatedVisibility(
+        visible = header.isNotEmpty(),
+        enter = expandVertically(tween(CARD_MOVE_MILLIS.toInt()), expandFrom = Alignment.Top),
+        exit = shrinkVertically(tween(CARD_MOVE_MILLIS.toInt()), shrinkTowards = Alignment.Top),
+    ) {
+        // Its gap to the card goes with it, so nothing jumps by the spacing either.
+        Box(Modifier.padding(bottom = 4.dp)) { RouteLabelHeader(last[0]) }
     }
 }
 
@@ -2605,6 +2638,51 @@ internal fun cardClosures(
     }.distinctBy { it.stopId }.let(DepartureRows::stopStatusFolded)
 
 /** How long a change to the disruptions row holds before it's drawn, unless it's to "Checking…" ([settled]). */
+/** How long a card takes to slide to its new place when the list re-sorts, taps held throughout. */
+internal const val CARD_MOVE_MILLIS = 300L
+
+/**
+ * The trip list's cards as they are drawn: [cards] in their own order, [order] placing each under its
+ * header ([headedCards]), and [keys], the cards' routes ([cardKey]) in the order drawn. [keys] is the
+ * last answer's own list when nothing moved, so a re-sort shows on the main thread as a new list, told
+ * apart by identity, never by comparing the two.
+ */
+internal class ListedCards(
+    val cards: List<List<TripTiming.Estimate>>,
+    val order: List<HeadedCard>,
+    val keys: List<String>,
+)
+
+@WorkerThread
+internal fun listedCards(cards: List<List<TripTiming.Estimate>>, previous: List<String>?): ListedCards {
+    val order = headedCards(cards.map { it.first() })
+    val keys = order.map { cardKey(cards[it.index].first().route) }
+    return ListedCards(cards, order, if (keys == previous) previous else keys)
+}
+
+/**
+ * Whether the cards are sliding to a new order: true for [CARD_MOVE_MILLIS] once [order] is a new
+ * list ([ListedCards.keys]), timed on frames. Never for the first order, which arrives with the list.
+ */
+@Composable
+internal fun rememberMoving(order: List<String>?): Boolean {
+    var moving by remember { mutableStateOf(false) }
+    val seen = remember { arrayOfNulls<List<String>>(1) }
+    LaunchedEffect(order) {
+        val before = seen[0]
+        if (order != null) seen[0] = order
+        if (before == null || order == null || before === order) return@LaunchedEffect
+        moving = true
+        try {
+            val start = withFrameMillis { it }
+            while (withFrameMillis { it } - start < CARD_MOVE_MILLIS) Unit
+        } finally {
+            moving = false
+        }
+    }
+    return moving
+}
+
 internal const val NOTE_SETTLE_MILLIS = 1_500L
 
 /**
