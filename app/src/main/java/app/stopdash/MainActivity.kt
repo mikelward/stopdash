@@ -3070,6 +3070,7 @@ class MainActivity : ComponentActivity() {
                 { route -> replace(route, toName, Instant.now().plus(access), destinations, destinationIds, toId.orEmpty()) }
             },
             onWithheld = trip::noteWithheld,
+            onListShown = trip::noteListShown,
             onShownStops = trip::checkShownStops,
             onPlacedStands = trip::boardAt,
             walkingSpeed = walkingSpeed,
