@@ -352,7 +352,9 @@ object DepartureRows {
                 nearestStopByKey[key] = row.stopId
             }
         }
-        keepDirectionsTogether(lineRows, nearestStopByKey, stopStatus.mapTo(HashSet()) { it.stopId }, dismissed, ::distanceOf)
+        val noticed = stopStatus.mapTo(HashSet()) { it.stopId }
+        keepDirectionsTogether(lineRows, nearestStopByKey, noticed, dismissed, ::distanceOf)
+        joinAnchoredPlaces(lineRows, nearestStopByKey, noticed, dismissed, ::distanceOf)
         // Keep every row from the nearest stop for its key, so two platforms of one service
         // at a single stop both survive; a farther stop's same-service row is dropped.
         val kept = lineRows.filter { nearestStopByKey[dedupeKeyOf(it)] == it.stopId }
@@ -402,6 +404,94 @@ object DepartureRows {
      * stay together there (maintainer, 2026-09-25).
      */
     const val TOGETHER_SLACK_METERS = 50.0
+
+    /**
+     * A line showing only **one** direction has nothing for [keepDirectionsTogether] to keep
+     * together, so it would sit at its own nearest stop even when a neighboring place within
+     * [TOGETHER_SLACK_METERS] serves it too and already carries the other routes going that way —
+     * splitting two routes along one road across two headers on whether the other direction
+     * happens to have a departure due (maintainer, 2026-10-04). Such a line moves to the place
+     * hosting the most **anchored** lines — lines whose every timed direction is kept at that one
+     * place — when that is more than its own place hosts; of equal places, the nearer stop. Only
+     * anchored lines count, so the outcome doesn't depend on the order single-direction lines are
+     * visited.
+     *
+     * A line's **no-times** row (a disrupted line with no countdown at a pole, [isStatusOnly]) joins
+     * the same way, but first to the place the line's own timed rows were kept at: a route due one
+     * way and disrupted the other then reads as one place, not a countdown under one header and its
+     * "Diversion" under the next (maintainer, 2026-10-04).
+     *
+     * As there, nothing moves onto a stop with a notice in force ([noticed]), nor onto a stop whose
+     * data is older than its nearest's. Updates [nearestStopByKey].
+     */
+    private fun joinAnchoredPlaces(
+        lineRows: List<DepartureRow>,
+        nearestStopByKey: HashMap<RowKey, String>,
+        noticed: Set<String>,
+        dismissed: Set<DismissedAlert>,
+        distanceOf: (String) -> Double,
+    ) {
+        val timed = lineRows.filter { it.upcoming.isNotEmpty() && it.lineId.isNotBlank() && it.direction.isNotBlank() }
+        val kept = lineRows.filter { nearestStopByKey[dedupeKeyOf(it)] == it.stopId }
+        val warned = StopGrouping.warnedStopsOf(withoutDismissed(kept, dismissed))
+        fun headerPlaceOf(row: DepartureRow) = StopGrouping.clusterKeyOf(row, warned)
+        val byLine = timed.groupBy { it.lineId }
+        val anchorsByPlace = HashMap<String, Int>()
+        val singles = ArrayList<RowKey>()
+        for ((_, rows) in byLine) {
+            val keys = rows.mapTo(LinkedHashSet()) { dedupeKeyOf(it) }
+            if (keys.size == 1) {
+                singles += keys.first()
+                continue
+            }
+            val places = keys.mapNotNullTo(HashSet()) { key ->
+                rows.firstOrNull { it.stopId == nearestStopByKey[key] }?.let(::headerPlaceOf)
+            }
+            if (places.size == 1) anchorsByPlace.merge(places.first(), 1, Int::plus)
+        }
+
+        // Moves [key] among [rows] (every row of it, one per stop) to the best-scoring place that
+        // beats its own; [score] ranks places, higher first, compared field by field.
+        fun join(key: RowKey, rows: List<DepartureRow>, score: (String) -> List<Int>) {
+            val nearest = nearestStopByKey[key] ?: return
+            val nearestRow = rows.firstOrNull { it.stopId == nearest } ?: return
+            val byScore = Comparator<List<Int>> { a, b ->
+                a.zip(b).firstOrNull { (x, y) -> x != y }?.let { (x, y) -> x.compareTo(y) } ?: 0
+            }
+            val own = score(headerPlaceOf(nearestRow))
+            // Each place's nearest stop for this key.
+            val poles = HashMap<String, DepartureRow>()
+            for (row in rows) {
+                val place = headerPlaceOf(row)
+                val incumbent = poles[place]
+                if (incumbent == null || isCloserStop(row.stopId, incumbent.stopId, distanceOf)) poles[place] = row
+            }
+            val choice = poles.entries
+                .filter { (_, row) -> row.stopId !in noticed }
+                .filter { (_, row) -> distanceOf(row.stopId) - distanceOf(nearest) <= TOGETHER_SLACK_METERS }
+                .filter { (place, _) -> byScore.compare(score(place), own) > 0 }
+                // Never trade the row for an older one: a stop that kept stale data after a partial
+                // refresh failure would show its countdown as "?" in place of a fresh one (Codex).
+                .filter { (_, row) -> row.fetchedAt >= nearestRow.fetchedAt }
+                .minWithOrNull(
+                    Comparator<Map.Entry<String, DepartureRow>> { a, b -> byScore.compare(score(b.key), score(a.key)) }
+                        .thenBy { distanceOf(it.value.stopId) }
+                        .thenBy { it.value.stopId },
+                ) ?: return
+            nearestStopByKey[key] = choice.value.stopId
+        }
+
+        for (key in singles) join(key, byLine.getValue(key.lineId)) { place -> listOf(anchorsByPlace[place] ?: 0) }
+
+        // No-times rows last, once every timed row of their line has its place.
+        val statusOnly = lineRows.filter { it.isStatusOnly && it.lineId.isNotBlank() }
+        for ((key, rows) in statusOnly.groupBy { dedupeKeyOf(it) }) {
+            val linePlaces = byLine[key.lineId].orEmpty()
+                .filter { nearestStopByKey[dedupeKeyOf(it)] == it.stopId }
+                .mapTo(HashSet(), ::headerPlaceOf)
+            join(key, rows) { place -> listOf(if (place in linePlaces) 1 else 0, anchorsByPlace[place] ?: 0) }
+        }
+    }
 
     /**
      * Where a line's directions would come from two places — northbound at one stop pair, southbound

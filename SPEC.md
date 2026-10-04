@@ -170,6 +170,13 @@ The app finds stops two ways:
     stop area (a road's pole pair); over 50 m, the route splits for the shorter walk. A direction
     is never moved onto a stop with a closure or other stop notice in force (TfL can still list
     times at a closed pole): its open nearest stop keeps it, and the notice still shows;
+  - a **route showing only one direction joins its neighbors** (maintainer, 2026-10-04): with
+    nothing of its own to keep together, it would otherwise sit at its nearest stop and split two
+    routes along one road across two headers on whether the other direction happens to have a
+    departure due. It moves to a place within 50 m that serves it and already carries routes kept
+    there in both directions — the one carrying the most — under the same closure rule. A route's
+    **no-times row** (disrupted, no countdown at a pole) joins the same way, first to the place its
+    own timed rows were kept at, so "due one way, Diversion the other" reads as one place;
   - a **closer closed stop is surfaced honestly** — its status is shown rather than silently
     routing the user to a farther open stop with no explanation.
 
