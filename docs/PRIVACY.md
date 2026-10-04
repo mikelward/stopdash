@@ -272,6 +272,10 @@ what the app saw, so the log carries **coarse state and reasons**, and nothing m
 - **per-refresh request counts and timing**: how many TfL requests a refresh made, of which
   kinds, how long it took, and how long it waited on the app's own rate limit — counts and
   milliseconds only, no stop or place,
+- **trip timing**: how long each journey planner request took and how many routes it returned,
+  and how long a trip's routes took to show, with what the page last waited for, by kind (a
+  refresh, the line checks, line routes and how many) — counts and milliseconds only, never
+  either end of the trip,
 - **a slow or retried network request**: who it went to (TfL or National Rail), the
   endpoint's kind with every identifier and anything typed left out (e.g. `StopPoint/…/Disruption`), how long it
   took to get a connection, to start answering and to finish, whether the connection was new,
