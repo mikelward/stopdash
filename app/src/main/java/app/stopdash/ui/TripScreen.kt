@@ -1523,6 +1523,20 @@ private fun TripContent(
             // The cards' order and headers, worked out with the cards in the page's frame ([TripListView.listed]):
             // a new plan's cards never show unheaded and then head and re-sort under the rider (Codex, #543).
             val headed = frame?.list?.listed
+            // Each card's pill column ([cardPillWidths]), measured behind the placeholder too, so the list
+            // first shows with each card's stops in one column rather than shifting sideways as its cut
+            // pill is measured (Codex, #543). Apart from the frame, so a font scale changing (a pinch)
+            // measures again without the frame (Codex, #530); the last widths hold while new ones are
+            // worked out, since what loads rarely changes a card's pills. Afresh with each plan.
+            val pillWidth = rememberPillWidth()
+            val widthsSlot = remember(cards == null, planKey) { mutableStateOf<Worked<Inputs, CardPillWidths>?>(null) }
+            val listView = frame?.list
+            val widths = if (frame != null && listView != null) {
+                val rides = frame.rideLines
+                rememberWorked(widthsSlot, Inputs(listView, rides, pillWidth), keep = { _, _ -> true }) { cardPillWidths(listView, rides, pillWidth) }
+            } else {
+                null
+            }
             // Worked out behind the placeholder too, and drawn at once until the list shows: it's never
             // seen changing before then (Codex, #543).
             // From the live state, not the frame's: a status that changed while the frame is still being
@@ -1544,6 +1558,8 @@ private fun TripContent(
                 // route loaded (a line with no trains predicted can't make the check wait on it, Codex, #543).
                 // The banner shown is an open route's, not the list's: the list's own settles at once on return.
                 settledAround = (open != null || incomplete == (check == TripMessage.INCOMPLETE)) && headed != null &&
+                    // The pill columns measured for the cards about to show, not the last plan's.
+                    widths != null && listView != null && widths.isFor(listView, pillWidth) &&
                     row?.checking == false && loads.loading.isEmpty(),
             )
             val revealed = revealedState.value
@@ -1567,6 +1583,7 @@ private fun TripContent(
                                 onHideMode = hideMode,
                                 onAvoidLine = avoided.onAvoid,
                                 row = row ?: TripRow.CHECKING,
+                                pillWidths = widths?.px.orEmpty(),
                             )
                         }
                         // Pulled down, the routes are planned again and every stop fetched afresh, from
@@ -1741,6 +1758,8 @@ private fun RouteList(
     onAvoidLine: ((String) -> Unit)? = null,
     // The row over the cards ([DisruptionsRow]), worked out on the worker and held as one ([rememberTripRow]).
     row: TripRow,
+    // Each card's pill column in pixels, by its key ([cardPillWidths]); a card not measured yet takes a lone pill's.
+    pillWidths: Map<String, Int?> = emptyMap(),
 ) {
     val cards = view.cards
     // Which card gets there soonest, which rides fewest and which walks least, over each, then
@@ -1752,8 +1771,6 @@ private fun RouteList(
     // than jumping, and a tap on a card while it moves is dropped: it could land on the card that just
     // moved under the finger. Each card watches its own place ([rememberSliding]), whatever moved it.
     val density = LocalDensity.current
-    // Remembered, so the keys below hold the same measure from one composition to the next.
-    val pillWidth = rememberPillWidth()
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -1822,14 +1839,9 @@ private fun RouteList(
                                 // start in one place, a cut pill's row too. Per card, not across the list (maintainer,
                                 // 2026-10-04): a list-wide width fell back to each card's own, then to a lone pill's,
                                 // every time a line's status or route landed while the page loaded, and the rows
-                                // shuffled sideways for the first few seconds. Worked out on the worker apart from the
-                                // frame, so a font scale changing (a pinch) measures again without the frame (Codex,
-                                // #530); the last width holds while a new one is worked out, since what loads rarely
-                                // changes a card's pills.
-                                val widthSlot = remember { mutableStateOf<Worked<Inputs, Int?>?>(null) }
-                                val columnPx = rememberWorked(widthSlot, Inputs(card, rideLines, pillWidth), keep = { _, _ -> true }) {
-                                    pillSlotWidthPx(listOf(card), rideLines, pillWidth.measure())
-                                }
+                                // shuffled sideways for the first few seconds. Measured by the trip screen before the
+                                // list shows ([cardPillWidths]).
+                                val columnPx = pillWidths[cardKey(card.first().route)]
                                 RideStops(card, rideLines, shown.statuses, shown.closures, shown.times, now, shown.walk, columnPx?.let { with(density) { it.toDp() } })
                             }
                         }
@@ -1924,6 +1936,23 @@ internal fun pillSlotWidthPx(cards: List<List<TripTiming.Estimate>>, rideLines: 
         .flatMap { card -> card.first().route.rides.indices.asSequence().map { cardRidePill(card, it, rideLines) } }
         .distinctBy { pill -> if (pill.size == 1) emptyList() else cutPillCodes(pill) }
         .maxOfOrNull(widthPx)
+
+/** Each card's pill column in pixels ([px], by the card's key), measured for [list] at [pillWidth]'s scale. */
+internal class CardPillWidths(val list: TripListView, val pillWidth: PillWidth, val px: Map<String, Int?>) {
+    /**
+     * Whether these are the widths for [list] at [pillWidth]: the last widths stand in while new ones are
+     * worked out, so a list about to show waits for its own, at the scale it shows at, rather than show
+     * the last ones and shift (Codex, #561). By identity for the list, by value for the scale.
+     */
+    fun isFor(list: TripListView, pillWidth: PillWidth): Boolean = this.list === list && this.pillWidth == pillWidth
+}
+
+/** [list]'s cards' pill columns ([pillSlotWidthPx]), one per card. Measures text: on a worker only. */
+@WorkerThread
+internal fun cardPillWidths(list: TripListView, rideLines: Map<TripLeg, RideLines>, pillWidth: PillWidth): CardPillWidths {
+    val measure = pillWidth.measure()
+    return CardPillWidths(list, pillWidth, list.cards.associate { cardKey(it.card.first().route) to pillSlotWidthPx(listOf(it.card), rideLines, measure) })
+}
 
 /**
  * How to measure a pill's width ([sharedPillWidthPx]) at the screen's density and font scale, in the
