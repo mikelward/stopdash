@@ -1429,6 +1429,41 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `the screen's journey stops are worked out off the main thread`() = runTest(dispatcher) {
+        // A worker of its own, on the test's scheduler, that marks the work it runs.
+        val onWorker = ThreadLocal.withInitial { false }
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) = dispatcher.dispatch(context) {
+                onWorker.set(true)
+                try {
+                    block.run()
+                } finally {
+                    onWorker.set(false)
+                }
+            }
+        }
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
+        }
+        val vm = MainViewModel(client, seeds, clock = { now }, io = dispatcher, compute = worker)
+        advanceUntilIdle()
+        // Where each walk of the reported stops ran: the first, comparing them with those held, on the
+        // worker, never on the caller's (the main) thread.
+        val walked = mutableListOf<Boolean>()
+        val origin = StopRef("940GZZLUKSX", "King's Cross St. Pancras")
+        val reported = object : AbstractList<StopRef>() {
+            override val size: Int get() = 1.also { walked += onWorker.get() }
+            override fun get(index: Int): StopRef = origin.also { walked += onWorker.get() }
+        }
+        vm.setJourneyStops(reported)
+        assertTrue(walked.isEmpty())
+        advanceUntilIdle()
+        assertTrue("$walked", walked.firstOrNull() == true)
+    }
+
+    @Test
     fun `a refresh's stops are merged off the main thread`() = runTest(dispatcher) {
         // A worker of its own, on the test's scheduler, that marks the work it runs.
         val onWorker = ThreadLocal.withInitial { false }
@@ -5672,6 +5707,70 @@ class MainViewModelTest {
         vm.journeyStopsReported()
         advanceUntilIdle()
         assertEquals(nearFetches + 1, client.arrivalCalls[oxcId])
+    }
+
+    @Test
+    fun `a journey report held for stops on the worker doesn't settle a newer reconcile's wait`() = runTest(dispatcher) {
+        // The screen's journey stops are on the worker when it says it's reported them, during a fix
+        // that waits on that report. A newer fix starts before they're back: the held report was for the
+        // first, so the newer one still waits for its own.
+        val held = mutableListOf<Pair<CoroutineContext, Runnable>>()
+        var holding = false
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (holding) held += context to block else dispatcher.dispatch(context, block)
+            }
+        }
+        val client = ReuseCountingClient()
+        val vm = MainViewModel(client, listOf(seeds.first()), clock = { now }, io = dispatcher, compute = worker)
+        advanceUntilIdle()
+        val nearFetches = client.arrivalCalls.getValue(oxcId)
+
+        holding = true
+        vm.reconcile(newEager = eagerOf(oxcId to "tube"), newMore = emptyList(), awaitJourneyStops = true)
+        vm.setJourneyStops(emptyList())
+        advanceUntilIdle()
+        vm.journeyStopsReported()
+        vm.reconcile(newEager = eagerOf(oxcId to "tube"), newMore = emptyList(), awaitJourneyStops = true)
+        holding = false
+        held.forEach { (context, block) -> dispatcher.dispatch(context, block) }
+        held.clear()
+        advanceUntilIdle()
+        assertEquals("nothing fetched before the newer fix's report", nearFetches, client.arrivalCalls[oxcId])
+        assertFalse(vm.refreshing.value)
+
+        vm.journeyStopsReported()
+        advanceUntilIdle()
+        assertEquals(nearFetches + 1, client.arrivalCalls[oxcId])
+    }
+
+    @Test
+    fun `journey stops reported before a fix don't bring back an origin it holds back`() = runTest(dispatcher) {
+        // The screen reports a journey origin; while that's on the worker a fix comes in that holds the
+        // origin back. The fix's reconcile, worked out first, drops it; the report's pass, returning after,
+        // doesn't bring it back.
+        val held = mutableListOf<Pair<CoroutineContext, Runnable>>()
+        var holding = false
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (holding) held += context to block else dispatcher.dispatch(context, block)
+            }
+        }
+        val client = ReuseCountingClient()
+        val vm = MainViewModel(client, listOf(seeds.first()), clock = { now }, io = dispatcher, compute = worker)
+        advanceUntilIdle()
+        val origin = StopRef("940GZZLUKSX", "King's Cross St. Pancras")
+
+        holding = true
+        vm.setJourneyStops(listOf(origin))
+        advanceUntilIdle()
+        vm.reconcile(newEager = eagerOf(oxcId to "tube"), newMore = emptyList(), dropJourneyStopIds = setOf(origin.id))
+        advanceUntilIdle()
+        holding = false
+        held.reversed().forEach { (context, block) -> dispatcher.dispatch(context, block) }
+        held.clear()
+        advanceUntilIdle()
+        assertEquals(null, client.arrivalCalls[origin.id])
     }
 
     @Test

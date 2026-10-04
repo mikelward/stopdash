@@ -37,15 +37,14 @@ exercises the whole spine the widget later renders from.
         what comes back (`sharedClosures` among it; the verdict checks that move `failures` are on `io`
         already), and the callbacks the page's effects make into it as routes and estimates
         change (`boardAt`, `noteWithheld`, `checkShownStops`).
-- [ ] The near-me list's refresh off the main thread, before its requests: `setJourneyStops` (the
-      journey origins' sets, `fetchedStops` rebuilt, the declared lines, the loaded stops scanned)
-      ahead of the refresh it starts, `setJourneyDestinations` and `checkJourneyDestinations` (the
+- [ ] The near-me list's refresh off the main thread, before its requests: `setJourneyDestinations` and `checkJourneyDestinations` (the
       destinations filtered, batched and merged back), `refresh`'s own setup ahead of `fetchBatch` (the prior stops by id, `recentlyFetched`, both id sets, `fetchedStops`),
       `fetchBatch`'s setup (the shared arrivals taken, the lines declared, each stop's request and the
       pole batches built from `stops`) and the widget's snapshot and journey checks (`forWidget`, `widgetLineChecks`, `setWidgetJourneys`/`writeWidgetJourneys` ahead of their write,
       which read the line-status caches main-thread code writes) still run on `viewModelScope` at each
       refresh. Work them out on `compute` and publish the result, as a cold load's progress is (#527).
-      The per-stop merge and the list build moved in #534; the dismissal pass is #532's.
+      The per-stop merge and the list build moved in #534; the dismissal pass is #532's; the screen's
+      journey-stop report (`setJourneyStops`) is worked out on the worker, applied in order.
 - [x] The trip tracker off the main thread (#536): `restore`, `start`, `goTo`, `end` and `refresh`
       each hop to `compute` before taking the tracker's lock, so a refresh's step, a tap's move, a
       start and a restore walk the trip's route on the worker.

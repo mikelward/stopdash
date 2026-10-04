@@ -390,34 +390,45 @@ class MainViewModel(
      * prunes it, and with it any "couldn't refresh" warning only that stop caused.
      */
     fun setJourneyStops(stops: List<StopRef>) {
-        if (stops.toSet() == journeyStops.toSet()) return
+        // Noted as reported now, whenever it's applied: the screen shows these from here on.
         if (reconcilePending) journeyStopsSetDuringReconcile = true
-        val newIds = stops.mapTo(HashSet()) { it.id }
-        val nearIds = nearStops.mapTo(HashSet()) { it.id }
-        val dropped = journeyStops.any { it.id !in newIds && it.id !in nearIds }
-        // A fetched stop that now declares a line it didn't (an origin's route came in after its first
-        // fetch, or a nearby stop became an origin) is fetched again, so that line's status — a
-        // suspension with no predictions — is checked.
-        val declaredBefore = fetchedStops.associate { s -> s.id to s.lines.mapTo(HashSet()) { it.id } }
-        journeyStops = stops
-        val linesAdded = fetchedStops.any { s ->
-            s.id in declaredBefore && !declaredBefore.getValue(s.id).containsAll(s.lines.map { it.id })
-        }
-        val shown = (_state.value as? DeparturesUiState.Loaded)?.stops?.mapTo(HashSet()) { it.stopId }.orEmpty()
-        // A station whose board was left out that a newly starred National Rail journey now needs it
-        // at, even one already declaring the journey's line: its trains show at once.
-        val hidden = hiddenModes()
-        val boardWanted = boardSkipped.any { HiddenModes.wantsRailBoard(hidden, starredLines(it)) }
-        if (
-            refreshAwaitsJourneyStops || dropped || linesAdded || boardWanted || fetchJob?.isActive == true ||
-            stops.any { it.id !in shown }
-        ) {
-            refresh()
+        // Worked out on the worker, as it walks every stop (AGENTS.md *Main thread*); one reported
+        // while another is out is worked out after it, so the latest is applied last.
+        journeyStopsReport = stops
+        if (journeyStopsJob?.isActive == true) return
+        journeyStopsJob = viewModelScope.launch {
+            while (true) {
+                val stops = journeyStopsReport ?: break
+                val journey0 = journeyStops
+                val near0 = nearStops
+                val state0 = _state.value
+                val hidden = hiddenModes()
+                val change = withContext(compute) { journeyStopsChange(stops, journey0, near0, state0, hidden, boardSkipped) }
+                // Worked out again from them if what it went by changed meanwhile: a fetch that landed may
+                // have dropped a stop from the list, which then needs the refetch.
+                if (journeyStops !== journey0 || nearStops !== near0 || _state.value !== state0) continue
+                if (journeyStopsReport === stops) journeyStopsReport = null
+                // The same set: nothing to apply.
+                val refetch = change ?: continue
+                journeyStops = stops
+                if (refreshAwaitsJourneyStops || refetch || fetchJob?.isActive == true) refresh()
+            }
+            // The screen's report that it's done, made while these were out, is for them: now.
+            if (journeyStopsReportedWhileOut) {
+                journeyStopsReportedWhileOut = false
+                onJourneyStopsReported()
+            }
         }
     }
 
+    // The journey stops the screen reported last, not yet applied, and the job applying them
+    // ([setJourneyStops]); and whether it reported them done ([journeyStopsReported]) meanwhile.
+    private var journeyStopsReport: List<StopRef>? = null
+    private var journeyStopsJob: Job? = null
+    private var journeyStopsReportedWhileOut = false
+
     // The lines the starred journeys take from [stopId]: hiding doesn't reach them.
-    private fun starredLines(stopId: String): List<LineRef> = journeyStops.filter { it.id == stopId }.flatMap { it.lines }
+    private fun starredLines(stopId: String): List<LineRef> = starredLines(journeyStops, stopId)
 
     // The far ends of the starred journeys as shown (SPEC *Journeys*): only their stop-level
     // disruptions (a closure, a moved stop) are checked, not their departures, so a journey card can
@@ -651,7 +662,7 @@ class MainViewModel(
     // The National Rail stations whose last fetch left their board out, National Rail being hidden
     // ([HiddenModes.wantsRailBoard]). One wanting it again ("Show all", a National Rail journey starred
     // from it) isn't carried over, so its trains show at once. In-memory only; main thread.
-    private val boardSkipped = HashSet<String>()
+    private val boardSkipped: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
     // Which closure lookup each stop shows ([StopClosureCache.Lookup.ask]): one asked after it that the
     // cache has since kept is newer, so the stop isn't carried over past it ([recentlyFetched]).
@@ -2036,8 +2047,16 @@ class MainViewModel(
         @WorkerThread journeyChanges: () -> JourneyChanges = { JourneyChanges(dropJourneyStopIds, awaitJourneyStops) },
     ) {
         reconcileJob?.cancel()
-        // A report noted for a superseded reconcile was for its fix, not this one's (Codex on #548).
+        // A report noted for a superseded reconcile was for its fix, not this one's (Codex on #548); so is
+        // one held while journey stops were worked out.
         reportedDuringReconcile = false
+        journeyStopsReportedWhileOut = false
+        // Journey stops the screen reported before this fix, still on the worker, are taken as they are,
+        // as they were before the worker had them: this reconcile then drops from them what the fix holds
+        // back, rather than the worker's pass bringing it back after.
+        journeyStopsJob?.cancel()
+        journeyStopsReport?.let { journeyStops = it }
+        journeyStopsReport = null
         journeyStopsSetDuringReconcile = false
         reconcilePending = true
         // Busy from here, not only once the refetch starts, so the pull-to-refresh indicator and the
@@ -2222,6 +2241,15 @@ class MainViewModel(
      * changed): run a refresh a reconcile left waiting on this report, if that didn't already.
      */
     fun journeyStopsReported() {
+        // Reported stops still being worked out: done once they're applied.
+        if (journeyStopsJob?.isActive == true) {
+            journeyStopsReportedWhileOut = true
+            return
+        }
+        onJourneyStopsReported()
+    }
+
+    private fun onJourneyStopsReported() {
         if (reconcilePending) {
             reportedDuringReconcile = true
             return
@@ -2726,6 +2754,41 @@ internal object WidgetJourneysWrites {
  * is checked (a suspended one with no predictions still shows on the card), then the journey origins
  * not already near.
  */
+/**
+ * Whether the journey stops the screen reported ([stops], replacing [before]) call for a refetch
+ * ([MainViewModel.setJourneyStops]); null when they're the same set, so nothing changes.
+ */
+@WorkerThread
+private fun journeyStopsChange(
+    stops: List<StopRef>,
+    before: List<StopRef>,
+    near: List<StopRef>,
+    state: DeparturesUiState,
+    hidden: Set<String>,
+    boardSkipped: Set<String>,
+): Boolean? {
+    if (stops.toSet() == before.toSet()) return null
+    val newIds = stops.mapTo(HashSet()) { it.id }
+    val nearIds = near.mapTo(HashSet()) { it.id }
+    val dropped = before.any { it.id !in newIds && it.id !in nearIds }
+    // A fetched stop that now declares a line it didn't (an origin's route came in after its first
+    // fetch, or a nearby stop became an origin) is fetched again, so that line's status — a
+    // suspension with no predictions — is checked.
+    val declaredBefore = fetchedOf(near, before).associate { s -> s.id to s.lines.mapTo(HashSet()) { it.id } }
+    val linesAdded = fetchedOf(near, stops).any { s ->
+        s.id in declaredBefore && !declaredBefore.getValue(s.id).containsAll(s.lines.map { it.id })
+    }
+    val shown = (state as? DeparturesUiState.Loaded)?.stops?.mapTo(HashSet()) { it.stopId }.orEmpty()
+    // A station whose board was left out that a newly starred National Rail journey now needs it
+    // at, even one already declaring the journey's line: its trains show at once.
+    val boardWanted = boardSkipped.any { HiddenModes.wantsRailBoard(hidden, starredLines(stops, it)) }
+    return dropped || linesAdded || boardWanted || stops.any { it.id !in shown }
+}
+
+// The lines [journeyStops] take from [stopId]: hiding doesn't reach them.
+private fun starredLines(journeyStops: List<StopRef>, stopId: String): List<LineRef> =
+    journeyStops.filter { it.id == stopId }.flatMap { it.lines }
+
 private fun fetchedOf(near: List<StopRef>, journeyStops: List<StopRef>): List<StopRef> {
     val nearIds = near.mapTo(HashSet()) { it.id }
     val journeyLines = journeyStops.associate { it.id to it.lines }
