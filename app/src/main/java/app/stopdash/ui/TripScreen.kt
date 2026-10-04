@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.tween
@@ -53,6 +54,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -61,10 +63,13 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFontFamilyResolver
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -843,10 +848,13 @@ internal fun TripScreen(
     onStopAvoiding: ((String) -> Unit)? = null,
     avoidedLinesWriteFailed: Boolean = false,
     onAvoidedLinesWriteFailureShown: () -> Unit = {},
+    // Which journey this is (its origin and destination): another, a new nearest stop's included,
+    // starts the list afresh, never under the last journey's order, disruptions or banner (Codex, #543).
+    journey: Any? = null,
 ) {
     val statuses = rememberStatusesAsOf(state.statuses, state.statusesSortedOn, now)
     val state = remember(state, statuses) { state.copy(statuses = statuses) }
-    CompositionLocalProvider(LocalRouteStops provides routeStops) {
+    CompositionLocalProvider(LocalRouteStops provides routeStops, LocalTripJourney provides journey) {
         TripContent(
             title, state, now, access, onBack, onRetry, locationBanner, relocating, onRelocate,
             hiddenModes, onShowAllModes, onHideMode, onUnhideMode, hiddenModesWriteFailed, onHiddenModesWriteFailureShown, menu, openRoute,
@@ -1354,6 +1362,30 @@ private fun TripContent(
             // With a route open, only its own legs' warnings frame it; the list takes every route's.
             val shown = open?.let { listOf(it) } ?: cards?.flatten()
             val check = remember(state, shown, now, sequences) { shown?.let { tripCheckState(state, it, now, sequences, rideLines) } }
+            // The plan the list shows: its options. Another (a cached one switched to included) starts
+            // the list afresh, never under the last one's order, disruptions or banner (Codex, #543).
+            val planKey = listOf(LocalTripJourney.current, walkingSpeed, maxWalk, stepFree, tripModes)
+            // The list's own check, every card's: it gates the list kept behind an open route (its row
+            // and its reveal), so a route restored open after a rotation never lets the list show on a
+            // check of that route alone while another card's trains are still being judged (Codex, #543).
+            // Worked out on the worker (AGENTS.md *Main thread*). Until its answer is in, the list's last
+            // check stands (the one it had as the route opened, else its last answer), so opening a route
+            // never turns the list's row to "Checking…" behind it; with neither, the list counts as still
+            // checking, so its gate waits rather than open on a guess (Codex, #543).
+            // Kept per plan as the list's other work is, so another journey's or plan's verdict never
+            // stands in for this one's (Codex, #543).
+            val listCheckWork = remember(cards == null, planKey, excluded) { mutableStateOf<Worked<Inputs, ListCheck>?>(null) }
+            val lastListCheck = remember(cards == null, planKey, excluded) { arrayOfNulls<ListCheck>(1) }
+            if (open == null) lastListCheck[0] = ListCheck(check)
+            val listCheck = if (open == null) check else {
+                val worked = rememberWorked(listCheckWork, Inputs(state, cards, now, sequences, rideLines), keep = { _, _ -> true }) {
+                    ListCheck(cards?.let { tripCheckState(state, it.flatten(), now, sequences, rideLines) })
+                }
+                if (worked != null) lastListCheck[0] = worked
+                // A known check stands whatever it says, all clear (null) included.
+                val known = worked ?: lastListCheck[0]
+                if (known == null) TripMessage.CHECKING else known.message
+            }
             // Which trains the banner means, logged once per distinct set, off composition.
             val misses = remember(state, shown, now, sequences) { shown?.let { tripMisses(state, it, now, sequences, rideLines) }.orEmpty() }
             val routeStops = LocalRouteStops.current
@@ -1383,12 +1415,42 @@ private fun TripContent(
                 avoided.onStopAvoiding?.let { AvoidedLineChips(avoided.lines, it) }
             }
             // Settled here, once, so the list's reveal waits on the banner it would otherwise slide under (Codex, #543).
-            val incomplete = settled(check == TripMessage.INCOMPLETE, at = false)
+            // Per surface, so a return from an open route never brings its banner back to the list, and per
+            // plan, so one plan's failure never stands over another's placeholder, and per routes left out, so a
+            // failure of a route hidden or avoided never stands over those that remain (Codex, #543).
+            val incomplete = key(open != null, cards == null, planKey, excluded) { settled(check == TripMessage.INCOMPLETE, at = false) }
             TripBanners(shown, rideLines, state, check, incomplete, locationBanner, onRelocate, hiddenModes, onShowAllModes)
             // Hold still (SPEC *Engineering quality bar*): the list appears once, after its plan, its live
             // refresh and its routes' checks have landed, rather than settle under the rider's
             // thumb as each lands (maintainer, 2026-10-04). Never longer than [REVEAL_CAP_MILLIS].
-            val revealed = rememberRevealed(cards != null, state, check, bannerSettled = incomplete == (check == TripMessage.INCOMPLETE))
+            // The list's worked answers, kept here so they outlive an open route ([TripListWork]) and are
+            // in before the list shows, but started afresh with a plan that is (Codex, #543).
+            val listWork = remember(cards == null, planKey) { TripListWork() }
+            // Not saved: a rotation or a recreated process loses the list's work, so the list waits for
+            // it again rather than show raw cards that settle under the rider (Codex, #543).
+            val revealedState = remember(planKey) { mutableStateOf(false) }
+            // The row's work goes with the list's, and also with what's left out of it: a mode hidden or a
+            // line avoided never leaves its pill over the cards that remain (Codex, #543). The cards' order
+            // stays, so they slide rather than jump.
+            val rowWork = remember(listWork, excluded) { mutableStateOf<Worked<Inputs, TripRow>?>(null) }
+            val headed = cards?.let { rememberListedCards(listWork, it, state) }
+            // Worked out behind the placeholder too, and drawn at once until the list shows: it's never
+            // seen changing before then (Codex, #543).
+            val row = cards?.let {
+                rememberTripRow(it, rideLines, state, now, sequences, alerts.dismissed, loads.loading, listCheck == TripMessage.CHECKING, rowWork, hold = revealedState.value)
+            }
+            rememberRevealed(
+                revealedState,
+                cards != null,
+                state,
+                listCheck,
+                // Everything the list draws is in: its banner, its cards' order, its disruptions, and every
+                // route loaded (a line with no trains predicted can't make the check wait on it, Codex, #543).
+                // The banner shown is an open route's, not the list's: the list's own settles at once on return.
+                settledAround = (open != null || incomplete == (check == TripMessage.INCOMPLETE)) && headed != null &&
+                    row?.checking == false && loads.loading.isEmpty(),
+            )
+            val revealed = revealedState.value
             Box(Modifier.fillMaxSize()) {
                 when {
                     cards == null -> TripPlaceholder(state, onRetry)
@@ -1403,6 +1465,9 @@ private fun TripContent(
                                 onAvoidLine = avoided.onAvoid,
                                 loading = loads.loading,
                                 routesChecking = check == TripMessage.CHECKING,
+                                work = listWork,
+                                headed = headed,
+                                row = row ?: TripRow.CHECKING,
                             )
                         }
                         // Pulled down, the routes are planned again and every stop fetched afresh, from
@@ -1490,10 +1555,17 @@ internal const val REVEAL_CAP_MILLIS = 8_000L
  * changes. Timed on frames, as a screenshot test drives them.
  */
 @Composable
-private fun rememberRevealed(hasCards: Boolean, state: TripViewModel.State, check: TripMessage?, bannerSettled: Boolean): Boolean {
-    var revealed by rememberSaveable { mutableStateOf(false) }
-    val ready = hasCards && !state.refreshing && !state.planning && check != TripMessage.CHECKING && bannerSettled
-    LaunchedEffect(hasCards, ready) {
+private fun rememberRevealed(
+    revealedState: MutableState<Boolean>,
+    hasCards: Boolean,
+    state: TripViewModel.State,
+    check: TripMessage?,
+    settledAround: Boolean,
+) {
+    var revealed by revealedState
+    val ready = hasCards && !state.refreshing && !state.planning && check != TripMessage.CHECKING && settledAround
+    // Keyed on the holder too: each plan's holder gets its own cap timer (Codex, #543).
+    LaunchedEffect(revealedState, hasCards, ready) {
         // No cards means a plan starting afresh, a process recreated included (its plans are memory-only),
         // so a restored reveal mustn't let the new plan's cards show as they land (Codex, #543).
         if (!hasCards) revealed = false
@@ -1504,7 +1576,6 @@ private fun rememberRevealed(hasCards: Boolean, state: TripViewModel.State, chec
         }
         revealed = true
     }
-    return revealed
 }
 
 /** In place of a trip's list while what it shows lands ([rememberRevealed]). */
@@ -1578,6 +1649,12 @@ private fun RouteList(
     routesChecking: Boolean = false,
     // A card's long press also offers to avoid each line it rides ([AvoidedLines]); null offers not.
     onAvoidLine: ((String) -> Unit)? = null,
+    // Where the list's worked answers are kept: the trip screen's, so they outlive an open route.
+    work: TripListWork = remember { TripListWork() },
+    // The cards' order and headers ([rememberListedCards]), worked out by the trip screen.
+    headed: ListedCards? = rememberListedCards(work, cards, state),
+    // The row over the cards ([DisruptionsRow]), worked out on the worker and held as one ([rememberTripRow]).
+    row: TripRow = rememberTripRow(cards, rideLines, state, now, sequences, dismissed, loading, routesChecking),
 ) {
     // Which card gets there soonest, which rides fewest and which walks least, over each, then
     // the rest under "Other" (maintainer, 2026-09-30): worked out once per set of cards, not on
@@ -1585,28 +1662,12 @@ private fun RouteList(
     // cards stand in with their own headers for the moment the new ones take, never the last headers
     // over the new cards, which may rank otherwise; before any are in, the cards stand in their own
     // order, unheaded, rather than a blank list.
-    val headedWork = remember { mutableStateOf<Worked<Inputs, ListedCards>?>(null) }
-    // Only within one plan (the clock's ticks and refreshes), never across plans, where a route gone
-    // would linger; nor across no cards and some, where the last cards would stand beside "No
-    // routes", or none in for new ones. A route hidden or avoided can stand for one worker run
-    // (TODO.md); judging the cards' routes alike here would be the per-card work the worker is for.
-    val previousOrder = headedWork.value?.value?.keys
-    val headed = rememberWorked(
-        headedWork,
-        Inputs(cards, cards.isEmpty(), state.routes),
-        keep = { held, wanted -> held.parts[1] == false && wanted.parts[1] == false && held.parts[2] === wanted.parts[2] },
-    ) {
-        listedCards(cards, previousOrder)
-    }
     val listed = headed?.cards ?: cards
     val order = headed?.order
     // Cards re-sort as their times move (maintainer, 2026-10-04), sliding to their new places rather
-    // than jumping, and a tap while they slide is dropped: it could land on the card that just moved
-    // under the finger ([rememberMoving]).
-    val moving = rememberMoving(headed?.keys)
+    // than jumping, and a tap on a card while it moves is dropped: it could land on the card that just
+    // moved under the finger. Each card watches its own place ([rememberSliding]), whatever moved it.
     val routeStops = LocalRouteStops.current
-    // The row over the cards ([DisruptionsRow]), worked out on the worker and held as one ([rememberTripRow]).
-    val row = rememberTripRow(cards, rideLines, state, now, sequences, dismissed, loading, routesChecking)
     val density = LocalDensity.current
     // Remembered, so the keys below hold the same measure from one composition to the next.
     val pillWidth = rememberPillWidth()
@@ -1657,10 +1718,12 @@ private fun RouteList(
                         // The header, then a row per ride saying where it gets off (maintainer,
                         // 2026-09-27): one tap target, so a card changing at Highgate reads apart from
                         // one changing at Archway.
+                        val sliding = rememberSliding()
                         Column(
                             modifier = Modifier
+                                .sliding(sliding)
                                 .combinedClickable(
-                                    enabled = !moving,
+                                    enabled = !sliding.moving,
                                     onLongClickLabel = onLongPress?.let { moreLabel },
                                     onLongClick = onLongPress,
                                     onClick = { onOpen(card.first()) },
@@ -1723,6 +1786,9 @@ private fun RouteList(
     }
 }
 
+/** The journey the trip screen shows ([TripScreen]'s `journey`), read where the list's work is kept. */
+internal val LocalTripJourney = staticCompositionLocalOf<Any?> { null }
+
 /**
  * A card's header ([RouteLabelHeader]), grown and shrunk over a slide's time ([CARD_MOVE_MILLIS]) as it
  * comes and goes. The card's own place in the list may not move, so its placement animation alone
@@ -1731,16 +1797,19 @@ private fun RouteList(
  */
 @Composable
 internal fun CardHeader(header: List<RouteLabel>) {
-    // Not state: it's read only while [header] itself recomposes this.
+    // The labels drawn: the header's own, or its last while it shrinks away. A value the content reads,
+    // so a header changing to other labels redraws them.
     val last = remember { arrayOf(header) }
     if (header.isNotEmpty()) last[0] = header
+    val shown = last[0]
     AnimatedVisibility(
         visible = header.isNotEmpty(),
         enter = expandVertically(tween(CARD_MOVE_MILLIS.toInt()), expandFrom = Alignment.Top),
         exit = shrinkVertically(tween(CARD_MOVE_MILLIS.toInt()), shrinkTowards = Alignment.Top),
     ) {
-        // Its gap to the card goes with it, so nothing jumps by the spacing either.
-        Box(Modifier.padding(bottom = 4.dp)) { RouteLabelHeader(last[0]) }
+        // Its gap to the card goes with it, so nothing jumps by the spacing either. A header changing to
+        // a longer or shorter one (a line more when it wraps) grows or shrinks the same way (Codex, #543).
+        Box(Modifier.animateContentSize(tween(CARD_MOVE_MILLIS.toInt())).padding(bottom = 4.dp)) { RouteLabelHeader(shown) }
     }
 }
 
@@ -2312,7 +2381,10 @@ private fun RouteLegs(
     // The row over the route's legs, as the list's ([rememberTripRow]).
     // One list per estimate, not one per composition: the row's worker is keyed by it.
     val asCards = remember(estimate) { listOf(listOf(estimate)) }
-    val row = rememberTripRow(asCards, rideLines, state, now, sequences, dismissed, loading, routesChecking)
+    // Its own work per route and journey: another route opened in its place, a new journey's included,
+    // never shows this one's row while its own is worked out (Codex, #543).
+    val rowWork = remember(LocalTripJourney.current, routeKey(estimate.route)) { mutableStateOf<Worked<Inputs, TripRow>?>(null) }
+    val row = rememberTripRow(asCards, rideLines, state, now, sequences, dismissed, loading, routesChecking, rowWork, firstAtOnce = true)
     val closures = remember(estimate.route, state.closures, now, dismissed, sequences, rideLines, routeStops) {
         routeClosures(estimate.route, state, now, dismissed, sequences, rideLines) { routeStops?.hubOf(it) }
     }
@@ -2517,8 +2589,14 @@ internal fun unchecked(
         otherLineStops(route, rideLines).filter { it !in state.closures || it in state.closuresFailed }.forEach { id -> names[id]?.let(stops::add) }
     }
     // A ride the Planner gave no line names nothing a pill could show: it's left to the plain "Unknown".
-    return lines.values.filter { it.lineId.isNotBlank() && it.lineName.isNotBlank() } to stops.filter { it.isNotBlank() }
+    return lines.values.filter { it.lineId.isNotBlank() }.map(::pillNamed) to stops.filter { it.isNotBlank() }
 }
+
+/**
+ * [leg] with a name its pill can show and read out: a line the Planner gave an id but no name goes by
+ * its id, as the route-disruption alert names it, never a blank pill (Codex, #543).
+ */
+internal fun pillNamed(leg: TripLeg): TripLeg = if (leg.lineName.isBlank()) leg.copy(lineName = leg.lineId) else leg
 
 /**
  * The closure notices along [route] (a closure, a moved stop) as the list's closure cards show them,
@@ -2638,6 +2716,41 @@ internal fun cardClosures(
     }.distinctBy { it.stopId }.let(DepartureRows::stopStatusFolded)
 
 /** How long a change to the disruptions row holds before it's drawn, unless it's to "Checking…" ([settled]). */
+/**
+ * The trip list's cards in the order and under the headers they're drawn ([listedCards]), worked out on
+ * the worker into [work]. Run by the trip screen, not the list, so the order is in before the list is
+ * shown ([rememberRevealed]) rather than settling under the rider once it is (Codex, #543).
+ */
+@Composable
+private fun rememberListedCards(work: TripListWork, cards: List<List<TripTiming.Estimate>>, state: TripViewModel.State): ListedCards? {
+    val headedWork = work.listed
+    // Only within one plan (the clock's ticks and refreshes), never across plans, where a route gone
+    // would linger; nor across no cards and some, where the last cards would stand beside "No
+    // routes", or none in for new ones. A route hidden or avoided can stand for one worker run
+    // (TODO.md); judging the cards' routes alike here would be the per-card work the worker is for.
+    val previousOrder = headedWork.value?.value?.keys
+    return rememberWorked(
+        headedWork,
+        Inputs(cards, cards.isEmpty(), state.routes),
+        keep = { held, wanted -> held.parts[1] == false && wanted.parts[1] == false && held.parts[2] === wanted.parts[2] },
+    ) {
+        listedCards(cards, previousOrder)
+    }
+}
+
+/**
+ * The trip list's cards' order and headers, worked out on the worker. Held by the trip screen rather
+ * than the list (its disruptions row's work too, beside it), so a return from an open route draws them
+ * at once instead of settling again under the rider (Codex, #543).
+ */
+@Stable
+internal class TripListWork {
+    val listed: MutableState<Worked<Inputs, ListedCards>?> = mutableStateOf(null)
+}
+
+/** The check over every card of the list kept behind an open route, as worked out ([tripCheckState]); null when it's clear. */
+private class ListCheck(val message: TripMessage?)
+
 /** How long a card takes to slide to its new place when the list re-sorts, taps held throughout. */
 internal const val CARD_MOVE_MILLIS = 300L
 
@@ -2650,49 +2763,79 @@ internal const val CARD_MOVE_MILLIS = 300L
 internal class ListedCards(
     val cards: List<List<TripTiming.Estimate>>,
     val order: List<HeadedCard>,
-    val keys: List<String>,
+    val keys: CardOrder,
 )
 
+/**
+ * The cards' routes in drawn order ([cardKey]) and the header over each: a header coming or going moves
+ * the cards under it as surely as a re-sort (Codex, #543). Equal only to itself, so comparing two never
+ * walks the list.
+ */
+internal class CardOrder(val keys: List<String>, val headers: List<List<RouteLabel>>)
+
 @WorkerThread
-internal fun listedCards(cards: List<List<TripTiming.Estimate>>, previous: List<String>?): ListedCards {
+internal fun listedCards(cards: List<List<TripTiming.Estimate>>, previous: CardOrder?): ListedCards {
     val order = headedCards(cards.map { it.first() })
     val keys = order.map { cardKey(cards[it.index].first().route) }
-    return ListedCards(cards, order, if (keys == previous) previous else keys)
+    val headers = order.map { it.header }
+    val same = previous != null && keys == previous.keys && headers == previous.headers
+    return ListedCards(cards, order, if (same) previous else CardOrder(keys, headers))
 }
 
 /**
- * Whether the cards are sliding to a new order: true for [CARD_MOVE_MILLIS] once [order] is a new
- * list ([ListedCards.keys]), timed on frames. Never for the first order, which arrives with the list.
+ * Whether a tap target is moving on screen (maintainer, 2026-10-04): a card sliding to a new order,
+ * pushed by something coming or going above it, by its own header growing, or by a scroll. Read from
+ * where the target is placed ([sliding]), so no cause has to be named (Codex, #543). True from the
+ * first frame it moves until it has held still for a frame.
  */
-@Composable
-internal fun rememberMoving(order: List<String>?): Boolean {
-    var moving by remember { mutableStateOf(false) }
-    val seen = remember { arrayOfNulls<List<String>>(1) }
-    LaunchedEffect(order) {
-        val before = seen[0]
-        if (order != null) seen[0] = order
-        if (before == null || order == null || before === order) return@LaunchedEffect
-        moving = true
-        try {
-            val start = withFrameMillis { it }
-            while (withFrameMillis { it } - start < CARD_MOVE_MILLIS) Unit
-        } finally {
-            moving = false
+internal class Sliding {
+    var moving by mutableStateOf(false)
+        internal set
+
+    // Plain fields, written as the target is placed: no recomposition per frame while it moves, only
+    // when [moving] itself flips.
+    internal var y = Float.NaN
+    internal var moved = false
+
+    internal fun placedAt(y: Float) {
+        if (!this.y.isNaN() && y != this.y) {
+            moved = true
+            if (!moving) moving = true
         }
+        this.y = y
     }
-    return moving
 }
+
+/** A [Sliding] that clears once its target has held still for a whole frame. */
+@Composable
+internal fun rememberSliding(): Sliding {
+    val sliding = remember { Sliding() }
+    LaunchedEffect(sliding.moving) {
+        if (!sliding.moving) return@LaunchedEffect
+        // Timed on frames, not delay(): the frame clock is the one a test drives.
+        do {
+            sliding.moved = false
+            withFrameMillis { }
+            withFrameMillis { }
+        } while (sliding.moved)
+        sliding.moving = false
+    }
+    return sliding
+}
+
+/** Reports where this is placed on screen to [sliding]. */
+internal fun Modifier.sliding(sliding: Sliding): Modifier = onPlaced { sliding.placedAt(it.positionInRoot().y) }
 
 internal const val NOTE_SETTLE_MILLIS = 1_500L
 
 /**
  * [value], but a change to it drawn only once it has held for [NOTE_SETTLE_MILLIS], unless [at] says
- * this one shows at once: so a value that flips back within the moment is never drawn. Compared by
- * [equals], so give it values whose equality is cheap.
+ * this one shows at once: so a value that flips back within the moment is never drawn. [initial] is what
+ * shows first, the first [value] unless given. Compared by
  */
 @Composable
-private fun <T> settled(value: T, at: Boolean): T {
-    var shown by remember { mutableStateOf(value) }
+private fun <T> settled(value: T, at: Boolean, initial: T = value): T {
+    var shown by remember { mutableStateOf(initial) }
     LaunchedEffect(value) {
         // Timed on frames, not delay(): the frame clock is the one a screenshot test drives.
         if (!at && shown != value) {
@@ -2756,8 +2899,8 @@ internal fun tripRow(
     for (card in cards) {
         val statuses = shownStatuses(cardStatuses(card, rideLines, state, now, sequences), dismissed)
         card.first().route.rides.indices.flatMap { cardRideLines(card, it, rideLines) }
-            .filter { statuses[it.lineId]?.disrupted == true }
-            .forEach { lines.putIfAbsent(it.lineId, it) }
+            .filter { statuses[it.lineId]?.disrupted == true && it.lineId.isNotBlank() }
+            .forEach { lines.putIfAbsent(it.lineId, pillNamed(it)) }
         card.forEach { estimate -> routeClosures(estimate.route, state, now, dismissed, sequences, rideLines, hubOf).values.mapTo(stops) { it.stopName } }
     }
     // Lines not yet checked rank as unchecked, and say so: checking while a check runs, and only a
@@ -2805,9 +2948,16 @@ private fun rememberTripRow(
     dismissed: Set<DismissedAlert>,
     loading: Set<String>,
     routesChecking: Boolean,
+    // Where the row is kept; a caller that outlives this composable passes its own.
+    work: MutableState<Worked<Inputs, TripRow>?> = remember { mutableStateOf(null) },
+    // Whether a change waits out its moment ([settled]); not while nobody can see the row yet.
+    hold: Boolean = true,
+    // Whether the first row worked out shows at once: for a row of its own (an open route's), whose
+    // cards are already settled. Not for the list's, kept by the caller, whose first answer after a
+    // reset can still be for the cards before it.
+    firstAtOnce: Boolean = false,
 ): TripRow {
     val routeStops = LocalRouteStops.current
-    val work = remember { mutableStateOf<Worked<Inputs, TripRow>?>(null) }
     val key = Inputs(cards, rideLines, state, now, sequences, dismissed, loading, routesChecking, routeStops)
     val previous = work.value?.value
     val latest = rememberWorked(work, key, keep = { _, _ -> true }) {
@@ -2816,9 +2966,17 @@ private fun rememberTripRow(
     }
     val stale = work.value?.key != key
     // Behind the cards for longer than the hold: "Checking…" alone until the worker catches up.
-    val stuck = settled(stale, at = !stale)
+    // A row kept from before (a return from an open route) is never stuck at first: it stands its hold
+    // like any other. With none kept, the row says "Checking…" anyway.
+    val stuck = settled(stale, at = !stale, initial = stale && latest == null)
     val target = if (latest == null || stuck) TripRow.CHECKING else latest
-    return settled(target, at = target.checking)
+    // The first row worked out where none was kept ([firstAtOnce]) shows at once: the "Checking…"
+    // before it stood only for no work done yet, not a check running, so holding it would say
+    // "Checking…" over a settled trip (Codex, #543). A row kept from before still stands its hold.
+    val worked = remember(work) { booleanArrayOf(work.value != null) }
+    val first = firstAtOnce && latest != null && !stuck && !worked[0]
+    if (latest != null && !stuck) worked[0] = true
+    return settled(target, at = target.checking || !hold || first)
 }
 
 /**

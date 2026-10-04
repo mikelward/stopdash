@@ -2973,6 +2973,7 @@ class MainActivity : ComponentActivity() {
         val pulling by trip.pulling.collectAsStateWithLifecycle()
         TripScreen(
             title = title,
+            journey = tripKey,
             state = tripState,
             now = tickingNow(),
             access = access,
