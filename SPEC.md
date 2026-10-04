@@ -1326,6 +1326,11 @@ until it has held for a moment (1.5 s), so a gap between two loads never reads a
 ones a moment longer, as a card shows its last times, then "Checking…": never a "None" the current
 cards may not bear out. The "Checking routes…" banner over the list is held the same way.
 
+**Once the list is showing, its cards re-sort as their times move** (maintainer, 2026-10-04): the
+soonest stays on top. A card slides to its new place rather than jumping, so the eye can follow it,
+and a tap or long press while the cards slide is dropped, since it could land on the card that just
+moved under the finger.
+
 **TfL's Journey Planner chooses the lines and changes; StopDash's live arrivals give the times**
 (principle 1). The first leg counts down like any row. From "Here", the rider still has to reach the
 first stop: the Planner's own **first walk leg**, from their position along real streets, is that walk,
@@ -3028,7 +3033,9 @@ In priority order; where a rule below conflicts with a principle, the principle 
    2026-10-04). A list that settles in front of them, or a row that pushes it down, makes
    them lose their place or tap the wrong thing. This outranks showing content early:
    while what a list shows is still landing, its place says so ("Checking routes…"), and
-   the list appears once, settled, rather than filling in under the user's thumb.
+   the list appears once, settled, rather than filling in under the user's thumb. Where
+   something must move, such as a trip's cards re-sorting, it slides rather than jumps,
+   and taps wait until it stops.
 5. **Jank-free.** The app list and the widget render from in-memory/snapshot state; no
    I/O in composition, and no blocking a first frame on a fetch *or a disk read* — a
    stamped placeholder shows at once and fills in when the persisted snapshot loads.
