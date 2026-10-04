@@ -1464,6 +1464,41 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `the screen's journey destinations are worked out off the main thread`() = runTest(dispatcher) {
+        // A worker of its own, on the test's scheduler, that marks the work it runs.
+        val onWorker = ThreadLocal.withInitial { false }
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) = dispatcher.dispatch(context) {
+                onWorker.set(true)
+                try {
+                    block.run()
+                } finally {
+                    onWorker.set(false)
+                }
+            }
+        }
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
+        }
+        val vm = MainViewModel(client, seeds, clock = { now }, io = dispatcher, compute = worker)
+        advanceUntilIdle()
+        // Where each walk of the reported destinations ran: the first, comparing them with those held,
+        // on the worker, never on the caller's (the main) thread.
+        val walked = mutableListOf<Boolean>()
+        val destination = StopRef("940GZZLUKSX", "King's Cross St. Pancras")
+        val reported = object : AbstractList<StopRef>() {
+            override val size: Int get() = 1.also { walked += onWorker.get() }
+            override fun get(index: Int): StopRef = destination.also { walked += onWorker.get() }
+        }
+        vm.setJourneyDestinations(reported)
+        assertTrue(walked.isEmpty())
+        advanceUntilIdle()
+        assertTrue("$walked", walked.firstOrNull() == true)
+    }
+
+    @Test
     fun `a refresh's stops are merged off the main thread`() = runTest(dispatcher) {
         // A worker of its own, on the test's scheduler, that marks the work it runs.
         val onWorker = ThreadLocal.withInitial { false }
@@ -6423,8 +6458,9 @@ class MainViewModelTest {
             // And it's unknown now: that closure may be out of date.
             assertEquals(setOf(ksxId), vm.journeyDestinationsUnknown.value)
 
-            // Unstarred: no destination, nothing kept.
+            // Unstarred: no destination, nothing kept, once worked out on the worker.
             vm.setJourneyDestinations(emptyList())
+            advanceUntilIdle()
             assertTrue(vm.journeyDestinationStops.value.isEmpty())
         }
 
