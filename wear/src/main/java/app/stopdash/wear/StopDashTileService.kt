@@ -144,9 +144,13 @@ class StopDashTileService : TileService() {
 
         private val lookedUp = AtomicBoolean(false)
 
-        /** Asks the system to re-render the tile, after a new envelope arrives. */
+        /**
+         * Asks the system to re-render the tile, after a new envelope arrives. The updater binds a
+         * service, which a broadcast receiver's own context refuses ([ClockChangeReceiver]), so it
+         * always binds from the application's.
+         */
         fun requestUpdate(context: Context) {
-            getUpdater(context).requestUpdate(StopDashTileService::class.java)
+            getUpdater(context.applicationContext).requestUpdate(StopDashTileService::class.java)
         }
     }
 }
