@@ -2433,6 +2433,37 @@ Builds on Phase 1's minimal line-status marking.
       and cancellations of specific services where TfL exposes them.
 - [ ] Rich in-app disruption text; mark a disrupted line/stop even when predictions look
       normal (D3). Domain summarization JVM-tested.
+- [ ] **A trip's disruptions row is one line, with every line's status a tap away** (maintainer,
+      2026-10-04). The row shows the chips that fit, then "+N more", so it never wraps and pushes the
+      routes down (Codex, PR #543); it bounds the pills composed on the main thread too. An expand
+      button, always there, opens every line the trip rides with its status, disruptions at the top:
+      one row per line, showing that line's worst-severity status (maintainer, 2026-10-04), and the
+      lines whose trains couldn't be checked marked as such.
+      First try a bottom sheet (maintainer prefers against them but asked to try it); a full-screen
+      page is the fallback.
+- [ ] **"Some routes couldn't be checked" moves the trip list when it comes or goes** (Codex, PR #543).
+      Once the list is showing, a refresh that turns a check from checking to couldn't-check inserts
+      the banner over the routes (after its 1.5 s hold), shifting every card; the reverse removes it.
+      It predates the hold-still work. Decided (maintainer, 2026-10-04, mock C): it moves into the
+      disruptions row, which always holds its place, under "Unknown:" with the pill of each line whose
+      trains couldn't be checked; the expand view says what that means. The banner goes.
+- [ ] **Build the trip list hidden behind its placeholder, then show it** (Codex, PR #543). The reveal
+      gate lists what the list draws (order and headers, the disruptions row, every route and check)
+      and Codex keeps finding the next thing it doesn't list: each card's times and pill widths still
+      start only once the list shows, so a card can read "Loading" and then reflow. Composing the list
+      unseen (no touch, no semantics) behind "Checking routes…" lets all of it warm, and the gate
+      becomes "its work is in" rather than a list that grows with every finding. A design change: the
+      maintainer's call. Planned after #529 (maintainer, 2026-10-04): its per-tick frame on the worker
+      can carry the cards' order and headers too. That also closes a re-plan with the same options
+      (a pull, an expired plan): its new cards show unheaded for one worker run, then head and re-sort
+      (Codex, #543). Keeping the last list whole until then would let a route the new plan dropped
+      linger, which ranks below never showing a departure StopDash doesn't stand behind; cards and
+      headers arriving together in one frame avoids both.
+- [ ] **Option: every line's status at the top of the home screen** (maintainer, 2026-10-04). A
+      setting, off by default, to show disruption status for all lines, not just the watched stops'
+      — with a choice of which modes to include. TfL's `/Line/Mode/{modes}/Status` returns a mode's
+      every line in one request (free, cached with the other statuses), so it's a few requests per
+      refresh. National Rail may not be covered yet: check what TfL returns for it before offering it.
 - [x] **A catch-all reason that says a disruption has ended still names it** (Codex, PR #455).
       "The diversion is no longer required" resolved to Diversion: `resolveDisruption` only looked
       for a negation *before* the word. Done: a denial that follows it in the same clause ("is no
