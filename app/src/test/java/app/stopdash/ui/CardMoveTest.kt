@@ -154,6 +154,30 @@ class CardMoveTest {
     }
 
     @Test
+    fun a_header_changing_without_moving_the_card_leaves_its_taps_alone() {
+        // Only a card's moving drops a tap (maintainer, 2026-10-04): a header changing to another of the
+        // same height, the card staying where it is, never does.
+        val header = mutableStateOf(listOf(app.stopdash.domain.RouteLabel.FASTEST))
+        var taps = 0
+        composeRule.mainClock.autoAdvance = false
+        composeRule.setContent {
+            androidx.compose.foundation.layout.Column {
+                CardHeader(header.value)
+                val sliding = rememberSliding()
+                Text("card", Modifier.sliding(sliding).clickable(enabled = !sliding.moving) { taps++ })
+            }
+        }
+        composeRule.waitForIdle()
+        val top = composeRule.onNodeWithText("card").getUnclippedBoundsInRoot().top
+        header.value = listOf(app.stopdash.domain.RouteLabel.SIMPLEST)
+        halfASlide()
+        // The header mid-change, the card where it was: a tap lands.
+        assertEquals(top, composeRule.onNodeWithText("card").getUnclippedBoundsInRoot().top)
+        composeRule.onNodeWithText("card").performClick()
+        assertEquals(1, taps)
+    }
+
+    @Test
     fun a_tap_on_a_card_sliding_to_its_new_order_is_dropped() {
         val order = mutableStateOf(listOf("a", "b"))
         var taps = 0
