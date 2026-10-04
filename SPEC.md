@@ -2319,7 +2319,9 @@ been set, so none keeps showing what it judged before.
   up a frame (maintainer, 2026-10-03). While a refresh's or the clock's new rows are built, the list
   keeps its last rows for that moment, including on a return from a page over it. A list with no
   rows of its own yet (shown for the first time, or for other places) shows a spinner until they
-  are in, never an empty list that would read as "No departures".
+  are in, never an empty list that would read as "No departures". So is a cold load's list as its
+  stops land: each stop's merge and the part-shown list are worked out off the main thread, which
+  only shows them.
 - **Cold load** (nothing saved to show yet): the app waits up to **2 s** for every stop's
   departures (maintainer, 2026-09-26), showing its loading stamp meanwhile, so a typical load (well
   under a second to two) paints once, whole, with nothing to jump or tap. It doesn't wait on stop
