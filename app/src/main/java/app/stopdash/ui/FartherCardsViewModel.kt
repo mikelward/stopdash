@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import androidx.annotation.WorkerThread
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -14,6 +15,7 @@ import app.stopdash.domain.Coordinates
 import app.stopdash.domain.FartherStations
 import app.stopdash.domain.NearestStops
 import app.stopdash.domain.StopLocation
+import app.stopdash.domain.Workers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -40,6 +42,9 @@ class FartherCardsViewModel(
     private val newModel: (List<StopRef>, Map<String, Double>) -> MainViewModel,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val warn: (String) -> Unit = {},
+    // Where work over the cards and their stops runs (AGENTS.md *Main thread: read and dispatch only*);
+    // [viewModelScope] only publishes it.
+    private val compute: CoroutineDispatcher = Workers.compute,
 ) : ViewModel() {
     private val _cards = MutableStateFlow<Map<String, FartherLoad>>(emptyMap())
 
@@ -82,10 +87,17 @@ class FartherCardsViewModel(
                 _cards.value = _cards.value + (place.key to FartherLoad.Failed)
                 return@launch
             }
+            // Measured from the latest fix: a relocation while this is worked out measures it again.
+            val refs = withContext(compute) { stops.map { it.toStopRef() } }
+            var measuredFrom: Coordinates
+            var distances: Map<String, Double>
+            do {
+                measuredFrom = from ?: fix
+                val at = measuredFrom
+                distances = withContext(compute) { distancesFrom(stops, at) }
+            } while ((from ?: fix) != measuredFrom)
             val store = ViewModelStore()
             stores[place.key] = store
-            val refs = stops.map { it.toStopRef() }
-            val distances = distancesFrom(stops, from ?: fix)
             val model = ViewModelProvider.create(
                 store,
                 viewModelFactory { initializer { newModel(refs, distances) } },
@@ -105,34 +117,70 @@ class FartherCardsViewModel(
 
     /**
      * Keep only the cards still offered ([places], re-picked after a relocation), re-measured from
-     * the new fix [fix]; the rest collapse.
+     * the new fix [fix]; the rest collapse. Worked out on [compute] from the cards as they stand, and
+     * applied if no newer fix has come since; one worked out from cards changed meanwhile (a lookup
+     * landed, a card was tapped) is worked out again from them.
      */
     fun retain(places: List<CollapsedPlaces.Place>, fix: Coordinates) {
         from = fix
-        val byKey = places.associateBy { it.key }
-        for (key in _cards.value.keys + lookups.keys) if (key !in byKey) close(key)
-        // An opened bus place whose poles changed (one left the nearby lookup's reach, another came
-        // into it) is rebuilt from the new ones, so a departed pole isn't shown as current and a new
-        // one isn't left out. A station's card looks its stops up by id, so it has nothing to redo.
-        for ((key, load) in _cards.value) {
-            val place = byKey[key] ?: continue
-            if (place.stops.isEmpty() || load !is FartherLoad.Open) continue
-            if (load.stops.mapTo(HashSet()) { it.id } != place.stops.mapTo(HashSet()) { it.id }) {
-                close(key)
-                open(place, fix)
-            }
-        }
-        _cards.value = _cards.value.mapValues { (key, load) ->
-            if (load is FartherLoad.Open) {
+        val asked = ++retains
+        viewModelScope.launch {
+            while (true) {
+                val cards = _cards.value
+                val plan = withContext(compute) { retainPlan(cards, places, fix) }
+                if (asked != retains) return@launch
+                if (_cards.value !== cards) continue
+                // Every key with a lookup or a model has a card, so closing by the cards closes them all.
+                for (key in plan.closed) close(key)
+                _cards.value = plan.cards
                 // The card's model takes the new distances too: its rows hide terminating services
                 // by where the rider is, and its far stops refresh less often.
-                val distances = distancesFrom(load.stops, fix)
-                models[key]?.remeasure(distances)
-                load.copy(distanceMeters = distances)
-            } else {
-                load
+                for ((key, distances) in plan.remeasured) models[key]?.remeasure(distances)
+                for (place in plan.reopened) open(place, fix)
+                return@launch
             }
         }
+    }
+
+    // How many fixes [retain] has taken: a plan for an older one isn't applied.
+    private var retains = 0
+
+    /** What [retain] does to [cards]: which close, which reopen on new poles, and the rest re-measured. */
+    private class RetainPlan(
+        val closed: List<String>,
+        val reopened: List<CollapsedPlaces.Place>,
+        val remeasured: List<Pair<String, Map<String, Double>>>,
+        val cards: Map<String, FartherLoad>,
+    )
+
+    @WorkerThread
+    private fun retainPlan(cards: Map<String, FartherLoad>, places: List<CollapsedPlaces.Place>, fix: Coordinates): RetainPlan {
+        val byKey = places.associateBy { it.key }
+        val closed = ArrayList<String>()
+        val reopened = ArrayList<CollapsedPlaces.Place>()
+        val remeasured = ArrayList<Pair<String, Map<String, Double>>>()
+        val kept = LinkedHashMap<String, FartherLoad>()
+        for ((key, load) in cards) {
+            val place = byKey[key]
+            when {
+                place == null -> closed += key
+                // An opened bus place whose poles changed (one left the nearby lookup's reach, another
+                // came into it) is rebuilt from the new ones, so a departed pole isn't shown as current
+                // and a new one isn't left out. A station's card looks its stops up by id: nothing to redo.
+                load is FartherLoad.Open && place.stops.isNotEmpty() &&
+                    load.stops.mapTo(HashSet()) { it.id } != place.stops.mapTo(HashSet()) { it.id } -> {
+                    closed += key
+                    reopened += place
+                }
+                load is FartherLoad.Open -> {
+                    val distances = distancesFrom(load.stops, fix)
+                    remeasured += key to distances
+                    kept[key] = load.copy(distanceMeters = distances)
+                }
+                else -> kept[key] = load
+            }
+        }
+        return RetainPlan(closed, reopened, remeasured, kept)
     }
 
     /** The departures model of [key]'s card, while it is open. */
@@ -158,6 +206,7 @@ class FartherCardsViewModel(
         models.clear()
     }
 
+    @WorkerThread
     private fun distancesFrom(stops: List<StopLocation>, fix: Coordinates): Map<String, Double> =
         stops.associate { it.id to NearestStops.distanceMeters(fix.latitude, fix.longitude, it.latitude, it.longitude) }
 }

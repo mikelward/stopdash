@@ -57,8 +57,7 @@ exercises the whole spine the widget later renders from.
       worker too, and applied, prune first, before its refetch.
 - [ ] The smaller per-tick and per-recomposition passes: the On the way screen's rows (every tick); `MainActivity`'s saved
       journeys mapped, oriented and measured (`shownJourneys`, `farJourneyMeters`), its farther
-      cards built (`fartherCards`, `fartherDistanceMeters`, `openedStates`, and
-      `FartherCardsViewModel`'s `retain` and `open` after their lookups) and the farther stations
+      cards built (`fartherCards`, `fartherDistanceMeters`, `openedStates`) and the farther stations
       reached (`reachedStopIds`, `fartherReached`, and `FartherBuses.stationStops`/`candidates`
       before their `produceState` hops), all in composition; the search and lookup results worked over after their requests
       (`StationSearchViewModel.start`'s filter and map, `StationStopsViewModel.retry`'s centered stops,
@@ -66,9 +65,10 @@ exercises the whole spine the widget later renders from.
       `withBundledPositions`). The DataStore stores (starred rows and journeys, dismissed alerts, alerts
       behind, favorite places) now read and map on the worker (#538). Not a closed list: sweep the screens, the stores, and every view-model
       function a click handler or effect calls, for any pass over a collection that grows with its
-      input on the main thread before checking it off. Known still there: `MainViewModel.remeasure`
-      as an opened farther card's model calls it, `refresh`'s nearby places (`nearbyPlacesOf`), and
-      `setJourneyStops`' comparisons. (The licenses dialog now opens the tapped
+      input on the main thread before checking it off. Known still there: `refresh`'s nearby places
+      (`nearbyPlacesOf`), and `setJourneyStops`' comparisons. (`FartherCardsViewModel`'s `retain`
+      and `open` after its lookup, and the `remeasure` `retain` calls on each opened card's model, now
+      work on the worker; the licenses dialog now opens the tapped
       library as it is, and finds a restored one again on the worker; the main screen's
       `emptyStateUncertain` ages its stops on the worker each tick; the route page's saved journeys here,
       lift check and step-free levels are worked out on the worker.)
