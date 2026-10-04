@@ -2838,11 +2838,27 @@ and these carry the rest as their own PRs:
         watch build ignores the field).
         *Done: `WatchEnvelope.nearestFirst` carries the order for the stops sent, and the tile, the
         watch app and the complication fold with the widget's own `DepartureRows.glanceFolded`.*
+  - [ ] **Should the saved line choices follow the widget's own background refreshes?** (Codex on
+        #550, nine findings on one mechanism; maintainer's call.) The app works the choices out
+        again on every write it makes (a save, a fix, a status-only write, a filter change), but
+        the widget's background refresh stores new arrivals and statuses while the app is closed
+        and can't: the choices need the stops' distances, which are never stored. So between app
+        runs the widget and watch keep the stop the app last chose, falling back to the order when
+        that stop no longer shows the line. Options: accept that (the choices mean "the app's last
+        view"); store a coarse grouping instead of distances (which stops lie within 50 m of each
+        other) so the store can recompute on any write; or have the worker skip the choices and
+        fold by order alone after a background refresh.
   - [ ] **Does a saved complication pick follow the fold?** (Codex on #549, #550; maintainer's
         call.) A pick made for a line at stop A keeps showing A after a move folds that line to
         stop B on the widget, tile and default complication. Kept as picked for now: dropping the
         pick falls back to the top row, which can be another line altogether. Alternatives: remap
         the pick to the folded stop's row for the same line and direction, or drop it.
+  - [x] **The widget and the watch show each line from the app's stop** (maintainer, 2026-10-04).
+        The order alone split a route's directions across two stops where the app keeps them
+        together a few steps farther. The app now saves, with the order, the stop its list shows
+        each line from (`DeparturesSnapshot.nearbyChoices`, stop ids only), and the fold follows it.
+        They're worked out again from the stored rows at startup, at each fix, and whenever an
+        alert is dismissed or a mode hidden, as the list's own fold reads both.
 - [x] **Scope the widget snapshot to its nearby set (own PR, Codex P1 on #44).** The widget
       snapshot is written only on an *authoritative* arrivals cycle, so if the user moves and
       the new set's fetch fails (offline/rate-limited), the previous location's departures stay

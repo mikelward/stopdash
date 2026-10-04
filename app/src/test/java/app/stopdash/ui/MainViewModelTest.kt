@@ -7,6 +7,7 @@ import app.stopdash.domain.Workers
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DeparturesSnapshot
+import app.stopdash.domain.FoldChoice
 import app.stopdash.domain.Dismissed
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DismissedAlertsStore
@@ -3018,6 +3019,41 @@ class MainViewModelTest {
         }
 
     @Test
+    fun `a refresh whose arrivals all fail works the line choices out again after storing the statuses`() = runTest(dispatcher) {
+        val aged = now.minusSeconds(120)
+        val events = mutableListOf<String>()
+        val last = DeparturesSnapshot(
+            stops = listOf(stopArrivals(oxcId, "Oxford Circus", 300, aged), stopArrivals(ksxId, "King's Cross St. Pancras", 300, aged)),
+            fetchedAt = aged,
+        )
+        val store = object : SnapshotStore by SnapshotStore.NONE {
+            override suspend fun load(): DeparturesSnapshot = last
+            override suspend fun stored(): DeparturesSnapshot = last
+            override suspend fun updateLineStatuses(checks: Map<String, LineStatusCheck>) {
+                events += "statuses"
+            }
+            override suspend fun updateNearestFirst(order: List<String>, choicesFor: ((DeparturesSnapshot) -> List<FoldChoice>)?) {
+                if (choicesFor != null) events += "choices"
+            }
+        }
+        MainViewModel(
+            FakeClient(
+                mapOf(
+                    "940GZZLUOXC" to Result.failure(TflException.Offline(null)),
+                    "940GZZLUKSX" to Result.failure(TflException.Offline(null)),
+                ),
+                statuses = Result.success(listOf(status("victoria", 20, "Suspended"))),
+            ),
+            seeds, clock = { aged.plusSeconds(120) }, io = dispatcher, snapshotStore = store,
+            stopDistanceMeters = mapOf(oxcId to 100.0, ksxId to 900.0),
+        )
+        advanceUntilIdle()
+        // The statuses can change which stop shows a line, so the choices follow them.
+        assertTrue("the statuses were stored", "statuses" in events)
+        assertEquals("choices", events.last())
+    }
+
+    @Test
     fun `a refresh whose arrivals all fail stores an answer that left every line out`() = runTest(dispatcher) {
         // TfL answers the status request but names no line: that's a check too, with no verdict,
         // and it replaces an older disruption the widget holds rather than leaving it standing.
@@ -5817,10 +5853,250 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `the widget's snapshot keeps the stop the list shows each line from`() = runTest(dispatcher) {
+        val store = FakeStore(restores = false)
+        MainViewModel(
+            ReuseCountingClient(), seeds, clock = { now }, io = dispatcher, snapshotStore = store,
+            stopDistanceMeters = mapOf(oxcId to 900.0, ksxId to 100.0),
+        )
+        advanceUntilIdle()
+        // Both stops serve the Victoria line inbound: the list shows it from King's Cross, the nearer.
+        assertEquals(listOf(FoldChoice("victoria", "inbound", ksxId)), store.saves.last().nearbyChoices)
+    }
+
+    /** A store holding [held] as its snapshot, recording each order and the line choices worked out from it. */
+    private class ChoicesStore(val held: DeparturesSnapshot) : SnapshotStore by SnapshotStore.NONE {
+        val stored = mutableListOf<Pair<List<String>, List<FoldChoice>?>>()
+
+        override suspend fun updateNearestFirst(order: List<String>, choicesFor: ((DeparturesSnapshot) -> List<FoldChoice>)?) {
+            stored += order to choicesFor?.invoke(held)
+        }
+    }
+
+    @Test
+    fun `the line choices are worked out from the stored rows, at startup and on a move`() = runTest(dispatcher) {
+        val victoria = listOf(departure("victoria", "Victoria", 300))
+        val store = ChoicesStore(
+            DeparturesSnapshot(listOf(StopArrivals(oxcId, "Oxford Circus", victoria, now), StopArrivals(ksxId, "King's Cross St. Pancras", victoria, now)), now),
+        )
+        val stored = store.stored
+        val vm = MainViewModel(
+            ReuseCountingClient(), seeds, clock = { now }, io = dispatcher, snapshotStore = store,
+            stopDistanceMeters = mapOf(oxcId to 100.0, ksxId to 900.0),
+        )
+        advanceUntilIdle()
+        // At startup, before any rows are loaded: from the stored ones, so a first refresh that fails
+        // still folds as the app does.
+        assertEquals(listOf(oxcId, ksxId) to listOf(FoldChoice("victoria", "inbound", oxcId)), stored.first())
+        stored.clear()
+        vm.remeasure(mapOf(oxcId to 900.0, ksxId to 100.0))
+        advanceUntilIdle()
+        assertEquals(listOf(listOf(ksxId, oxcId) to listOf(FoldChoice("victoria", "inbound", ksxId))), stored)
+    }
+
+    @Test
+    fun `a reconcile that keeps the order still stores the line choices from its new distances`() = runTest(dispatcher) {
+        val victoria = listOf(departure("victoria", "Victoria", 300))
+        val store = ChoicesStore(
+            DeparturesSnapshot(listOf(StopArrivals(oxcId, "Oxford Circus", victoria, now), StopArrivals(ksxId, "King's Cross St. Pancras", victoria, now)), now),
+        )
+        val vm = MainViewModel(
+            ReuseCountingClient(), seeds, clock = { now }, io = dispatcher, snapshotStore = store,
+            stopDistanceMeters = mapOf(oxcId to 100.0, ksxId to 900.0),
+        )
+        advanceUntilIdle()
+        store.stored.clear()
+        // Same order, new distances: the fold's stop can move without the order moving (crossing the
+        // together-slack), so the choices are worked out again rather than left at the last fix's.
+        val clusters = seeds.map { NearbySelection.NearbyCluster("c:${it.id}", listOf(StopLocation(it.id, it.name, 0.0, 0.0)), 0.0) }
+        vm.reconcile(clusters, emptyList(), mapOf(oxcId to 120.0, ksxId to 880.0))
+        advanceUntilIdle()
+        assertEquals(listOf(listOf(oxcId, ksxId) to listOf(FoldChoice("victoria", "inbound", oxcId))), store.stored)
+    }
+
+    @Test
+    fun `the widget's order and line choices are worked out on the io dispatcher`() = runTest(dispatcher) {
+        // An io dispatcher that marks the blocks it runs, so the store can tell where it was called from.
+        val onIo = ThreadLocal.withInitial { false }
+        val io = object : CoroutineDispatcher() {
+            override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) =
+                dispatcher.dispatch(context) {
+                    onIo.set(true)
+                    try { block.run() } finally { onIo.set(false) }
+                }
+        }
+        val victoria = listOf(departure("victoria", "Victoria", 300))
+        val workedOnIo = mutableListOf<Boolean>()
+        val store = object : SnapshotStore by SnapshotStore.NONE {
+            val held = DeparturesSnapshot(listOf(StopArrivals(oxcId, "Oxford Circus", victoria, now), StopArrivals(ksxId, "King's Cross St. Pancras", victoria, now)), now)
+            override suspend fun updateNearestFirst(order: List<String>, choicesFor: ((DeparturesSnapshot) -> List<FoldChoice>)?) {
+                choicesFor?.invoke(held)
+                workedOnIo += onIo.get()
+            }
+        }
+        val vm = MainViewModel(
+            ReuseCountingClient(), seeds, clock = { now }, io = io, snapshotStore = store,
+            stopDistanceMeters = mapOf(oxcId to 100.0, ksxId to 900.0),
+        )
+        advanceUntilIdle()
+        vm.remeasure(mapOf(oxcId to 900.0, ksxId to 100.0))
+        advanceUntilIdle()
+        assertEquals(listOf(true, true), workedOnIo)
+    }
+
+    @Test
+    fun `hiding a mode works the line choices out again, as the list hides it`() = runTest(dispatcher) {
+        val victoria = listOf(departure("victoria", "Victoria", 300))
+        val store = ChoicesStore(
+            DeparturesSnapshot(listOf(StopArrivals(oxcId, "Oxford Circus", victoria, now), StopArrivals(ksxId, "King's Cross St. Pancras", victoria, now)), now),
+        )
+        var hidden = emptySet<String>()
+        val hiddenChanges = MutableStateFlow<Set<String>>(emptySet())
+        MainViewModel(
+            ReuseCountingClient(), seeds, clock = { now }, io = dispatcher, snapshotStore = store,
+            hiddenModes = { hidden }, hiddenModeChanges = hiddenChanges,
+            stopDistanceMeters = mapOf(oxcId to 100.0, ksxId to 900.0),
+        )
+        advanceUntilIdle()
+        store.stored.clear()
+        hidden = setOf("tube")
+        hiddenChanges.value = hidden
+        advanceUntilIdle()
+        // The Tube is hidden from the list, so no stop is chosen for it any more.
+        assertEquals(listOf(listOf(oxcId, ksxId) to emptyList<FoldChoice>()), store.stored)
+    }
+
+    @Test
+    fun `a hidden mode that loads just after the startup write still reaches the line choices`() = runTest(dispatcher) {
+        val victoria = listOf(departure("victoria", "Victoria", 300))
+        val store = ChoicesStore(
+            DeparturesSnapshot(listOf(StopArrivals(oxcId, "Oxford Circus", victoria, now), StopArrivals(ksxId, "King's Cross St. Pancras", victoria, now)), now),
+        )
+        // The startup write reads the setting before it has loaded; by the time the model follows
+        // the setting, its current value is already the loaded one, with no change to come.
+        var reads = 0
+        MainViewModel(
+            ReuseCountingClient(), seeds, clock = { now }, io = dispatcher, snapshotStore = store,
+            hiddenModes = { if (reads++ == 0) emptySet() else setOf("tube") },
+            hiddenModeChanges = MutableStateFlow(setOf("tube")),
+            stopDistanceMeters = mapOf(oxcId to 100.0, ksxId to 900.0),
+        )
+        advanceUntilIdle()
+        assertEquals(emptyList<FoldChoice>(), store.stored.last().second)
+    }
+
+    @Test
+    fun `a mode hidden while a refresh is saving still reaches the line choices`() = runTest(dispatcher) {
+        val victoria = listOf(departure("victoria", "Victoria", 300))
+        var hidden = emptySet<String>()
+        val written = mutableListOf<List<FoldChoice>>()
+        val store = object : SnapshotStore by SnapshotStore.NONE {
+            var held: DeparturesSnapshot? = null
+            override suspend fun stored(): DeparturesSnapshot? = held
+            override suspend fun saveKeepingJourneys(snapshot: DeparturesSnapshot) {
+                held = snapshot
+                written += snapshot.nearbyChoices
+                // The user hides the Tube while this save is landing, after its choices were worked out.
+                hidden = setOf("tube")
+            }
+            override suspend fun updateNearestFirst(order: List<String>, choicesFor: ((DeparturesSnapshot) -> List<FoldChoice>)?) {
+                held?.let { stored -> choicesFor?.invoke(stored)?.let { written += it } }
+            }
+        }
+        MainViewModel(
+            FakeClient(byStop = mapOf(oxcId to Result.success(victoria), ksxId to Result.success(victoria))),
+            seeds, clock = { now }, io = dispatcher, snapshotStore = store,
+            hiddenModes = { hidden },
+            stopDistanceMeters = mapOf(oxcId to 100.0, ksxId to 900.0),
+        )
+        advanceUntilIdle()
+        assertEquals(listOf(FoldChoice("victoria", "inbound", oxcId)), written.first())
+        // Worked out again once the save landed, with the Tube hidden: no stop is chosen for it.
+        assertEquals(emptyList<FoldChoice>(), written.last())
+    }
+
+    @Test
+    fun `a fix that lands while a refresh is saving still reaches the line choices`() = runTest(dispatcher) {
+        val victoria = listOf(departure("victoria", "Victoria", 300))
+        val written = mutableListOf<List<FoldChoice>>()
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val store = object : SnapshotStore by SnapshotStore.NONE {
+            var held: DeparturesSnapshot? = DeparturesSnapshot(
+                listOf(StopArrivals(oxcId, "Oxford Circus", victoria, now), StopArrivals(ksxId, "King's Cross St. Pancras", victoria, now)), now,
+            )
+            override suspend fun stored(): DeparturesSnapshot? = held
+            override suspend fun saveKeepingJourneys(snapshot: DeparturesSnapshot) {
+                // Held until the test lets it land, after the fix's own write.
+                gate.await()
+                held = snapshot
+                written += snapshot.nearbyChoices
+            }
+            override suspend fun updateNearestFirst(order: List<String>, choicesFor: ((DeparturesSnapshot) -> List<FoldChoice>)?) {
+                held?.let { stored -> choicesFor?.invoke(stored)?.let { written += it } }
+            }
+        }
+        val vm = MainViewModel(
+            FakeClient(byStop = mapOf(oxcId to Result.success(victoria), ksxId to Result.success(victoria))),
+            seeds, clock = { now }, io = dispatcher, snapshotStore = store,
+            stopDistanceMeters = mapOf(oxcId to 100.0, ksxId to 900.0),
+        )
+        advanceUntilIdle()
+        // The rider walks while the save, worked out at the old position, is on its way; the fix's
+        // write lands first.
+        vm.remeasure(mapOf(oxcId to 900.0, ksxId to 100.0))
+        advanceUntilIdle()
+        assertEquals(listOf(FoldChoice("victoria", "inbound", ksxId)), written.last())
+        gate.complete(Unit)
+        advanceUntilIdle()
+        // The old position's save landed after it, so the choices are worked out again: King's Cross,
+        // the nearer now, has the last word.
+        assertEquals(listOf(FoldChoice("victoria", "inbound", ksxId)), written.last())
+    }
+
+    @Test
+    fun `a move's line choices are worked out from the stops' new nearer places`() = runTest(dispatcher) {
+        val vicId = "940GZZLUVIC"
+        // King's Cross's Victoria line train ends at Victoria; Oxford Circus's goes on to Brixton.
+        val toVictoria = departure("victoria", "Victoria", 60).copy(destination = "Victoria", destinationId = vicId)
+        val client = FakeClient(
+            byStop = mapOf(
+                ksxId to Result.success(listOf(toVictoria)),
+                oxcId to Result.success(listOf(departure("victoria", "Victoria", 120))),
+                vicId to Result.success(emptyList()),
+            ),
+        )
+        // The stored rows, given no nearer places: the choices give them the fix's own.
+        val store = ChoicesStore(
+            DeparturesSnapshot(
+                listOf(
+                    StopArrivals(ksxId, "King's Cross St. Pancras", listOf(toVictoria), now),
+                    StopArrivals(oxcId, "Oxford Circus", listOf(departure("victoria", "Victoria", 120)), now),
+                    StopArrivals(vicId, "Victoria", emptyList(), now),
+                ),
+                now,
+            ),
+        )
+        val stored = store.stored
+        val vm = MainViewModel(
+            client,
+            listOf(StopRef(ksxId, "King's Cross St. Pancras"), StopRef(oxcId, "Oxford Circus"), StopRef(vicId, "Victoria")),
+            clock = { now }, io = dispatcher, snapshotStore = store,
+            stopDistanceMeters = mapOf(ksxId to 100.0, oxcId to 200.0, vicId to 300.0),
+        )
+        advanceUntilIdle()
+        stored.clear()
+        // The rider walks towards Victoria: it's now nearer than King's Cross, whose train ends there,
+        // so the list shows the line from Oxford Circus, and the widget must too.
+        vm.remeasure(mapOf(vicId to 50.0, ksxId to 100.0, oxcId to 200.0))
+        advanceUntilIdle()
+        assertEquals(listOf(listOf(vicId, ksxId, oxcId) to listOf(FoldChoice("victoria", "inbound", oxcId))), stored)
+    }
+
+    @Test
     fun `a move that changes which stop is nearer stores the new order for the widget at once`() = runTest(dispatcher) {
         val orders = mutableListOf<List<String>>()
         val store = object : SnapshotStore by SnapshotStore.NONE {
-            override suspend fun updateNearestFirst(order: List<String>) {
+            override suspend fun updateNearestFirst(order: List<String>, choicesFor: ((DeparturesSnapshot) -> List<FoldChoice>)?) {
                 orders += order
             }
         }
@@ -5832,10 +6108,12 @@ class MainViewModelTest {
         // The order it starts from is stored at once, before any refresh saves it.
         assertEquals(listOf(listOf(oxcId, ksxId)), orders)
         orders.clear()
-        // A fix that keeps the order stores nothing.
+        // A fix that keeps the order keeps it (the store writes only what changed; the line choices
+        // are worked out afresh with it, since they can move with no change of order).
         vm.remeasure(mapOf(oxcId to 120.0, ksxId to 880.0))
         advanceUntilIdle()
-        assertEquals(emptyList<List<String>>(), orders)
+        assertEquals(listOf(listOf(oxcId, ksxId)), orders)
+        orders.clear()
         // The rider walks: King's Cross is now the nearer one, before any refetch.
         vm.remeasure(mapOf(oxcId to 900.0, ksxId to 100.0))
         advanceUntilIdle()
@@ -5847,7 +6125,7 @@ class MainViewModelTest {
         val orders = mutableListOf<List<String>>()
         val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
         val store = object : SnapshotStore by SnapshotStore.NONE {
-            override suspend fun updateNearestFirst(order: List<String>) {
+            override suspend fun updateNearestFirst(order: List<String>, choicesFor: ((DeparturesSnapshot) -> List<FoldChoice>)?) {
                 // The first write is slow: the second fix arrives while it's still going.
                 if (orders.isEmpty()) gate.await()
                 orders += order
@@ -5869,7 +6147,7 @@ class MainViewModelTest {
     fun `a replaced model's order still on its way doesn't land over its successor's`() = runTest(dispatcher) {
         val orders = mutableListOf<List<String>>()
         val store = object : SnapshotStore by SnapshotStore.NONE {
-            override suspend fun updateNearestFirst(order: List<String>) {
+            override suspend fun updateNearestFirst(order: List<String>, choicesFor: ((DeparturesSnapshot) -> List<FoldChoice>)?) {
                 orders += order
             }
         }
@@ -5890,7 +6168,7 @@ class MainViewModelTest {
     fun `a model that doesn't feed the widget doesn't supersede one that does`() = runTest(dispatcher) {
         val orders = mutableListOf<List<String>>()
         val store = object : SnapshotStore by SnapshotStore.NONE {
-            override suspend fun updateNearestFirst(order: List<String>) {
+            override suspend fun updateNearestFirst(order: List<String>, choicesFor: ((DeparturesSnapshot) -> List<FoldChoice>)?) {
                 orders += order
             }
         }

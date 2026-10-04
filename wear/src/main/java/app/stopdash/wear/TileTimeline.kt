@@ -208,7 +208,7 @@ object TileTimeline {
         )
         // A line several nearby stops serve shows once, from the nearest, as on the widget and the
         // in-app list, then less the modes hidden from the near-me list, as the widget leaves them out.
-        val shown = HiddenModes.rows(DepartureRows.glanceFolded(ordered, envelope.nearestFirst, stale), envelope.hiddenModes.toSet())
+        val shown = HiddenModes.rows(DepartureRows.glanceFolded(ordered, envelope.nearestFirst, envelope.foldChoices(), stale), envelope.hiddenModes.toSet())
         val pinned = DepartureRows.pinStarred(shown, starred)
         // Judged on the rows drawn with a live countdown, as the widget judges it: a line that
         // didn't fit is never spoken for. Its note takes a line, so the rows are chosen again with

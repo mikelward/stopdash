@@ -347,22 +347,54 @@ object DepartureRows {
     ): List<DepartureRow> {
         fun distanceOf(stopId: String): Double = stopDistanceMeters[stopId] ?: Double.MAX_VALUE
         val (stopStatus, lineRows) = rows.partition { it.stopDisruption != null }
+        val nearestStopByKey = keptStopByKey(lineRows, stopStatus, dismissed, ::distanceOf)
+        // Keep every row from the nearest stop for its key, so two platforms of one service
+        // at a single stop both survive; a farther stop's same-service row is dropped.
+        val kept = lineRows.filter { nearestStopByKey[dedupeKeyOf(it)] == it.stopId }
+        return (foldedStopStatus(stopStatus, ::distanceOf) + kept).sortedWith(rowOrder)
+    }
+
+    /**
+     * The stop [nearbyDeduped] keeps each cross-stop (line, direction) at, for the app to save with
+     * the widget's snapshot: the glance surfaces, which never see the distances, then show each line
+     * from the stop the in-app list does ([glanceFolded]), directions kept together included. Only
+     * keys that can fold across stops: a stop-specific row stays its own stop's anyway. Sorted, so an
+     * unchanged answer reads as unchanged.
+     */
+    @WorkerThread
+    fun nearbyChoices(
+        rows: List<DepartureRow>,
+        stopDistanceMeters: Map<String, Double>,
+        dismissed: Set<DismissedAlert> = emptySet(),
+    ): List<FoldChoice> {
+        fun distanceOf(stopId: String): Double = stopDistanceMeters[stopId] ?: Double.MAX_VALUE
+        val (stopStatus, lineRows) = rows.partition { it.stopDisruption != null }
+        return keptStopByKey(lineRows, stopStatus, dismissed, ::distanceOf)
+            .filterKeys { !it.directionKey.startsWith(STOP_SPECIFIC) }
+            .map { (key, stopId) -> FoldChoice(key.lineId, key.directionKey, stopId) }
+            .sortedWith(compareBy({ it.lineId }, { it.direction }, { it.stopId }))
+    }
+
+    /** The stop each cross-stop (line, direction) key of [lineRows] is kept at ([nearbyDeduped]). */
+    private fun keptStopByKey(
+        lineRows: List<DepartureRow>,
+        stopStatus: List<DepartureRow>,
+        dismissed: Set<DismissedAlert>,
+        distanceOf: (String) -> Double,
+    ): HashMap<RowKey, String> {
         // The nearest stop serving each cross-stop (line, direction) key.
         val nearestStopByKey = HashMap<RowKey, String>()
         for (row in lineRows) {
             val key = dedupeKeyOf(row)
             val incumbent = nearestStopByKey[key]
-            if (incumbent == null || isCloserStop(row.stopId, incumbent, ::distanceOf)) {
+            if (incumbent == null || isCloserStop(row.stopId, incumbent, distanceOf)) {
                 nearestStopByKey[key] = row.stopId
             }
         }
         val noticed = stopStatus.mapTo(HashSet()) { it.stopId }
-        keepDirectionsTogether(lineRows, nearestStopByKey, noticed, dismissed, ::distanceOf)
-        joinAnchoredPlaces(lineRows, nearestStopByKey, noticed, dismissed, ::distanceOf)
-        // Keep every row from the nearest stop for its key, so two platforms of one service
-        // at a single stop both survive; a farther stop's same-service row is dropped.
-        val kept = lineRows.filter { nearestStopByKey[dedupeKeyOf(it)] == it.stopId }
-        return (foldedStopStatus(stopStatus, ::distanceOf) + kept).sortedWith(rowOrder)
+        keepDirectionsTogether(lineRows, nearestStopByKey, noticed, dismissed, distanceOf)
+        joinAnchoredPlaces(lineRows, nearestStopByKey, noticed, dismissed, distanceOf)
+        return nearestStopByKey
     }
 
     /**
@@ -703,13 +735,31 @@ object DepartureRows {
      * [rows], already [freshFirst], folded as a glance surface (the widget, the watch's tile, app and
      * complication) folds them: a line several nearby stops serve shows once, from the nearest, as
      * the in-app list does ([nearbyDeduped]), by the app's saved [nearestFirst] order rather than the
-     * distances it never saves ([rankDistances]). The fold re-sorts, so fresh rows are ranked ahead
+     * distances it never saves ([rankDistances]), or by the stops the app chose ([nearbyChoices]) where
+     * it saved them. The fold re-sorts, so fresh rows are ranked ahead
      * of stale ones again. Unchanged with no order (an older snapshot, or a location-free list).
      * One function for every glance surface, so the watch can't drift from the widget.
      */
     @WorkerThread
-    fun glanceFolded(rows: List<DepartureRow>, nearestFirst: List<String>, stale: (DepartureRow) -> Boolean): List<DepartureRow> =
-        if (nearestFirst.isEmpty()) rows else freshFirst(nearbyDeduped(rows, rankDistances(nearestFirst)), stale)
+    fun glanceFolded(
+        rows: List<DepartureRow>,
+        nearestFirst: List<String>,
+        // The stop the in-app list keeps each line at ([nearbyChoices]), saved by the app: followed
+        // wherever that stop still has the line's row, so the glance surfaces show it from the same
+        // stop as the app. The order folds whatever it doesn't name (a line that has appeared since,
+        // or a chosen stop whose row has gone).
+        choices: List<FoldChoice> = emptyList(),
+        stale: (DepartureRow) -> Boolean,
+    ): List<DepartureRow> {
+        if (nearestFirst.isEmpty() && choices.isEmpty()) return rows
+        val ranked = if (nearestFirst.isEmpty()) rows else nearbyDeduped(rows, rankDistances(nearestFirst))
+        if (choices.isEmpty()) return freshFirst(ranked, stale)
+        val chosen = choices.associate { RowKey(it.lineId, it.direction) to it.stopId }
+        val followed = rows.filter { it.stopDisruption == null && chosen[dedupeKeyOf(it)] == it.stopId }
+        val followedKeys = followed.mapTo(HashSet()) { dedupeKeyOf(it) }
+        val rest = ranked.filter { it.stopDisruption != null || dedupeKeyOf(it) !in followedKeys }
+        return freshFirst((rest + followed).sortedWith(rowOrder), stale)
+    }
 
     /**
      * [nearestFirst] as stand-in distances for [nearbyDeduped]: only the order is kept, so each step
@@ -963,7 +1013,7 @@ object DepartureRows {
         // A row whose every train has no time stays its own stop's too: it must never stand in for
         // a farther stop's trains that are actually coming, nor be dropped for them.
         if (row.lineId.isBlank() || row.direction.isBlank() || row.upcoming.isEmpty()) {
-            return RowKey(row.lineId, "\u0000${row.stopId}:${row.directionKey}")
+            return RowKey(row.lineId, "$STOP_SPECIFIC${row.stopId}:${row.directionKey}")
         }
         return RowKey(row.lineId, row.direction)
     }
@@ -1374,6 +1424,9 @@ object DepartureRows {
     private const val BUS_MODE = "bus"
 
     private data class RowKey(val lineId: String, val directionKey: String)
+
+    /** The prefix of a [dedupeKeyOf] key that stays its own stop's, never folded across stops. */
+    private const val STOP_SPECIFIC = "\u0000"
 
     private data class RowGroup(val key: RowKey, val platform: String, val group: List<Departure>, val mode: String)
 }

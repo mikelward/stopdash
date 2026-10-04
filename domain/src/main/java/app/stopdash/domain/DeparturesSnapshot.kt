@@ -54,6 +54,11 @@ data class DeparturesSnapshot(
     // (SPEC *Privacy*). Only the app knows where the rider is, so only its saves set this; a
     // journey-only stop isn't in it. Empty when unknown, which shows every stop's rows.
     val nearestFirst: List<String> = emptyList(),
+    // The stop the in-app list shows each line from ([DepartureRows.nearbyChoices]), as the app last
+    // worked it out, so the widget and the watch show it from the same one ([DepartureRows.glanceFolded]):
+    // the order alone can't keep a route's directions together at a stop a little farther. Stop ids,
+    // never distances. Like [nearestFirst], only the app's saves set it. Empty when unknown.
+    val nearbyChoices: List<FoldChoice> = emptyList(),
 ) {
     /**
      * The alerts to mark at [now]: the lines disrupted, or with work still to come
@@ -112,12 +117,20 @@ data class DeparturesSnapshot(
         // Kept but not near is journey-only; a journey-only origin the rider is now near is nearby again.
         val journeyOnly = keptIds - nearby
         val missing = nearby - (keptIds - journeyOnly)
-        if (kept.size == stops.size && journeyOnly == journeyOnlyStopIds && missing == missingStopIds) return this
+        // A line's chosen stop counts only while it's nearby: one kept for its journey alone shows no
+        // other rows, so following its choice would fold the line away at a stop that is (Codex on #550).
+        val choices = nearbyChoices.filter { it.stopId in nearby && it.stopId in keptIds }
+        if (kept.size == stops.size && journeyOnly == journeyOnlyStopIds && missing == missingStopIds &&
+            choices.size == nearbyChoices.size
+        ) {
+            return this
+        }
         return copy(
             stops = kept,
             fetchedAt = kept.maxOfOrNull { it.fetchedAt } ?: fetchedAt,
             journeyOnlyStopIds = journeyOnly,
             missingStopIds = missing,
+            nearbyChoices = choices,
         )
     }
 
@@ -448,6 +461,7 @@ object WidgetJourneys {
             lineStatuses = stored?.lineStatuses.orEmpty().filterKeys { it in LineStatusCheck.linesOf(next) },
             // The app's nearest-first order rides along too, for the stops still held.
             nearestFirst = stored?.nearestFirst.orEmpty().filter { it in nextIds },
+            nearbyChoices = stored?.nearbyChoices.orEmpty().filter { it.stopId in nextIds },
         )
     }
 

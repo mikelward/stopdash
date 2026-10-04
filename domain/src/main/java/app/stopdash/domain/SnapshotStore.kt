@@ -100,8 +100,12 @@ interface SnapshotStore {
      * follows the rider whether or not a refresh succeeds, so a move that makes another stop the
      * nearer doesn't wait on TfL to reach the widget. A no-op when nothing is stored. A stored stop
      * [order] doesn't rank (one only the previous place had) keeps its stored place after the rest.
+     * The stored [DeparturesSnapshot.nearbyChoices] are worked out afresh by [choicesFor] from the
+     * stored rows, kept to the stops [order] ranks, so they follow the rider whether or not the app
+     * has rows in memory; with none given they're cleared, as stored ones were worked out for where
+     * the rider was. [choicesFor] runs inside the write, off the main thread.
      */
-    suspend fun updateNearestFirst(order: List<String>) {}
+    suspend fun updateNearestFirst(order: List<String>, choicesFor: ((DeparturesSnapshot) -> List<FoldChoice>)? = null) {}
 
     /**
      * Merge [checks] into the stored line statuses, the newer check per line winning, for the lines

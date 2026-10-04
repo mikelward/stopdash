@@ -146,9 +146,9 @@ the watch app ships would break pairing between old and new installs.
     sending it bare would let the watch show its ordinary departures, out of the widget's scope.
     A nearby journey origin stays, and its departures show as ordinary rows, since the watch has
     no journey card to show them twice.
-  - It adds the carried stops' nearest-first order (`nearestFirst`, the snapshot's own, never the
-    distances), so the watch folds a line to its nearest stop with the widget's
-    `DepartureRows.glanceFolded`. Additive: an older watch ignores it, an older phone sends none.
+  - It adds the carried stops' nearest-first order (`nearestFirst`) and the stop the app shows each
+    line from (`nearbyChoices`), the snapshot's own, never the distances, so the watch folds each line
+    to the app's stop with the widget's `DepartureRows.glanceFolded`. Additive: an older watch ignores it, an older phone sends none.
   - It adds the starred-row keys (below) and its own format version, so an older watch app can
     refuse a newer phone's snapshot rather than misread it.
   - And the phone's **refreshed route lines** (`routeLines`): the branching lines where a refresh

@@ -107,7 +107,7 @@ object ComplicationTimeline {
             staleRow,
         )
         // A line several nearby stops serve is a row once, from the nearest, as the tile shows it.
-        val shown = HiddenModes.rows(DepartureRows.glanceFolded(ordered, envelope.nearestFirst, staleRow), envelope.hiddenModes.toSet())
+        val shown = HiddenModes.rows(DepartureRows.glanceFolded(ordered, envelope.nearestFirst, envelope.foldChoices(), staleRow), envelope.hiddenModes.toSet())
         return DepartureRows.pinStarred(shown, envelope.starred.mapTo(HashSet()) { it.toDomain() })
     }
 

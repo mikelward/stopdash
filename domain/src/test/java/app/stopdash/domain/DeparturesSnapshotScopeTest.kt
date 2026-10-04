@@ -44,6 +44,20 @@ class DeparturesSnapshotScopeTest {
     }
 
     @Test
+    fun `a line's choice at a stop kept only for its journey is dropped`() {
+        val stored = DeparturesSnapshot(
+            stops = listOf(stop("490000001A"), stop("490000002B")),
+            fetchedAt = now,
+            journeys = listOf(WidgetJourney("490000001A", setOf(call), "j")),
+            nearbyChoices = listOf(FoldChoice("b1", "inbound", "490000001A"), FoldChoice("b2", "outbound", "490000002B")),
+        )
+        val scoped = stored.scopedTo(setOf("490000002B"))
+        // The journey's origin shows only the journey now, so its choice would fold the line away at
+        // the stop that is near; the near stop's own choice stays.
+        assertEquals(listOf(FoldChoice("b2", "outbound", "490000002B")), scoped.nearbyChoices)
+    }
+
+    @Test
     fun `a missing stop from the old place isn't missing here`() {
         val stored = DeparturesSnapshot(stops = listOf(stop("490000001A")), fetchedAt = now, missingStopIds = setOf("490000009Z"))
         assertEquals(emptySet<String>(), stored.scopedTo(setOf("490000001A")).missingStopIds)

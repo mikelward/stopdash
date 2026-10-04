@@ -6,6 +6,7 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.DismissedAlert
+import app.stopdash.domain.FoldChoice
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.LineStatusCheck
@@ -612,6 +613,18 @@ class WatchEnvelopeTest {
             nearestFirst = listOf("940GNEAR", "940GGONE", "940GFAR"),
         )
         assertEquals(listOf("940GNEAR", "940GFAR"), decoded(WatchEnvelopes.build(snapshot, emptySet(), now = now)).nearestFirst)
+    }
+
+    @Test
+    fun `the line choices go with the stops they name, and only those`() {
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(stop("940GNEAR", listOf(departure(2))), stop("940GFAR", listOf(departure(3)))),
+            fetchedAt = now,
+            nearestFirst = listOf("940GNEAR", "940GFAR"),
+            nearbyChoices = listOf(FoldChoice("victoria", "inbound", "940GFAR"), FoldChoice("central", "outbound", "940GGONE")),
+        )
+        val envelope = decoded(WatchEnvelopes.build(snapshot, emptySet(), now = now))
+        assertEquals(listOf(FoldChoice("victoria", "inbound", "940GFAR")), envelope.foldChoices())
     }
 
     @Test
