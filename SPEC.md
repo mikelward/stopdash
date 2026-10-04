@@ -1330,6 +1330,21 @@ until it has held for a moment (1.5 s), so a gap between two loads never reads a
 ones a moment longer, as a card shows its last times, then "Checking…": never a "None" the current
 cards may not bear out. The "Checking routes…" banner over the list is held the same way.
 
+**A tap on the disruptions row opens every line the trip rides with its status** (maintainer,
+2026-10-04), its chevron always there so the row reads as a way in. A full-screen dialog over the trip
+(maintainer, 2026-10-04: not a sheet), with the app's menu and Back returning to the trip where it
+was, and one the home screen can open too: one row per line, its pill and the worst status any card shows for it (a line not
+running ahead of one running with delays, whatever TfL's numbers say). Disruptions come first, worst
+first; then any the rider dismissed, still named but toned down, since a dismissal quiets the alert,
+not the line's state; then lines that couldn't be checked (a failed or left-out check stays so until
+one succeeds); then "Checking…" lines; then the good services. A line with no current status is never
+called a good service. The stops the row names follow, then, only when a line couldn't be checked, a
+note that its times may be wrong. While the page is open each line keeps its place, so a check landing
+changes what a line says, never where it is; a line new since it opened goes last, one gone from the trip
+keeps its place saying so, and a rotation keeps the order. Each line is one row high whatever its status; a disrupted line's TfL reason is a tap away,
+on a page of its own. A trip with no ride says it has no lines. The page renders the row as it was
+worked out, never working anything out itself.
+
 **Once the list is showing, its cards re-sort as their times move** (maintainer, 2026-10-04): the
 soonest stays on top. A card slides to its new place rather than jumping, so the eye can follow it,
 and a tap or long press on a card while it moves is dropped, since it could land on the card that

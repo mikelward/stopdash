@@ -104,6 +104,39 @@
     <!-- After "Disruptions:" on a trip, before the line pills and stops that couldn't be checked. -->
     <!-- TODO: translate -->
     <string name="trip_disruptions_unknown_label" tools:ignore="MissingTranslation">Unknown:</string>
+    <!-- Click label of a trip's disruptions row: it opens every line the trip rides with its status. -->
+    <!-- TODO: translate -->
+    <string name="trip_lines_open" tools:ignore="MissingTranslation">Show every line</string>
+    <!-- Title of the page listing every line a trip rides with its status. -->
+    <!-- TODO: translate -->
+    <string name="trip_lines_title" tools:ignore="MissingTranslation">Line status</string>
+    <!-- Beside a line on the trip's lines page that dropped off the trip since the page opened. -->
+    <!-- TODO: translate -->
+    <string name="trip_lines_gone" tools:ignore="MissingTranslation">No longer on this trip</string>
+    <!-- Click label of a disrupted line on the trip's lines page: it opens TfL's reason. -->
+    <!-- TODO: translate -->
+    <string name="trip_lines_reason" tools:ignore="MissingTranslation">Show reason</string>
+    <!-- The trip's lines page for a trip with no ride (all walking). -->
+    <!-- TODO: translate -->
+    <string name="trip_lines_none" tools:ignore="MissingTranslation">No lines on this trip</string>
+    <!-- Beside a line on the trip's lines page when TfL reports nothing wrong on it. -->
+    <!-- TODO: translate -->
+    <string name="trip_lines_good" tools:ignore="MissingTranslation">Good service</string>
+    <!-- Beside a line on the trip's lines page whose status or trains couldn't be checked. -->
+    <!-- TODO: translate -->
+    <string name="trip_lines_unknown" tools:ignore="MissingTranslation">Couldn\'t check</string>
+    <!-- On the trip's lines page when a line couldn't be checked: what that means for its times. -->
+    <!-- TODO: translate -->
+    <string name="trip_lines_unknown_note" tools:ignore="MissingTranslation">Some lines couldn\'t be checked, so their times may be wrong.</string>
+    <!-- A disruption chip on the trip's lines page for an alert the rider dismissed; %1$s is TfL's status. -->
+    <!-- TODO: translate -->
+    <string name="trip_lines_dismissed" tools:ignore="MissingTranslation">%1$s · dismissed</string>
+    <!-- Under the trip's lines: the stops with a closure notice in force, joined. -->
+    <!-- TODO: translate -->
+    <string name="trip_lines_stops" tools:ignore="MissingTranslation">Stop notices: %1$s</string>
+    <!-- Under the trip's lines: the stops whose closures couldn't be checked, joined. -->
+    <!-- TODO: translate -->
+    <string name="trip_lines_stops_unknown" tools:ignore="MissingTranslation">Stops not checked: %1$s</string>
     <!-- While a cold load is still bringing stops in: line status is checked once they're all back. -->
     <string name="disruptions_checking">Checking for disruptions</string>
     <!-- Spoken after a near-me place's name while its closure check is still out (a spinner shows). -->

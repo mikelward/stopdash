@@ -5222,10 +5222,15 @@ internal fun spokenCountdown(entries: List<Countdown.Entry>, now: Instant, early
  * status alone ("Severe Delays"), not "Victoria line: severe delays".
  */
 @Composable
-internal fun DisruptionChip(description: String, modifier: Modifier = Modifier) {
+internal fun DisruptionChip(
+    description: String,
+    modifier: Modifier = Modifier,
+    // Toned down, for an alert the rider dismissed but that's still under way.
+    muted: Boolean = false,
+) {
     Surface(
-        color = MaterialTheme.colorScheme.errorContainer,
-        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        color = if (muted) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.errorContainer,
+        contentColor = if (muted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onErrorContainer,
         shape = RoundedCornerShape(8.dp),
         modifier = modifier,
     ) {

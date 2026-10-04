@@ -2095,6 +2095,12 @@ class TripViewModelTest {
         trip.refresh()
         advanceUntilIdle()
         assertEquals(setOf("blue"), trip.state.value.statusUnknown)
+        // Left out of an answer that came in: settled, not still being checked (Codex, #559).
+        assertEquals(setOf("blue"), trip.state.value.statusOmitted)
+        val cards = checkNotNull(tripEstimates(trip.state.value, now, Duration.ZERO, emptyMap())).map { listOf(it) }
+        val page = tripLines(cards, emptyMap(), trip.state.value, now, emptyMap(), emptySet(), emptySet(), true, emptySet())
+        assertEquals(listOf(false, false), page.map { it.checking })
+        assertEquals(true, page.single { it.leg.lineId == "blue" }.unknown)
         val estimate = checkNotNull(tripEstimates(trip.state.value, now, Duration.ZERO, emptyMap())).single()
         assertTrue(estimate.unchecked)
     }
@@ -2917,6 +2923,138 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `the trip's lines page lists every line once, disruptions worst first, then dismissed, then good`() {
+        val green = TripRoute(listOf(leg("green", "A", "C", 5, 25)))
+        val minor = LineStatus("green", 9, "Minor Delays")
+        val state = TripViewModel.State(
+            routes = listOf(route, green),
+            statuses = mapOf(
+                "red" to LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service"),
+                "blue" to LineStatus("blue", 6, "Severe Delays"),
+                "green" to minor,
+                "pink" to LineStatus("pink", 3, "Part Suspended"),
+            ),
+        )
+        val estimates = checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap()))
+        val cards = estimates.map { listOf(it) }
+        // The rider dismissed the green's delays: the row leaves them out, the page still says so.
+        val lines = tripLines(cards, emptyMap(), state, now, emptyMap(), setOf(DismissedAlert.ofLineStatus(minor)), setOf("blue"), false, emptySet())
+        assertEquals(listOf("blue", "green", "red"), lines.map { it.leg.lineId })
+        assertEquals(listOf(false, true, false), lines.map { it.dismissed })
+        assertEquals("Severe Delays", lines[0].status?.description)
+        assertEquals(LineStatus.GOOD_SERVICE, lines[2].status?.severity)
+    }
+
+    @Test
+    fun `a worse alert dismissed while a milder one stands is still named on the trip's lines page`() {
+        val severe = LineStatus("blue", 6, "Severe Delays")
+        val minor = LineStatus("blue", 9, "Minor Delays")
+        // The severe delays one way, minor the other; the rider dismissed the severe (Codex, #559).
+        val blue = severe.copy(byDirection = mapOf("inbound" to severe, "outbound" to minor))
+        val state = TripViewModel.State(routes = listOf(route), statuses = mapOf("red" to LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service"), "blue" to blue))
+        val cards = checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap())).map { listOf(it) }
+        val lines = tripLines(cards, emptyMap(), state, now, emptyMap(), setOf(DismissedAlert.ofLineStatus(severe)), setOf("blue"), false, emptySet())
+        val line = lines.single { it.leg.lineId == "blue" }
+        // The minor delays stand; the severe the rider dismissed is still named beside them.
+        assertEquals("Minor Delays", line.status?.description)
+        assertEquals(false, line.dismissed)
+        assertEquals("Severe Delays", line.quieted?.description)
+    }
+
+    @Test
+    fun `an alert dismissed as bad as the one standing is still named on the trip's lines page`() {
+        val one = LineStatus("blue", 6, "Severe Delays", fullText = "Signal failure.")
+        val other = LineStatus("blue", 6, "Severe Delays", fullText = "Earlier fault.")
+        // Two alerts as bad as each other, one each way; the rider dismissed one (Codex, #559).
+        val blue = one.copy(byDirection = mapOf("inbound" to one, "outbound" to other))
+        val state = TripViewModel.State(routes = listOf(route), statuses = mapOf("red" to LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service"), "blue" to blue))
+        val cards = checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap())).map { listOf(it) }
+        val line = tripLines(cards, emptyMap(), state, now, emptyMap(), setOf(DismissedAlert.ofLineStatus(one)), setOf("blue"), false, emptySet())
+            .single { it.leg.lineId == "blue" }
+        assertEquals("Earlier fault.", line.status?.fullText)
+        assertEquals("Signal failure.", line.quieted?.fullText)
+    }
+
+    @Test
+    fun `a closed line heads the trip's lines page over one with severe delays`() {
+        val green = TripRoute(listOf(leg("green", "A", "C", 5, 25)))
+        val state = TripViewModel.State(
+            routes = listOf(route, green),
+            statuses = mapOf(
+                "red" to LineStatus("red", 6, "Severe Delays"),
+                "blue" to LineStatus("blue", 9, "Minor Delays"),
+                "green" to LineStatus("green", 20, "Service Closed"),
+            ),
+        )
+        val cards = checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap())).map { listOf(it) }
+        // TfL numbers a closure 20 and severe delays 6: the closure is worse all the same (Codex, #559).
+        val lines = tripLines(cards, emptyMap(), state, now, emptyMap(), emptySet(), setOf("red", "blue", "green"), false, emptySet())
+        assertEquals(listOf("green", "red", "blue"), lines.map { it.leg.lineId })
+    }
+
+    @Test
+    fun `a line with no current status in the trip's lines page is never a good service`() {
+        val state = TripViewModel.State(
+            routes = listOf(route),
+            statuses = mapOf(
+                "red" to LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service"),
+                "blue" to LineStatus("blue", 6, "Severe Delays"),
+            ),
+            // The blue's latest check failed: its delays are the last known, not current.
+            statusFailedLines = setOf("blue"),
+            statusesAt = mapOf("red" to now, "blue" to now),
+        )
+        val cards = checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap())).map { listOf(it) }
+        // A refresh still going, for this line or another (Codex, #559): the failed line says it
+        // couldn't be checked until a check succeeds.
+        val checking = tripLines(cards, emptyMap(), state.copy(refreshing = true), now, emptyMap(), emptySet(), setOf("blue"), true, emptySet())
+        assertEquals(listOf("blue", "red"), checking.map { it.leg.lineId })
+        assertEquals(listOf(false, false), checking.map { it.checking })
+        assertEquals(listOf(true, false), checking.map { it.unknown })
+        // A line with no status yet, while the check runs, is checking.
+        val unasked = tripLines(cards, emptyMap(), state.copy(statuses = state.statuses - "red"), now, emptyMap(), emptySet(), setOf("blue"), true, emptySet())
+        assertEquals(listOf(false, true), unasked.map { it.checking })
+        val done = tripLines(cards, emptyMap(), state, now, emptyMap(), emptySet(), setOf("blue"), false, emptySet())
+        // Still warned of, and said to be unchecked.
+        assertEquals(listOf(true, false), done.map { it.unknown })
+        assertEquals(true, done[0].disrupted)
+        // A line with no status at all reads as unchecked once the check is over, never good.
+        val missing = tripLines(cards, emptyMap(), state.copy(statuses = state.statuses - "red"), now, emptyMap(), emptySet(), setOf("blue"), false, emptySet())
+        assertEquals(listOf(true, true), missing.map { it.unknown })
+        assertEquals(null, missing[1].status)
+    }
+
+    @Test
+    fun `a status past its age is never a good service on the trip's lines page`() {
+        val good = LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service")
+        val state = TripViewModel.State(
+            routes = listOf(TripRoute(listOf(leg("red", "A", "B", 5, 15)))),
+            statuses = mapOf("red" to good),
+            // Checked an hour ago, as after the app comes back with its refresh still to run (Codex, #559).
+            statusesAt = mapOf("red" to now.minus(Duration.ofHours(1))),
+        )
+        val cards = checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap())).map { listOf(it) }
+        val waiting = tripLines(cards, emptyMap(), state, now, emptyMap(), emptySet(), emptySet(), true, emptySet()).single()
+        assertEquals(true, waiting.checking)
+        val settled = tripLines(cards, emptyMap(), state, now, emptyMap(), emptySet(), emptySet(), false, emptySet()).single()
+        assertEquals(true, settled.unknown)
+        // Checked just now, it's a good service.
+        val fresh = tripLines(cards, emptyMap(), state.copy(statusesAt = mapOf("red" to now)), now, emptyMap(), emptySet(), emptySet(), false, emptySet()).single()
+        assertEquals(false, fresh.unknown)
+    }
+
+    @Test
+    fun `the trip's row carries every line it rides for its lines page`() {
+        val state = TripViewModel.State(
+            routes = listOf(route),
+            statuses = mapOf("red" to LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service"), "blue" to LineStatus("blue", 9, "Minor Delays")),
+        )
+        val estimates = checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap()))
+        val row = tripRow(estimates.map { listOf(it) }, emptyMap(), state, now, emptyMap(), emptySet())
+        assertEquals(listOf("blue", "red"), row.every.map { it.leg.lineId })
+    }
+
+    @Test
     fun `a trip still checking one line says so even once another has failed`() {
         val state = TripViewModel.State(
             routes = listOf(route),
@@ -3270,6 +3408,8 @@ class TripViewModelTest {
         advanceUntilIdle()
         assertTrue("green" !in fresh.state.value.statuses)
         assertEquals(emptySet<String>(), fresh.state.value.statusUnknown)
+        // But it was asked and left out: settled, never still "Checking…" on the trip's lines page (Codex, #559).
+        assertTrue("green" in fresh.state.value.statusOmitted)
     }
 
     @Test
