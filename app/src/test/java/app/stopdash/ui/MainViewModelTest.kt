@@ -905,6 +905,42 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `a refresh's stops are merged off the main thread`() = runTest(dispatcher) {
+        // A worker of its own, on the test's scheduler, that marks the work it runs.
+        val onWorker = ThreadLocal.withInitial { false }
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) = dispatcher.dispatch(context) {
+                onWorker.set(true)
+                try {
+                    block.run()
+                } finally {
+                    onWorker.set(false)
+                }
+            }
+        }
+        // Whether each stop's merge (which asks when its arrivals were fetched) ran on the worker.
+        val mergedOnWorker = mutableListOf<Boolean>()
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
+            override fun fetchedAt(stopId: String): Instant? {
+                mergedOnWorker += onWorker.get()
+                return null
+            }
+        }
+        val vm = MainViewModel(client, seeds, clock = { now }, io = dispatcher, compute = worker)
+        advanceUntilIdle()
+        // A refresh over the list shown: no progress reports, only the batch's own merge.
+        mergedOnWorker.clear()
+        vm.refresh()
+        advanceUntilIdle()
+
+        assertEquals(seeds.map { it.id }.toSet(), (vm.state.value as DeparturesUiState.Loaded).stops.mapTo(HashSet()) { it.stopId })
+        assertTrue("$mergedOnWorker", mergedOnWorker.isNotEmpty() && mergedOnWorker.all { it })
+    }
+
+    @Test
     fun `a cold load all back within the grace paints once, whole`() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
         val vm = viewModel(GatedClient(seeds[1].id, gate))
