@@ -1263,6 +1263,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         - [x] Start, the trip's on-the-way screen and End trip; the trip kept on the device and
               followed while the app is in the foreground.
         - [ ] Picking another train by hand ("I'm on this one"), until location can see it.
+        - [ ] **Show a walk's distance left much sooner** (maintainer, 2026-10-04): the card's
+              "170 yd" waits for the tracker's next refresh and a precise fix, so it lags the walk.
+              Update it from each location fix as it lands (the same fixes the walk already takes),
+              without waiting for a refresh, and say what that costs in battery.
         - [x] **A ride is two steps, boarding it and getting off it** (maintainer, 2026-09-29): Next
               from boarding says the rider is on the train followed ("Ride to …" its own row).
           - [x] **On board by the rider's word, with the train followed still minutes away**: the

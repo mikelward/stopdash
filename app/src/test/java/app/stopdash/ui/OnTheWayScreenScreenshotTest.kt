@@ -4,9 +4,11 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyDescendant
@@ -25,6 +27,8 @@ import androidx.compose.ui.test.click
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LineStatus
@@ -36,9 +40,11 @@ import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripRoute
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
+import kotlinx.coroutines.asCoroutineDispatcher
 import java.time.Duration
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -264,7 +270,8 @@ class OnTheWayScreenScreenshotTest {
         }
         composeRule.onNodeWithText("Allow location").performScrollTo().assertIsDisplayed()
         // Scrolled to the action, the card has gone up with the rest of the gate: it isn't pinned.
-        assertTrue(composeRule.onNodeWithText("To Canary Wharf").getUnclippedBoundsInRoot().top < androidx.compose.ui.unit.Dp(0f))
+        // Found by its tag: at this text size the card shortens the place to fit beside its time.
+        assertTrue(composeRule.onNodeWithTag("onTheWayBanner").getUnclippedBoundsInRoot().top < androidx.compose.ui.unit.Dp(0f))
     }
 
     @Test
@@ -278,7 +285,8 @@ class OnTheWayScreenScreenshotTest {
                 }
             }
         }
-        composeRule.onNodeWithText("Due in 4 min").assertIsDisplayed()
+        // The trip card's own step time, which a stale answer would hold back.
+        composeRule.onNodeWithText("4 min · 08:06").assertIsDisplayed()
     }
 
     @Test
@@ -811,7 +819,7 @@ class OnTheWayScreenScreenshotTest {
     @Test
     fun the_trip_says_its_time_left_and_when_it_gets_there() {
         val resources = composeRule.activity.resources
-        assertEquals("14 min · est. 08:16", etaText(resources, OnTheWay.Eta(at(14), live = false), now))
+        assertEquals("est. 14 min · 08:16", etaText(resources, OnTheWay.Eta(at(14), live = false), now))
         assertEquals("14 min · ~08:16", etaText(resources, OnTheWay.Eta(at(14), live = true), now))
         // On the last ride, TfL's time where they get off; not from an answer too old to stand behind.
         val last = trip.copy(legIndex = 2, boarded = true, onBoardSeen = true)
@@ -827,7 +835,172 @@ class OnTheWayScreenScreenshotTest {
         // The train followed past its time, the board's next due in 10 min: timed from it (maintainer, 2026-10-03).
         val gone = TripProgress.Waiting(mildmay, at(-1))
         show(trip, gone, nextTrains = NextTrains(mildmay, emptyList(), readyAt = now, nextDue = at(10)))
-        composeRule.onNodeWithTag("onTheWayEta").assertTextEquals("37 min · est. 08:39")
+        composeRule.onNodeWithTag("onTheWayEta").assertTextEquals("est. 37 min · 08:39")
+    }
+
+    @Test
+    fun an_estimates_est_goes_before_the_place_shortens() {
+        // At large text the trip's name and its estimated time can't both fit: the time drops its "est."
+        // first, before the name gives up any of its words (maintainer, 2026-10-04).
+        val gone = TripProgress.Waiting(mildmay, at(-1))
+        composeRule.setContent {
+            val base = androidx.compose.ui.platform.LocalDensity.current
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(base.density, fontScale = 2f),
+            ) {
+                StopDashTheme(dynamicColor = false) {
+                    OnTheWayScreen(
+                        trip, gone, false, now, {}, {},
+                        nextTrains = NextTrains(mildmay, emptyList(), readyAt = now, nextDue = at(10)),
+                        onGoTo = { _, _ -> },
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithTag("onTheWayEta").assertTextEquals("37 min · 08:39")
+        // A screen reader still hears it's an estimate (Codex, #526).
+        composeRule.onNodeWithTag("onTheWayEta").assertContentDescriptionEquals("est. 37 min · 08:39")
+    }
+
+    @Test
+    fun a_pinned_cards_frame_stands_in_only_for_its_own_step_and_configuration() {
+        // Another language's words never stand in while the card's own are worked out (Codex, #526).
+        val progress = TripProgress.Waiting(mildmay, at(4))
+        val config = android.content.res.Configuration(composeRule.activity.resources.configuration)
+        val other = android.content.res.Configuration(config)
+        assertTrue(sameTrip(Inputs(trip, progress, now, config, now), Inputs(trip, progress, now.plusSeconds(10), config, now)))
+        assertTrue(!sameTrip(Inputs(trip, progress, now, config, now), Inputs(trip, progress, now, other, now)))
+        // Nor another step's: the next leg, or the same leg's next step (Codex, #526).
+        assertTrue(!sameTrip(Inputs(trip, progress, now, config, now), Inputs(trip.copy(legIndex = 1), progress, now, config, now)))
+        val riding = TripProgress.Riding(mildmay, "Hackney Wick", 2, at(10), getOffSoon = false)
+        assertTrue(!sameTrip(Inputs(trip, progress, now, config, now), Inputs(trip, riding, now, config, now)))
+        // Nor across Next once the train's left: boarding and riding are both a ride on the same leg (Codex, #526).
+        val boarding = riding.copy(seen = false)
+        assertTrue(!sameTrip(Inputs(trip, boarding, now, config, now), Inputs(trip.copy(onBoardSeen = true), riding, now, config, now)))
+        assertTrue(!sameTrip(Inputs(trip, riding, now, config, now), Inputs(trip, riding.copy(getOffSoon = true), now, config, now)))
+        assertTrue(sameTrip(Inputs(trip, riding, now, config, now), Inputs(trip, riding.copy(stopsLeft = 1), now, config, now)))
+    }
+
+    @Test
+    fun a_held_arrival_goes_once_what_its_timed_from_has_gone_by() {
+        // A walk's end passes while the worker is held: the arrival timed from it goes, as one worked
+        // out at the live clock would, though the arrival itself is still to come (Codex, #526).
+        val threads = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val worker = threads.asCoroutineDispatcher()
+        val gate = java.util.concurrent.CountDownLatch(1)
+        val state = OnTheWayBannerState(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(24)), now) {}
+        var clock by androidx.compose.runtime.mutableStateOf(now)
+        try {
+            composeRule.setContent {
+                StopDashTheme(dynamicColor = false) {
+                    androidx.compose.runtime.CompositionLocalProvider(LocalWorker provides worker) {
+                        OnTheWayBanner(state, clock)
+                    }
+                }
+            }
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("onTheWayEta"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+            }
+            threads.execute { gate.await() }
+            clock = at(25)
+            composeRule.waitForIdle()
+            composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertDoesNotExist()
+        } finally {
+            gate.countDown()
+            worker.close()
+        }
+    }
+
+    @Test
+    fun the_pinned_cards_arrival_is_worked_out_on_the_worker() {
+        // The worker on a thread of its own, held shut: worked out in composition, the arrival would
+        // show anyway (Codex, #526).
+        val threads = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val worker = threads.asCoroutineDispatcher()
+        // Every hold on the worker, all released in the end, so a failed assertion never leaves it stuck.
+        val gates = List(3) { java.util.concurrent.CountDownLatch(1) }
+        val (gate, again, late) = gates
+        threads.execute { gate.await() }
+        // On the last ride, its train placed: an arrival to show.
+        val last = trip.copy(legIndex = 2, boarded = true, onBoardSeen = true)
+        var state by androidx.compose.runtime.mutableStateOf(
+            OnTheWayBannerState(last, TripProgress.Riding(jubilee, "Canning Town", 2, at(31), getOffSoon = false), now) {},
+        )
+        var clock by androidx.compose.runtime.mutableStateOf(now)
+        try {
+            composeRule.setContent {
+                StopDashTheme(dynamicColor = false) {
+                    androidx.compose.runtime.CompositionLocalProvider(LocalWorker provides worker) {
+                        OnTheWayBanner(state, clock)
+                    }
+                }
+            }
+            composeRule.waitForIdle()
+            // The card is tapped as one, so its rows are found in the unmerged tree.
+            // Its words are worked out there too, shortening places (Codex, #526): until then, the card
+            // shows without them.
+            composeRule.onNodeWithTag("onTheWayBanner").assertExists()
+            composeRule.onNodeWithText("To Canary Wharf", useUnmergedTree = true).assertDoesNotExist()
+            composeRule.onAllNodes(androidx.compose.ui.test.hasText("Ride to", substring = true), useUnmergedTree = true).assertCountEquals(0)
+            // A placeholder meanwhile, never a blank card.
+            composeRule.onNodeWithText("On the way", useUnmergedTree = true).assertExists()
+            composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertDoesNotExist()
+            gate.countDown()
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("onTheWayEta"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithText("To Canary Wharf", useUnmergedTree = true).assertExists()
+            composeRule.onAllNodes(androidx.compose.ui.test.hasText("Ride to", substring = true), useUnmergedTree = true).assertCountEquals(1)
+
+            // A minute on with the worker held, still fresh: the held card counts down with the live clock,
+            // never frozen at its frame's time (Codex, #526).
+            threads.execute { late.await() }
+            fun eta() = composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).fetchSemanticsNode()
+                .config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString()
+            val before = eta()
+            clock = now.plusSeconds(60)
+            composeRule.waitForIdle()
+            assertNotEquals(before, eta())
+            // The live state withdraws its answer (a failed refresh): the held card isn't current either.
+            val held = state
+            state = OnTheWayBannerState(last, TripProgress.Riding(jubilee, "Canning Town", 2, at(31), getOffSoon = false), null) {}
+            composeRule.waitForIdle()
+            composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertDoesNotExist()
+            state = held
+            composeRule.waitForIdle()
+            // The clock moves past the answer's freshness while the worker is held: the held card is judged
+            // against the live clock, so its TfL-placed arrival is held back, not shown as current (Codex, #526).
+            clock = now.plusSeconds(120)
+            composeRule.waitForIdle()
+            composeRule.onNodeWithText("To Canary Wharf", useUnmergedTree = true).assertExists()
+            composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertDoesNotExist()
+            // A fresh update comes in, still held: the held card is judged by when its own progress was
+            // brought up to date, never the newer update's it doesn't show yet (Codex, #526).
+            state = OnTheWayBannerState(last, TripProgress.Riding(jubilee, "Canning Town", 2, at(31), getOffSoon = false), now.plusSeconds(120)) {}
+            composeRule.waitForIdle()
+            composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertDoesNotExist()
+            late.countDown()
+            clock = now
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodes(androidx.compose.ui.test.hasTestTag("onTheWayEta"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+            }
+
+            // Another trip while the worker is held again (a new trip, another route): the last trip's
+            // card doesn't stand in for it; the new one shows without a time until its own is in (Codex, #526).
+            threads.execute { again.await() }
+            val other = ActiveTrip(TripRoute(listOf(mildmay)), "Stratford", startedAt = now, legIndex = 0, vehicleId = "EXAMPLE")
+            state = OnTheWayBannerState(other, TripProgress.Waiting(mildmay, at(4)), now) {}
+            composeRule.waitForIdle()
+            composeRule.onNodeWithText("To Canary Wharf", useUnmergedTree = true).assertDoesNotExist()
+            composeRule.onNodeWithTag("onTheWayEta", useUnmergedTree = true).assertDoesNotExist()
+            again.countDown()
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodes(androidx.compose.ui.test.hasText("To Stratford"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+            }
+        } finally {
+            gates.forEach { it.countDown() }
+            worker.close()
+        }
     }
 
     @Test
