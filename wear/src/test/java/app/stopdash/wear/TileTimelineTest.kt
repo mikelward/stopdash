@@ -195,6 +195,25 @@ class TileTimelineTest {
     }
 
     @Test
+    fun `a line two nearby stops serve shows once, from the nearer, as on the widget`() {
+        val a = stop("940GA", listOf(departure(60)))
+        val b = stop("940GB", listOf(departure(120)))
+        val folded = envelope(a, b).copy(nearestFirst = listOf("940GB", "940GA"))
+        // Only the nearer stop's copy is left: one stop, so no header, and its later countdown.
+        assertEquals(listOf("2 min"), rows(TileTimeline.frame(folded, fetched)).map { it.countdown })
+        // With no order (an older phone), every stop's copy still shows.
+        assertEquals(2, rows(TileTimeline.frame(envelope(a, b), fetched)).size)
+    }
+
+    @Test
+    fun `the fold keeps a line only one stop serves`() {
+        val a = stop("940GA", listOf(departure(60)))
+        val b = stop("940GB", listOf(departure(120, line = "central", destination = "Ealing")), line = "central")
+        val env = envelope(a, b).copy(nearestFirst = listOf("940GB", "940GA"))
+        assertEquals(listOf("Victoria", "Central"), rows(TileTimeline.frame(env, fetched)).map { it.lineName })
+    }
+
+    @Test
     fun `with no rows anywhere each stop shows its own empty form`() {
         val fresh = stop("940GA", emptyList())
         val carried = stop("940GB", emptyList()).copy(arrivalsFresh = false)

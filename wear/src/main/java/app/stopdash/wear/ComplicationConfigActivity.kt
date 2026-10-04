@@ -2,6 +2,7 @@ package app.stopdash.wear
 
 import android.app.Activity
 import android.os.Bundle
+import androidx.annotation.WorkerThread
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -10,7 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -30,14 +31,17 @@ import androidx.wear.watchface.complications.datasource.ComplicationDataSourceSe
 import app.stopdash.data.WatchEnvelope
 import app.stopdash.data.toDomain
 import app.stopdash.domain.DepartureLabels
+import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.isStatusOnly
 import app.stopdash.domain.lineCode
 import java.time.Instant
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** A row the complication can be set to: its [code] and [destination] on one line, its [stopName] below. */
 data class ComplicationChoice(val row: StarredRow, val code: String, val destination: String, val stopName: String)
@@ -50,6 +54,7 @@ object ComplicationChoices {
      * still show it, even with no departures right now (the complication shows its empty form),
      * so the picker can mark it: first, labeled from the stop's line and the row's direction.
      */
+    @WorkerThread
     fun of(envelope: WatchEnvelope?, now: Instant, current: StarredRow? = null): List<ComplicationChoice> {
         envelope ?: return emptyList()
         val stops = envelope.stops.map { it.toDomain() }
@@ -79,6 +84,17 @@ object ComplicationChoices {
         )
         return listOf(quiet) + choices
     }
+
+    /**
+     * [of], worked out on [worker], never on the caller's thread: it folds every stop's rows
+     * ([DepartureRows.glanceFolded]), which grows with the envelope (AGENTS.md *Main thread*).
+     */
+    suspend fun load(
+        envelope: WatchEnvelope?,
+        now: Instant,
+        current: StarredRow? = null,
+        worker: CoroutineDispatcher = Dispatchers.Default,
+    ): List<ComplicationChoice> = withContext(worker) { of(envelope, now, current) }
 }
 
 /**
@@ -116,9 +132,10 @@ class ComplicationConfigActivity : ComponentActivity() {
             val received by store.state.collectAsStateWithLifecycle()
             val current by pick.collectAsStateWithLifecycle()
             val read by frame.collectAsStateWithLifecycle()
-            val choices = remember(received, current, read) {
+            // Worked out off the main thread; the picker shows at once with "Top row" and fills in.
+            val choices by produceState(emptyList<ComplicationChoice>(), received, current, read) {
                 val envelope = read?.let { (received as? WatchReceived.Received)?.current(it.frame) }
-                ComplicationChoices.of(envelope, Instant.now(), (current as? PickState.Loaded)?.row)
+                value = ComplicationChoices.load(envelope, Instant.now(), (current as? PickState.Loaded)?.row)
             }
             ComplicationPickerScreen(choices, current) { row ->
                 ComplicationSelections.set(this, id, row)

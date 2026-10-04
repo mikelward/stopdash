@@ -63,7 +63,8 @@ class StopDashComplicationService : SuspendingTimelineComplicationDataSourceServ
             Log.w(TAG, "complication envelope unreadable: ${e::class.simpleName}")
             Triple(null, RouteTopology.EMPTY, null)
         }
-        val entries = ComplicationTimeline.entries(envelope, Instant.now(), row = row, topology = topology)
+        // Off the main thread the service is called on: the timeline folds every stop's rows.
+        val entries = ComplicationTimeline.load(envelope, Instant.now(), row = row, topology = topology)
         return ComplicationRender.timeline(this, request.complicationType, entries)
     }
 

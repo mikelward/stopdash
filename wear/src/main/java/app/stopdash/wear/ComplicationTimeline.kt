@@ -1,5 +1,6 @@
 package app.stopdash.wear
 
+import androidx.annotation.WorkerThread
 import app.stopdash.data.WatchEnvelope
 import app.stopdash.data.toDomain
 import app.stopdash.domain.DepartureLabels
@@ -17,6 +18,9 @@ import java.time.Duration
 import java.time.Instant
 import kotlin.time.toJavaDuration
 import kotlin.time.toKotlinDuration
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** What a StopDash complication shows over one stretch of time. */
 sealed interface ComplicationContent {
@@ -96,11 +100,14 @@ object ComplicationTimeline {
         // With the live line statuses, as the tile builds its rows: a suspended line with no
         // predictions is a row too (its status row), leading as a warning does, so a complication
         // on the default row shows the suspension rather than skip past it.
+        val staleRow: (DepartureRow) -> Boolean = { stale[it.stopId] == true }
         val ordered = DepartureRows.freshFirst(
             DepartureRows.across(stops, now, envelope.liveLineStatuses(now), splitPlatforms = false, statusRowsWhenStale = true)
                 .filter { it.stopDisruption == null },
-        ) { stale[it.stopId] == true }
-        val shown = HiddenModes.rows(ordered, envelope.hiddenModes.toSet())
+            staleRow,
+        )
+        // A line several nearby stops serve is a row once, from the nearest, as the tile shows it.
+        val shown = HiddenModes.rows(DepartureRows.glanceFolded(ordered, envelope.nearestFirst, staleRow), envelope.hiddenModes.toSet())
         return DepartureRows.pinStarred(shown, envelope.starred.mapTo(HashSet()) { it.toDomain() })
     }
 
@@ -117,10 +124,23 @@ object ComplicationTimeline {
     }
 
     /**
+     * [entries], worked out on [worker], never on the caller's thread: it folds and orders every
+     * stop's rows (AGENTS.md *Main thread*), and the complication service is called on the main one.
+     */
+    suspend fun load(
+        received: WatchEnvelope?,
+        now: Instant,
+        row: StarredRow? = null,
+        topology: RouteTopology = RouteTopology.EMPTY,
+        worker: CoroutineDispatcher = Dispatchers.Default,
+    ): List<ComplicationEntry> = withContext(worker) { entries(received, now, row, topology) }
+
+    /**
      * The timeline for [row] (the [defaultRow] when null, or when [row]'s stop isn't in the
      * envelope) from [now]. A single open-ended [ComplicationContent.NoData] entry when there's
      * nothing to show; otherwise always ending in the open-ended stale entry.
      */
+    @WorkerThread
     fun entries(
         received: WatchEnvelope?,
         now: Instant,

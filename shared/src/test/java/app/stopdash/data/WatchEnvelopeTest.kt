@@ -605,6 +605,32 @@ class WatchEnvelopeTest {
     }
 
     @Test
+    fun `the nearest-first order goes with the stops it names, and only those`() {
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(stop("940GNEAR", listOf(departure(2))), stop("940GFAR", listOf(departure(3)))),
+            fetchedAt = now,
+            nearestFirst = listOf("940GNEAR", "940GGONE", "940GFAR"),
+        )
+        assertEquals(listOf("940GNEAR", "940GFAR"), decoded(WatchEnvelopes.build(snapshot, emptySet(), now = now)).nearestFirst)
+    }
+
+    @Test
+    fun `a stop left out past the ceiling leaves the order too`() {
+        val stops = (1..10).map { stop("940GSTOP$it", listOf(departure(2, line = "line$it"))) }
+        val snapshot = DeparturesSnapshot(stops = stops, fetchedAt = now, nearestFirst = stops.map { it.stopId })
+        val full = WatchEnvelopes.build(snapshot, emptySet(), now = now).bytes.size
+        val envelope = decoded(WatchEnvelopes.build(snapshot, emptySet(), dataItemBudget = 100, transferCeiling = full / 2, now = now))
+        assertTrue(envelope.omittedStops > 0)
+        assertEquals(envelope.stops.map { it.stopId }.toSet(), envelope.nearestFirst.toSet())
+    }
+
+    @Test
+    fun `an envelope from an older phone, with no order, folds nothing`() {
+        val older = """{"version":1,"stops":[]}""".encodeToByteArray()
+        assertTrue((WatchEnvelopes.decode(older) as WatchDecode.Ok).envelope.nearestFirst.isEmpty())
+    }
+
+    @Test
     fun `an envelope from an older phone, with no line checks, reads as none`() {
         val older = """{"version":1,"stops":[]}""".encodeToByteArray()
         val envelope = (WatchEnvelopes.decode(older) as WatchDecode.Ok).envelope

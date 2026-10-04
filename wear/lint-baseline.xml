@@ -1,37 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <issues format="6" by="lint 9.4.1" type="baseline" client="gradle" dependencies="false" name="AGP (9.4.1)" variant="all" version="9.4.1">
 
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.across` is marked @WorkerThread but called on the main thread (through `of()`), in composable `setContent { }`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                ComplicationChoices.of(envelope, Instant.now(), (current as? PickState.Loaded)?.row)"
-        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/wear/ComplicationConfigActivity.kt"
-            line="121"
-            column="17"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`DepartureRows.pinStarred` is marked @WorkerThread but called on the main thread (through `of()`), in composable `setContent { }`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                ComplicationChoices.of(envelope, Instant.now(), (current as? PickState.Loaded)?.row)"
-        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/wear/ComplicationConfigActivity.kt"
-            line="121"
-            column="17"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`HiddenModes.rows` is marked @WorkerThread but called on the main thread (through `of()`), in composable `setContent { }`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                ComplicationChoices.of(envelope, Instant.now(), (current as? PickState.Loaded)?.row)"
-        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/wear/ComplicationConfigActivity.kt"
-            line="121"
-            column="17"/>
-    </issue>
-
 </issues>

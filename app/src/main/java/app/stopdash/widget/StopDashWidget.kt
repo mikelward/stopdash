@@ -84,6 +84,9 @@ import app.stopdash.ui.pillColors
 import java.time.Instant
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 
 /**
@@ -102,9 +105,7 @@ class StopDashWidget : GlanceAppWidget() {
     // Size buckets, so the layout fits the cell it's given: two widths (a narrow widget shortens its
     // stamp rather than clip it, see WIDGET_COMPACT_WIDTH) by a ladder of heights (the line budget
     // grows with the height, see widgetRowsHeight). The host picks the largest bucket that fits.
-    override val sizeMode = SizeMode.Responsive(
-        WIDGET_BUCKET_WIDTHS.flatMap { w -> WIDGET_BUCKET_HEIGHTS.map { h -> DpSize(w, h) } }.toSet(),
-    )
+    override val sizeMode = SizeMode.Responsive(WIDGET_BUCKETS)
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         // Off the render path: read the persisted snapshot before composing. A read failure
@@ -196,20 +197,14 @@ class StopDashWidget : GlanceAppWidget() {
         // The bundled branch topology (shared, cached instance), so the widget merges/labels a
         // branching row exactly as the in-app card does.
         val topology = RouteTopologyStore.load(context)
+        // The line budget comes from each bucket's height and the system font scale, so the rows
+        // never run past the cell's bottom edge. Every bucket's model is worked out here, on a worker,
+        // before composing: building one walks every stop's rows (AGENTS.md *Main thread*), and the
+        // host only ever draws one of [WIDGET_BUCKETS], so composition just looks its model up.
+        val fontScale = context.resources.configuration.fontScale
+        val models = widgetModels(shown, now, starred, fontScale, topology, hiddenModes)
         provideContent {
-            // The line budget comes from this bucket's height and the system font scale, so the rows
-            // never run past the cell's bottom edge. widgetModel is pure and cheap — no I/O on the render path.
-            val size = LocalSize.current
-            val fontScale = LocalContext.current.resources.configuration.fontScale
-            val model = widgetModel(
-                shown,
-                now,
-                starred,
-                geometry = WidgetGeometry(size.width, size.height, fontScale),
-                topology = topology,
-                hiddenModes = hiddenModes,
-            )
-            WidgetContent(model, now, fontScale)
+            WidgetContent(models[LocalSize.current], now, fontScale)
         }
     }
 
@@ -233,6 +228,41 @@ class StopDashWidget : GlanceAppWidget() {
             logWidgetSnapshotWarning("widget staleness redraw cancel on delete failed: ${e::class.simpleName}")
         }
     }
+}
+
+/**
+ * [widgetModel] for each of the widget's size buckets at [fontScale], worked out on [worker], never
+ * on the caller's thread.
+ */
+internal suspend fun widgetModels(
+    snapshot: DeparturesSnapshot?,
+    now: Instant,
+    starred: Set<StarredRow>,
+    fontScale: Float,
+    topology: RouteTopology,
+    hiddenModes: Set<String>,
+    worker: CoroutineDispatcher = Dispatchers.Default,
+): WidgetModels = withContext(worker) {
+    val bySize = WIDGET_BUCKETS.associateWith { size ->
+        widgetModel(
+            snapshot,
+            now,
+            starred,
+            geometry = WidgetGeometry(size.width, size.height, fontScale),
+            topology = topology,
+            hiddenModes = hiddenModes,
+        )
+    }
+    WidgetModels(bySize, fallback = bySize.getValue(WIDGET_SMALLEST_BUCKET))
+}
+
+/**
+ * The models [widgetModels] worked out, looked up in constant time while composing. A
+ * [SizeMode.Responsive] host draws only the buckets it was given, so [get] finds that bucket's; should
+ * a host pass some other size, the smallest bucket's, chosen ahead of time, whose rows fit any cell.
+ */
+internal class WidgetModels(val bySize: Map<DpSize, WidgetModel>, val fallback: WidgetModel) {
+    operator fun get(size: DpSize): WidgetModel = bySize[size] ?: fallback
 }
 
 /**
@@ -391,13 +421,8 @@ internal fun widgetModel(
     // departures are lifted out, so a journey from the nearer stop still drops the farther stop's
     // copy rather than leave it as the line's only row below the journey (Codex on #473). By the
     // nearest-first order the app saved: a snapshot with none (an older one) keeps every stop's rows.
-    // The fold re-sorts, so fresh rows are ranked ahead of stale ones again.
-    val ranks = snapshot.nearestFirstDistances()
-    val folded = if (ranks.isEmpty()) {
-        ordered
-    } else {
-        DepartureRows.freshFirst(DepartureRows.nearbyDeduped(ordered, ranks)) { Staleness.isStale(it.fetchedAt, now) }
-    }
+    // The watch folds by the same order with the same function ([DepartureRows.glanceFolded]).
+    val folded = DepartureRows.glanceFolded(ordered, snapshot.nearestFirst) { Staleness.isStale(it.fetchedAt, now) }
     val nearby = withoutJourneys(folded, snapshot)
     val shownNearby = HiddenModes.rows(nearby, hiddenModes)
     val pinned = journeyRows + DepartureRows.pinStarred(shownNearby, starred)
@@ -1240,6 +1265,14 @@ private val WIDGET_WIDE_WIDTH = 300.dp
  *  takes at most sixteen sizes. */
 private val WIDGET_BUCKET_WIDTHS by lazy { listOf(WIDGET_MIN_WIDTH, WIDGET_COMPACT_WIDTH, WIDGET_WIDE_WIDTH) }
 private val WIDGET_BUCKET_HEIGHTS = listOf(WIDGET_MIN_HEIGHT, 180.dp, 250.dp, 320.dp, 400.dp)
+
+/** The smallest size bucket: the fallback for a size the host wasn't given ([WidgetModels]). */
+private val WIDGET_SMALLEST_BUCKET by lazy { DpSize(WIDGET_MIN_WIDTH, WIDGET_MIN_HEIGHT) }
+
+/** Every size bucket, as [StopDashWidget.sizeMode] declares them. */
+internal val WIDGET_BUCKETS: Set<DpSize> by lazy {
+    WIDGET_BUCKET_WIDTHS.flatMap { w -> WIDGET_BUCKET_HEIGHTS.map { h -> DpSize(w, h) } }.toSet()
+}
 
 /**
  * How many of a row's next departures the widget shows across its destination lines, matching

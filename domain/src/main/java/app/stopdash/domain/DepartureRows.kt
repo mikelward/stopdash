@@ -700,6 +700,29 @@ object DepartureRows {
         rows.sortedBy { if (!it.isStatusOnly && stale(it)) 1 else 0 }
 
     /**
+     * [rows], already [freshFirst], folded as a glance surface (the widget, the watch's tile, app and
+     * complication) folds them: a line several nearby stops serve shows once, from the nearest, as
+     * the in-app list does ([nearbyDeduped]), by the app's saved [nearestFirst] order rather than the
+     * distances it never saves ([rankDistances]). The fold re-sorts, so fresh rows are ranked ahead
+     * of stale ones again. Unchanged with no order (an older snapshot, or a location-free list).
+     * One function for every glance surface, so the watch can't drift from the widget.
+     */
+    @WorkerThread
+    fun glanceFolded(rows: List<DepartureRow>, nearestFirst: List<String>, stale: (DepartureRow) -> Boolean): List<DepartureRow> =
+        if (nearestFirst.isEmpty()) rows else freshFirst(nearbyDeduped(rows, rankDistances(nearestFirst)), stale)
+
+    /**
+     * [nearestFirst] as stand-in distances for [nearbyDeduped]: only the order is kept, so each step
+     * is wider than [TOGETHER_SLACK_METERS], and a route's two directions are each shown from their
+     * own nearest stop rather than kept together at one a little farther. Empty when the order is.
+     */
+    @WorkerThread
+    fun rankDistances(nearestFirst: List<String>): Map<String, Double> =
+        nearestFirst.withIndex().associate { (rank, id) -> id to (rank + 1) * RANK_STEP_METERS }
+
+    private const val RANK_STEP_METERS = 2 * TOGETHER_SLACK_METERS
+
+    /**
      * Reorder [rows] so the user's **starred** services sit at the top — ranking only, not
      * membership (SPEC D8): a star pins its row above the unstarred ones, it does not add or
      * remove anything. Applied after [across]/[nearbyDeduped], so the rows are already in

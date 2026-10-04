@@ -1441,6 +1441,25 @@ class DepartureRowsTest {
     }
 
     @Test
+    fun `glanceFolded folds by the saved order, and leaves rows alone without one`() {
+        val near = rowsFor("A", "Stop A", departure("55", "55", "outbound", "Bakerloo", 120, mode = "bus"))
+        val far = rowsFor("B", "Stop B", departure("55", "55", "outbound", "Bakerloo", 60, mode = "bus"))
+        val other = rowsFor("B", "Stop B", departure("73", "73", "outbound", "Oxford Circus", 90, mode = "bus"))
+        val rows = far + other + near
+        val folded = DepartureRows.glanceFolded(rows, listOf("A", "B")) { false }
+        assertEquals(listOf("A" to "55", "B" to "73"), folded.map { it.stopId to it.lineId }.sortedBy { it.second })
+        assertEquals(rows, DepartureRows.glanceFolded(rows, emptyList()) { false })
+    }
+
+    @Test
+    fun `glanceFolded puts fresh rows ahead of stale ones again after the fold`() {
+        val stale = rowsFor("A", "Stop A", departure("55", "55", "outbound", "Bakerloo", 30, mode = "bus"))
+        val fresh = rowsFor("B", "Stop B", departure("73", "73", "outbound", "Oxford Circus", 90, mode = "bus"))
+        val folded = DepartureRows.glanceFolded(fresh + stale, listOf("A", "B")) { it.stopId == "A" }
+        assertEquals(listOf("B", "A"), folded.map { it.stopId })
+    }
+
+    @Test
     fun `nearbyDeduped keeps both directions of a line`() {
         val out = rowsFor("A", "Stop A", departure("55", "55", "outbound", "Bakerloo", 120, mode = "bus"))
         val inbound = rowsFor("B", "Stop B", departure("55", "55", "inbound", "Walthamstow", 90, mode = "bus"))
