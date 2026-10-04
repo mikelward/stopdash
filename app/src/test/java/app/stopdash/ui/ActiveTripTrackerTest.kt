@@ -35,6 +35,8 @@ class ActiveTripTrackerTest {
     private val boardStops = mutableListOf<String>()
     private var boardTakes: Duration = Duration.ZERO
     private var now = t0
+    // Told on each read of the tracker's clock: for where its work runs.
+    private var clockRead: () -> Unit = {}
     // A monotonic clock (ms), apart from [now]: the wall clock can be set back, this can't.
     private var ticks = 0L
 
@@ -213,7 +215,10 @@ class ActiveTripTrackerTest {
             if (polesFail) throw TflException.Offline(null)
             polesAt[area].orEmpty()
         },
-        clock = { now },
+        clock = {
+            clockRead()
+            now
+        },
         elapsed = { ticks },
         io = dispatcher,
         compute = compute,
@@ -2543,6 +2548,41 @@ class ActiveTripTrackerTest {
         tracker.refresh()
         assertEquals(1, tracker.trip.value?.legIndex)
         assertEquals("3", tracker.trip.value?.vehicleId)
+    }
+
+    @Test
+    fun `a start, a refresh, Next and End work the trip out off the caller's thread`() = runTest {
+        // Each walks the trip's route, which grows with it: on the tracker's worker, never the caller's
+        // (main) thread (AGENTS.md *Main thread: read and dispatch only*).
+        val test = StandardTestDispatcher(testScheduler)
+        val onWorker = ThreadLocal<Boolean>()
+        val worker = object : kotlinx.coroutines.CoroutineDispatcher() {
+            override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) {
+                test.dispatch(context) {
+                    onWorker.set(true)
+                    try {
+                        block.run()
+                    } finally {
+                        onWorker.set(false)
+                    }
+                }
+            }
+        }
+        val reads = mutableListOf<Boolean>()
+        clockRead = { reads += onWorker.get() == true }
+        val tracker = tracker(test, compute = worker)
+        val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10))
+        departures["A"] = listOf(train("2", 3))
+        trains["2"] = listOf(call("A", 3), call("B", 7), call("C", 11))
+        tracker.start(TripRoute(listOf(toA, ride)), "C", readyAt = now)
+        now = at(1)
+        tracker.refresh()
+        now = at(2)
+        tracker.goTo(Step(0), Step(1))
+        assertEquals("2", tracker.trip.value?.vehicleId)
+        assertTrue(tracker.end())
+        assertTrue(reads.isNotEmpty())
+        assertEquals(listOf(true), reads.distinct())
     }
 
     @Test

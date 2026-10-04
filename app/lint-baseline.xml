@@ -3,50 +3,6 @@
 
     <issue
         id="WorkerThreadCall"
-        message="`OnTheWay.comesThroughBoarding` is marked @WorkerThread but called 2 times on the main thread (through `refresh()`), in composable `FollowActiveTrip`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                    tracker.refresh(refreshFix(woke, fixes, tracker.trip.value, Instant.now(), take = rider))"
-        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/ActiveTripHost.kt"
-            line="92"
-            column="21"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`OnTheWay.mayTakeRide` is marked @WorkerThread but called 6 times on the main thread (through `refresh()`), in composable `FollowActiveTrip`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                    tracker.refresh(refreshFix(woke, fixes, tracker.trip.value, Instant.now(), take = rider))"
-        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/ActiveTripHost.kt"
-            line="92"
-            column="21"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`OnTheWay.ridePositions` is marked @WorkerThread but called 5 times on the main thread (through `refresh()`), in composable `FollowActiveTrip`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                    tracker.refresh(refreshFix(woke, fixes, tracker.trip.value, Instant.now(), take = rider))"
-        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/ActiveTripHost.kt"
-            line="92"
-            column="21"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`OnTheWay.takesRide` is marked @WorkerThread but called 4 times on the main thread (through `refresh()`), in composable `FollowActiveTrip`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                    tracker.refresh(refreshFix(woke, fixes, tracker.trip.value, Instant.now(), take = rider))"
-        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/ActiveTripHost.kt"
-            line="92"
-            column="21"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
         message="`DepartureRows.across` is marked @WorkerThread but called on the main thread (through `activeTrip$app()`), in composable `StopDashAppRoot { }`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
         errorLine1="                val tracker = remember { activeTrip(applicationContext) }"
         errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
@@ -65,50 +21,6 @@
             file="src/main/java/app/stopdash/MainActivity.kt"
             line="817"
             column="42"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`OnTheWay.comesThroughBoarding` is marked @WorkerThread but called 2 times on the main thread (through `goTo()`), in composable `NearbyArea { }`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                                        ((application as? StopdashApp)?.applicationScope ?: onTheWayScope).launch { tracker.goTo(from, to) }"
-        errorLine2="                                                                                                                    ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="999"
-            column="117"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`OnTheWay.mayTakeRide` is marked @WorkerThread but called 6 times on the main thread (through `goTo()`), in composable `NearbyArea { }`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                                        ((application as? StopdashApp)?.applicationScope ?: onTheWayScope).launch { tracker.goTo(from, to) }"
-        errorLine2="                                                                                                                    ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="999"
-            column="117"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`OnTheWay.ridePositions` is marked @WorkerThread but called 5 times on the main thread (through `goTo()`), in composable `NearbyArea { }`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                                        ((application as? StopdashApp)?.applicationScope ?: onTheWayScope).launch { tracker.goTo(from, to) }"
-        errorLine2="                                                                                                                    ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="999"
-            column="117"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
-        message="`OnTheWay.takesRide` is marked @WorkerThread but called 4 times on the main thread (through `goTo()`), in composable `NearbyArea { }`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                                        ((application as? StopdashApp)?.applicationScope ?: onTheWayScope).launch { tracker.goTo(from, to) }"
-        errorLine2="                                                                                                                    ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/MainActivity.kt"
-            line="999"
-            column="117"/>
     </issue>
 
     <issue
