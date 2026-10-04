@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import androidx.annotation.WorkerThread
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.stopdash.domain.Coordinates
@@ -15,6 +16,7 @@ import app.stopdash.domain.StopFinder
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.TflException
 import app.stopdash.domain.UsageEvent
+import app.stopdash.domain.Workers
 import java.time.Duration
 import kotlin.math.roundToLong
 import kotlinx.coroutines.CancellationException
@@ -78,6 +80,10 @@ class NearbyStopsViewModel(
     private val finder: StopFinder,
     private val radiusMeters: Int = NearbySelection.OUTER_RADIUS_METERS,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    // Where the stops a lookup found are worked over (picked, measured, described): work that grows
+    // with the stops in range, never on the caller's thread, which is the main one (AGENTS.md *Main
+    // thread: read and dispatch only*).
+    private val compute: CoroutineDispatcher = Workers.compute,
     private val warn: (String) -> Unit = {},
     // Where each lookup was made from, for the in-memory RecentPositions only — never [warn],
     // whose lines are persisted (SPEC *Privacy*). A searched station's area leaves it unset.
@@ -135,15 +141,21 @@ class NearbyStopsViewModel(
             // The hidden modes and lines these stops were picked without ([shownAgainSincePick]).
             val pickedHidden: Set<String> = emptySet(),
         ) : State {
+            // The values below are worked out once, as the set is made (on the view model's worker,
+            // [resolveFrom]), never on each read: the screen reads them in composition.
+
             /** The eager tier flattened to the stops shown and fetched at once. */
-            val eagerStops: List<StopRef> get() = eager.flatMap { c -> c.stops.map { it.toStopRef() } }
+            val eagerStops: List<StopRef> = eager.flatMap { c -> c.stops.map { it.toStopRef() } }
+
+            /** [eagerStops]' ids: what the widget and the watch show ([widgetNearbySet]). */
+            val eagerStopIds: Set<String> = eagerStops.mapTo(HashSet()) { it.id }
 
             /**
              * Every resolved nearby stop, both tiers — what [distanceMeters] spans. The bug report
              * uses this rather than just [eagerStops] so a report still carries the farther stops
              * the list's farther cards offer (SPEC *Finding stops*).
              */
-            val nearbyStops: List<StopRef> get() = (eager + more).flatMap { c -> c.stops.map { it.toStopRef() } }
+            val nearbyStops: List<StopRef> = (eager + more).flatMap { c -> c.stops.map { it.toStopRef() } }
 
             /**
              * Order-independent identity of the WHOLE nearby set (both tiers), so a relocation that
@@ -151,7 +163,7 @@ class NearbyStopsViewModel(
              * every cluster stays in range — is recognized as the same set and reconciles the
              * retained departures view in place, rather than rebuilding it.
              */
-            val clusterSetKey: String get() = (eager + more).map { it.key }.sorted().joinToString(",")
+            val clusterSetKey: String = (eager + more).map { it.key }.sorted().joinToString(",")
         }
 
         /** Permission held but no position available (location off, or no fix yet) — so, unlike
@@ -791,8 +803,24 @@ class NearbyStopsViewModel(
             warn("nearby stops lookup failed: ${(e as? TflException)?.message ?: e::class.simpleName}")
             return State.Failed(kindOf(e), location = fix)
         }
+        val hidden = hiddenModes()
+        // Every stop in range picked, measured and described on [compute], told back here.
+        val picked = withContext(compute) { picked(found, hidden, fix) }
+        usage(picked.usage)
+        warn(picked.warning)
+        position(picked.position, fix)
+        return picked.state
+    }
+
+    // A lookup's outcome ([resolveFrom]): the set, with what it tells [usage], [warn] and [position].
+    private class Picked(val state: State, val usage: UsageEvent, val warning: String, val position: String)
+
+    // [found] worked over for [resolveFrom], on its worker: picked without [hidden], measured from
+    // [fix], and described for the log and RecentPositions.
+    @WorkerThread
+    private fun picked(found: List<StopLocation>, hidden: Set<String>, fix: Coordinates): Picked {
         // How many of each mode are near, hidden ones included: what's around, not what's shown.
-        usage(UsageEvent.NearbyStops(found))
+        val counted = UsageEvent.NearbyStops(found)
         // A hidden mode's stops aren't picked, so they cost no request — unless that would leave
         // nothing at all: then the full set is picked and the list, filtered by mode, says what's
         // hidden rather than claiming nothing runs nearby (SPEC principle 2).
@@ -803,7 +831,6 @@ class NearbyStopsViewModel(
         } else {
             found.map { if (it.id in anchorStopIds) it.copy(latitude = fix.latitude, longitude = fix.longitude) else it }
         }
-        val hidden = hiddenModes()
         val shown = HiddenModes.stops(placed, hidden)
         val result = NearbySelection.selectClusters(
             shown, fix.latitude, fix.longitude, outerRadiusMeters = radiusMeters,
@@ -812,26 +839,23 @@ class NearbyStopsViewModel(
         // Eager empty means no stop with a route in range (each present mode contributes its
         // nearest; a route-less stop is never eager and has nothing to show) — nothing nearby runs.
         if (result.eager.isEmpty()) {
-            warn("nearby: no stops in range (${found.size} found)")
+            val warning = "nearby: no stops in range (${found.size} found)"
             // Route-less stops still land in `more`: which ones, and how far, is what explains an
             // empty list, so they go with the position to RecentPositions (never the log).
             val routeless = result.more.flatMap { it.stops }
-            position(
-                if (routeless.isEmpty()) {
-                    "nearby lookup (no stops)"
-                } else {
-                    "nearby lookup (no stops with routes): " + routeless.joinToString {
-                        val meters = if (it.id in anchorStopIds) {
-                            0.0
-                        } else {
-                            NearestStops.distanceMeters(fix.latitude, fix.longitude, it.latitude, it.longitude)
-                        }
-                        "${it.id} ${meters.roundToLong()} m"
-                    } + ","
-                },
-                fix,
-            )
-            return State.Empty(location = fix)
+            val described = if (routeless.isEmpty()) {
+                "nearby lookup (no stops)"
+            } else {
+                "nearby lookup (no stops with routes): " + routeless.joinToString {
+                    val meters = if (it.id in anchorStopIds) {
+                        0.0
+                    } else {
+                        NearestStops.distanceMeters(fix.latitude, fix.longitude, it.latitude, it.longitude)
+                    }
+                    "${it.id} ${meters.roundToLong()} m"
+                } + ","
+            }
+            return Picked(State.Empty(location = fix), counted, warning, described)
         }
         // The anchors were moved only for picking: the set keeps their real positions (a stop's
         // map opens where it stands), and their distance is set to 0 below.
@@ -868,15 +892,12 @@ class NearbyStopsViewModel(
         // persisted log gets the counts alone (maintainer, 2026-09-25).
         val eagerStops = eager.flatMap { it.stops }
         val moreStops = more.flatMap { it.stops }
-        warn("nearby: ${eagerStops.size} stops (+${moreStops.size} more)")
+        val warning = "nearby: ${eagerStops.size} stops (+${moreStops.size} more)"
         fun listed(stops: List<StopLocation>) =
             stops.joinToString { "${it.id} ${distances[it.id]?.roundToLong() ?: "?"} m" }
-        position(
-            "nearby lookup: " + listed(eagerStops) +
-                (if (moreStops.isEmpty()) "" else "; more: " + listed(moreStops)) + ",",
-            fix,
-        )
-        return State.Ready(
+        val described = "nearby lookup: " + listed(eagerStops) +
+            (if (moreStops.isEmpty()) "" else "; more: " + listed(moreStops)) + ","
+        val ready = State.Ready(
             eager = eager,
             more = more,
             distanceMeters = distances,
@@ -885,6 +906,7 @@ class NearbyStopsViewModel(
             location = fix,
             pickedHidden = hidden,
         )
+        return Picked(ready, counted, warning, described)
     }
 
     private fun kindOf(e: Throwable): DeparturesUiState.Error.Kind = errorKindOf(e)
@@ -907,7 +929,7 @@ internal fun StopLocation.toStopRef() =
  * set as it is — only while a locate is under way, or before the first one, when permission is held.
  */
 internal fun NearbyStopsViewModel.State.widgetNearbySet(locationAllowed: Boolean): Set<String>? = when (this) {
-    is NearbyStopsViewModel.State.Ready -> eagerStops.mapTo(HashSet()) { it.id }
+    is NearbyStopsViewModel.State.Ready -> eagerStopIds
     is NearbyStopsViewModel.State.Empty,
     is NearbyStopsViewModel.State.Failed,
     NearbyStopsViewModel.State.NoLocation -> emptySet()

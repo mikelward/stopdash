@@ -34,9 +34,21 @@ class NearbyStopsViewModelTest {
     // Obviously-synthetic coordinates around the origin — never a real position (SPEC Privacy).
     private val origin = Coordinates(0.0, 0.0)
 
-    @Before fun setUp() = Dispatchers.setMain(dispatcher)
+    // The app's worker, put back after each test.
+    private var appCompute: kotlinx.coroutines.CoroutineDispatcher = app.stopdash.domain.Workers.compute
 
-    @After fun tearDown() = Dispatchers.resetMain()
+    @Before fun setUp() {
+        Dispatchers.setMain(dispatcher)
+        appCompute = app.stopdash.domain.Workers.compute
+        // The stops a lookup found are worked over on the worker: on the test's dispatcher, so a
+        // test settles with that work done.
+        app.stopdash.domain.Workers.compute = dispatcher
+    }
+
+    @After fun tearDown() {
+        app.stopdash.domain.Workers.compute = appCompute
+        Dispatchers.resetMain()
+    }
 
     /** A location provider that hands back a fixed fix (or null for "no fix"); [isFallback] marks
      *  it a low-confidence last-known fix (a fresh fix failed). */
@@ -88,6 +100,42 @@ class NearbyStopsViewModelTest {
     private fun vm(location: LocationProvider, finder: StopFinder) =
         NearbyStopsViewModel(location = location, finder = finder, io = dispatcher)
             .also { it.resumeRefining() }
+
+    @Test
+    fun `the stops a lookup found are picked and measured off the main thread`() = runTest(dispatcher) {
+        // Every stop in range is picked, measured and described on the worker, never the caller's
+        // (main) thread (AGENTS.md *Main thread: read and dispatch only*): each read of what the
+        // lookup found says where it ran.
+        val onWorker = ThreadLocal<Boolean>()
+        val worker = object : kotlinx.coroutines.CoroutineDispatcher() {
+            override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) {
+                dispatcher.dispatch(context) {
+                    onWorker.set(true)
+                    try {
+                        block.run()
+                    } finally {
+                        onWorker.set(false)
+                    }
+                }
+            }
+        }
+        val reads = mutableListOf<Boolean>()
+        val stops = listOf(stop("A", 100.0, "bus"), stop("B", 200.0, "tube"), stop("C", 300.0, "bus"))
+        val found = object : AbstractList<StopLocation>() {
+            override val size: Int get() = stops.size
+            override fun get(index: Int): StopLocation {
+                reads += onWorker.get() == true
+                return stops[index]
+            }
+        }
+        val model = NearbyStopsViewModel(location = FakeLocation(origin), finder = FakeFinder { found }, io = dispatcher, compute = worker)
+        model.locate()
+        advanceUntilIdle()
+        val ready = model.state.value as NearbyStopsViewModel.State.Ready
+        assertEquals(setOf("A", "B", "C"), ready.nearbyStops.map { it.id }.toSet())
+        assertTrue(reads.isNotEmpty())
+        assertEquals(listOf(true), reads.distinct())
+    }
 
     // A stop [meters] due north of the origin (lon 0), so distance is controllable in meters.
     private fun stop(id: String, meters: Double, mode: String) = StopLocation(
