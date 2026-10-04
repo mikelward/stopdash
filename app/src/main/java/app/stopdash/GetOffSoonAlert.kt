@@ -98,6 +98,11 @@ internal object GetOffSoonAlert {
             .build()
         return try {
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
+            // Said with no stop or place: the stops left, and what they're counted from.
+            val left = riding.stopsLeft?.let { if (it == 1) "1 stop left" else "$it stops left" } ?: "stops not counted"
+            // From where the rider was seen, else the train followed's calls, timed or not (Codex, #566).
+            val by = if (riding.byPosition) "by where seen" else "by train"
+            log("on the way: get-off alert shown, $left, $by")
             true
         } catch (e: SecurityException) {
             // Permission revoked between the check and the post.

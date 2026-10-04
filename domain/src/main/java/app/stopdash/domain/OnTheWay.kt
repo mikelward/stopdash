@@ -3,6 +3,7 @@ package app.stopdash.domain
 import androidx.annotation.WorkerThread
 import java.time.Duration
 import java.time.Instant
+import kotlin.math.roundToInt
 
 /**
  * A trip the rider has started (SPEC *On the way*): the planned [route] to [destinationName], the
@@ -828,6 +829,26 @@ object OnTheWay {
      * next leg starts now, as when a rider on a train is seen at their station ([seen]).
      */
     fun rideDone(trip: ActiveTrip, now: Instant): ActiveTrip = nextLeg(trip.copy(dueOffAt = null), now).first
+
+    /**
+     * For the debug log: where a fix of [accuracyMeters] placed a rider on board by where they were
+     * seen ([ridingUnmatched]) along [leg] ([seenAlong]), as a count of its stops, never a place: so a
+     * "get off soon" that never came can be told from the fixes that missed the stop before
+     * (maintainer, 2026-10-04). Seen where they get off, whether it was said for the leg first.
+     */
+    @WorkerThread
+    fun seenAlongNote(trip: ActiveTrip, leg: TripLeg, along: Along?, accuracyMeters: Float?): String {
+        val stops = (leg.path.indexOf(leg.toId).takeIf { it >= 0 } ?: leg.path.lastIndex) + 1
+        val where = when {
+            along == null -> "not placed along the ride"
+            along.atEnd -> "seen where they get off, get-off alert ${if (trip.warnedLeg == trip.legIndex) "said" else "not said"}"
+            // A ride with no stops planned between (a bus's, say) has none to count (Codex, #566).
+            stops == 0 -> "seen along the ride, stops not counted"
+            along.atStop -> "seen at stop ${along.from + 1} of $stops"
+            else -> "seen short of stop ${along.from + 1} of $stops"
+        }
+        return "on the way: $where, fix accuracy ${accuracyMeters?.let { "${it.roundToInt()} m" } ?: "unknown"}"
+    }
 
     /**
      * When [trip]'s rider gets where they're going, as its screen shows it with the time left

@@ -2706,8 +2706,11 @@ class ActiveTripTrackerTest {
         // seen at A too (Codex, PR #449).
         trains["7"] = listOf(call("C", 11))
         now = at(8)
+        logged.clear()
         tracker.refresh(fixAt(51.515))
         assertEquals("7", tracker.trip.value?.vehicleId)
+        // The fix that found their train is logged with where it placed them, as any on such a ride (Codex, #566).
+        assertTrue(logged.any { it.startsWith("on the way: seen ") && it.endsWith("fix accuracy 20 m") })
     }
 
     @Test
@@ -2726,9 +2729,13 @@ class ActiveTripTrackerTest {
         // The route that places them can't be read: their position stands, and the refresh says it
         // couldn't update (Codex, PR #449).
         routeFails = true
+        logged.clear()
         tracker.refresh(fixAt(51.515))
         assertEquals(TripProgress.Riding(ride, "C", 1, null, true, byPosition = true), tracker.progress.value)
         assertTrue(tracker.failed.value)
+        // The fix is still logged, placed nowhere, after the failure that kept it from being placed.
+        val failedAt = logged.indexOfFirst { it.startsWith("on the way: route lookup failed for line red") }
+        assertEquals("on the way: not placed along the ride, fix accuracy 20 m", logged.getOrNull(failedAt + 1))
     }
 
     @Test
