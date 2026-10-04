@@ -2324,7 +2324,8 @@ been set, so none keeps showing what it judged before.
   rows of its own yet (shown for the first time, or for other places) shows a spinner until they
   are in, never an empty list that would read as "No departures". So is a cold load's list as its
   stops land: each stop's merge and the part-shown list are worked out off the main thread, which
-  only shows them.
+  only shows them. So is the nearby set the list is built for: the stops a lookup finds
+  are picked, measured and described off the main thread.
 - **Cold load** (nothing saved to show yet): the app waits up to **2 s** for every stop's
   departures (maintainer, 2026-09-26), showing its loading stamp meanwhile, so a typical load (well
   under a second to two) paints once, whole, with nothing to jump or tap. It doesn't wait on stop
