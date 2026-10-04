@@ -8,6 +8,7 @@ import java.time.Instant
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -117,6 +118,72 @@ class DismissedAlertsTest {
         assertEquals(setOf(other, alert), into.value)
         assertTrue(read.isNotEmpty())
         assertEquals(setOf("worker"), read.toSet())
+    }
+
+    @Test
+    fun `a dismissal whose write fails is taken back out of the caller's set`() {
+        // Added as it's counted, before its write: a write that fails (no other dismissal of it in) takes
+        // it out again, so the card stays shown, and the screen says the dismiss didn't take.
+        val row = app.stopdash.domain.DepartureRow(
+            stopId = "490000001A", stopName = "Example Road", lineId = "", lineName = "", direction = "", directionKey = "",
+            destination = "", mode = "bus", upcoming = emptyList(), fetchedAt = now, stopDisruption = "Bus Stop Closed",
+        )
+        val other = DismissedAlert("HUBKGX", "No step-free access")
+        val into = kotlinx.coroutines.flow.MutableStateFlow(setOf(other))
+        val failed = kotlinx.coroutines.flow.MutableStateFlow(false)
+        var added = false
+        val failing = object : DismissedAlertsStore {
+            override fun dismissed(): Flow<Set<DismissedAlert>> = flowOf(emptySet())
+            override suspend fun dismiss(alert: DismissedAlert) = Unit
+            override suspend fun dismiss(alert: DismissedAlert, counted: () -> Unit, notWritten: () -> Unit) {
+                counted()
+                added = alert in into.value
+                notWritten()
+                throw java.io.IOException("disk full")
+            }
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) = Unit
+        }
+        runBlocking { dismissAlert(failing, row, kotlinx.coroutines.Dispatchers.Unconfined, failed, {}, into) }
+        assertTrue(added)
+        assertEquals(setOf(other), into.value)
+        assertTrue(failed.value)
+    }
+
+    @Test
+    fun `two taps of an alert whose writes both fail leave it shown`() = kotlinx.coroutines.test.runTest {
+        // Both added as counted; the earlier fails while the later is still out, so it stays; then the
+        // later fails too, and it's taken back out: neither dismissal was written.
+        val row = app.stopdash.domain.DepartureRow(
+            stopId = "490000001A", stopName = "Example Road", lineId = "", lineName = "", direction = "", directionKey = "",
+            destination = "", mode = "bus", upcoming = emptyList(), fetchedAt = now, stopDisruption = "Bus Stop Closed",
+        )
+        val alert = DismissedAlert.ofStopClosure(row)
+        val gates = ArrayDeque<kotlinx.coroutines.CompletableDeferred<Unit>>()
+        val data = object : androidx.datastore.core.DataStore<app.stopdash.data.PersistedDismissedAlerts?> {
+            override val data: Flow<app.stopdash.data.PersistedDismissedAlerts?> = flowOf(null)
+            override suspend fun updateData(
+                transform: suspend (t: app.stopdash.data.PersistedDismissedAlerts?) -> app.stopdash.data.PersistedDismissedAlerts?,
+            ): app.stopdash.data.PersistedDismissedAlerts? {
+                kotlinx.coroutines.CompletableDeferred<Unit>().also { gates.addLast(it) }.await()
+                throw java.io.IOException("disk full")
+            }
+        }
+        val store = app.stopdash.data.DataStoreDismissedAlertsStore(data)
+        val into = kotlinx.coroutines.flow.MutableStateFlow(emptySet<DismissedAlert>())
+        val failed = kotlinx.coroutines.flow.MutableStateFlow(false)
+        val io = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler)
+        val first = launch { dismissAlert(store, row, io, failed, {}, into) }
+        val second = launch { dismissAlert(store, row, io, failed, {}, into) }
+        testScheduler.advanceUntilIdle()
+        assertEquals(setOf(alert), into.value)
+        gates.removeFirst().complete(Unit)
+        testScheduler.advanceUntilIdle()
+        first.join()
+        assertEquals(setOf(alert), into.value)
+        gates.removeFirst().complete(Unit)
+        second.join()
+        assertEquals(emptySet<DismissedAlert>(), into.value)
+        assertTrue(failed.value)
     }
 }
 

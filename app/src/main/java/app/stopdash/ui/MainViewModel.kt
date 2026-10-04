@@ -2448,13 +2448,12 @@ class MainViewModel(
         val (live, checkedPlaces, gone) = settled
         if (!current()) return
         // Reconcile the in-memory set first — safe regardless of whether the persist below succeeds.
-        // The set left is worked out on the worker too, as it grows with every dismissal; published only
-        // if no dismissal landed meanwhile, else worked out again from the newer set (Codex on #519).
-        while (gone.isNotEmpty()) {
-            val held = _dismissed.value
-            // Less any dismissed again since the mark: a tap meanwhile is the rider's newer word.
-            val left = withContext(compute) { held - dismissedStore.stillSeen(gone, since) }
-            if (_dismissed.compareAndSet(held, left)) break
+        // The set left is worked out on the worker too, as it grows with every dismissal, from the set as
+        // it is then, so a dismissal landed meanwhile stays (Codex on #519). Less any dismissed again
+        // since the mark, as one step with any tap's count and add ([DismissedAlertsStore.prune]): a tap
+        // meanwhile is the rider's newer word.
+        if (gone.isNotEmpty()) {
+            withContext(compute) { dismissedStore.prune(gone, since) { still -> _dismissed.update { it - still } } }
         }
         try {
             // NonCancellable, as a dismissal's write is: leaving while it's written would otherwise

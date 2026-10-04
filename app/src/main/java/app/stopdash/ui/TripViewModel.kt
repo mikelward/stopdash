@@ -1202,7 +1202,7 @@ class TripViewModel(
                     _dismissed.value, live, checked, dismissedStore, io, warn, "trip", since,
                     // What's let go of, from what's dismissed now: one made meanwhile stays (Codex on #519),
                     // as does one dismissed again since the mark.
-                    pruned = { gone -> _dismissed.update { it - dismissedStore.stillSeen(gone, since) } },
+                    pruned = { gone -> dismissedStore.prune(gone, since) { still -> _dismissed.update { it - still } } },
                     restored = { back -> _dismissed.update { it + back } },
                 )
                 break
@@ -1218,7 +1218,7 @@ class TripViewModel(
             _dismissed.value, answered, check.answered, clock(), dismissedStore, io, warn, "trip", since,
             // What's let go of, from what's dismissed now: one made meanwhile stays (Codex on #519), as
             // does one dismissed again since the mark.
-            pruned = { gone -> _dismissed.update { it - dismissedStore.stillSeen(gone, since) } },
+            pruned = { gone -> dismissedStore.prune(gone, since) { still -> _dismissed.update { it - still } } },
             restored = { back -> _dismissed.update { it + back } },
         )
     }
