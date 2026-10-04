@@ -876,7 +876,7 @@ class TripScreenScreenshotTest {
         composeRule.onNodeWithText(text, useUnmergedTree = true).fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!(results)
         val layout = results.single()
         // One line, nothing cut: clipped at a word, "Arrival unknown" read as "Arrival" (and
-        // "44 min · est. 10:29" as "44 min · est.").
+        // "est. 44 min · 10:29" as "est. 44 min").
         assertEquals(1, layout.lineCount)
         assertEquals(text.length, layout.getLineEnd(0))
         assertTrue("arrival ellipsized", !layout.isLineEllipsized(0))

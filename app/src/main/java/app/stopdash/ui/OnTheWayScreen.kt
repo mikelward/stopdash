@@ -56,6 +56,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -190,6 +192,12 @@ internal fun OnTheWayScreen(
             }
         },
     ) { padding ->
+        // What follows the current leg ([OnTheWay.etaTail] goes over the route's legs), worked out on the
+        // worker, never in composition (AGENTS.md *Main thread*; Codex, #526): it's the route and the leg
+        // alone, so it stands until either changes. The arrival is timed from it and the live progress at
+        // once ([OnTheWay.etaFrom]); until it's in, none shows.
+        val tailSlot = remember { mutableStateOf<Worked<Inputs, OnTheWay.EtaTail?>?>(null) }
+        val etaTail = rememberWorked(tailSlot, Inputs(trip?.route, trip?.legIndex)) { trip?.let(OnTheWay::etaTail) }
         LazyColumn(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -200,7 +208,7 @@ internal fun OnTheWayScreen(
             // The board's next train only for the ride the rider is still to board: another ride's board
             // times nothing here.
             val nextDue = nextTrains?.takeIf { it.ride == (progress as? TripProgress.Waiting)?.leg ?: (progress as? TripProgress.Lost)?.leg }?.nextDue
-            val eta = trip?.let { OnTheWay.eta(it, progress, now, nextDue) }
+            val eta = trip?.let { t -> etaTail?.let { OnTheWay.etaFrom(t, progress, now, it, nextDue) } }
             val stale = !current && fromTfl(progress)
             // The card leads with the whole trip, then the step at hand (maintainer, 2026-10-03). The next
             // ride's trains sit right under it, the board the rider is heading for, before the route, and
@@ -530,11 +538,19 @@ private fun NoteText(text: String) {
     )
 }
 
-/** [eta] as its screen says it at [now]: the minutes left, counted as the boards count, and the clock time. */
+/**
+ * [eta] as its screen says it at [now], longest first: the minutes left, counted as the boards count,
+ * and the clock time, then, for an estimate, the same without its "est.", the first thing the card
+ * drops when the row is short (maintainer, 2026-10-04).
+ */
 @Composable
-internal fun etaText(eta: OnTheWay.Eta, now: Instant): String {
+internal fun etaForms(eta: OnTheWay.Eta, now: Instant): List<String> {
     LocalConfiguration.current // Read again on a configuration change (locale, font scale).
-    return etaText(LocalContext.current.resources, eta, now)
+    val resources = LocalContext.current.resources
+    val full = etaText(resources, eta, now)
+    if (eta.live) return listOf(full)
+    val minutes = Countdown.minutes(eta.arrival, now).toInt()
+    return listOf(full, resources.getString(R.string.on_the_way_step_time, CLOCK.format(eta.arrival.atZone(LONDON)), minutes))
 }
 
 /** [etaText] from [resources]. */
@@ -552,7 +568,20 @@ internal fun etaText(resources: Resources, eta: OnTheWay.Eta, now: Instant): Str
  * (maintainer, 2026-10-03).
  */
 @Composable
-private fun NextStep(destination: String?, eta: OnTheWay.Eta?, progress: TripProgress?, now: Instant, current: Boolean) {
+internal fun NextStep(
+    destination: String?,
+    eta: OnTheWay.Eta?,
+    progress: TripProgress?,
+    now: Instant,
+    current: Boolean,
+    // The card's own: the trip screen's, or the banner atop another screen ([OnTheWayBanner]), the same card.
+    modifier: Modifier = Modifier,
+    tag: String = "onTheWayNext",
+    // The place's and the step's forms ([destinationTitleForms], [stepTitleForms]) where they were worked
+    // out on a worker ([OnTheWayBanner]); null works them out here.
+    destinationForms: List<String>? = null,
+    titleForms: List<String>? = null,
+) {
     val detail = nextStepText(progress, now, current).second
     val at = stepTime(progress, current, now)
     // Timed, the step's time stands in for its own words, which say the same; a ride's stops stay beside
@@ -574,45 +603,55 @@ private fun NextStep(destination: String?, eta: OnTheWay.Eta?, progress: TripPro
         ""
     }
     val stepAt = at?.let { stepTimeText(it, now) }.orEmpty()
-    Card(colors = nextStepColors(progress, current), modifier = Modifier.fillMaxWidth().testTag("onTheWayNext")) {
+    Card(colors = nextStepColors(progress, current), modifier = modifier.fillMaxWidth().testTag(tag)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (destination != null) {
-                // Shortened as a board shortens a place (its words, then its floor), the "To" kept whole.
-                val shortDestination = remember(destination) { DestinationAbbreviations.abbreviate(destination) }
-                val floorDestination = remember(destination) { DestinationAbbreviations.floor(destination) }
                 CardRow(
-                    listOf(destination, shortDestination, floorDestination).map { stringResource(R.string.on_the_way_title, it) },
-                    eta?.let { etaText(it, now) }.orEmpty(),
-                    startWeight = FontWeight.SemiBold,
+                    destinationForms ?: destinationTitleForms(destination),
+                    eta?.let { etaForms(it, now) }.orEmpty(),
                     endTag = "onTheWayEta",
                 )
                 HorizontalDivider(Modifier.padding(vertical = 8.dp), color = LocalContentColor.current.copy(alpha = 0.25f))
             }
             ShortenedLines(
-                stepTitleForms(progress, now, current),
+                titleForms ?: stepTitleForms(progress, now, current),
                 MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                 maxLines = 2,
                 modifier = Modifier.fillMaxWidth(),
             )
-            if (words.isNotEmpty() || stepAt.isNotEmpty()) CardRow(listOf(words), stepAt)
+            if (words.isNotEmpty() || stepAt.isNotEmpty()) CardRow(listOf(words), listOf(stepAt))
         }
     }
 }
 
-// A row of the card: the first of [start]'s forms (longest first) that fits on the left, and [end]
-// (a time) whole at the right. Where both don't fit (a narrow window, large text) the text yields,
+// A row of the card: the first of [start]'s forms (longest first) that fits on the left, and [ends]'
+// first form (a time) whole at the right. Where both don't fit, the time drops to its last form first
+// (an estimate's "est."; maintainer, 2026-10-04); where they still don't (a narrow window, large text) the text yields,
 // shortened before it's cut with a single "…" ([ShortenedText]); the time keeps its one line wherever
 // it fits beside the text's last stub (its first word and the next letter, then "…"), and wraps only past that
 // (maintainer, 2026-10-03; Codex, PR #518).
 @Composable
-private fun CardRow(start: List<String>, end: String, startWeight: FontWeight = FontWeight.Normal, endTag: String? = null) {
+private fun CardRow(start: List<String>, ends: List<String>, endTag: String? = null) {
+    // One style across the row: the place reads as the time beside it does (maintainer, 2026-10-04).
     val style = MaterialTheme.typography.bodyLarge
-    val startStyle = style.copy(fontWeight = startWeight)
+    val startStyle = style
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val measurer = rememberTextMeasurer()
         val density = LocalDensity.current
         val fontScale = density.fontScale
         val gap = 12.dp
+        // The time's first form where it fits beside the text's longest, else its last.
+        val gapPx = with(density) { gap.roundToPx() }
+        val end = remember(start, ends, style, fontScale, constraints.maxWidth, gapPx) {
+            val first = ends.firstOrNull().orEmpty()
+            if (ends.size < 2) {
+                first
+            } else {
+                val textWidth = start.firstOrNull()?.takeIf { it.isNotEmpty() }?.let { measurer.measure(it, style, maxLines = 1).size.width } ?: 0
+                val endWidth = measurer.measure(first, style, maxLines = 1).size.width
+                if (textWidth + gapPx + endWidth <= constraints.maxWidth) first else ends.last()
+            }
+        }
         // The text's last stub: its first word whole (the "To" around a place) and the next letter, then
         // "…" ("To C…"), never a bare "…" (Codex, PR #518).
         val stub = start.last().takeIf { it.isNotEmpty() }?.let { text ->
@@ -631,7 +670,16 @@ private fun CardRow(start: List<String>, end: String, startWeight: FontWeight = 
                 Spacer(Modifier.weight(1f))
             }
             if (end.isNotEmpty()) {
-                Text(end, style = style, modifier = Modifier.widthIn(max = endMax).then(endTag?.let { Modifier.testTag(it) } ?: Modifier))
+                // Read in full however it's drawn: a dropped "est." still tells a screen reader it's an
+                // estimate, as a shortened place reads in full (Codex, #526).
+                val full = ends.first()
+                Text(
+                    end,
+                    style = style,
+                    modifier = Modifier.widthIn(max = endMax)
+                        .then(endTag?.let { Modifier.testTag(it) } ?: Modifier)
+                        .then(if (end != full) Modifier.semantics { contentDescription = full } else Modifier),
+                )
             }
         }
     }
@@ -677,10 +725,26 @@ internal fun nextStepColors(progress: TripProgress?, current: Boolean = true): C
 @Composable
 private fun stepTitleForms(progress: TripProgress?, now: Instant, current: Boolean): List<String> {
     LocalConfiguration.current // Read again on a configuration change (locale, font scale).
-    val resources = LocalContext.current.resources
-    return listOf<(String) -> String>({ it }, DestinationAbbreviations::abbreviate, DestinationAbbreviations::floor)
-        .map { nextStepText(resources, progress, now, current, it).first }
+    return stepTitleForms(LocalContext.current.resources, progress, now, current)
 }
+
+/** [stepTitleForms] from [resources], for a worker ([OnTheWayBanner]). */
+internal fun stepTitleForms(resources: Resources, progress: TripProgress?, now: Instant, current: Boolean): List<String> =
+    listOf<(String) -> String>({ it }, DestinationAbbreviations::abbreviate, DestinationAbbreviations::floor)
+        .map { nextStepText(resources, progress, now, current, it).first }
+
+/** "To" the trip's [destination], shortened as a board shortens a place (its words, then its floor), the "To" kept whole. */
+@Composable
+private fun destinationTitleForms(destination: String): List<String> {
+    LocalConfiguration.current // Read again on a configuration change (locale, font scale).
+    val resources = LocalContext.current.resources
+    return remember(destination, resources) { destinationTitleForms(resources, destination) }
+}
+
+/** [destinationTitleForms] from [resources], for a worker ([OnTheWayBanner]). */
+internal fun destinationTitleForms(resources: Resources, destination: String): List<String> =
+    listOf(destination, DestinationAbbreviations.abbreviate(destination), DestinationAbbreviations.floor(destination))
+        .map { resources.getString(R.string.on_the_way_title, it) }
 
 /** What the rider does next, as a title and a detail line — the trip's screen and its banner alike. */
 @Composable
