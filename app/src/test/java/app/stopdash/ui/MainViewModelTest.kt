@@ -54,11 +54,16 @@ import androidx.lifecycle.viewmodel.initializer
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -112,7 +117,11 @@ class MainViewModelTest {
         // already-succeeded stop fail, so a reconcile's refetch can be made non-authoritative.
         val failing = mutableSetOf<String>()
 
+        // Every stop asked for, in order.
+        val arrivalsCalls = mutableListOf<String>()
+
         override suspend fun arrivals(stopId: String): List<Departure> {
+            arrivalsCalls += stopId
             if (stopId in failing) throw RuntimeException("arrivals failed for $stopId")
             return byStop.getValue(stopId).getOrThrow()
         }
@@ -3824,6 +3833,21 @@ class MainViewModelTest {
     private fun eagerOf(vararg stops: Pair<String, String>): List<NearbySelection.NearbyCluster> =
         stops.map { (id, mode) -> clusterOf("ec:$id", id to mode) }
 
+    /**
+     * The first state [vm] sets after [act] (a reconcile, worked out on the worker), as the screen
+     * sees it: before anything the refetch it starts sets. [onSet] runs as it's set.
+     */
+    private fun TestScope.firstStateAfter(vm: MainViewModel, onSet: () -> Unit = {}, act: () -> Unit): DeparturesUiState {
+        var first: DeparturesUiState? = null
+        val watch = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            vm.state.drop(1).collect { state -> if (first == null) { first = state; onSet() } }
+        }
+        act()
+        runCurrent()
+        watch.cancel()
+        return checkNotNull(first) { "the reconcile set nothing" }
+    }
+
     private fun shownIds(vm: MainViewModel) = (vm.state.value as DeparturesUiState.Loaded).stops.map { it.stopId }
 
     private fun twoStopClient() = FakeClient(
@@ -4882,16 +4906,21 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `a relocation that drops a cluster prunes its stop synchronously`() = runTest(dispatcher) {
-        val vm = tierVm(twoStopClient(), listOf(StopRef("E", "E"), StopRef("MA", "MA")), emptyList())
+    fun `a relocation that drops a cluster prunes its stop before the refetch`() = runTest(dispatcher) {
+        val client = twoStopClient()
+        val vm = tierVm(client, listOf(StopRef("E", "E"), StopRef("MA", "MA")), emptyList())
         advanceUntilIdle()
         assertTrue("MA" in shownIds(vm))
+        val fetches = client.arrivalsCalls.size
 
-        // Walk on: the fresh fix no longer offers MA's cluster. The departed stop must leave the shown list AT
-        // ONCE — before the re-fetch coroutine runs — so it can't linger with stale departures.
-        vm.reconcile(newEager = eagerOf("E" to "bus"), newMore = emptyList())
-        assertTrue("MA" !in shownIds(vm))
-        assertTrue("E" in shownIds(vm))
+        // Walk on: the fresh fix no longer offers MA's cluster. The departed stop must leave the shown list
+        // before the re-fetch runs, so it can't linger with stale departures.
+        var fetchesAtPrune = -1
+        val pruned = firstStateAfter(vm, onSet = { fetchesAtPrune = client.arrivalsCalls.size }) {
+            vm.reconcile(newEager = eagerOf("E" to "bus"), newMore = emptyList())
+        } as DeparturesUiState.Loaded
+        assertEquals(listOf("E"), pruned.stops.map { it.stopId })
+        assertEquals("no stop fetched before the prune", fetches, fetchesAtPrune)
         advanceUntilIdle()
         assertTrue("MA" !in shownIds(vm))
     }
@@ -4918,8 +4947,8 @@ class MainViewModelTest {
         assertEquals(listOf("E"), (vm.state.value as DeparturesUiState.Loaded).partialStops.values.map { it.name })
 
         // MA departs; E, still failing, stays named through the pending re-fetch.
-        vm.reconcile(newEager = eagerOf("E" to "bus"), newMore = emptyList())
-        val pruned = vm.state.value as DeparturesUiState.Loaded
+        val pruned = firstStateAfter(vm) { vm.reconcile(newEager = eagerOf("E" to "bus"), newMore = emptyList()) }
+            as DeparturesUiState.Loaded
         assertTrue(pruned.partialRefresh)
         assertTrue("the replacement fetch is pending", pruned.partialUnnamed)
         assertEquals(listOf("E"), pruned.partialStops.values.map { it.name })
@@ -4940,8 +4969,8 @@ class MainViewModelTest {
         assertEquals(listOf("F"), (vm.state.value as DeparturesUiState.Loaded).partialStops.values.map { it.name })
 
         // MA departs; F has no row, but it is still fetched and still failing, so it stays named.
-        vm.reconcile(newEager = eagerOf("E" to "bus", "F" to "bus"), newMore = emptyList())
-        val pruned = vm.state.value as DeparturesUiState.Loaded
+        val pruned = firstStateAfter(vm) { vm.reconcile(newEager = eagerOf("E" to "bus", "F" to "bus"), newMore = emptyList()) }
+            as DeparturesUiState.Loaded
         assertEquals(listOf("F"), pruned.partialStops.values.map { it.name })
         assertEquals(DeparturesUiState.Error.Kind.OFFLINE, pruned.partialReason)
     }
@@ -4967,17 +4996,18 @@ class MainViewModelTest {
         assertEquals(listOf("F", "G"), (vm.state.value as DeparturesUiState.Loaded).partialStops.values.map { it.name })
 
         // Walk on: G is now the nearer of the two, and MA departs.
-        vm.reconcile(
-            newEager = eagerOf("E" to "bus", "F" to "bus", "G" to "bus"),
-            newMore = emptyList(),
-            newDistanceMeters = mapOf("E" to 50.0, "F" to 300.0, "G" to 100.0),
-        )
-        val pruned = vm.state.value as DeparturesUiState.Loaded
+        val pruned = firstStateAfter(vm) {
+            vm.reconcile(
+                newEager = eagerOf("E" to "bus", "F" to "bus", "G" to "bus"),
+                newMore = emptyList(),
+                newDistanceMeters = mapOf("E" to 50.0, "F" to 300.0, "G" to 100.0),
+            )
+        } as DeparturesUiState.Loaded
         assertEquals(listOf("G", "F"), pruned.partialStops.values.map { it.name })
     }
 
     @Test
-    fun `a cluster losing a member prunes it synchronously`() = runTest(dispatcher) {
+    fun `a cluster losing a member prunes it before the refetch`() = runTest(dispatcher) {
         val client = FakeClient(
             mapOf(
                 "E" to Result.success(listOf(departure("victoria", "Victoria", 300))),
@@ -4991,11 +5021,227 @@ class MainViewModelTest {
 
         // The same cluster (same key) now has only PA — PB's pole crossed the radius. PB leaves at
         // once; PA stays. Same-key clusters whose MEMBERS changed are reconciled, not just dropped.
-        vm.reconcile(newEager = eagerOf("E" to "bus") + clusterOf("M1", "PA" to "bus"), newMore = emptyList())
-        assertTrue("PB" !in shownIds(vm))
+        val pruned = firstStateAfter(vm) {
+            vm.reconcile(newEager = eagerOf("E" to "bus") + clusterOf("M1", "PA" to "bus"), newMore = emptyList())
+        } as DeparturesUiState.Loaded
+        assertTrue("PB" !in pruned.stops.map { it.stopId })
         advanceUntilIdle()
         assertTrue("PA" in shownIds(vm))
         assertTrue("PB" !in shownIds(vm))
+    }
+
+    @Test
+    fun `a same-set reconcile is worked out on the worker, and a refresh meanwhile waits for it`() = runTest(dispatcher) {
+        // AGENTS.md *Main thread*: the reconcile's passes over the tiers and the shown stops wait for the
+        // worker. Until it has run nothing is pruned or fetched, and a refresh asked for meanwhile
+        // doesn't fetch the old tiers: the reconcile's own refresh fetches the new ones, once.
+        val held = mutableListOf<Pair<CoroutineContext, Runnable>>()
+        var holding = false
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (holding) held += context to block else dispatcher.dispatch(context, block)
+            }
+        }
+        var current = now
+        val client = twoStopClient()
+        val vm = MainViewModel(
+            client, listOf(StopRef("E", "E"), StopRef("MA", "MA")), clock = { current }, io = dispatcher, compute = worker,
+        )
+        advanceUntilIdle()
+        // Long enough on that nothing fetched is reused.
+        current = now.plusSeconds(600)
+        val fetches = client.arrivalsCalls.size
+
+        holding = true
+        vm.reconcile(newEager = eagerOf("E" to "bus"), newMore = emptyList())
+        vm.refresh()
+        advanceUntilIdle()
+        assertTrue("nothing pruned until the worker has run", "MA" in shownIds(vm))
+        assertEquals("nor fetched", fetches, client.arrivalsCalls.size)
+        assertTrue("but it shows as under way", vm.refreshing.value)
+
+        holding = false
+        held.forEach { (context, block) -> dispatcher.dispatch(context, block) }
+        held.clear()
+        advanceUntilIdle()
+        assertEquals(listOf("E"), shownIds(vm))
+        assertEquals("one refetch, of the new tiers", listOf("E"), client.arrivalsCalls.drop(fetches))
+        assertFalse(vm.refreshing.value)
+    }
+
+    @Test
+    fun `a journey origin the screen reports while a reconcile is on the worker is kept`() = runTest(dispatcher) {
+        // The fix holds the journey back, but before its reconcile lands the rider reveals it and the
+        // screen reports its origin: that report is newer than the fix's checks, so the origin stays
+        // and the reconcile's refresh fetches it.
+        val held = mutableListOf<Pair<CoroutineContext, Runnable>>()
+        var holding = false
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (holding) held += context to block else dispatcher.dispatch(context, block)
+            }
+        }
+        val client = ReuseCountingClient()
+        val vm = MainViewModel(client, listOf(seeds.first()), clock = { now }, io = dispatcher, compute = worker)
+        advanceUntilIdle()
+
+        holding = true
+        vm.reconcile(newEager = eagerOf(oxcId to "tube"), newMore = emptyList(), dropJourneyStopIds = setOf(ksxId))
+        vm.setJourneyStops(listOf(StopRef(ksxId, "King's Cross St. Pancras")))
+        holding = false
+        held.forEach { (context, block) -> dispatcher.dispatch(context, block) }
+        held.clear()
+        advanceUntilIdle()
+        assertEquals(1, client.arrivalCalls[ksxId])
+        assertTrue(ksxId in shownIds(vm))
+    }
+
+    @Test
+    fun `a new relocation drops a reconcile still on the worker`() = runTest(dispatcher) {
+        // The reconcile is for the fix the new relocation replaces: it neither prunes nor fetches.
+        val held = mutableListOf<Pair<CoroutineContext, Runnable>>()
+        var holding = false
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (holding) held += context to block else dispatcher.dispatch(context, block)
+            }
+        }
+        val client = twoStopClient()
+        val vm = MainViewModel(client, listOf(StopRef("E", "E"), StopRef("MA", "MA")), clock = { now }, io = dispatcher, compute = worker)
+        advanceUntilIdle()
+        val fetches = client.arrivalsCalls.size
+
+        holding = true
+        vm.reconcile(newEager = eagerOf("E" to "bus"), newMore = emptyList())
+        vm.cancelFetch()
+        holding = false
+        held.forEach { (context, block) -> dispatcher.dispatch(context, block) }
+        held.clear()
+        advanceUntilIdle()
+        assertTrue("MA" in shownIds(vm))
+        assertEquals(fetches, client.arrivalsCalls.size)
+        assertFalse(vm.refreshing.value)
+    }
+
+    @Test
+    fun `a fetch finishing while a reconcile is on the worker leaves it under way`() = runTest(dispatcher) {
+        // Holds the one thing handed to it next (the reconcile's plan), and runs the rest at once.
+        var held: Pair<CoroutineContext, Runnable>? = null
+        var holdNext = false
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (holdNext) {
+                    holdNext = false
+                    held = context to block
+                } else {
+                    dispatcher.dispatch(context, block)
+                }
+            }
+        }
+        var current = now
+        val client = ReuseCountingClient()
+        val vm = MainViewModel(client, listOf(seeds.first()), clock = { current }, io = dispatcher, compute = worker)
+        advanceUntilIdle()
+        current = now.plusSeconds(600)
+        val gate = CompletableDeferred<Unit>()
+        client.arrivalsGate = gate
+        vm.refresh()
+        runCurrent()
+
+        // The reconcile goes to the worker while that fetch is still out; the fetch then finishes.
+        holdNext = true
+        vm.reconcile(newEager = eagerOf(oxcId to "tube"), newMore = emptyList())
+        runCurrent()
+        assertNotNull("the plan is on the worker", held)
+        client.arrivalsGate = null
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertTrue("the reconcile is still under way", vm.refreshing.value)
+
+        held!!.let { (context, block) -> dispatcher.dispatch(context, block) }
+        advanceUntilIdle()
+        assertFalse(vm.refreshing.value)
+    }
+
+    @Test
+    fun `a journey report for a superseded reconcile doesn't settle the newer one's wait`() = runTest(dispatcher) {
+        // Two same-set fixes back to back, both waiting on the screen's journey report. The report that
+        // came while the first was on the worker was for the first fix: the second still waits for its own.
+        val held = mutableListOf<Pair<CoroutineContext, Runnable>>()
+        var holding = false
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (holding) held += context to block else dispatcher.dispatch(context, block)
+            }
+        }
+        val client = ReuseCountingClient()
+        val vm = MainViewModel(client, listOf(seeds.first()), clock = { now }, io = dispatcher, compute = worker)
+        advanceUntilIdle()
+        val nearFetches = client.arrivalCalls.getValue(oxcId)
+
+        holding = true
+        vm.reconcile(newEager = eagerOf(oxcId to "tube"), newMore = emptyList(), awaitJourneyStops = true)
+        advanceUntilIdle()
+        vm.journeyStopsReported()
+        vm.reconcile(newEager = eagerOf(oxcId to "tube"), newMore = emptyList(), awaitJourneyStops = true)
+        holding = false
+        held.forEach { (context, block) -> dispatcher.dispatch(context, block) }
+        held.clear()
+        advanceUntilIdle()
+        assertEquals("nothing fetched before the newer fix's report", nearFetches, client.arrivalCalls[oxcId])
+        assertFalse(vm.refreshing.value)
+
+        vm.journeyStopsReported()
+        advanceUntilIdle()
+        assertEquals(nearFetches + 1, client.arrivalCalls[oxcId])
+    }
+
+    @Test
+    fun `a same-set reconcile goes through the new tiers on the worker thread`() = runTest(dispatcher) {
+        // The new tiers, in a list that notes each thread going through it, are gone through on the
+        // worker, never on the main thread the reconcile is asked on.
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "reconcile-worker") }
+        val worker = executor.asCoroutineDispatcher()
+        val store = androidx.lifecycle.ViewModelStore()
+        try {
+            val reads = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val newEager = NotingList(eagerOf("E" to "bus"), reads)
+            val client = twoStopClient()
+            val vm = androidx.lifecycle.ViewModelProvider.create(
+                store,
+                androidx.lifecycle.viewmodel.viewModelFactory {
+                    initializer {
+                        MainViewModel(client, listOf(StopRef("E", "E"), StopRef("MA", "MA")), clock = { now }, io = worker, compute = worker)
+                    }
+                },
+            )[MainViewModel::class]
+            vm.state.first { it is DeparturesUiState.Loaded && it.pendingStops.isEmpty() }
+            vm.reconcile(newEager = newEager, newMore = emptyList())
+            // Let the worker and Main hand the reconcile back and forth until it has landed.
+            repeat(50) {
+                if ("MA" !in shownIds(vm)) return@repeat
+                executor.submit {}.get()
+                advanceUntilIdle()
+            }
+            assertEquals(listOf("E"), shownIds(vm))
+            assertTrue(reads.isNotEmpty())
+            assertEquals(setOf("reconcile-worker"), reads.toSet())
+        } finally {
+            store.clear()
+            executor.shutdown()
+            check(executor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS)) { "worker didn't stop" }
+            advanceUntilIdle()
+        }
+    }
+
+    /** [items], noting the thread of each pass over it in [reads]. */
+    private class NotingList<T>(private val items: List<T>, private val reads: MutableList<String>) : AbstractList<T>() {
+        override val size: Int get() = items.size
+        override fun get(index: Int): T = items[index]
+        override fun iterator(): Iterator<T> {
+            reads += Thread.currentThread().name.substringBefore(" @")
+            return items.iterator()
+        }
     }
 
     @Test
@@ -5647,9 +5893,9 @@ class MainViewModelTest {
         advanceUntilIdle()
         // The rider walks: King's Cross is now the nearer one, and the refresh reuses both stops.
         val clusters = seeds.map { NearbySelection.NearbyCluster("c:${it.id}", listOf(StopLocation(it.id, it.name, 0.0, 0.0)), 0.0) }
-        vm.reconcile(clusters, emptyList(), mapOf(oxcId to 900.0, ksxId to 100.0))
-        // At once, before any refetch runs.
-        val now0 = (vm.state.value as DeparturesUiState.Loaded).stops.associateBy { it.stopId }
+        // The first thing the reconcile sets, before any refetch.
+        val now0 = (firstStateAfter(vm) { vm.reconcile(clusters, emptyList(), mapOf(oxcId to 900.0, ksxId to 100.0)) } as DeparturesUiState.Loaded)
+            .stops.associateBy { it.stopId }
         assertTrue("the shown stops take the new places before the network", ksxId in now0.getValue(oxcId).nearer.ids)
         advanceUntilIdle()
         assertTrue("and the widget's stored copy, whatever the refetch does", ksxId in stored.last().getValue(oxcId).ids)
