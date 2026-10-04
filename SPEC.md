@@ -1772,7 +1772,8 @@ them there:
   move: while the app is open and a fix could move the trip on, each new fix as the rider moves
   refreshes it at once, at most every 10 s, since it's then that a train is named or a walk seen
   ended (maintainer, 2026-10-01: while the trip is shown, being current comes first, within
-  reason). Each refresh, and each Next, Back or step tapped, works the trip out off the main
+  reason). A trip started in place of another is refreshed at once, so its next ride's board shows
+  without waiting out the last trip's 30 s (maintainer, 2026-10-04). Each refresh, and each Next, Back or step tapped, works the trip out off the main
   thread, so walking a long route never holds up a frame. Still due at the
   boarding stop, the rider is **waiting** for it; once it has left, they are taken to be **on
   it**, the next stop and the stops left to getting off counted from its calls — so it works

@@ -82,6 +82,30 @@ class TripFixesTest {
     }
 
     @Test
+    fun `a trip started in place of the one waited from is refreshed at once`() = runTest {
+        val kept = MutableStateFlow<ActiveTrip?>(trip)
+        val woke = async { awaitRefresh(fixes().latest, Duration.ofSeconds(30), Duration.ofSeconds(10), kept, from = t0) }
+        advanceTimeBy(3_000)
+        // The same trip moved on (a refresh's copy) is no new trip: the wait goes on.
+        kept.value = trip.copy(legIndex = 1)
+        runCurrent()
+        assertFalse(woke.isCompleted)
+        // Start tapped on another route, inside the gap: its boards are read now, not 27 s later.
+        kept.value = ActiveTrip(TripRoute(listOf(bus)), "Stop C", startedAt = t0.plusSeconds(3))
+        runCurrent()
+        assertNull(woke.await())
+        assertEquals(3_000L, currentTime)
+    }
+
+    @Test
+    fun `a trip started while the last refresh ran is refreshed at once, not a wait later`() = runTest {
+        // Replace tapped mid-refresh: the new trip is already in place when the wait begins.
+        val kept = MutableStateFlow<ActiveTrip?>(ActiveTrip(TripRoute(listOf(bus)), "Stop C", startedAt = t0.plusSeconds(3)))
+        assertNull(awaitRefresh(fixes().latest, Duration.ofSeconds(30), Duration.ofSeconds(10), kept, from = t0))
+        assertEquals(0L, currentTime)
+    }
+
+    @Test
     fun `with no fix, the timer still refreshes`() = runTest {
         assertNull(awaitRefresh(fixes().latest, Duration.ofSeconds(30), Duration.ofSeconds(10)))
         assertEquals(30_000L, currentTime)

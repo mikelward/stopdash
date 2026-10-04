@@ -107,8 +107,11 @@ internal fun FollowActiveTrip(
             lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 var woke: TripFixes.Seen? = null
                 while (true) {
+                    // The trip refreshed, read first: one started in its place while the refresh runs wakes the wait too.
+                    val refreshed = tracker.trip.value?.startedAt
                     tracker.refresh(refreshFix(woke, fixes, tracker.trip.value, Instant.now(), take = rider))
-                    woke = awaitRefresh(fixes.latest, ON_THE_WAY_REFRESH)
+                    // A trip started in place of this one is refreshed at once, as the service does.
+                    woke = awaitRefresh(fixes.latest, ON_THE_WAY_REFRESH, trip = tracker.trip, from = refreshed)
                 }
             }
         }

@@ -244,8 +244,8 @@ internal suspend fun followThenStop(warn: (String) -> Unit, stop: () -> Unit, fa
 
 /**
  * Refreshes the trip every [every] until it's gone (arrived or ended), or until [cap] after it
- * started, once no start is in flight ([starting]). A trip gone mid-wait ends it
- * at once, so the ongoing notification never outlives the trip by a wait. A fix from [fixes] (the
+ * started, once no start is in flight ([starting]). A trip started in place of it is refreshed at
+ * once, and capped from its own start, the old one gone while it starts not taken for the end. A trip gone mid-wait ends it at once, so the ongoing notification never outlives the trip by a wait. A fix from [fixes] (the
  * trip shown, and moving) refreshes it sooner, no less than [minGap] after the last ([awaitRefresh]),
  * and is handed to that [refresh]; the timer's hands it none.
  */
@@ -277,22 +277,38 @@ internal suspend fun followTrip(
             delay(every.toMillis())
         }
     }
-    val following = trip.value ?: return
     if (read == null) return
-    // The cap counts from when the trip started ([startedFor]), not from this start of the service:
-    // one restarted after the app died, or reopened, doesn't get four more hours.
-    val left = cap.minus(startedFor(following))
-    if (left.isNegative || left.isZero) return
-    withTimeoutOrNull(left.toMillis()) {
-        var woke: TripFixes.Seen? = null
-        while (trip.value != null) {
-            keepAwake()
-            refresh(woke)
-            // Whichever comes first: the trip gone, a fix, or the timer (null).
-            woke = merge(
-                trip.filter { it == null }.map<ActiveTrip?, TripFixes.Seen?> { null },
-                flow { emit(awaitRefresh(fixes, every, minGap)) },
-            ).first()
+    var woke: TripFixes.Seen? = null
+    var refreshing: Instant? = null
+    // Each trip in turn: one started in place of another is followed from its own start. Replace ends
+    // the trip on the way before the new one is kept, so a trip gone while a start is in flight is
+    // waited through, not taken for the end.
+    while (true) {
+        starting.first { it == 0 }
+        val following = trip.value ?: return
+        // A fix taken for one trip is never handed to another's refresh: it may place the rider before
+        // this trip began.
+        if (following.startedAt != refreshing) woke = null
+        refreshing = following.startedAt
+        // The cap counts from when the trip started ([startedFor]), not from this start of the service:
+        // one restarted after the app died, or reopened, doesn't get four more hours.
+        val left = cap.minus(startedFor(following))
+        val capped = left.isNegative || left.isZero || withTimeoutOrNull(left.toMillis()) {
+            while (trip.value?.startedAt == following.startedAt) {
+                keepAwake()
+                refresh(woke)
+                // Whichever comes first: the trip gone, a fix, the timer (null), or another trip started in
+                // its place (null), whose next ride's board is read now rather than a wait later.
+                woke = merge(
+                    trip.filter { it == null }.map<ActiveTrip?, TripFixes.Seen?> { null },
+                    flow { emit(awaitRefresh(fixes, every, minGap, trip, from = following.startedAt)) },
+                ).first()
+            }
+        } == null
+        // Past this trip's cap, the service lets go, unless another is being started or was started in its place.
+        if (capped) {
+            starting.first { it == 0 }
+            if (trip.value?.startedAt == following.startedAt) return
         }
     }
 }
