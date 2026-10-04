@@ -3,6 +3,7 @@ package app.stopdash.data
 import androidx.datastore.core.DataStore
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.SteadyClock
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -221,5 +222,17 @@ class DataStoreDismissedAlertsStoreTest {
         now = start.plusSeconds(3_600)
         store.reconcile(live = setOf(dismissal), checkedPlaces = victoria)
         assertEquals(setOf(dismissal), store.dismissed().first())
+    }
+
+    @Test
+    fun `the dismissals are read off the caller's thread`() {
+        // Read and mapped on the store's worker, never the collector's (main) thread (AGENTS.md *Main
+        // thread: read and dispatch only*): collected from a single thread of its own, the read runs on
+        // the worker's.
+        OffMainReads<PersistedDismissedAlerts?>(null).use { reads ->
+            val caller = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "caller") }.asCoroutineDispatcher()
+            caller.use { kotlinx.coroutines.runBlocking(it) { DataStoreDismissedAlertsStore(reads.dataStore, compute = reads.worker).dismissed().first() } }
+            assertEquals(listOf(OffMainReads.WORKER), reads.reads)
+        }
     }
 }

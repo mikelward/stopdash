@@ -8,6 +8,7 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -104,5 +105,17 @@ class DataStoreAlertsBehindStoreTest {
         assertEquals(mapOf(verdict to t0), back?.toDomain())
         // An empty file is nothing saved yet.
         assertSame(null, AlertsBehindSerializer.readFrom(ByteArrayInputStream(ByteArray(0))))
+    }
+
+    @Test
+    fun `the verdicts are read off the caller's thread`() {
+        // Read and mapped on the store's worker, never the collector's (main) thread (AGENTS.md *Main
+        // thread: read and dispatch only*): collected from a single thread of its own, the read runs on
+        // the worker's.
+        OffMainReads<PersistedAlertsBehind?>(null).use { reads ->
+            val caller = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "caller") }.asCoroutineDispatcher()
+            caller.use { kotlinx.coroutines.runBlocking(it) { DataStoreAlertsBehindStore(reads.dataStore, compute = reads.worker).verdicts().first() } }
+            assertEquals(listOf(OffMainReads.WORKER), reads.reads)
+        }
     }
 }

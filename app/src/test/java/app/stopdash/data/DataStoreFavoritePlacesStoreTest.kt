@@ -6,6 +6,7 @@ import app.stopdash.domain.FavoriteKind
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlacesSet
 import java.io.IOException
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -158,5 +159,17 @@ class DataStoreFavoritePlacesStoreTest {
         store.remove(home.id)
         assertEquals(future, backing.data.first())
         assertTrue(warnings.isNotEmpty())
+    }
+
+    @Test
+    fun `the favorite places are read off the caller's thread`() {
+        // Read and mapped on the store's worker, never the collector's (main) thread (AGENTS.md *Main
+        // thread: read and dispatch only*): collected from a single thread of its own, the read runs on
+        // the worker's.
+        OffMainReads<PersistedFavoritePlaces?>(null).use { reads ->
+            val caller = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "caller") }.asCoroutineDispatcher()
+            caller.use { kotlinx.coroutines.runBlocking(it) { DataStoreFavoritePlacesStore(reads.dataStore, compute = reads.worker).places().first() } }
+            assertEquals(listOf(OffMainReads.WORKER), reads.reads)
+        }
     }
 }

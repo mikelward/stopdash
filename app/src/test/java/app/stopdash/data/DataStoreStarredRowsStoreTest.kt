@@ -3,6 +3,7 @@ package app.stopdash.data
 import androidx.datastore.core.DataStore
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StarredRowSet
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -64,5 +65,17 @@ class DataStoreStarredRowsStoreTest {
         store.toggle(central)
         assertEquals(future, backing.data.first())
         assertEquals(StarredRowSet.Unavailable, store.starred().first())
+    }
+
+    @Test
+    fun `the starred rows are read off the caller's thread`() {
+        // Read and mapped on the store's worker, never the collector's (main) thread (AGENTS.md *Main
+        // thread: read and dispatch only*): collected from a single thread of its own, the read runs on
+        // the worker's.
+        OffMainReads<PersistedStarredRows?>(null).use { reads ->
+            val caller = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "caller") }.asCoroutineDispatcher()
+            caller.use { kotlinx.coroutines.runBlocking(it) { DataStoreStarredRowsStore(reads.dataStore, compute = reads.worker).starred().first() } }
+            assertEquals(listOf(OffMainReads.WORKER), reads.reads)
+        }
     }
 }

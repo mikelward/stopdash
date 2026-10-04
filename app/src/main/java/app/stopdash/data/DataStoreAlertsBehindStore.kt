@@ -11,10 +11,13 @@ import app.stopdash.domain.AlertBehind
 import app.stopdash.domain.AlertPlacement
 import app.stopdash.domain.AlertsBehind
 import app.stopdash.domain.AlertsBehindStore
+import app.stopdash.domain.Workers
 import java.io.InputStream
 import java.io.OutputStream
 import java.time.Instant
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -32,11 +35,14 @@ import kotlinx.serialization.json.Json
  */
 class DataStoreAlertsBehindStore internal constructor(
     private val dataStore: DataStore<PersistedAlertsBehind?>,
+    // Where the stored file is turned into the app's values: work that grows with what's stored, never
+    // on the collector's thread, which can be the main one (AGENTS.md *Main thread: read and dispatch only*).
+    private val compute: CoroutineDispatcher = Workers.compute,
     private val clock: () -> Instant = Instant::now,
 ) : AlertsBehindStore {
 
     override fun verdicts(): Flow<Set<AlertBehind>> =
-        dataStore.data.map { stored -> AlertsBehind.standing(stored?.toDomain().orEmpty(), clock()) }
+        dataStore.data.map { stored -> AlertsBehind.standing(stored?.toDomain().orEmpty(), clock()) }.flowOn(compute)
 
     override suspend fun record(placement: AlertPlacement) {
         val now = clock()
