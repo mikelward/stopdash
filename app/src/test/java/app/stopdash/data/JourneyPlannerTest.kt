@@ -268,15 +268,35 @@ class JourneyPlannerTest {
         val routes = client(broken, warn = { warnings += it }).journeys("910GHGHI", TripDestination.Stop("940GZZLUCYF"))
         // Every request got the same answer: the same two routes, and each says what it dropped.
         assertEquals(2, routes.size)
+        // Each request's timing line aside ([`each Planner request says how long it took`]).
+        val dropped = warnings.untimed()
         assertEquals(
             setOf(
                 "journey planner: 1 of 3 routes unreadable",
                 "journey planner (fewest changes): 1 of 3 routes unreadable",
                 "journey planner (least walking): 1 of 3 routes unreadable",
             ),
-            warnings.toSet(),
+            dropped.toSet(),
         )
-        assertEquals(3, warnings.size)
+        assertEquals(3, dropped.size)
+    }
+
+    @Test
+    fun `each Planner request says how long it took`() = runTest {
+        // A slow trip page says whether its plan held it up: one line per request, with its routes
+        // and milliseconds, and nothing that names either end.
+        val warnings = mutableListOf<String>()
+        client(fixture, warn = { warnings += it }).journeys("910GHGHI", TripDestination.Stop("940GZZLUCYF"))
+        val timed = warnings.map { it.replace(Regex("in \\d+ ms \\(waited \\d+ ms to send\\)"), "in N ms (waited W ms to send)") }
+        assertEquals(
+            setOf(
+                "journey planner: 3 routes in N ms (waited W ms to send)",
+                "journey planner (fewest changes): 3 routes in N ms (waited W ms to send)",
+                "journey planner (least walking): 3 routes in N ms (waited W ms to send)",
+            ),
+            timed.toSet(),
+        )
+        assertTrue(warnings.none { "910GHGHI" in it || "940GZZLUCYF" in it })
     }
 
     @Test
@@ -347,9 +367,11 @@ class JourneyPlannerTest {
         assertEquals(emptyList<Any>(), routes)
         assertEquals(
             setOf("journey planner: HTTP 300", "journey planner (fewest changes): HTTP 300", "journey planner (least walking): HTTP 300"),
-            warnings.toSet(),
+            warnings.untimed().toSet(),
         )
-        assertEquals(3, warnings.size)
+        assertEquals(3, warnings.untimed().size)
+        // Each still timed, by what came of it.
+        assertEquals(3, warnings.count { Regex(": HTTP 300 in \\d+ ms \\(waited \\d+ ms to send\\)$").containsMatchIn(it) })
     }
 
     @Test
@@ -536,7 +558,7 @@ class JourneyPlannerTest {
         val to = TripDestination.Place(Coordinates(51.5138, -0.0984), "St Paul's")
         val routes = planner(index::stationOf).fewestChangesVia(from, to, "490G000672")
         assertEquals(3, routes.size)
-        assertEquals(emptyList<String>(), warnings)
+        assertEquals(emptyList<String>(), warnings.untimed())
         val thameslink = routes.filter { route -> route.rides.single().lineId == "thameslink" }
         assertEquals(2, thameslink.size)
         thameslink.forEach { route ->
@@ -550,7 +572,7 @@ class JourneyPlannerTest {
         // With no index to place the platform, those routes can't be read, as before.
         warnings.clear()
         assertEquals(listOf("46"), planner { null }.fewestChangesVia(from, to, "490G000672").map { it.rides.single().lineId })
-        assertEquals(listOf("journey planner (fewest changes via a stop): 2 of 3 routes unreadable"), warnings)
+        assertEquals(listOf("journey planner (fewest changes via a stop): 2 of 3 routes unreadable"), warnings.untimed())
     }
 
     @Test
@@ -640,8 +662,11 @@ class JourneyPlannerTest {
                 if (failing(request)) "{}" to HttpStatusCode.ServiceUnavailable else walkOnly(12) to HttpStatusCode.OK
             }.journeys(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"))
             assertEquals(1, routes.size)
-            assertEquals(1, warnings.size)
-            assertTrue(warnings.single(), warnings.single().startsWith("$which: "))
+            assertEquals(1, warnings.untimed().size)
+            assertTrue(warnings.untimed().single(), warnings.untimed().single().startsWith("$which: "))
+            // The failed request is timed too: it can be the slow one holding the plan up (Codex, #563).
+            val timedFailure = warnings.filter { TIMED.containsMatchIn(it) && !Regex(": \\d+ routes in ").containsMatchIn(it) }
+            assertEquals(warnings.toString(), 1, timedFailure.size)
         }
     }
 
@@ -656,9 +681,11 @@ class JourneyPlannerTest {
                 }.journeys(TripOrigin.Stop("940GZZLUKSX"), TripDestination.Stop("940GZZLUEUS"))
             }
         }
-        assertEquals(2, warnings.size)
+        assertEquals(2, warnings.untimed().size)
+        // And every one timed, by what came of it.
+        assertEquals(warnings.toString(), 3, warnings.size - warnings.untimed().size)
         for (which in listOf("journey planner (fewest changes): ", "journey planner (least walking): ")) {
-            val warning = warnings.single { it.startsWith(which) }
+            val warning = warnings.untimed().single { it.startsWith(which) }
             assertTrue(warning, warning.removePrefix(which) !in setOf("", "null", "RateLimited"))
         }
     }
@@ -674,5 +701,13 @@ class JourneyPlannerTest {
             mode = TflJourneyIdentifierDto("national-rail", "National Rail"),
         ).toLegOrNull(Instant.parse("2026-09-30T08:00:00Z"))
         assertEquals("London Northwestern Railway", leg?.lineName)
+    }
+
+    // The log less each request's timing line ([`each Planner request says how long it took`]).
+    private fun List<String>.untimed() = filterNot { TIMED.containsMatchIn(it) }
+
+    private companion object {
+        // A request's timing line, whatever its outcome.
+        val TIMED = Regex(": [^:]+ in \\d+ ms \\((waited \\d+ ms to send|not sent)\\)$")
     }
 }

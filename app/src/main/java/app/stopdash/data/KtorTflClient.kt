@@ -220,7 +220,47 @@ class KtorTflClient(
         via: String? = null,
     ): List<TripRoute> {
         val source = planSource(preference, via)
-        return tflRequest { key ->
+        // How long the Planner took, logged once for every request whatever its outcome (it can take
+        // seconds, so a slow trip page says whether its plan or what follows held it up; a failed one
+        // can be the slow one, Codex, #563), from before the request waits for a slot and the rate
+        // limit, with that wait said apart. Counts, an outcome's kind and milliseconds only.
+        val asked = kotlin.time.TimeSource.Monotonic.markNow()
+        var waited: Long? = null
+        var outcome: String? = null
+        try {
+            return planRequest(source, fromParam, toParam, speed, maxWalk, stepFree, modes, preference, via) { status ->
+                if (waited == null) waited = asked.elapsedNow().inWholeMilliseconds
+                status?.let { outcome = it }
+            }.also { routes -> if (outcome == null) outcome = "${routes.size} routes" }
+        } catch (e: CancellationException) {
+            outcome = "canceled"
+            throw e
+        } catch (e: Exception) {
+            // Recorded for the timing line below, then left to the caller as it was.
+            outcome = e::class.simpleName ?: "failed"
+            throw e
+        } finally {
+            val sent = waited?.let { "waited $it ms to send" } ?: "not sent"
+            warn("$source: ${outcome ?: "failed"} in ${asked.elapsedNow().inWholeMilliseconds} ms ($sent)")
+        }
+    }
+
+    // [plan]'s request itself: [progress] is told when it's sent (null) and of an outcome it handles
+    // itself (the Planner's 300), for [plan]'s timing line.
+    private suspend fun planRequest(
+        source: String,
+        fromParam: String,
+        toParam: String,
+        speed: WalkingSpeed,
+        maxWalk: MaxWalk,
+        stepFree: StepFree,
+        modes: TripModes,
+        preference: String?,
+        via: String?,
+        progress: (String?) -> Unit,
+    ): List<TripRoute> =
+        tflRequest { key ->
+            progress(null)
             val dto = try {
                 httpClient.get("$baseUrl/Journey/JourneyResults/$fromParam/to/$toParam") {
                     // No leg asks the rider to walk longer than they chose ([MaxWalk]; the Planner's
@@ -245,6 +285,7 @@ class KtorTflClient(
                 // trip has no route StopDash can stand behind, so none is shown. The two ends together
                 // are a trip the rider chose, so neither is logged (SPEC *Privacy*).
                 warn("$source: HTTP ${e.response.status.value}")
+                progress("HTTP ${e.response.status.value}")
                 return@tflRequest emptyList()
             }
             val routes = dto.toRoutes(stationOf = stationOf)
@@ -258,7 +299,6 @@ class KtorTflClient(
             }
             routes
         }
-    }
 
     // What a Planner request is called in the log: which of a plan's requests it was.
     private fun planSource(preference: String?, via: String?): String = when {
