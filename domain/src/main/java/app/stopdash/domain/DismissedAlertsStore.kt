@@ -34,6 +34,21 @@ interface DismissedAlertsStore {
     suspend fun dismiss(alert: DismissedAlert)
 
     /**
+     * [dismiss], telling [counted] once the dismissal is counted ([mark]), before it's written: as one
+     * step with the count, so a check's in-memory [prune] lands wholly before the tap (whose count is
+     * then newer than the check's mark, so it stays) or wholly after it (taking it away only for a check
+     * that started after the tap). [counted] adds the alert to the caller's set; it must be quick. Once
+     * the last of the alert's dismissals then being written ends with none of them written, and the stored
+     * set doesn't hold it anyway, [notWritten] is told, for each of them, so every caller takes it back
+     * out of its set; one written keeps it there.
+     * [notWritten] must be quick too.
+     */
+    suspend fun dismiss(alert: DismissedAlert, counted: () -> Unit, notWritten: () -> Unit) {
+        dismiss(alert)
+        counted()
+    }
+
+    /**
      * Prune the stored set against the notices still shown ([Dismissed.reconcile]): for a place in
      * [checkedPlaces] (queried this cycle, disruption lookup succeeded), drop any dismissal whose
      * signature is no longer in [live] — its notice resolved. A place not in [checkedPlaces] is left
@@ -64,6 +79,15 @@ interface DismissedAlertsStore {
      */
     suspend fun dismissedAgain(alerts: Set<DismissedAlert>, since: DismissalMarks): Set<DismissedAlert> =
         alerts - stillSeen(alerts, since)
+
+    /**
+     * Tells [pruned] which of [alerts] a check that read its set at `since` may let go of in memory
+     * ([stillSeen]), as one step with any dismissal's count and its `counted` ([dismiss]): so a tap
+     * counted after the check's mark, and added to the set, is never taken away by its prune. [pruned]
+     * takes them out of the caller's set; it must be quick.
+     */
+    fun prune(alerts: Set<DismissedAlert>, since: DismissalMarks, pruned: (Set<DismissedAlert>) -> Unit) =
+        pruned(stillSeen(alerts, since))
 
     /**
      * [reconcile], letting go only of dismissals in [seen], the set the check settled in memory, and

@@ -76,16 +76,24 @@ internal suspend fun dismissAlert(
     warn: (String) -> Unit,
     // The caller's dismissed set, which follows the store: told too, as a store already holding the
     // alert (a check let go of it in memory, its write not yet in) changes nothing and says nothing.
+    // Added as the dismissal is counted, in one step with it, so no check's prune can land in between
+    // ([DismissedAlertsStore.prune]).
     into: MutableStateFlow<Set<DismissedAlert>>? = null,
 ) {
     val alert = DismissedAlert.of(row) ?: return
     try {
         // NonCancellable, like a star: a dismiss tapped just before leaving the page still lands.
+        // On [io]: adding copies the whole set, never on the caller's (the main) thread. Already there
+        // (the store's write came through first), the set is left as it is.
+        // A write that fails takes it back out, so the card comes back and the screen says the dismiss
+        // didn't take: once no other dismissal of it is written or still being written (the store's say,
+        // told to the last of them to fail), as one of those keeps it.
         withContext(NonCancellable + io) {
-            store.dismiss(alert)
-            // On [io] too: adding copies the whole set, never on the caller's (the main) thread. Already
-            // there (the store's write came through first), the set is left as it is.
-            into?.update { if (alert in it) it else it + alert }
+            store.dismiss(
+                alert,
+                counted = { into?.update { if (alert in it) it else it + alert } },
+                notWritten = { into?.update { it - alert } },
+            )
         }
     } catch (e: CancellationException) {
         throw e

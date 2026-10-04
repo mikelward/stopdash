@@ -87,10 +87,12 @@ exercises the whole spine the widget later renders from.
         its requests, so a line alert dismissed in the app while it runs isn't written away.
   - [x] Each place and line settles on its own answer's dismissal count, so a reused closure or line
         answer no longer keeps the fresh verdicts elsewhere in the same check from letting go.
-  - [ ] A tap's in-memory add lands after its store write, so a check that started after the tap was
-        counted and settled in that instant can have its prune undone in memory, hiding the alert's
-        recurrence until a later check lets it go. Not reachable in practice (the check must ask TfL
-        and settle between two statements); counting, adding and writing as one step would close it.
+  - [x] A tap is counted and added to the screen's set in one step, and a check's in-memory prune
+        takes the same lock, so a newer check's prune is never undone by the tap's add.
+  - [ ] A failed dismiss tap isn't rolled back while the stored set holds the alert, but an older
+        refresh settling meanwhile may have kept that stored record only because the tap was in flight.
+        The alert then stays hidden until the next refresh lets it go (a minute or so). It needs a disk
+        write failure during that settle; tracking why each record was kept would close it.
 - [ ] Settle stop closures by a single owner per place: the trip's checks take each stop over before
       their request (`closureAsks`) and hand it back if canceled first, but a check that has already
       settled without a stop it lost doesn't take it back, so one left unanswered by a canceled

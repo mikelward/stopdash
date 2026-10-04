@@ -19,6 +19,7 @@ import java.io.OutputStream
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -67,40 +68,66 @@ class DataStoreDismissedAlertsStore internal constructor(
         }.flowOn(compute)
 
     // Each alert's dismissals by count, for [reconcile] to tell one made after a check read its set
-    // ([mark]) from one it saw: in memory, as every check that reads the set runs in this process. The
-    // latest written ([written]) and those still being written ([writing]), kept apart so a write that
-    // fails drops its own count and nothing else.
+    // ([mark]) from one it saw: in memory, as every check that reads the set runs in this process. Those
+    // written ([written]) and those still being written ([writing]), kept apart so a write that fails
+    // drops its own count and nothing else.
     private val dismissals = AtomicLong()
-    private val written = ConcurrentHashMap<DismissedAlert, Long>()
+    // The count [mark] reads: set only once the dismissal is registered as being written, in the same
+    // step, so no mark covers a dismissal [reconcile] can't yet see to wait for.
+    @Volatile private var marked = 0L
+    // Every count whose update ran, not only the latest: a write that fails takes out its own count and
+    // no other, whatever order the updates and their failures land in.
+    private val written = ConcurrentHashMap<DismissedAlert, Set<Long>>()
     private val writing = ConcurrentHashMap<DismissedAlert, Set<Long>>()
     // Bumped as each dismissal's write ends, written or not: what [dismissedAgain] waits on.
     private val ended = MutableStateFlow(0L)
+    // Held while a dismissal is counted and added to its caller's set, and while a check prunes its set
+    // ([prune]), so the two never interleave.
+    private val counting = Any()
+    // Each alert's callers to tell if none of its dismissals still being written is written in the end
+    // ([dismiss]'s `notWritten`): every caller, as two screens can dismiss it at once. Under [counting].
+    private val unwritten = HashMap<DismissedAlert, MutableList<() -> Unit>>()
 
-    override fun mark(): Long = dismissals.get()
+    override fun mark(): Long = marked
 
     override fun stillSeen(alerts: Set<DismissedAlert>, since: DismissalMarks): Set<DismissedAlert> =
         alerts.filterTo(HashSet()) { latest(it) <= since.of(it) }
 
+    override fun prune(alerts: Set<DismissedAlert>, since: DismissalMarks, pruned: (Set<DismissedAlert>) -> Unit) =
+        synchronized(counting) { pruned(stillSeen(alerts, since)) }
+
     override suspend fun dismissedAgain(alerts: Set<DismissedAlert>, since: DismissalMarks): Set<DismissedAlert> {
         ended.first { alerts.none { alert -> writing[alert]?.any { it > since.of(alert) } == true } }
-        return alerts.filterTo(HashSet()) { (written[it] ?: 0L) > since.of(it) }
+        return alerts.filterTo(HashSet()) { latestWritten(it) > since.of(it) }
     }
 
     // [alert]'s latest dismissal by count, written or being written; 0 for none this process made.
     private fun latest(alert: DismissedAlert): Long =
-        maxOf(written[alert] ?: 0L, writing[alert]?.maxOrNull() ?: 0L)
+        maxOf(latestWritten(alert), writing[alert]?.maxOrNull() ?: 0L)
 
-    override suspend fun dismiss(alert: DismissedAlert) {
-        // Counted before it's written, so a check that reads the set with it in has a mark past it.
-        val count = dismissals.incrementAndGet()
-        writing.compute(alert) { _, counts -> counts.orEmpty() + count }
+    // [alert]'s latest written dismissal by count; 0 for none.
+    private fun latestWritten(alert: DismissedAlert): Long = written[alert]?.maxOrNull() ?: 0L
+
+    override suspend fun dismiss(alert: DismissedAlert) = dismiss(alert, counted = {}, notWritten = {})
+
+    override suspend fun dismiss(alert: DismissedAlert, counted: () -> Unit, notWritten: () -> Unit) {
+        // Counted before it's written, so a check that reads the set with it in has a mark past it; told
+        // to the caller in the same step ([prune]).
+        val count = synchronized(counting) {
+            dismissals.incrementAndGet().also { count ->
+                writing.compute(alert) { _, counts -> counts.orEmpty() + count }
+                marked = count
+                unwritten.getOrPut(alert) { ArrayList() } += notWritten
+                counted()
+            }
+        }
         try {
             dataStore.updateData { stored ->
                 // Counted as written inside the update, in line with every check's ([settle]), so a check
-                // after it sees it and one before it never clears it. The highest count kept, as two
-                // dismissals of it at once can land in either order; recorded while it's still one being
+                // after it sees it and one before it never clears it. Every count kept, as two dismissals of
+                // it at once can land, and fail, in either order; recorded while it's still one being
                 // written, so it's never missing between the two.
-                written.merge(alert, count, ::maxOf)
+                written.compute(alert) { _, counts -> counts.orEmpty() + count }
                 // A present-but-unreadable file reads as empty here too, so a dismiss on top of it
                 // starts a fresh readable set rather than being lost — the safe direction (a stale
                 // dismissal at worst reappears), consistent with [dismissed]'s empty fallback.
@@ -108,25 +135,55 @@ class DataStoreDismissedAlertsStore internal constructor(
                 Dismissed.dismiss(stored?.toDomain() ?: emptySet(), alert).toPersisted(stored?.ended().orEmpty() - alert)
             }
         } catch (e: Throwable) {
-            // Not written after all: its count goes, unless a later one of the same alert replaced it.
-            written.remove(alert, count)
+            // Not written after all: its count goes, and only its own, so any other written stays.
+            synchronized(counting) { written.computeIfPresent(alert) { _, counts -> (counts - count).ifEmpty { null } } }
             throw e
         } finally {
-            // Written or not (a failure isn't a dismissal a check must keep), no longer being written.
-            writing.computeIfPresent(alert) { _, counts -> (counts - count).ifEmpty { null } }
+            val callers = synchronized(counting) {
+                // Written or not (a failure isn't a dismissal a check must keep), no longer being written.
+                writing.computeIfPresent(alert) { _, counts -> (counts - count).ifEmpty { null } }
+                // The last of its dismissals out, and none written: each caller takes it back out of its set,
+                // unless it's stored all the same (below). One written keeps it there.
+                if (writing[alert] == null) unwritten.remove(alert).orEmpty().takeIf { written[alert] == null } else null
+            }
             ended.update { it + 1 }
+            if (!callers.isNullOrEmpty()) rollBack(alert, callers)
+        }
+    }
+
+    // Tells [callers] to take [alert] back out of their sets, its dismissals all failed, unless the stored
+    // set holds it anyway (dismissed before this process started, which [written] doesn't know of). A
+    // set that can't be read rolls back: the card shows, never a dismissal kept that may not be stored.
+    private suspend fun rollBack(alert: DismissedAlert, callers: List<() -> Unit>) {
+        val stored = try {
+            alert in dismissed().first()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            warn("dismissed alerts unreadable after a failed dismiss: ${e::class.simpleName}")
+            false
+        }
+        if (stored) return
+        synchronized(counting) {
+            // Dismissed again meanwhile: that dismissal decides for them all, as the last of its kind out.
+            if (writing[alert] != null) unwritten.getOrPut(alert) { ArrayList() } += callers
+            else if (written[alert] == null) callers.forEach { it() }
         }
     }
 
     override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) =
         settle { current -> Dismissed.reconcile(current, live, checkedPlaces) }
 
-    override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: DismissalMarks) =
+    override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: DismissalMarks) {
+        // Any dismissal counted before the check's mark still being written lands first, so its write
+        // never comes after the check's and stores again what the check let go of.
+        ended.first { writing.none { (alert, counts) -> counts.any { it <= since.of(alert) } } }
         settle { current ->
             // An alert dismissed again since the check read the set is the rider's newer word: kept.
             // Told inside the update, after any dismissal written before it, which counted itself first.
             Dismissed.reconcile(current, live, checkedPlaces, stillSeen(seen, since))
         }
+    }
 
     // The stored set as [reconciled] keeps it, written in one update.
     private suspend fun settle(reconciled: (Set<DismissedAlert>) -> Set<DismissedAlert>) {
