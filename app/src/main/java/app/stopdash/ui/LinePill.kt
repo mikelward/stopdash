@@ -27,10 +27,12 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import app.stopdash.domain.LineRef
@@ -158,17 +160,15 @@ fun SharedLinePill(lines: List<LineRef>, description: String, modifier: Modifier
     // (maintainer, 2026-09-28). Never narrower than a two-character code, though, so a one-character
     // route beside a longer one ("4/N20") still gets room of its own (maintainer, 2026-09-28).
     val measurer = rememberTextMeasurer()
-    val baseStyle = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+    val baseStyle = pillLabelStyle()
     val naturalWidths = with(density) {
         val minWidth = measurer.measure(MIN_SEGMENT_CODE, baseStyle, maxLines = 1).size.width
         segments.map {
             maxOf(minWidth, measurer.measure(it.code, baseStyle, maxLines = 1).size.width).toDp()
         }
     }
-    // A lone pill's side padding at the pill's two ends; half that either side of a cut, whose lean
-    // already sets the codes apart.
-    fun startPad(i: Int) = if (i == 0) SEGMENT_PADDING else CUT_PADDING
-    fun endPad(i: Int) = if (i == segments.lastIndex) SEGMENT_PADDING else CUT_PADDING
+    fun startPad(i: Int) = segmentStartPad(i)
+    fun endPad(i: Int) = segmentEndPad(i, segments.lastIndex)
     val shape = RoundedCornerShape(8.dp)
     // Never wider than the room it's given (many lines, a narrow screen, large text): each segment
     // shrinks alike, its label ellipsizing, so the segments stay equal and under their labels.
@@ -253,6 +253,36 @@ fun SharedLinePill(lines: List<LineRef>, description: String, modifier: Modifier
 
 // A [SharedLinePill]'s padding at its two ends, as a lone pill's.
 private val SEGMENT_PADDING = 8.dp
+
+// A [SharedLinePill] segment's padding: a lone pill's side padding at the pill's two ends; half that
+// either side of a cut, whose lean already sets the codes apart.
+private fun segmentStartPad(i: Int) = if (i == 0) SEGMENT_PADDING else CUT_PADDING
+private fun segmentEndPad(i: Int, last: Int) = if (i == last) SEGMENT_PADDING else CUT_PADDING
+
+/** The width, in pixels, every lone [LinePill] takes at [density]'s font scale: its fixed label width and padding. */
+internal fun linePillWidthPx(density: Density): Int = with(density) {
+    (LINE_PILL_LABEL_WIDTH * fontScale).roundToPx() + 2 * SEGMENT_PADDING.roundToPx()
+}
+
+/**
+ * The width, in pixels, a [SharedLinePill] for [lines] takes when it has the room, worked out as it
+ * lays itself out, so a column sized to it fits the pill exactly. [measure] gives a code's width in
+ * pixels in the pill's label style ([pillLabelStyle]); a lone pill needs none ([linePillWidthPx]).
+ */
+internal fun sharedPillWidthPx(lines: List<LineRef>, density: Density, measure: (String) -> Int): Int {
+    if (lines.size == 1) return linePillWidthPx(density)
+    val codes = cutPillCodes(lines)
+    val min = measure(MIN_SEGMENT_CODE)
+    return with(density) {
+        codes.indices.sumOf { i ->
+            maxOf(min, measure(codes[i])).toDp().roundToPx() + segmentStartPad(i).roundToPx() + segmentEndPad(i, codes.lastIndex).roundToPx()
+        }
+    }
+}
+
+/** The style a pill's code is set in, before any halo: what [sharedPillWidthPx] measures in. */
+@Composable
+internal fun pillLabelStyle(): TextStyle = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
 
 // A [SharedLinePill] segment's padding either side of a cut.
 private val CUT_PADDING = 4.dp
