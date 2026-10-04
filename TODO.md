@@ -68,8 +68,8 @@ exercises the whole spine the widget later renders from.
       `withBundledPositions`). The DataStore stores (starred rows and journeys, dismissed alerts, alerts
       behind, favorite places) now read and map on the worker (#538). Not a closed list: sweep the screens, the stores, and every view-model
       function a click handler or effect calls, for any pass over a collection that grows with its
-      input on the main thread (the licenses dialog's scan of every library in `remember`,
-      `LicensesScreen`, among them) before checking it off.
+      input on the main thread before checking it off. (The licenses dialog now opens the tapped
+      library as it is, and finds a restored one again on the worker.)
 - [ ] Clear the `WorkerThreadCall` lint baseline (`app/lint-baseline.xml`): composition that reaches a
       `@WorkerThread` domain function, directly or through a helper, today MainScreen's near-me rows,
       journey cards and alert placement, OnTheWayScreen's next trains, TripScreen's line rows and
