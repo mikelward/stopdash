@@ -447,13 +447,34 @@ class MainViewModel(
 
     /** The journeys' far ends to check for a closure; a change checks them at once. */
     fun setJourneyDestinations(stops: List<StopRef>) {
-        if (stops.toSet() == journeyDestinations.toSet()) return
-        journeyDestinations = stops
-        val ids = stops.mapTo(HashSet()) { it.id }
-        _journeyDestinationStops.value = _journeyDestinationStops.value.filter { it.stopId in ids }
-        _journeyDestinationsUnknown.value = _journeyDestinationsUnknown.value.filterTo(HashSet()) { it in ids }
-        checkJourneyDestinations()
+        // Worked out on the worker, as it walks every destination (AGENTS.md *Main thread*); one reported
+        // while another is out is worked out after it, so the latest is applied last.
+        journeyDestinationsReport = stops
+        if (journeyDestinationsJob?.isActive == true) return
+        journeyDestinationsJob = viewModelScope.launch {
+            while (true) {
+                val stops = journeyDestinationsReport ?: break
+                val held = journeyDestinations
+                val shown0 = _journeyDestinationStops.value
+                val unknown0 = _journeyDestinationsUnknown.value
+                val kept = withContext(compute) { destinationsKept(stops, held, shown0, unknown0) }
+                // Worked out again from them if what it went by changed meanwhile (a check landed, say).
+                if (journeyDestinations !== held || _journeyDestinationStops.value !== shown0 || _journeyDestinationsUnknown.value !== unknown0) continue
+                if (journeyDestinationsReport === stops) journeyDestinationsReport = null
+                // The same set: nothing to apply.
+                val (shown, unknown) = kept ?: continue
+                journeyDestinations = stops
+                _journeyDestinationStops.value = shown
+                _journeyDestinationsUnknown.value = unknown
+                checkJourneyDestinations()
+            }
+        }
     }
+
+    // The journey destinations the screen reported last, not yet applied, and the job applying them
+    // ([setJourneyDestinations]).
+    private var journeyDestinationsReport: List<StopRef>? = null
+    private var journeyDestinationsJob: Job? = null
 
     // Each destination closure request in flight. Run in [viewModelScope], not the check's own job, so
     // a check restarted by a changed destination set (routes arriving one by one) waits on the same
@@ -2754,6 +2775,23 @@ internal object WidgetJourneysWrites {
  * is checked (a suspended one with no predictions still shows on the card), then the journey origins
  * not already near.
  */
+/**
+ * What's kept of the destinations' last checks ([shown]) and of those unknown ([unknown]) for the
+ * journey destinations the screen reported ([stops], replacing [before]): those still among them.
+ * Null when they're the same set, so nothing changes ([MainViewModel.setJourneyDestinations]).
+ */
+@WorkerThread
+private fun destinationsKept(
+    stops: List<StopRef>,
+    before: List<StopRef>,
+    shown: List<StopArrivals>,
+    unknown: Set<String>,
+): Pair<List<StopArrivals>, Set<String>>? {
+    if (stops.toSet() == before.toSet()) return null
+    val ids = stops.mapTo(HashSet()) { it.id }
+    return shown.filter { it.stopId in ids } to unknown.filterTo(HashSet()) { it in ids }
+}
+
 /**
  * Whether the journey stops the screen reported ([stops], replacing [before]) call for a refetch
  * ([MainViewModel.setJourneyStops]); null when they're the same set, so nothing changes.
