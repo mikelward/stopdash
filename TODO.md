@@ -50,6 +50,11 @@ exercises the whole spine the widget later renders from.
       followed into its getter (`show(model.rows)` whose `get()` reaches marked work, or a
       `@get:WorkerThread` property); no getter in the app reaches marked work yet.
       Static analysis can't be complete; fix each when one bites or a review shows it's cheap.
+- [ ] Trip page: a cut pill's row settles into the stop column a moment after the list first draws.
+      The column's width needs the cut pills measured, which runs on the worker (AGENTS.md *Main
+      thread*), so until it answers a row stands out by the cut pill's extra width, as a card's times
+      read "Loading". If it shows on a device, measure the pills with the plan, before the cards reach
+      the screen.
 
 - [ ] Screenshot job — record + upload landed; **drift-refresh + visual-diff apparatus
       wired**, awaiting one operator step. The `screenshot-tests` job now checks out the PR

@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -55,8 +56,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFontFamilyResolver
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
@@ -66,12 +68,17 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.Countdown
@@ -1384,6 +1391,15 @@ private fun RouteList(
     // the rest under "Other" (maintainer, 2026-09-30): worked out once per set of cards, not on
     // every recomposition (off the main thread with the rest of the card work, TODO.md).
     val shown = remember(cards) { headedCards(cards.map { it.first() }) }
+    // The width of the list's widest pill ([pillSlotWidthPx]), worked out on the worker: each row's pill
+    // column is that wide, so every stop name starts in one place down the list, a cut pill's row too
+    // (maintainer, 2026-10-04). Never the last list's, which may be narrower than a pill now shown:
+    // until it's in, a card aligns on its own pills.
+    val density = LocalDensity.current
+    // Remembered, so the keys below hold the same measure from one composition to the next.
+    val pillWidth = rememberPillWidth()
+    val slotWork = remember { mutableStateOf<Worked<Inputs, Int?>?>(null) }
+    val slotWidthPx = rememberWorked(slotWork, Inputs(cards, rideLines, pillWidth)) { pillSlotWidthPx(cards, rideLines, pillWidth.measure()) }
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -1478,9 +1494,20 @@ private fun RouteList(
                             val timed = rememberWorked(slot, Inputs(card, state, now, access, sequences, rideLines), keep = { _, _ -> true }) {
                                 TimedCard(cardTimes(card, state, now, access, sequences, rideLines), now, card, rideLines)
                             } ?: TimedCard(CardTimes(emptyList(), emptySet(), now.plus(access), loading = true), now, card, rideLines)
+                            // The widest pill of the rides drawn, worked out on the worker apart from the times, so
+                            // a font scale changing (a pinch) measures again without timing the card again (Codex, #530).
+                            val widthSlot = remember { mutableStateOf<Worked<Inputs, Int?>?>(null) }
+                            val cardWidthPx = rememberWorked(widthSlot, Inputs(timed.card, timed.rideLines, pillWidth)) {
+                                pillSlotWidthPx(listOf(timed.card), timed.rideLines, pillWidth.measure())
+                            }
+                            // The pill column: the list's widest pill, but only while the rides drawn are the
+                            // ones it was worked out with; and never narrower than the card's own widest pill,
+                            // so a card's rows always line up together (maintainer, 2026-10-04).
+                            val current = timed.card === card && timed.rideLines === rideLines
+                            val columnPx = listOfNotNull(slotWidthPx?.takeIf { current }, cardWidthPx).maxOrNull()
                             // The rides drawn from the card and lines the times were worked out for, so a line
                             // just hidden never lends its trains to another until the new times are in (Codex, #525).
-                            RideStops(timed.card, timed.rideLines, statuses, closures, timed.times, timed.now, walk)
+                            RideStops(timed.card, timed.rideLines, statuses, closures, timed.times, timed.now, walk, columnPx?.let { with(density) { it.toDp() } })
                         }
                     }
                     if (onHideMode != null) {
@@ -1530,6 +1557,54 @@ private fun RouteLabelHeader(labels: List<RouteLabel>) {
  */
 internal fun cardRideLines(card: List<TripTiming.Estimate>, index: Int, rideLines: Map<TripLeg, RideLines>): List<TripLeg> =
     card.mapNotNull { it.route.rides.getOrNull(index) }.flatMap { rideLines[it]?.legs ?: listOf(it) }.distinctBy { it.lineId }
+
+/** The lines of [card]'s ride [index] as its pill draws them ([cardRideLines]). */
+internal fun cardRidePill(card: List<TripTiming.Estimate>, index: Int, rideLines: Map<TripLeg, RideLines>): List<LineRef> =
+    cardRideLines(card, index, rideLines).map { LineRef(it.lineId, it.lineName, it.mode) }
+
+/**
+ * The width, in pixels, of the widest pill among [cards]' ride rows, [widthPx] giving a pill's
+ * ([sharedPillWidthPx]); null for none. Each row's pill column is that wide, so the stop names line up
+ * down the whole list (maintainer, 2026-10-04: a cut pill's row stood out to the right). Every lone
+ * pill is one width, so only each distinct cut pill is measured besides. Measures text: on a worker only.
+ */
+internal fun pillSlotWidthPx(cards: List<List<TripTiming.Estimate>>, rideLines: Map<TripLeg, RideLines>, widthPx: (List<LineRef>) -> Int): Int? =
+    cards.asSequence()
+        .flatMap { card -> card.first().route.rides.indices.asSequence().map { cardRidePill(card, it, rideLines) } }
+        .distinctBy { pill -> if (pill.size == 1) emptyList() else cutPillCodes(pill) }
+        .maxOfOrNull(widthPx)
+
+/**
+ * How to measure a pill's width ([sharedPillWidthPx]) at the screen's density and font scale, in the
+ * pills' label style. Compared by those values, so a key holding it changes only when they do.
+ */
+internal data class PillWidth(
+    val density: Density,
+    val style: TextStyle,
+    val fontFamilyResolver: FontFamily.Resolver,
+    val layoutDirection: LayoutDirection,
+) {
+    /**
+     * A pill's width in pixels. Each call has its own [TextMeasurer], so the list's and each card's
+     * workers never share one's cache. Measures text: on a worker only.
+     */
+    fun measure(): (List<LineRef>) -> Int {
+        val measurer = TextMeasurer(fontFamilyResolver, density, layoutDirection, cacheSize = 0)
+        return { pill -> sharedPillWidthPx(pill, density) { code -> measurer.measure(code, style, maxLines = 1).size.width } }
+    }
+}
+
+/** The screen's [PillWidth], the same from one composition to the next while nothing it measures by changes. */
+@Composable
+private fun rememberPillWidth(): PillWidth {
+    val density = LocalDensity.current
+    val style = pillLabelStyle()
+    val resolver = LocalFontFamilyResolver.current
+    val direction = LocalLayoutDirection.current
+    return remember(Density(density.density, density.fontScale), style, resolver, direction) {
+        PillWidth(Density(density.density, density.fontScale), style, resolver, direction)
+    }
+}
 
 /** Every line any route on a trip's card rides, in the order they're ridden, for its "Hide ‹line›" items. */
 internal fun cardLines(card: List<TripTiming.Estimate>, rideLines: Map<TripLeg, RideLines> = emptyMap()): List<LineRef> =
@@ -1736,8 +1811,18 @@ private fun RideStops(
     times: CardTimes,
     now: Instant,
     walk: Duration,
+    // Every row's pill column width, worked out on the worker; null until it is, when a lone pill's
+    // ([linePillWidthPx]), the width of most pills.
+    slotWidth: Dp? = null,
 ) {
     val rides = card.first().route.rides
+    val density = LocalDensity.current
+    val columnWidth = slotWidth ?: with(density) { linePillWidthPx(density).toDp() }
+    // A row's pill column: at least [columnWidth], so every row's stop starts in one place.
+    @Composable
+    fun PillColumn(alignment: Alignment, pill: @Composable () -> Unit) {
+        Box(contentAlignment = alignment, modifier = Modifier.widthIn(min = columnWidth), content = { pill() })
+    }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.testTag("rideStops")) {
         val start = rides.firstOrNull()
         val minutes = walk.toMinutes().toInt()
@@ -1747,13 +1832,8 @@ private fun RideStops(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.testTag("walkToStart").clearAndSetSemantics { contentDescription = description },
             ) {
-                // The walker takes the pills' room, so the stop starts where a ride's does beside its pill:
-                // the card's pills, unseen, give the slot its width in the same pass.
-                Box(contentAlignment = Alignment.Center) {
-                    rides.forEachIndexed { index, ride ->
-                        val lines = cardRideLines(card, index, rideLines)
-                        SharedLinePill(lines.map { LineRef(it.lineId, it.lineName, it.mode) }, "", Modifier.alpha(0f))
-                    }
+                // The walker takes the pills' room, so the stop starts where a ride's does beside its pill.
+                PillColumn(Alignment.Center) {
                     Icon(
                         painter = painterResource(R.drawable.ic_walk),
                         contentDescription = null,
@@ -1761,7 +1841,7 @@ private fun RideStops(
                         modifier = Modifier.size(20.dp),
                     )
                 }
-                ShortenedName(start.fromName, MaterialTheme.typography.bodyLarge, Modifier.weight(1f).padding(start = 8.dp))
+                ShortenedName(start.fromName, MaterialTheme.typography.bodyLarge, Modifier.weight(1f).padding(start = 8.dp).testTag("rideStopName"))
                 // In the times column, to set against the first train's; in parentheses, as how long
                 // the walk takes, not a time.
                 Text(
@@ -1776,12 +1856,15 @@ private fun RideStops(
         rides.forEachIndexed { index, ride ->
             val lines = cardRideLines(card, index, rideLines)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                SharedLinePill(
-                    lines.map { LineRef(it.lineId, it.lineName, it.mode) },
-                    lines.map { riderLineName(it.lineName, it.mode) }.reduce { a, b -> stringResource(R.string.trip_lines_either, a, b) },
-                )
+                // In a column as wide as the list's widest pill, so the stop starts where every row's does.
+                PillColumn(Alignment.CenterStart) {
+                    SharedLinePill(
+                        lines.map { LineRef(it.lineId, it.lineName, it.mode) },
+                        lines.map { riderLineName(it.lineName, it.mode) }.reduce { a, b -> stringResource(R.string.trip_lines_either, a, b) },
+                    )
+                }
                 // Shortened as the main screen's destinations are, before any "…" (SPEC destination-label).
-                ShortenedName(ride.toName, MaterialTheme.typography.bodyLarge, Modifier.weight(1f).padding(start = 8.dp))
+                ShortenedName(ride.toName, MaterialTheme.typography.bodyLarge, Modifier.weight(1f).padding(start = 8.dp).testTag("rideStopName"))
                 // A disrupted line's ⚠ just before the times, as on the main screen's rows (maintainer,
                 // 2026-09-28), so the stops line up down the card; for a cut pill, any of its lines.
                 // And a closure or moved stop where the ride boards or gets off, each by its stop.

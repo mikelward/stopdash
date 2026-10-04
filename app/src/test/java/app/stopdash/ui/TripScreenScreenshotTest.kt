@@ -84,6 +84,7 @@ import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.asCoroutineDispatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -267,21 +268,25 @@ class TripScreenScreenshotTest {
         menu: AppMenuActions? = null,
         access: Duration = Duration.ofMinutes(2),
         ends: TripEnds? = null,
+        // The page's worker; the app's own unless a test holds one.
+        worker: CoroutineDispatcher? = null,
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
-                // No outer provider: the screen checks its trains against the repository it's given.
-                TripScreen(
-                    title = "To Canary Wharf",
-                    state = state,
-                    now = now,
-                    access = access,
-                    routeStops = routeStops,
-                    onBack = {},
-                    onRetry = {},
-                    menu = menu,
-                    ends = ends,
-                )
+                CompositionLocalProvider(LocalWorker provides (worker ?: LocalWorker.current)) {
+                    // No outer provider: the screen checks its trains against the repository it's given.
+                    TripScreen(
+                        title = "To Canary Wharf",
+                        state = state,
+                        now = now,
+                        access = access,
+                        routeStops = routeStops,
+                        onBack = {},
+                        onRetry = {},
+                        menu = menu,
+                        ends = ends,
+                    )
+                }
             }
         }
         composeRule.waitForIdle()
@@ -1964,10 +1969,9 @@ class TripScreenScreenshotTest {
         composeRule.onAllNodesWithText("Canada Water", useUnmergedTree = true).onFirst().assertExists()
     }
 
-    @Test
-    fun trip_shared_first_leg() {
-        // Either bus from one stop to Canada Water, then the Jubilee: one card, a cut 47/188 pill, and
-        // both buses' times together on the first ride's row (maintainer, 2026-09-27).
+    // Either bus from one stop to Canada Water, then the Jubilee (one card, a cut 47/188 pill), beside
+    // the route via Whitechapel; shown on [worker] if given.
+    private fun showSharedFirstLeg(worker: CoroutineDispatcher? = null) {
         val busStop = "490000001A" to "Surrey Docks"
         val busStation = "490000002B" to "Canada Water Bus Station"
         fun bus(line: String, departs: Long) = TripRoute(
@@ -2003,14 +2007,51 @@ class TripScreenScreenshotTest {
                     override suspend fun routeSequence(lineId: String, direction: String): LineSequence = busSequences.getValue(lineId)
                 },
             ),
+            worker = worker,
         )
+    }
+
+    @Test
+    fun trip_shared_first_leg() {
+        // One card, a cut 47/188 pill, and both buses' times together on the first ride's row
+        // (maintainer, 2026-09-27).
+        showSharedFirstLeg()
         composeRule.onNodeWithContentDescription("47 or 188").assertIsDisplayed()
         // The soonest three the rider can reach (a 2 min walk), whichever bus: 47, 188, 47.
         composeRule.onNodeWithText("4 · 6 · 12 min", useUnmergedTree = true).assertExists()
         // A screen reader still hears where each goes.
         composeRule.onAllNodesWithContentDescription("Catford", substring = true, useUnmergedTree = true).onFirst().assertExists()
         composeRule.onAllNodesWithContentDescription("North Greenwich", substring = true, useUnmergedTree = true).onFirst().assertExists()
+        // Every stop name starts in one place down the list, the cut pill's row and the walks too,
+        // though the cut pill is wider than a lone one (maintainer, 2026-10-04).
+        // Two cards, each a walk row and two rides.
+        fun lefts() = composeRule.onAllNodes(hasTestTag("rideStopName"), useUnmergedTree = true).fetchSemanticsNodes().map { it.boundsInRoot.left }
+        composeRule.waitUntil(timeoutMillis = 5_000) { lefts().size == 6 }
+        composeRule.waitUntil(timeoutMillis = 5_000) { lefts().let { it.max() - it.min() <= 1f } }
         captureSnapshot("trip-shared-first-leg.png")
+    }
+
+    @Test
+    fun the_pill_column_is_measured_on_the_page_worker_never_in_composition() {
+        // A worker held shut: until it runs, no pill can be measured, so the cut pill's row stands out
+        // past the lone pills' column. Had composition measured them, the stops would line up anyway.
+        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val worker = threads.asCoroutineDispatcher()
+        val gate = CountDownLatch(1)
+        threads.execute { gate.await() }
+        try {
+            showSharedFirstLeg(worker)
+            fun lefts() = composeRule.onAllNodes(hasTestTag("rideStopName"), useUnmergedTree = true).fetchSemanticsNodes().map { it.boundsInRoot.left }
+            assertEquals(6, lefts().size)
+            assertTrue("aligned before the worker ran: ${lefts()}", lefts().max() - lefts().min() > 1f)
+            // Released, the worker measures the pills and every stop moves into one column.
+            gate.countDown()
+            composeRule.waitUntil(timeoutMillis = 5_000) { lefts().let { it.max() - it.min() <= 1f } }
+        } finally {
+            // Opened whatever happened, so a failed check can't leave the worker's thread waiting.
+            gate.countDown()
+            worker.close()
+        }
     }
 
     @Test

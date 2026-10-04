@@ -1161,7 +1161,9 @@ route can't be timed at all (the connection missed, nothing else known), it read
 ("41+ min · est. 11:26+"). It counts waiting only, not a slow run, and ranking still goes by the earliest arrival (maintainer,
 2026-09-27), except that an estimate is set against a live route by the latest end of its range
 (below). Under the top row, the **walk to where it starts** has a row of its own — a walker in the
-pills' room, so the stop starts where a ride's does beside its pill, then the first stop, and its minutes in the
+pills' room, so the stop starts where a ride's does beside its pill (every row's pill column as wide as
+the list's widest pill, a cut pill's included, so the stop names line up down the whole list —
+maintainer, 2026-10-04), then the first stop, and its minutes in the
 times column, in parentheses ("(3 min)", a duration, set against the first train's) — since it's why a train too soon to reach is grayed, and it reads as the
 route's first leg (maintainer, 2026-09-27, replacing "From ‹stop›" in the top row). A first stop
 under a minute away has no walk row; the top row says **"From ‹stop›"** before the arrival instead,
