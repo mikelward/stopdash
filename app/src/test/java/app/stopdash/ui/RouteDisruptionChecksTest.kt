@@ -4,6 +4,8 @@ import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.DismissedAlertsStore
+import app.stopdash.domain.HubInfo
+import app.stopdash.domain.HubInfoCache
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.RouteDisruption
@@ -16,8 +18,10 @@ import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripRoute
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -48,6 +52,9 @@ class RouteDisruptionChecksTest {
     private var mostRoutesInFlight = 0
     private var routes: Map<String, LineSequence> = emptyMap()
     private var hubs: Map<String, String> = emptyMap()
+    private var hubInfos: Map<String, HubInfo> = emptyMap()
+    private val hubReads = mutableListOf<String>()
+    private val hubNames = HubInfoCache()
     private val logged = mutableListOf<String>()
 
     private val client = object : TflClient {
@@ -64,12 +71,19 @@ class RouteDisruptionChecksTest {
             if (stopId in closuresFail) throw TflException.Offline(null)
             return notices[stopId].orEmpty()
         }
+
+        override suspend fun hubInfo(hubId: String): HubInfo {
+            hubReads += hubId
+            return hubInfos[hubId] ?: throw TflException.Offline(null)
+        }
     }
 
     private fun checks(cache: StopClosureCache, dispatcher: kotlinx.coroutines.CoroutineDispatcher) = RouteDisruptionChecks(
         client = client,
         closures = StopClosureChecks(client, cache, Duration.ofMinutes(5), dispatcher, { logged += it }, "on the way"),
         closureCache = cache,
+        hubNames = hubNames,
+        background = CoroutineScope(dispatcher),
         dismissedStore = object : DismissedAlertsStore {
             override fun dismissed(): kotlinx.coroutines.flow.Flow<Set<DismissedAlert>> = kotlinx.coroutines.flow.flow {
                 if (dismissedFails) throw java.io.IOException("unreadable")
@@ -123,6 +137,66 @@ class RouteDisruptionChecksTest {
         assertEquals(now.plus(Duration.ofMinutes(5)), found.until)
         // Each signal with its own time, so letting go of one leaves the rest by theirs (Codex on #519).
         assertEquals(found.signals.map { it.key }.toSet(), found.stands.keys)
+    }
+
+    @Test
+    fun `a coming station's other notice is a note that stands while its check is current, with nothing to alert`() = runTest {
+        val checks = checks(StopClosureCache(), StandardTestDispatcher(testScheduler))
+        statuses = mapOf("red" to LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service"))
+        notices["C"] = listOf(StopDisruption("Lift out of order"))
+        val found = checks.check(trip, waiting, emptyMap())
+        // Nothing to alert, but the lift is said on the trip's screen (maintainer, 2026-10-04).
+        assertEquals(emptyList<RouteDisruption.Signal>(), found.signals)
+        assertEquals(listOf("C" to "Lift out of order"), found.notes.map { it.stopId to it.text })
+        assertTrue(checkNotNull(found.notesUntil).isAfter(t0))
+        // No longer than the stop's own listing of it, its check current or not (Codex, #567).
+        notices["C"] = listOf(StopDisruption("Lift out of order", t0, at(10)))
+        now = at(6)
+        assertEquals(at(10), checks.check(trip, waiting, emptyMap()).notesUntil)
+    }
+
+    @Test
+    fun `a station's note at an interchange is titled by it, leading with none of its names, each asked for once`() = runTest {
+        val checks = checks(StopClosureCache(), StandardTestDispatcher(testScheduler))
+        hubs = mapOf("C" to "HUBKGX")
+        hubInfos = mapOf("HUBKGX" to HubInfo("King's Cross & St Pancras International", listOf("King's Cross St. Pancras", "St Pancras International")))
+        notices["C"] = listOf(StopDisruption("St Pancras International: Lift out of order"))
+        // Not yet named, the note keeps the stop's own name, and the check doesn't wait on the lookup
+        // (Codex, #567): it goes on in the background, for the next check.
+        assertEquals(listOf("C"), checks.check(trip, waiting, emptyMap()).notes.map { it.stopName })
+        advanceUntilIdle()
+        now = at(6)
+        val found = checks.check(trip, waiting, emptyMap())
+        // Led by another member's spelling, still stripped (Codex, #567).
+        assertEquals(
+            listOf("King's Cross & St Pancras International" to "Lift out of order"),
+            found.notes.map { it.stopName to it.text },
+        )
+        advanceUntilIdle()
+        assertEquals(listOf("HUBKGX"), hubReads)
+        // Named already by the list's lookup, it costs nothing more.
+        hubReads.clear()
+        hubNames["HUBX"] = HubInfo("Example Hub")
+        hubs = mapOf("C" to "HUBX")
+        notices["C"] = listOf(StopDisruption("Lift out of order"))
+        now = at(12)
+        assertEquals(listOf("Example Hub"), checks.check(trip, waiting, emptyMap()).notes.map { it.stopName })
+        assertEquals(emptyList<String>(), hubReads)
+    }
+
+    @Test
+    fun `a station's note keeps its own name when its interchange can't be named, and asks again`() = runTest {
+        val checks = checks(StopClosureCache(), StandardTestDispatcher(testScheduler))
+        hubs = mapOf("C" to "HUBKGX")
+        notices["C"] = listOf(StopDisruption("Lift out of order"))
+        val found = checks.check(trip, waiting, emptyMap())
+        assertEquals(listOf("C" to "Lift out of order"), found.notes.map { it.stopName to it.text })
+        advanceUntilIdle()
+        assertTrue(logged.any { it.startsWith("on the way: hub lookup failed") })
+        now = at(6)
+        assertEquals(listOf("C"), checks.check(trip, waiting, emptyMap()).notes.map { it.stopName })
+        advanceUntilIdle()
+        assertEquals(listOf("HUBKGX", "HUBKGX"), hubReads)
     }
 
     @Test
@@ -361,6 +435,8 @@ class RouteDisruptionChecksTest {
         now = at(6)
         checks.check(trip, waiting, emptyMap())
         assertEquals(setOf(atHub, atStop), dismissed)
+        // A closure alone is no note, so its interchange's names are never asked for (Codex, #567).
+        assertEquals(emptyList<String>(), hubReads)
     }
 
     @Test

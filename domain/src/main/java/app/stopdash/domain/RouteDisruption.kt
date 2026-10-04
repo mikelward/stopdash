@@ -112,11 +112,16 @@ object RouteDisruption {
         // left once some are let go of stands as long as its own do, not as long as one let go of
         // (Codex on #519). One not listed stands as long as the whole ([until]).
         val stands: Map<String, Instant> = emptyMap(),
+        // The coming stations' other notices ([stationNotes]): shown on the trip's screen, never alerted.
+        val notes: List<StationNote> = emptyList(),
+        // How long [notes] stand: as long as the first of them ([StationNote.until]), as [until] does for
+        // the signals, so the screen only reads it; each refresh finds the rest again.
+        val notesUntil: Instant? = null,
     ) {
         /** What's known with [signal] too, which stands no later than [stands]: so neither does the whole. */
         @WorkerThread
         fun with(signal: Signal, stands: Instant): Found =
-            Found(ordered(signals + signal), until?.let { minOf(it, stands) } ?: stands, this.stands + (signal.key to stands))
+            copy(signals = ordered(signals + signal), until = until?.let { minOf(it, stands) } ?: stands, stands = this.stands + (signal.key to stands))
 
         /** How long [signal] (one of [signals]) stands: its own time ([stands]), else the whole's ([until]). */
         fun standsUntil(signal: Signal): Instant? = stands[signal.key] ?: until
@@ -148,9 +153,11 @@ object RouteDisruption {
 
     /**
      * Where a stop sits, for matching a dismissal of its notice as the trip's closure card does
-     * ([stopPlaceKey]): its stop [area] and interchange [hub] ("HUB…"), blank where not known.
+     * ([stopPlaceKey]): its stop [area] and interchange [hub] ("HUB…"), blank where not known; and the
+     * interchange's [hubName] and member-station [aliases] ([HubInfo]), so a notice is titled by the
+     * interchange and leads with none of its names ([cleanDisruptionBody]), empty where not resolved.
      */
-    data class StopPlace(val area: String = "", val hub: String = "")
+    data class StopPlace(val area: String = "", val hub: String = "", val hubName: String = "", val aliases: List<String> = emptyList())
 
     /**
      * TfL `statusSeverity` values that are a signal, and how sure: a line not running at all is
@@ -617,6 +624,94 @@ object RouteDisruption {
     }
 
     /**
+     * A notice in force at station [stopName] ([stopId]) the trip still reaches on leg [legIndex] that
+     * neither closes nor moves it ([text], TfL's words, cleaned): a lift or an escalator out, an exit
+     * shut. Worth knowing on the way, never a reason to alert (SPEC *On the way*; maintainer 2026-10-04).
+     * It holds [until] the first of its notices ends, each over every window TfL lists it under that
+     * runs on from the one in force; null when none ends. [support] is, for each of its notices, the
+     * stops that list it in force (an interchange's), each with when its own listing ends (null: open),
+     * so a notice stands while any stop's check and listing of it both do, and the note while all its
+     * notices do.
+     */
+    data class StationNote(
+        val legIndex: Int,
+        val stopId: String,
+        val stopName: String,
+        val text: String,
+        val until: Instant? = null,
+        val support: List<Map<String, Instant?>> = listOf(mapOf(stopId to until)),
+    )
+
+    /**
+     * Each coming stop's notices in force ([closureCards]) that the rider hasn't dismissed and that say
+     * neither closed nor moved: those are [Signal.Stop]s and alert. In route order.
+     */
+    @WorkerThread
+    fun stationNotes(
+        trip: ActiveTrip,
+        progress: TripProgress?,
+        closures: Map<String, List<StopDisruption>>,
+        places: Map<String, StopPlace>,
+        dismissed: Set<DismissedAlert>,
+        now: Instant,
+    ): List<StationNote> {
+        if (progress == TripProgress.Arrived) return emptyList()
+        val legOf = comingStops(trip, progress).reversed().associate { it.value.id to it.index }
+        // The coming stops at each interchange, whose cards fold into one at the first of them.
+        val atHub = legOf.keys.groupBy { places[it]?.hub.orEmpty() }
+        fun alerts(text: String) = ClosedNotice.saysClosed(text) || MovedNotice.saysMoved(text)
+        val cards = DepartureRows.withoutDismissed(closureCards(trip, progress, closures, places, now), dismissed)
+            .filter { it.stopId in legOf }.sortedBy { legOf.getValue(it.stopId) }
+        // One note a place, never its name, so two places of one name each keep theirs; an interchange's
+        // stops whose cards didn't fold (one also closed, say) make one (Codex, #567).
+        return cards.groupBy { stopPlaceKey(it) }.values.mapNotNull { same ->
+            val row = same.first()
+            // Each card's notices judged one by one, not by its joined words, so a lift notice beside a
+            // closure is still noted, the closure alerting on its own; and each once, however many windows
+            // or stops TfL lists it under (Codex, #567).
+            val retained = same.flatMap { card ->
+                closures[card.stopId].orEmpty().filter { it.isActiveAt(now) }.map { normalizeDisruptionText(it.description) }
+            }.distinct().filter { !alerts(it) }
+            if (retained.isEmpty()) return@mapNotNull null
+            // The stops it's read across: an interchange's coming ones, folded or not (Codex, #567).
+            val members = row.hubId.takeIf { it.isNotEmpty() }?.let { atHub[it] } ?: same.map { it.stopId }.distinct()
+            fun listing(text: String) = members.associateWith { id ->
+                closures[id].orEmpty().filter { normalizeDisruptionText(it.description) == text }
+            }.filterValues { it.isNotEmpty() }
+            // Until it ends, over its windows run together across those stops, so a shorter one ending under
+            // a longer one doesn't let go of a note still in force (Codex, #567).
+            fun endOf(text: String): Instant? {
+                val windows = listing(text).values.flatten().map { (it.validFrom ?: Instant.MIN) to (it.validTo ?: Instant.MAX) }
+                return DepartureRows.spanAt(windows, now)?.second?.takeIf { it != Instant.MAX }
+            }
+            // The stops listing it in force, each with when its own listing of it ends: the checks it stands
+            // on, each only as long as that stop lists it (Codex, #567).
+            fun supportOf(text: String): Map<String, Instant?> = listing(text)
+                .filterValues { listed -> listed.any { it.isActiveAt(now) } }
+                .mapValues { (_, listed) ->
+                    DepartureRows.spanAt(listed.map { (it.validFrom ?: Instant.MIN) to (it.validTo ?: Instant.MAX) }, now)
+                        ?.second?.takeIf { it != Instant.MAX }
+                }
+            // Each cleaned of its place name on its own, so one outage each stop leads with its own name for
+            // is said once, under the interchange's heading (Codex, #567).
+            val said = retained.groupBy { cleanDisruptionBody(it, stopName = row.stopName, hubName = row.hubName, aliases = row.placeAliases) }
+                .filterKeys { it.isNotBlank() }
+            if (said.isEmpty()) return@mapNotNull null
+            // A notice said stands while any of its wordings does; the note until the first of them ends.
+            val ends = said.values.map { texts -> texts.map(::endOf).let { e -> if (e.any { it == null }) null else e.maxOf { checkNotNull(it) } } }
+            val until = ends.filterNotNull().minOrNull()
+            val support = said.values.map { texts ->
+                // A stop listing it in more than one wording stands on the latest of them.
+                texts.map(::supportOf).fold(emptyMap<String, Instant?>()) { all, one ->
+                    all + one.mapValues { (id, end) -> if (id in all) all[id]?.let { prior -> end?.let { maxOf(it, prior) } } else end }
+                }
+            }
+            val text = said.keys.joinToString("\n\n")
+            StationNote(legOf.getValue(row.stopId), row.stopId, row.hubName.ifBlank { row.stopName }, text, until, support)
+        }
+    }
+
+    /**
      * The closure cards the trip's screen shows for the stops [trip] still has to reach ([comingStops]),
      * from their notices in [closures], placed by [places] as the screen places them ([stopPlaceKey]), and
      * folded as it folds them: one card a stop, carrying every notice in force there; one a place for a
@@ -637,7 +732,7 @@ object RouteDisruption {
             val place = places[end.id] ?: StopPlace(area = end.area)
             val stop = StopArrivals(
                 end.id, names[end.id].orEmpty(), emptyList(), SteadyClock.stamp(now), disruptions = notices,
-                clusterId = place.area, hubId = place.hub,
+                clusterId = place.area, hubId = place.hub, hubName = place.hubName, placeAliases = place.aliases,
             )
             DepartureRows.across(listOf(stop), now).filter { it.stopDisruption != null }
         }

@@ -116,6 +116,7 @@ import app.stopdash.domain.FartherStations
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.FavoritePlacesSet
 import app.stopdash.domain.FixedLocation
+import app.stopdash.domain.HubInfoCache
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.Journeys
 import app.stopdash.domain.LiftOutages
@@ -254,8 +255,10 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZonedDateTime
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -983,6 +986,7 @@ class MainActivity : ComponentActivity() {
                                 }
                                 val nextBoard by tracker.nextBoard.collectAsStateWithLifecycle()
                                 val routeDisruptions by tracker.routeDisruptions.collectAsStateWithLifecycle()
+                                val stationNotes by tracker.stationNotes.collectAsStateWithLifecycle()
                                 val replanFrom by tracker.replanFrom.collectAsStateWithLifecycle()
                                 // The next ride's trains, checked against the same route data as the trip's cards.
                                 CompositionLocalProvider(LocalRouteStops provides routeStops(applicationContext)) {
@@ -1007,6 +1011,7 @@ class MainActivity : ComponentActivity() {
                                     appOpenOnly = appOpenOnly,
                                     disruptions = routeDisruptions?.at(now).orEmpty(),
                                     cards = routeDisruptions?.cardsAt(now).orEmpty(),
+                                    notes = stationNotes?.at(now).orEmpty(),
                                     replanFrom = replanFrom,
                                     // The trip list from the station still ahead nearest the rider to where
                                     // they chose to go, as the From… search opens one (maintainer, 2026-10-02):
@@ -1858,6 +1863,7 @@ class MainActivity : ComponentActivity() {
                             sharedArrivals = ArrivalsCache.SHARED,
                             disruptionReuse = DISRUPTION_REUSE,
                             disruptionCache = StopClosureCache.SHARED,
+                            hubNames = HubInfoCache.SHARED,
                             lineStatusReuse = LINE_STATUS_REUSE,
                             // Stops past the walking reach refresh every other minute on the timer.
                             stopDistanceMeters = ready.distanceMeters,
@@ -3156,6 +3162,7 @@ class MainActivity : ComponentActivity() {
                         sharedArrivals = ArrivalsCache.SHARED,
                         disruptionReuse = DISRUPTION_REUSE,
                         disruptionCache = StopClosureCache.SHARED,
+                        hubNames = HubInfoCache.SHARED,
                         lineStatusReuse = LINE_STATUS_REUSE,
                         rateWaitMillis = { SharedTflRateLimiter.waitedMillis },
                         logStats = ::logDepartureWarning,
@@ -3426,6 +3433,9 @@ class MainActivity : ComponentActivity() {
                 client = client,
                 closures = StopClosureChecks(client, StopClosureCache.SHARED, DISRUPTION_REUSE, Dispatchers.IO, ::logDepartureWarning, "on the way"),
                 closureCache = StopClosureCache.SHARED,
+                hubNames = HubInfoCache.SHARED,
+                // The process's own, so a hub's names looked up for a later check outlive this one.
+                background = (context as? StopdashApp)?.applicationScope ?: CoroutineScope(SupervisorJob() + Dispatchers.IO),
                 dismissedStore = DataStoreDismissedAlertsStore.from(context, warn = ::logDepartureWarning),
                 sequence = { lineId -> routeStops(context).let { it.cached(lineId, "") ?: it.load(lineId, "") } },
                 hubOf = { routeStops(context).hubOf(it) },
@@ -4309,6 +4319,7 @@ private fun fartherCardModel(
     sharedArrivals = ArrivalsCache.SHARED,
     disruptionReuse = DISRUPTION_REUSE,
     disruptionCache = StopClosureCache.SHARED,
+    hubNames = HubInfoCache.SHARED,
     lineStatusReuse = LINE_STATUS_REUSE,
     rateWaitMillis = { SharedTflRateLimiter.waitedMillis },
     logStats = ::logDepartureWarning,
