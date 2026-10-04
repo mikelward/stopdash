@@ -1116,6 +1116,8 @@ private fun TripContent(
     // last frame stands in while the next is worked out; the page is drawn against the frame's own state,
     // time, routes and ride lines, never newer ones it doesn't hold yet (as the near-me list's, #524).
     val frameSlot = remember { mutableStateOf<Worked<Inputs, TripFrame>?>(null) }
+    // The order the last frame drew its cards in, so the next hands it back when nothing moved ([listedCards]).
+    val previousOrder = frameSlot.value?.value?.list?.listed?.keys
     val frame = rememberWorked(
         frameSlot,
         Inputs(tripKey, liveState, tickNow, access, liveSequences, excluded, originUnconfirmed, liveRideLines, plannedLegs, openKey, alerts.dismissed, loads.loadingVersion, routeStops,
@@ -1132,7 +1134,7 @@ private fun TripContent(
             placement),
         keep = ::mayStandIn,
     ) {
-        tripFrame(tripKey, liveState, tickNow, access, liveSequences, excluded, originUnconfirmed, liveRideLines, plannedLegs, openKey, alerts.dismissed, loads.loading, routeStops, poled)
+        tripFrame(tripKey, liveState, tickNow, access, liveSequences, excluded, originUnconfirmed, liveRideLines, plannedLegs, openKey, alerts.dismissed, loads.loading, routeStops, poled, previousOrder)
     }
     // What the page draws against: the frame's own state, time, routes and ride lines.
     val state = frame?.state ?: liveState
@@ -1510,17 +1512,17 @@ private fun TripContent(
             // Hold still (SPEC *Engineering quality bar*): the list appears once, after its plan, its live
             // refresh and its routes' checks have landed, rather than settle under the rider's
             // thumb as each lands (maintainer, 2026-10-04). Never longer than [REVEAL_CAP_MILLIS].
-            // The list's worked answers, kept here so they outlive an open route ([TripListWork]) and are
-            // in before the list shows, but started afresh with a plan that is (Codex, #543).
-            val listWork = remember(cards == null, planKey) { TripListWork() }
             // Not saved: a rotation or a recreated process loses the list's work, so the list waits for
             // it again rather than show raw cards that settle under the rider (Codex, #543).
             val revealedState = remember(planKey) { mutableStateOf(false) }
             // The row's work goes with the list's, and also with what's left out of it: a mode hidden or a
             // line avoided never leaves its pill over the cards that remain (Codex, #543). The cards' order
             // stays, so they slide rather than jump.
-            val rowWork = remember(listWork, excluded) { mutableStateOf<Worked<Inputs, TripRow>?>(null) }
-            val headed = cards?.let { rememberListedCards(listWork, it, state) }
+            // Started afresh with a plan that is, so one plan's row never stands over another's (Codex, #543).
+            val rowWork = remember(cards == null, planKey, excluded) { mutableStateOf<Worked<Inputs, TripRow>?>(null) }
+            // The cards' order and headers, worked out with the cards in the page's frame ([TripListView.listed]):
+            // a new plan's cards never show unheaded and then head and re-sort under the rider (Codex, #543).
+            val headed = frame?.list?.listed
             // Worked out behind the placeholder too, and drawn at once until the list shows: it's never
             // seen changing before then (Codex, #543).
             // From the live state, not the frame's: a status that changed while the frame is still being
@@ -1557,14 +1559,13 @@ private fun TripContent(
                     else -> {
                         val routes = @Composable {
                             RouteList(
-                                frame?.list ?: TripListView(TripFraming(null, emptySet(), emptyList()), emptyList(), emptyMap()), rideLines, state, now, onRetry,
+                                frame?.list ?: TripListView(TripFraming(null, emptySet(), emptyList()), emptyList(), emptyMap(), ListedCards(emptyList(), emptyList(), CardOrder(emptyList(), emptyList()))), rideLines, state, now, onRetry,
                                 // What the card opens, worked out with the frame it's drawn from: a train through a
                                 // change keeps the planned route it's made from, though newer arrivals no longer
                                 // list it, and the tap only reads (Codex, #529).
                                 onOpen = { setOpen(frame?.list?.opens?.get(routeKey(it.route)) ?: OpenRoute(routeKey(it.route))) },
                                 onHideMode = hideMode,
                                 onAvoidLine = avoided.onAvoid,
-                                headed = headed,
                                 row = row ?: TripRow.CHECKING,
                             )
                         }
@@ -1738,20 +1739,15 @@ private fun RouteList(
     onHideMode: ((String) -> Unit)?,
     // A card's long press also offers to avoid each line it rides ([AvoidedLines]); null offers not.
     onAvoidLine: ((String) -> Unit)? = null,
-    // The cards' order and headers ([rememberListedCards]), worked out by the trip screen.
-    headed: ListedCards?,
     // The row over the cards ([DisruptionsRow]), worked out on the worker and held as one ([rememberTripRow]).
     row: TripRow,
 ) {
     val cards = view.cards
     // Which card gets there soonest, which rides fewest and which walks least, over each, then
-    // the rest under "Other" (maintainer, 2026-09-30): worked out once per set of cards, not on
-    // every recomposition, on the worker (Codex, #535). As the clock moves the cards on, the last
-    // cards stand in with their own headers for the moment the new ones take, never the last headers
-    // over the new cards, which may rank otherwise; before any are in, the cards stand in their own
-    // order, unheaded, rather than a blank list.
-    val listed = headed?.cards ?: cards.map { it.card }
-    val order = headed?.order
+    // the rest under "Other" (maintainer, 2026-09-30): worked out with the cards in the page's frame
+    // ([TripListView.listed]), so a card never shows without its header, nor under another's.
+    val listed = view.listed.cards
+    val order = view.listed.order
     // Cards re-sort as their times move (maintainer, 2026-10-04), sliding to their new places rather
     // than jumping, and a tap on a card while it moves is dropped: it could land on the card that just
     // moved under the finger. Each card watches its own place ([rememberSliding]), whatever moved it.
@@ -1785,15 +1781,12 @@ private fun RouteList(
         // row per ride, and the first ride's times for every line together. The card is one choice
         // (maintainer, 2026-09-27): tapping it opens the best of its routes, and a long press
         // anywhere offers to hide each group any of its legs rides.
-        // Each card under its header once that's in (one call either way, so a card keeps what it
-        // worked out as its header comes in).
-        items(listed.size, key = { cardKey(listed[order?.get(it)?.index ?: it].first().route) }) { position ->
-            val header = order?.get(position)?.header.orEmpty()
-            val listedCard = listed[order?.get(position)?.index ?: position]
+        // Each card under its own header, both from the frame.
+        items(listed.size, key = { cardKey(listed[order[it].index].first().route) }) { position ->
+            val header = order[position].header
+            val listedCard = listed[order[position].index]
             // What the card draws, from the frame ([TripCardView]): its alerts, its walk, its stops' notices
-            // and its first ride's trains, worked out on the worker against the frame's time. Looked up by
-            // its route, as the order may be a moment older than the frame; a card the frame no longer
-            // lists draws nothing for that moment.
+            // and its first ride's trains, worked out on the worker against the frame's time, with the order.
             val shown = view.byKey[cardKey(listedCard.first().route)]
             Column(
                 modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null, placementSpec = tween(CARD_MOVE_MILLIS.toInt())),
@@ -2776,38 +2769,6 @@ internal fun cardClosures(
     }.distinctBy { it.stopId }.let(DepartureRows::stopStatusFolded)
 
 /** How long a change to the disruptions row holds before it's drawn, unless it's to "Checking…" ([settled]). */
-/**
- * The trip list's cards in the order and under the headers they're drawn ([listedCards]), worked out on
- * the worker into [work]. Run by the trip screen, not the list, so the order is in before the list is
- * shown ([rememberRevealed]) rather than settling under the rider once it is (Codex, #543).
- */
-@Composable
-private fun rememberListedCards(work: TripListWork, cards: List<List<TripTiming.Estimate>>, state: TripViewModel.State): ListedCards? {
-    val headedWork = work.listed
-    // Only within one plan (the clock's ticks and refreshes), never across plans, where a route gone
-    // would linger; nor across no cards and some, where the last cards would stand beside "No
-    // routes", or none in for new ones. A route hidden or avoided can stand for one worker run
-    // (TODO.md); judging the cards' routes alike here would be the per-card work the worker is for.
-    val previousOrder = headedWork.value?.value?.keys
-    return rememberWorked(
-        headedWork,
-        Inputs(cards, cards.isEmpty(), state.routes),
-        keep = { held, wanted -> held.parts[1] == false && wanted.parts[1] == false && held.parts[2] === wanted.parts[2] },
-    ) {
-        listedCards(cards, previousOrder)
-    }
-}
-
-/**
- * The trip list's cards' order and headers, worked out on the worker. Held by the trip screen rather
- * than the list (its disruptions row's work too, beside it), so a return from an open route draws them
- * at once instead of settling again under the rider (Codex, #543).
- */
-@Stable
-internal class TripListWork {
-    val listed: MutableState<Worked<Inputs, ListedCards>?> = mutableStateOf(null)
-}
-
 /** The check over every card of the list kept behind an open route, as worked out ([tripCheckState]); null when it's clear. */
 private class ListCheck(val message: TripMessage?)
 
