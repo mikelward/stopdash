@@ -5,8 +5,12 @@ import java.time.Instant
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
@@ -30,14 +34,29 @@ class TripFixes(private val elapsed: () -> Long = { System.nanoTime() / 1_000_00
     private val _latest = MutableStateFlow<Seen?>(null)
     val latest: StateFlow<Seen?> = _latest.asStateFlow()
 
+    // Each fix as it comes, to whoever is collecting then: none is replayed, so none is held for a later
+    // collector, and a newer one replaces one not yet taken, but a [clear] can't take one away first.
+    private val _each = MutableSharedFlow<Seen>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+    /**
+     * Every fix offered, as it comes, whether or not a refresh has taken it from [latest] since: a
+     * walk's distance follows each one ([ActiveTripTracker.onFix] in `:app`).
+     */
+    val each: SharedFlow<Seen> = _each.asSharedFlow()
+
     fun offer(fix: LocationFix) {
-        _latest.value = Seen(fix, elapsed(), count.incrementAndGet())
+        val seen = Seen(fix, elapsed(), count.incrementAndGet())
+        _latest.value = seen
+        _each.tryEmit(seen)
     }
 
     /** Drops the fix held, if any: used, passed over, or no longer watched for. */
     fun clear() {
         _latest.value = null
     }
+
+    /** How long ago [seen] came, on [elapsed]'s clock. */
+    fun waited(seen: Seen): Long = (elapsed() - seen.at).coerceAtLeast(0)
 
     /** [seen]'s fix, aged by how long ago it came, so a refresh judges how fresh it is now. */
     fun aged(seen: Seen): LocationFix =

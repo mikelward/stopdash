@@ -171,7 +171,9 @@ minutes after your train leaves that stop, only to see whether you got on (you'r
 if not), and a few times as your train nears the station you get off at, only to see whether you're
 already there. With the app open, it follows your position as you move instead, every few seconds,
 for the same purposes and only while one of them applies. Each is compared on the device with the public positions of the ride's stops (and a
-station's entrances) and then dropped: never logged, kept, or sent anywhere.
+station's entrances), and with where a walk ends to show how far is left, and then dropped: never
+logged, kept, or sent anywhere. The newest is held in memory for 2 minutes, so a walk that begins in
+that time can show an estimate of how far it is, and is then let go, or sooner when the trip ends.
 
 **Starred journeys** (two stops you travel between) are kept on the device with your other
 settings and stars, so they ride your own Android backup like the rest (above); they are never

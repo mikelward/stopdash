@@ -61,6 +61,21 @@ class AndroidLocationProviderTest {
     }
 
     @Test
+    fun `the remembered fix goes once precise location is taken away`() = runTest {
+        shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+        shadowOf(manager).setProviderEnabled(LocationManager.GPS_PROVIDER, true)
+        shadowOf(manager).simulateLocation(gps(51.9))
+        AndroidLocationProvider(app).current(forceFresh = false)
+        assertEquals(51.9, checkNotNull(AndroidLocationProvider.rememberedPreciseFix(app)).coordinates.latitude, 0.0)
+        // Precise location turned down to approximate: the fix isn't used, and it's deleted, not kept
+        // for if it comes back (Codex, #542).
+        shadowOf(app).denyPermissions(Manifest.permission.ACCESS_FINE_LOCATION)
+        assertNull(AndroidLocationProvider.rememberedPreciseFix(app))
+        shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION)
+        assertNull(AndroidLocationProvider.rememberedPreciseFix(app))
+    }
+
+    @Test
     fun `a trip's precise fix waits for GPS, says how sure it is, and isn't remembered`() = runTest {
         shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
         shadowOf(manager).setProviderEnabled(LocationManager.GPS_PROVIDER, true)

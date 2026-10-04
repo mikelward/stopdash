@@ -42,6 +42,29 @@ class TripFixesTest {
     private fun TestScope.fixes() = TripFixes { currentTime }
 
     @Test
+    fun `each fix reaches a collector though a refresh clears it first`() = runTest {
+        // A walk's distance follows every fix; the refresh loop takes one from [TripFixes.latest] and
+        // clears it, perhaps before that collector has looked (Codex, #542).
+        val fixes = TripFixes(elapsed = { 0L })
+        val seen = mutableListOf<Long>()
+        val collecting = launch { fixes.each.collect { seen += it.seq } }
+        runCurrent()
+        fixes.offer(fix())
+        fixes.clear()
+        runCurrent()
+        assertEquals(listOf(1L), seen)
+        assertNull(fixes.latest.value)
+        collecting.cancel()
+        // None is held for a collector that comes later: a position is used and dropped.
+        fixes.offer(fix())
+        val late = mutableListOf<Long>()
+        val after = launch { fixes.each.collect { late += it.seq } }
+        runCurrent()
+        assertTrue(late.isEmpty())
+        after.cancel()
+    }
+
+    @Test
     fun `a fix brings the next refresh sooner, but never inside the gap`() = runTest {
         val fixes = fixes()
         val woke = async { awaitRefresh(fixes.latest, Duration.ofSeconds(30), Duration.ofSeconds(10)) }

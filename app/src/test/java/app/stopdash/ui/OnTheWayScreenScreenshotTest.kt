@@ -597,6 +597,13 @@ class OnTheWayScreenScreenshotTest {
     }
 
     @Test
+    fun a_walks_estimated_distance_says_so() {
+        // From a fix taken before the walk began (maintainer, 2026-10-04): approximate until one on the walk.
+        show(trip.copy(legIndex = 1), TripProgress.Walking(walk, at(3), metersLeft = 450.0, estimated = true))
+        onCard("~450 m").assertIsDisplayed()
+    }
+
+    @Test
     fun a_walks_distance_waits_for_the_riders_units() {
         // The units chosen still loading: no distance in the wrong ones (Codex, PR #521).
         composeRule.setContent {

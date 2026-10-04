@@ -560,9 +560,11 @@ private fun NextStep(destination: String?, eta: OnTheWay.Eta?, progress: TripPro
     // Not until the rider's distance units are known (null while their choice loads): never a moment in
     // the wrong ones (Codex, PR #521).
     val system = LocalDistanceSystem.current
-    val walkLeft = (progress as? TripProgress.Walking)?.metersLeft
+    val walking = progress as? TripProgress.Walking
+    val walkLeft = walking?.metersLeft
     val words = if (walkLeft != null && system != null) {
-        StopDistance.label(walkLeft, system)
+        // Estimated from a fix taken before the walk began, it says so until a fix on the walk places the rider.
+        StopDistance.label(walkLeft, system).let { if (walking?.estimated == true) stringResource(R.string.on_the_way_walk_left_estimated, it) else it }
     } else if (at == null) {
         detail
     } else if (progress is TripProgress.Riding) {
