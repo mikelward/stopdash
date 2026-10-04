@@ -3443,6 +3443,7 @@ class MainActivity : ComponentActivity() {
                 client = client,
                 closures = StopClosureChecks(client, StopClosureCache.SHARED, DISRUPTION_REUSE, Dispatchers.IO, ::logDepartureWarning, "on the way"),
                 closureCache = StopClosureCache.SHARED,
+                dismissals = { DataStoreDismissedAlertsStore.from(context, warn = ::logDepartureWarning).mark() },
                 sequence = { lineId -> routeStops(context).let { it.cached(lineId, "") ?: it.load(lineId, "") } },
                 hidden = { HiddenModesSetting.current },
                 clock = Instant::now,

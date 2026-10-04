@@ -511,6 +511,319 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `a refresh's write lets go only of the dismissals it saw`() = runTest(dispatcher) {
+        // The store is told the set the refresh settled, so a dismissal made since (of a notice a newer
+        // check found back) isn't written away by this older verdict, as it isn't in memory.
+        val backing = MutableStateFlow<Set<DismissedAlert>>(emptySet())
+        val told = mutableListOf<Set<DismissedAlert>>()
+        val store = object : DismissedAlertsStore {
+            override fun dismissed() = backing
+            override suspend fun dismiss(alert: DismissedAlert) {
+                backing.value = Dismissed.dismiss(backing.value, alert)
+            }
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) = error("the refresh's set is passed")
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: Long) {
+                told += seen
+                backing.value = Dismissed.reconcile(backing.value, live, checkedPlaces, seen)
+            }
+        }
+        var closed = true
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) =
+                if (closed) listOf(StopDisruption("Bus Stop Closed")) else emptyList()
+        }
+        val vm = MainViewModel(
+            client,
+            listOf(StopRef("490000001A", "Example Road", clusterId = "490G000EXAMPLE")),
+            clock = { now },
+            io = dispatcher,
+            compute = dispatcher,
+            dismissedStore = store,
+        )
+        advanceUntilIdle()
+        val closure = DepartureRows.across((vm.state.value as DeparturesUiState.Loaded).stops, now)
+            .first { it.stopDisruption != null }
+        vm.dismissAlert(closure)
+        advanceUntilIdle()
+        told.clear()
+        closed = false
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf(setOf(DismissedAlert.ofStopClosure(closure))), told)
+        assertEquals(emptySet<DismissedAlert>(), backing.value)
+    }
+
+    @Test
+    fun `a refresh's prune leaves an alert dismissed again since it read the set`() = runTest(dispatcher) {
+        // Another check let go of the alert first, the rider dismissed it again, and this check's prune,
+        // worked out from the set before, lands after: the tap stands, in memory as in the store.
+        val backing = MutableStateFlow<Set<DismissedAlert>>(emptySet())
+        var again = emptySet<DismissedAlert>()
+        val store = object : DismissedAlertsStore {
+            override fun dismissed() = backing
+            override suspend fun dismiss(alert: DismissedAlert) {
+                backing.value = Dismissed.dismiss(backing.value, alert)
+            }
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) = error("the refresh's set is passed")
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: Long) {
+                backing.value = Dismissed.reconcile(backing.value, live, checkedPlaces, stillSeen(seen, since))
+            }
+            override fun stillSeen(alerts: Set<DismissedAlert>, since: Long) = alerts - again
+        }
+        var closed = true
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) =
+                if (closed) listOf(StopDisruption("Bus Stop Closed")) else emptyList()
+        }
+        val vm = MainViewModel(
+            client,
+            listOf(StopRef("490000001A", "Example Road", clusterId = "490G000EXAMPLE")),
+            clock = { now },
+            io = dispatcher,
+            compute = dispatcher,
+            dismissedStore = store,
+        )
+        advanceUntilIdle()
+        val closure = DepartureRows.across((vm.state.value as DeparturesUiState.Loaded).stops, now)
+            .first { it.stopDisruption != null }
+        vm.dismissAlert(closure)
+        advanceUntilIdle()
+        again = setOf(DismissedAlert.ofStopClosure(closure))
+        closed = false
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(setOf(DismissedAlert.ofStopClosure(closure)), vm.dismissed.value)
+        assertEquals(setOf(DismissedAlert.ofStopClosure(closure)), backing.value)
+    }
+
+    @Test
+    fun `an alert dismissed again while a refresh's requests are out stays dismissed`() = runTest(dispatcher) {
+        // The refresh's verdict is from what it asked; the rider's tap meanwhile is newer, even of the
+        // same alert again, so its settling lets go of it neither in memory nor in the store.
+        val backing = MutableStateFlow<Set<DismissedAlert>>(emptySet())
+        var count = 0L
+        val counted = HashMap<DismissedAlert, Long>()
+        val store = object : DismissedAlertsStore {
+            override fun dismissed() = backing
+            override suspend fun dismiss(alert: DismissedAlert) {
+                counted[alert] = ++count
+                backing.value = Dismissed.dismiss(backing.value, alert)
+            }
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) = error("the refresh's set is passed")
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: Long) {
+                backing.value = Dismissed.reconcile(backing.value, live, checkedPlaces, stillSeen(seen, since))
+            }
+            override fun mark() = count
+            override fun stillSeen(alerts: Set<DismissedAlert>, since: Long) = alerts.filterTo(HashSet()) { (counted[it] ?: 0L) <= since }
+        }
+        var closed = true
+        var tapMeanwhile: DismissedAlert? = null
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String): List<StopDisruption> {
+                tapMeanwhile?.let { store.dismiss(it) }
+                return if (closed) listOf(StopDisruption("Bus Stop Closed")) else emptyList()
+            }
+        }
+        val vm = MainViewModel(
+            client,
+            listOf(StopRef("490000001A", "Example Road", clusterId = "490G000EXAMPLE")),
+            clock = { now },
+            io = dispatcher,
+            compute = dispatcher,
+            dismissedStore = store,
+        )
+        advanceUntilIdle()
+        val closure = DepartureRows.across((vm.state.value as DeparturesUiState.Loaded).stops, now)
+            .first { it.stopDisruption != null }
+        vm.dismissAlert(closure)
+        advanceUntilIdle()
+        val alert = DismissedAlert.ofStopClosure(closure)
+        // The notice ends, but while the refresh asks, the rider dismisses the same alert again.
+        closed = false
+        tapMeanwhile = alert
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(setOf(alert), backing.value)
+        assertEquals(setOf(alert), vm.dismissed.value)
+        // The next refresh, with no tap since it began, lets go of it.
+        tapMeanwhile = null
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(emptySet<DismissedAlert>(), backing.value)
+        assertEquals(emptySet<DismissedAlert>(), vm.dismissed.value)
+    }
+
+    @Test
+    fun `a closure answer from before an alert was dismissed again never lets go of it`() = runTest(dispatcher) {
+        // Another screen asked about the stop, and found it clear, before the rider dismissed the alert
+        // again; the refresh reuses that answer, so its verdict is that old and the tap stands.
+        val backing = MutableStateFlow<Set<DismissedAlert>>(emptySet())
+        var count = 0L
+        val counted = HashMap<DismissedAlert, Long>()
+        val store = object : DismissedAlertsStore {
+            override fun dismissed() = backing
+            override suspend fun dismiss(alert: DismissedAlert) {
+                counted[alert] = ++count
+                backing.value = Dismissed.dismiss(backing.value, alert)
+            }
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) = error("the refresh's set is passed")
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: Long) {
+                backing.value = Dismissed.reconcile(backing.value, live, checkedPlaces, stillSeen(seen, since))
+            }
+            override fun mark() = count
+            override fun stillSeen(alerts: Set<DismissedAlert>, since: Long) = alerts.filterTo(HashSet()) { (counted[it] ?: 0L) <= since }
+        }
+        val shared = StopClosureCache()
+        // Clear once asked again too: only the reused answer's age keeps the tap.
+        var closed = true
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) =
+                if (closed) listOf(StopDisruption("Bus Stop Closed")) else emptyList()
+        }
+        val vm = MainViewModel(
+            client,
+            listOf(StopRef("490000001A", "Example Road", clusterId = "490G000EXAMPLE")),
+            clock = { now },
+            io = dispatcher,
+            compute = dispatcher,
+            dismissedStore = store,
+            disruptionCache = shared,
+            disruptionReuse = java.time.Duration.ofMinutes(5),
+        )
+        advanceUntilIdle()
+        val closure = DepartureRows.across((vm.state.value as DeparturesUiState.Loaded).stops, now)
+            .first { it.stopDisruption != null }
+        vm.dismissAlert(closure)
+        advanceUntilIdle()
+        val alert = DismissedAlert.ofStopClosure(closure)
+        // Another screen's lookup, asked with the dismissals so far, finds the stop clear; then the
+        // rider dismisses the same alert again, and the list refreshes on that answer.
+        closed = false
+        shared.keep("490000001A", shared.ask(now, store.mark()), emptyList())
+        store.dismiss(alert)
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(setOf(alert), backing.value)
+        assertEquals(setOf(alert), vm.dismissed.value)
+    }
+
+    @Test
+    fun `a line status reused from before an alert was dismissed again never lets go of it`() = runTest(dispatcher) {
+        // The refresh reuses a good-service verdict asked before the rider dismissed the line's alert
+        // again (another screen saw it recur): its verdict is that old, so the tap stands.
+        val backing = MutableStateFlow<Set<DismissedAlert>>(emptySet())
+        var count = 0L
+        val counted = HashMap<DismissedAlert, Long>()
+        val store = object : DismissedAlertsStore {
+            override fun dismissed() = backing
+            override suspend fun dismiss(alert: DismissedAlert) {
+                counted[alert] = ++count
+                backing.value = Dismissed.dismiss(backing.value, alert)
+            }
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) = error("the refresh's set is passed")
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: Long) {
+                backing.value = Dismissed.reconcile(backing.value, live, checkedPlaces, stillSeen(seen, since))
+            }
+            override fun mark() = count
+            override fun stillSeen(alerts: Set<DismissedAlert>, since: Long) = alerts.filterTo(HashSet()) { (counted[it] ?: 0L) <= since }
+        }
+        val severe = LineStatus("victoria", 6, "Severe Delays", "Victoria line: severe delays.")
+        var status = severe
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = listOf(status)
+            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
+        }
+        var clockNow = now
+        val vm = MainViewModel(
+            client,
+            listOf(StopRef("940GZZLUVIC", "Victoria")),
+            clock = { clockNow },
+            io = dispatcher,
+            compute = dispatcher,
+            dismissedStore = store,
+            lineStatusReuse = java.time.Duration.ofMinutes(5),
+        )
+        advanceUntilIdle()
+        val loaded = vm.state.value as DeparturesUiState.Loaded
+        val row = DepartureRows.across(loaded.stops, now, loaded.lineStatuses).first { it.status != null }
+        vm.dismissAlert(row)
+        advanceUntilIdle()
+        val alert = DismissedAlert.ofLineStatus(severe)
+        // Past the reuse window, good service is asked and kept: the dismissal goes, as the alert ended.
+        status = LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service")
+        clockNow = now.plusSeconds(600)
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(emptySet<DismissedAlert>(), backing.value)
+        // Another screen saw it recur and the rider dismissed it there; the next refresh reuses the
+        // good-service verdict from before that.
+        store.dismiss(alert)
+        advanceUntilIdle()
+        clockNow = now.plusSeconds(660)
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(setOf(alert), backing.value)
+        assertEquals(setOf(alert), vm.dismissed.value)
+    }
+
+    @Test
+    fun `an alert dismissed again elsewhere while the list pruned it is taken back`() = runTest(dispatcher) {
+        // Another screen's tap lands as this check writes: the store still held the alert, so nothing
+        // tells the list; asked once its write is in, the list takes the alert back.
+        val backing = MutableStateFlow<Set<DismissedAlert>>(emptySet())
+        var again = emptySet<DismissedAlert>()
+        var tapAs: DismissedAlert? = null
+        val store = object : DismissedAlertsStore {
+            override fun dismissed() = backing
+            override suspend fun dismiss(alert: DismissedAlert) {
+                backing.value = Dismissed.dismiss(backing.value, alert)
+            }
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) = error("the refresh's set is passed")
+            override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>, seen: Set<DismissedAlert>, since: Long) {
+                tapAs?.let { again = setOf(it) }
+                backing.value = Dismissed.reconcile(backing.value, live, checkedPlaces, stillSeen(seen, since))
+            }
+            override fun stillSeen(alerts: Set<DismissedAlert>, since: Long) = alerts - again
+        }
+        var closed = true
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) =
+                if (closed) listOf(StopDisruption("Bus Stop Closed")) else emptyList()
+        }
+        val vm = MainViewModel(
+            client,
+            listOf(StopRef("490000001A", "Example Road", clusterId = "490G000EXAMPLE")),
+            clock = { now },
+            io = dispatcher,
+            compute = dispatcher,
+            dismissedStore = store,
+        )
+        advanceUntilIdle()
+        val closure = DepartureRows.across((vm.state.value as DeparturesUiState.Loaded).stops, now)
+            .first { it.stopDisruption != null }
+        vm.dismissAlert(closure)
+        advanceUntilIdle()
+        val alert = DismissedAlert.ofStopClosure(closure)
+        closed = false
+        tapAs = alert
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(setOf(alert), backing.value)
+        assertEquals(setOf(alert), vm.dismissed.value)
+    }
+
+    @Test
     fun `a refresh reconciles dismissals on the worker, not the main thread`() = runTest(dispatcher) {
         val backing = MutableStateFlow<Set<DismissedAlert>>(emptySet())
         // Each walk through the dismissed set the list holds, by thread: what's left once one is let go
@@ -552,7 +865,9 @@ class MainViewModelTest {
         advanceUntilIdle()
         val closure = DepartureRows.across((vm.state.value as DeparturesUiState.Loaded).stops, now)
             .first { it.stopDisruption != null }
-        vm.dismissAlert(closure)
+        // Dismissed as the store hands it on, so the list holds the set it emits (a tap here also puts
+        // its own equal copy in, which the list then keeps).
+        backing.value = setOf(DismissedAlert.ofStopClosure(closure))
         advanceUntilIdle()
 
         // The notice ends. The worker merges the refresh's stops first; once the list shows them, the

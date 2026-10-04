@@ -3,6 +3,7 @@ package app.stopdash.data
 import androidx.datastore.core.DataStore
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.SteadyClock
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -26,9 +27,21 @@ class DataStoreDismissedAlertsStoreTest {
     private class FakeDataStore(initial: PersistedDismissedAlerts?) : DataStore<PersistedDismissedAlerts?> {
         private val state = MutableStateFlow(initial)
         override val data: Flow<PersistedDismissedAlerts?> = state
+
+        // Run once ahead of the next update, as a write queued before it would be.
+        var ahead: (suspend () -> Unit)? = null
+
+        // Run once just after the next update is written, as a write that lands before its caller resumes.
+        var behind: (suspend () -> Unit)? = null
+
         override suspend fun updateData(
             transform: suspend (t: PersistedDismissedAlerts?) -> PersistedDismissedAlerts?,
-        ): PersistedDismissedAlerts? = transform(state.value).also { state.value = it }
+        ): PersistedDismissedAlerts? {
+            ahead?.let { ahead = null; it() }
+            val written = transform(state.value).also { state.value = it }
+            behind?.let { behind = null; it() }
+            return written
+        }
     }
 
     @Test
@@ -75,6 +88,225 @@ class DataStoreDismissedAlertsStoreTest {
         // (persist-until-change across nearby sets).
         store.reconcile(live = emptySet(), checkedPlaces = setOf("490G000A"))
         assertEquals(setOf(closure), store.dismissed().first())
+    }
+
+    @Test
+    fun `reconcile keeps a dismissal made after the check saw the set`() = runTest {
+        val store = DataStoreDismissedAlertsStore(FakeDataStore(null))
+        store.dismiss(busStop)
+        // The check settled what was dismissed then; the HUBKGX closure was dismissed since, of a
+        // notice a newer check found back, so the older check's write keeps it.
+        val since = store.mark()
+        val seen = store.dismissed().first()
+        store.dismiss(closure)
+        store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX", "490G000A"), seen = seen, since = since)
+        assertEquals(setOf(closure), store.dismissed().first())
+    }
+
+    @Test
+    fun `reconcile keeps an alert dismissed again after the check saw it`() = runTest {
+        val store = DataStoreDismissedAlertsStore(FakeDataStore(null))
+        store.dismiss(closure)
+        // The check saw it dismissed and found its notice ended, so let go of it in memory; before its
+        // write lands, the rider dismisses the same alert again (a newer check found it back).
+        val since = store.mark()
+        val seen = store.dismissed().first()
+        store.dismiss(closure)
+        store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX"), seen = seen, since = since)
+        assertEquals(setOf(closure), store.dismissed().first())
+        // Not dismissed again since a check read the set: its verdict lets go of it.
+        val later = store.mark()
+        store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX"), seen = store.dismissed().first(), since = later)
+        assertEquals(emptySet<DismissedAlert>(), store.dismissed().first())
+    }
+
+    @Test
+    fun `reconcile keeps an alert dismissed again by a write queued just ahead of it`() = runTest {
+        val data = FakeDataStore(null)
+        val store = DataStoreDismissedAlertsStore(data)
+        store.dismiss(closure)
+        val since = store.mark()
+        val seen = store.dismissed().first()
+        // The same alert dismissed again once the check's write is asked for, its write landing first.
+        data.ahead = { store.dismiss(closure) }
+        store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX"), seen = seen, since = since)
+        assertEquals(setOf(closure), store.dismissed().first())
+    }
+
+    @Test
+    fun `only alerts not dismissed again since the mark are still the check's to let go of`() = runTest {
+        val store = DataStoreDismissedAlertsStore(FakeDataStore(null))
+        store.dismiss(closure)
+        store.dismiss(busStop)
+        val since = store.mark()
+        store.dismiss(closure)
+        assertEquals(setOf(busStop), store.stillSeen(setOf(closure, busStop), since))
+    }
+
+    @Test
+    fun `a dismissal whose write fails isn't counted as made`() = runTest {
+        val data = FakeDataStore(null)
+        val store = DataStoreDismissedAlertsStore(data)
+        store.dismiss(closure)
+        val since = store.mark()
+        // Dismissed again, but the write fails: the check that read the set before still lets it go.
+        data.ahead = { throw java.io.IOException("disk full") }
+        try {
+            store.dismiss(closure)
+        } catch (_: java.io.IOException) {
+            // The caller says the dismiss failed; asserted below that it isn't kept as one.
+        }
+        assertEquals(setOf(closure), store.stillSeen(setOf(closure), since))
+    }
+
+    @Test
+    fun `two failed dismissals of an alert at once leave neither counted`() = runTest {
+        // Two dismissals of the same alert out at once, the earlier one's write failing first, then the
+        // later one's: neither is a dismissal a check must keep.
+        val gates = ArrayDeque<kotlinx.coroutines.CompletableDeferred<Unit>>()
+        var failing = false
+        val state = MutableStateFlow<PersistedDismissedAlerts?>(null)
+        val data = object : DataStore<PersistedDismissedAlerts?> {
+            override val data: Flow<PersistedDismissedAlerts?> = state
+            override suspend fun updateData(
+                transform: suspend (t: PersistedDismissedAlerts?) -> PersistedDismissedAlerts?,
+            ): PersistedDismissedAlerts? {
+                if (failing) {
+                    val gate = kotlinx.coroutines.CompletableDeferred<Unit>().also { gates.addLast(it) }
+                    gate.await()
+                    throw java.io.IOException("disk full")
+                }
+                return transform(state.value).also { state.value = it }
+            }
+        }
+        val store = DataStoreDismissedAlertsStore(data)
+        store.dismiss(closure)
+        val since = store.mark()
+        failing = true
+        val first = async { runCatching { store.dismiss(closure) } }
+        val second = async { runCatching { store.dismiss(closure) } }
+        testScheduler.advanceUntilIdle()
+        assertEquals(2, gates.size)
+        // The earlier one fails first, while the later one is still out; then the later one.
+        gates.removeFirst().complete(Unit)
+        testScheduler.advanceUntilIdle()
+        assertTrue(first.await().isFailure)
+        gates.removeFirst().complete(Unit)
+        assertTrue(second.await().isFailure)
+        assertEquals(setOf(closure), store.stillSeen(setOf(closure), since))
+    }
+
+    @Test
+    fun `an alert dismissed again is taken back only once its write is in`() = runTest {
+        // A check asks, once its own write is in, which alerts it let go of were dismissed again: one
+        // still being written is waited for, and taken back only if it's written.
+        val gate = kotlinx.coroutines.CompletableDeferred<Boolean>()
+        var holding = false
+        val state = MutableStateFlow<PersistedDismissedAlerts?>(null)
+        val data = object : DataStore<PersistedDismissedAlerts?> {
+            override val data: Flow<PersistedDismissedAlerts?> = state
+            override suspend fun updateData(
+                transform: suspend (t: PersistedDismissedAlerts?) -> PersistedDismissedAlerts?,
+            ): PersistedDismissedAlerts? {
+                if (holding && !gate.await()) throw java.io.IOException("disk full")
+                return transform(state.value).also { state.value = it }
+            }
+        }
+        val store = DataStoreDismissedAlertsStore(data)
+        store.dismiss(closure)
+        val since = store.mark()
+        holding = true
+        val tap = async { runCatching { store.dismiss(closure) } }
+        val asked = async { store.dismissedAgain(setOf(closure), since) }
+        testScheduler.advanceUntilIdle()
+        // Still being written: not answered yet.
+        assertFalse(asked.isCompleted)
+        gate.complete(false)
+        assertTrue(tap.await().isFailure)
+        // Its write failed, so it isn't taken back.
+        assertEquals(emptySet<DismissedAlert>(), asked.await())
+    }
+
+    @Test
+    fun `an alert dismissed again and written is taken back`() = runTest {
+        val store = DataStoreDismissedAlertsStore(FakeDataStore(null))
+        store.dismiss(closure)
+        val since = store.mark()
+        store.dismiss(closure)
+        assertEquals(setOf(closure), store.dismissedAgain(setOf(closure), since))
+        assertEquals(emptySet<DismissedAlert>(), store.dismissedAgain(setOf(closure), store.mark()))
+    }
+
+    @Test
+    fun `an alert a newer check let go of isn't taken back by an older one`() = runTest {
+        // An older check marks, the alert is dismissed again, then a newer check (marked after) lets
+        // go of it in the store: the older check, asking last, doesn't take it back.
+        val store = DataStoreDismissedAlertsStore(FakeDataStore(null))
+        store.dismiss(closure)
+        val older = store.mark()
+        store.dismiss(closure)
+        val newer = store.mark()
+        store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX"), seen = setOf(closure), since = newer)
+        assertEquals(emptySet<DismissedAlert>(), store.dismissed().first())
+        assertEquals(emptySet<DismissedAlert>(), store.dismissedAgain(setOf(closure), older))
+    }
+
+    @Test
+    fun `a dismissal written just after a check let go of the alert stays counted`() = runTest {
+        // The check's write lets go of the alert; before the check resumes, the rider dismisses it again
+        // and that write lands. The check forgets only the count it cleared, so the new one stands.
+        val data = FakeDataStore(null)
+        val store = DataStoreDismissedAlertsStore(data)
+        store.dismiss(closure)
+        val since = store.mark()
+        data.behind = { store.dismiss(closure) }
+        store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX"), seen = setOf(closure), since = since)
+        assertEquals(setOf(closure), store.dismissed().first())
+        assertEquals(emptySet<DismissedAlert>(), store.stillSeen(setOf(closure), since))
+        assertEquals(setOf(closure), store.dismissedAgain(setOf(closure), since))
+    }
+
+    @Test
+    fun `a check that lets go of an alert just written isn't undone as its dismissal resumes`() = runTest {
+        // The dismissal's write commits; before its caller resumes, a newer check (marked after it) lets
+        // go of the alert. An older check then finds nothing dismissed again to take back.
+        val data = FakeDataStore(null)
+        val store = DataStoreDismissedAlertsStore(data)
+        store.dismiss(closure)
+        val older = store.mark()
+        data.behind = {
+            store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX"), seen = setOf(closure), since = store.mark())
+        }
+        store.dismiss(closure)
+        assertEquals(emptySet<DismissedAlert>(), store.dismissed().first())
+        assertEquals(emptySet<DismissedAlert>(), store.dismissedAgain(setOf(closure), older))
+    }
+
+    @Test
+    fun `an alert dismissed from many threads at once keeps its latest count`() {
+        // Each count is taken in turn but recorded as it lands: the highest stays, so a check marked
+        // before the last dismissal never takes it for one it saw.
+        repeat(50) {
+            val store = DataStoreDismissedAlertsStore(FakeDataStore(null))
+            val pool = java.util.concurrent.Executors.newFixedThreadPool(8)
+            try {
+                val start = java.util.concurrent.CountDownLatch(1)
+                val done = (1..8).map {
+                    pool.submit {
+                        start.await()
+                        kotlinx.coroutines.runBlocking { store.dismiss(closure) }
+                    }
+                }
+                start.countDown()
+                done.forEach { it.get() }
+            } finally {
+                pool.shutdown()
+            }
+            kotlinx.coroutines.runBlocking {
+                store.reconcile(live = emptySet(), checkedPlaces = setOf("HUBKGX"), seen = setOf(closure), since = store.mark() - 1)
+                assertEquals(setOf(closure), store.dismissed().first())
+            }
+        }
     }
 
     @Test

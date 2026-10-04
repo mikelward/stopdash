@@ -458,7 +458,7 @@ class TripViewModel(
 
     /** Dismisses [row]'s line alert, as the list's line page does. */
     fun dismissAlert(row: DepartureRow) {
-        viewModelScope.launch { dismissAlert(dismissedStore, row, io, _dismissWriteFailed, warn) }
+        viewModelScope.launch { dismissAlert(dismissedStore, row, io, _dismissWriteFailed, warn, _dismissed) }
     }
 
     fun dismissWriteFailureShown() {
@@ -1133,6 +1133,9 @@ class TripViewModel(
         val failed: Set<String>,
         val ids: List<String>,
         val ask: StopClosureCache.Ask,
+        // The dismissed alerts' count when its oldest answer was asked ([StopClosureChecks.Result.dismissals]):
+        // one dismissed after stays.
+        val since: Long,
     )
 
     /**
@@ -1145,8 +1148,8 @@ class TripViewModel(
     private suspend fun checkClosures(ids: List<String>): ClosureCheck {
         val now = clock()
         // This check's place in line ([StopClosureCache.ask]), taken before any request is sent, and
-        // each stop's latest check from now on ([closureAsks]).
-        val ticket = closureCache.ask(now)
+        // each stop's latest check from now on ([closureAsks]); with the dismissals counted so far.
+        val ticket = closureCache.ask(now, dismissedStore.mark())
         val before = ids.associateWith { closureAsks[it] }
         for (id in ids) closureAsks[id] = ticket
         val checked = try {
@@ -1160,12 +1163,14 @@ class TripViewModel(
             }
             throw e
         }
-        return ClosureCheck(checked.found, checked.at, checked.failed, ids, ticket)
+        // As old as its oldest answer, a cached one perhaps: a dismissal counted after stays.
+        return ClosureCheck(checked.found, checked.at, checked.failed, ids, ticket, checked.dismissals)
     }
 
     // What a status check found: the statuses TfL returned, answered [at], the lines it gave a verdict
     // on ([answered], a status or none), and the lines in a request that failed.
-    private class StatusCheck(val statuses: Map<String, LineStatus>, val answered: Set<String>, val failed: Set<String>, val at: Instant, val sortedOn: LocalDate) {
+    // [since]: the store's [DismissedAlertsStore.mark] before it asked anything: one dismissed after stays.
+    private class StatusCheck(val statuses: Map<String, LineStatus>, val answered: Set<String>, val failed: Set<String>, val at: Instant, val sortedOn: LocalDate, val since: Long) {
         // Each returned line's answer time, for [State.statusesAt].
         fun answeredAt(): Map<String, Instant> = statuses.mapValues { at }
     }
@@ -1191,10 +1196,14 @@ class TripViewModel(
                     latest = still
                     continue
                 }
-                reconcileDismissals(_dismissed.value, live, checked, dismissedStore, io, warn, "trip") { gone ->
-                    // What's let go of, from what's dismissed now: one made meanwhile stays (Codex on #519).
-                    _dismissed.update { it - gone }
-                }
+                val since = check.since
+                reconcileDismissals(
+                    _dismissed.value, live, checked, dismissedStore, io, warn, "trip", since,
+                    // What's let go of, from what's dismissed now: one made meanwhile stays (Codex on #519),
+                    // as does one dismissed again since the mark.
+                    pruned = { gone -> _dismissed.update { it - dismissedStore.stillSeen(gone, since) } },
+                    restored = { back -> _dismissed.update { it + back } },
+                )
                 break
             }
         }
@@ -1203,21 +1212,26 @@ class TripViewModel(
     // Settles the dismissals of the lines [check] answered ([reconcileLineDismissals]).
     private suspend fun reconcileLineDismissals(check: StatusCheck) {
         val answered = check.statuses.filterKeys { it !in check.failed }
-        reconcileLineDismissals(_dismissed.value, answered, check.answered, clock(), dismissedStore, io, warn, "trip") { gone ->
-            // What's let go of, from what's dismissed now: one made meanwhile stays (Codex on #519).
-            _dismissed.update { it - gone }
-        }
+        val since = check.since
+        reconcileLineDismissals(
+            _dismissed.value, answered, check.answered, clock(), dismissedStore, io, warn, "trip", since,
+            // What's let go of, from what's dismissed now: one made meanwhile stays (Codex on #519), as
+            // does one dismissed again since the mark.
+            pruned = { gone -> _dismissed.update { it - dismissedStore.stillSeen(gone, since) } },
+            restored = { back -> _dismissed.update { it + back } },
+        )
     }
 
     private suspend fun fetchStatuses(lineIds: List<String>): StatusCheck? {
         // The day they're sorted on, read before they're asked for: never later than it was.
         val sortedOn = clock().atZone(AlertStart.ZONE).toLocalDate()
+        val since = dismissedStore.mark()
         val results = LineStatusBatch.request(lineIds) { chunk -> withContext(io) { client.lineStatuses(chunk) } }
         results.failure?.let { warn("trip line status failed for ${results.failed.size} line(s): ${it::class.simpleName}") }
         if (results.unknown.isNotEmpty()) warn("trip line status: TfL doesn't know ${results.unknown.size} line(s)")
         if (!results.anyAnswered) return null
         // Stamped by the steady clock, as a fetch is ([SteadyClock]).
-        return StatusCheck(results.answers.flatMap { it.value }.associateBy { it.lineId }, results.answeredIds, results.failed.toSet(), SteadyClock.stamp(clock()), sortedOn)
+        return StatusCheck(results.answers.flatMap { it.value }.associateBy { it.lineId }, results.answeredIds, results.failed.toSet(), SteadyClock.stamp(clock()), sortedOn, since)
     }
 
     // The earlier of [held] (none with no statuses held) and [day].
