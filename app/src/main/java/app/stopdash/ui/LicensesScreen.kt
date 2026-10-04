@@ -5,6 +5,7 @@ import android.content.Intent
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.annotation.WorkerThread
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -80,12 +81,18 @@ internal fun LicensesContent(
     onOpenLicenseUrl: (String) -> Unit = {},
 ) {
     // The tapped library's stable id, if any — its details fill the dialog below. Saved (not a
-    // plain remember) so an open dialog survives rotation and process death; resolved back to
-    // the library once the list is loaded.
+    // plain remember) so an open dialog survives rotation and process death.
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
-    val selected = remember(libraries, selectedId) {
-        selectedId?.let { id -> libraries?.libraries?.firstOrNull { it.uniqueId == id } }
+    // The library the tap named, kept as it is, so opening the dialog reads nothing.
+    var tapped by remember { mutableStateOf<Library?>(null) }
+    // After a restore only the id is left: it's found again in the list on the worker, never by a
+    // scan of every library in composition (AGENTS.md *Main thread: read and dispatch only*).
+    val restoredSlot = remember { mutableStateOf<Worked<Inputs, Library?>?>(null) }
+    val restoreId = selectedId.takeIf { tapped == null }
+    val restored = rememberWorked(restoredSlot, if (restoreId == null) Inputs() else Inputs(libraries, restoreId)) {
+        libraryWithId(libraries, restoreId)
     }
+    val selected = tapped?.takeIf { it.uniqueId == selectedId } ?: restored?.takeIf { it.uniqueId == selectedId }
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -129,7 +136,10 @@ internal fun LicensesContent(
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { selectedId = library.uniqueId }
+                            .clickable {
+                                tapped = library
+                                selectedId = library.uniqueId
+                            }
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                     )
                 }
@@ -140,10 +150,18 @@ internal fun LicensesContent(
         LibraryDetailsDialog(
             library = library,
             onOpenLicenseUrl = onOpenLicenseUrl,
-            onDismiss = { selectedId = null },
+            onDismiss = {
+                selectedId = null
+                tapped = null
+            },
         )
     }
 }
+
+/** The library in [libraries] with [id], if any: a pass over every library, so never in composition. */
+@WorkerThread
+internal fun libraryWithId(libraries: Libs?, id: String?): Library? =
+    id?.let { libraries?.libraries?.firstOrNull { it.uniqueId == id } }
 
 /**
  * Version, authors and license(s) for a tapped [library]. The bundled export carries no license
