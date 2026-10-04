@@ -17,6 +17,8 @@ junit = "4.13.2"
 kotlin = "2.4.20"
 kotlinxCoroutines = "1.11.0"
 kotlinxSerialization = "1.11.0"
+# Already in the app through Compose; declared for the trip page's loading set (persistent, no copy per change).
+kotlinxCollectionsImmutable = "0.4.0"
 ktor = "3.6.0"
 lifecycle = "2.11.0"
 playAppUpdate = "2.1.0"
@@ -74,6 +76,7 @@ play-app-update = { group = "com.google.android.play", name = "app-update", vers
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
+kotlinx-collections-immutable = { group = "org.jetbrains.kotlinx", name = "kotlinx-collections-immutable", version.ref = "kotlinxCollectionsImmutable" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
 ktor-client-okhttp = { group = "io.ktor", name = "ktor-client-okhttp", version.ref = "ktor" }

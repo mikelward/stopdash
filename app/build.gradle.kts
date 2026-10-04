@@ -341,6 +341,7 @@ dependencies {
     // negotiation, mirroring clothescast. MockEngine (below) tests the client
     // against recorded fixtures with no live network (SPEC *Testing*).
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.collections.immutable)
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.content.negotiation)

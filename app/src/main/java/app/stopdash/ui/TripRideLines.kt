@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import androidx.annotation.WorkerThread
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.RideLines
 import app.stopdash.domain.TripLeg
@@ -50,12 +51,26 @@ internal fun openRouteOf(
     state: TripViewModel.State,
     sequences: Map<String, LineSequence?>,
     hidden: Set<String> = emptySet(),
-): OpenRoute {
-    val key = routeKey(route)
+): OpenRoute = openRoutesOf(listOf(route), state, sequences, hidden).getValue(routeKey(route))
+
+/** [openRouteOf] for each of [routes], by its key, going over the board for trains through a change once. */
+@WorkerThread
+internal fun openRoutesOf(
+    routes: List<TripRoute>,
+    state: TripViewModel.State,
+    sequences: Map<String, LineSequence?>,
+    hidden: Set<String> = emptySet(),
+): Map<String, OpenRoute> {
     val shown = state.shownRoutes(hidden).orEmpty()
-    if (shown.any { routeKey(it) == key }) return OpenRoute(key)
-    val way = RideLines.throughWays(TripViewModel.bestOf(shown), state.live.mapValues { it.value.departures }, state.areaPoles, sequences, hidden)
-        .firstOrNull { routeKey(it.route) == key }
-    // None: a route no plan offers, so the open route closes as soon as it's settled ([openRouteGone]).
-    return way?.let { OpenRoute(routeKey(it.from), it.at, it.route.legs[it.at], key) } ?: OpenRoute(key)
+    val planned = shown.mapTo(HashSet(), ::routeKey)
+    val keys = routes.map(::routeKey).distinct()
+    val ways by lazy {
+        RideLines.throughWays(TripViewModel.bestOf(shown), state.live.mapValues { it.value.departures }, state.areaPoles, sequences, hidden)
+            .associateBy { routeKey(it.route) }
+    }
+    return keys.associateWith { key ->
+        if (key in planned) return@associateWith OpenRoute(key)
+        // None: a route no plan offers, so the open route closes as soon as it's settled ([openRouteGone]).
+        ways[key]?.let { OpenRoute(routeKey(it.from), it.at, it.route.legs[it.at], key) } ?: OpenRoute(key)
+    }
 }

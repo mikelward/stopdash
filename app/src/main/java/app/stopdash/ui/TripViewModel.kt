@@ -300,6 +300,12 @@ class TripViewModel(
         // through a change) finds its walks too. Decided off the main thread as the routes come in;
         // empty until then, the walks shown as walks.
         val changesOnFoot: Set<TripLeg> = emptySet(),
+        // Bumped each time something newly fails: the plan, a stop's refresh, a line's status check or a
+        // stop's closure check, judged from that answer alone; when a check answers differently (a line
+        // now suspended, a stop now closed); and when arrivals are withdrawn (another departure source).
+        // What's drawn from an earlier state tells by it, in constant time, that something it vouched for
+        // has since failed, changed or gone (Codex, #529).
+        val failures: Int = 0,
     ) {
         /**
          * [routes] as shown: without those riding a [hidden] mode, then without the detours
@@ -407,7 +413,7 @@ class TripViewModel(
             // is never fetched, so its stops would read as stale on every return.
             val routes = timedRoutes() ?: return
             // Closures too: a stop the list found closed since this trip's last check shows at once.
-            _state.update { sharedClosures(routes, it.copy(live = cached(routes, it.live))) }
+            _state.update { sharedClosures(routes, withLive(it, cached(routes, it.live))) }
             val now = clock()
             val live = _state.value.live
             val arrivalsStale = stopsOf(routes).any { id -> live[id]?.let { !recentEnough(it, now) } ?: true }
@@ -481,7 +487,8 @@ class TripViewModel(
                 // the shared ones too; clearing twice only costs a fetch).
                 sourceGeneration++
                 arrivals.clear()
-                _state.update { it.copy(live = emptyMap()) }
+                // Withdrawn as a failure is: a frame drawn from them never stands in (Codex, #529).
+                _state.update { it.copy(live = emptyMap(), failures = it.failures + 1) }
                 started = false
             }
         }
@@ -676,7 +683,7 @@ class TripViewModel(
             val shown = gathered.toList()
             // A first answer after a failed plan clears its error: the routes it brings stand,
             // timed at once from any boarding stop's arrivals another screen just fetched.
-            _state.update { it.copy(routes = shown, planError = null, statusUnknown = unknownLines(shown, it), closuresUnknown = unknownClosures(shown, it), live = cached(shown, it.live)) }
+            _state.update { withLive(it.copy(routes = shown, planError = null, statusUnknown = unknownLines(shown, it), closuresUnknown = unknownClosures(shown, it)), cached(shown, it.live)) }
         }
         try {
             coroutineScope {
@@ -728,7 +735,7 @@ class TripViewModel(
         }
         // Failed only when no stop answered: one that answered with no route is still an answer.
         if (answered == 0 && failed != null) {
-            _state.update { it.copy(planning = false, planError = errorKindOf(failed)) }
+            _state.update { it.copy(planning = false, planError = errorKindOf(failed), failures = it.failures + 1) }
             return
         }
         val routes = gathered.toList()
@@ -750,6 +757,8 @@ class TripViewModel(
                 planning = false,
                 planError = null,
                 planIncomplete = failed != null,
+                // A plan that reached only some of the trip's stops has failed in part ([State.failures]).
+                failures = if (failed != null) it.failures + 1 else it.failures,
                 statusUnknown = unknownLines(routes, it),
                 closuresUnknown = unknownClosures(routes, it),
             )
@@ -765,11 +774,11 @@ class TripViewModel(
         // Arrivals another screen fetched since show at once; only a stop not fetched within
         // [ArrivalsCache.TTL] is asked for again. Refreshing from the start, so the trip reads as
         // checking while its bus stop pairs are looked up too.
-        _state.update { it.copy(refreshing = true, live = cached(routes, it.live)) }
+        _state.update { withLive(it.copy(refreshing = true), cached(routes, it.live)) }
         try {
             // Each bus stop pair's poles first (once a day, usually from the file cache): every one is fetched.
             lookUpPoles(routes)
-            _state.update { it.copy(live = cached(routes, it.live)) }
+            _state.update { withLive(it, cached(routes, it.live)) }
             val now = clock()
             // A departure source changed while this refresh's arrivals are out: they're from the old one.
             val source = sourceGeneration
@@ -788,9 +797,27 @@ class TripViewModel(
                 val checked = closures.await()
                 val latest = checked.latest()
                 val current = source == sourceGeneration
+                // A verdict this answer changes from the one held, judged on [io], never on the main thread
+                // (AGENTS.md *Main thread*; Codex, #529): a line's status answered differently or dropped (one
+                // TfL now leaves out, or one no longer asked about), a stop's closures answered differently (a
+                // line now suspended, a stop now closed). Against the state as it stood: a change landing
+                // meanwhile only moves the generation once more.
+                val held = _state.value
+                val newVerdict = withContext(io) {
+                    (fetched != null && (fetched.statuses.any { (id, status) -> held.statuses[id] != status } ||
+                        held.statuses.keys.any { it !in fetched.statuses && it !in fetched.failed })) ||
+                        checked.found.any { (id, notices) -> id in latest && held.closures[id] != notices } ||
+                        // Newly failed, of what this refresh asked: a stop, a line's status, a stop's closures.
+                        (current && live.any { (id, stop) -> stop == null && held.live[id]?.failed != true }) ||
+                        (fetched?.failed ?: (lines + others)).any { it !in held.statusFailedLines } ||
+                        checked.failed.any { it in latest && it !in held.closuresFailed }
+                }
                 _state.update { state ->
                     val next = state.copy(
-                        live = if (!current) state.live else state.live + live.associate { (id, stop) -> id to (stop ?: state.live[id]?.copy(failed = true) ?: StopLive(emptyList(), Instant.EPOCH, failed = true)) },
+                        failures = if (newVerdict) state.failures + 1 else state.failures,
+                        // Judged again after the hop to [io]: a source changed while it ran dropped the
+                        // arrivals, and these, from the old one, mustn't come back (Codex, #529).
+                        live = if (!current || source != sourceGeneration) state.live else state.live + live.associate { (id, stop) -> id to (stop ?: state.live[id]?.copy(failed = true) ?: StopLive(emptyList(), Instant.EPOCH, failed = true)) },
                         // A failed request's lines keep their older statuses; the answered ones replace.
                         statuses = fetched?.let { it.statuses + state.statuses.filterKeys { id -> id in it.failed } } ?: state.statuses,
                         statusesAt = fetched?.let { state.statusesAt + it.answeredAt() } ?: state.statusesAt,
@@ -808,7 +835,8 @@ class TripViewModel(
                         closuresFailed = state.closuresFailed.filterTo(HashSet()) { if (it in asked) it !in latest else it in shownStops } +
                             checked.failed.filter { it in latest },
                     )
-                    next.copy(closuresUnknown = unknownClosures(next.routes.orEmpty(), next))
+                    // And a stand placed for a bus leg now fetched, or no longer ([withLive]).
+                    withLive(next.copy(live = state.live), next.live).let { placed -> placed.copy(closuresUnknown = unknownClosures(placed.routes.orEmpty(), placed)) }
                 }
                 fetched?.let { reconcileLineDismissals(it) }
                 reconcileStopDismissals(checked)
@@ -826,8 +854,18 @@ class TripViewModel(
                 // answer replaces its status, a failure keeps the old one (marked failed below), and one
                 // left out of the answer keeps none, rather than one an earlier check kept.
                 fun <V> judged(held: Map<String, V>, f: StatusCheck) = held.filterKeys { id -> id !in late || id in f.failed }
+                // A status answered differently, or one held before that TfL now leaves out, judged on [io]
+                // as in the refresh's own check (Codex, #529).
+                val heldNow = _state.value
+                val newlyFailed = withContext(io) {
+                    // Newly failed: a late line not already failed ([State.failures]; Codex, #529).
+                    (found?.failed ?: late.toSet()).any { id -> id !in heldNow.statusFailedLines } ||
+                        (found != null && (found.statuses.any { (id, status) -> heldNow.statuses[id] != status } ||
+                            late.any { id -> id in heldNow.statuses && id !in found.statuses && id !in found.failed }))
+                }
                 _state.update {
                     it.copy(
+                        failures = if (newlyFailed) it.failures + 1 else it.failures,
                         statuses = found?.let { f -> judged(it.statuses, f) + f.statuses } ?: it.statuses,
                         statusesAt = found?.let { f -> judged(it.statusesAt, f) + f.answeredAt() } ?: it.statusesAt,
                         statusesSortedOn = found?.let { f -> earlier(it.statusesSortedOn, f.sortedOn) } ?: it.statusesSortedOn,
@@ -886,7 +924,10 @@ class TripViewModel(
                 }
             }.awaitAll()
         }.forEach { (area, found) -> if (found != null) areaPoles[area] = found }
-        _state.update { it.copy(areaPoles = areaPoles.toMap()) }
+        // A stop pair placed anew moves a ride to its pole ([onPoles]): what was drawn from the Planner's
+        // stop no longer stands (Codex, #529).
+        val placedAnew = areas.any { it in areaPoles }
+        _state.update { it.copy(areaPoles = areaPoles.toMap(), failures = if (placedAnew) it.failures + 1 else it.failures) }
     }
 
     // The stops [routes] board at: each ride's own, every pole of a bus stop pair it boards at, and
@@ -919,10 +960,28 @@ class TripViewModel(
     fun boardAt(stands: Set<PlacedStand>) {
         val active = placedStands
         placed = stands
+        // A stand placed or let go of that's already fetched moves its leg at once ([onPoles]): what was
+        // drawn from the stand before no longer stands (Codex, #529). Over the placed stands alone.
+        val live = _state.value.live
+        fun usable(id: String) = live[id]?.failed == false
+        val placedNow = placedStands
+        if ((placedNow - active).any(::usable) || (active - placedNow).any(::usable)) _state.update { it.copy(failures = it.failures + 1) }
         stands.filter { placedEver.add(it) }
             .forEach { warn("trip bus ${it.lineId} boards at the route's stand ${it.standId}, not the Planner's ${it.plannerId}") }
         val now = clock()
         if (stands.any { it.standId !in active && needsFetch(it.standId, now) }) refresh()
+    }
+
+    /**
+     * [state] with [live], the generation moved ([State.failures]) when a stand the screen boards a bus at
+     * ([placedStands]) becomes usable or stops being: the screen moves a leg to it only once it's fetched
+     * ([onPoles]), so what was drawn from the Planner's stand no longer stands (Codex, #529). Over the
+     * placed stands alone, one at most per bus leg moved.
+     */
+    private fun withLive(state: State, live: Map<String, StopLive>): State {
+        fun usable(stop: StopLive?) = stop != null && !stop.failed
+        val moved = placedStands.any { usable(state.live[it]) != usable(live[it]) }
+        return state.copy(live = live, failures = if (moved) state.failures + 1 else state.failures)
     }
 
     private fun cached(routes: List<TripRoute>, live: Map<String, StopLive>): Map<String, StopLive> {
@@ -1001,8 +1060,15 @@ class TripViewModel(
         viewModelScope.launch {
             val checked = checkClosures(asked.toList())
             val latest = checked.latest()
+            // A stop's closures answered differently, judged on [io] (Codex, #529).
+            val heldNow = _state.value
+            val newlyFailed = withContext(io) {
+                checked.failed.any { id -> id in latest && id !in heldNow.closuresFailed } ||
+                    checked.found.any { (id, notices) -> id in latest && heldNow.closures[id] != notices }
+            }
             _state.update {
                 val next = it.copy(
+                    failures = if (newlyFailed) it.failures + 1 else it.failures,
                     closures = it.closures + checked.found.filterKeys { id -> id in latest },
                     closuresAt = it.closuresAt + checked.at.filterKeys { id -> id in latest },
                     closuresFailed = it.closuresFailed - latest + checked.failed.filter { id -> id in latest },
@@ -1032,6 +1098,9 @@ class TripViewModel(
         // A failed stop stops counting as failed once a lookup asked after its own latest check is in.
         val failed = state.closuresFailed.filterTo(HashSet()) { id -> closureAsks[id]?.let { closureCache.since(id, it) == null } ?: true }
         val next = state.copy(
+            // Another screen's answer differing from the trip's: what was drawn from the trip's no longer
+            // stands (Codex, #529).
+            failures = if (held.any { (id, lookup) -> state.closures[id] != lookup.notices }) state.failures + 1 else state.failures,
             closures = state.closures + held.mapValues { it.value.notices },
             closuresAt = state.closuresAt + held.mapValues { it.value.at },
             closuresFailed = failed,
