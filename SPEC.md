@@ -1154,11 +1154,11 @@ route is expanded — as a card whose top row is its **duration · arrival** ("2
 duration is from now to that arrival, so it takes in the same walks, waits and legs. Where waiting
 for a frequent line past its predictions (below) could make it later, by a minute or more, both
 show as a **range** (maintainer, 2026-09-30: once a route can rank above a live one on its latest, a
-single estimated time hid why it sorted where it did) ("41–49 min · est. 11:26–34", the end's hour dropped within the same hour to
+single estimated time hid why it sorted where it did) ("est. 41–49 min · 11:26–34", the end's hour dropped within the same hour to
 save width): from no wait up to the line's longer typical gap, the route timed again with each such
 wait at its longest, so a wait that misses the next leg's train counts that too. Where that later
 route can't be timed at all (the connection missed, nothing else known), it reads as open-ended
-("41+ min · est. 11:26+"). It counts waiting only, not a slow run, and ranking still goes by the earliest arrival (maintainer,
+("est. 41+ min · 11:26+"). It counts waiting only, not a slow run, and ranking still goes by the earliest arrival (maintainer,
 2026-09-27), except that an estimate is set against a live route by the latest end of its range
 (below). Under the top row, the **walk to where it starts** has a row of its own — a walker in the
 pills' room, so the stop starts where a ride's does beside its pill (every row's pill column as wide as
@@ -1711,7 +1711,8 @@ them there:
 - **Time left.** On the card, under where the trip goes, it says when it gets there and how long is
   left (maintainer, 2026-10-01; moved onto the card 2026-10-03): "29 min · ~08:31". It's "~" when it's TfL's prediction for where
   the rider gets off the ride they're on, with only walks after. It's "est." when any of it is the
-  Planner's: a train still to come (its time at the boarding stop, then the time on board), or a ride
+  Planner's ("est. 37 min · 08:39": the "est." leads, before the minutes, and it's the first thing the
+  card drops when the row is too short for the trip's name beside it; maintainer, 2026-10-04): a train still to come (its time at the boarding stop, then the time on board), or a ride
   or change still ahead. Still to board, with the train followed gone by (TfL can list a bus past its
   time, or drop it without a word), not yet found, or lost, it's timed from the next train the boarding
   stop's board lists that the rider can catch (maintainer, 2026-10-03), rather than leave the card
@@ -1898,7 +1899,9 @@ them there:
   now, not from when the rider reaches that station, so a route leaving before then is theirs to
   pass over (`TODO.md`).
 - **Where it shows:** the trip's own screen (the next step over the route), a **card pinned at the
-  top of the main view** (the near-me list, under the top bar, not scrolling with it; a station's
+  top of the main view**, the trip screen's own card (where to and when, then the next step;
+  maintainer, 2026-10-04), its arrival without the board's next train, which only the trip screen
+  fetches (the near-me list, under the top bar, not scrolling with it; a station's
   page, and a station, platform or starred journey opened from the list, are each their own view),
   pinned in the same place over the location prompt and the "Finding stops near you…" spinner too,
   while near me can't come up or isn't up yet (maintainer, 2026-09-29: at the top, not centered
