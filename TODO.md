@@ -2447,16 +2447,12 @@ Builds on Phase 1's minimal line-status marking.
       trains couldn't be checked; the expand view says what that means. The banner goes.
 - [ ] **Build the trip list hidden behind its placeholder, then show it** (Codex, PR #543). The reveal
       gate lists what the list draws (order and headers, the disruptions row, every route and check)
-      and Codex keeps finding the next thing it doesn't list: each card's times and pill widths still
-      start only once the list shows, so a card can read "Loading" and then reflow. Composing the list
-      unseen (no touch, no semantics) behind "Checking routes…" lets all of it warm, and the gate
-      becomes "its work is in" rather than a list that grows with every finding. A design change: the
-      maintainer's call. Planned after #529 (maintainer, 2026-10-04): its per-tick frame on the worker
-      can carry the cards' order and headers too. That also closes a re-plan with the same options
-      (a pull, an expired plan): its new cards show unheaded for one worker run, then head and re-sort
-      (Codex, #543). Keeping the last list whole until then would let a route the new plan dropped
-      linger, which ranks below never showing a departure StopDash doesn't stand behind; cards and
-      headers arriving together in one frame avoids both.
+      and Codex keeps finding the next thing it doesn't list. The cards' times, order and headers now
+      come in #529's frame, so a re-plan with the same options brings its cards headed; what's left is
+      each card's pill width, measured only once the list shows, so a card's rows can shift sideways as
+      it lands. Composing the list unseen (no touch, no semantics) behind "Checking routes…" lets it
+      warm, and the gate becomes "its work is in" rather than a list that grows with every finding.
+      Planned by the maintainer (2026-10-04).
 - [ ] **Option: every line's status at the top of the home screen** (maintainer, 2026-10-04). A
       setting, off by default, to show disruption status for all lines, not just the watched stops'
       — with a choice of which modes to include. TfL's `/Line/Mode/{modes}/Status` returns a mode's

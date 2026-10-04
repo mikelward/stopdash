@@ -459,8 +459,8 @@ class TripScreenScreenshotTest {
             gate.countDown()
             composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodesWithTag("routeLabel").fetchSemanticsNodes().size == 2 }
 
-            // A new plan dropping the fastest route, the worker held again: its cards show at once,
-            // unheaded until the worker heads them.
+            // A new plan dropping the fastest route, the worker held again: its cards wait for their frame,
+            // which heads them ([a_replans_cards_arrive_with_their_headers]); the dropped route never lingers.
             val replanned = CountDownLatch(1)
             threads.execute { replanned.await() }
             try {
@@ -488,6 +488,59 @@ class TripScreenScreenshotTest {
             // Opened whatever happened, so a failed check can't leave the worker's thread waiting.
             gate.countDown()
             worker.close()
+        }
+    }
+
+    @Test
+    fun a_replans_cards_arrive_with_their_headers() {
+        // A re-plan with the same options (a pull, a plan past its reuse) once the list shows: its cards
+        // and their headers come in one frame ([tripFrame]), never the cards unheaded for a worker run
+        // and then headed and re-sorted under the rider (Codex, #543). The worker steps one run at a
+        // time, and the list is looked at after each.
+        // Runs go straight through until the test takes over, then one at a time when it says.
+        val queued = java.util.concurrent.LinkedBlockingQueue<Runnable>()
+        val stepping = java.util.concurrent.atomic.AtomicBoolean(false)
+        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val stepped = java.util.concurrent.Executor { task -> if (stepping.get()) queued.add(task) else threads.execute(task) }
+        val worker = stepped.asCoroutineDispatcher()
+        var state by mutableStateOf(planned)
+        try {
+            composeRule.setContent {
+                StopDashTheme(dynamicColor = false) {
+                    CompositionLocalProvider(LocalWorker provides worker) {
+                        TripScreen(
+                            title = "To Canary Wharf",
+                            state = state,
+                            now = now,
+                            access = Duration.ofMinutes(2),
+                            routeStops = RouteStopsRepository(source),
+                            onBack = {},
+                            onRetry = {},
+                        )
+                    }
+                }
+            }
+            composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodesWithTag("routeLabel").fetchSemanticsNodes().size == 2 }
+            composeRule.waitForIdle()
+
+            stepping.set(true)
+            state = planned.copy(routes = listOf(viaStratford, viaWhitechapel))
+            composeRule.waitForIdle()
+            fun newListShown() = composeRule.onAllNodesWithText("27 min · ~08:29").fetchSemanticsNodes().isEmpty() &&
+                composeRule.onAllNodesWithTag("tripRoutes").fetchSemanticsNodes().isNotEmpty()
+            var runs = 0
+            while (!newListShown()) {
+                val next = queued.poll()
+                assertTrue("the new plan's list shows within the worker's runs", next != null && runs++ < 50)
+                // One run, to its end, then a look at the list.
+                threads.submit(next!!).get()
+                composeRule.waitForIdle()
+            }
+            assertTrue("the new cards come headed", composeRule.onAllNodesWithTag("routeLabel").fetchSemanticsNodes().isNotEmpty())
+        } finally {
+            stepping.set(false)
+            generateSequence { queued.poll() }.forEach { threads.execute(it) }
+            threads.shutdown()
         }
     }
 

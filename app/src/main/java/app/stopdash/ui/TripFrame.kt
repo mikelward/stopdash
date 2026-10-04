@@ -50,14 +50,17 @@ internal class TripFrame(
 internal class TripFraming(val check: TripMessage?, val misses: Set<RouteMiss>, val failed: List<String>)
 
 /**
- * The list's cards as drawn: what frames them ([framing]) and each card's own ([cards], in
- * [TripFrame.cards]' order; [byKey], by its card's key, for a list ordered elsewhere).
+ * The list's cards as drawn: what frames them ([framing]), each card's own ([cards], in
+ * [TripFrame.cards]' order; [byKey], by its card's key), and the order and headers they're drawn
+ * under ([listed]). The order comes with the cards, so a new plan's cards never show unheaded and then
+ * head and re-sort under the rider (Codex, #543).
  */
 internal class TripListView(
     val framing: TripFraming,
     val cards: List<TripCardView>,
     // What each card opens, by its route's key ([openRouteOf]), from the same snapshot.
     val opens: Map<String, OpenRoute>,
+    val listed: ListedCards,
 ) {
     val byKey: Map<String, TripCardView> = cards.associateBy { cardKey(it.card.first().route) }
 }
@@ -107,6 +110,9 @@ internal fun tripFrame(
     // The routes as planned and placed ([onPoles]), before trains through a change are added: what a
     // tapped card opens is worked out from them ([openRouteOf]).
     poled: TripViewModel.State,
+    // The order the last frame drew its cards in ([CardOrder]): the same order comes back as that very
+    // object, so the screen tells a re-sort apart by identity.
+    previousOrder: CardOrder? = null,
 ): TripFrame {
     val timed = tripEstimates(state, now, access, sequences, excluded, originUnconfirmed, rideLines, keep = openKey, planned = plannedLegs)
     // Those whose trains through a change are predicted ([TripTiming.withoutUnvouchedLegs]).
@@ -128,7 +134,7 @@ internal fun tripFrame(
     val open = estimates?.firstOrNull { routeKey(it.route) == openKey }
     val hubOf: (String) -> String? = { routeStops?.hubOf(it) }
     // The list even with a route open: closed again, the list shows at once from the frame in hand.
-    val list = cards?.let { listView(it, state, now, access, sequences, rideLines, dismissed, loading, hubOf, openRoutesOf(it.flatten().map { e -> e.route }, poled, sequences, excluded)) }
+    val list = cards?.let { listView(it, state, now, access, sequences, rideLines, dismissed, loading, hubOf, openRoutesOf(it.flatten().map { e -> e.route }, poled, sequences, excluded), previousOrder) }
     val openView = open?.let { openView(it, state, now, sequences, rideLines, dismissed, loading, originUnconfirmed, hubOf) }
     return TripFrame(tripKey, state, now, access, sequences, rideLines, estimates, cards, open, openKey, shownStops, list, openView)
 }
@@ -145,9 +151,9 @@ private fun listView(
     hubOf: (String) -> String?,
     // What each card opens ([openRoutesOf]).
     opens: Map<String, OpenRoute>,
+    previousOrder: CardOrder?,
 ): TripListView {
-    // The cards' order and headers, and the row over them, are the list's own work ([rememberListedCards],
-    // [rememberTripRow]), kept apart so they outlive an open route.
+    // The row over the cards is the list's own work ([rememberTripRow]), kept apart so it outlives an open route.
     val views = cards.map { card ->
         TripCardView(
             card = card,
@@ -162,7 +168,7 @@ private fun listView(
         )
     }
     // The list takes every route's warnings.
-    return TripListView(framing(cards.flatten(), state, now, sequences, rideLines), views, opens)
+    return TripListView(framing(cards.flatten(), state, now, sequences, rideLines), views, opens, listedCards(cards, previousOrder))
 }
 
 private fun openView(
