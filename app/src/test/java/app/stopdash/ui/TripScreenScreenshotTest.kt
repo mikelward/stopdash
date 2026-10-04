@@ -2010,6 +2010,12 @@ class TripScreenScreenshotTest {
         // A screen reader still hears where each goes.
         composeRule.onAllNodesWithContentDescription("Catford", substring = true, useUnmergedTree = true).onFirst().assertExists()
         composeRule.onAllNodesWithContentDescription("North Greenwich", substring = true, useUnmergedTree = true).onFirst().assertExists()
+        // Every stop name starts in one place down the list, the cut pill's row and the walks too,
+        // though the cut pill is wider than a lone one (maintainer, 2026-10-04).
+        fun lefts() = listOf("Surrey Docks", "Canada Water", "Highbury & Islington", "Whitechapel", "Canary Wharf").flatMap { name ->
+            composeRule.onAllNodesWithText(name, useUnmergedTree = true).fetchSemanticsNodes().map { it.boundsInRoot.left }
+        }
+        composeRule.waitUntil(timeoutMillis = 5_000) { lefts().let { it.size >= 6 && it.max() - it.min() <= 1f } }
         captureSnapshot("trip-shared-first-leg.png")
     }
 
