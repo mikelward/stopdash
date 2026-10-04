@@ -31,14 +31,18 @@ internal fun rememberLineSequences(lineIds: List<String>, now: Instant): Map<Str
  * meanwhile. A retry is a check running again, not one that failed. [version] changes with each load
  * stored, so a route replaced in place still reads as new.
  */
-internal class LineLoads(val sequences: Map<String, LineSequence?>, val loading: Set<String>, val version: Int = 0)
+internal class LineLoads(val sequences: Map<String, LineSequence?>, val loading: Set<String>, val version: Int = 0, val loadingVersion: Int = 0)
 
 /** [rememberLineSequences], saying which lines' loads are under way ([LineLoads]). */
 @Composable
 internal fun rememberLineLoads(lineIds: List<String>, now: Instant): LineLoads {
     val repository = LocalRouteStops.current
     val loaded = remember { mutableStateMapOf<String, LineSequence?>() }
+    // The lines loading, updated in place as a load starts or ends, never copied or rebuilt, and handed
+    // out as one live view: what keys on it keys on [loadingVersion], bumped on each change, never on its
+    // contents (Codex, #529). A load is canceled (and so leaves it) when [lineIds] change.
     val loading = remember { mutableStateMapOf<String, Unit>() }
+    val loadingVersion = remember { mutableIntStateOf(0) }
     // Bumped on each load stored, a retry's included, so what's worked out from the routes can key on it
     // without comparing them (Codex, PR #520).
     val version = remember { mutableIntStateOf(0) }
@@ -53,6 +57,7 @@ internal fun rememberLineLoads(lineIds: List<String>, now: Instant): LineLoads {
                 if (held != null && routes.cached(lineId, "") != null) continue
                 launch {
                     loading[lineId] = Unit
+                    loadingVersion.intValue++
                     try {
                         loaded[lineId] = (routes.cached(lineId, "") ?: try {
                             routes.load(lineId, "")
@@ -65,12 +70,13 @@ internal fun rememberLineLoads(lineIds: List<String>, now: Instant): LineLoads {
                         }).also { version.intValue++ }
                     } finally {
                         loading.remove(lineId)
+                        loadingVersion.intValue++
                     }
                 }
             }
         }
     }
-    return LineLoads(lineIds.filter { it in loaded }.associateWith { loaded[it] }, lineIds.filterTo(HashSet()) { it in loading }, version.intValue)
+    return LineLoads(lineIds.filter { it in loaded }.associateWith { loaded[it] }, loading.keys, version.intValue, loadingVersion.intValue)
 }
 
 /**

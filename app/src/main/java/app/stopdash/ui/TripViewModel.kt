@@ -288,6 +288,10 @@ class TripViewModel(
         // through a change) finds its walks too. Decided off the main thread as the routes come in;
         // empty until then, the walks shown as walks.
         val changesOnFoot: Set<TripLeg> = emptySet(),
+        // Bumped each time something newly fails: the plan, a stop's refresh, a line's status check or a
+        // stop's closure check, judged from that answer alone. What's drawn from an earlier state tells by
+        // it, in constant time, that something it vouched for has since failed (Codex, #529).
+        val failures: Int = 0,
     ) {
         /**
          * [routes] as shown: without those riding a [hidden] mode, then without the detours
@@ -716,7 +720,7 @@ class TripViewModel(
         }
         // Failed only when no stop answered: one that answered with no route is still an answer.
         if (answered == 0 && failed != null) {
-            _state.update { it.copy(planning = false, planError = errorKindOf(failed)) }
+            _state.update { it.copy(planning = false, planError = errorKindOf(failed), failures = it.failures + 1) }
             return
         }
         val routes = gathered.toList()
@@ -777,7 +781,12 @@ class TripViewModel(
                 val latest = checked.latest()
                 val current = source == sourceGeneration
                 _state.update { state ->
+                    // Newly failed, of what this refresh asked: a stop, a line's status, a stop's closures.
+                    val newlyFailed = (current && live.any { (id, stop) -> stop == null && state.live[id]?.failed != true }) ||
+                        (if (fetched == null) !state.statusFailed else fetched.failed.any { it !in state.statusFailedLines }) ||
+                        checked.failed.any { it in latest && it !in state.closuresFailed }
                     val next = state.copy(
+                        failures = if (newlyFailed) state.failures + 1 else state.failures,
                         live = if (!current) state.live else state.live + live.associate { (id, stop) -> id to (stop ?: state.live[id]?.copy(failed = true) ?: StopLive(emptyList(), Instant.EPOCH, failed = true)) },
                         // A failed request's lines keep their older statuses; the answered ones replace.
                         statuses = fetched?.let { it.statuses + state.statuses.filterKeys { id -> id in it.failed } } ?: state.statuses,
@@ -813,7 +822,10 @@ class TripViewModel(
                 // left out of the answer keeps none, rather than one an earlier check kept.
                 fun <V> judged(held: Map<String, V>, f: StatusCheck) = held.filterKeys { id -> id !in late || id in f.failed }
                 _state.update {
+                    // Newly failed: a late line not already failed ([State.failures]; Codex, #529).
+                    val newlyFailed = (found?.failed ?: late.toSet()).any { id -> id !in it.statusFailedLines }
                     it.copy(
+                        failures = if (newlyFailed) it.failures + 1 else it.failures,
                         statuses = found?.let { f -> judged(it.statuses, f) + f.statuses } ?: it.statuses,
                         statusesAt = found?.let { f -> judged(it.statusesAt, f) + f.answeredAt() } ?: it.statusesAt,
                         statusFailedLines = it.statusFailedLines - late.toSet() + (found?.failed ?: late.toSet()),
@@ -987,7 +999,9 @@ class TripViewModel(
             val checked = checkClosures(asked.toList())
             val latest = checked.latest()
             _state.update {
+                val newlyFailed = checked.failed.any { id -> id in latest && id !in it.closuresFailed }
                 val next = it.copy(
+                    failures = if (newlyFailed) it.failures + 1 else it.failures,
                     closures = it.closures + checked.found.filterKeys { id -> id in latest },
                     closuresAt = it.closuresAt + checked.at.filterKeys { id -> id in latest },
                     closuresFailed = it.closuresFailed - latest + checked.failed.filter { id -> id in latest },

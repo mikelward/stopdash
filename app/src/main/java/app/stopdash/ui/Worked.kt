@@ -5,7 +5,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import app.stopdash.domain.AlertPlacement
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.withContext
 
 /**
@@ -20,11 +24,13 @@ internal class Inputs(vararg val parts: Any?) {
 
     override fun hashCode(): Int = parts.fold(1) { hash, part -> hash * 31 + if (byIdentity(part)) System.identityHashCode(part) else part.hashCode() }
 
-    private companion object {
-        fun byIdentity(part: Any?): Boolean = part != null && !plain(part)
-        fun plain(part: Any): Boolean =
+    companion object {
+        private fun byIdentity(part: Any?): Boolean = part != null && !plain(part)
+        private fun plain(part: Any): Boolean =
             part is String || part is Number || part is Boolean || part is Char || part is Enum<*> ||
                 part is java.time.temporal.Temporal || part is java.time.temporal.TemporalAmount
+
+        /** Whether two parts are the same as [Inputs] compares them: a plain value by value, else by identity. */
         fun same(a: Any?, b: Any?): Boolean = if (byIdentity(a) || byIdentity(b)) a === b else a == b
     }
 }
@@ -53,7 +59,9 @@ class ListWork {
  * times moved on stand in for the moment the new ones take, but rows for other places don't.
  *
  * [compute] reads only what [key] is made of: it is the lambda of the composition that changed the
- * key, run once for it.
+ * key, run once for it. An answer under way is never canceled by a newer key (a clock tick): it's
+ * stored for the key it was worked out for, then the latest key is worked out, those in between
+ * skipped, so a worker slower than the keys change still lands answers (Codex, #529).
  */
 @Composable
 internal fun <K : Any, T> rememberWorked(
@@ -63,9 +71,19 @@ internal fun <K : Any, T> rememberWorked(
     compute: () -> T,
 ): T? {
     val worker = LocalWorker.current
-    LaunchedEffect(slot, key, worker) {
-        if (slot.value?.key == key) return@LaunchedEffect
-        slot.value = Worked(key, withContext(worker) { compute() })
+    // The key with the lambda of the composition that made it, so the two are always read together.
+    val wanted = rememberUpdatedState(key to compute)
+    LaunchedEffect(slot, worker) {
+        snapshotFlow { wanted.value }
+            .distinctUntilChangedBy { it.first }
+            .conflate()
+            .collect { (key, compute) ->
+                if (slot.value?.key == key) return@collect
+                val answer = withContext(worker) { compute() }
+                // Not over an answer for the key wanted now (a change undone while this was out): that
+                // one is current, this one isn't (Codex, #529).
+                if (slot.value?.key != wanted.value.first) slot.value = Worked(key, answer)
+            }
     }
     val held = slot.value ?: return null
     return held.value.takeIf { held.key == key || keep(held.key, key) }

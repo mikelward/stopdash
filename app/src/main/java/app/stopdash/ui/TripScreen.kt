@@ -109,7 +109,6 @@ import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.TripTiming
 import app.stopdash.domain.riderLineName
-import app.stopdash.domain.headedCards
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.StepFree
@@ -760,6 +759,9 @@ internal fun TripScreen(
     onStopAvoiding: ((String) -> Unit)? = null,
     avoidedLinesWriteFailed: Boolean = false,
     onAvoidedLinesWriteFailureShown: () -> Unit = {},
+    // Which trip this is (its origin and destination): what the page worked out for another trip never
+    // stands in for it, though the screen stays put as a re-locate moves the trip to another model.
+    tripKey: Any? = null,
 ) {
     // Planned work whose day has come shows as under way, however long ago it was fetched (Codex,
     // PR #337): a kept status outlives the day it was sorted on.
@@ -796,9 +798,34 @@ internal fun TripScreen(
             onShownStops,
             onPlacedStands,
             avoided = TripAvoided(avoidedLines, onAvoidLine, onStopAvoiding, avoidedLinesWriteFailed, onAvoidedLinesWriteFailureShown),
+            tripKey = tripKey,
         )
     }
 }
+
+/**
+ * Whether the trip page's last frame, worked out for [held], may stand in for [wanted] while its own is
+ * worked out (Codex, #529): only while what changed is the data and the clock (a refresh, a route
+ * loaded, a tick), never what the rider chose or is told (the trip, the walk, the routes hidden or
+ * avoided, whether the origin is confirmed, the alerts dismissed, the planning options: walking speed,
+ * longest walk, step-free level, modes), nor once something the frame vouched for has failed (a plan,
+ * a status or closure check, a stop's refresh), and only for [FRAME_HOLD], never
+ * frozen at an old time past it. [held] and [wanted] are the frame's [Inputs], in the page's order.
+ */
+private fun mayStandIn(held: Inputs, wanted: Inputs): Boolean {
+    val heldAt = held.parts[FRAME_TIME] as Instant
+    val wantedAt = wanted.parts[FRAME_TIME] as Instant
+    return FRAME_CHOICES.all { Inputs.same(held.parts[it], wanted.parts[it]) } && Duration.between(heldAt, wantedAt).abs() <= FRAME_HOLD
+}
+
+// Where the frame's inputs (see the page's `Inputs`) hold its time, and what the rider chose or is told:
+// the trip, the walk, the routes left out, whether the origin is unconfirmed, the alerts dismissed, the
+// planning options, and what has failed.
+private const val FRAME_TIME = 2
+private val FRAME_CHOICES = intArrayOf(0, 3, 5, 6, 10, 13, 14, 15, 16, 17)
+
+/** How long the page's last frame may stand in: a minute, then the page waits for its own. */
+private val FRAME_HOLD: Duration = Duration.ofSeconds(60)
 
 /**
  * A trip page's two ends, for its From/To bar: the start ([fromStation], or "Here" when null) and the
@@ -834,7 +861,8 @@ private class TripAlerts(
 private fun TripContent(
     title: String,
     planned: TripViewModel.State,
-    now: Instant,
+    // The tick the page is worked out for; what it draws is the frame's own ([TripFrame.now]).
+    tickNow: Instant,
     access: Duration,
     onBack: () -> Unit,
     onRetry: () -> Unit,
@@ -879,6 +907,7 @@ private fun TripContent(
     onShownStops: (Set<String>) -> Unit = {},
     onPlacedStands: (Set<PlacedStand>) -> Unit = {},
     avoided: TripAvoided = TripAvoided(),
+    tripKey: Any? = null,
 ) {
     // What the routes leave out: the hidden modes and lines, and the lines avoided ([AvoidedLines]).
     // Only the hidden ones are the "hidden" banner's: an avoided line is said by its own chip.
@@ -906,7 +935,7 @@ private fun TripContent(
         (sequenceLineIds(planned, excluded, settledLines[0], openRef?.keys.orEmpty()) + listOfNotNull(openRef?.ride?.lineId))
             .distinct().also { settledLines[0] = it }
     }
-    val loads = rememberLineLoads(lineIds, now)
+    val loads = rememberLineLoads(lineIds, tickNow)
     val routeSequences = loads.sequences
     // Each bus leg at the poles its bus uses, once its route says which (the Planner's may be the
     // other side of the road); everything below reads the trip this way, with the routes a train
@@ -922,7 +951,7 @@ private fun TripContent(
     // and a train through a change whether or not one is predicted. Null while no plan offers it.
     val opened = remember(poled, excluded, openRef) { openRef?.routeIn(poled.shownRoutes(excluded).orEmpty()) }
     val openKey = opened?.let(::routeKey)
-    val state = remember(poled, routeSequences, excluded, opened) { withThroughRoutes(poled, routeSequences, excluded, opened) }
+    val liveState = remember(poled, routeSequences, excluded, opened) { withThroughRoutes(poled, routeSequences, excluded, opened) }
     // Every leg the Planner planned: a leg it didn't (a train through a change) needs a live train.
     val plannedLegs = remember(poled) { poled.routes.orEmpty().flatMapTo(HashSet()) { it.legs } }
     val originUnconfirmed = relocating || locationBanner != null
@@ -937,39 +966,58 @@ private fun TripContent(
         )
     }
     // Each ride's lines ([rideLines]): worked out once per refresh and route load, not on every tick.
-    val rideLines = remember(state, routeSequences, excluded) { rideLines(state.routes.orEmpty(), state, routeSequences, excluded) }
+    val liveRideLines = remember(liveState, routeSequences, excluded) { rideLines(liveState.routes.orEmpty(), liveState, routeSequences, excluded) }
     // Each leg's live trains judged on its line's route on the worker ([TripVerdicts]), on every
     // refresh and route load; a train not judged yet reads as its route still loading. Once a warm-up
     // ends, the same routes come anew ([JudgedRoutes]) so what reads the verdicts reads them again.
     val worker = LocalWorker.current
     var judged by remember { mutableIntStateOf(0) }
-    LaunchedEffect(state, routeSequences, rideLines) {
-        withContext(worker) { warmVerdicts(state, routeSequences, rideLines) { isActive } }
+    LaunchedEffect(liveState, routeSequences, liveRideLines) {
+        withContext(worker) { warmVerdicts(liveState, routeSequences, liveRideLines) { isActive } }
         // Read again however the verdicts came: a warm-up superseded mid-way may have written the last
         // of them after this composition looked, leaving this one nothing new to judge.
         judged++
     }
-    val sequences: Map<String, LineSequence?> = remember(routeSequences, judged) { JudgedRoutes(routeSequences) }
-    val estimates = remember(state, now, access, sequences, excluded, originUnconfirmed, rideLines, plannedLegs, openKey) {
-        tripEstimates(state, now, access, sequences, excluded, originUnconfirmed, rideLines, keep = openKey, planned = plannedLegs)
-            // The open route stays, its arrival withheld while its train through a change isn't predicted.
-            ?.filter { routeKey(it.route) == openKey || TripTiming.withoutUnvouchedLegs(listOf(it), plannedLegs).isNotEmpty() }
+    val liveSequences: Map<String, LineSequence?> = remember(routeSequences, judged) { JudgedRoutes(routeSequences) }
+    // The lines loading key the frame by their version ([LineLoads.loadingVersion]), never their contents;
+    // the frame reads the live set on the worker.
+    val routeStops = LocalRouteStops.current
+    // Everything the page draws on a tick ([tripFrame]), worked out on the worker, never in composition
+    // (AGENTS.md *Main thread*): the estimates, the cards and the open route, and what frames them. The
+    // last frame stands in while the next is worked out; the page is drawn against the frame's own state,
+    // time, routes and ride lines, never newer ones it doesn't hold yet (as the near-me list's, #524).
+    val frameSlot = remember { mutableStateOf<Worked<Inputs, TripFrame>?>(null) }
+    val frame = rememberWorked(
+        frameSlot,
+        Inputs(tripKey, liveState, tickNow, access, liveSequences, excluded, originUnconfirmed, liveRideLines, plannedLegs, openKey, alerts.dismissed, loads.loadingVersion, routeStops,
+            // The planning options: the frame a plan under the old ones was worked out for never stands in.
+            walkingSpeed, maxWalk, stepFree, tripModes,
+            // What has failed since ([TripViewModel.State.failures]): a frame from before a failed refresh
+            // never stands in once it fails (Codex, #529).
+            liveState.failures),
+        keep = ::mayStandIn,
+    ) {
+        tripFrame(tripKey, liveState, tickNow, access, liveSequences, excluded, originUnconfirmed, liveRideLines, plannedLegs, openKey, alerts.dismissed, loads.loading, routeStops)
     }
+    // What the page draws against: the frame's own state, time, routes and ride lines.
+    val state = frame?.state ?: liveState
+    val now = frame?.now ?: tickNow
+    val sequences = frame?.sequences ?: liveSequences
+    val rideLines = frame?.rideLines ?: liveRideLines
+    val estimates = frame?.estimates
     // A withheld arrival leaves its reason in the debug log: a side effect, off composition.
     LaunchedEffect(estimates) {
         estimates?.let { list -> onWithheld(list.associate { routeKey(it.route) to it.withheld }) }
     }
     // The stops only the screen can name, handed to the trip to check ([shownStops]).
-    val shown = remember(estimates, sequences, rideLines) {
-        estimates.orEmpty().flatMapTo(HashSet()) { shownStops(it.route, sequences, rideLines) }
-    }
-    LaunchedEffect(shown) { onShownStops(shown) }
+    val shownStops = frame?.shownStops
+    LaunchedEffect(shownStops) { shownStops?.let(onShownStops) }
     // The list's cards; an open route is looked up among every way timed, so it stays open whichever
     // way its card shows.
-    // A route with more changes than another getting there no later is left off the list
-    // ([TripTiming.withoutSlowerChanges]); an open one stays open.
-    val cards = remember(estimates) { estimates?.let { tripCards(TripTiming.withoutSlowerChanges(it)) } }
-    val open = estimates?.firstOrNull { routeKey(it.route) == openKey }
+    val cards = frame?.cards
+    // Only the route the frame opened, if it's still the one open: a frame worked out before a route was
+    // opened or closed doesn't stand in for that.
+    val open = frame?.takeIf { it.openKey == openKey }?.open
     // The open route stays open while the plan offers it ([openRouteGone]), past the cap too
     // ([TripViewModel.bestOf]); once a settled plan doesn't — a new plan without it (another walking
     // speed, a re-plan), or its mode hidden — it's closed for good, so it never reopens unbidden
@@ -978,7 +1026,10 @@ private fun TripContent(
     LaunchedEffect(openRef, poled.routes, poled.planning, excluded) {
         if (openRef != null && poled.routes != null && !poled.planning && openRouteGone(poled, excluded, openRef)) setOpen(null)
     }
-    BackHandler { if (open != null) setOpen(null) else onBack() }
+    // A route asked for closes on Back even before its frame is in, never leaving the trip (Codex, #529).
+    // The on-screen arrow too.
+    val back = { if (openRef != null) setOpen(null) else onBack() }
+    BackHandler(onBack = back)
     // A leg's row tapped on an open route: its line's page, as a row on the main screen opens it,
     // with the line's full service alert and its stops (SPEC *Trips with a change*). Found again among
     // the open route's rows on every refresh, so it stays live; gone with them, it closes.
@@ -1029,8 +1080,10 @@ private fun TripContent(
     }
     // Its row gone (its last train passed, or the route closed): the page stays closed rather than
     // reopening by itself should a later refresh bring the same row back, as the list's does.
-    LaunchedEffect(detailKey, detailRow == null) {
-        if (detailKey != null && detailRow == null) detailKey = null
+    // Not while the page waits for its frame (a re-locate, a new walk): the page is judged gone only
+    // against a frame that lacks it.
+    LaunchedEffect(detailKey, detailRow == null, frame == null) {
+        if (detailKey != null && detailRow == null && frame != null) detailKey = null
     }
     if (detailRow != null) {
         RouteDetailScreen(
@@ -1152,7 +1205,7 @@ private fun TripContent(
             } else if (open != null && onStart != null) {
                 Button(
                     onClick = { onStart(open.route) },
-                    enabled = canStart(open.route, sequences, originUnconfirmed),
+                    enabled = frame?.openView?.canStart == true,
                     modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp).height(56.dp),
                 ) {
                     Text(stringResource(R.string.on_the_way_start))
@@ -1186,7 +1239,7 @@ private fun TripContent(
                 TripEndsBar(
                     fromStation = ends.fromStation,
                     onChangeFrom = ends.onChangeFrom,
-                    onBack = onBack,
+                    onBack = back,
                     labelWidth = rememberTripEndsLabelWidth(),
                     actions = if (menu != null) overflow else null,
                     readToLabel = false,
@@ -1194,7 +1247,7 @@ private fun TripContent(
             } else {
                 TopAppBar(
                     navigationIcon = {
-                        IconButton(onClick = { if (open != null) setOpen(null) else onBack() }) {
+                        IconButton(onClick = back) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                         }
                     },
@@ -1205,12 +1258,12 @@ private fun TripContent(
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            // With a route open, only its own legs' warnings frame it; the list takes every route's.
-            val shown = open?.let { listOf(it) } ?: cards?.flatten()
-            val check = remember(state, shown, now, sequences) { shown?.let { tripCheckState(state, it, now, sequences, rideLines) } }
+            // With a route open, only its own legs' warnings frame it; the list takes every route's
+            // ([TripFraming]): whichever is shown, from the frame in hand.
+            val framing = if (open != null) frame?.openView?.framing else frame?.list?.framing
+            val check = framing?.check
             // Which trains the banner means, logged once per distinct set, off composition.
-            val misses = remember(state, shown, now, sequences) { shown?.let { tripMisses(state, it, now, sequences, rideLines) }.orEmpty() }
-            val routeStops = LocalRouteStops.current
+            val misses = framing?.misses.orEmpty()
             LaunchedEffect(routeStops, misses) { routeStops?.reportMisses(misses) }
             // The walking speed heads an open route too, as the maintainer asked (2026-09-28): its walks
             // are timed at it as the list's are. A pick plans again; an open route stays
@@ -1232,19 +1285,19 @@ private fun TripContent(
             }
             // The lines avoided, under the modes: each a chip a tap stops avoiding.
             avoided.onStopAvoiding?.let { AvoidedLineChips(avoided.lines, it) }
-            TripBanners(shown, rideLines, state, check, locationBanner, onRelocate, hiddenModes, onShowAllModes)
+            TripBanners(framing?.failed.orEmpty(), check, locationBanner, onRelocate, hiddenModes, onShowAllModes)
             Box(Modifier.fillMaxSize()) {
                 when {
                     cards == null -> TripPlaceholder(state, onRetry)
-                    open != null -> RouteLegs(open, rideLines, state, now, access, sequences, onRetry, alerts.dismissed, alerts.onDismiss, hideMode, ::openDetail, loads.loading)
+                    // Both from the frame, which worked out the open route ([TripFrame.openView]) and the list's cards ([TripFrame.list]).
+                    open != null && frame?.openView != null -> RouteLegs(open, frame.openView, rideLines, state, now, frame.access, sequences, onRetry, alerts.dismissed, alerts.onDismiss, hideMode, ::openDetail)
                     else -> {
                         val routes = @Composable {
                             RouteList(
-                                cards, rideLines, state, now, access, sequences, onRetry, alerts.dismissed,
+                                frame?.list ?: TripListView(TripFraming(null, emptySet(), emptyList()), null, emptyList(), emptyList(), emptyList()), rideLines, state, now, onRetry,
                                 onOpen = { setOpen(openRouteOf(it.route, poled, sequences, excluded)) },
                                 onHideMode = hideMode,
                                 onAvoidLine = avoided.onAvoid,
-                                loading = loads.loading,
                             )
                         }
                         // Pulled down, the routes are planned again and every stop fetched afresh, from
@@ -1279,10 +1332,8 @@ internal fun failedStops(estimates: List<TripTiming.Estimate>, state: TripViewMo
 
 @Composable
 private fun TripBanners(
-    estimates: List<TripTiming.Estimate>?,
-    // Each ride's lines ([rideLines]): another line boarding at a sibling pole reads from that pole.
-    rideLines: Map<TripLeg, RideLines>,
-    state: TripViewModel.State,
+    // The shown routes' boarding stops whose last refresh failed ([failedStops]), worked out with the frame.
+    failed: List<String>,
     check: TripMessage?,
     locationBanner: LocationBanner?,
     onRelocate: () -> Unit,
@@ -1301,7 +1352,6 @@ private fun TripBanners(
             onTryAgain = onRelocate,
         )
     }
-    val failed = remember(estimates, state.live, rideLines) { failedStops(estimates.orEmpty(), state, rideLines) }
     if (failed.isNotEmpty()) {
         val which = if (failed.size == 1) failed[0] else stringResource(R.string.partial_refresh_more, failed[0], failed.size - 1)
         Banner(stringResource(R.string.partial_refresh_no_reason, which))
@@ -1360,28 +1410,19 @@ private fun PlanNotice(text: String, planning: Boolean, onRetry: () -> Unit) {
 
 @Composable
 private fun RouteList(
-    cards: List<List<TripTiming.Estimate>>,
+    // The list as the page's frame worked it out ([TripListView]): its cards, their headers and status note.
+    view: TripListView,
     // Each ride's lines ([rideLines]), shown together on its pill, their trains together.
     rideLines: Map<TripLeg, RideLines>,
     state: TripViewModel.State,
+    // The frame's own time ([TripFrame.now]), which its cards were worked out for.
     now: Instant,
-    // The walk to the trip's first stop: the card's times gray what leaves before the rider gets there.
-    access: Duration,
-    sequences: Map<String, LineSequence?>,
     onRetry: () -> Unit,
-    // The alerts dismissed (as on the list): their ⚠ doesn't show on a card.
-    dismissed: Set<DismissedAlert>,
     onOpen: (TripTiming.Estimate) -> Unit,
     onHideMode: ((String) -> Unit)?,
-    // The lines whose route data is loading ([LineLoads.loading]), a retry included.
-    loading: Set<String> = emptySet(),
     // A card's long press also offers to avoid each line it rides ([AvoidedLines]); null offers not.
     onAvoidLine: ((String) -> Unit)? = null,
 ) {
-    // Which card gets there soonest, which rides fewest and which walks least, over each, then
-    // the rest under "Other" (maintainer, 2026-09-30): worked out once per set of cards, not on
-    // every recomposition (off the main thread with the rest of the card work, TODO.md).
-    val shown = remember(cards) { headedCards(cards.map { it.first() }) }
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -1401,38 +1442,21 @@ private fun RouteList(
                 )
             }
         }
-        // Lines not yet checked rank as unchecked, and say so: checking while a check runs, and
-        // only a finished check says it couldn't.
-        // A route revealed since the last refresh (a mode shown again) counts by its own lines.
-        // So does another line shown with its trains grayed ([RideLines.unchecked]): once the check is
-        // over it isn't still "checking", it couldn't be.
-        val otherLines = RideLines.unchecked(cards.flatMap { card -> card.flatMap { it.route.rides } }.mapNotNull { rideLines[it] }, rideStatuses(state))
-        // Only the routes shown: a hidden mode's line or failed stop isn't these routes'.
-        val shownLines = cards.flatMap { card -> card.flatMap { it.route.rides } }.mapTo(HashSet()) { it.lineId }
-        statusNote(
-            state,
-            // A Planner line still unchecked says so even where another line keeps its route usable.
-            state.statusUnknown.any { it in shownLines } || shownLines.any { it !in state.statuses } || otherLines.isNotEmpty() ||
-                cards.any { card -> card.any { it.unchecked || otherLineStopsUnchecked(it.route, state, rideLines) } },
-            cards.any { card -> card.any { routeClosuresFailed(it.route, state, sequences, rideLines) } },
-            cards.any { card -> card.any { routeStatusFailed(it.route, rideLines, state) } },
-            awaitingRoutes(cards.flatten(), sequences, loading),
-        )?.let { checking ->
-            val names = if (checking) emptyList() else uncheckedNames(cards.flatten(), state, now, sequences, rideLines)
-            item(key = "status") { StatusUnknown(checking, names) }
-        }
-        if (cards.isEmpty()) {
+        // Lines not yet checked say so: checking while a check runs, and only a finished check says it
+        // couldn't, naming what ([tripFrame]'s list).
+        view.status?.let { checking -> item(key = "status") { StatusUnknown(checking, view.names) } }
+        if (view.cards.isEmpty()) {
             item(key = "none") { Text(stringResource(R.string.trip_no_routes), style = MaterialTheme.typography.bodyLarge) }
         }
         // Routes sharing every stop but differing in their first line are one card: one header, a
         // row per ride, and the first ride's times for every line together. The card is one choice
         // (maintainer, 2026-09-27): tapping it opens the best of its routes, and a long press
         // anywhere offers to hide each group any of its legs rides.
-        items(shown, key = { cardKey(cards[it.index].first().route) }) { headed ->
-            val card = cards[headed.index]
-            val modes = remember(card) { cardModes(card) }
+        items(view.headed, key = { cardKey(view.cards[it.index].card.first().route) }) { headed ->
+            val shown = view.cards[headed.index]
+            val card = shown.card
             var menuOpen by remember { mutableStateOf(false) }
-            val onLongPress = if (onHideMode != null && modes.isNotEmpty()) ({ menuOpen = true }) else null
+            val onLongPress = if (onHideMode != null && shown.modes.isNotEmpty()) ({ menuOpen = true }) else null
             val moreLabel = stringResource(R.string.more_actions)
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (headed.header.isNotEmpty()) RouteLabelHeader(headed.header)
@@ -1453,41 +1477,19 @@ private fun RouteList(
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            // Each line's alerts for the way the card rides it, less those dismissed.
-                            val statuses = remember(card, state.statuses, state.live, now, sequences, rideLines, dismissed) {
-                                shownStatuses(cardStatuses(card, rideLines, state, now, sequences), dismissed)
-                            }
-                            val walk = remember(card, access) { walkToStart(card.first().route, access) }
-                            CardHeader(card, rideLines, statuses, walk)
-                            // Every route's on the card: another line's ride may use another pole of the pair.
-                            val routeStops = LocalRouteStops.current
-                            val closures = remember(card, state.closures, now, dismissed, sequences, rideLines, routeStops) {
-                                card.fold(emptyMap<String, DepartureRow>()) { found, estimate ->
-                                    found + routeClosures(estimate.route, state, now, dismissed, sequences, rideLines) { routeStops?.hubOf(it) }
-                                }
-                            }
-                            // The card's trains ([cardTimes]), worked out on the worker, never in composition
-                            // (AGENTS.md *Main thread*). The card's last times stand in while new ones are
-                            // worked out, drawn against the time, card and lines they were worked out for, so a
-                            // train just gone never reads "0 min"; "Loading" until its first are in.
-                            // One per card: the list's item is keyed by its route ([cardKey]), so no key is worked
-                            // out here.
-                            val slot = remember { mutableStateOf<Worked<Inputs, TimedCard>?>(null) }
-                            val timed = rememberWorked(slot, Inputs(card, state, now, access, sequences, rideLines), keep = { _, _ -> true }) {
-                                TimedCard(cardTimes(card, state, now, access, sequences, rideLines), now, card, rideLines)
-                            } ?: TimedCard(CardTimes(emptyList(), emptySet(), now.plus(access), loading = true), now, card, rideLines)
-                            // The rides drawn from the card and lines the times were worked out for, so a line
-                            // just hidden never lends its trains to another until the new times are in (Codex, #525).
-                            RideStops(timed.card, timed.rideLines, statuses, closures, timed.times, timed.now, walk)
+                            // All of it the frame's ([TripCardView]): the card's alerts, its walk, its stops'
+                            // notices and its first ride's trains, drawn against the frame's time.
+                            CardHeader(card, rideLines, shown.statuses, shown.walk)
+                            RideStops(card, rideLines, shown.statuses, shown.closures, shown.times, now, shown.walk)
                         }
                     }
                     if (onHideMode != null) {
                         HideModeMenu(
                             expanded = menuOpen,
                             onDismiss = { menuOpen = false },
-                            modes = modes,
+                            modes = shown.modes,
                             onHideMode = onHideMode,
-                            lines = cardLines(card, rideLines),
+                            lines = shown.lines,
                             onAvoidLine = onAvoidLine,
                         )
                     }
@@ -1627,17 +1629,6 @@ internal data class CardTimes(
     val reachable: Instant,
     val loading: Boolean,
     val headways: List<Headway.Range?> = emptyList(),
-)
-
-/**
- * A card's [times] and what they were worked out for: the time [now], the [card] and its [rideLines],
- * which its rides are drawn from.
- */
-internal class TimedCard(
-    val times: CardTimes,
-    val now: Instant,
-    val card: List<TripTiming.Estimate>,
-    val rideLines: Map<TripLeg, RideLines>,
 )
 
 /**
@@ -1985,6 +1976,8 @@ private fun trainTimes(shown: List<Pair<Departure, Boolean>>, now: Instant, load
 @Composable
 private fun RouteLegs(
     estimate: TripTiming.Estimate,
+    // The open route as the page's frame worked it out ([TripOpenView]): its notices, alerts and status note.
+    view: TripOpenView,
     // Each ride's lines ([rideLines]): a departure row for every one of them.
     rideLines: Map<TripLeg, RideLines>,
     state: TripViewModel.State,
@@ -2000,13 +1993,8 @@ private fun RouteLegs(
     onHideMode: ((String) -> Unit)?,
     // A leg's row tapped: opens its line's page.
     onOpenDetail: (TripLeg, DepartureRow, RouteFocus?) -> Unit,
-    // The lines whose route data is loading ([LineLoads.loading]), a retry included.
-    loading: Set<String> = emptySet(),
 ) {
-    val routeStops = LocalRouteStops.current
-    val closures = remember(estimate.route, state.closures, now, dismissed, sequences, rideLines, routeStops) {
-        routeClosures(estimate.route, state, now, dismissed, sequences, rideLines) { routeStops?.hubOf(it) }
-    }
+    val closures = view.closures
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -2015,20 +2003,9 @@ private fun RouteLegs(
         // A re-plan that failed says so over the open route too, with its Retry, as the list does.
         state.planError?.let { error -> item(key = "error") { PlanFailure(error, state.planning, onRetry) } }
         if (state.planError == null && state.planIncomplete) item(key = "incomplete") { PlanIncomplete(state.planning, onRetry) }
-        item(key = "summary") { RouteSummary(listOf(estimate), rideLines, shownStatuses(cardStatuses(listOf(estimate), rideLines, state, now, sequences), dismissed), Modifier.padding(vertical = 8.dp)) }
-        val otherLines = RideLines.unchecked(estimate.route.rides.mapNotNull { rideLines[it] }, rideStatuses(state))
-        // A Planner line still unchecked says so even where another line keeps the route ranked usable.
-        val plannerUnchecked = estimate.route.rides.any { it.lineId in state.statusUnknown || it.lineId !in state.statuses }
-        statusNote(
-            state,
-            estimate.unchecked || plannerUnchecked || otherLines.isNotEmpty() || otherLineStopsUnchecked(estimate.route, state, rideLines),
-            routeClosuresFailed(estimate.route, state, sequences, rideLines),
-            routeStatusFailed(estimate.route, rideLines, state),
-            awaitingRoutes(listOf(estimate), sequences, loading),
-        )?.let { checking ->
-            val names = if (checking) emptyList() else uncheckedNames(listOf(estimate), state, now, sequences, rideLines)
-            item(key = "status") { StatusUnknown(checking, names) }
-        }
+        item(key = "summary") { RouteSummary(listOf(estimate), rideLines, view.statuses, Modifier.padding(vertical = 8.dp)) }
+        // Lines not yet checked say so, naming what couldn't be ([tripFrame]'s open route).
+        view.status?.let { checking -> item(key = "status") { StatusUnknown(checking, view.names) } }
         val firstStop = estimate.route.legs.firstOrNull()?.fromName
         if (access > Duration.ZERO && firstStop != null) {
             item(key = "access") { WalkLink(stringResource(R.string.trip_walk_first, firstStop, access.toMinutes().toInt())) }

@@ -1687,6 +1687,33 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `a new failure moves the failure generation, a repeated one doesn't`() = runTest(dispatcher) {
+        // What's drawn from an earlier state tells by it that something has since failed, even when as
+        // many things fail as before (Codex, #529).
+        val client = FakeClient(mutableMapOf("A" to listOf(train("red", "B", 9))))
+        val trip = model(FakePlanner(listOf(route)), client)
+        trip.refresh()
+        advanceUntilIdle()
+        val start = trip.state.value.failures
+        client.failStops = setOf("A")
+        now = now.plusSeconds(30)
+        trip.pullRefresh()
+        advanceUntilIdle()
+        assertEquals(start + 1, trip.state.value.failures)
+        // A again: nothing new has failed.
+        now = now.plusSeconds(30)
+        trip.pullRefresh()
+        advanceUntilIdle()
+        assertEquals(start + 1, trip.state.value.failures)
+        // A answers, B fails: as many fail as before, but B newly.
+        client.failStops = setOf("B")
+        now = now.plusSeconds(30)
+        trip.pullRefresh()
+        advanceUntilIdle()
+        assertEquals(start + 2, trip.state.value.failures)
+    }
+
+    @Test
     fun `a pull whose plan fails says why and lets go of its indicator`() = runTest(dispatcher) {
         val planner = FakePlanner(listOf(route))
         val trip = model(planner, FakeClient(mutableMapOf()))
@@ -2445,6 +2472,8 @@ class TripViewModelTest {
         trip.boardAt(setOf(atRouteStand))
         advanceUntilIdle()
         assertEquals(true, trip.state.value.live["As"]?.failed)
+        // Told by a new failure generation, for what's drawn from an earlier state (Codex, #529).
+        assertTrue(trip.state.value.failures >= 1)
     }
 
     @Test
@@ -2933,6 +2962,24 @@ class TripViewModelTest {
         advanceUntilIdle()
         assertTrue("green" !in fresh.state.value.statuses)
         assertEquals(emptySet<String>(), fresh.state.value.statusUnknown)
+    }
+
+    @Test
+    fun `a line first seen in arrivals whose own check fails moves the failure generation`() = runTest(dispatcher) {
+        // Its late check fails alone: what's drawn from an earlier state tells it has (Codex, #529).
+        val arrivals = mutableMapOf("A" to listOf(train("red", "End", 2)))
+        val client = FakeClient(arrivals)
+        val trip = model(FakePlanner(listOf(route)), client)
+        trip.refresh()
+        advanceUntilIdle()
+        val before = trip.state.value.failures
+        arrivals["A"] = listOf(train("red", "End", 2), train("green", "End", 3))
+        client.failLines = setOf("green")
+        now = now.plus(Duration.ofMinutes(2))
+        trip.refresh()
+        advanceUntilIdle()
+        assertTrue("green" in trip.state.value.statusFailedLines)
+        assertEquals(before + 1, trip.state.value.failures)
     }
 
     @Test

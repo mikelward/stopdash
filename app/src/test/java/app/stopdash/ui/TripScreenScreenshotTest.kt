@@ -289,8 +289,8 @@ class TripScreenScreenshotTest {
 
     @Test
     fun trains_are_judged_on_the_page_worker_never_in_composition() {
-        // A worker held shut: until it runs, no train can be judged, so the page can only say it's
-        // still checking. Had composition judged them on the main thread, the times would show anyway.
+        // A worker held shut: until it runs, no train can be judged nor any route timed, so no time shows.
+        // Had composition judged or timed them on the main thread, the times would show anyway.
         val gate = CountDownLatch(1)
         val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
         threads.execute { gate.await() }
@@ -312,14 +312,14 @@ class TripScreenScreenshotTest {
                 }
             }
             composeRule.waitForIdle()
-            composeRule.onNodeWithText("Checking routes…").assertIsDisplayed()
+            // The page's whole frame waits on the worker ([tripFrame]): no route is timed until it runs.
             composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
 
             gate.countDown()
             composeRule.waitUntil(timeoutMillis = 5_000) {
-                composeRule.onAllNodesWithText("Checking routes…").fetchSemanticsNodes().isEmpty()
+                composeRule.onAllNodesWithText("27 min · ~08:29").fetchSemanticsNodes().isNotEmpty()
             }
-            composeRule.onNodeWithText("27 min · ~08:29").assertIsDisplayed()
+            composeRule.onAllNodesWithText("Checking routes…").assertCountEquals(0)
         } finally {
             // Opened whatever happened, so a failed check can't leave the worker's thread waiting.
             gate.countDown()
@@ -362,6 +362,8 @@ class TripScreenScreenshotTest {
             composeRule.waitForIdle()
             composeRule.onAllNodesWithText("3 · 7 · 11 min").assertCountEquals(2)
             composeRule.onAllNodesWithText("2 · 6 · 10 min").assertCountEquals(0)
+            // So do the routes' own times, the whole page from one frame ([tripFrame]).
+            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(1)
 
             // Released, the worker works them out for the new time.
             gate.countDown()
@@ -369,8 +371,323 @@ class TripScreenScreenshotTest {
                 composeRule.onAllNodesWithText("2 · 6 · 10 min").fetchSemanticsNodes().size == 2
             }
             composeRule.onAllNodesWithText("3 · 7 · 11 min").assertCountEquals(0)
+            composeRule.onAllNodesWithText("26 min · ~08:29").assertCountEquals(1)
         } finally {
             // Opened whatever happened, so a failed check can't leave the worker's thread waiting.
+            gate.countDown()
+            worker.close()
+        }
+    }
+
+    @Test
+    fun another_trips_frame_never_stands_in_for_this_one() {
+        // A re-locate moves the trip to another model while the screen stays put (Codex, #529): with the
+        // worker held, the last trip's routes don't stand in for the new trip's.
+        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val worker = threads.asCoroutineDispatcher()
+        val gate = CountDownLatch(1)
+        var trip by mutableStateOf("a" to planned)
+        try {
+            composeRule.setContent {
+                StopDashTheme(dynamicColor = false) {
+                    CompositionLocalProvider(LocalWorker provides worker) {
+                        TripScreen(
+                            title = "To Canary Wharf",
+                            state = trip.second,
+                            tripKey = trip.first,
+                            now = now,
+                            access = Duration.ofMinutes(2),
+                            routeStops = RouteStopsRepository(source),
+                            onBack = {},
+                            onRetry = {},
+                        )
+                    }
+                }
+            }
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodesWithText("27 min · ~08:29").fetchSemanticsNodes().isNotEmpty()
+            }
+            threads.execute { gate.await() }
+            trip = "b" to TripViewModel.State(planning = true)
+            composeRule.waitForIdle()
+            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
+            // The same trip's frame still stands in: back to the first trip, its routes show at once.
+            trip = "a" to planned
+            composeRule.waitForIdle()
+            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(1)
+        } finally {
+            gate.countDown()
+            worker.close()
+        }
+    }
+
+    @Test
+    fun back_closes_a_route_asked_for_before_its_frame_is_in() {
+        // A card tapped while the worker is held: Back closes the route asked for, never the trip (Codex, #529).
+        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val worker = threads.asCoroutineDispatcher()
+        val gate = CountDownLatch(1)
+        val openRoute = mutableStateOf<String?>(null)
+        var backs = 0
+        try {
+            composeRule.setContent {
+                StopDashTheme(dynamicColor = false) {
+                    CompositionLocalProvider(LocalWorker provides worker) {
+                        TripScreen(
+                            title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
+                            routeStops = RouteStopsRepository(source), onBack = { backs++ }, onRetry = {}, openRoute = openRoute,
+                        )
+                    }
+                }
+            }
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodesWithText("27 min · ~08:29").fetchSemanticsNodes().isNotEmpty()
+            }
+            threads.execute { gate.await() }
+            composeRule.onNodeWithText("27 min · ~08:29").performClick()
+            composeRule.waitForIdle()
+            assertTrue(openRoute.value != null)
+            composeRule.runOnUiThread { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
+            composeRule.waitForIdle()
+            assertEquals(0, backs)
+            assertEquals(null, openRoute.value)
+            // The on-screen arrow too (Codex, #529).
+            composeRule.onNodeWithText("27 min · ~08:29").performClick()
+            composeRule.waitForIdle()
+            assertTrue(openRoute.value != null)
+            composeRule.onNodeWithContentDescription("Back").performClick()
+            composeRule.waitForIdle()
+            assertEquals(0, backs)
+            assertEquals(null, openRoute.value)
+        } finally {
+            gate.countDown()
+            worker.close()
+        }
+    }
+
+    @Test
+    fun the_lines_loading_key_by_their_version_never_their_contents() {
+        // The frame keys on the version, bumped as a load starts or ends, never on the set's contents
+        // compared in composition, and the set is one live view, never copied (Codex, #529).
+        val loads = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val routeStops = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                    loads.await()
+                    return source.routeSequence(lineId, direction)
+                }
+            },
+        )
+        var tick by mutableStateOf(0)
+        val seen = mutableListOf<LineLoads>()
+        composeRule.setContent {
+            CompositionLocalProvider(LocalRouteStops provides routeStops) {
+                tick // Read, so a change composes this again.
+                seen += rememberLineLoads(listOf("jubilee"), now)
+            }
+        }
+        composeRule.waitForIdle()
+        val loading = seen.last()
+        assertEquals(setOf("jubilee"), loading.loading.toSet())
+        tick++
+        composeRule.waitForIdle()
+        org.junit.Assert.assertSame(loading.loading, seen.last().loading)
+        assertEquals(loading.loadingVersion, seen.last().loadingVersion)
+        loads.complete(Unit)
+        composeRule.waitForIdle()
+        assertEquals(emptySet<String>(), seen.last().loading.toSet())
+        assertTrue(seen.last().loadingVersion > loading.loadingVersion)
+    }
+
+    @Test
+    fun an_answer_under_way_never_replaces_the_one_wanted_again() {
+        // A's answer is in; B's is worked out while the key goes back to A: B's never replaces A's,
+        // which is the one wanted (Codex, #529).
+        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val worker = threads.asCoroutineDispatcher()
+        val gate = CountDownLatch(1)
+        val stored = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val backing = mutableStateOf<Worked<String, String>?>(null)
+        val slot = object : androidx.compose.runtime.MutableState<Worked<String, String>?> by backing {
+            override var value: Worked<String, String>?
+                get() = backing.value
+                set(it) {
+                    it?.let { stored += it.key }
+                    backing.value = it
+                }
+        }
+        var key by mutableStateOf("a")
+        var shown: String? = null
+        try {
+            composeRule.setContent {
+                CompositionLocalProvider(LocalWorker provides worker) {
+                    val k = key
+                    shown = rememberWorked(slot, k) {
+                        if (k == "b") gate.await()
+                        k
+                    }
+                }
+            }
+            composeRule.waitUntil(timeoutMillis = 5_000) { "a" in stored }
+            key = "b"
+            composeRule.waitForIdle()
+            key = "a"
+            composeRule.waitForIdle()
+            gate.countDown()
+            threads.submit {}.get()
+            composeRule.waitForIdle()
+            assertEquals(listOf("a"), stored.toList())
+            assertEquals("a", shown)
+        } finally {
+            gate.countDown()
+            worker.close()
+        }
+    }
+
+    @Test
+    fun an_answer_under_way_lands_though_its_key_moved_on() {
+        // A worker slower than the clock ticks still lands answers: one under way isn't canceled by a
+        // newer key, it's stored for the key it was worked out for (Codex, #529).
+        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val worker = threads.asCoroutineDispatcher()
+        val gate = CountDownLatch(1)
+        val stored = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val backing = mutableStateOf<Worked<String, String>?>(null)
+        val slot = object : androidx.compose.runtime.MutableState<Worked<String, String>?> by backing {
+            override var value: Worked<String, String>?
+                get() = backing.value
+                set(it) {
+                    it?.let { stored += it.key }
+                    backing.value = it
+                }
+        }
+        var key by mutableStateOf("a")
+        try {
+            composeRule.setContent {
+                CompositionLocalProvider(LocalWorker provides worker) {
+                    val k = key
+                    rememberWorked(slot, k) {
+                        if (k == "a") gate.await()
+                        k
+                    }
+                }
+            }
+            composeRule.waitForIdle()
+            key = "b"
+            composeRule.waitForIdle()
+            key = "c"
+            composeRule.waitForIdle()
+            gate.countDown()
+            composeRule.waitUntil(timeoutMillis = 5_000) { "c" in stored }
+            assertEquals(listOf("a", "c"), stored.toList())
+        } finally {
+            gate.countDown()
+            worker.close()
+        }
+    }
+
+    @Test
+    fun a_frame_stands_in_only_as_confirmed_and_only_for_a_minute() {
+        // With the worker held, a frame judged live-confirmed doesn't stand in once a re-locate starts,
+        // nor one past a minute old (Codex, #529).
+        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val worker = threads.asCoroutineDispatcher()
+        val gate = CountDownLatch(1)
+        var relocating by mutableStateOf(false)
+        var hidden by mutableStateOf(emptySet<String>())
+        var dismissed by mutableStateOf(emptySet<DismissedAlert>())
+        var maxWalk by mutableStateOf(MaxWalk.DEFAULT)
+        var state by mutableStateOf(planned)
+        var shownAt by mutableStateOf(now)
+        try {
+            composeRule.setContent {
+                StopDashTheme(dynamicColor = false) {
+                    CompositionLocalProvider(LocalWorker provides worker) {
+                        TripScreen(
+                            title = "To Canary Wharf", state = state, now = shownAt, access = Duration.ofMinutes(2),
+                            routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {}, relocating = relocating, hiddenModes = hidden, dismissed = dismissed, maxWalk = maxWalk,
+                        )
+                    }
+                }
+            }
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodesWithText("27 min · ~08:29").fetchSemanticsNodes().isNotEmpty()
+            }
+            threads.execute { gate.await() }
+            relocating = true
+            composeRule.waitForIdle()
+            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
+            relocating = false
+            composeRule.waitForIdle()
+            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(1)
+            // Nor once the rider hides a mode: the routes it left out wait for their own frame.
+            hidden = setOf("bus")
+            composeRule.waitForIdle()
+            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
+            hidden = emptySet()
+            composeRule.waitForIdle()
+            // Nor once an alert is dismissed: its warnings wait for a frame without them (Codex, #529).
+            dismissed = setOf(DismissedAlert.ofLineStatus(planned.statuses.getValue("jubilee")))
+            composeRule.waitForIdle()
+            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
+            dismissed = emptySet()
+            composeRule.waitForIdle()
+            // Nor once a planning option changes: the routes planned under the old one wait (Codex, #529).
+            maxWalk = MaxWalk.entries.first { it != MaxWalk.DEFAULT }
+            composeRule.waitForIdle()
+            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
+            maxWalk = MaxWalk.DEFAULT
+            composeRule.waitForIdle()
+            // Nor once a refresh fails: the frame that showed its trains as live waits for one that says it
+            // couldn't (Codex, #529).
+            state = planned.copy(statusFailed = true, failures = planned.failures + 1)
+            composeRule.waitForIdle()
+            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
+            state = planned
+            composeRule.waitForIdle()
+            shownAt = now.plusSeconds(61)
+            composeRule.waitForIdle()
+            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
+        } finally {
+            gate.countDown()
+            worker.close()
+        }
+    }
+
+    @Test
+    fun the_open_routes_walk_is_drawn_against_its_frames_own_access() {
+        // The walk to the first stop changes (a new walking speed) while the worker is held: the open
+        // route's "Walk to" row never shows a walk its times weren't worked out for. The last frame,
+        // worked out for the old walk, doesn't stand in (Codex, #529).
+        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val worker = threads.asCoroutineDispatcher()
+        val gate = CountDownLatch(1)
+        var access by mutableStateOf(Duration.ofMinutes(2))
+        val openRoute = mutableStateOf<String?>(openRouteOf(planned.routes!!.first(), planned, emptyMap()).encode())
+        try {
+            composeRule.setContent {
+                StopDashTheme(dynamicColor = false) {
+                    CompositionLocalProvider(LocalWorker provides worker) {
+                        TripScreen(
+                            title = "To Canary Wharf", state = planned, now = now, access = access,
+                            routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {}, openRoute = openRoute,
+                        )
+                    }
+                }
+            }
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodesWithText("(~2 min)", substring = true).fetchSemanticsNodes().isNotEmpty()
+            }
+            threads.execute { gate.await() }
+            access = Duration.ofMinutes(5)
+            composeRule.waitForIdle()
+            composeRule.onAllNodesWithText("(~5 min)", substring = true).assertCountEquals(0)
+            composeRule.onAllNodesWithText("(~2 min)", substring = true).assertCountEquals(0)
+            gate.countDown()
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodesWithText("(~5 min)", substring = true).fetchSemanticsNodes().isNotEmpty()
+            }
+        } finally {
             gate.countDown()
             worker.close()
         }
@@ -1520,6 +1837,47 @@ class TripScreenScreenshotTest {
         composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(0)
         composeRule.onAllNodesWithText("Minor Delays", substring = true).onFirst().assertExists()
         captureSnapshot("trip-leg-line.png")
+    }
+
+    @Test
+    fun a_line_page_stays_open_while_the_page_waits_for_its_frame() {
+        // A re-locate starts with the worker held: the last frame can't stand in, but the line page open
+        // isn't judged gone without one, and shows again once the new frame is in (Codex, #529).
+        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val worker = threads.asCoroutineDispatcher()
+        val gate = CountDownLatch(1)
+        var relocating by mutableStateOf(false)
+        try {
+            composeRule.setContent {
+                StopDashTheme(dynamicColor = false) {
+                    CompositionLocalProvider(LocalWorker provides worker) {
+                        TripScreen(
+                            title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
+                            routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {}, relocating = relocating,
+                        )
+                    }
+                }
+            }
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodesWithText("27 min · ~08:29").fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithText("27 min · ~08:29").performClick()
+            composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodesWithText("Stratford").fetchSemanticsNodes().isNotEmpty() }
+            composeRule.onNodeWithText("Stratford").performClick()
+            composeRule.waitForIdle()
+            composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(0)
+            threads.execute { gate.await() }
+            relocating = true
+            composeRule.waitForIdle()
+            gate.countDown()
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodesWithText("Minor Delays", substring = true).fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onAllNodes(hasTestTag("tripLegs")).assertCountEquals(0)
+        } finally {
+            gate.countDown()
+            worker.close()
+        }
     }
 
     @Test
