@@ -1465,7 +1465,19 @@ private fun RouteList(
                                     found + routeClosures(estimate.route, state, now, dismissed, sequences, rideLines) { routeStops?.hubOf(it) }
                                 }
                             }
-                            RideStops(card, rideLines, statuses, closures, remember(card, state, now, access, sequences, rideLines) { cardTimes(card, state, now, access, sequences, rideLines) }, now, walk)
+                            // The card's trains ([cardTimes]), worked out on the worker, never in composition
+                            // (AGENTS.md *Main thread*). The card's last times stand in while new ones are
+                            // worked out, drawn against the time, card and lines they were worked out for, so a
+                            // train just gone never reads "0 min"; "Loading" until its first are in.
+                            // One per card: the list's item is keyed by its route ([cardKey]), so no key is worked
+                            // out here.
+                            val slot = remember { mutableStateOf<Worked<Inputs, TimedCard>?>(null) }
+                            val timed = rememberWorked(slot, Inputs(card, state, now, access, sequences, rideLines), keep = { _, _ -> true }) {
+                                TimedCard(cardTimes(card, state, now, access, sequences, rideLines), now, card, rideLines)
+                            } ?: TimedCard(CardTimes(emptyList(), emptySet(), now.plus(access), loading = true), now, card, rideLines)
+                            // The rides drawn from the card and lines the times were worked out for, so a line
+                            // just hidden never lends its trains to another until the new times are in (Codex, #525).
+                            RideStops(timed.card, timed.rideLines, statuses, closures, timed.times, timed.now, walk)
                         }
                     }
                     if (onHideMode != null) {
@@ -1608,6 +1620,17 @@ internal data class CardTimes(
     val reachable: Instant,
     val loading: Boolean,
     val headways: List<Headway.Range?> = emptyList(),
+)
+
+/**
+ * A card's [times] and what they were worked out for: the time [now], the [card] and its [rideLines],
+ * which its rides are drawn from.
+ */
+internal class TimedCard(
+    val times: CardTimes,
+    val now: Instant,
+    val card: List<TripTiming.Estimate>,
+    val rideLines: Map<TripLeg, RideLines>,
 )
 
 /**
