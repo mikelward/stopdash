@@ -25,11 +25,13 @@ exercises the whole spine the widget later renders from.
 
 ### Phase 0 — remaining (follow-up PRs)
 
-- [ ] Trip page: work out its per-tick values off the main thread too. Trains are judged on their
-      routes on the worker (`TripVerdicts`), but each tick still passes over a leg's board on the main
-      thread: the upcoming trains (`Countdown.upcoming`), their verdicts gathered (`legFilter`), and
-      the routes timed (`tripEstimates`, the card helpers, `headedCards`). Move them to the trip's view model,
-      published with the data they come from, so the page only reads.
+- [x] Trip page: work out its per-tick values off the main thread too. Each tick's estimates, cards,
+      open route, what frames them, and each card's alerts, notices and times are one frame worked out on
+      the page's worker (`tripFrame`), drawn against its own state and time.
+  - [ ] **The rest of the trip page off the main thread**: the open route's leg rows (`RideLeg` →
+        `rideLegRows`, their headways), a line page's rows (`legRows` for `detailRow`), and the
+        once-per-refresh chain (`onPoles`, `withThroughRoutes`, `rideLines`, `placedStands`) still run
+        in composition.
 
 - [ ] Screenshot job — record + upload landed; **drift-refresh + visual-diff apparatus
       wired**, awaiting one operator step. The `screenshot-tests` job now checks out the PR

@@ -289,8 +289,8 @@ class TripScreenScreenshotTest {
 
     @Test
     fun trains_are_judged_on_the_page_worker_never_in_composition() {
-        // A worker held shut: until it runs, no train can be judged, so the page can only say it's
-        // still checking. Had composition judged them on the main thread, the times would show anyway.
+        // A worker held shut: until it runs, no train can be judged nor any route timed, so no time shows.
+        // Had composition judged or timed them on the main thread, the times would show anyway.
         val gate = CountDownLatch(1)
         val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
         threads.execute { gate.await() }
@@ -312,14 +312,14 @@ class TripScreenScreenshotTest {
                 }
             }
             composeRule.waitForIdle()
-            composeRule.onNodeWithText("Checking routes…").assertIsDisplayed()
+            // The page's whole frame waits on the worker ([tripFrame]): no route is timed until it runs.
             composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
 
             gate.countDown()
             composeRule.waitUntil(timeoutMillis = 5_000) {
-                composeRule.onAllNodesWithText("Checking routes…").fetchSemanticsNodes().isEmpty()
+                composeRule.onAllNodesWithText("27 min · ~08:29").fetchSemanticsNodes().isNotEmpty()
             }
-            composeRule.onNodeWithText("27 min · ~08:29").assertIsDisplayed()
+            composeRule.onAllNodesWithText("Checking routes…").assertCountEquals(0)
         } finally {
             // Opened whatever happened, so a failed check can't leave the worker's thread waiting.
             gate.countDown()
@@ -362,6 +362,8 @@ class TripScreenScreenshotTest {
             composeRule.waitForIdle()
             composeRule.onAllNodesWithText("3 · 7 · 11 min").assertCountEquals(2)
             composeRule.onAllNodesWithText("2 · 6 · 10 min").assertCountEquals(0)
+            // So do the routes' own times, the whole page from one frame ([tripFrame]).
+            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(1)
 
             // Released, the worker works them out for the new time.
             gate.countDown()
@@ -369,8 +371,156 @@ class TripScreenScreenshotTest {
                 composeRule.onAllNodesWithText("2 · 6 · 10 min").fetchSemanticsNodes().size == 2
             }
             composeRule.onAllNodesWithText("3 · 7 · 11 min").assertCountEquals(0)
+            composeRule.onAllNodesWithText("26 min · ~08:29").assertCountEquals(1)
         } finally {
             // Opened whatever happened, so a failed check can't leave the worker's thread waiting.
+            gate.countDown()
+            worker.close()
+        }
+    }
+
+    @Test
+    fun another_trips_frame_never_stands_in_for_this_one() {
+        // A re-locate moves the trip to another model while the screen stays put (Codex, #529): with the
+        // worker held, the last trip's routes don't stand in for the new trip's.
+        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val worker = threads.asCoroutineDispatcher()
+        val gate = CountDownLatch(1)
+        var trip by mutableStateOf("a" to planned)
+        try {
+            composeRule.setContent {
+                StopDashTheme(dynamicColor = false) {
+                    CompositionLocalProvider(LocalWorker provides worker) {
+                        TripScreen(
+                            title = "To Canary Wharf",
+                            state = trip.second,
+                            tripKey = trip.first,
+                            now = now,
+                            access = Duration.ofMinutes(2),
+                            routeStops = RouteStopsRepository(source),
+                            onBack = {},
+                            onRetry = {},
+                        )
+                    }
+                }
+            }
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodesWithText("27 min · ~08:29").fetchSemanticsNodes().isNotEmpty()
+            }
+            threads.execute { gate.await() }
+            trip = "b" to TripViewModel.State(planning = true)
+            composeRule.waitForIdle()
+            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(0)
+            // The same trip's frame still stands in: back to the first trip, its routes show at once.
+            trip = "a" to planned
+            composeRule.waitForIdle()
+            composeRule.onAllNodesWithText("27 min · ~08:29").assertCountEquals(1)
+        } finally {
+            gate.countDown()
+            worker.close()
+        }
+    }
+
+    @Test
+    fun back_closes_a_route_asked_for_before_its_frame_is_in() {
+        // A card tapped while the worker is held: Back closes the route asked for, never the trip (Codex, #529).
+        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val worker = threads.asCoroutineDispatcher()
+        val gate = CountDownLatch(1)
+        val openRoute = mutableStateOf<String?>(null)
+        var backs = 0
+        try {
+            composeRule.setContent {
+                StopDashTheme(dynamicColor = false) {
+                    CompositionLocalProvider(LocalWorker provides worker) {
+                        TripScreen(
+                            title = "To Canary Wharf", state = planned, now = now, access = Duration.ofMinutes(2),
+                            routeStops = RouteStopsRepository(source), onBack = { backs++ }, onRetry = {}, openRoute = openRoute,
+                        )
+                    }
+                }
+            }
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodesWithText("27 min · ~08:29").fetchSemanticsNodes().isNotEmpty()
+            }
+            threads.execute { gate.await() }
+            composeRule.onNodeWithText("27 min · ~08:29").performClick()
+            composeRule.waitForIdle()
+            assertTrue(openRoute.value != null)
+            composeRule.runOnUiThread { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
+            composeRule.waitForIdle()
+            assertEquals(0, backs)
+            assertEquals(null, openRoute.value)
+        } finally {
+            gate.countDown()
+            worker.close()
+        }
+    }
+
+    @Test
+    fun the_lines_loading_are_one_set_until_they_change() {
+        // Keyed on by identity ([Inputs]), never compared by contents in composition (Codex, #529).
+        val loads = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val routeStops = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
+                    loads.await()
+                    return source.routeSequence(lineId, direction)
+                }
+            },
+        )
+        var tick by mutableStateOf(0)
+        val seen = mutableListOf<Set<String>>()
+        composeRule.setContent {
+            CompositionLocalProvider(LocalRouteStops provides routeStops) {
+                tick // Read, so a change composes this again.
+                seen += rememberLineLoads(listOf("jubilee"), now).loading
+            }
+        }
+        composeRule.waitForIdle()
+        val loading = seen.last()
+        org.junit.Assert.assertEquals(setOf("jubilee"), loading)
+        tick++
+        composeRule.waitForIdle()
+        org.junit.Assert.assertSame(loading, seen.last())
+        loads.complete(Unit)
+        composeRule.waitForIdle()
+        org.junit.Assert.assertEquals(emptySet<String>(), seen.last())
+    }
+
+    @Test
+    fun the_open_routes_walk_is_drawn_against_its_frames_own_access() {
+        // The walk to the first stop changes (a new walking speed) while the worker is held: the open
+        // route's "Walk to" row keeps the walk its times were worked out for (Codex, #529).
+        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val worker = threads.asCoroutineDispatcher()
+        val gate = CountDownLatch(1)
+        var access by mutableStateOf(Duration.ofMinutes(2))
+        val openRoute = mutableStateOf<String?>(openRouteOf(planned.routes!!.first(), planned, emptyMap()).encode())
+        try {
+            composeRule.setContent {
+                StopDashTheme(dynamicColor = false) {
+                    CompositionLocalProvider(LocalWorker provides worker) {
+                        TripScreen(
+                            title = "To Canary Wharf", state = planned, now = now, access = access,
+                            routeStops = RouteStopsRepository(source), onBack = {}, onRetry = {}, openRoute = openRoute,
+                        )
+                    }
+                }
+            }
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodesWithText("(~2 min)", substring = true).fetchSemanticsNodes().isNotEmpty()
+            }
+            threads.execute { gate.await() }
+            access = Duration.ofMinutes(5)
+            composeRule.waitForIdle()
+            composeRule.onAllNodesWithText("(~5 min)", substring = true).assertCountEquals(0)
+            composeRule.onAllNodesWithText("(~2 min)", substring = true).assertCountEquals(1)
+            gate.countDown()
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodesWithText("(~5 min)", substring = true).fetchSemanticsNodes().isNotEmpty()
+            }
+        } finally {
             gate.countDown()
             worker.close()
         }

@@ -2909,6 +2909,7 @@ class MainActivity : ComponentActivity() {
         TripScreen(
             title = title,
             state = tripState,
+            tripKey = tripKey,
             now = tickingNow(),
             access = access,
             // The same route data as the list checks its trains against (SPEC *Trips with a change*).
