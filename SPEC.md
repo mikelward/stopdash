@@ -1324,8 +1324,7 @@ every card under it for the first few seconds. A new check says so at once; any 
 until it has held for a moment (1.5 s), so a gap between two loads never reads as "None" or as
 "couldn't check". While the row's lines are still being worked out for newer cards it shows the last
 ones a moment longer, as a card shows its last times, then "Checking…": never a "None" the current
-cards may not bear out. A line's route still loading reads as "Checking…" here too, in place of
-the "Checking routes…" banner that came and went over the list.
+cards may not bear out. The "Checking routes…" banner over the list is held the same way.
 
 **TfL's Journey Planner chooses the lines and changes; StopDash's live arrivals give the times**
 (principle 1). The first leg counts down like any row. From "Here", the rider still has to reach the
@@ -3025,13 +3024,18 @@ In priority order; where a rule below conflicts with a principle, the principle 
 3. **Do the work ahead of time.** A surface renders from the persisted snapshot; the
    network is never on the render path. Warm at startup, cache, refresh in the
    background.
-4. **Jank-free.** The app list and the widget render from in-memory/snapshot state; no
+4. **Hold still.** Never move what the user is reading or about to tap (maintainer,
+   2026-10-04). A list that settles in front of them, or a row that pushes it down, makes
+   them lose their place or tap the wrong thing. This outranks showing content early:
+   while what a list shows is still landing, its place says so ("Checking routes…"), and
+   the list appears once, settled, rather than filling in under the user's thumb.
+5. **Jank-free.** The app list and the widget render from in-memory/snapshot state; no
    I/O in composition, and no blocking a first frame on a fetch *or a disk read* — a
    stamped placeholder shows at once and fills in when the persisted snapshot loads.
-5. **Battery is the user's cost.** Background refresh is bounded and degrades to
+6. **Battery is the user's cost.** Background refresh is bounded and degrades to
    on-demand; anything that adds a wakeup or a location request is a battery change and
    is justified as one.
-6. **Say why.** Non-obvious decisions are recorded where the next reader needs them — a
+7. **Say why.** Non-obvious decisions are recorded where the next reader needs them — a
    comment for a mechanism, the debug log for a refresh/disruption decision, the PR for
    a design trade-off.
 

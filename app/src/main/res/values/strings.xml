@@ -248,6 +248,8 @@
     <string name="trip_to">To %1$s</string>
     <!-- What a tap on the trip page's To row does, read out by TalkBack. -->
     <string name="trip_change_to">Change destination</string>
+    <!-- In place of a To… list until its routes have planned, refreshed and been checked: the list appears once, settled. -->
+    <string name="trip_checking">Checking routes…</string>
     <!-- A To… list with nothing that goes there directly. %1$s is the destination. -->
     <!-- Title of a To… from the near-me list: the direct trips from the stops near you. -->
     <string name="trip_title_here">To %1$s</string>

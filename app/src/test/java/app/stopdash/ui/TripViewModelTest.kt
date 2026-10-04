@@ -2792,6 +2792,21 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `a trip still checking one line says so even once another has failed`() {
+        val state = TripViewModel.State(
+            routes = listOf(route),
+            live = mapOf(
+                "A" to TripViewModel.StopLive(listOf(train("red", "B", 6)), now),
+                "B" to TripViewModel.StopLive(listOf(train("blue", "C", 16)), now),
+            ),
+        )
+        val estimates = checkNotNull(tripEstimates(state, now, Duration.ZERO, emptyMap()))
+        // The blue line's route failed while the red's still loads: the trip is still being checked,
+        // so the list waits for the red's trains rather than show them unchecked (Codex, #543).
+        assertEquals(TripMessage.CHECKING, tripCheckState(state, estimates, now, mapOf("blue" to null)))
+    }
+
+    @Test
     fun `a train whose route can't be followed says so rather than pass as no live train`() {
         val state = TripViewModel.State(
             routes = listOf(route),
