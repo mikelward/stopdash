@@ -15,8 +15,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -83,16 +86,26 @@ private val WANTS_FIX_RECHECK: Duration = Duration.ofSeconds(10)
  * Waits for a trip's next refresh, called as the last one ends: [every] later, or sooner with the
  * first fix [fixes] brings once [minGap] has passed. That fix, or null for the timer. One that came
  * during the gap is passed over for the next: by then it's that much older, and while the rider
- * moves another follows within seconds.
+ * moves another follows within seconds. A new trip on the way in [trip] (one started in place of
+ * the trip refreshed, which started at [from]) ends the wait at once, with null: its boards and train
+ * are read now, not up to [every] later (maintainer, 2026-10-04). [from] is read before that refresh,
+ * so a trip started while it ran wakes this too.
  */
 suspend fun awaitRefresh(
     fixes: StateFlow<TripFixes.Seen?>,
     every: Duration,
     minGap: Duration = ON_THE_WAY_MIN_GAP,
+    trip: StateFlow<ActiveTrip?>? = null,
+    from: Instant? = null,
 ): TripFixes.Seen? = withTimeoutOrNull(every.toMillis()) {
-    delay(minGap.toMillis())
-    val since = fixes.value?.seq ?: 0
-    fixes.first { it != null && it.seq > since }
+    val fix = flow {
+        delay(minGap.toMillis())
+        val since = fixes.value?.seq ?: 0
+        emit(fixes.first { it != null && it.seq > since })
+    }
+    if (trip == null) return@withTimeoutOrNull fix.first()
+    val replaced = trip.filter { it != null && it.startedAt != from }.map<ActiveTrip?, TripFixes.Seen?> { null }
+    merge(fix, replaced).first()
 }
 
 /**

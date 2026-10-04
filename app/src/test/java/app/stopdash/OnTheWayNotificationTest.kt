@@ -113,6 +113,139 @@ class OnTheWayNotificationTest {
     }
 
     @Test
+    fun `a trip started in place of another is refreshed at once, and capped from its own start`() = runTest {
+        val kept = MutableStateFlow<ActiveTrip?>(trip)
+        val refreshed = mutableListOf<Long>()
+        val following = launch {
+            followTrip(kept, MutableStateFlow(0), Duration.ofSeconds(30), Duration.ofSeconds(100),
+                startedFor = { Duration.ofMillis(currentTime - Duration.between(now, it.startedAt).toMillis()) }) { refreshed += currentTime }
+        }
+        advanceTimeBy(80_000)
+        // Replaced 80 s in: refreshed now, not at the next tick, and followed past the first trip's cap.
+        kept.value = trip.copy(startedAt = now.plusSeconds(80))
+        advanceTimeBy(60_000)
+        kept.value = null
+        following.join()
+        assertEquals(listOf(0L, 30_000L, 60_000L, 80_000L, 110_000L), refreshed)
+    }
+
+    @Test
+    fun `a trip replaced through its end is followed on, not stopped in between`() = runTest {
+        // Replace ends the trip on the way, then keeps the new one: none in between, with the start in flight.
+        val kept = MutableStateFlow<ActiveTrip?>(trip)
+        val starting = MutableStateFlow(0)
+        val refreshed = mutableListOf<Long>()
+        val following = launch { followTrip(kept, starting, Duration.ofSeconds(30), Duration.ofHours(4)) { refreshed += currentTime } }
+        advanceTimeBy(10_000)
+        starting.value = 1
+        kept.value = null
+        advanceTimeBy(1_000)
+        assertTrue(following.isActive)
+        kept.value = trip.copy(startedAt = now.plusSeconds(11))
+        starting.value = 0
+        runCurrent()
+        assertEquals(listOf(0L, 11_000L), refreshed)
+        kept.value = null
+        following.join()
+    }
+
+    @Test
+    fun `a trip being started as the last one's cap runs out is followed, not left without the service`() = runTest {
+        val kept = MutableStateFlow<ActiveTrip?>(trip)
+        val starting = MutableStateFlow(0)
+        val refreshed = mutableListOf<Long>()
+        val following = launch {
+            followTrip(kept, starting, Duration.ofSeconds(30), Duration.ofSeconds(100),
+                startedFor = { Duration.ofMillis(currentTime - Duration.between(now, it.startedAt).toMillis()) }) { refreshed += currentTime }
+        }
+        // Replace tapped just before the cap, its start still waiting on the tracker when the cap passes.
+        advanceTimeBy(99_000)
+        starting.value = 1
+        advanceTimeBy(2_000)
+        assertTrue(following.isActive)
+        kept.value = trip.copy(startedAt = now.plusSeconds(101))
+        starting.value = 0
+        runCurrent()
+        assertEquals(listOf(0L, 30_000L, 60_000L, 90_000L, 101_000L), refreshed)
+        kept.value = null
+        following.join()
+    }
+
+    @Test
+    fun `a fix the last trip's refresh took is never handed to the trip started in its place`() = runTest {
+        val kept = MutableStateFlow<ActiveTrip?>(trip)
+        val starting = MutableStateFlow(0)
+        val fixes = TripFixes { currentTime }
+        val handed = mutableListOf<Pair<Long, TripFixes.Seen?>>()
+        val following = launch {
+            followTrip(kept, starting, Duration.ofSeconds(30), Duration.ofSeconds(105),
+                startedFor = { Duration.ofMillis(currentTime - Duration.between(now, it.startedAt).toMillis()) },
+                fixes = fixes.latest, minGap = Duration.ofSeconds(10)) { handed += currentTime to it }
+        }
+        // A fix wakes the old trip's last refresh just before its cap; Replace is still starting as the cap passes.
+        advanceTimeBy(101_000)
+        fixes.offer(LocationFix(Coordinates(51.5, -0.12), isFallback = false, accuracyMeters = 10f, ageMillis = 0))
+        runCurrent()
+        starting.value = 1
+        advanceTimeBy(5_000)
+        kept.value = trip.copy(startedAt = now.plusSeconds(106))
+        starting.value = 0
+        runCurrent()
+        assertEquals(101_000L, handed[handed.size - 2].first)
+        assertTrue(handed[handed.size - 2].second != null)
+        assertEquals(106_000L to null, handed.last())
+        kept.value = null
+        following.join()
+    }
+
+    @Test
+    fun `a trip started as the service finds the last one past its cap is followed, not left without it`() = runTest {
+        val kept = MutableStateFlow<ActiveTrip?>(trip)
+        val starting = MutableStateFlow(0)
+        val refreshed = mutableListOf<Long>()
+        val following = launch {
+            followTrip(kept, starting, Duration.ofSeconds(30), Duration.ofSeconds(100),
+                startedFor = {
+                    // Replace tapped just as the old trip is found past its cap.
+                    if (it.startedAt == now) {
+                        starting.value = 1
+                        Duration.ofSeconds(100)
+                    } else {
+                        Duration.ZERO
+                    }
+                }) { refreshed += currentTime }
+        }
+        runCurrent()
+        assertTrue(following.isActive)
+        assertEquals(emptyList<Long>(), refreshed)
+        kept.value = trip.copy(startedAt = now.plusSeconds(1))
+        starting.value = 0
+        runCurrent()
+        assertEquals(listOf(0L), refreshed)
+        kept.value = null
+        following.join()
+    }
+
+    @Test
+    fun `a fix that woke the last trip's wait as it was replaced is never handed to the new trip`() = runTest {
+        val kept = MutableStateFlow<ActiveTrip?>(trip)
+        val fixes = TripFixes { currentTime }
+        val handed = mutableListOf<Pair<Long, TripFixes.Seen?>>()
+        val following = launch {
+            followTrip(kept, MutableStateFlow(0), Duration.ofSeconds(30), Duration.ofHours(4),
+                fixes = fixes.latest, minGap = Duration.ofSeconds(10)) { handed += currentTime to it }
+        }
+        advanceTimeBy(12_000)
+        // The fix lands first, so it wins the wait; the trip is replaced before the loop looks again.
+        fixes.offer(LocationFix(Coordinates(51.5, -0.12), isFallback = false, accuracyMeters = 10f, ageMillis = 0))
+        kept.value = trip.copy(startedAt = now.plusSeconds(12))
+        runCurrent()
+        assertEquals(listOf(0L to null, 12_000L to null), handed)
+        kept.value = null
+        following.join()
+    }
+
+    @Test
     fun `a trip still being started is waited for, not taken for none`() = runTest {
         // Started from the Start tap: the trip isn't saved yet when the service first looks.
         val kept = MutableStateFlow<ActiveTrip?>(null)
