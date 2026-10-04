@@ -432,6 +432,10 @@ internal suspend fun refreshStoredSnapshot(
                 // still good. With no arrivals fresh, the lines are still checked, so a suspension
                 // declared during an arrivals outage reaches the widget ([WidgetRefresh.refresh]).
                 var answered: List<LineStatus>? = null
+                val dismissals = { DataStoreDismissedAlertsStore.from(context.applicationContext, warn = ::logWidgetSnapshotWarning) }
+                // The dismissals counted before anything is asked: one the rider makes after is newer
+                // than these answers, so settling on them never lets go of it ([reconcileWidgetDismissals]).
+                val since = dismissals().mark()
                 // Every line in a request TfL answered, returned or not: one it left out gets a
                 // no-verdict check ([WidgetRefresh.refreshedLineStatuses]), so it was checked too.
                 var asked: Set<String> = emptySet()
@@ -468,7 +472,6 @@ internal suspend fun refreshStoredSnapshot(
                         null
                     }
                 }
-                val dismissals = { DataStoreDismissedAlertsStore.from(context.applicationContext, warn = ::logWidgetSnapshotWarning) }
                 savedNothing = outcome !is WidgetRefresh.Outcome.Save
                 when (outcome) {
                     is WidgetRefresh.Outcome.Save -> {
@@ -487,7 +490,7 @@ internal suspend fun refreshStoredSnapshot(
                         // app's own refresh forgets it, so the same alert recurring while the app stays
                         // closed is shown again rather than hidden. Only once this refresh's statuses are
                         // stored; a discarded one leaves it to the app's own refresh.
-                        if (applied) answered?.let { reconcileWidgetDismissals(dismissals(), it) }
+                        if (applied) answered?.let { reconcileWidgetDismissals(dismissals(), it, since) }
                         // Places the alerts it just fetched, as the app's list does, so one that came up
                         // while the app was closed needn't flag where it lies behind a stop.
                         if (applied) placeWidgetAlerts(context, answered.orEmpty(), asked)
@@ -497,7 +500,7 @@ internal suspend fun refreshStoredSnapshot(
                         // meanwhile, for the lines the stored stops show; the arrivals stay as stored,
                         // to age honestly. The store redraws the widget, as a save does.
                         WidgetSnapshotStore(context).updateLineStatuses(outcome.checks)
-                        answered?.let { reconcileWidgetDismissals(dismissals(), it) }
+                        answered?.let { reconcileWidgetDismissals(dismissals(), it, since) }
                         placeWidgetAlerts(context, answered.orEmpty(), asked)
                     }
                     // Nothing fresh: re-render so the unchanged snapshot ages honestly.
@@ -538,10 +541,13 @@ internal fun watchFailureOf(e: Throwable): WatchRefreshOutcome.Failure = when (e
 /**
  * Prune the dismissed set against the statuses TfL just [answered] for ([Dismissed.reconcile]):
  * for each line it returned a status for, a dismissal of any other alert on that line is dropped;
- * lines it didn't answer for, and every stop closure, keep theirs. Best-effort: a failure is
- * logged and the dismissals are pruned on a later refresh (the app's or this one's).
+ * lines it didn't answer for, and every stop closure, keep theirs. A dismissal made since [since]
+ * (the store's [DismissedAlertsStore.mark] before the statuses were asked) is newer than these
+ * answers and kept: the widget holds no set of its own, so the store's set now stands for what it
+ * saw. Best-effort: a failure is logged and the dismissals are pruned on a later refresh (the
+ * app's or this one's).
  */
-internal suspend fun reconcileWidgetDismissals(store: DismissedAlertsStore, answered: List<LineStatus>) {
+internal suspend fun reconcileWidgetDismissals(store: DismissedAlertsStore, answered: List<LineStatus>, since: Long) {
     if (answered.isEmpty()) return
     try {
         store.reconcile(
@@ -549,6 +555,8 @@ internal suspend fun reconcileWidgetDismissals(store: DismissedAlertsStore, answ
             // A line still waiting on which way its alerts apply can't match a dismissal of one
             // direction's alert yet, so it isn't counted as checked until the split lands.
             checkedPlaces = answered.filterNot { it.awaitingDirections }.mapTo(HashSet()) { lineAlertKey(it.lineId) },
+            seen = store.dismissed().first(),
+            since = since,
         )
     } catch (e: CancellationException) {
         throw e

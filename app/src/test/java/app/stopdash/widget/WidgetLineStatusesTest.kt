@@ -66,11 +66,11 @@ class WidgetLineStatusesTest {
             }
         }
         // Victoria is good now; Jubilee wasn't asked about; the closure isn't a line.
-        reconcileWidgetDismissals(store, listOf(LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service")))
+        reconcileWidgetDismissals(store, listOf(LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service")), since = 0)
         assertEquals(setOf(closure, app.stopdash.domain.DismissedAlert.ofLineStatus(severe.copy(lineId = "jubilee"))), stored)
         // The same alert still live keeps its dismissal.
         stored = stored + app.stopdash.domain.DismissedAlert.ofLineStatus(severe)
-        reconcileWidgetDismissals(store, listOf(severe))
+        reconcileWidgetDismissals(store, listOf(severe), since = 0)
         assertEquals(true, app.stopdash.domain.DismissedAlert.ofLineStatus(severe) in stored)
     }
 
@@ -87,10 +87,48 @@ class WidgetLineStatusesTest {
             }
         }
         // Not split yet, so the northbound alert isn't among the line's statuses: not a sign it ended.
-        reconcileWidgetDismissals(store, listOf(LineStatus("victoria", 6, "Severe Delays", "Both.", awaitingDirections = true)))
+        reconcileWidgetDismissals(store, listOf(LineStatus("victoria", 6, "Severe Delays", "Both.", awaitingDirections = true)), since = 0)
         assertEquals(setOf(dismissal), stored)
         // Once split, and the northbound alert gone, it's forgotten.
-        reconcileWidgetDismissals(store, listOf(LineStatus("victoria", 6, "Severe Delays", "Both.")))
+        reconcileWidgetDismissals(store, listOf(LineStatus("victoria", 6, "Severe Delays", "Both.")), since = 0)
+        assertEquals(emptySet<app.stopdash.domain.DismissedAlert>(), stored)
+    }
+
+    @Test
+    fun `a line alert dismissed again while the widget asked stays dismissed`() = runTest {
+        // The rider dismisses the alert again in the app while the widget's statuses are out: the
+        // widget's answers are older than the tap, so settling on them keeps it.
+        val severe = LineStatus("victoria", 6, "Severe Delays", "Signal failure.")
+        val dismissal = app.stopdash.domain.DismissedAlert.ofLineStatus(severe)
+        var stored = setOf(dismissal)
+        var count = 1L
+        val counted = mutableMapOf(dismissal to 1L)
+        val store = object : app.stopdash.domain.DismissedAlertsStore {
+            override fun dismissed() = kotlinx.coroutines.flow.flowOf(stored)
+            override suspend fun dismiss(alert: app.stopdash.domain.DismissedAlert) {
+                counted[alert] = ++count
+                stored = stored + alert
+            }
+            override suspend fun reconcile(live: Set<app.stopdash.domain.DismissedAlert>, checkedPlaces: Set<String>) = error("the mark is passed")
+            override suspend fun reconcile(
+                live: Set<app.stopdash.domain.DismissedAlert>,
+                checkedPlaces: Set<String>,
+                seen: Set<app.stopdash.domain.DismissedAlert>,
+                since: Long,
+            ) {
+                stored = app.stopdash.domain.Dismissed.reconcile(stored, live, checkedPlaces, stillSeen(seen, since))
+            }
+            override fun mark() = count
+            override fun stillSeen(alerts: Set<app.stopdash.domain.DismissedAlert>, since: Long) =
+                alerts.filterTo(HashSet()) { (counted[it] ?: 0L) <= since }
+        }
+        val good = listOf(LineStatus("victoria", LineStatus.GOOD_SERVICE, "Good Service"))
+        val since = store.mark()
+        store.dismiss(dismissal)
+        reconcileWidgetDismissals(store, good, since)
+        assertEquals(setOf(dismissal), stored)
+        // Asked after the tap, the answer is newer: it lets go.
+        reconcileWidgetDismissals(store, good, store.mark())
         assertEquals(emptySet<app.stopdash.domain.DismissedAlert>(), stored)
     }
 }
