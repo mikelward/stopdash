@@ -374,7 +374,10 @@ Wear's own APIs solve it without wake-ups:
   as the in-app list would be at its start time. The last entry starts once every
   in-scope stop is past its threshold, and shows the stale treatment (`?`, "tap to
   refresh"). This is the watch
-  counterpart of `WidgetStalenessRedraw`, with no alarm needed.
+  counterpart of `WidgetStalenessRedraw`, with no alarm needed. That last entry, like any
+  open-ended one, carries **no validity interval** — the renderer's default for any time no
+  other entry covers. A start with no end reads to the renderer as a zero-width interval it
+  never shows, which left the tile blank.
 
   A new entry opens only where the frame actually changes, so a tick that moves no shown
   countdown, or a row that can't make the tile's lines, costs nothing. A timeline takes at most
