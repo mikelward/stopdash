@@ -1299,8 +1299,8 @@ A route whose line status or closure check failed with nothing known yet ranks o
 checked one while a live train times any of its rides: the Planner offered it, and the train shows it
 running (maintainer, 2026-09-30: a faster route isn't buried under a slower one because a check
 failed). With none, it sits between the two: below every route checked and open, above those known
-not to run. Either way it says what it couldn't check, until a check succeeds — "Couldn't check for
-disruptions: ‹names›", each line whose status isn't known or whose check failed, then each stop with
+not to run. Either way it says what it couldn't check, until a check succeeds — "Unknown:" then
+each line's pill and each stop's name (maintainer, 2026-10-04), each line whose status isn't known or whose check failed, then each stop with
 no current check (its bus not yet placed on a pole there included), by the names the cards show
 (maintainer, 2026-09-30) — and of two arriving together the one checked comes first. A stop whose
 bus waits on its line's route to be placed on a pole is still being checked, not one that couldn't
@@ -1314,6 +1314,18 @@ route nor show as catchable, and its timetable gives no time either, so the arri
 train that can take the ride. A line whose latest status check failed stands in for none: the status
 kept from before is the last one known, not a current one. The trip still says it couldn't check the
 Planner's line.
+
+**A trip's disruptions have a row of their own, always there over its routes** (maintainer,
+2026-10-04): "Disruptions:" then each disrupted line's pill (as the cards' ⚠s judge them, less what
+was dismissed) and each stop with a closure notice in force, then the check's word — "Checking…"
+while one runs, "Unknown:" and the pills and stops it couldn't check when one couldn't (in red), else
+"None" once there's nothing to show. It replaced a note that came and went as the page's loads landed one after another, moving
+every card under it for the first few seconds. A new check says so at once; any other word waits
+until it has held for a moment (1.5 s), so a gap between two loads never reads as "None" or as
+"couldn't check". While the row's lines are still being worked out for newer cards it shows the last
+ones a moment longer, as a card shows its last times, then "Checking…": never a "None" the current
+cards may not bear out. A line's route still loading reads as "Checking…" here too, in place of
+the "Checking routes…" banner that came and went over the list.
 
 **TfL's Journey Planner chooses the lines and changes; StopDash's live arrivals give the times**
 (principle 1). The first leg counts down like any row. From "Here", the rider still has to reach the
