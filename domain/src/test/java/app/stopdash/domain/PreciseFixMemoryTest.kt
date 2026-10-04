@@ -46,6 +46,20 @@ class PreciseFixMemoryTest {
     }
 
     @Test
+    fun `a precise fix is recalled with its age, whatever it's set against`() {
+        val memory = PreciseFixMemory()
+        assertNull(memory.recall(minute))
+        memory.remember(north(50.0), atElapsedMillis = 0, accuracyMeters = 12f)
+        val recalled = checkNotNull(memory.recall(minute))
+        assertEquals(north(50.0), recalled.coordinates)
+        assertEquals(minute, recalled.ageMillis)
+        // Past its ten minutes, forgotten; and never from a clock gone back.
+        assertNull(memory.recall(PreciseFixMemory.TTL_MILLIS + 1))
+        memory.remember(north(50.0), atElapsedMillis = minute)
+        assertNull(memory.recall(0))
+    }
+
+    @Test
     fun `a precise fix older than ten minutes is forgotten`() {
         val memory = PreciseFixMemory()
         memory.remember(north(50.0), atElapsedMillis = 0)

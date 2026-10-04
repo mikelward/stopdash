@@ -441,6 +441,21 @@ class AndroidLocationProvider(
         // fix. In memory only, never persisted or logged (SPEC *Privacy*).
         @VisibleForTesting
         internal val preciseMemory = PreciseFixMemory()
+
+        /**
+         * The remembered precise fix ([PreciseFixMemory.recall]) with its age now, taking no location:
+         * a trip's walk shows its first distance from it ([ActiveTripTracker]); null when none. Only while
+         * precise location is still allowed: once it isn't, the fix is deleted, never used (Codex, #542).
+         */
+        fun rememberedPreciseFix(context: Context): LocationFix? {
+            if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                preciseMemory.forget()
+                return null
+            }
+            return preciseMemory.recall(SystemClock.elapsedRealtime())?.let {
+                LocationFix(it.coordinates, isFallback = false, accuracyMeters = it.accuracyMeters, ageMillis = it.ageMillis)
+            }
+        }
     }
 }
 

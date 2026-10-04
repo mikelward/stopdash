@@ -3258,6 +3258,12 @@ class MainActivity : ComponentActivity() {
                 val planner = journeyPlanner(context)
                 val store = FileActiveTripStore(File(context.applicationContext.noBackupFilesDir, "active-trip.json"), ::logDepartureWarning)
                 ActiveTripTracker(
+                    // A walk's first distance from the fix the app took lately, before one on the walk.
+                    remembered = { AndroidLocationProvider.rememberedPreciseFix(context.applicationContext) },
+                    preciseAllowed = {
+                        context.applicationContext.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) ==
+                            android.content.pm.PackageManager.PERMISSION_GRANTED
+                    },
                     load = store::load,
                     save = store::save,
                     // TfL alone: a followed leg is never National Rail, so a Darwin board would only spend the rail key's quota.

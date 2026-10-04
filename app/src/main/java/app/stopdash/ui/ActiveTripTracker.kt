@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import androidx.annotation.VisibleForTesting
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Workers
@@ -24,9 +25,12 @@ import app.stopdash.domain.VehicleSource
 import java.io.IOException
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -84,6 +88,15 @@ class ActiveTripTracker(
     // station's entrances measured), never on the caller's thread, which can be the main one (AGENTS.md
     // *Main thread: read and dispatch only*; Codex, PR #521).
     private val compute: CoroutineDispatcher = Workers.compute,
+    // A precise fix the app took lately, if it remembers one, with its age (the one the trip was planned
+    // from, say): a walk's first distance, before a fix on the walk itself. Takes no location.
+    private val remembered: () -> LocationFix? = { null },
+    // Whether precise location is still allowed: once it isn't, no fix kept from before is used, and the
+    // trip's own is deleted (Codex, #542).
+    private val preciseAllowed: () -> Boolean = { true },
+    // Where the trip's own last fix is let go once past its use, whether or not anything still follows the
+    // trip (docs/PRIVACY.md; Codex, #542).
+    private val forgetting: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     // Coarse facts only — a line id, an error kind, never a stop or where the rider is going.
     private val warn: (String) -> Unit = {},
     // "Get off soon", once per leg ([OnTheWay.shouldWarn]): whether it was said, so one that
@@ -118,6 +131,23 @@ class ActiveTripTracker(
 
     private val _progress = MutableStateFlow<TripProgress?>(null)
     val progress: StateFlow<TripProgress?> = _progress.asStateFlow()
+
+    // The newest precise fix seen while following the trip, with when it was taken (on [elapsed]'s
+    // clock): a walk's first distance until a fix on the walk places the rider. In memory only, never
+    // kept or logged (SPEC *Privacy*).
+    // Cleared only if still the one meant ([AtomicReference.compareAndSet]): a timer or expiry never takes
+    // away a newer fix kept meanwhile (Codex, #542).
+    private val heldFixRef = AtomicReference<Pair<LocationFix, Long>?>(null)
+    private var lastFix: Pair<LocationFix, Long>?
+        get() = heldFixRef.get()
+        set(value) = heldFixRef.set(value)
+
+    // Lets go of [lastFix] once it's past [ESTIMATE_WITHIN]: replaced with each fix kept.
+    private var forgetFix: Job? = null
+
+    // The station read for the walk on now, by its leg's index ([OnTheWay.stationWalkedTo]): a fix
+    // between refreshes measures to its entrances without a read of its own.
+    @Volatile private var walkPlaces: Pair<Int, StationPlaces>? = null
 
     // Whether the last refresh couldn't reach TfL: the screen says the trip isn't current.
     private val _failed = MutableStateFlow(false)
@@ -409,6 +439,7 @@ class ActiveTripTracker(
                 onEnded()
             }
             if (_trip.value != null) return@withLock
+            forgetFixes()
             val now = clock()
             // From the first leg, a walk included: the rider walks it first (maintainer, 2026-09-27), and
             // the ride after it picks its train once the walk is done. The walk from where the rider is
@@ -573,6 +604,7 @@ class ActiveTripTracker(
         _endFailed.value = false
         _endFailures.value = 0
         _trip.value = null
+        forgetFixes()
         _progress.value = null
         _nextBoard.value = null
         _failed.value = false
@@ -598,15 +630,28 @@ class ActiveTripTracker(
             lock.withLock {
                 // The fix aged while this waited behind another refresh: one no longer fresh enough is
                 // no evidence the rider was left behind ([OnTheWay.sureEnough]).
-                val fresh = rider?.let { fix -> aged(fix, Duration.ofMillis(elapsed() - asked)) }
+                // Precise location taken away since the fix came: it isn't used, and nothing kept stays (Codex, #542).
+                val allowed = preciseAllowed()
+                if (!allowed) {
+                    forgetFix?.cancel()
+                    lastFix = null
+                }
+                val fresh = rider?.takeIf { allowed }?.let { fix -> aged(fix, Duration.ofMillis(elapsed() - asked)) }
                 // A leg just done (a walk, or a ride straight into another) picks the next ride's train at
                 // once: one due before the next refresh is still the rider's to catch.
                 // Each boarding stop's board is asked for at most once a refresh, answer or failure,
                 // however long TfL takes: the steps share this refresh's attempts.
                 val boards = HashMap<TripLeg, Result<NextBoard>>()
-                if (step(fresh, boards)) step(null, boards)
+                // The trip's own last fix let go once past its use, whether or not TfL answers (Codex, #542).
+                expireFix()
+                try {
+                    if (step(fresh, boards)) step(null, boards)
+                } finally {
+                    expireFix()
+                }
                 // The fix as given, with when: aged once, where it's used, for all the time since (Codex on #479).
-                checkDisruptions(boards, rider, asked)
+                // Only a fix precise location still allows picks where to plan again from (Codex, #542).
+                checkDisruptions(boards, rider?.takeIf { allowed && preciseAllowed() }, asked)
             }
         }
     }
@@ -776,10 +821,107 @@ class ActiveTripTracker(
 
     // [fix] as it stands [waited] later, or null once that makes it too old to act on. One whose age
     // isn't known is taken as it came.
+    // Null too once precise location is no longer allowed: every use of a fix ages it first, after
+    // whatever it waited behind, so none is used once that's taken away (Codex, #542).
     private fun aged(fix: LocationFix, waited: Duration): LocationFix? {
+        if (!preciseAllowed()) return null
         val age = fix.ageMillis ?: return fix
         val now = age + waited.toMillis().coerceAtLeast(0)
         return if (now > OnTheWay.FIX_FRESH_WITHIN_MILLIS) null else fix.copy(ageMillis = now)
+    }
+
+    /**
+     * A fix seen between refreshes ([app.stopdash.domain.TripFixes]): on a walk, the distance left is
+     * measured from it at once, without waiting for the next refresh and its requests (maintainer,
+     * 2026-10-04). Nothing else moves on it; the refresh it may bring on does the rest. Never logged
+     * or kept.
+     */
+    suspend fun onFix(fix: LocationFix, arrivedAgoMillis: Long = 0) {
+        val received = elapsed()
+        // Behind a refresh under way, never beside it: one measured from an older fix would otherwise
+        // overwrite this newer distance as it finished (Codex, #542).
+        withContext(compute) {
+            lock.withLock {
+                val trip = _trip.value ?: return@withLock
+                // Precise location taken away while it waited: not used, and nothing kept (Codex, #542).
+                if (!preciseAllowed()) {
+                    forgetFix?.cancel()
+                    lastFix = null
+                    return@withLock
+                }
+                // Aged by the wait, so its time taken holds whatever it waited behind.
+                val aged = aged(fix, Duration.ofMillis(elapsed() - received)) ?: return@withLock
+                val now = clock()
+                val arrived = now.minusMillis(elapsed() - received + arrivedAgoMillis)
+                // One that came before this trip began isn't this trip's to keep, even for a later walk's
+                // estimate: it went with the trip it came on (docs/PRIVACY.md; Codex, #542).
+                if (arrived.isBefore(trip.startedAt)) return@withLock
+                if (!sawFix(aged)) return@withLock
+                // Only a fix that came on this leg of this trip moves its walk: one queued while the trip moved
+                // on (a step) came from somewhere the rider no longer is (Codex, #542).
+                if (arrived.isBefore(trip.legStartedAt)) return@withLock
+                val walking = _progress.value as? TripProgress.Walking ?: return@withLock
+                // One that came on the walk but was taken just before it began (on the ride, say) is where
+                // the rider likely still is, not where they're seen on it: an estimate, never in place of
+                // a distance a fix on the walk gave (Codex, #542).
+                val before = now.minusMillis(aged.ageMillis ?: 0).isBefore(trip.legStartedAt)
+                if (before && walking.metersLeft != null && !walking.estimated) return@withLock
+                val places = walkPlaces?.takeIf { it.first == trip.legIndex }?.second ?: StationPlaces()
+                val meters = OnTheWay.metersLeft(trip, aged, places) ?: return@withLock
+                _progress.value = walking.copy(metersLeft = meters, estimated = before)
+            }
+        }
+    }
+
+    // Keeps [fix], aged as of [at] (on [elapsed]'s clock), as the newest seen, when precise: whether it
+    // was. Its time taken is worked out from when its age held, not when this runs: reads in between
+    // would make it seem newer than it is (Codex, #542).
+    private fun sawFix(fix: LocationFix, at: Long = elapsed()): Boolean {
+        if (fix.isFallback || fix.isCoarse) return false
+        val kept = fix to at - (fix.ageMillis ?: 0)
+        lastFix = kept
+        forgetFix?.cancel()
+        forgetFix = forgetting.launch {
+            delay((kept.second + ESTIMATE_WITHIN.toMillis() - elapsed()).coerceAtLeast(0) + 1)
+            heldFixRef.compareAndSet(kept, null)
+        }
+        return true
+    }
+
+    // The trip's fixes let go: on a start, an end or an arrival, so no coordinate outlives its trip
+    // (docs/PRIVACY.md), nor a station read for one trip's walk measures another's (Codex, #542).
+    private fun forgetFixes() {
+        forgetFix?.cancel()
+        forgetFix = null
+        lastFix = null
+        walkPlaces = null
+    }
+
+    // The newest precise fix taken within [ESTIMATE_WITHIN], the trip's own or the app's remembered one,
+    // aged to now: where the rider likely still is as a walk begins.
+    private fun recentFix(): LocationFix? {
+        if (!preciseAllowed()) {
+            forgetFix?.cancel()
+            lastFix = null
+            return null
+        }
+        expireFix()
+        val own = lastFix?.let { (fix, takenAt) -> fix.copy(ageMillis = (elapsed() - takenAt).coerceAtLeast(0)) }
+        return listOfNotNull(own, remembered())
+            // Sure enough to place the rider, as a fix the trip acts on is ([OnTheWay.FIX_WITHIN_METERS]):
+            // one of no stated accuracy, or a vague one, could be far off (Codex, #542).
+            .filter { !it.isFallback && !it.isCoarse && (it.ageMillis ?: Long.MAX_VALUE) <= ESTIMATE_WITHIN.toMillis() }
+            .filter { fix -> fix.accuracyMeters.let { it != null && it <= OnTheWay.FIX_WITHIN_METERS } }
+            .minByOrNull { it.ageMillis ?: Long.MAX_VALUE }
+    }
+
+    /** The trip's own last fix held for a walk's estimate, if any: a test's look at what's kept. */
+    @VisibleForTesting
+    internal fun heldFix(): LocationFix? = lastFix?.first
+
+    // The trip's own last fix dropped once too old to estimate from: never held past its use.
+    private fun expireFix() {
+        heldFixRef.get()?.let { held -> if (elapsed() - held.second > ESTIMATE_WITHIN.toMillis()) heldFixRef.compareAndSet(held, null) }
     }
 
     // One step of [refresh]: at most one leg change. True when it left a ride with no train yet,
@@ -793,6 +935,7 @@ class ActiveTripTracker(
                 _endFailed.value = false
                 _endFailures.value = 0
                 _trip.value = null
+                forgetFixes()
             }
             return false
         }
@@ -809,7 +952,7 @@ class ActiveTripTracker(
         val places = station?.let { placesOf(it) } ?: StationPlaces()
         // When [seenRider]'s age holds: a use after further reads ages it again ([boardedAlong]).
         val seenAt = elapsed()
-        val seenRider = if (station == null) rider else rider?.let { aged(it, Duration.ofMillis(seenAt - reading)) }
+        val seenRider = if (station == null) rider?.takeIf { preciseAllowed() } else rider?.let { aged(it, Duration.ofMillis(seenAt - reading)) }
         val now = clock()
         // The train followed coming in, before a fix may have dropped it ([OnTheWay.seen]).
         val followed = _trip.value?.vehicleId.orEmpty()
@@ -922,12 +1065,40 @@ class ActiveTripTracker(
         var (next, progress) = OnTheWay.advance(trip, calls, now, atBoarding)
         // How far the walk's end is, from this refresh's fix, or as last seen on the same walk: a refresh
         // without one doesn't blank it. Shown on the trip's screen only, never logged (SPEC *Privacy*).
+        // The newest fix seen: a later walk's first distance, as an estimate, until a fix on it ([recentFix]).
+        // Asked again after the reads above: precise location may have been taken away meanwhile, and then
+        // this fix is neither kept nor measured from (Codex, #542).
+        val measurable = seenRider?.takeIf { preciseAllowed() }
+        if (seenRider != null && measurable == null) {
+            forgetFix?.cancel()
+            lastFix = null
+        }
+        measurable?.let { sawFix(it, at = if (station == null) reading else seenAt) }
         (progress as? TripProgress.Walking)?.let { walking ->
             // The station read for this walk only: one read for a ride got off at is behind the rider.
-            val walkedTo = places.takeIf { next.legIndex == before.legIndex && OnTheWay.stationWalkedTo(next, now) != null }
-            val seen = withContext(compute) { OnTheWay.metersLeft(next, seenRider, walkedTo ?: StationPlaces()) }
-                ?: (_progress.value as? TripProgress.Walking)?.takeIf { it.leg == walking.leg }?.metersLeft
-            progress = walking.copy(metersLeft = seen)
+            // A refresh with no fix reads no station: this walk's read stays, so a fix between refreshes still
+            // measures to its entrances (Codex, #542).
+            val walkedTo = if (station == null && next.legIndex == before.legIndex) {
+                walkPlaces?.takeIf { it.first == next.legIndex }?.second ?: StationPlaces()
+            } else {
+                places.takeIf { next.legIndex == before.legIndex && OnTheWay.stationWalkedTo(next, now) != null } ?: StationPlaces()
+            }
+            walkPlaces = next.legIndex to walkedTo
+            val seen = withContext(compute) { OnTheWay.metersLeft(next, measurable, walkedTo) }
+            val held = (_progress.value as? TripProgress.Walking)?.takeIf { it.leg == walking.leg && it.metersLeft != null }
+            // From this refresh's fix; else as last seen on the same walk, so a refresh without one doesn't
+            // blank it; else, a walk just begun, estimated from a fix taken lately (maintainer, 2026-10-04).
+            // A fix taken before this walk began (the one that moved the trip onto it, say) is where the
+            // rider likely is, not where they're seen on it: an estimate, as in [onFix] (Codex, #542).
+            val seenBefore = seenRider != null && now.minusMillis(seenRider.ageMillis ?: 0).isBefore(next.legStartedAt)
+            progress = when {
+                seen != null && !(seenBefore && held != null && !held.estimated) -> walking.copy(metersLeft = seen, estimated = seenBefore)
+                held != null -> walking.copy(metersLeft = held.metersLeft, estimated = held.estimated)
+                else -> {
+                    val guessed = recentFix()?.let { fix -> withContext(compute) { OnTheWay.metersLeft(next, fix, walkedTo) } }
+                    walking.copy(metersLeft = guessed, estimated = guessed != null)
+                }
+            }
         }
         // A train that turned out not to be the rider's: drop it, so the next refresh picks another.
         // Once on board it stays followed: TfL has only gone quiet on it.
@@ -997,6 +1168,7 @@ class ActiveTripTracker(
             _endFailed.value = false
             _endFailures.value = 0
             _trip.value = null
+            forgetFixes()
             // Forgotten: no trip left for an alert to belong to.
             if (next.alertLeft) onGetOffSoonDone()
         } else {
@@ -1547,6 +1719,12 @@ class ActiveTripTracker(
          * after the app was away longer, a trip's live details wait for the next answer.
          */
         val CURRENT_FOR: Duration = Duration.ofSeconds(75)
+
+        /**
+         * How old a fix may be to estimate a walk's distance left before one on the walk places the
+         * rider: about a block's walk at most, so the estimate is never far off (maintainer, 2026-10-04).
+         */
+        val ESTIMATE_WITHIN: Duration = Duration.ofMinutes(2)
 
         /** Whether a trip last brought up to date at [updatedAt] is live at [now]. */
         fun isCurrent(updatedAt: Instant?, now: Instant): Boolean =

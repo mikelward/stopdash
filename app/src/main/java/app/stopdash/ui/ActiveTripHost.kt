@@ -93,6 +93,14 @@ internal fun FollowActiveTrip(
                 watchTripFixes(tracker.trip, fixes, updates)
             }
         }
+        // Each fix as it comes moves a walk's distance left at once ([ActiveTripTracker.onFix]), not
+        // only on the refresh it may bring on, which waits out its gap and its requests. From [TripFixes.each],
+        // not [TripFixes.latest], which a refresh (the service's too) may clear before it's seen (Codex, #542).
+        LaunchedEffect(tracker, fixes, lifecycleOwner) {
+            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                fixes.each.collect { tracker.onFix(fixes.aged(it), arrivedAgoMillis = fixes.waited(it)) }
+            }
+        }
     }
     if (trip != null && !service) {
         LaunchedEffect(tracker, lifecycleOwner) {

@@ -123,7 +123,14 @@ sealed interface TripProgress {
      * [metersLeft] is how far its end is, straight, from where the rider was last seen on it; null
      * with no fix yet, or none that places them.
      */
-    data class Walking(val leg: TripLeg, val until: Instant, val metersLeft: Double? = null) : TripProgress
+    data class Walking(
+        val leg: TripLeg,
+        val until: Instant,
+        val metersLeft: Double? = null,
+        // [metersLeft] is from a fix taken before this walk was seen ([ActiveTripTracker]'s estimate), so
+        // it reads as approximate until a fix on the walk itself places the rider.
+        val estimated: Boolean = false,
+    ) : TripProgress
 
     /**
      * The train followed can't be placed on [leg] — it doesn't call at the boarding stop or where

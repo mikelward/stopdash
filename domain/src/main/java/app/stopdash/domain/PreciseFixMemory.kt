@@ -78,6 +78,20 @@ class PreciseFixMemory {
     }
 
     /**
+     * The remembered precise fix as it is at [nowElapsedMillis], whatever it's set against; null when
+     * nothing (unexpired) is remembered, or it was taken after [nowElapsedMillis] (a clock gone back).
+     */
+    fun recall(nowElapsedMillis: Long): Recalled? {
+        val remembered = synchronized(this) {
+            expire(nowElapsedMillis)
+            last
+        } ?: return null
+        val age = nowElapsedMillis - remembered.atElapsedMillis
+        if (age < 0) return null
+        return Recalled(remembered.coordinates, age, remembered.provider, remembered.accuracyMeters)
+    }
+
+    /**
      * Deletes the remembered fix once it is older than [TTL_MILLIS] at [nowElapsedMillis] — deleted,
      * not just ignored (SPEC *Privacy*). Called on every location the app takes, whether or not
      * that location could use it, so an expired position never outlives the next one.
@@ -86,6 +100,12 @@ class PreciseFixMemory {
     fun expire(nowElapsedMillis: Long) {
         val current = last ?: return
         if (nowElapsedMillis - current.atElapsedMillis > TTL_MILLIS) last = null
+    }
+
+    /** Deletes the remembered fix now, whatever its age: precise location no longer allowed. */
+    @Synchronized
+    fun forget() {
+        last = null
     }
 
     /** A remembered precise fix used instead of a coarse one: how old it is, and where it came from. */

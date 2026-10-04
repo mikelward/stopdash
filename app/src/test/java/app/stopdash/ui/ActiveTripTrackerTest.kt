@@ -16,12 +16,15 @@ import java.time.Instant
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import app.stopdash.domain.SteadyClock
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -114,6 +117,10 @@ class ActiveTripTrackerTest {
     private var entrancesTake = 0L
     // What the wall clock does while the entrances are read.
     private var entranceClock: () -> Unit = {}
+    // Run as a line's route is read: a test's moment mid-refresh.
+    private var sequenceClock: (String) -> Unit = {}
+    // A station's read held open until completed: a refresh caught mid-read.
+    private var entrancesGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
     // Each line's route, placing a ride's stops ([ActiveTripTracker]'s lineSequence), and how long
     // reading one takes, on the monotonic clock.
     private val sequences = mutableMapOf<String, app.stopdash.domain.LineSequence>()
@@ -156,8 +163,14 @@ class ActiveTripTrackerTest {
     private fun tracker(
         dispatcher: kotlinx.coroutines.CoroutineDispatcher,
         compute: kotlinx.coroutines.CoroutineDispatcher = dispatcher,
+        remembered: () -> app.stopdash.domain.LocationFix? = { null },
+        forgetting: kotlinx.coroutines.CoroutineScope = kotlinx.coroutines.CoroutineScope(dispatcher),
+        preciseAllowed: () -> Boolean = { true },
         load: () -> ActiveTrip? = { null },
     ) = ActiveTripTracker(
+        remembered = remembered,
+        forgetting = forgetting,
+        preciseAllowed = preciseAllowed,
         load = load,
         save = {
             saveThreads += Thread.currentThread().name.substringBefore(" @")
@@ -191,6 +204,7 @@ class ActiveTripTrackerTest {
         },
         stationPlaces = { stop ->
             entranceReads++
+            entrancesGate?.await()
             ticks += entrancesTake
             entranceClock()
             if (entrancesFail) throw TflException.Offline(null)
@@ -198,6 +212,7 @@ class ActiveTripTrackerTest {
         },
         lineSequence = { lineId ->
             sequencesRead += lineId
+            sequenceClock(lineId)
             ticks += sequenceTakesFor[lineId] ?: sequenceTakes
             if (routeFails) throw TflException.Offline(null)
             sequences[lineId]
@@ -447,6 +462,43 @@ class ActiveTripTrackerTest {
         assertEquals("A", tracker.replanFrom.value?.id)
         // Only a fix would have the later ride's line placed (Codex on #479).
         assertFalse("blue" in sequencesRead)
+    }
+
+    @Test
+    fun `where a trip is planned again from isn't picked by a fix once precise location is taken away`() = runTest {
+        // As below, but with precise location turned off before the refresh: the fix near E isn't used
+        // to pick where to plan again from (Codex, #542).
+        val tracker = tracker(StandardTestDispatcher(testScheduler), preciseAllowed = { false })
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "D", "D", at(15), at(18))
+        val blue = TripLeg("tube", "blue", "Blue", "D", "D", "F", "F", at(20), at(30), path = listOf("E", "F"))
+        sequences["red"] = redLine
+        sequences["blue"] = blueLine
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(TripRoute(listOf(ride, walkOn, blue)), "F", readyAt = now)
+        known = listOf(line(2, 6, "Severe Delays"))
+        tracker.refresh(fixAt(51.61))
+        assertEquals("A", tracker.replanFrom.value?.id)
+    }
+
+    @Test
+    fun `precise location taken away while the routes are read stops a fix picking where to plan again from`() = runTest {
+        // Turned off as the later ride's route is read for the disruption: the fix near E no longer picks
+        // where the trip is planned again from (Codex, #542).
+        var precise = true
+        // Only replanning reads the later ride's line.
+        sequenceClock = { if (it == "blue") precise = false }
+        val tracker = tracker(StandardTestDispatcher(testScheduler), preciseAllowed = { precise })
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "D", "D", at(15), at(18))
+        val blue = TripLeg("tube", "blue", "Blue", "D", "D", "F", "F", at(20), at(30), path = listOf("E", "F"))
+        sequences["red"] = redLine
+        sequences["blue"] = blueLine
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(TripRoute(listOf(ride, walkOn, blue)), "F", readyAt = now)
+        known = listOf(line(2, 6, "Severe Delays"))
+        tracker.refresh(fixAt(51.61))
+        assertNotEquals("E", tracker.replanFrom.value?.id)
     }
 
     @Test
@@ -3622,6 +3674,376 @@ class ActiveTripTrackerTest {
         // Seen there: arrived.
         tracker.refresh(fixAt(51.5001))
         assertEquals(TripProgress.Arrived, tracker.progress.value)
+    }
+
+    @Test
+    fun `a fix between refreshes moves the walk's distance at once`() = runTest {
+        // A synthetic destination point; the rider seen about 445 m short of it, then about 222 m.
+        val end = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val home = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "", "Destination", at(0), at(5))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(TripRoute(listOf(home)), "Destination", readyAt = now, destinations = listOf(app.stopdash.domain.TripDestination.Place(end, "Destination")))
+        now = at(2)
+        tracker.refresh(fixAt(51.504))
+        val reads = boardReads
+        // A fix with no refresh behind it (maintainer, 2026-10-04): the distance follows it, nothing is asked of TfL.
+        tracker.onFix(fixAt(51.502))
+        val walking = tracker.progress.value as TripProgress.Walking
+        assertEquals(222.0, checkNotNull(walking.metersLeft), 5.0)
+        assertFalse(walking.estimated)
+        assertEquals(reads, boardReads)
+        // A vague fix can't place the rider: the distance stands.
+        tracker.onFix(fixAt(51.503).copy(isCoarse = true))
+        assertEquals(222.0, checkNotNull((tracker.progress.value as TripProgress.Walking).metersLeft), 5.0)
+    }
+
+    @Test
+    fun `a walk begins with a distance estimated from a fix taken lately`() = runTest {
+        val end = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val home = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "", "Destination", at(0), at(5))
+        // The fix the app took a minute ago, the one the trip was planned from, say: about 445 m short.
+        val remembered = fixAt(51.504).copy(ageMillis = 60_000L)
+        val tracker = tracker(StandardTestDispatcher(testScheduler), remembered = { remembered })
+        tracker.start(TripRoute(listOf(home)), "Destination", readyAt = now, destinations = listOf(app.stopdash.domain.TripDestination.Place(end, "Destination")))
+        // No fix on the walk yet: estimated from it, and said to be.
+        tracker.refresh()
+        val estimated = tracker.progress.value as TripProgress.Walking
+        assertEquals(445.0, checkNotNull(estimated.metersLeft), 5.0)
+        assertTrue(estimated.estimated)
+        // A fix on the walk replaces it, no longer an estimate.
+        now = at(1)
+        tracker.onFix(fixAt(51.502))
+        val seen = tracker.progress.value as TripProgress.Walking
+        assertEquals(222.0, checkNotNull(seen.metersLeft), 5.0)
+        assertFalse(seen.estimated)
+    }
+
+    @Test
+    fun `a walk's distance isn't estimated from a fix too old`() = runTest {
+        val end = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val home = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "", "Destination", at(0), at(5))
+        val stale = fixAt(51.504).copy(ageMillis = ActiveTripTracker.ESTIMATE_WITHIN.toMillis() + 1)
+        val tracker = tracker(StandardTestDispatcher(testScheduler), remembered = { stale })
+        tracker.start(TripRoute(listOf(home)), "Destination", readyAt = now, destinations = listOf(app.stopdash.domain.TripDestination.Place(end, "Destination")))
+        tracker.refresh()
+        assertNull((tracker.progress.value as TripProgress.Walking).metersLeft)
+    }
+
+    @Test
+    fun `a fix kept for a later walk is aged by the reads after it was seen`() = runTest {
+        // Synthetic places: A walked to, then a walk on from C to the destination.
+        val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10))
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "", "Destination", at(15), at(20))
+        entrancesAt["A"] = app.stopdash.domain.StationPlaces(point = app.stopdash.domain.Coordinates(51.6, -0.12))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(
+            TripRoute(listOf(toA, ride, walkOn)), "Destination", readyAt = now,
+            destinations = listOf(app.stopdash.domain.TripDestination.Place(app.stopdash.domain.Coordinates(51.5, -0.12), "Destination")),
+        )
+        now = at(1)
+        // At A, waiting for 3: seen a second old, then 3's calls take past the estimate's window to come
+        // back. The fix is that old by then, however recently it was kept (Codex, #542).
+        tracker.goTo(Step(0), Step(1))
+        assertEquals("3", tracker.trip.value?.vehicleId)
+        vehicleTakes = ActiveTripTracker.ESTIMATE_WITHIN.toMillis() + 10_000
+        tracker.refresh(fixAt(51.504))
+        vehicleTakes = 0
+        tracker.goTo(Step(1), Step(2))
+        tracker.refresh()
+        val walking = tracker.progress.value as TripProgress.Walking
+        assertEquals(walkOn, walking.leg)
+        assertNull(walking.metersLeft)
+    }
+
+    @Test
+    fun `a kept fix is let go past its window though TfL can't be reached`() = runTest {
+        val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(TripRoute(listOf(toA, ride)), "C", readyAt = now)
+        now = at(1)
+        // Waiting for 3 at A, seen there.
+        tracker.goTo(Step(0), Step(1))
+        tracker.onFix(fixAt(51.504))
+        assertNotNull(tracker.heldFix())
+        // 3 can't be looked up for longer than the window: no refresh gets through, but the fix still
+        // goes (docs/PRIVACY.md; Codex, #542).
+        failing = true
+        ticks += ActiveTripTracker.ESTIMATE_WITHIN.toMillis() + 1
+        tracker.refresh()
+        assertNull(tracker.heldFix())
+    }
+
+    @Test
+    fun `a refresh with no fix keeps the walk's station for the fixes after it`() = runTest {
+        // A walk to A, whose place the Planner left out: only A's read places it.
+        val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10))
+        entrancesAt["A"] = app.stopdash.domain.StationPlaces(point = app.stopdash.domain.Coordinates(51.5, -0.12))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(TripRoute(listOf(toA, ride)), "C", readyAt = now)
+        now = at(1)
+        tracker.refresh(fixAt(51.504))
+        // The timer's refresh, with no fix: A isn't read again, but its read stands (Codex, #542).
+        tracker.refresh()
+        tracker.onFix(fixAt(51.502))
+        assertEquals(222.0, checkNotNull((tracker.progress.value as TripProgress.Walking).metersLeft), 5.0)
+    }
+
+    @Test
+    fun `a kept fix is let go past its window though nothing follows the trip`() = runTest {
+        // The service stopped just after a fix, the app in the background: no refresh comes, but the
+        // fix still goes on time (docs/PRIVACY.md; Codex, #542).
+        val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10))
+        val tracker = tracker(StandardTestDispatcher(testScheduler), forgetting = backgroundScope)
+        tracker.start(TripRoute(listOf(toA, ride)), "C", readyAt = now)
+        tracker.onFix(fixAt(51.504))
+        assertNotNull(tracker.heldFix())
+        // The elapsed clock and the timer's both move on past the window.
+        ticks += ActiveTripTracker.ESTIMATE_WITHIN.toMillis() + 1
+        advanceTimeBy(ActiveTripTracker.ESTIMATE_WITHIN.toMillis() - 1_000)
+        assertNotNull(tracker.heldFix())
+        advanceTimeBy(2_000)
+        assertNull(tracker.heldFix())
+    }
+
+    @Test
+    fun `a walk isn't estimated from a vague fix`() = runTest {
+        val end = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val home = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "", "Destination", at(0), at(5))
+        // Recent, but of no stated accuracy, then hundreds of meters wide: neither places the rider (Codex, #542).
+        var remembered = fixAt(51.504).copy(accuracyMeters = null, ageMillis = 60_000L)
+        val tracker = tracker(StandardTestDispatcher(testScheduler), remembered = { remembered })
+        tracker.start(TripRoute(listOf(home)), "Destination", readyAt = now, destinations = listOf(app.stopdash.domain.TripDestination.Place(end, "Destination")))
+        tracker.refresh()
+        assertNull((tracker.progress.value as TripProgress.Walking).metersLeft)
+        remembered = remembered.copy(accuracyMeters = 400f)
+        tracker.refresh()
+        assertNull((tracker.progress.value as TripProgress.Walking).metersLeft)
+    }
+
+    @Test
+    fun `a fix from before the leg it waited into doesn't count as seen on its walk`() = runTest {
+        // A fix on the ride to C, delivered once Next has put the rider on the walk on: it was taken
+        // on the ride, not the walk (Codex, #542).
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "", "Destination", at(15), at(20))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(
+            TripRoute(listOf(ride, walkOn)), "Destination", readyAt = now,
+            destinations = listOf(app.stopdash.domain.TripDestination.Place(app.stopdash.domain.Coordinates(51.5, -0.12), "Destination")),
+        )
+        now = at(14)
+        tracker.goTo(Step(0), Step(1))
+        val walking = tracker.progress.value as TripProgress.Walking
+        assertEquals(walkOn, walking.leg)
+        // Come a minute ago, before the walk began, and held up since.
+        tracker.onFix(fixAt(51.502), arrivedAgoMillis = 60_000L)
+        assertNull((tracker.progress.value as TripProgress.Walking).metersLeft)
+        // One come on the walk but taken a little before it began: where they likely are, so an estimate.
+        tracker.onFix(fixAt(51.502).copy(ageMillis = 5_000L))
+        val estimated = tracker.progress.value as TripProgress.Walking
+        assertEquals(222.0, checkNotNull(estimated.metersLeft), 5.0)
+        assertTrue(estimated.estimated)
+        // One taken on the walk places them.
+        now = at(15)
+        tracker.onFix(fixAt(51.503))
+        val seen = tracker.progress.value as TripProgress.Walking
+        assertEquals(333.0, checkNotNull(seen.metersLeft), 5.0)
+        assertFalse(seen.estimated)
+        // Then one taken before the walk began can't take that back.
+        tracker.onFix(fixAt(51.502).copy(ageMillis = 120_000L))
+        assertEquals(333.0, checkNotNull((tracker.progress.value as TripProgress.Walking).metersLeft), 5.0)
+    }
+
+    @Test
+    fun `a fix that came on the last trip isn't kept by the next`() = runTest {
+        // A fix from trip A, held up while B replaced it: B neither keeps it nor estimates from it
+        // (docs/PRIVACY.md; Codex, #542).
+        val end = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val home = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "", "Destination", at(0), at(5))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(TripRoute(listOf(home)), "Destination", readyAt = now, destinations = listOf(app.stopdash.domain.TripDestination.Place(end, "Destination")))
+        now = at(2)
+        tracker.start(TripRoute(listOf(home)), "Destination", readyAt = now, replacing = true, destinations = listOf(app.stopdash.domain.TripDestination.Place(end, "Destination")))
+        tracker.onFix(fixAt(51.504), arrivedAgoMillis = 60_000L)
+        assertNull(tracker.heldFix())
+        tracker.refresh()
+        assertNull((tracker.progress.value as TripProgress.Walking).metersLeft)
+    }
+
+    @Test
+    fun `no kept fix estimates a walk once precise location is taken away`() = runTest {
+        // A fix kept on the trip's ride, then precise location turned off before the walk: the walk
+        // isn't estimated from it, and it's deleted (Codex, #542).
+        val walkOn = TripLeg(TripLeg.WALKING, "", "", "C", "C", "", "Destination", at(15), at(20))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        var precise = true
+        val tracker = tracker(StandardTestDispatcher(testScheduler), preciseAllowed = { precise })
+        tracker.start(
+            TripRoute(listOf(ride, walkOn)), "Destination", readyAt = now,
+            destinations = listOf(app.stopdash.domain.TripDestination.Place(app.stopdash.domain.Coordinates(51.5, -0.12), "Destination")),
+        )
+        now = at(1)
+        tracker.onFix(fixAt(51.504))
+        assertNotNull(tracker.heldFix())
+        precise = false
+        tracker.goTo(Step(0), Step(1))
+        tracker.refresh()
+        assertNull((tracker.progress.value as TripProgress.Walking).metersLeft)
+        assertNull(tracker.heldFix())
+    }
+
+    @Test
+    fun `a fix that waited past precise location being taken away isn't used`() = runTest {
+        val end = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val home = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "", "Destination", at(0), at(5))
+        var precise = true
+        val tracker = tracker(StandardTestDispatcher(testScheduler), preciseAllowed = { precise })
+        tracker.start(TripRoute(listOf(home)), "Destination", readyAt = now, destinations = listOf(app.stopdash.domain.TripDestination.Place(end, "Destination")))
+        now = at(1)
+        // Queued, then precise location turned off before it was taken up (Codex, #542).
+        precise = false
+        tracker.onFix(fixAt(51.502))
+        assertNull((tracker.progress.value as TripProgress.Walking).metersLeft)
+        assertNull(tracker.heldFix())
+    }
+
+    @Test
+    fun `a refresh's fix from before precise location was taken away isn't used`() = runTest {
+        val end = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val home = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "", "Destination", at(0), at(5))
+        var precise = true
+        val tracker = tracker(StandardTestDispatcher(testScheduler), preciseAllowed = { precise })
+        tracker.start(TripRoute(listOf(home)), "Destination", readyAt = now, destinations = listOf(app.stopdash.domain.TripDestination.Place(end, "Destination")))
+        now = at(1)
+        tracker.onFix(fixAt(51.504))
+        // A fix held for the next refresh, then precise location turned off (Codex, #542).
+        precise = false
+        tracker.refresh(fixAt(51.502))
+        assertNotEquals(222.0, (tracker.progress.value as TripProgress.Walking).metersLeft ?: 0.0, 5.0)
+        assertNull(tracker.heldFix())
+    }
+
+    @Test
+    fun `precise location taken away during a refresh's reads stops its fix being used`() = runTest {
+        // Turned off while A's entrances are read: the fix that refresh brought is neither kept nor
+        // measured from (Codex, #542).
+        val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10))
+        entrancesAt["A"] = app.stopdash.domain.StationPlaces(point = app.stopdash.domain.Coordinates(51.5, -0.12))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        var precise = true
+        entranceClock = { precise = false }
+        val tracker = tracker(StandardTestDispatcher(testScheduler), preciseAllowed = { precise })
+        tracker.start(TripRoute(listOf(toA, ride)), "C", readyAt = now)
+        now = at(1)
+        tracker.refresh(fixAt(51.504))
+        assertNull((tracker.progress.value as TripProgress.Walking).metersLeft)
+        assertNull(tracker.heldFix())
+    }
+
+    @Test
+    fun `the fix a refresh moves the trip onto a walk with gives an estimate`() = runTest {
+        // A walk on from where the first ends, by its time: the fix this refresh took was taken before
+        // the second walk began, so it's where the rider likely is, not seen on it (Codex, #542).
+        val first = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "Y", "Y", at(0), at(2))
+        val second = TripLeg(TripLeg.WALKING, "", "", "Y", "Y", "", "Destination", at(2), at(8))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(
+            TripRoute(listOf(first, second)), "Destination", readyAt = now,
+            destinations = listOf(app.stopdash.domain.TripDestination.Place(app.stopdash.domain.Coordinates(51.5, -0.12), "Destination")),
+        )
+        // 3 s into the second walk, with a fix 5 s old: taken on the first.
+        now = at(2).plusSeconds(3)
+        tracker.refresh(fixAt(51.502).copy(ageMillis = 5_000L))
+        val walking = tracker.progress.value as TripProgress.Walking
+        assertEquals(second, walking.leg)
+        assertEquals(222.0, checkNotNull(walking.metersLeft), 5.0)
+        assertTrue(walking.estimated)
+    }
+
+    @Test
+    fun `a fix during a refresh isn't overwritten by the refresh's older one`() = runTest {
+        val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10))
+        entrancesAt["A"] = app.stopdash.domain.StationPlaces(point = app.stopdash.domain.Coordinates(51.5, -0.12))
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(TripRoute(listOf(toA, ride)), "C", readyAt = now)
+        now = at(1)
+        // A refresh from a fix about 445 m short, held in A's read; a newer fix, 222 m short, comes
+        // meanwhile. It waits for the refresh, then stands (Codex, #542).
+        val slow = kotlinx.coroutines.CompletableDeferred<Unit>()
+        entrancesGate = slow
+        val refreshing = backgroundScope.launch { tracker.refresh(fixAt(51.504)) }
+        runCurrent()
+        val fixed = backgroundScope.launch { tracker.onFix(fixAt(51.502)) }
+        runCurrent()
+        entrancesGate = null
+        slow.complete(Unit)
+        refreshing.join()
+        fixed.join()
+        assertEquals(222.0, checkNotNull((tracker.progress.value as TripProgress.Walking).metersLeft), 5.0)
+    }
+
+    @Test
+    fun `an ended trip's fix and station aren't the next trip's`() = runTest {
+        val end = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val home = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "", "Destination", at(0), at(5))
+        val toA = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "A", "A", at(0), at(10))
+        entrancesAt["A"] = app.stopdash.domain.StationPlaces(point = end)
+        departures["A"] = listOf(train("3", 6))
+        trains["3"] = listOf(call("A", 6), call("B", 9), call("C", 14))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        // A walk to A, seen on it: A's place is read, the fix kept.
+        tracker.start(TripRoute(listOf(toA, ride)), "C", readyAt = now)
+        now = at(1)
+        tracker.refresh(fixAt(51.504))
+        assertTrue(tracker.end())
+        // The next trip, a walk to a place, begins with no fix of its own: none of the last trip's
+        // estimates it (docs/PRIVACY.md), and a fix before its first refresh isn't measured to A.
+        tracker.start(TripRoute(listOf(home)), "Destination", readyAt = now, destinations = listOf(app.stopdash.domain.TripDestination.Place(app.stopdash.domain.Coordinates(51.6, -0.12), "Destination")))
+        tracker.refresh()
+        assertNull((tracker.progress.value as TripProgress.Walking).metersLeft)
+        assertTrue(tracker.end())
+        // A's place read again on a walk to it; the next trip's walk to E, fixed before its first
+        // refresh, isn't measured to A's (Codex, #542).
+        tracker.start(TripRoute(listOf(toA, ride)), "C", readyAt = now)
+        tracker.refresh(fixAt(51.504))
+        assertEquals(445.0, checkNotNull((tracker.progress.value as TripProgress.Walking).metersLeft), 5.0)
+        assertTrue(tracker.end())
+        tracker.start(TripRoute(listOf(toA.copy(toId = "E", toName = "E"), ride)), "C", readyAt = now)
+        tracker.onFix(fixAt(51.504))
+        assertNull((tracker.progress.value as TripProgress.Walking).metersLeft)
+    }
+
+    @Test
+    fun `a fix between refreshes is measured off the caller's thread`() = runTest {
+        val end = app.stopdash.domain.Coordinates(51.5, -0.12)
+        val home = TripLeg(TripLeg.WALKING, "", "", "Z", "Z", "", "Destination", at(0), at(5))
+        val test = StandardTestDispatcher(testScheduler)
+        var hops = 0
+        val worker = object : kotlinx.coroutines.CoroutineDispatcher() {
+            override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) {
+                hops++
+                test.dispatch(context, block)
+            }
+        }
+        val tracker = tracker(test, compute = worker)
+        tracker.start(TripRoute(listOf(home)), "Destination", readyAt = now, destinations = listOf(app.stopdash.domain.TripDestination.Place(end, "Destination")))
+        now = at(2)
+        tracker.refresh()
+        val before = hops
+        tracker.onFix(fixAt(51.504))
+        assertTrue("$hops", hops > before)
+        assertEquals(445.0, checkNotNull((tracker.progress.value as TripProgress.Walking).metersLeft), 5.0)
     }
 
     @Test

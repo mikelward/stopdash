@@ -681,6 +681,8 @@
         <item quantity="other">%1$d stops (~%3$d min) · next %2$s</item>
     </plurals>
     <!-- The stop to get off at is next; %1$d the minutes until the train is due there. -->
+    <!-- A walk's distance left estimated from a fix taken before the walk began: "~450 m". -->
+    <string name="on_the_way_walk_left_estimated">~%1$s</string>
     <string name="on_the_way_next_stop_timed">Next stop (~%1$d min)</string>
     <!-- A change between two rides with no walk of its own: to the line, at the stop. -->
     <string name="on_the_way_change">Change to %1$s at %2$s</string>

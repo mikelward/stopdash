@@ -1615,7 +1615,12 @@ them there:
   fixes than before. An unplaced
   destination can't be seen, so its walk still ends on its time. Every walk says **how far is
   left**, straight to its end, from the last fix that placed the rider, where a ride says its stops
-  ("450 m", in the distance units the app shows); with no such fix, nothing. A train ride ends the same way
+  ("450 m", in the distance units the app shows). It follows **each fix as it comes** while the trip
+  is shown, not only each refresh (maintainer, 2026-10-04): measured on the device from a fix it was
+  taking anyway, it costs no request and no extra fix. A walk just begun, before any fix on it, is
+  estimated from the newest precise fix taken within the last 2 minutes (the trip's own, or the one
+  the app remembers, such as the one the trip was planned from) and reads as approximate ("~450 m")
+  until a fix on the walk places the rider; with no such fix, nothing. A train ride ends the same way
   at the station the rider gets off at (maintainer, 2026-09-28): from about two stops out (the
   train followed due there within 4 minutes) until the ride ends, or 5 minutes past that train's
   time (so a time gone stale, with TfL quiet, doesn't keep GPS on), each refresh takes one precise
