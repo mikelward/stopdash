@@ -53,7 +53,8 @@ biting.
 
 The `SPEC.md` *Engineering quality bar* is the source of truth; in priority order:
 never show a departure stopdash doesn't stand behind, never fail silently, do the work
-ahead of time, jank-free UI, respect the battery, say why. Where a rule below conflicts
+ahead of time, hold still (never move what the user is reading or about to tap), jank-free UI,
+respect the battery, say why. Where a rule below conflicts
 with a principle, the principle wins.
 
 Concretely, every change holds the line on **correctness, the refresh/staleness

@@ -58,6 +58,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -516,7 +517,7 @@ internal enum class TripMessage { CHECKING, INCOMPLETE }
 
 /**
  * Whether some listed route's live trains couldn't be checked against where the rider gets off:
- * [TripMessage.CHECKING] while a line's route loads, [TripMessage.INCOMPLETE] once one failed or a
+ * [TripMessage.CHECKING] while any line's route loads, then [TripMessage.INCOMPLETE] if one failed or a
  * train's path couldn't be followed; null when every train was checked. Such a leg falls back to the
  * Planner's time, and this says why, rather than pass the fallback off as "no live train".
  */
@@ -529,8 +530,10 @@ internal fun tripCheckState(
 ): TripMessage? {
     val results = legChecks(state, estimates, now, sequences, lines)
     return when {
-        results.any { it.unresolved } -> TripMessage.INCOMPLETE
+        // Still checking comes first: one line failing says nothing yet of the others, whose trains
+        // can still change the cards (Codex, #543).
         results.any { it.pending } -> TripMessage.CHECKING
+        results.any { it.unresolved } -> TripMessage.INCOMPLETE
         else -> null
     }
 }
@@ -1375,10 +1378,17 @@ private fun TripContent(
                 // The lines avoided, under the modes: each a chip a tap stops avoiding.
                 avoided.onStopAvoiding?.let { AvoidedLineChips(avoided.lines, it) }
             }
-            TripBanners(shown, rideLines, state, check, locationBanner, onRelocate, hiddenModes, onShowAllModes)
+            // Settled here, once, so the list's reveal waits on the banner it would otherwise slide under (Codex, #543).
+            val incomplete = settled(check == TripMessage.INCOMPLETE, at = false)
+            TripBanners(shown, rideLines, state, check, incomplete, locationBanner, onRelocate, hiddenModes, onShowAllModes)
+            // Hold still (SPEC *Engineering quality bar*): the list appears once, after its plan, its live
+            // refresh and its routes' checks have landed, rather than settle under the rider's
+            // thumb as each lands (maintainer, 2026-10-04). Never longer than [REVEAL_CAP_MILLIS].
+            val revealed = rememberRevealed(cards != null, state, check, bannerSettled = incomplete == (check == TripMessage.INCOMPLETE))
             Box(Modifier.fillMaxSize()) {
                 when {
                     cards == null -> TripPlaceholder(state, onRetry)
+                    open == null && !revealed -> RoutesChecking()
                     open != null -> RouteLegs(open, rideLines, state, now, access, sequences, onRetry, alerts.dismissed, alerts.onDismiss, hideMode, ::openDetail, loads.loading, check == TripMessage.CHECKING)
                     else -> {
                         val routes = @Composable {
@@ -1428,6 +1438,8 @@ private fun TripBanners(
     rideLines: Map<TripLeg, RideLines>,
     state: TripViewModel.State,
     check: TripMessage?,
+    // The "couldn't be checked" banner, settled by the caller ([settled]).
+    incomplete: Boolean,
     locationBanner: LocationBanner?,
     onRelocate: () -> Unit,
     hiddenModes: Set<String>,
@@ -1453,13 +1465,53 @@ private fun TripBanners(
     // A route still loading says so in the disruptions row over the routes, which holds its place
     // ([DisruptionsRow]), rather than in a banner that came and went over the list (maintainer,
     // 2026-10-04). One that couldn't be checked says so here, once that has held ([settled]).
-    if (settled(check == TripMessage.INCOMPLETE, at = false)) Banner(stringResource(R.string.journey_incomplete))
+    if (incomplete) Banner(stringResource(R.string.journey_incomplete))
     if (hiddenModes.isNotEmpty()) {
         ActionBanner(
             text = stringResource(R.string.modes_hidden, hiddenGroupsLabel(hiddenModes)),
             actionLabel = stringResource(R.string.modes_show_all),
             onAction = onShowAllModes,
         )
+    }
+}
+
+/** The longest a trip's list is held back while what it shows lands ([rememberRevealed]). */
+internal const val REVEAL_CAP_MILLIS = 8_000L
+
+/**
+ * Whether a trip's list is shown yet: once [hasCards], with no plan landing, no live refresh running
+ * and no line's route still loading ([check]); or [REVEAL_CAP_MILLIS] after the cards
+ * came, whatever is still out, so a check that never answers can't hide the routes. Once shown it
+ * stays shown, refreshes and re-plans included: from then on a card moves only when what it says
+ * changes. Timed on frames, as a screenshot test drives them.
+ */
+@Composable
+private fun rememberRevealed(hasCards: Boolean, state: TripViewModel.State, check: TripMessage?, bannerSettled: Boolean): Boolean {
+    var revealed by rememberSaveable { mutableStateOf(false) }
+    val ready = hasCards && !state.refreshing && !state.planning && check != TripMessage.CHECKING && bannerSettled
+    LaunchedEffect(hasCards, ready) {
+        // No cards means a plan starting afresh, a process recreated included (its plans are memory-only),
+        // so a restored reveal mustn't let the new plan's cards show as they land (Codex, #543).
+        if (!hasCards) revealed = false
+        if (revealed || !hasCards) return@LaunchedEffect
+        if (!ready) {
+            val start = withFrameMillis { it }
+            while (withFrameMillis { it } - start < REVEAL_CAP_MILLIS) Unit
+        }
+        revealed = true
+    }
+    return revealed
+}
+
+/** In place of a trip's list while what it shows lands ([rememberRevealed]). */
+@Composable
+private fun RoutesChecking() {
+    Column(
+        Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(stringResource(R.string.trip_checking), style = MaterialTheme.typography.bodyLarge)
     }
 }
 
@@ -2701,29 +2753,34 @@ private fun rememberTripRow(
 private fun DisruptionsRow(row: TripRow) {
     val style = MaterialTheme.typography.bodyMedium
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        itemVerticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("tripDisruptions"),
-    ) {
-        Text(stringResource(R.string.trip_disruptions_label), style = style, color = muted)
-        row.lines.forEach { LinePill(it.lineName, it.lineId, it.mode) }
-        if (row.stops.isNotEmpty()) Text(row.stops, style = style)
-        when {
-            row.checking -> Text(stringResource(R.string.trip_disruptions_checking), style = style, color = muted)
-            // What couldn't be checked, after "Unknown:", as the disrupted are drawn (maintainer, 2026-10-04).
-            row.unknown -> {
-                val error = MaterialTheme.colorScheme.error
-                if (row.unknownLines.isEmpty() && row.unknownStops.isEmpty()) {
-                    Text(stringResource(R.string.trip_disruptions_unknown), style = style, color = error)
-                } else {
-                    Text(stringResource(R.string.trip_disruptions_unknown_label), style = style, color = error)
-                    row.unknownLines.forEach { LinePill(it.lineName, it.lineId, it.mode) }
-                    if (row.unknownStops.isNotEmpty()) Text(row.unknownStops, style = style, color = error)
+    // The row is at least a pill tall, whatever it says, so "Checking…" or "None" turning into a pill
+    // never pushes the cards down (Codex, #543): a pill nobody sees sets the height.
+    Box(contentAlignment = Alignment.CenterStart, modifier = Modifier.testTag("tripDisruptions")) {
+        LinePill("", "", "bus", Modifier.alpha(0f).clearAndSetSemantics {}.padding(vertical = 4.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        ) {
+            Text(stringResource(R.string.trip_disruptions_label), style = style, color = muted)
+            row.lines.forEach { LinePill(it.lineName, it.lineId, it.mode) }
+            if (row.stops.isNotEmpty()) Text(row.stops, style = style)
+            when {
+                row.checking -> Text(stringResource(R.string.trip_disruptions_checking), style = style, color = muted)
+                // What couldn't be checked, after "Unknown:", as the disrupted are drawn (maintainer, 2026-10-04).
+                row.unknown -> {
+                    val error = MaterialTheme.colorScheme.error
+                    if (row.unknownLines.isEmpty() && row.unknownStops.isEmpty()) {
+                        Text(stringResource(R.string.trip_disruptions_unknown), style = style, color = error)
+                    } else {
+                        Text(stringResource(R.string.trip_disruptions_unknown_label), style = style, color = error)
+                        row.unknownLines.forEach { LinePill(it.lineName, it.lineId, it.mode) }
+                        if (row.unknownStops.isNotEmpty()) Text(row.unknownStops, style = style, color = error)
+                    }
                 }
+                row.lines.isEmpty() && row.stops.isEmpty() -> Text(stringResource(R.string.trip_disruptions_none), style = style, color = muted)
             }
-            row.lines.isEmpty() && row.stops.isEmpty() -> Text(stringResource(R.string.trip_disruptions_none), style = style, color = muted)
         }
     }
 }
