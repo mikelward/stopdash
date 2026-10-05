@@ -80,13 +80,15 @@ internal class TripCardView(
 )
 
 /**
- * The open route as drawn: what frames it ([framing]), its stops' closure notices ([closures]) and its
- * summary's alerts ([statuses]).
+ * The open route as drawn: what frames it ([framing]), its stops' closure notices ([closures]), its
+ * summary's alerts ([statuses]) and each ride's rows ([rides], by leg index; null for a walk), so an
+ * open ride draws whole in the frame that opens it, never its stop count first and its rows after.
  */
 internal class TripOpenView(
     val framing: TripFraming,
     val closures: Map<String, DepartureRow>,
     val statuses: Map<String, LineStatus>,
+    val rides: List<RideLegView?>,
 )
 
 /** [TripFrame] for [state] at [now]: off the main thread, on the page's worker. */
@@ -187,7 +189,26 @@ private fun openView(
         framing = framing(listOf(estimate), state, now, sequences, rideLines),
         closures = routeClosures(estimate.route, state, now, dismissed, sequences, rideLines, hubOf),
         statuses = shownStatuses(cardStatuses(listOf(estimate), rideLines, state, now, sequences), dismissed),
+        rides = openRides(estimate.route.legs, state, now, sequences, rideLines, dismissed),
     )
+}
+
+/**
+ * Each of [legs]' rides as the open route draws it ([rideLegView]); null for a walk. Only the rider's
+ * next ride counts down: they aren't at a later one's stop yet.
+ */
+private fun openRides(
+    legs: List<TripLeg>,
+    state: TripViewModel.State,
+    now: Instant,
+    sequences: Map<String, LineSequence?>,
+    rideLines: Map<TripLeg, RideLines>,
+    dismissed: Set<DismissedAlert>,
+): List<RideLegView?> {
+    val nextRide = legs.indexOfFirst { !it.isWalk }
+    return legs.mapIndexed { index, leg ->
+        if (leg.isWalk) null else rideLegView(rideLines[leg] ?: RideLines.only(leg), state, now, sequences, dismissed, countsDown = index == nextRide)
+    }
 }
 
 private fun framing(

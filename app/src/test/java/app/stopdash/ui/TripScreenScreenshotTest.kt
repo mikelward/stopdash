@@ -1821,6 +1821,40 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun an_open_rides_rows_come_with_its_frame_never_after_its_stop_count() {
+        // Worked out on the page's worker with the rest of the open route ([TripOpenView.rides]), never
+        // in composition and never in a run of their own: the worker steps one run at a time, and no
+        // frame shows the ride's stop count without its rows above it (Codex, #584).
+        val queued = java.util.concurrent.LinkedBlockingQueue<Runnable>()
+        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val worker = java.util.concurrent.Executor { queued.add(it) }.asCoroutineDispatcher()
+        try {
+            show(planned, worker = worker)
+            fun step() {
+                queued.poll()?.let { threads.submit(it).get() }
+                composeRule.waitForIdle()
+            }
+            fun listed() = composeRule.onAllNodesWithText("28 min · ~08:30").fetchSemanticsNodes().isNotEmpty()
+            repeat(200) { if (!listed()) step() }
+            assertTrue("the route is listed", listed())
+            composeRule.onNodeWithText("28 min · ~08:30").performClick()
+            composeRule.waitForIdle()
+            var opened = false
+            repeat(200) {
+                if (opened) return@repeat
+                val counted = composeRule.onAllNodesWithText("6 stops to Whitechapel").fetchSemanticsNodes().isNotEmpty()
+                val rows = composeRule.onAllNodesWithText("3 · 11 min").fetchSemanticsNodes().isNotEmpty()
+                assertTrue("the ride's stop count shows only with its rows", !counted || rows)
+                opened = counted
+                step()
+            }
+            assertTrue("the route opened", opened)
+        } finally {
+            threads.shutdown()
+        }
+    }
+
+    @Test
     fun an_open_routes_next_ride_counts_down_after_a_walk_to_it() {
         // A route starting with a walk leg of the Planner's own: the ride after it is the rider's next,
         // so it counts down, and its trains gone before the rider gets there are grayed.
