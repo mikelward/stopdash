@@ -2,6 +2,11 @@ package app.stopdash.widget
 
 import android.content.Context
 import android.os.SystemClock
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
@@ -107,10 +112,11 @@ import kotlinx.coroutines.flow.first
  * replaces that with the watched stops; a live-refresh cadence for the widget is D5.
  */
 class StopDashWidget : GlanceAppWidget() {
-    // Size buckets, so the layout fits the cell it's given: two widths (a narrow widget shortens its
-    // stamp rather than clip it, see WIDGET_COMPACT_WIDTH) by a ladder of heights (the line budget
-    // grows with the height, see widgetRowsHeight). The host picks the largest bucket that fits.
-    override val sizeMode = SizeMode.Responsive(WIDGET_BUCKETS)
+    // Drawn at each size the launcher reports for this widget (portrait and landscape, say), so the
+    // rows are costed at the cell's real width and the line budget fills its real height (see
+    // widgetRowsHeight), with no space left over between canned sizes. A narrow widget shortens its
+    // stamp rather than clip it (WIDGET_COMPACT_WIDTH).
+    override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         // Off the render path: read the persisted snapshot before composing. A read failure
@@ -207,16 +213,25 @@ class StopDashWidget : GlanceAppWidget() {
         // The bundled branch topology (shared, cached instance), so the widget merges/labels a
         // branching row exactly as the in-app card does.
         val topology = RouteTopologyStore.load(context)
-        // The line budget comes from each bucket's height and the system font scale, so the rows
-        // never run past the cell's bottom edge. Every bucket's model is worked out here, on a worker,
-        // before composing: building one walks every stop's rows (AGENTS.md *Main thread*), and the
-        // host only ever draws one of [WIDGET_BUCKETS], so composition just looks its model up.
+        // The line budget comes from each size's height and the system font scale, so the rows
+        // never run past the cell's bottom edge. The model for every size the launcher reports is
+        // worked out here, on a worker, before composing: building one walks every stop's rows
+        // (AGENTS.md *Main thread*), so composition just looks its model up.
         val fontScale = context.resources.configuration.fontScale
-        val models = widgetModels(shown, now, starred, fontScale, topology, hiddenModes, tap)
+        val sizes = try {
+            GlanceAppWidgetManager(context).getAppWidgetSizes(id)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Drawn at the minimum size, which fits any cell, until a size arrives while composing.
+            logWidgetSnapshotWarning("widget sizes read failed: ${e::class.simpleName}")
+            emptyList()
+        }
+        val models = widgetModels(shown, now, starred, fontScale, topology, hiddenModes, sizes, tap)
         StopdashDebugLog.info(
             "widget: drew %d to %d rows across sizes, data %d s old",
-            models.bySize.values.minOf { it.rows.size },
-            models.bySize.values.maxOf { it.rows.size },
+            models.all.minOf { it.rows.size },
+            models.all.maxOf { it.rows.size },
             shown?.let { JavaDuration.between(it.fetchedAt, now).seconds } ?: -1L,
         )
         // A stale line's guess ("21:14?") goes once its train is due, as a countdown drops a departed
@@ -226,7 +241,12 @@ class StopDashWidget : GlanceAppWidget() {
         val within = listOfNotNull(NEARBY_SET_RETRY.takeIf { nearbyUnreadable }, tapExpiry, guessExpiry).minOrNull()
         scheduleStalenessRedrawFor(context, shown, now, within = within)
         provideContent {
-            WidgetContent(models[LocalSize.current], now, fontScale)
+            // A size the launcher reports later (a resize while this session is open) draws the
+            // minimum size's model, which fits any cell, until its own is worked out on the worker.
+            var current by remember { mutableStateOf(models) }
+            val size = LocalSize.current
+            LaunchedEffect(size) { current = current.including(size) }
+            WidgetContent(current[size], now, fontScale)
         }
     }
 
@@ -253,8 +273,9 @@ class StopDashWidget : GlanceAppWidget() {
 }
 
 /**
- * [widgetModel] for each of the widget's size buckets at [fontScale], worked out on [worker], never
- * on the caller's thread.
+ * [widgetModel] for each of [sizes] at [fontScale], plus the minimum size's as the fallback, worked
+ * out on [worker], never on the caller's thread. The redraw for a stale guess is judged against
+ * every row the snapshot has, so it holds for a size reported later too.
  */
 internal suspend fun widgetModels(
     snapshot: DeparturesSnapshot?,
@@ -263,10 +284,11 @@ internal suspend fun widgetModels(
     fontScale: Float,
     topology: RouteTopology,
     hiddenModes: Set<String>,
+    sizes: Collection<DpSize>,
     tap: WidgetTapNote? = null,
     worker: CoroutineDispatcher = Dispatchers.Default,
 ): WidgetModels = withContext(worker) {
-    val bySize = WIDGET_BUCKETS.associateWith { size ->
+    val build = { size: DpSize ->
         widgetModel(
             snapshot,
             now,
@@ -277,19 +299,39 @@ internal suspend fun widgetModels(
             tap = tap,
         )
     }
-    WidgetModels(bySize, fallback = bySize.getValue(WIDGET_SMALLEST_BUCKET))
+    val everyRow = build(DpSize(WIDGET_MIN_WIDTH, WIDGET_UNBOUNDED_HEIGHT))
+    WidgetModels(sizes.associateWith(build), fallback = build(WIDGET_MIN_SIZE), everyRow.guessExpiresAt, build, worker)
 }
 
 /**
- * The models [widgetModels] worked out, looked up in constant time while composing. A
- * [SizeMode.Responsive] host draws only the buckets it was given, so [get] finds that bucket's; should
- * a host pass some other size, the smallest bucket's, chosen ahead of time, whose rows fit any cell.
+ * The models [widgetModels] worked out, looked up in constant time while composing. The launcher
+ * draws the sizes it reported, so [get] finds that size's; a size it wasn't given gets the minimum
+ * size's, whose rows fit any cell, until [including] adds its own.
  */
-internal class WidgetModels(val bySize: Map<DpSize, WidgetModel>, val fallback: WidgetModel) {
+internal class WidgetModels(
+    val bySize: Map<DpSize, WidgetModel>,
+    val fallback: WidgetModel,
+    /**
+     * When the soonest stale line's guess among every row the snapshot has is due, whichever size
+     * draws it: no size's model shows a row this one doesn't, so a size added later needs no redraw
+     * of its own.
+     */
+    val guessExpiresAt: Instant?,
+    private val build: (DpSize) -> WidgetModel,
+    private val worker: CoroutineDispatcher,
+) {
     operator fun get(size: DpSize): WidgetModel = bySize[size] ?: fallback
 
-    /** The soonest [WidgetModel.guessExpiresAt] of any bucket, whichever the host draws. */
-    val guessExpiresAt: Instant? get() = bySize.values.mapNotNull { it.guessExpiresAt }.minOrNull()
+    /** These models with [size]'s added, worked out on the worker; these same models if it's known. */
+    suspend fun including(size: DpSize): WidgetModels =
+        if (size in bySize) {
+            this
+        } else {
+            withContext(worker) { WidgetModels(bySize + (size to build(size)), fallback, guessExpiresAt, build, worker) }
+        }
+
+    /** Every model worked out, the fallback's too: never empty. */
+    val all: List<WidgetModel> get() = bySize.values + fallback
 }
 
 /**
@@ -1375,23 +1417,11 @@ private val WIDGET_PILL_TEXT_HEIGHT = 16.dp
  */
 internal val WIDGET_COMPACT_WIDTH = 220.dp
 
-/** The wide bucket's width: wide enough for three times beside a destination at a large font. */
-private val WIDGET_WIDE_WIDTH = 300.dp
+/** A height no widget reaches, so a model this tall holds every row the snapshot has ([widgetModels]). */
+private val WIDGET_UNBOUNDED_HEIGHT = 100_000.dp
 
-/** The [StopDashWidget.sizeMode] buckets: the minimum and compact widths and a wider one (a row is
- *  costed at its bucket's width, so more widths stack fewer rows that would fit), by a ladder of
- *  heights from the minimum up (each rung about two more departure lines). Three by five: a host
- *  takes at most sixteen sizes. */
-private val WIDGET_BUCKET_WIDTHS by lazy { listOf(WIDGET_MIN_WIDTH, WIDGET_COMPACT_WIDTH, WIDGET_WIDE_WIDTH) }
-private val WIDGET_BUCKET_HEIGHTS = listOf(WIDGET_MIN_HEIGHT, 180.dp, 250.dp, 320.dp, 400.dp)
-
-/** The smallest size bucket: the fallback for a size the host wasn't given ([WidgetModels]). */
-private val WIDGET_SMALLEST_BUCKET by lazy { DpSize(WIDGET_MIN_WIDTH, WIDGET_MIN_HEIGHT) }
-
-/** Every size bucket, as [StopDashWidget.sizeMode] declares them. */
-internal val WIDGET_BUCKETS: Set<DpSize> by lazy {
-    WIDGET_BUCKET_WIDTHS.flatMap { w -> WIDGET_BUCKET_HEIGHTS.map { h -> DpSize(w, h) } }.toSet()
-}
+/** The minimum size: the fallback for a size the launcher didn't report ([WidgetModels]), as it fits any cell. */
+internal val WIDGET_MIN_SIZE by lazy { DpSize(WIDGET_MIN_WIDTH, WIDGET_MIN_HEIGHT) }
 
 /**
  * How many of a row's next departures the widget shows across its destination lines, matching

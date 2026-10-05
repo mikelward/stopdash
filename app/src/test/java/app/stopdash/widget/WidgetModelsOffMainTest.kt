@@ -14,11 +14,12 @@ import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Test
 
 /**
  * The widget's models are worked out on a worker before it composes (AGENTS.md *Main thread*), one
- * per size bucket, and composition only looks one up. Synthetic stops only.
+ * per size the launcher reports, and composition only looks one up. Synthetic stops only.
  */
 class WidgetModelsOffMainTest {
     private val now: Instant = Instant.parse("2026-09-18T08:00:00Z")
@@ -36,21 +37,28 @@ class WidgetModelsOffMainTest {
         fetchedAt = now,
     )
 
+    private val portrait = DpSize(380.dp, 400.dp)
+    private val landscape = DpSize(700.dp, 250.dp)
+
+    private fun recordingWorker(base: CoroutineDispatcher, ranOn: MutableSet<String>) = object : CoroutineDispatcher() {
+        override fun dispatch(context: CoroutineContext, block: Runnable) =
+            base.dispatch(context) { ranOn += Thread.currentThread().name; block.run() }
+    }
+
     @Test
-    fun `every bucket's model is worked out on the worker, as composing one would`() {
+    fun `every reported size's model is worked out on the worker, as composing one would`() {
         val pool = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
         try {
             val base = pool.asCoroutineDispatcher()
             val ranOn = mutableSetOf<String>()
-            val worker = object : CoroutineDispatcher() {
-                override fun dispatch(context: CoroutineContext, block: Runnable) =
-                    base.dispatch(context) { ranOn += Thread.currentThread().name; block.run() }
-            }
+            val worker = recordingWorker(base, ranOn)
             val models = runBlocking {
-                widgetModels(snapshot, now, emptySet(), 1f, RouteTopology.EMPTY, emptySet(), worker = worker)
+                widgetModels(snapshot, now, emptySet(), 1f, RouteTopology.EMPTY, emptySet(), listOf(portrait, landscape), worker = worker)
             }
             assertEquals(setOf("test-worker"), ranOn)
-            assertEquals(WIDGET_BUCKETS, models.bySize.keys)
+            assertEquals(setOf(portrait, landscape), models.bySize.keys)
+            val min = WidgetGeometry(WIDGET_MIN_SIZE.width, WIDGET_MIN_SIZE.height, 1f)
+            assertEquals(widgetModel(snapshot, now, geometry = min), models.fallback)
             for ((size, model) in models.bySize) {
                 val geometry = WidgetGeometry(size.width, size.height, 1f)
                 assertEquals(widgetModel(snapshot, now, geometry = geometry), model)
@@ -61,11 +69,60 @@ class WidgetModelsOffMainTest {
     }
 
     @Test
-    fun `a bucket reads its own model, and a size the host wasn't given the smallest bucket's`() {
-        val models = runBlocking { widgetModels(snapshot, now, emptySet(), 1f, RouteTopology.EMPTY, emptySet()) }
-        val smallest = models.bySize.minBy { (size, _) -> size.width.value * size.height.value }
-        assertEquals(smallest.value, models.fallback)
+    fun `a size reported later is worked out on the worker, and a known one isn't again`() {
+        val pool = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        try {
+            val ranOn = mutableSetOf<String>()
+            val worker = recordingWorker(pool.asCoroutineDispatcher(), ranOn)
+            val models = runBlocking {
+                widgetModels(snapshot, now, emptySet(), 1f, RouteTopology.EMPTY, emptySet(), listOf(portrait), worker = worker)
+            }
+            ranOn.clear()
+            assertSame(models, runBlocking { models.including(portrait) })
+            assertEquals(emptySet<String>(), ranOn)
+            val resized = runBlocking { models.including(landscape) }
+            assertEquals(setOf("test-worker"), ranOn)
+            val geometry = WidgetGeometry(landscape.width, landscape.height, 1f)
+            assertEquals(widgetModel(snapshot, now, geometry = geometry), resized[landscape])
+        } finally {
+            pool.shutdown()
+        }
+    }
+
+    @Test
+    fun `a reported size reads its own model, and an unknown one the minimum size's`() {
+        val models = runBlocking {
+            widgetModels(snapshot, now, emptySet(), 1f, RouteTopology.EMPTY, emptySet(), listOf(portrait, landscape))
+        }
         for ((size, model) in models.bySize) assertEquals(model, models[size])
-        assertEquals(smallest.value, models[DpSize(1.dp, 1.dp)])
+        assertEquals(models.fallback, models[DpSize(400.dp, 500.dp)])
+    }
+
+    // Fresh rows lead and fill a small widget, so a stale row's guess shows only on a taller one: the
+    // redraw that drops it is due by then even when no reported size draws it yet (a later resize).
+    @Test
+    fun `a stale guess only a taller size draws still sets the redraw`() {
+        val old = now.minusSeconds(3600)
+        fun dep(line: String, destination: String, offsetSeconds: Long) =
+            Departure(line, line, "inbound", destination, null, now.plusSeconds(offsetSeconds), "tube")
+        val mixed = DeparturesSnapshot(
+            stops = listOf(
+                StopArrivals(
+                    "940GA",
+                    "Example Stop",
+                    listOf(dep("victoria", "Brixton", 300), dep("district", "Richmond", 360), dep("northern", "Morden", 420)),
+                    now,
+                    disruptions = emptyList(),
+                ),
+                StopArrivals("940GB", "Other Stop", listOf(dep("central", "Epping", 600)), old, disruptions = emptyList()),
+            ),
+            fetchedAt = now,
+        )
+        val models = runBlocking {
+            widgetModels(mixed, now, emptySet(), 1f, RouteTopology.EMPTY, emptySet(), emptyList())
+        }
+        assertEquals(null, models.fallback.guessExpiresAt)
+        assertEquals(now.plusSeconds(600), models.guessExpiresAt)
+        assertEquals(models.guessExpiresAt, runBlocking { models.including(DpSize(380.dp, 900.dp)) }.guessExpiresAt)
     }
 }

@@ -2853,6 +2853,12 @@ code path to maintain. StopDash does **not** opt out of lock-screen placement (t
 (Android 14 / API 34); the lock-screen *placement* simply appears on devices new enough
 to offer it.
 
+The widget is laid out for **each size the launcher reports for it** (portrait and landscape,
+say), not the nearest of a few canned sizes, so it fills its cell: a tall widget shows as many
+departures as fit, and a wide one wraps a row's times under its destination only when they really
+don't fit beside it. A size it hasn't laid out yet (a resize) briefly draws the minimum size's
+layout, which fits any cell, until its own is ready.
+
 The widget renders the **persisted last-good snapshot** the app writes — never the
 network. It reads the snapshot once when the host asks it to update and renders from it,
 so it can't stall on a fetch, and it stamps the data's age and marks it stale rather than

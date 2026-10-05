@@ -834,9 +834,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         gap. Bigger than the card fix (no `TextMeasurer` in Glance, so it's size-bucket heuristics,
         not measured widths) and needs a widget screenshot test per size; recorded to weigh, not
         scheduled.
-        **Start landed:** the widget now uses `SizeMode.Responsive` with a compact (<220dp) and a
-        wide bucket; the compact one drops the stamp's "Updated" prefix. Labels can key off
-        the same buckets.
+        **Start landed:** the widget is now laid out at the exact size the launcher reports
+        (`SizeMode.Exact`); below 220dp the stamp drops its "Updated" prefix. Labels can key off
+        the same width.
+  - [ ] **Show the widget in two columns whenever there's room** (maintainer, 2026-10-05), as
+        on a tablet or in landscape: one column at those widths leaves a wide gap between each
+        destination and its times. Decide the breakpoint (each column at least as wide as a
+        phone's widget) and how rows split between the columns, with a screenshot test.
 - [x] **Hide services terminating at the current stop by default** (maintainer, 2026-09-20).
       A train that terminates where you're standing isn't boardable onward, so listing it as
       an upcoming departure is misleading — filter it out by default (a departure whose

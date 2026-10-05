@@ -21,12 +21,14 @@ import app.stopdash.domain.LineStatusCheck
 import app.stopdash.domain.NoTimes
 import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.RailFeed
+import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.STATUS_DIRECTION_KEY
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.StopArrivals
 import com.github.takahirom.roborazzi.captureRoboImage
 import java.time.Instant
 import java.time.LocalDate
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -474,6 +476,56 @@ class WidgetScreenshotTest {
             size = DpSize(180.dp, 180.dp),
             fontScale = 1.3f,
         )
+    }
+
+    // A tablet-portrait cell (about 760dp wide, twice a phone's full-width widget) and a phone's,
+    // with the same stops: each drawn at its own size, as the launcher reports it.
+    @Test
+    fun `a double-width cell is drawn at its own size`() = captureCell("widget-double-width.png", DpSize(760.dp, 400.dp))
+
+    @Test
+    fun `a phone-width cell is drawn at its own size`() = captureCell("widget-phone-width.png", DpSize(380.dp, 400.dp))
+
+    private fun captureCell(name: String, cell: DpSize) {
+        fun dep(lineId: String, lineName: String, destination: String, offsetSeconds: Long) =
+            Departure(lineId, lineName, "inbound", destination, null, now.plusSeconds(offsetSeconds), "tube")
+        val lines = listOf("victoria", "piccadilly", "northern")
+        val snapshot = DeparturesSnapshot(
+            stops = listOf(
+                StopArrivals(
+                    "940GZZLUKSX",
+                    "King's Cross St. Pancras",
+                    listOf(
+                        dep("victoria", "Victoria", "Brixton", 60),
+                        dep("victoria", "Victoria", "Brixton", 180),
+                        dep("victoria", "Victoria", "Brixton", 360),
+                        dep("piccadilly", "Piccadilly", "Heathrow Terminal 5", 120),
+                        dep("piccadilly", "Piccadilly", "Cockfosters", 240),
+                    ),
+                    now.minusSeconds(30),
+                    disruptions = emptyList(),
+                ),
+                StopArrivals(
+                    "940GZZLUEUS",
+                    "Euston",
+                    listOf(
+                        dep("northern", "Northern", "Morden", 90),
+                        dep("northern", "Northern", "Battersea Power", 210),
+                        dep("northern", "Northern", "Edgware", 300),
+                    ),
+                    now.minusSeconds(30),
+                    disruptions = emptyList(),
+                ),
+            ),
+            fetchedAt = now.minusSeconds(30),
+            lineStatuses = lines.associateWith {
+                LineStatusCheck(LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service"), now.minusSeconds(30))
+            },
+        )
+        val models = runBlocking {
+            widgetModels(snapshot, now, emptySet(), 1f, RouteTopology.EMPTY, emptySet(), listOf(cell), worker = Dispatchers.Unconfined)
+        }
+        capture(name, models[cell], size = cell)
     }
 
     private fun capture(
