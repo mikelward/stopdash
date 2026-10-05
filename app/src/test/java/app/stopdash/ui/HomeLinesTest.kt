@@ -86,6 +86,10 @@ class HomeLinesTest {
         val justChosen = HomeLines.row(loaded, mapOf("near" to 50.0), tubeOnly, emptySet(), now, networks = setOf("tube", "dlr"))
         assertTrue(justChosen.every.single { it.leg.lineId == "dlr" }.checking)
         assertFalse(justChosen.unknown)
+        // Nor is one with no check published yet, the list done: not yet asked, never unchecked.
+        val unasked = HomeLines.row(loaded, mapOf("near" to 50.0), null, emptySet(), now, networks = setOf("dlr"))
+        assertTrue(unasked.every.single { it.leg.lineId == "dlr" }.checking)
+        assertFalse(unasked.unknown)
     }
 
     @Test
