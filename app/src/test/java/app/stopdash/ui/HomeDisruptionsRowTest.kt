@@ -41,6 +41,12 @@ class HomeDisruptionsRowTest {
     }
 
     @Test
+    fun something_unchecked_with_no_line_to_name_still_reads_unknown() {
+        composeRule.setContent { HomeDisruptionsRow(TripRow(checking = false, unknown = true, unknownStops = "Bank")) }
+        composeRule.onNodeWithContentDescription("Disruptions: Unknown").assertExists()
+    }
+
+    @Test
     fun only_the_pills_that_fit_are_drawn_and_the_rest_counted() {
         val composed = mutableSetOf<Int>()
         val placed = mutableSetOf<Int>()

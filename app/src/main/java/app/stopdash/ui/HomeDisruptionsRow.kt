@@ -47,8 +47,12 @@ internal fun HomeDisruptionsRow(row: TripRow, modifier: Modifier = Modifier) {
     val word = when {
         row.checking -> R.string.trip_disruptions_checking
         row.lines.isEmpty() && !row.unknown -> R.string.trip_disruptions_none
+        // Something couldn't be checked with no line to name for it (a stop's closure check, say): said
+        // all the same, as the list's banner did (maintainer, 2026-10-05).
+        row.unknown && unchecked.isEmpty() -> R.string.trip_disruptions_unknown
         else -> null
     }
+    val wordColor = if (word == R.string.trip_disruptions_unknown) error else muted
     // Heard whole, every line named, never only the pills that fit nor one measured and left out.
     val spoken = listOfNotNull(
         stringResource(R.string.trip_disruptions_label),
@@ -78,7 +82,7 @@ internal fun HomeDisruptionsRow(row: TripRow, modifier: Modifier = Modifier) {
                     // "Unknown:" before the first unchecked pill, as part of it, so it goes with it.
                     labelAt = disrupted.size.takeIf { unchecked.isNotEmpty() },
                     label = { Text(stringResource(R.string.trip_disruptions_unknown_label), style = style, color = error, maxLines = 1) },
-                    word = word?.let { { Text(stringResource(it), style = style, color = muted, maxLines = 1) } },
+                    word = word?.let { { Text(stringResource(it), style = style, color = wordColor, maxLines = 1) } },
                     modifier = Modifier.padding(start = 8.dp).fillMaxWidth(),
                 ) { more ->
                     Text(stringResource(R.string.home_disruptions_more, more), style = style, color = muted, maxLines = 1)

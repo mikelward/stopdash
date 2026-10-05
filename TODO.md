@@ -2461,9 +2461,8 @@ Builds on Phase 1's minimal line-status marking.
   - [ ] **Let the rider choose what the row covers** (maintainer, 2026-10-05): a list of lines,
         favorite routes, or favorite trips? And how to rank and collapse it when many are disrupted.
   - [ ] **Name the walking reach's closed stops on the row**, as a trip's row names its closed stops.
-  - [ ] **Fold the list's "couldn't check for disruptions" banner into the row**, so the very top is one
-        status line rather than a row and a banner (maintainer, 2026-10-05: "use that slot as a
-        loading/status row?").
+  - [x] **Fold the list's "couldn't check for disruptions" banner into the row** (maintainer,
+        2026-10-05): where the row shows, its "Unknown" says what the banner did, naming what it can.
   - [ ] **Check a bug report sent from the lines page** on a device: the report's screenshot is taken
         of the app's window, which may leave out the dialog's.
 - [x] **On the way notes the coming stations' notices** (maintainer, 2026-10-04): a notice that neither
