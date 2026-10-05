@@ -81,6 +81,7 @@ import app.stopdash.domain.StopGroup
 import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DestinationAbbreviations
+import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.OffPlan
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.cleanStopName
@@ -374,6 +375,8 @@ data class NextTrains(
     // [trains] and [others] as the board draws them, a header per pole ([nextTrainsGroups]): worked out
     // with them on the worker, so the section only draws them.
     val groups: List<StopGroup> = emptyList(),
+    // Each of [groups] as its card draws it ([stopCard]), worked out with them.
+    val cards: List<StopCard> = emptyList(),
     // The board's trains that leave the plan ([OffPlan], maintainer 2026-10-05), a row per heading,
     // worked out on the worker with the rest: grayed under the plan's own, each one the rider can take.
     val offPlan: List<OffPlanRow> = emptyList(),
@@ -465,18 +468,20 @@ internal fun rememberNextTrains(
     val sequences = loads.sequences
     val routes = LocalRouteStops.current
     val currentSequences by rememberUpdatedState(sequences)
+    // How the board's stop cards group a branching line's trains ([stopCard]): set once for the app.
+    val topology = LocalRouteTopology.current
     // The board's trains are worked out on the worker, from each instant one departs ([trainsTimeline]),
     // keyed by the board itself (a new one each read) and its routes, so composition compares no
     // departures and only picks the entry for now (AGENTS.md *Main thread: read and dispatch only*).
     // Only once its own lines are read: the last board's may leave out a line it brings back, already
     // loaded, so its routes would be missed with no new load to work the board out again (Codex on #557).
-    val key = board?.takeIf { it.fetchedAt != null && lineIds.board === it && sameRide(it.ride, ride) }?.let { TrainsKey(it, loads.version) }
+    val key = board?.takeIf { it.fetchedAt != null && lineIds.board === it && sameRide(it.ride, ride) }?.let { TrainsKey(it, loads.version, topology) }
     var held by remember { mutableStateOf<HeldTrains?>(null) }
     LaunchedEffect(key, worker) {
         key ?: return@LaunchedEffect
         if (held?.key == key) return@LaunchedEffect
         val at = now
-        val timeline = withContext(worker) { trainsTimeline(key.board, currentSequences, at) }
+        val timeline = withContext(worker) { trainsTimeline(key.board, currentSequences, at, key.topology) }
         held = HeldTrains(key, timeline, index = 0)
         // A train its route couldn't place, logged where every trip filter logs it, so "Couldn't check
         // every line" can be explained. Later entries hold fewer trains, so the first has every miss.
@@ -508,7 +513,7 @@ internal fun rememberNextTrains(
         val at = now
         val rebuilt = timeline.startsAfter(0, at)
         val (index, window) = withContext(worker) {
-            val from = if (rebuilt) trainsTimeline(shown.key.board, currentSequences, at) else timeline
+            val from = if (rebuilt) trainsTimeline(shown.key.board, currentSequences, at, shown.key.topology) else timeline
             from.indexAt(at).let { it to from.around(it) }
         }
         if (held !== shown) return@LaunchedEffect
@@ -567,10 +572,12 @@ internal fun nextBoardLineIds(ride: TripLeg, departures: List<Departure>): List<
 private class BoardLines(val board: ActiveTripTracker.NextBoard?, val ids: List<String>)
 
 // What a board's trains are worked out from: the board by identity (a new one each read), so the key
-// compares no departures, and its routes' [LineLoads.version].
-private class TrainsKey(val board: ActiveTripTracker.NextBoard, val routes: Int) {
-    override fun equals(other: Any?): Boolean = other is TrainsKey && other.board === board && other.routes == routes
-    override fun hashCode(): Int = System.identityHashCode(board) * 31 + routes
+// compares no departures, its routes' [LineLoads.version], and the route topology its cards are grouped
+// under, by identity: replaced once its patterns load, the board's rows are worked out again (Codex, #588).
+private class TrainsKey(val board: ActiveTripTracker.NextBoard, val routes: Int, val topology: RouteTopology) {
+    override fun equals(other: Any?): Boolean =
+        other is TrainsKey && other.board === board && other.routes == routes && other.topology === topology
+    override fun hashCode(): Int = (System.identityHashCode(board) * 31 + routes) * 31 + System.identityHashCode(topology)
 }
 
 // A board's timeline and the entry of it in force when last looked up ([index]).
@@ -586,12 +593,14 @@ internal class TrainsTimeline(
     private val starts: List<Instant>,
     private val entries: List<NextTrains>,
     val misses: Set<RouteMiss>,
-    private val groups: Map<Int, List<StopGroup>> = emptyMap(),
+    // How a stop card groups a branching line's trains ([stopCardLines]).
+    private val topology: RouteTopology = RouteTopology.EMPTY,
+    private val rows: Map<Int, NextTrains> = emptyMap(),
 ) {
     /** Entry [index] (or the last, once past it) with its rows, or null if they aren't worked out. */
     fun entry(index: Int): NextTrains? {
         val at = index.coerceAtMost(entries.lastIndex)
-        return groups[at]?.let { entries[at].copy(groups = it) }
+        return rows[at]
     }
 
     /** Whether entry [index] starts after [now]: the clock set back before it. */
@@ -611,16 +620,16 @@ internal class TrainsTimeline(
     @WorkerThread
     fun around(index: Int): TrainsTimeline {
         val window = (index..(index + 1).coerceAtMost(entries.lastIndex)).associateWith { i ->
-            groups[i] ?: nextTrainsGroups(entries[i], starts[i])
+            rows[i] ?: entries[i].withGroups(starts[i], topology)
         }
-        return TrainsTimeline(starts, entries, misses, window)
+        return TrainsTimeline(starts, entries, misses, topology, window)
     }
 
     /** The entry in force at [now] ([indexAt]), with its rows. */
     @WorkerThread
     fun at(now: Instant): NextTrains {
         val index = indexAt(now)
-        return entries[index].withGroups(starts[index])
+        return entries[index].withGroups(starts[index], topology)
     }
 }
 
@@ -631,7 +640,12 @@ internal class TrainsTimeline(
  * busy board isn't routed again for every departure (Codex on #557).
  */
 @WorkerThread
-internal fun trainsTimeline(board: ActiveTripTracker.NextBoard, sequences: Map<String, LineSequence?>, at: Instant): TrainsTimeline {
+internal fun trainsTimeline(
+    board: ActiveTripTracker.NextBoard,
+    sequences: Map<String, LineSequence?>,
+    at: Instant,
+    topology: RouteTopology = RouteTopology.EMPTY,
+): TrainsTimeline {
     val fetchedAt = checkNotNull(board.fetchedAt) { "a board never read has no trains" }
     val own = OnTheWay.placeTrains(board.ride, board.departures, fetchedAt, sequences, at)
     val others = board.others.map { other ->
@@ -646,7 +660,7 @@ internal fun trainsTimeline(board: ActiveTripTracker.NextBoard, sequences: Map<S
             .copy(offPlan = offPlanRows(board.ride, offPlan.map { branch -> branch.copy(trains = branch.trains.filter { !Countdown.hasDeparted(it, instant) }) }))
     }
     // Misses are reported once per board, so only the first instant's are gathered.
-    return TrainsTimeline(instants, entries, own.missesAt(at) + others.flatMap { it.second.missesAt(at) }).around(0)
+    return TrainsTimeline(instants, entries, own.missesAt(at) + others.flatMap { it.second.missesAt(at) }, topology).around(0)
 }
 
 /** [board]'s ride as it boards at [other], another pole of the pair: only another line's way to the same stop. */
@@ -678,9 +692,12 @@ internal fun nextTrainsAt(
     },
 )
 
-/** These trains with their [NextTrains.groups] worked out at [now] ([nextTrainsGroups]). */
+/** These trains with their [NextTrains.groups] worked out at [now] ([nextTrainsGroups]), and each one's card ([NextTrains.cards]). */
 @WorkerThread
-internal fun NextTrains.withGroups(now: Instant): NextTrains = copy(groups = nextTrainsGroups(this, now))
+internal fun NextTrains.withGroups(now: Instant, topology: RouteTopology = RouteTopology.EMPTY): NextTrains {
+    val groups = nextTrainsGroups(this, now)
+    return copy(groups = groups, cards = groups.map { stopCard(it, topology) })
+}
 
 /** [next]'s trains as the board draws them at [now]: the ride's own pole first, then the pair's others, each its own header ("Stop N"). */
 @WorkerThread
@@ -774,10 +791,11 @@ private fun NextTrainsSection(
             return@Column
         }
         if (next.failed && next.none) return@Column
-        groups.forEach { group ->
+        next.cards.forEach { card ->
+            val group = card.group
             StopGroupHeader(group.stopName, group.qualifier, distanceLabel = null, firstOnScreen = false)
             StopGroupCard(
-                group,
+                card,
                 now,
                 starred = emptySet(),
                 onToggleStar = {},

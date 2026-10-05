@@ -128,6 +128,7 @@ import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.RideLines
 import app.stopdash.domain.RouteFocus
+import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.RouteLabel
 import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.RouteStops
@@ -1132,6 +1133,8 @@ private fun TripContent(
     // last frame stands in while the next is worked out; the page is drawn against the frame's own state,
     // time, routes and ride lines, never newer ones it doesn't hold yet (as the near-me list's, #524).
     val frameSlot = remember { mutableStateOf<Worked<Inputs, TripFrame>?>(null) }
+    // How a stop card groups a branching line's trains ([stopCard]), worked out with the frame.
+    val topology = LocalRouteTopology.current
     // The order the last frame drew its cards in, so the next hands it back when nothing moved ([listedCards]).
     val previousOrder = frameSlot.value?.value?.list?.listed?.keys
     val frame = rememberWorked(
@@ -1147,10 +1150,11 @@ private fun TripContent(
             planned.routes,
             // The routes as planned and placed, which a tapped card opens from ([TripListView.opens]).
             poled,
-            placement),
+            placement,
+            topology),
         keep = ::mayStandIn,
     ) {
-        tripFrame(tripKey, liveState, tickNow, access, liveSequences, excluded, originUnconfirmed, liveRideLines, plannedLegs, openKey, alerts.dismissed, loads.loading, routeStops, poled, previousOrder)
+        tripFrame(tripKey, liveState, tickNow, access, liveSequences, excluded, originUnconfirmed, liveRideLines, plannedLegs, openKey, alerts.dismissed, loads.loading, routeStops, poled, previousOrder, topology)
     }
     // What the page draws against: the frame's own state, time, routes and ride lines.
     val state = frame?.state ?: liveState
@@ -3943,17 +3947,18 @@ private fun RideLeg(
     grayBefore: Instant?,
 ) {
     val lines = ride.legs
-    val groups = view?.groups.orEmpty()
+    val cards = view?.cards.orEmpty()
     val headways = view?.headways
     // A row opens its own line's page: the leg as that line rides it.
     fun legOf(row: DepartureRow) = lines.firstOrNull { it.lineId == row.lineId } ?: leg
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         val placed = view?.placed.orEmpty()
         val unplaced = view?.unplaced.orEmpty()
-        groups.forEachIndexed { index, group ->
+        cards.forEachIndexed { index, card ->
+            val group = card.group
             StopGroupHeader(group.stopName, group.qualifier, distanceLabel = null, firstOnScreen = first && index == 0)
             StopGroupCard(
-                group,
+                card,
                 now,
                 starred = emptySet(),
                 onToggleStar = {},
@@ -3966,7 +3971,7 @@ private fun RideLeg(
             placed[group].orEmpty().forEach { line -> NoTrainsRow(line, state, now, sequences, dismissed, onOpenDetail, onHideMode) }
         }
         unplaced.forEachIndexed { index, atStop ->
-            StopGroupHeader(atStop.first().fromName, qualifier = null, distanceLabel = null, firstOnScreen = first && groups.isEmpty() && index == 0)
+            StopGroupHeader(atStop.first().fromName, qualifier = null, distanceLabel = null, firstOnScreen = first && cards.isEmpty() && index == 0)
             atStop.forEach { line -> NoTrainsRow(line, state, now, sequences, dismissed, onOpenDetail, onHideMode) }
         }
         // "N stops to B" only where every line of the ride takes that many: one reaching B another
@@ -3990,6 +3995,8 @@ private fun RideLeg(
  */
 internal class RideLegView(
     val groups: List<StopGroup>,
+    // Each group as its card draws it ([stopCard]), in [groups]' order.
+    val cards: List<StopCard>,
     val placed: Map<StopGroup, List<TripLeg>>,
     val unplaced: List<List<TripLeg>>,
     val headways: Map<String, Headway.Range?>?,
@@ -4013,12 +4020,14 @@ internal fun rideLegView(
     sequences: Map<String, LineSequence?>,
     dismissed: Set<DismissedAlert>,
     countsDown: Boolean,
+    // Groups a branching line's trains by where they go from here ([stopCard]).
+    topology: RouteTopology = RouteTopology.EMPTY,
 ): RideLegView {
     val byLine = rideLegRows(ride, state, now, sequences, dismissed)
     val headways = if (countsDown) null else ride.legs.associate { it.lineId to linesHeadway(listOf(it), state, now, sequences) }
     val groups = StopGrouping.groupByStop(byLine.values.flatten())
     val (placed, unplaced) = placeQuiet(groups, ride.legs.filter { byLine[it].isNullOrEmpty() })
-    return RideLegView(groups, placed, unplaced, headways)
+    return RideLegView(groups, groups.map { stopCard(it, topology) }, placed, unplaced, headways)
 }
 
 /** How many stops every one of a ride's [lines] takes to its getting-off stop, or null where they differ. */
