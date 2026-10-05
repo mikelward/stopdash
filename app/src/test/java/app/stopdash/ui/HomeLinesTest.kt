@@ -89,6 +89,30 @@ class HomeLinesTest {
     }
 
     @Test
+    fun `an alert dismissed every way it runs leaves the pills, and goes just above the good services`() {
+        // The list dismisses a row's own way's alert, which the line-wide status needn't match.
+        val eastbound = LineStatus("73", 6, "Severe Delays", fullText = "Roadworks eastbound")
+        val westbound = LineStatus("73", 6, "Severe Delays", fullText = "Roadworks westbound")
+        val lineWide = LineStatus("73", 6, "Severe Delays", fullText = "Roadworks", byDirection = mapOf("outbound" to eastbound, "inbound" to westbound))
+        val broken = LineStatus("38", 20, "Service Closed")
+        val loaded = DeparturesUiState.Loaded(
+            listOf(stop("near", "73" to "bus", "38" to "bus", "55" to "bus")), now,
+            lineStatuses = mapOf("73" to lineWide, "38" to broken), determinedLineIds = setOf("73", "38"),
+        )
+        val dismissed = setOf(DismissedAlert.ofLineStatus(eastbound), DismissedAlert.ofLineStatus(westbound))
+        val row = HomeLines.row(loaded, mapOf("near" to 50.0), tube(), dismissed, now)
+        assertEquals(listOf("38"), row.lines.map { it.lineId })
+        // Live disruption, then the unchecked 55, then the dismissed 73, then the good services.
+        val order = row.every.map { it.leg.lineId }
+        assertEquals(listOf("38", "55", "73"), order.take(3))
+        assertTrue(row.every[2].dismissed)
+        assertTrue(row.every.drop(3).all { !it.disrupted && !it.unknown })
+        // One way still standing keeps it on the row.
+        val oneWay = HomeLines.row(loaded, mapOf("near" to 50.0), tube(), setOf(DismissedAlert.ofLineStatus(eastbound)), now)
+        assertTrue("73" in oneWay.lines.map { it.lineId })
+    }
+
+    @Test
     fun `a line is never a good service on no current check`() {
         val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now)
         // Nothing back for the bus, and the tube's check is too old to stand.

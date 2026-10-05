@@ -3221,11 +3221,12 @@ internal fun tripLines(
 }
 
 /**
- * How a lines page orders its lines: disruptions first, worst first, then the dismissed, the unchecked,
- * those still being checked, and the good services; a tie keeps its place.
+ * How a lines page orders its lines: disruptions first, worst first, then the unchecked, those still
+ * being checked, the dismissed just above the good services (maintainer, 2026-10-05: what's been read
+ * is demoted, not hidden), and the good services; a tie keeps its place.
  */
 internal val tripLineOrder: Comparator<TripLine> = compareBy<TripLine>(
-    { if (it.disrupted && !it.dismissed) 0 else if (it.disrupted) 1 else if (it.unknown) 2 else if (it.checking) 3 else 4 },
+    { if (it.disrupted && !it.dismissed) 0 else if (it.unknown) 1 else if (it.checking) 2 else if (it.dismissed) 3 else 4 },
 ).thenComparator { a, b -> if (a.disrupted && b.disrupted) worstFirst.compare(checkNotNull(a.status), checkNotNull(b.status)) else 0 }
 
 /**

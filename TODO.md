@@ -2460,6 +2460,8 @@ Builds on Phase 1's minimal line-status marking.
   - [ ] **Add the Overground and the Elizabeth line** to the row's always-covered lines, as the tube is.
   - [x] **A switch to turn the row off**: "Disruptions summary", second in Settings (maintainer,
         2026-10-05: narrower than "Show disruptions").
+  - [x] **What's dismissed stays off the row and goes down the page** (maintainer, 2026-10-05): off the
+        pills once dismissed every way it's disrupted; on the lines page just above the good services.
   - [ ] **Let the rider choose what the row covers** (maintainer, 2026-10-05): a list of lines,
         favorite routes, or favorite trips? And how to rank and collapse it when many are disrupted.
   - [ ] **Name the walking reach's closed stops on the row**, as a trip's row names its closed stops.

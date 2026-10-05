@@ -107,13 +107,18 @@ object HomeLines {
             }
         }
         val shown = shownStatuses(raw, dismissed)
+        // Dismissed every way it's disrupted: on the list a rider dismisses a row's own way's alert, which
+        // the line-wide status needn't match, so that alone left the line on the row (maintainer,
+        // 2026-10-05: what's dismissed stays off it).
+        fun everyWayDismissed(status: LineStatus) = status.byDirection.values.filter { it.disrupted }
+            .let { ways -> ways.isNotEmpty() && ways.all { DismissedAlert.ofLineStatus(it) in dismissed } }
         val every = refs.values.map { ref ->
             val id = ref.id
             val was = raw[id]
             TripLine(
                 leg = pillNamed(TripLeg(ref.mode, id, ref.name, "", "", "", "", Instant.EPOCH, Instant.EPOCH)),
                 status = shown[id] ?: was,
-                dismissed = was?.disrupted == true && shown[id]?.disrupted != true,
+                dismissed = was?.disrupted == true && (shown[id]?.disrupted != true || everyWayDismissed(was)),
                 checking = id in checking,
                 unknown = id !in known && id !in checking,
             )
