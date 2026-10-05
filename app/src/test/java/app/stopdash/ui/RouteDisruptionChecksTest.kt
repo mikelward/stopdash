@@ -80,7 +80,7 @@ class RouteDisruptionChecksTest {
 
     private fun checks(cache: StopClosureCache, dispatcher: kotlinx.coroutines.CoroutineDispatcher) = RouteDisruptionChecks(
         client = client,
-        closures = StopClosureChecks(client, cache, Duration.ofMinutes(5), dispatcher, { logged += it }, "on the way"),
+        closures = StopClosureChecks(client, cache, Duration.ofMinutes(5), dispatcher, dispatcher, { logged += it }, "on the way"),
         closureCache = cache,
         hubNames = hubNames,
         background = CoroutineScope(dispatcher),

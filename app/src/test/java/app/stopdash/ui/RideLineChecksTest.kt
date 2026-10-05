@@ -67,7 +67,7 @@ class RideLineChecksTest {
 
     private fun checks(dispatcher: kotlinx.coroutines.CoroutineDispatcher, cache: StopClosureCache = StopClosureCache()) = RideLineChecks(
         client = client,
-        closures = StopClosureChecks(client, cache, Duration.ofMinutes(5), dispatcher, { logged += it }, "on the way"),
+        closures = StopClosureChecks(client, cache, Duration.ofMinutes(5), dispatcher, dispatcher, { logged += it }, "on the way"),
         closureCache = cache,
         sequence = { if (it in routesFail) throw TflException.Offline(null) else sequences[it] },
         hidden = { hidden },

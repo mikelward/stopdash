@@ -10,8 +10,6 @@ import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 
@@ -26,6 +24,8 @@ internal class StopClosureChecks(
     private val cache: StopClosureCache,
     private val reuse: Duration,
     private val io: CoroutineDispatcher,
+    // Where each check's choice of what to ask is worked out: off the main thread, as it grows with the stops.
+    private val compute: CoroutineDispatcher,
     // Coarse facts only: an error kind and a stop id, never where the rider is going.
     private val warn: (String) -> Unit,
     private val what: String,
@@ -44,39 +44,39 @@ internal class StopClosureChecks(
     )
 
     /**
-     * Checks [ids] at [now] as the lookup [ticket] names ([StopClosureCache.ask], taken by the caller
-     * before anything is sent), each settled in [cache] as it lands, so a later lookup already kept
-     * wins over this one, failed or not.
+     * Checks [ids] at [now], with the dismissals [ticket] counted ([StopClosureCache.ask], taken by the
+     * caller before anything is sent): each from [cache] when looked up within [reuse], else the request
+     * another screen already has out for it, else asked now ([StopClosureCache.lookUp]), each settled
+     * in [cache] as it lands, so a later lookup already kept wins over this one, failed or not.
      */
     suspend fun check(ids: List<String>, ticket: StopClosureCache.Ask, now: Instant): Result {
         val found = HashMap<String, List<StopDisruption>>()
         val at = HashMap<String, Instant>()
         val dismissals = HashMap<String, Long>()
-        val ask = ids.filter { id ->
-            // Aged by the steady clock it's stamped by ([StopClosureCache.Ask.at]). Dated after now (the
-            // clock set back, across a reboot) is an age that can't be told, so asked again.
-            val held = cache[id]?.takeIf { SteadyClock.age(it.at, now).let { age -> !age.isNegative && age < reuse } }
-            held?.let {
-                found[id] = it.notices
-                at[id] = it.at
-                dismissals[id] = it.ask.dismissals
-            }
-            held == null
-        }
-        val (poles, others) = ask.partition(StopDisruptionBatch::isPole)
-        val answers = coroutineScope {
-            (
-                poles.chunked(StopDisruptionBatch.MAX_PER_REQUEST).map { chunk ->
-                    async { chunk to request("${chunk.size} bus stop(s)") { client.poleDisruptions(chunk) } }
-                } + others.map { id ->
-                    async { listOf(id) to request("stop $id") { mapOf(id to client.stopDisruptions(id)) } }
-                }
-            ).awaitAll()
-        }
         val failed = HashSet<String>()
-        for ((asked, answer) in answers) {
-            for (id in asked) {
-                cache.settle(id, ticket, answer.map { it[id].orEmpty() })
+        coroutineScope {
+            val pending = cache.lookUp(
+                this, compute, ids,
+                // Aged by the steady clock it's stamped by ([StopClosureCache.Ask.at]). Dated after now (the
+                // clock set back, across a reboot) is an age that can't be told, so asked again.
+                reusable = { SteadyClock.age(it.at, now).let { age -> !age.isNegative && age < reuse } },
+                now = { now },
+                dismissals = { ticket.dismissals },
+                group = { missing ->
+                    val (poles, others) = missing.partition(StopDisruptionBatch::isPole)
+                    poles.chunked(StopDisruptionBatch.MAX_PER_REQUEST) + others.map { listOf(it) }
+                },
+            ) { asked ->
+                val answer = if (asked.all(StopDisruptionBatch::isPole)) {
+                    request("${asked.size} bus stop(s)") { client.poleDisruptions(asked) }
+                } else {
+                    val id = asked.single()
+                    request("stop $id") { mapOf(id to client.stopDisruptions(id)) }
+                }
+                asked.associateWith { id -> answer.map { it[id].orEmpty() } }
+            }
+            for ((id, answer) in pending) {
+                answer.await()
                     .onSuccess {
                         found[id] = it.notices
                         at[id] = it.at
