@@ -16,6 +16,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.assertCountEquals
@@ -1136,8 +1137,12 @@ class RouteDetailScreenScreenshotTest {
             .assertIsDisplayed()
         composeRule.onNodeWithText("Oxford Circus", substring = true).assertIsDisplayed()
 
-        // An unstarred station stars a new journey from here, with the positions it has.
+        // A plain tap stars nothing: a stray one while scrolling mustn't.
         composeRule.onNodeWithText("Green Park", substring = true).performClick()
+        composeRule.waitForIdle()
+        assertTrue(toggled.isEmpty())
+        // A long press on an unstarred station stars a new journey from here, with the positions it has.
+        composeRule.onNodeWithText("Green Park", substring = true).performTouchInput { longClick() }
         composeRule.waitForIdle()
         assertEquals(
             StarredJourney(
@@ -1150,13 +1155,13 @@ class RouteDetailScreenScreenshotTest {
             toggled.single(),
         )
         // The starred one toggles the saved journey itself (off).
-        composeRule.onNodeWithText("Oxford Circus", substring = true).performClick()
+        composeRule.onNodeWithText("Oxford Circus", substring = true).performTouchInput { longClick() }
         composeRule.waitForIdle()
         assertEquals(starredToOxford, toggled.last())
 
-        // The boarding stop itself isn't a journey end: it has no tap action.
+        // The boarding stop itself isn't a journey end: it has no star action.
         composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Your stop"))
-            .assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
+            .assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnLongClick))
     }
 
     @Test
@@ -1181,7 +1186,7 @@ class RouteDetailScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Tap a stop to star the journey there").assertIsDisplayed()
+        composeRule.onNodeWithText("Long-press a stop to star the journey there").assertIsDisplayed()
         captureSnapshot("route-detail-journey-tip.png")
         composeRule.onNodeWithText("Got it").performClick()
         assertEquals(1, dismissed)
@@ -1206,7 +1211,7 @@ class RouteDetailScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Tap a stop to star the journey there").assertDoesNotExist()
+        composeRule.onNodeWithText("Long-press a stop to star the journey there").assertDoesNotExist()
     }
 
     @Test
@@ -1231,7 +1236,7 @@ class RouteDetailScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("940GZZLUGPK", substring = true).performClick()
+        composeRule.onNodeWithText("940GZZLUGPK", substring = true).performTouchInput { longClick() }
         composeRule.waitForIdle()
         assertEquals("940GZZLUGPK", toggled.single().to.name)
     }
@@ -1271,13 +1276,13 @@ class RouteDetailScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        // The one station after the boarding stop, found by its "Star journey" tap action (its name
-        // is also the header's destination).
+        // The one station after the boarding stop, found by its "Star journey" long-press action (its
+        // name is also the header's destination).
         composeRule.onNode(
             SemanticsMatcher("star journey action") {
-                it.config.getOrNull(SemanticsActions.OnClick)?.label == "Star journey"
+                it.config.getOrNull(SemanticsActions.OnLongClick)?.label == "Star journey"
             },
-        ).performClick()
+        ).performTouchInput { longClick() }
         composeRule.waitForIdle()
         assertEquals("490000002N", toggled.single().to.stopId)
         assertEquals("bus", toggled.single().mode)
@@ -1327,7 +1332,7 @@ class RouteDetailScreenScreenshotTest {
         composeRule.waitForIdle()
         val star = SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Starred journey")
         composeRule.onNode(star).assertIsDisplayed()
-        composeRule.onNode(star).performClick()
+        composeRule.onNode(star).performTouchInput { longClick() }
         composeRule.waitForIdle()
         // The saved journey itself is toggled off, not a second one starred under these poles.
         assertEquals(starredOutbound.key, toggled.single().key)
@@ -1377,7 +1382,7 @@ class RouteDetailScreenScreenshotTest {
         composeRule.waitForIdle()
         val star = SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Starred journey")
         composeRule.onNode(star).assertIsDisplayed()
-        composeRule.onNode(star).performClick()
+        composeRule.onNode(star).performTouchInput { longClick() }
         composeRule.waitForIdle()
         assertEquals(saved.key, toggled.single().key)
     }

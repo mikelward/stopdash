@@ -2005,12 +2005,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         guideline) while the control is tried out (maintainer, 2026-09-24); keep, enlarge, or drop
         it once judged on a device.
   - [x] **A discoverable way to star a journey.** A dismissible tip atop a starrable stop list
-        says a stop can be tapped to star the journey there (maintainer, 2026-09-24).
-  - [ ] **Rethink starring from the route page's stop list** (maintainer, 2026-10-02: unsure a
-        plain tap on a stop should star the journey; leaning no). The maintainer's lean: a **long
-        press** stars it, with **no visible button or hollow star** on each row. Open: what a plain
-        tap does then (nothing, or the stop's own departures), and whether the tip stays to say a
-        long press stars.
+        says a long press on a stop stars the journey there (maintainer, 2026-09-24).
+  - [x] **Star from the stop list by long press, not tap** (maintainer, 2026-10-05, after a stray tap
+        starred a journey that then pinned to the widget): no visible button on each row; the tip
+        now says a long press stars.
+    - [ ] **What a plain tap on a stop does** — nothing for now; the stop's own departures is the
+          candidate.
   - [x] **Bus journeys, and a journey as a segment on any line** (maintainer, 2026-09-23: "really
         I'd like to star the segment", e.g. two stops shared by the 43 and the 134). A journey is two
         stops, not a line; the card shows every line from the origin that calls at the far end. The
