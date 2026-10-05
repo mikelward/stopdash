@@ -1949,6 +1949,21 @@ them there:
   swiped away) isn't brought back short of something new. Each refresh asks TfL for the coming lines' statuses, one batched
   request, and the stops still to reach through the closure lookups the trip's screen and the list
   share, each reused for five minutes, and a change's board as above.
+- **Branches off the plan** (maintainer, 2026-10-05): under the board of trains that take the rider
+  on, the branches of the ride's line that run its way for a stop or more and then turn off it (the
+  Bank branch where the ride keeps to the Charing Cross branch, Battersea where it goes on to Morden)
+  are listed too, **grayed, their name in brackets** ("(Battersea)"), with the next few times TfL
+  lists for each. They're read from the line's route, not TfL's live labels, so a branch shows even
+  when TfL lists none of its trains or names them for the other branch, as it can. A tap on a row
+  opens **Take this one** under it with where the rider would change ("Change at Kennington", where
+  the Bank branch's Morden trains call too); a stray tap changes nothing. Taking it **reroutes the
+  trip**: a ride to where the branch turns off, then a change there onto the rest of the ride, followed
+  as any route is (maintainer, 2026-10-05: like a reroute, no timing or tracking of its own). The ride
+  to the fork takes the next train that reaches it, whatever TfL calls its way, says "get off soon"
+  there, and the change picks the next train on. Taken while walking to the ride, the walk goes on.
+  No request added: the route is the one the board already loads. A bus has none. Plan again
+  wouldn't serve here: the Planner works from the timetable and would offer the same direct train.
+  The ride's planned time is shared between its two parts by stops.
 - **Plan again:** while something is known wrong ahead, the trip's screen offers **Plan again from
   ‹station›**: the trip list from **the station still ahead on the route that's nearest the rider**
   (maintainer, 2026-10-02), not their raw position, to where they chose to go (a station complex

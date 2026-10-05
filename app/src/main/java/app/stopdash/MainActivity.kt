@@ -1041,6 +1041,10 @@ class MainActivity : ComponentActivity() {
                                     onGoTo = { from, to ->
                                         ((application as? StopdashApp)?.applicationScope ?: onTheWayScope).launch { tracker.goTo(from, to) }
                                     },
+                                    // The rider reroutes onto a branch that leaves the plan (maintainer, 2026-10-05).
+                                    onTake = { ride, branch ->
+                                        ((application as? StopdashApp)?.applicationScope ?: onTheWayScope).launch { tracker.take(ride, branch) }
+                                    },
                                 )
                                 }
                             } else if (top == TopOverlay.FAVORITE_PLACES) {

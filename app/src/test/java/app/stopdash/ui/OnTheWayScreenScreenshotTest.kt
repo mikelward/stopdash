@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.OffPlan
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RouteDisruption
@@ -93,6 +94,7 @@ class OnTheWayScreenScreenshotTest {
         onPlanAgain: ((ReplanOrigin.Stop) -> Unit)? = null,
         onDismissDisruptions: ((List<RouteDisruption.Signal>) -> Unit)? = null,
         notes: List<RouteDisruption.StationNote> = emptyList(),
+        onTake: ((TripLeg, OffPlan.Branch) -> Unit)? = null,
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -100,6 +102,7 @@ class OnTheWayScreenScreenshotTest {
                     trip, progress, failed, now, onEnd, onBack, current = current, notKept = notKept, endFailed = endFailed, alertsOff = alertsOff,
                     appOpenOnly = appOpenOnly, nextTrains = nextTrains, onGoTo = onGoTo, disruptions = disruptions, cards = cards,
                     replanFrom = replanFrom, onPlanAgain = onPlanAgain, onDismissDisruptions = onDismissDisruptions, notes = notes,
+                    onTake = onTake,
                 )
             }
         }
@@ -413,6 +416,35 @@ class OnTheWayScreenScreenshotTest {
 
     private fun jubileeTrain(destination: String, minutes: Long) =
         Departure("jubilee", "Jubilee", "outbound", destination, null, at(minutes), "tube")
+
+    @Test
+    fun a_branch_off_the_plan_is_grayed_and_taken_from_its_row() {
+        // Southbound from Waterloo to Morden, where a Battersea train turns off at Kennington
+        // (maintainer, 2026-10-05): listed under the plan's own, grayed, its name in brackets. Worth
+        // taking, as Bank-branch Morden trains call at Kennington too.
+        val northern = TripLeg(
+            "tube", "northern", "Northern", "940GZZLUWLO", "Waterloo", "940GZZLUMDN", "Morden", at(11), at(40),
+            path = listOf("940GZZLUKNG", "940GZZLUMDN"), pathNames = listOf("Kennington", "Morden"),
+        )
+        val morden = Departure("northern", "Northern", "inbound", "Morden", null, at(11), "tube", vehicleId = "EXAMPLE1")
+        val battersea = Departure("northern", "Northern", "inbound", "Battersea Power Station", null, at(3), "tube", vehicleId = "EXAMPLE2")
+        val off = OffPlan.Branch("Battersea", forkIndex = 0, forkName = "Kennington", trains = listOf(battersea))
+        val onIt = trip.copy(route = TripRoute(listOf(northern)), destinationName = "Morden", legIndex = 0, vehicleId = "EXAMPLE1")
+        val taken = mutableListOf<OffPlan.Branch>()
+        show(
+            onIt, TripProgress.Waiting(northern, at(11)),
+            nextTrains = NextTrains(northern, listOf(morden), readyAt = now, offPlan = offPlanRows(northern, listOf(off))).withGroups(now),
+            onTake = { _, branch -> taken += branch },
+        )
+        composeRule.onNodeWithText("(Battersea)").assertIsDisplayed()
+        // A tap only opens the row: nothing is taken until the button.
+        composeRule.onNodeWithText("(Battersea)").performClick()
+        composeRule.onNodeWithText("Change at Kennington").assertIsDisplayed()
+        assertTrue(taken.isEmpty())
+        captureSnapshot("on_the_way_off_plan_open")
+        composeRule.onNodeWithTag("onTheWayTakeThis").performClick()
+        assertEquals(listOf(off), taken)
+    }
 
     @Test
     fun on_the_way_walking_shows_the_next_rides_trains() {

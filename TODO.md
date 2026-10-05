@@ -1638,6 +1638,20 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             via `RideLineChecks`), picked or seen boarded, each judged against the ride as its own
             line runs it, and keeps that line's ride to look the train up on, since TfL answers
             for a train on one line only (Codex on #383).
+      - [x] **Take a branch off the plan** (maintainer, 2026-10-05; SPEC *On the way*): the trip's
+            board lists the ride's line's branches that turn off its way, from the route, grayed, and
+            **Take this one** reroutes the trip with a change where the branch turns off (`OffPlan`).
+      - [ ] **Notice a branch taken without a tap**: a rider who boards the other branch's train
+            without saying so is still lost on it once it turns off.
+      - [ ] **Change branch, from the trip's screen, riding or waiting** (maintainer, 2026-10-05; next
+            PR): a train can switch branch mid-ride (announced as Morden via Bank, then via Charing
+            Cross), and TfL's labels can be wrong. A **Change branch** action on the trip's view lists
+            every service from the platform, the plan's and every branch off it, and reroutes the trip
+            from the one picked, as *Take this one* does.
+      - [ ] **An "Other routes" button under the departures card** (maintainer, 2026-10-05): a way
+            into every route from the platform without the off-plan rows taking room on the board.
+      - [ ] **Change where both branches call, not only at the fork**: a Bank-branch rider bound for
+            the Charing Cross branch can change at Euston as well as Camden Town; offer the choice.
       - [ ] (Consider, maintainer 2026-10-01) **A train held short of the stop reads "0" for
             minutes.** TfL keeps re-predicting a train held between two stations as about to
             arrive, so a trip's "Due in 0 min", its board and the departures list all read "0" until

@@ -682,6 +682,12 @@
     <!-- TODO: translate -->
     <string name="on_the_way_plan_again" tools:ignore="MissingTranslation">Plan again from %1$s</string>
     <string name="on_the_way_keep_going" tools:ignore="MissingTranslation">Keep going</string>
+    <!-- A train on the trip's board that leaves the plan: its heading, in brackets, and its times. -->
+    <string name="on_the_way_off_plan_heading" tools:ignore="MissingTranslation">(%1$s)</string>
+    <string name="on_the_way_off_plan_times" tools:ignore="MissingTranslation">%1$s min</string>
+    <!-- Under an opened off-plan row: where the rider changes back onto their route. -->
+    <string name="on_the_way_off_plan_change" tools:ignore="MissingTranslation">Change at %1$s</string>
+    <string name="on_the_way_take_this" tools:ignore="MissingTranslation">Take this one</string>
     <string name="on_the_way_done">Done</string>
     <!-- The whole trip on its screen's card, beside where it goes: %2$d the minutes left, then %1$s the clock time it gets there.
          "About" (~): TfL's prediction where the rider gets off, with only walks after. -->
