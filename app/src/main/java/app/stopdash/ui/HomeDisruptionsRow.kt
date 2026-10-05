@@ -76,7 +76,9 @@ internal fun HomeDisruptionsRow(row: TripRow, modifier: Modifier = Modifier) {
                 OneLine(
                     pills = disrupted.size + unchecked.size,
                     pill = { i ->
-                        val leg = if (i < disrupted.size) disrupted[i] else unchecked[i - disrupted.size]
+                        // A refresh that drops pills recomposes the old ones' slots before the row is
+                        // measured again and lets them go: a slot past the lists draws nothing.
+                        val leg = disrupted.getOrNull(i) ?: unchecked.getOrNull(i - disrupted.size) ?: return@OneLine
                         LinePill(leg.lineName, leg.lineId, leg.mode)
                     },
                     // "Unknown:" before the first unchecked pill, as part of it, so it goes with it.

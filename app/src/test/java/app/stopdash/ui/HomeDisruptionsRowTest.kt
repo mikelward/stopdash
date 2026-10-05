@@ -41,6 +41,21 @@ class HomeDisruptionsRowTest {
     }
 
     @Test
+    fun pills_going_away_on_a_refresh_never_draw_one_that_is_gone() {
+        // A refresh that clears the pills recomposes the old pills' slots before the row is measured
+        // again: each must cope with an index past the new lists, not crash the app.
+        var row by mutableStateOf(TripRow(checking = false, lines = listOf(leg("1")), unknown = true, unknownLines = listOf(leg("2"))))
+        composeRule.setContent { HomeDisruptionsRow(row) }
+        composeRule.waitForIdle()
+        row = TripRow(checking = true)
+        composeRule.onNodeWithContentDescription("Disruptions: Checking…").assertExists()
+        row = TripRow(checking = false, lines = listOf(leg("3")))
+        composeRule.onNodeWithContentDescription("Disruptions: 3").assertExists()
+        row = TripRow(checking = false)
+        composeRule.onNodeWithContentDescription("Disruptions: None").assertExists()
+    }
+
+    @Test
     fun something_unchecked_with_no_line_to_name_still_reads_unknown() {
         composeRule.setContent { HomeDisruptionsRow(TripRow(checking = false, unknown = true, unknownStops = "Bank")) }
         composeRule.onNodeWithContentDescription("Disruptions: Unknown").assertExists()
