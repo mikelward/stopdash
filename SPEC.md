@@ -2132,7 +2132,7 @@ quality bar*). So stopdash surfaces, for watched stops and their lines:
 **The home screen has a disruptions row** (maintainer, 2026-10-05) under the favorite places' chips,
 so Home and the favorites keep the top, scrolling with the list as they do: the trip's row ("Disruptions:", each disrupted line's pill, then "Checking…",
 "Unknown:" with what couldn't be checked, or "None"), always one line high, the pills that don't fit
-counted as "+N", with no chevron. It covers every line of the networks the rider chose (below; the tube by default) and each line with a departure from a stop within the walking
+counted as "+N", with no chevron. It covers every line of the networks the rider chose (below; every one by default) and each line with a departure from a stop within the walking
 reach (500 m, the near-me list's eager radius); on the watched list, which has no distances, every
 watched stop's lines. A line the list shows goes by the list's own check; the chosen networks' other lines are
 asked in the list's same line-status request and share its reuse window, so the row costs no request
@@ -2144,13 +2144,14 @@ Where the row shows, it takes the place of the list's "Couldn't check for disrup
 (maintainer, 2026-10-05), so nothing comes and goes over the list: a line on the list whose check
 didn't answer, however far its stop, is named after "Unknown:"; a stop whose closure check failed is
 named on its page; and what can't be named (a departure with no line to check) still reads "Unknown".
-**Disruptions summary**, second in Settings under the favorite places, says what the row covers ("Tube
-and lines near you", or "Off") and opens its own page, since its settings control only the row
+**Disruptions summary**, second in Settings under the favorite places, says what the row covers ("All
+networks and lines near you", "Tube and lines near you", or "Off") and opens its own page, since its settings control only the row
 (maintainer, 2026-10-05). There a **Show on home screen** switch turns the row off (on by default;
 the banner comes back with it off); the row waits for the stored choice, so one turned off never
 flashes up. Under it, **Always include** picks the networks
-covered whatever's near (maintainer, 2026-10-05): Tube (on by default), Overground, Elizabeth line,
-DLR and Tram; the lines near the rider are always included, a choice of none leaving them alone. A
+covered whatever's near (maintainer, 2026-10-05): Tube, Overground, Elizabeth line,
+DLR and Tram, all on by default (their 20 lines ride the list's one status request, splitting it
+only when many nearby lines push it past TfL's length limit); the lines near the rider are always included, a choice of none leaving them alone. A
 network chosen with no current check of its lines reads "Checking…" until the next refresh asks
 about it, never a verdict it can't stand behind; one chosen again before any refresh since may show the
 check it still has. With the row off, the chosen networks aren't

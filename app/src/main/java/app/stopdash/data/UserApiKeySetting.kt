@@ -552,7 +552,7 @@ object DisruptionsRowSetting {
 
 /**
  * The networks the home screen's disruptions row always covers (maintainer, 2026-10-05), by
- * [HomeLines.Network] key, held and persisted as [DisruptionsRowSetting] is. The tube until chosen.
+ * [HomeLines.Network] key, held and persisted as [DisruptionsRowSetting] is. Every network until chosen.
  */
 object SummaryNetworksSetting {
     private val holder = StoredSettingHolder(

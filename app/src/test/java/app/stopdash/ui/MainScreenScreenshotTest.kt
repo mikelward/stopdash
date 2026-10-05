@@ -320,6 +320,7 @@ class MainScreenScreenshotTest {
                 {},
                 showDisruptionsRow = true,
                 always = HomeLines.Always(HomeLines.TUBE_IDS.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") }, now.minusSeconds(60)),
+                alwaysNetworks = setOf("tube"),
             )
         }
         composeRule.onNodeWithText("Couldn't check for disruptions").assertDoesNotExist()

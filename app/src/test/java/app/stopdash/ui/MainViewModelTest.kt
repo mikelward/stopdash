@@ -1079,7 +1079,7 @@ class MainViewModelTest {
     fun `a cold load vouches for the declared lines while a stop is still out`() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
         val client = LinedClient(lined[1].id, gate)
-        val vm = MainViewModel(client, lined, clock = { now }, io = dispatcher)
+        val vm = MainViewModel(client, lined, clock = { now }, io = dispatcher, alwaysNetworks = { setOf("tube") })
         advanceUntilIdle()
 
         val partial = vm.state.value as DeparturesUiState.Loaded
@@ -1106,7 +1106,7 @@ class MainViewModelTest {
         val client = LinedClient(lined[1].id, gate, statusOf = {
             if (it == "victoria") status(it, 6, "Severe Delays") else status(it, LineStatus.GOOD_SERVICE, "Good Service")
         })
-        val vm = MainViewModel(client, lined, clock = { now }, io = dispatcher)
+        val vm = MainViewModel(client, lined, clock = { now }, io = dispatcher, alwaysNetworks = { setOf("tube") })
         advanceUntilIdle()
 
         val partial = vm.state.value as DeparturesUiState.Loaded
@@ -1120,7 +1120,7 @@ class MainViewModelTest {
     fun `a line only a prediction names is checked once every stop is in`() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
         val client = LinedClient(lined[1].id, gate, predicted = mapOf(lined[0].id to listOf("victoria", "elizabeth")))
-        val vm = MainViewModel(client, lined, clock = { now }, io = dispatcher)
+        val vm = MainViewModel(client, lined, clock = { now }, io = dispatcher, alwaysNetworks = { setOf("tube") })
         advanceUntilIdle()
 
         // The declared lines are vouched for, but the predicted-only one isn't asked about yet.
@@ -1141,7 +1141,7 @@ class MainViewModelTest {
     fun `a line check that failed mid-load says it couldn't check`() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
         val client = LinedClient(lined[1].id, gate, statusFails = true)
-        val vm = MainViewModel(client, lined, clock = { now }, io = dispatcher)
+        val vm = MainViewModel(client, lined, clock = { now }, io = dispatcher, alwaysNetworks = { setOf("tube") })
         advanceUntilIdle()
 
         // The request is back, failed, while a stop is still out: not asked again this load.
@@ -5437,7 +5437,7 @@ class MainViewModelTest {
             override fun answer(lineIds: Collection<String>): List<LineStatus> =
                 lineIds.map { if (it == "central") LineStatus(it, 6, "Severe Delays") else LineStatus(it, 10, "Good Service") }
         }
-        val vm = MainViewModel(client, listOf(seeds[0].copy(lines = listOf(LineRef("victoria", "Victoria", "tube")))), clock = { now }, io = dispatcher)
+        val vm = MainViewModel(client, listOf(seeds[0].copy(lines = listOf(LineRef("victoria", "Victoria", "tube")))), clock = { now }, io = dispatcher, alwaysNetworks = { setOf("tube") })
         advanceUntilIdle()
 
         val tube = checkNotNull(vm.always.value)

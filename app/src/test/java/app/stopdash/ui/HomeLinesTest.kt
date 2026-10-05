@@ -34,7 +34,7 @@ class HomeLinesTest {
             lineStatuses = mapOf("73" to severe),
             determinedLineIds = setOf("73", "38"),
         )
-        val row = HomeLines.row(loaded, mapOf("near" to 120.0, "far" to 900.0), tube(), emptySet(), now)
+        val row = tubeRow(loaded, mapOf("near" to 120.0, "far" to 900.0), tube(), emptySet(), now)
         assertEquals(HomeLines.TUBE_IDS + "73", row.every.mapTo(HashSet()) { it.leg.lineId })
         // The disrupted one leads the pills and the page; the rest are good services, checked.
         assertEquals(listOf("73"), row.lines.map { it.lineId })
@@ -48,7 +48,7 @@ class HomeLinesTest {
         val quiet = stop("near", "73" to "bus").copy(lines = listOf(LineRef("73", "73", "bus"), LineRef("n73", "N73", "bus"), LineRef("25", "25", "bus")))
         val suspended = LineStatus("25", 16, "Suspended")
         val loaded = DeparturesUiState.Loaded(listOf(quiet), now, lineStatuses = mapOf("25" to suspended), determinedLineIds = setOf("73", "n73", "25"))
-        val ids = HomeLines.row(loaded, mapOf("near" to 50.0), tube(), emptySet(), now).every.map { it.leg.lineId }
+        val ids = tubeRow(loaded, mapOf("near" to 50.0), tube(), emptySet(), now).every.map { it.leg.lineId }
         assertTrue("73" in ids)
         assertTrue("25" in ids)
         assertFalse("n73" in ids)
@@ -61,13 +61,13 @@ class HomeLinesTest {
             listOf(stop("near", "73" to "bus"), stop("far", "38" to "bus")), now,
             determinedLineIds = setOf("73"), disruptionUnknown = true, stopsDisruptionUnknown = setOf("near"),
         )
-        val row = HomeLines.row(loaded, mapOf("near" to 50.0, "far" to 900.0), tube(), emptySet(), now)
+        val row = tubeRow(loaded, mapOf("near" to 50.0, "far" to 900.0), tube(), emptySet(), now)
         assertTrue(row.unknown)
         assertEquals(listOf("38"), row.unknownLines.map { it.lineId })
         assertEquals("near", row.unknownStops)
         // Something it can't name (a departure with no line) still reads unknown, with nothing named.
         val blank = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now, determinedLineIds = setOf("73"), disruptionUnknown = true)
-        val unnamed = HomeLines.row(blank, mapOf("near" to 50.0), tube(), emptySet(), now)
+        val unnamed = tubeRow(blank, mapOf("near" to 50.0), tube(), emptySet(), now)
         assertTrue(unnamed.unknown)
         assertEquals(emptyList<String>(), unnamed.unknownLines.map { it.lineId })
     }
@@ -77,17 +77,17 @@ class HomeLinesTest {
         val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now, determinedLineIds = setOf("73"))
         val asked = HomeLines.idsOf(setOf("overground"))
         val checked = HomeLines.Always(asked.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") }, now)
-        val ids = HomeLines.row(loaded, mapOf("near" to 50.0), checked, emptySet(), now, networks = setOf("overground")).every.map { it.leg.lineId }
+        val ids = tubeRow(loaded, mapOf("near" to 50.0), checked, emptySet(), now, networks = setOf("overground")).every.map { it.leg.lineId }
         assertEquals(asked + "73", ids.toSet())
         // None chosen: the nearby lines alone.
-        assertEquals(listOf("73"), HomeLines.row(loaded, mapOf("near" to 50.0), null, emptySet(), now, networks = emptySet()).every.map { it.leg.lineId })
+        assertEquals(listOf("73"), tubeRow(loaded, mapOf("near" to 50.0), null, emptySet(), now, networks = emptySet()).every.map { it.leg.lineId })
         // One just chosen that no check has asked about yet is being checked, not unchecked.
         val tubeOnly = HomeLines.Always(good, now, askedFor = HomeLines.TUBE_IDS)
-        val justChosen = HomeLines.row(loaded, mapOf("near" to 50.0), tubeOnly, emptySet(), now, networks = setOf("tube", "dlr"))
+        val justChosen = tubeRow(loaded, mapOf("near" to 50.0), tubeOnly, emptySet(), now, networks = setOf("tube", "dlr"))
         assertTrue(justChosen.every.single { it.leg.lineId == "dlr" }.checking)
         assertFalse(justChosen.unknown)
         // Nor is one with no check published yet, the list done: not yet asked, never unchecked.
-        val unasked = HomeLines.row(loaded, mapOf("near" to 50.0), null, emptySet(), now, networks = setOf("dlr"))
+        val unasked = tubeRow(loaded, mapOf("near" to 50.0), null, emptySet(), now, networks = setOf("dlr"))
         assertTrue(unasked.every.single { it.leg.lineId == "dlr" }.checking)
         assertFalse(unasked.unknown)
     }
@@ -95,7 +95,7 @@ class HomeLinesTest {
     @Test
     fun `the watched list has no distances, so every stop counts`() {
         val loaded = DeparturesUiState.Loaded(listOf(stop("a", "38" to "bus")), now, determinedLineIds = setOf("38"))
-        assertTrue(HomeLines.row(loaded, emptyMap(), tube(), emptySet(), now).every.any { it.leg.lineId == "38" })
+        assertTrue(tubeRow(loaded, emptyMap(), tube(), emptySet(), now).every.any { it.leg.lineId == "38" })
     }
 
     @Test
@@ -103,7 +103,7 @@ class HomeLinesTest {
         val loaded = DeparturesUiState.Loaded(
             listOf(stop("near", "73" to "bus")), now, lineStatuses = mapOf("73" to severe), determinedLineIds = setOf("73"),
         )
-        val row = HomeLines.row(loaded, mapOf("near" to 50.0), tube(), setOf(DismissedAlert.ofLineStatus(severe)), now)
+        val row = tubeRow(loaded, mapOf("near" to 50.0), tube(), setOf(DismissedAlert.ofLineStatus(severe)), now)
         assertEquals(emptyList<String>(), row.lines.map { it.lineId })
         assertTrue(row.every.single { it.leg.lineId == "73" }.dismissed)
     }
@@ -115,7 +115,7 @@ class HomeLinesTest {
         val loaded = DeparturesUiState.Loaded(
             listOf(stop("near", "73" to "bus")), now, lineStatuses = mapOf("73" to diversion), determinedLineIds = setOf("73"),
         )
-        val row = HomeLines.row(loaded, mapOf("near" to 50.0), tube(), setOf(DismissedAlert.ofLineStatus(diversion)), now)
+        val row = tubeRow(loaded, mapOf("near" to 50.0), tube(), setOf(DismissedAlert.ofLineStatus(diversion)), now)
         // Off the pills, and on the page as the diversion it was, dismissed, just above the good services.
         assertEquals(emptyList<String>(), row.lines.map { it.lineId })
         val line = row.every.single { it.leg.lineId == "73" }
@@ -137,7 +137,7 @@ class HomeLinesTest {
             lineStatuses = mapOf("73" to lineWide, "38" to broken), determinedLineIds = setOf("73", "38"),
         )
         val dismissed = setOf(DismissedAlert.ofLineStatus(eastbound), DismissedAlert.ofLineStatus(westbound))
-        val row = HomeLines.row(loaded, mapOf("near" to 50.0), tube(), dismissed, now)
+        val row = tubeRow(loaded, mapOf("near" to 50.0), tube(), dismissed, now)
         assertEquals(listOf("38"), row.lines.map { it.lineId })
         // Live disruption, then the unchecked 55, then the dismissed 73, then the good services.
         val order = row.every.map { it.leg.lineId }
@@ -145,7 +145,7 @@ class HomeLinesTest {
         assertTrue(row.every[2].dismissed)
         assertTrue(row.every.drop(3).all { !it.disrupted && !it.unknown })
         // One way still standing keeps it on the row.
-        val oneWay = HomeLines.row(loaded, mapOf("near" to 50.0), tube(), setOf(DismissedAlert.ofLineStatus(eastbound)), now)
+        val oneWay = tubeRow(loaded, mapOf("near" to 50.0), tube(), setOf(DismissedAlert.ofLineStatus(eastbound)), now)
         assertTrue("73" in oneWay.lines.map { it.lineId })
     }
 
@@ -153,7 +153,7 @@ class HomeLinesTest {
     fun `a line is never a good service on no current check`() {
         val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now)
         // Nothing back for the bus, and the tube's check is too old to stand.
-        val row = HomeLines.row(loaded, mapOf("near" to 50.0), tube(at = now.minus(Duration.ofMinutes(10))), emptySet(), now)
+        val row = tubeRow(loaded, mapOf("near" to 50.0), tube(at = now.minus(Duration.ofMinutes(10))), emptySet(), now)
         assertTrue(row.unknown)
         assertEquals(HomeLines.TUBE_IDS + "73", row.unknownLines.mapTo(HashSet()) { it.lineId })
         assertTrue(row.every.none { it.status != null })
@@ -168,7 +168,7 @@ class HomeLinesTest {
         val ids = overground + "dlr"
         val stamps = overground.associateWith { now.minus(Duration.ofMinutes(10)) } + ("dlr" to now.minus(Duration.ofMinutes(1)))
         val always = HomeLines.Always(ids.associateWith(good), stamps.values.min(), askedFor = ids, stamps = stamps)
-        val dlr = row(HomeLines.row(loaded, mapOf("near" to 50.0), always, emptySet(), now, networks = setOf("dlr")), "dlr")
+        val dlr = row(tubeRow(loaded, mapOf("near" to 50.0), always, emptySet(), now, networks = setOf("dlr")), "dlr")
         assertFalse(dlr.unknown)
         assertFalse(dlr.checking)
     }
@@ -177,28 +177,39 @@ class HomeLinesTest {
     fun `back from the background, the tube's old check reads checking while the refresh runs, not couldn't check`() {
         val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now, determinedLineIds = setOf("73"))
         val old = tube(at = now.minus(Duration.ofMinutes(10)))
-        val refreshing = HomeLines.row(loaded, mapOf("near" to 50.0), old, emptySet(), now, refreshing = true)
+        val refreshing = tubeRow(loaded, mapOf("near" to 50.0), old, emptySet(), now, refreshing = true)
         assertTrue(row(refreshing, "victoria").checking)
         assertFalse(refreshing.unknown)
         // Once it's done without a newer check, it couldn't be checked.
-        assertTrue(row(HomeLines.row(loaded, mapOf("near" to 50.0), old, emptySet(), now), "victoria").unknown)
+        assertTrue(row(tubeRow(loaded, mapOf("near" to 50.0), old, emptySet(), now), "victoria").unknown)
         // A current check stands while a refresh runs.
-        assertFalse(row(HomeLines.row(loaded, mapOf("near" to 50.0), tube(), emptySet(), now, refreshing = true), "victoria").checking)
+        assertFalse(row(tubeRow(loaded, mapOf("near" to 50.0), tube(), emptySet(), now, refreshing = true), "victoria").checking)
     }
 
     private fun row(row: TripRow, id: String) = row.every.single { it.leg.lineId == id }
+
+    // The row as most of these read it: the tube always covered, unless a test chooses otherwise.
+    private fun tubeRow(
+        loaded: DeparturesUiState.Loaded?,
+        distances: Map<String, Double>,
+        always: HomeLines.Always?,
+        dismissed: Set<DismissedAlert>,
+        now: Instant,
+        refreshing: Boolean = false,
+        networks: Set<String> = setOf("tube"),
+    ) = HomeLines.row(loaded, distances, always, dismissed, now, refreshing, networks)
 
     @Test
     fun `while the first load checks, its lines and the tube say checking`() {
         val loaded = DeparturesUiState.Loaded(
             listOf(stop("near", "73" to "bus")), now, statusPending = true, disruptionUnknown = true, pendingLineIds = setOf("73"),
         )
-        val row = HomeLines.row(loaded, mapOf("near" to 50.0), always = null, emptySet(), now)
+        val row = tubeRow(loaded, mapOf("near" to 50.0), always = null, emptySet(), now)
         assertTrue(row.checking)
         assertFalse(row.unknown)
         assertTrue(row.every.all { it.checking })
         // Before any list, everything is being checked.
-        assertTrue(HomeLines.row(null, emptyMap(), null, emptySet(), now).every.all { it.checking })
+        assertTrue(tubeRow(null, emptyMap(), null, emptySet(), now).every.all { it.checking })
     }
 
     @Test
@@ -207,9 +218,14 @@ class HomeLinesTest {
         val loaded = DeparturesUiState.Loaded(
             listOf(stop("near", "victoria" to "tube")), now, lineStatuses = mapOf("victoria" to victoria), determinedLineIds = setOf("victoria"),
         )
-        val row = HomeLines.row(loaded, mapOf("near" to 50.0), tube(), emptySet(), now)
+        val row = tubeRow(loaded, mapOf("near" to 50.0), tube(), emptySet(), now)
         assertEquals(listOf("victoria"), row.lines.map { it.lineId })
         assertEquals(1, row.every.count { it.leg.lineId == "victoria" })
+    }
+
+    @Test
+    fun `every network is covered until the rider chooses`() {
+        assertEquals(HomeLines.Network.entries.map { it.key }.toSet(), HomeLines.DEFAULT_NETWORKS)
     }
 
     @Test
