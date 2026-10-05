@@ -137,7 +137,10 @@ class StopDashWidget : GlanceAppWidget() {
             LaunchedEffect(generation, size) {
                 drawn = redrawn(drawn, generation, size) { drawing(context, id, it) }
             }
-            WidgetContent(drawn.models[size], drawn.now, drawn.fontScale)
+            when (val shown = drawn) {
+                is TripDrawing -> WidgetTripContent(shown.model, shown.layouts[size], shown.fontScale)
+                is DeparturesDrawing -> WidgetContent(shown.models[size], shown.now, shown.fontScale)
+            }
         }
     }
 
@@ -146,6 +149,28 @@ class StopDashWidget : GlanceAppWidget() {
      * their own dispatchers, the models on a worker ([widgetModels]).
      */
     private suspend fun drawing(context: Context, id: GlanceId, generation: Long): WidgetDrawing {
+        // A trip on the way takes the departures' place while the phone keeps it updated (SPEC *On the
+        // way*): the trains at the next change, and the step where there's room. Checked first, so a
+        // trip's redraw every 30 s reads and works out nothing of the departures' (Codex on #600); the
+        // model and its layouts are worked out on a worker. Its own redraw is due when it goes out of
+        // date, when it's too old to show, or when a guessed train is due; once it's gone, that render
+        // draws the departures and arms their redraws.
+        val trip = widgetTripModelOn(WidgetTripStore.load(context), Instant.now())
+        if (trip != null) {
+            val tripNow = Instant.now()
+            val tripExpiry = JavaDuration.between(tripNow, trip.redrawAt).toKotlinDuration().takeIf { it.isPositive() }
+            scheduleStalenessRedrawFor(context, null, tripNow, within = tripExpiry ?: NEARBY_SET_RETRY)
+            val tripScale = context.resources.configuration.fontScale
+            val tripSizes = try {
+                GlanceAppWidgetManager(context).getAppWidgetSizes(id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logWidgetSnapshotWarning("widget sizes read failed: ${e::class.simpleName}")
+                emptyList()
+            }
+            return TripDrawing(trip, WidgetTripLayouts.of(trip, tripScale, tripSizes, WIDGET_MIN_SIZE), tripScale, generation)
+        }
         // Off the render path: read the persisted snapshot before composing. A read failure
         // degrades to the empty state (open-the-app prompt) rather than crashing the host —
         // but cancellation is rethrown (never swallowed, which would break structured
@@ -267,7 +292,7 @@ class StopDashWidget : GlanceAppWidget() {
             ?.takeIf { it.isPositive() }
         val within = listOfNotNull(NEARBY_SET_RETRY.takeIf { nearbyUnreadable }, tapExpiry, guessExpiry).minOrNull()
         scheduleStalenessRedrawFor(context, shown, now, within = within)
-        return WidgetDrawing(models, now, fontScale, generation)
+        return DeparturesDrawing(models, now, fontScale, generation)
     }
 
     override suspend fun onDelete(context: Context, glanceId: GlanceId) {
@@ -869,6 +894,71 @@ internal fun WidgetContent(
 }
 
 /**
+ * The trip on the way in place of the departures (SPEC *On the way*): the trains at the next change,
+ * as many as fit, under the next step in the phone's words where there's room for it. A tap opens
+ * the app, which shows the trip. Out of date, it says so and the trains read as guessed times.
+ */
+@androidx.compose.runtime.Composable
+internal fun WidgetTripContent(model: WidgetTripModel, layout: WidgetTripLayout, fontScale: Float = 1f) {
+    GlanceTheme {
+        Column(
+            modifier = GlanceModifier
+                .fillMaxSize()
+                .background(GlanceTheme.colors.background)
+                .padding(12.dp)
+                .clickable(actionStartActivity<MainActivity>()),
+        ) {
+            val narrow = LocalSize.current.width < WIDGET_COMPACT_WIDTH
+            WidgetHeaderRow(if (narrow) model.stamp.removePrefix("Updated ") else model.stamp, title = "On the way")
+            if (model.stale) WidgetStatusLine("May be out of date")
+            Spacer(GlanceModifier.height(8.dp))
+            if (layout.tooSmall) {
+                WidgetMessage("Too small")
+                return@Column
+            }
+            // The trains come first (maintainer, 2026-10-05): the step shows, its text alone, only where
+            // the layout found room for it and every train ([widgetTripLayout]).
+            if (layout.showStep) {
+                Text(
+                    text = model.title,
+                    maxLines = 2,
+                    style = TextStyle(color = GlanceTheme.colors.onBackground, fontWeight = FontWeight.Bold, fontSize = 13.sp),
+                )
+                if (model.detail.isNotEmpty()) WidgetStatusLine(model.detail)
+                Spacer(GlanceModifier.height(8.dp))
+            }
+            if (model.note.isNotEmpty()) WidgetStatusLine(model.note)
+            Column(modifier = GlanceModifier.fillMaxWidth()) {
+                layout.rows.forEach { row ->
+                    row.header?.let { WidgetStopHeader(WidgetHeader(it, it)) }
+                    val countdownStale = model.stale || row.train.missed
+                    if (row.stacked) {
+                        // Too narrow at this font for all three on one line, as a departure row stacks.
+                        Column(modifier = GlanceModifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                            Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                WidgetPill(row.train.lineName, row.train.lineId, row.train.mode, fontScale)
+                                Spacer(GlanceModifier.defaultWeight())
+                                WidgetCountdown(row.train.countdown, stale = countdownStale)
+                            }
+                            Spacer(GlanceModifier.height(WIDGET_STACK_GAP))
+                            WidgetDestination(row.train.destination, null, GlanceModifier.fillMaxWidth())
+                        }
+                    } else {
+                        Row(modifier = GlanceModifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            WidgetPill(row.train.lineName, row.train.lineId, row.train.mode, fontScale)
+                            Spacer(GlanceModifier.width(8.dp))
+                            WidgetDestination(row.train.destination, null, GlanceModifier.defaultWeight())
+                            Spacer(GlanceModifier.width(8.dp))
+                            WidgetCountdown(row.train.countdown, stale = countdownStale)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
  * The departures, each under its stop's header where it starts a place. Glance draws at most ten
  * children in a Column and silently drops the rest, so each row (with its header and spacing) is a
  * Column of its own, and the rows go in Columns of at most ten: a tall widget shows every row its
@@ -905,7 +995,7 @@ private const val GLANCE_MAX_CHILDREN = 10
  * departures start a line higher in the widget's tight height.
  */
 @androidx.compose.runtime.Composable
-private fun WidgetHeaderRow(stamp: String?) {
+private fun WidgetHeaderRow(stamp: String?, title: String = "StopDash") {
     Row(
         modifier = GlanceModifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -914,7 +1004,7 @@ private fun WidgetHeaderRow(stamp: String?) {
         // out — a large system font at the narrowest size — so the stamp, which carries the
         // freshness the widget must never hide (SPEC D4), always keeps its full width.
         Text(
-            text = "StopDash",
+            text = title,
             maxLines = 1,
             modifier = GlanceModifier.defaultWeight(),
             style = TextStyle(
@@ -1201,7 +1291,11 @@ private fun widgetPillWidth(fontScale: Float) =
 /** The line pill — short code visible, full line name to TalkBack, fixed-width so a column of
  *  pills and the labels beside them line up (SPEC fixed-width pill invariant). */
 @androidx.compose.runtime.Composable
-private fun WidgetPill(row: DepartureRow, fontScale: Float) {
+private fun WidgetPill(row: DepartureRow, fontScale: Float) = WidgetPill(row.lineName, row.lineId, row.mode, fontScale)
+
+/** [WidgetPill] for a line named outright, as a trip's step and trains name theirs. */
+@androidx.compose.runtime.Composable
+private fun WidgetPill(lineName: String, lineId: String, mode: String, fontScale: Float) {
     // The label and its fixed-width slot grow together with the system [fontScale], up to
     // WIDGET_PILL_MAX_SCALE; past that both hold (the sp size is divided back down), so the widest
     // code always fits the slot whole and a very large font can't grow the pill until it crowds out
@@ -1209,9 +1303,9 @@ private fun WidgetPill(row: DepartureRow, fontScale: Float) {
     val pillScale = fontScale.coerceAtMost(WIDGET_PILL_MAX_SCALE)
     // The visible label is the short code; the accessible label is the full line name, so TalkBack
     // announces "Victoria", not "VIC" (SPEC parity with the app).
-    val name = riderLineName(row.lineName, row.mode)
-    val code = lineCode(row.lineName, row.mode, row.lineId)
-    when (val style = widgetPillStyle(row.lineName, row.lineId, row.mode)) {
+    val name = riderLineName(lineName, mode)
+    val code = lineCode(lineName, mode, lineId)
+    when (val style = widgetPillStyle(lineName, lineId, mode)) {
         is WidgetPillStyle.Hollow -> {
             // Glance draws no border, so the ring is the accent behind a box of the background inset
             // by the ring's width. Every pill takes the one fixed width ([widgetPillWidth]), so the
@@ -1552,16 +1646,37 @@ internal val WIDGET_MIN_SIZE by lazy { DpSize(WIDGET_MIN_WIDTH, WIDGET_MIN_HEIGH
  */
 private const val WIDGET_MAX_TIMES = 3
 
-/** What a widget session draws: the models for each size, the time they're for, and for which redraw. */
-internal data class WidgetDrawing(
+/** What a widget session draws, and for which redraw ([WidgetRedraws]). */
+internal sealed interface WidgetDrawing {
+    val generation: Long
+
+    /** This, with [size]'s own model or layout worked out where it isn't yet. */
+    suspend fun including(size: DpSize): WidgetDrawing
+}
+
+/** The departures: the models for each size, and the time they're for. */
+internal data class DeparturesDrawing(
     val models: WidgetModels,
     val now: Instant,
     val fontScale: Float,
-    val generation: Long,
-) {
-    suspend fun including(size: DpSize): WidgetDrawing {
+    override val generation: Long,
+) : WidgetDrawing {
+    override suspend fun including(size: DpSize): WidgetDrawing {
         val more = models.including(size)
         return if (more === models) this else copy(models = more)
+    }
+}
+
+/** A trip on the way, in the departures' place: its model and the layout for each size. */
+internal data class TripDrawing(
+    val model: WidgetTripModel,
+    val layouts: WidgetTripLayouts,
+    val fontScale: Float,
+    override val generation: Long,
+) : WidgetDrawing {
+    override suspend fun including(size: DpSize): WidgetDrawing {
+        val more = layouts.including(size)
+        return if (more === layouts) this else copy(layouts = more)
     }
 }
 

@@ -114,6 +114,36 @@ class WidgetScreenshotTest {
     }
 
     @Test
+    fun widget_trip_on_the_way_shows_the_step_and_the_trains_at_the_next_change() {
+        // Public TfL interchanges only (SPEC *Privacy*).
+        val trip = app.stopdash.data.WatchTrip(
+            title = "Board Victoria at Oxford Circus",
+            detail = "3 min",
+            steps = listOf(app.stopdash.data.WatchTrip.Step("Victoria to King's Cross St. Pancras", "victoria", "Victoria", "tube")),
+            current = 0,
+            departures = listOf(
+                app.stopdash.data.WatchTrip.Train("victoria", "Victoria", "tube", "Walthamstow Central", now.plusSeconds(180).toEpochMilli()),
+                app.stopdash.data.WatchTrip.Train("victoria", "Victoria", "tube", "Walthamstow Central", now.plusSeconds(420).toEpochMilli()),
+                app.stopdash.data.WatchTrip.Train("victoria", "Victoria", "tube", "Seven Sisters", now.plusSeconds(300).toEpochMilli()),
+            ),
+            departuresAt = 0,
+            sentAt = now.minusSeconds(20).toEpochMilli(),
+        )
+        val model = widgetTripModel(trip, now)!!
+        val size = DpSize(240.dp, 180.dp)
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        RuntimeEnvironment.setQualifiers("+notnight")
+        val view = runBlocking {
+            GlanceRemoteViews().compose(context, size = size) { WidgetTripContent(model, widgetTripLayout(model, size.width.value, size.height.value, 1f)) }
+        }.remoteViews.apply(context, FrameLayout(context))
+        val shown = texts(view)
+        assertEquals(true, shown.contains("Board Victoria at Oxford Circus"))
+        assertEquals(true, shown.contains("Seven Sisters"))
+        val density = context.resources.displayMetrics.density
+        captureSnapshot(view, "widget-trip.png", (size.width.value * density).toInt(), (size.height.value * density).toInt())
+    }
+
+    @Test
     fun `fresh, dark`() {
         capture(
             "widget-fresh-dark.png",

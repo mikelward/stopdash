@@ -21,6 +21,8 @@ import app.stopdash.domain.TripLeg
 import app.stopdash.ui.ActiveTripTracker
 import app.stopdash.ui.BusPoleCues
 import app.stopdash.ui.nextStepText
+import app.stopdash.widget.WidgetTripStore
+import app.stopdash.widget.WidgetTrips
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.PutDataRequest
 import com.google.android.gms.wearable.Wearable
@@ -40,13 +42,16 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Sends the trip on the way to a paired watch with the app (dev-docs/wear-os.md *Trip on the way*),
+ * and keeps the same summary for the home-screen widget while one is placed ([WidgetTripStore]),
  * for as long as [app.stopdash.OnTheWayService] follows it: on each change, and every [TICK] so its
- * minutes count down, only when what the watch would show changed or a [WatchTrips.HEARTBEAT] is
- * due. The trip goes off the watch when
- * it ends ([clear]). Nothing leaves the phone without a watch that has the app.
+ * minutes count down. The watch is sent it only when what it would show changed or a
+ * [WatchTrips.HEARTBEAT] is due; the widget is redrawn each time, its countdowns being static text.
+ * The trip goes off both when it ends ([clear]). Nothing leaves the phone without a watch that has
+ * the app.
  */
 internal object WatchTripSync {
     /** How long a line's route that failed to load waits before it's tried again. */
@@ -58,6 +63,9 @@ internal object WatchTripSync {
     private val routesLoaded = kotlinx.coroutines.flow.MutableStateFlow(0)
     // When each line's route last failed to load, by the monotonic clock.
     private val routeFailedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    /** How long a watch lookup may take before this tick goes without it; the next tick asks again. */
+    private val WATCH_CHECK_BOUND: Duration = Duration.ofSeconds(10)
 
     /** How often the trip is sent again with nothing new but its minutes: the trip's own refresh. */
     val TICK: Duration = Duration.ofSeconds(30)
@@ -81,9 +89,34 @@ internal object WatchTripSync {
             TripState(trip, progress, updatedAt, board)
         }.collectLatest { (trip, progress, updatedAt, board) ->
             if (trip == null) return@collectLatest
-            // Before building it: no watch with the app, no route loads or work for nothing.
+            // The home-screen widget shows the same trip (SPEC *On the way*). It goes first and on its own:
+            // a watch lookup that stalls can't keep it from the trip (Codex on #600).
+            val widget = withContext(Dispatchers.IO) { WidgetTrips.placed(app) }
+            var built: WatchTrip? = null
+            suspend fun build(): WatchTrip = built ?: run {
+                val now = Instant.now()
+                val (title, detail) = nextStepText(app.resources, progress, now, current = ActiveTripTracker.isCurrent(updatedAt, now))
+                // The trains, their poles and the screen's note, all worked out on IO: nothing that grows
+                // with the board runs on the service's main-thread scope.
+                val (found, note) = withContext(Dispatchers.IO) { trainsFor(app, trip, board, now) }
+                // A train leaving before the rider can board is grayed, as the trip's screen grays it.
+                val readyAt = OnTheWay.readyAt(trip, progress)
+                WatchTrips.build(trip, title, detail, found.trains, now, note, readyAt, poleOf = { found.poles[it] }) { leg, onBoard ->
+                    stepText(app, leg, onBoard)
+                }.also { built = it }
+            }
+            // Through the same queue as the watch's writes and [clear], so a clear the last trip's end
+            // queued can't land after this trip's first write (Codex on #600).
+            // The file in order with the clears; its redraw off this path, so a slow render can't keep
+            // the watch from the trip (Codex on #600).
+            if (widget) {
+                build().let { trip -> writes.run { WidgetTripStore.write(app, trip) } }
+                WidgetTripStore.redraw(app)
+            }
+            // Before building it for the watch: no watch with the app, no route loads or work for nothing.
+            // Bounded, so a lookup that never answers waits for the next tick rather than hanging this one.
             val installed = try {
-                channel.watchInstalled()
+                withTimeoutOrNull(WATCH_CHECK_BOUND.toMillis()) { channel.watchInstalled() } ?: false
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -91,18 +124,7 @@ internal object WatchTripSync {
                 StopdashDebugLog.watchStatus("trip watch check failed: ${e::class.simpleName}")
                 false
             }
-            if (!installed) return@collectLatest
-            val now = Instant.now()
-            val (title, detail) = nextStepText(app.resources, progress, now, current = ActiveTripTracker.isCurrent(updatedAt, now))
-            // The trains, their poles and the screen's note, all worked out on IO: nothing that grows
-            // with the board runs on the service's main-thread scope.
-            val (found, note) = withContext(Dispatchers.IO) { trainsFor(app, trip, board, now) }
-            // A train leaving before the rider can board is grayed, as the trip's screen grays it.
-            val readyAt = OnTheWay.readyAt(trip, progress)
-            val built = WatchTrips.build(trip, title, detail, found.trains, now, note, readyAt, poleOf = { found.poles[it] }) { leg, onBoard ->
-                stepText(app, leg, onBoard)
-            }
-            send(app, built)
+            if (installed) send(app, build())
         }
     }
 
@@ -112,6 +134,11 @@ internal object WatchTripSync {
      */
     fun clear(context: Context) {
         val app = context.applicationContext
+        // Off the widget too, which shows its departures again; queued with the watch's writes, in order.
+        writes.enqueue {
+            WidgetTripStore.write(app, null)
+            WidgetTripStore.redraw(app)
+        }
         writes.enqueue {
             try {
                 // This phone's own item, by its node id ("wear://<node>/path"): a URI without one names

@@ -2020,6 +2020,15 @@ them there:
   that is never backed up, so it survives the app being closed; where a rider is going is theirs
   (*Privacy*), and it's forgotten when the trip ends. Its steps go to the rider's own watch, if it
   has the app (*Privacy*, the Wear OS watch sync).
+- **On the widget** (maintainer, 2026-10-05: "show the departures at the next change"): while the trip
+  is followed, a placed widget shows it in place of the departures: the trains at the next change,
+  as the watch shows them, under the clock time it was last updated, and above them the next step
+  in the notification's words where the widget has room for it as well as every train (text only,
+  no line pill; maintainer, 2026-10-05). The summary is the one the
+  watch is sent, kept on the phone for the widget (never backed up) and redrawn each update; it
+  reads as out of date after 2 minutes without one, its trains as guessed times ("21:14?", D4), and
+  the widget goes back to its departures after 15, or when the trip ends. A widget on the lock
+  screen shows the trip there too.
 
 **Notifications** need Android's notification permission, asked for when the rider taps Start;
 declined, the trip still follows them on its screen and the main view's card, and its screen says

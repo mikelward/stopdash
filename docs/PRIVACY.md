@@ -147,7 +147,9 @@ go (the destination's stops, or the position of the place you picked: a favorite
 postcode), in app storage that
 Android never backs up or transfers, so the trip survives the app being closed. It's never logged
 beyond coarse diagnostics (a line id, an error kind) or sent anywhere, except to your own watch if it
-has the StopDash watch app (see **Your Wear OS watch**). While a trip is on the way, app
+has the StopDash watch app (see **Your Wear OS watch**). If you've placed the StopDash widget, its
+next step and the trains at your next change are kept on the phone for the widget to show (on the
+lock screen too, if the widget is there), also never backed up, and removed when the trip ends. While a trip is on the way, app
 open or closed, stopdash asks TfL about every 30 seconds (with the app open, as often as every 10
 seconds while you're moving) where the followed train will call next, by TfL's own id for that
 train, and for the departures at a stop where the next leg boards; neither says anything about you
