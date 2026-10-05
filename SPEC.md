@@ -1340,8 +1340,8 @@ cards may not bear out. The "Checking routes…" banner over the list is held th
 was, and one the home screen can open too: one row per line, its pill and the worst status any card shows for it (a line not
 running ahead of one running with delays, whatever TfL's numbers say). Disruptions come first, worst
 first; then lines that couldn't be checked (a failed or left-out check stays so until one succeeds);
-then "Checking…" lines; then any the rider dismissed, just above the good services, still named but
-toned down, since a dismissal quiets the alert, not the line's state (maintainer, 2026-10-05: demoted,
+then "Checking…" lines; then any the rider dismissed, just above the good services, still named by the
+alert dismissed ("Diversions · dismissed", never the "Good service" left once it's gone) but toned down, since a dismissal quiets the alert, not the line's state (maintainer, 2026-10-05: demoted,
 not hidden); then the good services. A dismissed line is never on the row's pills: on the home
 screen's row, a line counts as dismissed once its alert is dismissed every way it's disrupted, as the
 list's rows dismiss their own way's alert. A line with no current status is never

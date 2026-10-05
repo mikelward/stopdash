@@ -162,10 +162,14 @@ object HomeLines {
         val every = refs.values.map { ref ->
             val id = ref.id
             val was = raw[id]
+            val dismissedHere = was?.disrupted == true && (shown[id]?.disrupted != true || everyWayDismissed(was))
             TripLine(
                 leg = pillNamed(TripLeg(ref.mode, id, ref.name, "", "", "", "", Instant.EPOCH, Instant.EPOCH)),
-                status = shown[id] ?: was,
-                dismissed = was?.disrupted == true && (shown[id]?.disrupted != true || everyWayDismissed(was)),
+                // A dismissed line names the alert it dismissed ("Diversions · dismissed"), never what's left
+                // once it's gone, which with only planned work left read "Good service" (maintainer,
+                // 2026-10-05).
+                status = if (dismissedHere) was else shown[id] ?: was,
+                dismissed = dismissedHere,
                 checking = id in checking,
                 unknown = id !in known && id !in checking,
             )

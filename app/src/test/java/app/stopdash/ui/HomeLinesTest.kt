@@ -105,6 +105,23 @@ class HomeLinesTest {
     }
 
     @Test
+    fun `a dismissed alert is named as dismissed, never a good service, even with planned work left`() {
+        val planned = app.stopdash.domain.PlannedAlert("Part closure", "Closed next weekend", java.time.LocalDate.parse("2026-10-10"))
+        val diversion = LineStatus("73", 6, "Diversions", fullText = "Diverted via another road", planned = listOf(planned))
+        val loaded = DeparturesUiState.Loaded(
+            listOf(stop("near", "73" to "bus")), now, lineStatuses = mapOf("73" to diversion), determinedLineIds = setOf("73"),
+        )
+        val row = HomeLines.row(loaded, mapOf("near" to 50.0), tube(), setOf(DismissedAlert.ofLineStatus(diversion)), now)
+        // Off the pills, and on the page as the diversion it was, dismissed, just above the good services.
+        assertEquals(emptyList<String>(), row.lines.map { it.lineId })
+        val line = row.every.single { it.leg.lineId == "73" }
+        assertTrue(line.dismissed)
+        assertEquals("Diversions", line.status?.description)
+        assertTrue(line.disrupted)
+        assertEquals("73", row.every.first().leg.lineId)
+    }
+
+    @Test
     fun `an alert dismissed every way it runs leaves the pills, and goes just above the good services`() {
         // The list dismisses a row's own way's alert, which the line-wide status needn't match.
         val eastbound = LineStatus("73", 6, "Severe Delays", fullText = "Roadworks eastbound")
