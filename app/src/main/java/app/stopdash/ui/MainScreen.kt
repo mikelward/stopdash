@@ -660,8 +660,8 @@ fun MainScreen(
     // (a moment's old row over a "Checking…" that blinks); "Checking…" until the first is in.
     val homeWork = remember { mutableStateOf<Worked<HomeInputs, TripRow>?>(null) }
     val disruptionsRow = if (showDisruptionsRow) {
-        rememberWorked(homeWork, HomeInputs(loaded, stopDistanceMeters, tube, dismissed, now), keep = { _, _ -> true }) {
-            HomeLines.row(loaded, stopDistanceMeters, tube, dismissed, now)
+        rememberWorked(homeWork, HomeInputs(loaded, stopDistanceMeters, tube, dismissed, now, refreshing), keep = { _, _ -> true }) {
+            HomeLines.row(loaded, stopDistanceMeters, tube, dismissed, now, refreshing)
         } ?: TripRow.CHECKING
     } else {
         null
@@ -5441,4 +5441,5 @@ private data class HomeInputs(
     val tube: HomeLines.Tube?,
     val dismissed: Set<DismissedAlert>,
     val now: Instant,
+    val refreshing: Boolean,
 )

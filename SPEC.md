@@ -2098,7 +2098,9 @@ counted as "+N", with no chevron. It covers every tube line and each line with a
 reach (500 m, the near-me list's eager radius); on the watched list, which has no distances, every
 watched stop's lines. A line the list shows goes by the list's own check; the tube's other lines are
 asked in the list's same line-status request and share its reuse window, so the row costs no request
-of its own. A line with no current check is never called a good service. A tap opens the trip's lines
+of its own. A line with no current check is never called a good service; a tube line whose last check
+has aged out while a refresh is under way (back from the background, say) reads "Checking…", not
+"couldn't check", until that refresh answers (maintainer, 2026-10-05). A tap opens the trip's lines
 page for those lines (*Trips with a change*), where one no longer near since it opened says so.
 Where the row shows, it takes the place of the list's "Couldn't check for disruptions" banner
 (maintainer, 2026-10-05), so nothing comes and goes over the list: a line on the list whose check

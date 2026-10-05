@@ -55,6 +55,8 @@ object HomeLines {
         tube: Tube?,
         dismissed: Set<DismissedAlert>,
         now: Instant,
+        // A refresh under way, whose check of the tube's lines may yet answer.
+        refreshing: Boolean = false,
     ): TripRow {
         val refs = LinkedHashMap<String, LineRef>()
         TUBE.forEach { refs[it.id] = it }
@@ -101,8 +103,12 @@ object HomeLines {
                     known += id
                     tubeCurrent.statuses.getValue(id).takeIf { it.hasAlerts }?.let { raw[id] = it }
                 }
-                // Still being asked: a cold load's line not back yet, or the tube before its first check.
-                loaded == null || (loaded.statusPending && !loaded.checkFailed && (id in loaded.pendingLineIds || id in TUBE_IDS && tube == null)) ->
+                // Still being asked: a cold load's line not back yet, the tube before its first check, or
+                // the tube's lines while a refresh is under way, their last check too old to stand (back
+                // from the background, say): "Checking…", never "couldn't check" for a check not yet
+                // asked again (maintainer, 2026-10-05).
+                loaded == null || (loaded.statusPending && !loaded.checkFailed && (id in loaded.pendingLineIds || id in TUBE_IDS && tube == null)) ||
+                    (refreshing && id in TUBE_IDS) ->
                     checking += id
             }
         }
