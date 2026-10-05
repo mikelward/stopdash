@@ -21,4 +21,15 @@ class WidgetSourceRulesTest {
         assertEquals(listOf("StopDashWidget.kt"), direct)
     }
 
+    // The debug log fills in %s only: a %d is written out as is, its value tacked on as an
+    // "unplaced arg" (maintainer bug report, 2026-10-05).
+    @Test
+    fun `debug log formats use only %s`() {
+        val call = Regex("""StopdashDebugLog\.\w+\(\s*"([^"]*)"""")
+        val spec = Regex("""%(?!s|%)""")
+        val bad = sources.flatMap { file ->
+            call.findAll(file.readText()).map { it.groupValues[1] }.filter { spec.containsMatchIn(it) }.map { "${file.name}: $it" }.toList()
+        }
+        assertEquals(emptyList<String>(), bad)
+    }
 }
