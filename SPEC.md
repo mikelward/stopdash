@@ -974,8 +974,10 @@ shade — a cosmetic gap, not a correctness failure.
 ### Journeys
 
 A rider can **star a journey** — a segment between two stops, rail or bus (maintainer, 2026-09-23):
-on a route page, tapping a stop on the stop list (after the boarding stop) stars the segment from the
-boarding stop to it — both directions — and marks the stop with a star; tapping it again unstars it.
+on a route page, a long press on a stop on the stop list (after the boarding stop) stars the segment
+from the boarding stop to it — both directions — and marks the stop with a star; another long press
+unstars it. A long press, not a tap (maintainer, 2026-10-05): a stray tap while scrolling the stops
+starred journeys the rider never meant to, which then pinned to the widget.
 A journey is a **segment, not a line**: the same two stops starred from another line's page (the 43
 or the 134 between two shared stops) are the same journey. Starred journeys lead the near-me list as
 cards, each headed by the direction shown ("Highgate ➔ King's Cross St. Pancras ★", the gold star
@@ -1059,8 +1061,8 @@ the connecting train's time, which isn't known. Rail only: a bus's path is often
 too loose to send a rider to change on. The widget keeps showing direct trains only.
 
 **Direct only, for now.** A starred journey is one line between two stops; a starred trip with a change
-(the eventual goal behind starring home and work) builds on *Trips with a change* below. The tap-a-stop entry point has no
-cue of its own, so a starrable stop list opens with a one-line tip ("Tap a stop to star the journey
+(the eventual goal behind starring home and work) builds on *Trips with a change* below. The long-press entry point has no
+cue of its own, so a starrable stop list opens with a one-line tip ("Long-press a stop to star the journey
 there") until the user dismisses it (maintainer, 2026-09-24); the dismissal is kept with the app's
 settings. Starred journeys are
 kept on the device with the rest of the user's config and never logged (*Privacy*).

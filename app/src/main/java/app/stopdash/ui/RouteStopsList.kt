@@ -9,6 +9,11 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -386,6 +391,7 @@ private fun StopOnRail(
 ) {
     val surface = MaterialTheme.colorScheme.surface
     val starredLabel = stringResource(R.string.route_stop_journey_starred)
+    val haptics = LocalHapticFeedback.current
     val toggleLabel = stringResource(if (starred) R.string.action_unstar_journey else R.string.action_star_journey)
     val starColor = MaterialTheme.colorScheme.primary
     val alertColor = MaterialTheme.colorScheme.error
@@ -459,7 +465,22 @@ private fun StopOnRail(
             { connections.forEach { line -> LinePill(lineName = line.name, lineId = line.id, mode = line.mode) } },
         ),
         modifier = Modifier.fillMaxWidth()
-            .then(if (onClick != null) Modifier.clickable(onClickLabel = toggleLabel, onClick = onClick) else Modifier)
+            // A long press, not a tap, so a stray tap while scrolling the stops can't star a journey
+            // (maintainer, 2026-10-05); TalkBack offers it as the long-press action.
+            .then(
+                if (onClick != null) {
+                    Modifier
+                        .pointerInput(onClick) {
+                            detectTapGestures(onLongPress = {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onClick()
+                            })
+                        }
+                        .semantics { onLongClick(label = toggleLabel) { onClick(); true } }
+                } else {
+                    Modifier
+                },
+            )
             .then(
                 // Every state that applies, so the boarding stop named in the alert says both.
                 listOfNotNull(currentStop.takeIf { first }, starredLabel.takeIf { starred }, alertLabel.takeIf { inAlert })

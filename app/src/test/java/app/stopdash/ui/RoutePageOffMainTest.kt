@@ -6,7 +6,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.longClick
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.RouteStop
 import app.stopdash.domain.StarredJourney
@@ -260,13 +261,13 @@ class RoutePageOffMainTest {
             .getString(app.stopdash.R.string.journey_tip)
         // The tip is up from the first frame, so the rail under it never shifts.
         composeRule.onNodeWithText(tip, substring = true).assertExists()
-        composeRule.onNodeWithText(there.name).performClick()
+        composeRule.onNodeWithText(there.name).performTouchInput { longClick() }
         assertEquals("no tap before the journeys are in", emptyList<String>(), tapped)
 
         ready = true
         composeRule.waitForIdle()
         composeRule.onNodeWithText(tip, substring = true).assertExists()
-        composeRule.onNodeWithText(there.name).performClick()
+        composeRule.onNodeWithText(there.name).performTouchInput { longClick() }
         assertEquals(listOf(there.id), tapped)
     }
 

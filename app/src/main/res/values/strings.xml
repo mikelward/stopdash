@@ -71,7 +71,7 @@
     <string name="route_stops_stale">Stops shown once departures refresh</string>
     <string name="route_stops_retry">Retry</string>
     <!-- The route page's one-time tip on starring a journey (SPEC *Journeys*), and its dismiss action. -->
-    <string name="journey_tip">Tap a stop to star the journey there</string>
+    <string name="journey_tip">Long-press a stop to star the journey there</string>
     <string name="journey_tip_dismiss">Got it</string>
     <!-- Shown when some watched stops refreshed but at least one failed. -->
     <string name="partial_refresh">Some stops couldn\'t be refreshed</string>
