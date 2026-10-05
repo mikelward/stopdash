@@ -2097,6 +2097,10 @@ watched stop's lines. A line the list shows goes by the list's own check; the tu
 asked in the list's same line-status request and share its reuse window, so the row costs no request
 of its own. A line with no current check is never called a good service. A tap opens the trip's lines
 page for those lines (*Trips with a change*), where one no longer near since it opened says so.
+Where the row shows, it takes the place of the list's "Couldn't check for disruptions" banner
+(maintainer, 2026-10-05), so nothing comes and goes over the list: a line on the list whose check
+didn't answer, however far its stop, is named after "Unknown:"; a stop whose closure check failed is
+named on its page; and what can't be named (a departure with no line to check) still reads "Unknown".
 
 A disrupted line is always kept flagged — its countdowns are never shown as verified-clean
 (principle 1). The chip's label is TfL's own wording where it names the disruption ("Part

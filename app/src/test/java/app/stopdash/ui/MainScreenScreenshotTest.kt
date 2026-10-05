@@ -306,6 +306,26 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithText("Line status").assertExists()
     }
 
+    @Test
+    fun `where the disruptions row shows, it says what couldn't be checked in place of the banner`() {
+        val stops = stops(now.minusSeconds(60))
+        capture("main-disruptions-unknown.png") {
+            MainScreen(
+                // Every line checked but the Overground's, whose check didn't answer.
+                DeparturesUiState.Loaded(
+                    stops, now.minusSeconds(60), lineStatuses = statuses(), disruptionUnknown = true,
+                    determinedLineIds = stops.flatMap { stop -> stop.departures.map { it.lineId } + stop.lines.map { it.id } }.toSet() - "windrush",
+                ),
+                now,
+                {},
+                showDisruptionsRow = true,
+                tube = HomeLines.Tube(HomeLines.TUBE_IDS.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") }, now.minusSeconds(60)),
+            )
+        }
+        composeRule.onNodeWithText("Couldn't check for disruptions").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Unknown:", substring = true).assertExists()
+    }
+
     // Stock stand-in places on synthetic coordinates, never a real person's (SPEC *Privacy*).
     private val places = listOf(
         // Home is set to show its icon alone, Work shows its icon and name (the default), and Gym, with

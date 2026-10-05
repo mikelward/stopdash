@@ -69,6 +69,23 @@ object HomeLines {
             stop.lines.forEach { if (it.id.isNotBlank() && alerts[it.id]?.hasAlerts == true) refs.putIfAbsent(it.id, it) }
         }
         val listChecked = loaded?.determinedLineIds.orEmpty()
+        // What the list couldn't check, said here in place of its banner (maintainer, 2026-10-05): its line
+        // whose check didn't answer, a farther stop's too, named among the unchecked; a stop whose closure
+        // check failed, named on the page; and anything else (a departure with no line to check) as the
+        // row's "Unknown" alone, never left unsaid.
+        val listUnknown = loaded != null && loaded.disruptionUnknown && !loaded.checkingDisruptions
+        if (listUnknown) {
+            for (stop in loaded.stops) {
+                stop.departures.forEach {
+                    if (it.lineId.isNotBlank() && it.lineId !in listChecked) refs.putIfAbsent(it.lineId, LineRef(it.lineId, it.lineName, it.mode))
+                }
+            }
+        }
+        val unknownStops = if (listUnknown) {
+            loaded.stops.filter { it.stopId in loaded.stopsDisruptionUnknown }.map { it.stopName }.distinct().joinToString(", ")
+        } else {
+            ""
+        }
         val tubeCurrent = tube?.takeIf { checkCurrent(it.at, now) }
         // Each line's status as checked (good or not), and whether it's checked at all.
         val raw = HashMap<String, LineStatus>()
@@ -106,8 +123,9 @@ object HomeLines {
         return TripRow(
             checking = checking.isNotEmpty(),
             lines = disrupted,
-            unknown = unknown.isNotEmpty(),
+            unknown = unknown.isNotEmpty() || listUnknown,
             unknownLines = unknown,
+            unknownStops = unknownStops,
             every = every,
         )
     }

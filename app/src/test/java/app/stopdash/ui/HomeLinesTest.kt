@@ -55,6 +55,24 @@ class HomeLinesTest {
     }
 
     @Test
+    fun `what the list couldn't check is said on the row, farther stops' too, in place of its banner`() {
+        // A farther stop's line didn't answer, and a near stop's closure check failed.
+        val loaded = DeparturesUiState.Loaded(
+            listOf(stop("near", "73" to "bus"), stop("far", "38" to "bus")), now,
+            determinedLineIds = setOf("73"), disruptionUnknown = true, stopsDisruptionUnknown = setOf("near"),
+        )
+        val row = HomeLines.row(loaded, mapOf("near" to 50.0, "far" to 900.0), tube(), emptySet(), now)
+        assertTrue(row.unknown)
+        assertEquals(listOf("38"), row.unknownLines.map { it.lineId })
+        assertEquals("near", row.unknownStops)
+        // Something it can't name (a departure with no line) still reads unknown, with nothing named.
+        val blank = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now, determinedLineIds = setOf("73"), disruptionUnknown = true)
+        val unnamed = HomeLines.row(blank, mapOf("near" to 50.0), tube(), emptySet(), now)
+        assertTrue(unnamed.unknown)
+        assertEquals(emptyList<String>(), unnamed.unknownLines.map { it.lineId })
+    }
+
+    @Test
     fun `the watched list has no distances, so every stop counts`() {
         val loaded = DeparturesUiState.Loaded(listOf(stop("a", "38" to "bus")), now, determinedLineIds = setOf("38"))
         assertTrue(HomeLines.row(loaded, emptyMap(), tube(), emptySet(), now).every.any { it.leg.lineId == "38" })

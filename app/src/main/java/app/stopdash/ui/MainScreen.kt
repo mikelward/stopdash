@@ -1686,7 +1686,9 @@ private fun LoadedContent(
             // rather than let the times read as verified-clean (SPEC *Disruptions*).
             // While a cold load is still checking, the stamp says so instead, so a banner doesn't
             // push the list down and back up (SPEC *Freshness → Cold load*).
-            if (state.disruptionUnknown && !state.checkingDisruptions) {
+            // Where the disruptions row shows, it says so itself, as "Unknown" (maintainer, 2026-10-05): a
+            // banner coming and going would move the list under it.
+            if (state.disruptionUnknown && !state.checkingDisruptions && disruptionsRow == null) {
                 Banner(stringResource(R.string.disruptions_unknown))
             }
             // Starred journeys still show when nothing nearby has departures: their origins can be
