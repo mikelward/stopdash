@@ -167,6 +167,7 @@ import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.PlatformDirection
 import app.stopdash.domain.RelativeTime
 import app.stopdash.domain.RouteFocus
+import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.RouteStop
 import app.stopdash.domain.RouteStops
@@ -205,6 +206,7 @@ import app.stopdash.ui.theme.LocalStarredBorderColor
 import java.time.Instant
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -4676,24 +4678,24 @@ internal fun RouteDetailScreen(
     // Every upcoming train on the followed route, not the card's first few — TfL predicts ~30 min
     // ahead, and the page has the room (SPEC *Route detail*).
     val topology = LocalRouteTopology.current
-    val departures = remember(row, focus, topology) { routeDepartures(row, focus, topology) }
-        .filterNot { Countdown.hasDeparted(it, now) }
+    // The route's trains and termini, worked out off the main thread from the row ([routeDetailWork]),
+    // each answer kept with the ask it was worked out for: a token remembered under the same keys,
+    // compared the same way, so it changes exactly when the work is asked for again (a refreshed row),
+    // and an equal row passed afresh (the trip page's copy) keeps its answer. Trains are shown only
+    // from the current ask's answer, never a refreshed-away row's (a canceled train would read as
+    // live); until it lands the countdown keeps its line, so nothing below it moves. The termini name
+    // the route, not a train, so the last answer's stand in meanwhile.
+    val routeWorker = LocalWorker.current
+    val routeAsk = remember(row, focus, topology) { Any() }
+    val routeWork by produceState<Pair<Any, RouteDetailWork>?>(null, routeAsk, routeWorker) {
+        value = routeAsk to routeDetailWork(row, focus, topology, routeWorker)
+    }
+    val workForRow = routeWork?.takeIf { it.first === routeAsk }?.second
+    val departures = workForRow?.departures.orEmpty().filterNot { Countdown.hasDeparted(it, now) }
     // The route's trains its board lists with no time, among its countdowns in their place; a
     // canceled one gone at its time, as a timed one is ([Countdown.stillShown]).
-    val untimed = remember(row, focus, topology) { routeUntimed(row, focus, topology) }
-        .filter { Countdown.stillShown(it, now) }
-    // The terminus(es) this service runs to, from its own departures — empty for a status row
-    // (no predictions), which then shows only the line and its disruption.
-    val destinations = if (!row.hasTrains) {
-        emptyList()
-    } else if (focus != null && followed != null) {
-        // A tapped route names just that route, matching the stop list below it.
-        listOfNotNull(DepartureLabels.destinationLabel(followed.destination, row.directionKey))
-    } else {
-        DepartureRows.destinationLines(row, MAX_TIMES, LocalRouteTopology.current)
-            .mapNotNull { DepartureLabels.destinationLabel(it.destination, row.directionKey) }
-            .distinct()
-    }
+    val untimed = workForRow?.untimed.orEmpty().filter { Countdown.stillShown(it, now) }
+    val destinations = routeWork?.second?.destinations.orEmpty()
     // The followed train's branch as the card labels it ("Hainault/Newbury Park"), so the title names
     // the same route the tapped row did; null where the card shows no branch (it makes no difference
     // from this stop, or the row has none).
@@ -4814,7 +4816,16 @@ internal fun RouteDetailScreen(
             // only, but across the page's full width so more fit; the ones that don't ellipsize off
             // the end, keeping the soonest. Left out while stale — the stale caveat below says why —
             // so an old prediction is never shown as live (SPEC D4).
-            if ((departures.isNotEmpty() || untimed.isNotEmpty()) && !stale) {
+            if (workForRow == null && row.hasTrains && !stale) {
+                // The row's trains are being worked out: hold the countdown's line, blank.
+                Text(
+                    text = "",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    modifier = Modifier.fillMaxWidth().padding(top = if (showFrom || service != null) 8.dp else 0.dp),
+                )
+            } else if ((departures.isNotEmpty() || untimed.isNotEmpty()) && !stale) {
                 val entries = Countdown.entries(departures, untimed)
                 // A train with no time is read aloud in full ("delayed, no estimate"), as the card's
                 // is ([CountdownLabel]).
@@ -5191,6 +5202,47 @@ private fun RowScope.DestinationLabelContent(label: String, branch: String?, mod
             }
         }
     }
+}
+
+/**
+ * What the route page shows of its row, worked out together off the main thread ([routeDetailWork]):
+ * every upcoming train on the followed route ([routeDepartures]), its trains with no time
+ * ([routeUntimed]), and the terminus or termini it runs to.
+ */
+internal data class RouteDetailWork(
+    val departures: List<Departure>,
+    val untimed: List<UntimedTrain>,
+    val destinations: List<String>,
+) {
+    companion object {
+        val NONE = RouteDetailWork(emptyList(), emptyList(), emptyList())
+    }
+}
+
+/**
+ * [RouteDetailWork] for [row] and [focus] under [topology], on [worker] (AGENTS.md *Main thread*):
+ * each part walks the row's trains, and the termini group them by destination and branch
+ * ([DepartureRows.destinationLines]). The termini are empty for a status row (no predictions), which
+ * then shows only the line and its disruption; a tapped route names just that route, matching the
+ * stop list below it.
+ */
+internal suspend fun routeDetailWork(
+    row: DepartureRow,
+    focus: RouteFocus?,
+    topology: RouteTopology,
+    worker: CoroutineDispatcher,
+): RouteDetailWork = withContext(worker) {
+    val followed = followedDeparture(row, focus, topology)
+    val destinations = if (!row.hasTrains) {
+        emptyList()
+    } else if (focus != null && followed != null) {
+        listOfNotNull(DepartureLabels.destinationLabel(followed.destination, row.directionKey))
+    } else {
+        DepartureRows.destinationLines(row, MAX_TIMES, topology)
+            .mapNotNull { DepartureLabels.destinationLabel(it.destination, row.directionKey) }
+            .distinct()
+    }
+    RouteDetailWork(routeDepartures(row, focus, topology), routeUntimed(row, focus, topology), destinations)
 }
 
 /**
