@@ -840,7 +840,10 @@ private fun SettingSwitchRow(
 @Composable
 private fun disruptionsSummary(on: Boolean, networks: Set<String>): String {
     if (!on) return stringResource(R.string.settings_disruptions_row_off)
-    val names = HomeLines.Network.of(networks).map { stringResource(networkName(it)) }
+    val chosen = HomeLines.Network.of(networks)
+    // Every one, the default, said in two words rather than five names (Concise copy).
+    if (chosen.size == HomeLines.Network.entries.size) return stringResource(R.string.settings_disruptions_row_all)
+    val names = chosen.map { stringResource(networkName(it)) }
     return if (names.isEmpty()) {
         stringResource(R.string.settings_disruptions_row_nearby)
     } else {

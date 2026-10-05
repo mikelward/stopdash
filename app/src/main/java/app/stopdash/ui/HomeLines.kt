@@ -54,8 +54,12 @@ object HomeLines {
         }
     }
 
-    /** What the row covers until the rider chooses: the tube. */
-    val DEFAULT_NETWORKS: Set<String> = setOf(Network.TUBE.key)
+    /**
+     * What the row covers until the rider chooses: every network (maintainer, 2026-10-05). Their 20 line ids
+     * ride the list's own line-status request, so this costs no request of its own unless the nearby
+     * lines push it past one batch ([app.stopdash.domain.LineStatusBatch]).
+     */
+    val DEFAULT_NETWORKS: Set<String> = Network.entries.mapTo(LinkedHashSet()) { it.key }
 
     /** The tube's lines. */
     val TUBE: List<LineRef> = Network.TUBE.lines

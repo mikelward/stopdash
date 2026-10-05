@@ -2481,7 +2481,7 @@ Builds on Phase 1's minimal line-status marking.
       line, and every line with a departure from a stop within the walking reach (500 m), under the
       favorite places' chips; "+N" for what doesn't fit, a tap opening the lines page (`HomeLines`, `HomeDisruptionsRow`).
   - [x] **Choose the networks the row always covers** (maintainer, 2026-10-05): "Always include" in
-        Settings, Tube by default, plus Overground, Elizabeth line, DLR and Tram; nearby lines always.
+        Settings: Tube, Overground, Elizabeth line, DLR and Tram, all on by default; nearby lines always.
   - [x] **A switch to turn the row off**: "Disruptions summary", second in Settings (maintainer,
         2026-10-05: narrower than "Show disruptions").
   - [x] **What's dismissed stays off the row and goes down the page** (maintainer, 2026-10-05): off the

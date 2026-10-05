@@ -77,7 +77,7 @@ class SettingsScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Tube and lines near you").assertIsDisplayed()
+        composeRule.onNodeWithText("All networks and lines near you").assertIsDisplayed()
         captureSnapshot("settings-disruptions-summary.png")
         composeRule.onNodeWithTag("disruptionsSummaryRow").performClick()
         composeRule.onNodeWithTag("disruptionsSummaryPage").assertIsDisplayed()
@@ -99,7 +99,7 @@ class SettingsScreenScreenshotTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Off").assertDoesNotExist()
-        composeRule.onNodeWithText("Tube and lines near you").assertDoesNotExist()
+        composeRule.onNodeWithText("All networks and lines near you").assertDoesNotExist()
         composeRule.onNodeWithText("–").assertIsDisplayed()
         // Nor does its page open, its controls not yet known.
         composeRule.onNodeWithTag("disruptionsSummaryRow").assertIsNotEnabled().performClick()
