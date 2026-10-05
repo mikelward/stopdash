@@ -134,7 +134,7 @@ class WidgetModelsOffMainTest {
         try {
             val ranOn = mutableSetOf<String>()
             val worker = recordingWorker(pool.asCoroutineDispatcher(), ranOn)
-            val first = WidgetDrawing(
+            val first = DeparturesDrawing(
                 runBlocking { widgetModels(snapshot, now, emptySet(), 1f, RouteTopology.EMPTY, emptySet(), listOf(portrait)) },
                 now,
                 1f,
@@ -142,7 +142,7 @@ class WidgetModelsOffMainTest {
             )
             val drawnFor = mutableListOf<Long>()
             val later = now.plusSeconds(60)
-            val draw: suspend (Long) -> WidgetDrawing = { generation ->
+            val draw: suspend (Long) -> DeparturesDrawing = { generation ->
                 drawnFor += generation
                 first.copy(now = later, generation = generation)
             }
@@ -154,7 +154,7 @@ class WidgetModelsOffMainTest {
             val again = runBlocking { redrawn(first, 4, portrait, worker, draw) }
             assertEquals(listOf(4L), drawnFor)
             assertEquals(4L, again.generation)
-            assertEquals(later, again.now)
+            assertEquals(later, (again as DeparturesDrawing).now)
             assertEquals(setOf("test-worker"), ranOn)
         } finally {
             pool.shutdown()

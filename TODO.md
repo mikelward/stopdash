@@ -2830,6 +2830,11 @@ and these carry the rest as their own PRs:
         lacked them from a nearby set that dropped them.
       - [ ] **Boundary redraws Android defers** — if the log shows them running long after due, an
         inexact `AlarmManager` alarm allowed while idle may hold the time better than WorkManager.
+      - [x] **The trip on the widget** (maintainer, 2026-10-05): while On the way follows a trip,
+        the widget shows the departures at the next change, and the next step above them where
+        there's room, from the summary
+        the watch is sent, redrawn each update. Needs a device check that it updates with the
+        app closed and goes back to the departures when the trip ends.
       - [ ] **Let the rider choose what the widget leads with** (maintainer, 2026-10-05: "might be
         intentional to prefer tube or let the user choose"): today it mirrors the near-me list;
         a mode preference (tube first, say) is the candidate, after the bugs above.

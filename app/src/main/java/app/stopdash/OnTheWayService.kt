@@ -54,8 +54,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  * Follows a trip on the way with the app closed (SPEC *On the way*): a foreground service whose
  * ongoing notification is the trip's next step, refreshed from the tracker every
  * [ON_THE_WAY_REFRESH] until the rider arrives or ends the trip, when it stops itself. Started by the
- * activity (on Start, or on opening with a trip kept), never from the background. Held back from
- * merging until the maintainer's Play foreground-service declaration.
+ * activity (on Start, or on opening with a trip kept), never from the background.
  */
 class OnTheWayService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
