@@ -1936,7 +1936,7 @@ private fun RouteList(
                                 // shuffled sideways for the first few seconds. Measured by the trip screen before the
                                 // list shows ([cardPillWidths]).
                                 val columnPx = pillWidths[cardKey(card.first().route)]
-                                RideStops(card, rideLines, shown.statuses, shown.closures, shown.times, now, shown.walk, columnPx?.let { with(density) { it.toDp() } })
+                                RideStops(card, rideLines, shown.statuses, shown.rideClosures, shown.times, now, shown.walk, columnPx?.let { with(density) { it.toDp() } })
                             }
                         }
                         if (onHideMode != null) {
@@ -2269,8 +2269,8 @@ private fun RideStops(
     card: List<TripTiming.Estimate>,
     rideLines: Map<TripLeg, RideLines>,
     statuses: Map<String, LineStatus>,
-    // The route's stops with a notice in force ([routeClosures]): a ride's ⚠ carries its own.
-    closures: Map<String, DepartureRow>,
+    // Each ride's stop notices, worked out with the card ([TripCardView.rideClosures]): its ⚠ carries them.
+    rideClosures: List<List<DepartureRow>>,
     times: CardTimes,
     now: Instant,
     walk: Duration,
@@ -2331,7 +2331,7 @@ private fun RideStops(
                 // A disrupted line's ⚠ just before the times, as on the main screen's rows (maintainer,
                 // 2026-09-28), so the stops line up down the card; for a cut pill, any of its lines.
                 // And a closure or moved stop where the ride boards or gets off, each by its stop.
-                val stopNotices = cardClosures(card, index, closures, rideLines).map { closure ->
+                val stopNotices = rideClosures.getOrNull(index).orEmpty().map { closure ->
                     val notice = cleanDisruptionBody(closure.stopDisruption.orEmpty(), stopName = closure.stopName, hubName = closure.hubName, aliases = closure.placeAliases)
                     stringResource(R.string.trip_line_status, closure.hubName.ifBlank { closure.stopName }, notice)
                 }
@@ -2874,8 +2874,9 @@ internal fun rideClosures(
  * The closure notices a [card]'s ride [index] carries in its ⚠: every route's on the card
  * ([rideClosures]), and every other line a ride shows ([rideLines]), since the lines sharing a card
  * go between the same stop pairs but each may use its own pole. Each stop once, and each notice
- * once at a place, as the list folds them.
+ * once at a place, as the list folds them. Worked out with the card's frame ([TripCardView.rideClosures]).
  */
+@WorkerThread
 internal fun cardClosures(
     card: List<TripTiming.Estimate>,
     index: Int,

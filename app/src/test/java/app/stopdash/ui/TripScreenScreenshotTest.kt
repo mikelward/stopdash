@@ -2650,6 +2650,34 @@ class TripScreenScreenshotTest {
         captureSnapshot("trip-route-closure.png")
     }
 
+    @Test
+    fun a_cards_ride_notices_are_worked_out_with_its_frame_never_in_composition() {
+        // Each ride's stop notices come with the card's frame ([TripCardView.rideClosures]), worked
+        // out on the page's worker: held shut, no card and no ⚠; released, the card comes with its ⚠.
+        val running = planned.copy(
+            statuses = planned.statuses + ("elizabeth" to LineStatus("elizabeth", LineStatus.GOOD_SERVICE, "Good Service")),
+            closures = planned.closures + (canaryWharfXr.first to listOf(StopDisruption("Canary Wharf Station: Station closed due to a power failure"))),
+        )
+        val threads = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        val worker = threads.asCoroutineDispatcher()
+        val gate = CountDownLatch(1)
+        threads.execute { gate.await() }
+        val notice = "Canary Wharf: Station closed due to a power failure"
+        try {
+            show(running, worker = worker)
+            composeRule.onAllNodesWithContentDescription(notice, useUnmergedTree = true).assertCountEquals(0)
+            gate.countDown()
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.onAllNodesWithText("28 min · ~08:30").fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithContentDescription(notice, useUnmergedTree = true).assertExists()
+        } finally {
+            // Opened whatever happened, so a failed check can't leave the worker's thread waiting.
+            gate.countDown()
+            worker.close()
+        }
+    }
+
     // A note other than "checking" holds a moment before it's drawn ([NOTE_SETTLE_MILLIS]).
     private fun settleNote() {
         composeRule.mainClock.advanceTimeBy(NOTE_SETTLE_MILLIS)
