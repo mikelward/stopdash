@@ -9,7 +9,6 @@ import app.stopdash.domain.CachingTflClient
 import app.stopdash.domain.RailAwareTflClient
 import android.content.Context
 import androidx.glance.appwidget.GlanceAppWidgetManager
-import androidx.glance.appwidget.updateAll
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
@@ -292,7 +291,7 @@ internal object StoredSnapshotRefresh {
             if (last.answers(prior, keys?.tfl, Instant.now())) {
                 // Still re-render, as a refresh with nothing fresh does, so the widget ages honestly.
                 try {
-                    StopDashWidget().updateAll(context)
+                    redrawWidgets(context)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -505,7 +504,7 @@ internal suspend fun refreshStoredSnapshot(
                         placeWidgetAlerts(context, answered.orEmpty(), asked)
                     }
                     // Nothing fresh: re-render so the unchanged snapshot ages honestly.
-                    WidgetRefresh.Outcome.Unchanged -> StopDashWidget().updateAll(context)
+                    WidgetRefresh.Outcome.Unchanged -> redrawWidgets(context)
                 }
             }
         } finally {

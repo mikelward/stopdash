@@ -3,6 +3,7 @@ package app.stopdash.widget
 import android.content.Context
 import android.os.SystemClock
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,6 +29,7 @@ import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
+import androidx.glance.appwidget.updateAll
 import androidx.glance.background
 import androidx.glance.color.ColorProvider as DayNightColor
 import androidx.glance.layout.Alignment
@@ -99,6 +101,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 
 /**
  * The home-screen (and, where Android 16 QPR allows, lock-screen) widget. It renders the
@@ -120,6 +123,29 @@ class StopDashWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
+        val first = drawing(context, id, WidgetRedraws.generation.value)
+        provideContent {
+            // Glance keeps a session open for a while after drawing, and an update that comes while
+            // it's open only recomposes, without running provideGlance again: a tap's "Refreshing…",
+            // or the data it fetched, would go unseen (maintainer bug report, 2026-10-05). So each
+            // redraw ([redrawWidgets]) bumps the generation, and an open session draws again for it.
+            // A size the launcher reports later (a resize while this session is open) draws the
+            // minimum size's model, which fits any cell, until its own is worked out on the worker.
+            var drawn by remember { mutableStateOf(first) }
+            val generation by WidgetRedraws.generation.collectAsState()
+            val size = LocalSize.current
+            LaunchedEffect(generation, size) {
+                drawn = redrawn(drawn, generation, size) { drawing(context, id, it) }
+            }
+            WidgetContent(drawn.models[size], drawn.now, drawn.fontScale)
+        }
+    }
+
+    /**
+     * What to draw, read and worked out for [generation] off the render path: the stores read on
+     * their own dispatchers, the models on a worker ([widgetModels]).
+     */
+    private suspend fun drawing(context: Context, id: GlanceId, generation: Long): WidgetDrawing {
         // Off the render path: read the persisted snapshot before composing. A read failure
         // degrades to the empty state (open-the-app prompt) rather than crashing the host —
         // but cancellation is rethrown (never swallowed, which would break structured
@@ -241,14 +267,7 @@ class StopDashWidget : GlanceAppWidget() {
             ?.takeIf { it.isPositive() }
         val within = listOfNotNull(NEARBY_SET_RETRY.takeIf { nearbyUnreadable }, tapExpiry, guessExpiry).minOrNull()
         scheduleStalenessRedrawFor(context, shown, now, within = within)
-        provideContent {
-            // A size the launcher reports later (a resize while this session is open) draws the
-            // minimum size's model, which fits any cell, until its own is worked out on the worker.
-            var current by remember { mutableStateOf(models) }
-            val size = LocalSize.current
-            LaunchedEffect(size) { current = current.including(size) }
-            WidgetContent(current[size], now, fontScale)
-        }
+        return WidgetDrawing(models, now, fontScale, generation)
     }
 
     override suspend fun onDelete(context: Context, glanceId: GlanceId) {
@@ -1532,3 +1551,48 @@ internal val WIDGET_MIN_SIZE by lazy { DpSize(WIDGET_MIN_WIDTH, WIDGET_MIN_HEIGH
  * that crowds the destination out of the fixed-width row.
  */
 private const val WIDGET_MAX_TIMES = 3
+
+/** What a widget session draws: the models for each size, the time they're for, and for which redraw. */
+internal data class WidgetDrawing(
+    val models: WidgetModels,
+    val now: Instant,
+    val fontScale: Float,
+    val generation: Long,
+) {
+    suspend fun including(size: DpSize): WidgetDrawing {
+        val more = models.including(size)
+        return if (more === models) this else copy(models = more)
+    }
+}
+
+/**
+ * Counts the widget's redraws in this process ([redrawWidgets]), so a session Glance kept open
+ * draws again for each: Glance's own update only recomposes an open session.
+ */
+internal object WidgetRedraws {
+    val generation = kotlinx.coroutines.flow.MutableStateFlow(0L)
+}
+
+/**
+ * Redraws every placed widget with what's stored now, whether or not Glance has its session open.
+ * Every redraw goes through here, never [androidx.glance.appwidget.updateAll] alone.
+ */
+internal suspend fun redrawWidgets(context: Context) {
+    WidgetRedraws.generation.update { it + 1 }
+    StopDashWidget().updateAll(context)
+}
+
+/**
+ * [drawn] brought up to [generation] at [size]: drawn again with [draw] where it's for an earlier
+ * redraw, then with [size]'s model added. On [worker], never the session's own thread.
+ */
+internal suspend fun redrawn(
+    drawn: WidgetDrawing,
+    generation: Long,
+    size: DpSize,
+    worker: CoroutineDispatcher = Dispatchers.Default,
+    draw: suspend (Long) -> WidgetDrawing,
+): WidgetDrawing = withContext(worker) {
+    val current = if (drawn.generation == generation) drawn else draw(generation)
+    current.including(size)
+}

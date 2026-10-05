@@ -2,7 +2,6 @@ package app.stopdash.widget
 
 import android.content.Context
 import app.stopdash.StopdashDebugLog
-import androidx.glance.appwidget.updateAll
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -167,7 +166,7 @@ class WidgetStalenessWorker(appContext: Context, params: WorkerParameters) :
             val due = inputData.getLong(DUE_KEY, 0L)
             if (due > 0L) StopdashDebugLog.info("widget: redraw ran %d s after due", (System.currentTimeMillis() - due) / 1000)
             try {
-                StopDashWidget().updateAll(applicationContext)
+                redrawWidgets(applicationContext)
             } finally {
                 runningStalenessSlot = null
             }

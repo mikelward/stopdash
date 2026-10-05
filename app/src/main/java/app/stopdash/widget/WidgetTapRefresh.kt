@@ -5,7 +5,6 @@ import android.os.SystemClock
 import androidx.glance.GlanceId
 import androidx.glance.action.ActionParameters
 import androidx.glance.appwidget.action.ActionCallback
-import androidx.glance.appwidget.updateAll
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -159,7 +158,7 @@ class RefreshWidgetAction : ActionCallback {
 internal suspend fun requestWidgetRefresh(
     context: Context,
     worker: CoroutineDispatcher = Dispatchers.Default,
-    redraw: suspend (Context) -> Unit = { StopDashWidget().updateAll(it) },
+    redraw: suspend (Context) -> Unit = { redrawWidgets(it) },
 ) = withContext(worker) {
     WidgetTapRefresh.started(SystemClock.elapsedRealtime())
     try {
@@ -208,7 +207,7 @@ class WidgetTapRefreshWorker(appContext: Context, params: WorkerParameters) : Co
         }
         WidgetTapRefresh.finished(outcome, snapshotAt, covered)
         try {
-            StopDashWidget().updateAll(applicationContext)
+            redrawWidgets(applicationContext)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

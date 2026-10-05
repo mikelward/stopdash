@@ -1,7 +1,6 @@
 package app.stopdash.widget
 
 import android.content.Context
-import androidx.glance.appwidget.updateAll
 import app.stopdash.data.DataStoreAlertsBehindStore
 import app.stopdash.data.DataStoreDismissedAlertsStore
 import kotlinx.coroutines.CancellationException
@@ -35,11 +34,11 @@ object WidgetDismissalRedraw {
         val appContext = context.applicationContext
         val store = DataStoreDismissedAlertsStore.from(appContext, warn = ::logWidgetSnapshotWarning)
         scope.launch(Dispatchers.IO) {
-            redrawOnChange({ store.dismissals() }) { StopDashWidget().updateAll(appContext) }
+            redrawOnChange({ store.dismissals() }) { redrawWidgets(appContext) }
         }
         val behind = DataStoreAlertsBehindStore.from(appContext, warn = ::logWidgetSnapshotWarning)
         scope.launch(Dispatchers.IO) {
-            redrawOnChange({ behind.verdicts() }) { StopDashWidget().updateAll(appContext) }
+            redrawOnChange({ behind.verdicts() }) { redrawWidgets(appContext) }
         }
     }
 
