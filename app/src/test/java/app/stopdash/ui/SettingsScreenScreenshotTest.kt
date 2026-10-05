@@ -61,12 +61,12 @@ class SettingsScreenScreenshotTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithText("Settings").assertIsDisplayed()
-        composeRule.onNodeWithText("Refresh widget every minute").assertIsDisplayed()
+        composeRule.onNodeWithText("Refresh widget every minute").performScrollTo().assertIsDisplayed()
         captureSnapshot("settings-off.png")
     }
 
     @Test
-    fun the_disruptions_summary_switch_comes_second_and_turns_the_row_off() {
+    fun the_disruptions_summary_comes_second_and_its_page_turns_the_row_off() {
         val chosen = mutableListOf<Boolean>()
         composeRule.setContent {
             StopDashTheme {
@@ -77,10 +77,75 @@ class SettingsScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Disruptions summary").assertIsDisplayed()
+        composeRule.onNodeWithText("Tube and lines near you").assertIsDisplayed()
         captureSnapshot("settings-disruptions-summary.png")
+        composeRule.onNodeWithTag("disruptionsSummaryRow").performClick()
+        composeRule.onNodeWithTag("disruptionsSummaryPage").assertIsDisplayed()
+        // Settings itself is gone from under it, so nothing hidden can be reached.
+        composeRule.onNodeWithTag("disruptionsSummaryRow").assertDoesNotExist()
         composeRule.onNodeWithTag("disruptionsRowSwitch").performClick()
         org.junit.Assert.assertEquals(listOf(false), chosen)
+    }
+
+    @Test
+    fun the_disruptions_summary_says_nothing_until_its_choices_are_read() {
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(
+                    liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {},
+                    showDisruptionsRow = true, showDisruptionsRowLoaded = false,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Off").assertDoesNotExist()
+        composeRule.onNodeWithText("Tube and lines near you").assertDoesNotExist()
+        composeRule.onNodeWithText("–").assertIsDisplayed()
+        // Nor does its page open, its controls not yet known.
+        composeRule.onNodeWithTag("disruptionsSummaryRow").assertIsNotEnabled().performClick()
+        composeRule.onNodeWithTag("disruptionsSummaryPage").assertDoesNotExist()
+    }
+
+    @Test
+    fun a_restored_disruptions_page_shows_no_controls_until_its_choices_are_read() {
+        var loaded by mutableStateOf(false)
+        composeRule.setContent {
+            StopDashTheme {
+                DisruptionsSummaryPage(
+                    show = true, onShowChange = {}, showLoaded = loaded, showWriteFailed = false, onDismissShowError = {},
+                    networks = setOf("tube"), onNetworksChange = {}, networksLoaded = loaded, networksWriteFailed = false,
+                    onDismissNetworksError = {}, onBack = {},
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("disruptionsSummaryPage").assertIsDisplayed()
+        composeRule.onNodeWithTag("disruptionsRowSwitch").assertDoesNotExist()
+        composeRule.onNodeWithTag("summaryNetwork-tube").assertDoesNotExist()
+        loaded = true
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("disruptionsRowSwitch").assertIsOn()
+        composeRule.onNodeWithTag("summaryNetwork-tube").assertIsSelected()
+    }
+
+    @Test
+    fun the_summary_always_includes_the_chosen_networks() {
+        val chosen = mutableListOf<Set<String>>()
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(
+                    liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {},
+                    summaryNetworks = setOf("tube"), onSummaryNetworksChange = { chosen += it },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("disruptionsSummaryRow").performClick()
+        composeRule.onNodeWithText("Always include").assertIsDisplayed()
+        captureSnapshot("settings-summary-networks.png")
+        composeRule.onNodeWithTag("summaryNetwork-overground").performScrollTo().performClick()
+        composeRule.onNodeWithTag("summaryNetwork-tube").performScrollTo().performClick()
+        org.junit.Assert.assertEquals(listOf(setOf("tube", "overground"), emptySet<String>()), chosen)
     }
 
     @Test
@@ -238,7 +303,7 @@ class SettingsScreenScreenshotTest {
         }
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("Refresh widget every minute").performClick()
+        composeRule.onNodeWithText("Refresh widget every minute").performScrollTo().performClick()
         composeRule.runOnIdle { assert(latest == true) }
     }
 

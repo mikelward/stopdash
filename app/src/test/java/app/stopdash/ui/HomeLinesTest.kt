@@ -23,7 +23,7 @@ class HomeLinesTest {
     )
 
     private val good = HomeLines.TUBE_IDS.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") }
-    private fun tube(statuses: Map<String, LineStatus> = good, at: Instant = now) = HomeLines.Tube(statuses, at)
+    private fun tube(statuses: Map<String, LineStatus> = good, at: Instant = now) = HomeLines.Always(statuses, at)
     private val severe = LineStatus("73", 6, "Severe Delays", fullText = "Roadworks")
 
     @Test
@@ -70,6 +70,22 @@ class HomeLinesTest {
         val unnamed = HomeLines.row(blank, mapOf("near" to 50.0), tube(), emptySet(), now)
         assertTrue(unnamed.unknown)
         assertEquals(emptyList<String>(), unnamed.unknownLines.map { it.lineId })
+    }
+
+    @Test
+    fun `the chosen networks are always covered, the nearby lines whatever's chosen`() {
+        val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now, determinedLineIds = setOf("73"))
+        val asked = HomeLines.idsOf(setOf("overground"))
+        val checked = HomeLines.Always(asked.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") }, now)
+        val ids = HomeLines.row(loaded, mapOf("near" to 50.0), checked, emptySet(), now, networks = setOf("overground")).every.map { it.leg.lineId }
+        assertEquals(asked + "73", ids.toSet())
+        // None chosen: the nearby lines alone.
+        assertEquals(listOf("73"), HomeLines.row(loaded, mapOf("near" to 50.0), null, emptySet(), now, networks = emptySet()).every.map { it.leg.lineId })
+        // One just chosen that no check has asked about yet is being checked, not unchecked.
+        val tubeOnly = HomeLines.Always(good, now, askedFor = HomeLines.TUBE_IDS)
+        val justChosen = HomeLines.row(loaded, mapOf("near" to 50.0), tubeOnly, emptySet(), now, networks = setOf("tube", "dlr"))
+        assertTrue(justChosen.every.single { it.leg.lineId == "dlr" }.checking)
+        assertFalse(justChosen.unknown)
     }
 
     @Test
@@ -142,7 +158,7 @@ class HomeLinesTest {
         val loaded = DeparturesUiState.Loaded(
             listOf(stop("near", "73" to "bus")), now, statusPending = true, disruptionUnknown = true, pendingLineIds = setOf("73"),
         )
-        val row = HomeLines.row(loaded, mapOf("near" to 50.0), tube = null, emptySet(), now)
+        val row = HomeLines.row(loaded, mapOf("near" to 50.0), always = null, emptySet(), now)
         assertTrue(row.checking)
         assertFalse(row.unknown)
         assertTrue(row.every.all { it.checking })

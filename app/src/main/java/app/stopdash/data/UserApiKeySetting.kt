@@ -4,10 +4,11 @@ import app.stopdash.domain.AppSettings
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.DistanceUnits
 import app.stopdash.domain.MaxWalk
+import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.StepFree
 import app.stopdash.domain.TripModes
 import app.stopdash.domain.WalkingSpeed
-import app.stopdash.domain.ModeGroups
+import app.stopdash.ui.HomeLines
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -19,6 +20,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -535,8 +537,46 @@ object DisruptionsRowSetting {
     /** Whether the stored choice has been read. */
     val isLoaded: StateFlow<Boolean> get() = holder.isLoaded
 
+    /** The choice once the stored one has been read (see [StoredSettingHolder.loaded]). */
+    suspend fun loaded(): Boolean = holder.loaded()
+
     /** The user turned the row on or off: applied at once, persisted in order. */
     fun set(shown: Boolean) = holder.set(shown)
+
+    /** True while the latest choice failed to save; Settings says so. */
+    val writeFailed: StateFlow<Boolean> get() = holder.writeFailed
+
+    /** Settings has told the user a choice didn't save. */
+    fun writeFailureShown() = holder.writeFailureShown()
+}
+
+/**
+ * The networks the home screen's disruptions row always covers (maintainer, 2026-10-05), by
+ * [HomeLines.Network] key, held and persisted as [DisruptionsRowSetting] is. The tube until chosen.
+ */
+object SummaryNetworksSetting {
+    private val holder = StoredSettingHolder(
+        CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        initial = HomeLines.DEFAULT_NETWORKS,
+        read = { settings -> settings.summaryNetworks().map { it ?: HomeLines.DEFAULT_NETWORKS } },
+        write = { settings, networks -> settings.setSummaryNetworks(networks) },
+        label = "summary networks",
+    )
+
+    /** The chosen networks' keys, for the row, the list's status request and the Settings chips. */
+    val changes: StateFlow<Set<String>> get() = holder.changes
+
+    /** Begins reading the stored choice. Idempotent. */
+    fun warm(appSettings: AppSettings) = holder.warm(appSettings)
+
+    /** Whether the stored choice has been read. */
+    val isLoaded: StateFlow<Boolean> get() = holder.isLoaded
+
+    /** The choice once the stored one has been read (see [StoredSettingHolder.loaded]). */
+    suspend fun loaded(): Set<String> = holder.loaded()
+
+    /** The rider chose [networks]: applied at once, persisted in order. */
+    fun set(networks: Set<String>) = holder.set(networks)
 
     /** True while the latest choice failed to save; Settings says so. */
     val writeFailed: StateFlow<Boolean> get() = holder.writeFailed

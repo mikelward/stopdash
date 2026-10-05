@@ -279,7 +279,7 @@ class MainScreenScreenshotTest {
         // Half the tube in trouble as well as the list's own District and Elizabeth line: more pills
         // than fit, so the last are counted (maintainer, 2026-10-05).
         val troubled = setOf("central", "jubilee", "northern", "piccadilly", "victoria", "bakerloo")
-        val tube = HomeLines.Tube(
+        val always = HomeLines.Always(
             HomeLines.TUBE_IDS.associateWith {
                 if (it in troubled) LineStatus(it, 6, "Severe Delays", fullText = "Signal failure") else LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service")
             },
@@ -296,7 +296,7 @@ class MainScreenScreenshotTest {
                 {},
                 favoritePlaces = places,
                 showDisruptionsRow = true,
-                tube = tube,
+                always = always,
             )
         }
         // Heard whole, every disrupted line named, whatever fits on the line.
@@ -319,7 +319,7 @@ class MainScreenScreenshotTest {
                 now,
                 {},
                 showDisruptionsRow = true,
-                tube = HomeLines.Tube(HomeLines.TUBE_IDS.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") }, now.minusSeconds(60)),
+                always = HomeLines.Always(HomeLines.TUBE_IDS.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") }, now.minusSeconds(60)),
             )
         }
         composeRule.onNodeWithText("Couldn't check for disruptions").assertDoesNotExist()

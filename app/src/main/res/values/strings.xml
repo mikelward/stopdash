@@ -432,7 +432,19 @@
     <string name="starred_journey_remove_description">Remove %1$s to %2$s</string>
     <!-- Settings switch for the home screen's one-line disruptions row. -->
     <string name="settings_disruptions_row_title">Disruptions summary</string>
-    <string name="settings_disruptions_row_summary">One row on the home screen for the tube and lines near you</string>
+    <string name="settings_disruptions_row_summary">One row of line status above the list</string>
+    <string name="settings_disruptions_row_show">Show on home screen</string>
+    <string name="settings_disruptions_row_off">Off</string>
+    <string name="settings_disruptions_row_covers">%1$s and lines near you</string>
+    <string name="settings_disruptions_row_nearby">Lines near you</string>
+    <!-- Under the Disruptions summary switch: the networks it always covers, one chip each. -->
+    <string name="settings_summary_networks_title">Always include</string>
+    <string name="settings_summary_networks_summary">Lines near you are always included</string>
+    <string name="network_tube">Tube</string>
+    <string name="network_overground">Overground</string>
+    <string name="network_elizabeth">Elizabeth line</string>
+    <string name="network_dlr">DLR</string>
+    <string name="network_tram">Tram</string>
     <string name="settings_disruptions_row_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
     <!-- Settings' list of the modes and lines hidden from the near-me list, shown only while
          something is; each has a Show action that brings just that one back. -->

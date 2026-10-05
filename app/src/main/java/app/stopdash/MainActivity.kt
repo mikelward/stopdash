@@ -97,6 +97,7 @@ import app.stopdash.data.SharedTflRateLimiter
 import app.stopdash.data.SharedTflRequestPool
 import app.stopdash.data.StationIndexStore
 import app.stopdash.data.StepFreeSetting
+import app.stopdash.data.SummaryNetworksSetting
 import app.stopdash.data.StepFreeStore
 import app.stopdash.data.TripModesSetting
 import app.stopdash.data.UserApiKeySetting
@@ -800,6 +801,9 @@ class MainActivity : ComponentActivity() {
                 val showDisruptionsRow by DisruptionsRowSetting.changes.collectAsStateWithLifecycle()
                 val showDisruptionsRowLoaded by DisruptionsRowSetting.isLoaded.collectAsStateWithLifecycle()
                 val showDisruptionsRowWriteFailed by DisruptionsRowSetting.writeFailed.collectAsStateWithLifecycle()
+                val summaryNetworks by SummaryNetworksSetting.changes.collectAsStateWithLifecycle()
+                val summaryNetworksLoaded by SummaryNetworksSetting.isLoaded.collectAsStateWithLifecycle()
+                val summaryNetworksWriteFailed by SummaryNetworksSetting.writeFailed.collectAsStateWithLifecycle()
                 val walkingSpeed by WalkingSpeedSetting.changes.collectAsStateWithLifecycle()
                 val walkingSpeedLoaded by WalkingSpeedSetting.isLoaded.collectAsStateWithLifecycle()
                 val walkingSpeedWriteFailed by WalkingSpeedSetting.writeFailed.collectAsStateWithLifecycle()
@@ -1289,6 +1293,11 @@ class MainActivity : ComponentActivity() {
                                     showDisruptionsRowLoaded = showDisruptionsRowLoaded,
                                     showDisruptionsRowWriteFailed = showDisruptionsRowWriteFailed,
                                     onDismissShowDisruptionsRowError = DisruptionsRowSetting::writeFailureShown,
+                                    summaryNetworks = summaryNetworks,
+                                    onSummaryNetworksChange = SummaryNetworksSetting::set,
+                                    summaryNetworksLoaded = summaryNetworksLoaded,
+                                    summaryNetworksWriteFailed = summaryNetworksWriteFailed,
+                                    onDismissSummaryNetworksError = SummaryNetworksSetting::writeFailureShown,
                                     walkingSpeed = walkingSpeed,
                                     onWalkingSpeedChange = WalkingSpeedSetting::set,
                                     walkingSpeedLoaded = walkingSpeedLoaded,
@@ -1915,6 +1924,9 @@ class MainActivity : ComponentActivity() {
                             disruptionReuse = DISRUPTION_REUSE,
                             disruptionCache = StopClosureCache.SHARED,
                             hubNames = HubInfoCache.SHARED,
+                            // The networks the disruptions row always covers, asked about with the list's own lines.
+                            // None while the row is off: nothing shows them, so they're not asked about (Codex, #592).
+                            alwaysNetworks = { if (DisruptionsRowSetting.loaded()) SummaryNetworksSetting.loaded() else emptySet() },
                             lineStatusReuse = LINE_STATUS_REUSE,
                             // Stops past the walking reach refresh every other minute on the timer.
                             stopDistanceMeters = ready.distanceMeters,
@@ -2216,12 +2228,15 @@ class MainActivity : ComponentActivity() {
                     pendingTracker = shownTracker,
                     listWork = shownWork,
                     state = shownState,
-                    // The lines near here and the tube, under the place chips (maintainer, 2026-10-05),
-                    // unless turned off in Settings; not before the choice is read, so one turned off
-                    // never flashes up.
+                    // The lines near here and the chosen networks', under the place chips (maintainer,
+                    // 2026-10-05), unless turned off in Settings; not before both choices are read, so one
+                    // turned off never flashes up, nor the tube in place of the networks chosen (Codex, #592).
                     showDisruptionsRow = DisruptionsRowSetting.isLoaded.collectAsStateWithLifecycle().value &&
+                        SummaryNetworksSetting.isLoaded.collectAsStateWithLifecycle().value &&
                         DisruptionsRowSetting.changes.collectAsStateWithLifecycle().value,
-                    tube = viewModel.tube.collectAsStateWithLifecycle().value,
+                    always = viewModel.always.collectAsStateWithLifecycle().value,
+                    // The keys alone: expanded to lines on the row's worker (Codex, #592).
+                    alwaysNetworks = SummaryNetworksSetting.changes.collectAsStateWithLifecycle().value,
                     now = tickingNow(),
                     // Re-locates then re-fetches (see onRelocate above) — the same action a return
                     // to the foreground runs, so the refresh control and reopening the app both move
@@ -3220,6 +3235,8 @@ class MainActivity : ComponentActivity() {
                         disruptionReuse = DISRUPTION_REUSE,
                         disruptionCache = StopClosureCache.SHARED,
                         hubNames = HubInfoCache.SHARED,
+                        // No disruptions row here, so no lines asked about for one.
+                        alwaysNetworks = { emptySet() },
                         lineStatusReuse = LINE_STATUS_REUSE,
                         rateWaitMillis = { SharedTflRateLimiter.waitedMillis },
                         logStats = ::logDepartureWarning,
@@ -4410,6 +4427,8 @@ private fun fartherCardModel(
     disruptionReuse = DISRUPTION_REUSE,
     disruptionCache = StopClosureCache.SHARED,
     hubNames = HubInfoCache.SHARED,
+    // No disruptions row here, so no lines asked about for one.
+    alwaysNetworks = { emptySet() },
     lineStatusReuse = LINE_STATUS_REUSE,
     rateWaitMillis = { SharedTflRateLimiter.waitedMillis },
     logStats = ::logDepartureWarning,

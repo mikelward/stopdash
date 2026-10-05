@@ -120,6 +120,15 @@ interface AppSettings {
     /** Set [showDisruptionsRow]. Suspending, off the main thread; best-effort. */
     suspend fun setShowDisruptionsRow(shown: Boolean) {}
 
+    /**
+     * The networks the disruptions row always covers, by key (maintainer, 2026-10-05), on top of the
+     * lines near the rider; null until chosen, read as the default (the tube).
+     */
+    fun summaryNetworks(): Flow<Set<String>?> = flowOf(null)
+
+    /** Set [summaryNetworks]. Suspending, off the main thread; best-effort. */
+    suspend fun setSummaryNetworks(networks: Set<String>) {}
+
     /** How fast the rider walks, for a trip's walks ([WalkingSpeed]); the Planner's average until chosen. */
     fun walkingSpeed(): Flow<WalkingSpeed> = flowOf(WalkingSpeed.AVERAGE)
 

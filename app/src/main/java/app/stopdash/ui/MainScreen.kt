@@ -327,7 +327,9 @@ fun MainScreen(
     // The home screen's disruptions row ([HomeLines]), at the very top (maintainer, 2026-10-05): shown
     // when true, with the tube's lines as the list's checks found them ([tube]).
     showDisruptionsRow: Boolean = false,
-    tube: HomeLines.Tube? = null,
+    always: HomeLines.Always? = null,
+    // The lines the row always covers, the networks the rider chose ([HomeLines.Network]).
+    alwaysNetworks: Set<String> = HomeLines.DEFAULT_NETWORKS,
     // True while a dismiss write has failed and not yet been surfaced (SPEC principle 2): same
     // snackbar seam as [starWriteFailed], so a dismiss tap that didn't persist isn't swallowed
     // silently. Acknowledged state; the screen calls [onDismissWriteFailureShown] to clear it.
@@ -663,8 +665,8 @@ fun MainScreen(
     // (a moment's old row over a "Checking…" that blinks); "Checking…" until the first is in.
     val homeWork = remember { mutableStateOf<Worked<HomeInputs, TripRow>?>(null) }
     val disruptionsRow = if (showDisruptionsRow) {
-        rememberWorked(homeWork, HomeInputs(loaded, stopDistanceMeters, tube, dismissed, now, refreshing), keep = { _, _ -> true }) {
-            HomeLines.row(loaded, stopDistanceMeters, tube, dismissed, now, refreshing)
+        rememberWorked(homeWork, HomeInputs(loaded, stopDistanceMeters, always, alwaysNetworks, dismissed, now, refreshing), keep = { _, _ -> true }) {
+            HomeLines.row(loaded, stopDistanceMeters, always, dismissed, now, refreshing, alwaysNetworks)
         } ?: TripRow.CHECKING
     } else {
         null
@@ -5523,7 +5525,8 @@ internal fun mergeJourneyOrigins(refs: List<StopRef>): List<StopRef> =
 private data class HomeInputs(
     val loaded: DeparturesUiState.Loaded?,
     val distances: Map<String, Double>,
-    val tube: HomeLines.Tube?,
+    val always: HomeLines.Always?,
+    val alwaysNetworks: Set<String>,
     val dismissed: Set<DismissedAlert>,
     val now: Instant,
     val refreshing: Boolean,

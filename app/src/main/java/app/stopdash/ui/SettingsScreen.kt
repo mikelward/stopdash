@@ -2,11 +2,14 @@ package app.stopdash.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -32,6 +36,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -134,6 +139,13 @@ fun SettingsScreen(
     showDisruptionsRowLoaded: Boolean = true,
     showDisruptionsRowWriteFailed: Boolean = false,
     onDismissShowDisruptionsRowError: () -> Unit = {},
+    // The networks the row always covers, on top of the lines near the rider ([HomeLines.Network]; the
+    // tube by default), handled as [showDisruptionsRow] is.
+    summaryNetworks: Set<String> = HomeLines.DEFAULT_NETWORKS,
+    onSummaryNetworksChange: (Set<String>) -> Unit = {},
+    summaryNetworksLoaded: Boolean = true,
+    summaryNetworksWriteFailed: Boolean = false,
+    onDismissSummaryNetworksError: () -> Unit = {},
     // The modes and lines hidden from the near-me list (SPEC *Finding stops → Hiding a mode*), listed
     // while any are, each with a Show that brings back just that one ([onShowHidden]).
     hiddenModes: Set<String> = emptySet(),
@@ -157,7 +169,14 @@ fun SettingsScreen(
     // can be picked, since the report's screenshot is of this screen and a revealed key would be
     // in it in plain text (Codex on #377). A credential is never one of the report's disclosures.
     var menuOpens by remember { mutableIntStateOf(0) }
+    // The disruptions summary's own page, over this one; its Back returns here.
+    var disruptionsOpen by rememberSaveable { mutableStateOf(false) }
     BackHandler(onBack = onBack)
+    Box(modifier = Modifier.fillMaxSize()) {
+    // Off the screen while the page is open, so neither TalkBack nor a keyboard reaches the covered
+    // controls (Codex, #592); its state (the scroll, a key being typed) kept for its return.
+    val saved = rememberSaveableStateHolder()
+    if (!disruptionsOpen) saved.SaveableStateProvider("settings") {
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
             // Title with a Back button at the end, matching the licenses screen.
@@ -201,19 +220,29 @@ fun SettingsScreen(
                     testTag = "favoritePlacesRow",
                 )
                 // The home screen's disruptions row, second (maintainer, 2026-10-05): like the places, it
-                // decides what the home screen leads with.
-                SettingSwitchRow(
+                // decides what the home screen leads with. Its settings are its own page, so none reads as
+                // the app's at large (maintainer, 2026-10-05).
+                SettingNavRow(
                     title = stringResource(R.string.settings_disruptions_row_title),
-                    summary = stringResource(R.string.settings_disruptions_row_summary),
-                    checked = showDisruptionsRow,
-                    onCheckedChange = onShowDisruptionsRowChange,
-                    enabled = showDisruptionsRowLoaded,
-                    switchTestTag = "disruptionsRowSwitch",
+                    // Until both stored choices are read, neither "Off" nor a default that may not be the rider's
+                    // (Codex, #592): a dash, as the trip pickers show.
+                    summary = if (showDisruptionsRowLoaded && summaryNetworksLoaded) {
+                        disruptionsSummary(showDisruptionsRow, summaryNetworks)
+                    } else {
+                        "–"
+                    },
+                    onClick = { disruptionsOpen = true },
+                    testTag = "disruptionsSummaryRow",
+                    // Its page opens once both are read, so its controls never jump as they land (Codex, #592).
+                    enabled = showDisruptionsRowLoaded && summaryNetworksLoaded,
                 )
-                if (showDisruptionsRowWriteFailed) {
+                if (showDisruptionsRowWriteFailed || summaryNetworksWriteFailed) {
                     SettingErrorRow(
                         text = stringResource(R.string.settings_disruptions_row_write_failed),
-                        onDismiss = onDismissShowDisruptionsRowError,
+                        onDismiss = {
+                            onDismissShowDisruptionsRowError()
+                            onDismissSummaryNetworksError()
+                        },
                     )
                 }
                 // The starred journeys, third, after the disruptions switch
@@ -367,6 +396,23 @@ fun SettingsScreen(
             }
         }
     }
+    }
+    if (disruptionsOpen) {
+        DisruptionsSummaryPage(
+            show = showDisruptionsRow,
+            onShowChange = onShowDisruptionsRowChange,
+            showLoaded = showDisruptionsRowLoaded,
+            showWriteFailed = showDisruptionsRowWriteFailed,
+            onDismissShowError = onDismissShowDisruptionsRowError,
+            networks = summaryNetworks,
+            onNetworksChange = onSummaryNetworksChange,
+            networksLoaded = summaryNetworksLoaded,
+            networksWriteFailed = summaryNetworksWriteFailed,
+            onDismissNetworksError = onDismissSummaryNetworksError,
+            onBack = { disruptionsOpen = false },
+        )
+    }
+    }
 }
 
 /**
@@ -515,11 +561,11 @@ private fun ApiKeyRow(
  * fewer-larger-targets discipline). Used for the favorite-places editor (SPEC D9).
  */
 @Composable
-private fun SettingNavRow(title: String, summary: String, onClick: () -> Unit, testTag: String? = null) {
+private fun SettingNavRow(title: String, summary: String, onClick: () -> Unit, testTag: String? = null, enabled: Boolean = true) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -788,4 +834,126 @@ private fun SettingSwitchRow(
             modifier = if (switchTestTag != null) Modifier.testTag(switchTestTag) else Modifier,
         )
     }
+}
+
+/** The disruptions row's line in Settings: off, or what it covers ("Tube and lines near you"). */
+@Composable
+private fun disruptionsSummary(on: Boolean, networks: Set<String>): String {
+    if (!on) return stringResource(R.string.settings_disruptions_row_off)
+    val names = HomeLines.Network.of(networks).map { stringResource(networkName(it)) }
+    return if (names.isEmpty()) {
+        stringResource(R.string.settings_disruptions_row_nearby)
+    } else {
+        stringResource(R.string.settings_disruptions_row_covers, names.joinToString(", "))
+    }
+}
+
+/**
+ * The disruptions summary's own page (maintainer, 2026-10-05: its settings control only the row, so
+ * they sit under it, not at the top level): the switch that shows the row, then, while it shows, the
+ * networks it always covers ([SummaryNetworksRow]). Back returns to Settings.
+ */
+@Composable
+internal fun DisruptionsSummaryPage(
+    show: Boolean,
+    onShowChange: (Boolean) -> Unit,
+    showLoaded: Boolean,
+    showWriteFailed: Boolean,
+    onDismissShowError: () -> Unit,
+    networks: Set<String>,
+    onNetworksChange: (Set<String>) -> Unit,
+    networksLoaded: Boolean,
+    networksWriteFailed: Boolean,
+    onDismissNetworksError: () -> Unit,
+    onBack: () -> Unit,
+) {
+    BackHandler(onBack = onBack)
+    Surface(modifier = Modifier.fillMaxSize().testTag("disruptionsSummaryPage")) {
+        Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+            // Title with a Back button at the end, as Settings' own.
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_disruptions_row_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = onBack) { Text(stringResource(R.string.action_back)) }
+            }
+            // Its controls only once both choices are read: a page restored after process death opens
+            // before they are, and would otherwise show the defaults, then jump (Codex, #592).
+            if (!showLoaded || !networksLoaded) return@Column
+            val scrollState = rememberScrollState()
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .scrollEdgeCue(scrollState, scrollCueColors(MaterialTheme.colorScheme.surface))
+                    .verticalScroll(scrollState),
+            ) {
+                SettingSwitchRow(
+                    title = stringResource(R.string.settings_disruptions_row_show),
+                    summary = stringResource(R.string.settings_disruptions_row_summary),
+                    checked = show,
+                    onCheckedChange = onShowChange,
+                    enabled = showLoaded,
+                    switchTestTag = "disruptionsRowSwitch",
+                )
+                if (showWriteFailed) {
+                    SettingErrorRow(
+                        text = stringResource(R.string.settings_disruptions_row_write_failed),
+                        onDismiss = onDismissShowError,
+                    )
+                }
+                // Which networks it always covers: only while the row shows, as it says nothing otherwise.
+                if (show) SummaryNetworksRow(networks, onNetworksChange, enabled = networksLoaded)
+                if (networksWriteFailed) {
+                    SettingErrorRow(
+                        text = stringResource(R.string.settings_disruptions_row_write_failed),
+                        onDismiss = onDismissNetworksError,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The networks the disruptions summary always covers ([HomeLines.Network]), one chip each, selected
+ * while covered; a tap turns one on or off. The lines near the rider are covered whatever's chosen, so
+ * none chosen is fine. Until the stored choice is read ([enabled] false) none shows selected.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SummaryNetworksRow(selected: Set<String>, onChange: (Set<String>) -> Unit, enabled: Boolean) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).testTag("summaryNetworks")) {
+        Text(stringResource(R.string.settings_summary_networks_title), style = MaterialTheme.typography.bodyLarge)
+        Text(
+            stringResource(R.string.settings_summary_networks_summary),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+            HomeLines.Network.entries.forEach { network ->
+                val on = network.key in selected
+                FilterChip(
+                    selected = enabled && on,
+                    onClick = { onChange(if (on) selected - network.key else selected + network.key) },
+                    label = { Text(stringResource(networkName(network)), maxLines = 1) },
+                    enabled = enabled,
+                    modifier = Modifier.testTag("summaryNetwork-${network.key}"),
+                )
+            }
+        }
+    }
+}
+
+private fun networkName(network: HomeLines.Network): Int = when (network) {
+    HomeLines.Network.TUBE -> R.string.network_tube
+    HomeLines.Network.OVERGROUND -> R.string.network_overground
+    HomeLines.Network.ELIZABETH -> R.string.network_elizabeth
+    HomeLines.Network.DLR -> R.string.network_dlr
+    HomeLines.Network.TRAM -> R.string.network_tram
 }

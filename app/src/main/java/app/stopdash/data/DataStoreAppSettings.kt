@@ -132,6 +132,13 @@ class DataStoreAppSettings internal constructor(
         dataStore.updateData { (it ?: PersistedSettings()).copy(showDisruptionsRow = shown) }
     }
 
+    override fun summaryNetworks(): Flow<Set<String>?> =
+        persisted().map { it?.summaryNetworks }
+
+    override suspend fun setSummaryNetworks(networks: Set<String>) {
+        dataStore.updateData { (it ?: PersistedSettings()).copy(summaryNetworks = networks) }
+    }
+
     override fun distanceUnits(): Flow<DistanceUnits> =
         persisted().map { DistanceUnits.fromStored(it?.distanceUnits) }
 
@@ -282,6 +289,8 @@ data class PersistedSettings(
     val distanceUnits: String? = null,
     // Whether the home screen shows its disruptions row; null (an older file) for the default, shown.
     val showDisruptionsRow: Boolean? = null,
+    // The networks the disruptions row always covers, by key; null (never chosen) for the default.
+    val summaryNetworks: Set<String>? = null,
     // The walking-speed choice by enum name, or null for the Planner's average; a string for the same
     // reason as [distanceUnits].
     val walkingSpeed: String? = null,
