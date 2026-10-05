@@ -123,6 +123,21 @@ class HomeLinesTest {
     }
 
     @Test
+    fun `back from the background, the tube's old check reads checking while the refresh runs, not couldn't check`() {
+        val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now, determinedLineIds = setOf("73"))
+        val old = tube(at = now.minus(Duration.ofMinutes(10)))
+        val refreshing = HomeLines.row(loaded, mapOf("near" to 50.0), old, emptySet(), now, refreshing = true)
+        assertTrue(row(refreshing, "victoria").checking)
+        assertFalse(refreshing.unknown)
+        // Once it's done without a newer check, it couldn't be checked.
+        assertTrue(row(HomeLines.row(loaded, mapOf("near" to 50.0), old, emptySet(), now), "victoria").unknown)
+        // A current check stands while a refresh runs.
+        assertFalse(row(HomeLines.row(loaded, mapOf("near" to 50.0), tube(), emptySet(), now, refreshing = true), "victoria").checking)
+    }
+
+    private fun row(row: TripRow, id: String) = row.every.single { it.leg.lineId == id }
+
+    @Test
     fun `while the first load checks, its lines and the tube say checking`() {
         val loaded = DeparturesUiState.Loaded(
             listOf(stop("near", "73" to "bus")), now, statusPending = true, disruptionUnknown = true, pendingLineIds = setOf("73"),
