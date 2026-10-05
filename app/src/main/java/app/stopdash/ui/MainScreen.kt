@@ -146,6 +146,7 @@ import app.stopdash.domain.DepartureLabels
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DestinationAbbreviations
+import app.stopdash.domain.DestinationGroup
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.EmptyTimes
 import app.stopdash.domain.FartherBuses
@@ -3918,9 +3919,43 @@ private fun JourneyHeader(
     }
 }
 
+/**
+ * A stop's card as [StopGroupCard] draws it: its [group], and each of its rows' route rows ([lines],
+ * in row order; none for a status row), worked out together on the worker ([stopCard]).
+ */
+class StopCard(val group: StopGroup, val lines: List<List<DestinationGroup>>)
+
+/**
+ * [group] as its card draws it: each row's trains grouped by destination and branch under [topology]
+ * ([DepartureRows.destinationLines]). Walks every row's trains, so on the worker with the group
+ * itself, never in composition (AGENTS.md *Main thread*).
+ */
+@WorkerThread
+internal fun stopCard(group: StopGroup, topology: RouteTopology): StopCard =
+    StopCard(group, group.rows.map { row -> if (row.hasTrains) DepartureRows.destinationLines(row, MAX_TIMES, topology) else emptyList() })
+
+/**
+ * [StopGroupCard] for a [group] whose card isn't worked out off the main thread yet: the main list and
+ * its journey cards, until their groups are (TODO.md). Works the card out here.
+ */
 @Composable
 internal fun StopGroupCard(
     group: StopGroup,
+    now: Instant,
+    starred: Set<StarredRow>,
+    onToggleStar: (DepartureRow) -> Unit,
+    starringAvailable: Boolean,
+    onOpenDetail: ((DepartureRow, RouteFocus?) -> Unit)?,
+    onOpenSettings: () -> Unit = {},
+    onHideMode: ((String) -> Unit)? = null,
+) = StopGroupCard(
+    stopCard(group, LocalRouteTopology.current), now, starred, onToggleStar, starringAvailable, onOpenDetail, onOpenSettings, onHideMode,
+)
+
+@Composable
+internal fun StopGroupCard(
+    // The stop's group and its rows' route rows, worked out on the worker ([stopCard]).
+    card: StopCard,
     now: Instant,
     starred: Set<StarredRow>,
     onToggleStar: (DepartureRow) -> Unit,
@@ -3936,18 +3971,18 @@ internal fun StopGroupCard(
     // its line runs. Null counts down.
     timesInstead: (@Composable (DepartureRow) -> Unit)? = null,
 ) {
+    val group = card.group
     // Cap the line pill at half the card's inner width, so a long name at a large font scale
     // ellipsizes rather than consuming the card and starving the countdown, which must stay one line
     // (SPEC D8). Inner width ≈ screen minus the list's 16dp side padding and the row's 16dp padding.
     val cardInnerWidth = LocalConfiguration.current.screenWidthDp.dp - 64.dp
     val pillModifier = Modifier.widthIn(max = cardInnerWidth * 0.5f)
-    val topology = LocalRouteTopology.current
     OutlinedCard(modifier = Modifier.fillMaxWidth()) {
         // The card is a traversal group; each interior route row is its own sub-group (below) so its
         // ⚠ precedes its own countdown, not the next row's (SPEC principle 2).
         Column(modifier = Modifier.semantics { isTraversalGroup = true }) {
             var firstRow = true
-            group.rows.forEach { row ->
+            group.rows.forEachIndexed { rowIndex, row ->
                 val stale = Staleness.isStale(row.fetchedAt, now)
                 val isStarred = StarredRow.of(row) in starred
                 if (!row.hasTrains) {
@@ -4045,7 +4080,7 @@ internal fun StopGroupCard(
                                 ),
                         )
                     }
-                    return@forEach
+                    return@forEachIndexed
                 }
                 // Rows with trains: grouped by destination *and branch* (the shared `destinationLines`,
                 // so the widget can't drift), each destination its own route row with its own merged
@@ -4053,7 +4088,7 @@ internal fun StopGroupCard(
                 // D8). A branching row (Northern to Morden and to Battersea) shows its pill on each.
                 // A row whose every train has no time ("Cancelled") isn't starrable: no train to rank.
                 val starrable = starringAvailable && row.stopDisruption == null && row.upcoming.isNotEmpty()
-                val destinationLines = DepartureRows.destinationLines(row, MAX_TIMES, topology)
+                val destinationLines = card.lines[rowIndex]
                 destinationLines.forEach { group2 ->
                     if (!firstRow) RouteDivider()
                     firstRow = false

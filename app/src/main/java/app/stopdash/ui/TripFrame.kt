@@ -8,6 +8,7 @@ import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.RideLines
 import app.stopdash.domain.RouteMiss
+import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.TripLeg
 import app.stopdash.domain.TripTiming
@@ -117,6 +118,8 @@ internal fun tripFrame(
     // The order the last frame drew its cards in ([CardOrder]): the same order comes back as that very
     // object, so the screen tells a re-sort apart by identity.
     previousOrder: CardOrder? = null,
+    // How an open ride's stop cards group a branching line's trains ([stopCard]).
+    topology: RouteTopology = RouteTopology.EMPTY,
 ): TripFrame {
     val timed = tripEstimates(state, now, access, sequences, excluded, originUnconfirmed, rideLines, keep = openKey, planned = plannedLegs)
     // Those whose trains through a change are predicted ([TripTiming.withoutUnvouchedLegs]).
@@ -139,7 +142,7 @@ internal fun tripFrame(
     val hubOf: (String) -> String? = { routeStops?.hubOf(it) }
     // The list even with a route open: closed again, the list shows at once from the frame in hand.
     val list = cards?.let { listView(it, state, now, access, sequences, rideLines, dismissed, loading, hubOf, openRoutesOf(it.flatten().map { e -> e.route }, poled, sequences, excluded), previousOrder) }
-    val openView = open?.let { openView(it, state, now, sequences, rideLines, dismissed, loading, originUnconfirmed, hubOf) }
+    val openView = open?.let { openView(it, state, now, sequences, rideLines, dismissed, loading, originUnconfirmed, hubOf, topology) }
     return TripFrame(tripKey, state, now, access, sequences, rideLines, estimates, cards, open, openKey, shownStops, list, openView)
 }
 
@@ -187,13 +190,14 @@ private fun openView(
     loading: Set<String>,
     originUnconfirmed: Boolean,
     hubOf: (String) -> String?,
+    topology: RouteTopology,
 ): TripOpenView {
     return TripOpenView(
         // With a route open, only its own legs' warnings frame it.
         framing = framing(listOf(estimate), state, now, sequences, rideLines),
         closures = routeClosures(estimate.route, state, now, dismissed, sequences, rideLines, hubOf),
         statuses = shownStatuses(cardStatuses(listOf(estimate), rideLines, state, now, sequences), dismissed),
-        rides = openRides(estimate.route.legs, state, now, sequences, rideLines, dismissed),
+        rides = openRides(estimate.route.legs, state, now, sequences, rideLines, dismissed, topology),
     )
 }
 
@@ -208,10 +212,11 @@ private fun openRides(
     sequences: Map<String, LineSequence?>,
     rideLines: Map<TripLeg, RideLines>,
     dismissed: Set<DismissedAlert>,
+    topology: RouteTopology,
 ): List<RideLegView?> {
     val nextRide = legs.indexOfFirst { !it.isWalk }
     return legs.mapIndexed { index, leg ->
-        if (leg.isWalk) null else rideLegView(rideLines[leg] ?: RideLines.only(leg), state, now, sequences, dismissed, countsDown = index == nextRide)
+        if (leg.isWalk) null else rideLegView(rideLines[leg] ?: RideLines.only(leg), state, now, sequences, dismissed, countsDown = index == nextRide, topology = topology)
     }
 }
 

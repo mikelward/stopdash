@@ -3727,6 +3727,9 @@ class TripViewModelTest {
         val next = rideLegView(lines, state, now, sequences, emptySet(), countsDown = true)
         assertEquals(null, next.headways)
         assertEquals(listOf("red"), next.groups.flatMap { group -> group.rows.map { it.lineId } }.distinct())
+        // Each group's route rows come with it, worked out with the view.
+        assertEquals(next.groups, next.cards.map { it.group })
+        assertTrue(next.cards.flatMap { it.lines }.flatten().isNotEmpty())
         assertEquals(listOf(green), next.placed.values.flatten())
         // A later ride says how often each of its lines runs instead.
         val later = rideLegView(lines, state, now, sequences, emptySet(), countsDown = false)

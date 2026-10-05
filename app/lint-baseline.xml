@@ -14,13 +14,13 @@
 
     <issue
         id="WorkerThreadCall"
-        message="`DepartureRows.destinationLines` is marked @WorkerThread but called on the main thread, in composable `StopGroupCard`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="                val destinationLines = DepartureRows.destinationLines(row, MAX_TIMES, topology)"
-        errorLine2="                                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        message="`MainScreenKt.stopCard` is marked @WorkerThread but called on the main thread, in composable `StopGroupCard`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
+        errorLine1="    stopCard(group, LocalRouteTopology.current), now, starred, onToggleStar, starringAvailable, onOpenDetail, onOpenSettings, onHideMode,"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4025"
-            column="40"/>
+            line="3952"
+            column="5"/>
     </issue>
 
 </issues>

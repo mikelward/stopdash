@@ -21,6 +21,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertSame
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -70,6 +72,11 @@ class NextTrainsOffMainTest {
         // The rows go with them, drawn as the board draws them.
         assertEquals(1, timeline.at(now).groups.size)
         assertTrue(timeline.at(at(5)).groups.isEmpty())
+        // And each card's route rows with them, so the card draws them rather than work them out.
+        val shown = timeline.at(now)
+        assertEquals(shown.groups, shown.cards.map { it.group })
+        assertEquals(listOf(listOf(listOf(at(3), at(5)))), shown.cards.map { card -> card.lines.map { row -> row.flatMap { line -> line.times.map { it.expectedArrival } } } })
+        assertEquals(shown.cards.map { it.lines }, timeline.entry(0)?.cards?.map { it.lines })
     }
 
     @Test
@@ -175,6 +182,39 @@ class NextTrainsOffMainTest {
         settle(scheduler)
         assertEquals(listOf(at(7)), times(next!!))
         assertEquals(at(7), next!!.nextDue)
+    }
+
+    @Test
+    fun a_new_route_topology_works_the_board_s_cards_out_again() {
+        // The topology is replaced once its patterns load (MainActivity): the same board's cards are
+        // grouped again under it, on the worker, never left under the one they were first worked out
+        // with (Codex, #588).
+        val scheduler = TestCoroutineScheduler()
+        val held = StandardTestDispatcher(scheduler)
+        val repository = RouteStopsRepository(
+            object : RouteSequenceSource {
+                override suspend fun routeSequence(lineId: String, direction: String) = routes.getValue(lineId)!!
+            },
+        )
+        val shown = board(train(3), train(5))
+        var topology by mutableStateOf(app.stopdash.domain.RouteTopology.EMPTY)
+        var next: NextTrains? = null
+        composeRule.setContent {
+            CompositionLocalProvider(LocalWorker provides held, LocalRouteStops provides repository, LocalRouteTopology provides topology) {
+                next = rememberNextTrains(shown, now, ride = ride)
+            }
+        }
+        composeRule.waitForIdle()
+        settle(scheduler)
+        val first = next!!.cards
+        assertTrue(first.isNotEmpty())
+        topology = app.stopdash.domain.RouteTopology(emptyMap())
+        composeRule.waitForIdle()
+        // The last rows stand in while the worker groups them again.
+        assertSame(first, next!!.cards)
+        settle(scheduler)
+        assertNotSame(first, next!!.cards)
+        assertEquals(listOf(at(3), at(5)), times(next!!))
     }
 
     @Test
