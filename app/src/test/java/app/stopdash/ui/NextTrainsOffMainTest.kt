@@ -8,6 +8,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
+import app.stopdash.domain.OffPlan
 import app.stopdash.domain.RouteSequenceSource
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.StopLocation
@@ -69,6 +70,47 @@ class NextTrainsOffMainTest {
         // The rows go with them, drawn as the board draws them.
         assertEquals(1, timeline.at(now).groups.size)
         assertTrue(timeline.at(at(5)).groups.isEmpty())
+    }
+
+    @Test
+    fun a_branch_off_the_ride_is_listed_apart_and_its_trains_drop_off_as_they_depart() {
+        // The red line forks after B: on to C, the ride's way, or to Y (maintainer, 2026-10-05).
+        val forked = LineSequence(
+            listOf(LineRoute("A ↔ C", listOf("A", "B", "C")), LineRoute("A ↔ Y", listOf("A", "B", "Y"))),
+            mapOf("A" to "A", "B" to "B", "C" to "C", "Y" to "Y"),
+        )
+        val toY = train(2).copy(destination = "Y", vehicleId = "EXAMPLE2")
+        val board = ActiveTripTracker.NextBoard(ride.copy(path = listOf("B", "C")), listOf(train(5), toY), fetchedAt = now)
+        val timeline = trainsTimeline(board, mapOf("red" to forked), now)
+        assertEquals(listOf(at(5)), times(timeline.at(now)))
+        val off = timeline.at(now).offPlan.single()
+        assertEquals("Y", off.heading)
+        assertEquals("B", off.branch.forkName)
+        assertEquals(listOf(at(2)), off.trains.map { it.expectedArrival })
+        // Its train gone, the branch is still there to take: TfL's labels can be wrong.
+        assertTrue(timeline.at(at(2)).offPlan.single().trains.isEmpty())
+    }
+
+    @Test
+    fun the_rides_own_line_is_loaded_with_none_of_its_trains_listed() {
+        // TfL lists none of the ride's line's trains: its route still finds the branches off it (Codex, #583).
+        assertEquals(listOf("blue", "red"), nextBoardLineIds(ride, listOf(train(3, "blue"))))
+        assertEquals(listOf("red"), nextBoardLineIds(ride, emptyList()))
+        assertEquals(listOf("red"), nextBoardLineIds(ride, listOf(train(3))))
+        // A bus has no branches to find.
+        assertEquals(emptyList<String>(), nextBoardLineIds(ride.copy(mode = "bus"), emptyList()))
+    }
+
+    @Test
+    fun off_plan_rows_are_a_bounded_few_and_count_as_trains_listed() {
+        // A line with many branches off the ride: the card lists the nearest few, no more.
+        val many = (1..10).map { i -> OffPlan.Branch("Y$i", forkIndex = 0, forkName = "B") }
+        val rows = offPlanRows(ride, many)
+        assertEquals(MAX_OFF_PLAN_ROWS, rows.size)
+        assertEquals("Y1", rows.first().heading)
+        // Only branches off the plan listed is still something listed: a failed refresh keeps showing them.
+        assertFalse(NextTrains(ride, emptyList(), failed = true, offPlan = rows).none)
+        assertTrue(NextTrains(ride, emptyList(), failed = true).none)
     }
 
     @Test

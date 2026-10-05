@@ -7,6 +7,7 @@ import app.stopdash.domain.Workers
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LocationFix
+import app.stopdash.domain.OffPlan
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RideLines
@@ -548,6 +549,48 @@ class ActiveTripTracker(
             val boards = HashMap<TripLeg, Result<NextBoard>>()
             if (step(null, boards)) step(null, boards)
             // What's ahead changed with the step: a stop now behind the rider is no longer theirs to reach.
+            checkDisruptions(boards)
+        }
+    }
+
+    /**
+     * The rider takes [branch] for [ride], a way that leaves the plan ([OffPlan], maintainer 2026-10-05):
+     * **Take this one** on the board. The trip is rerouted ([OffPlan.take]): a ride to where the branch
+     * turns off, then a change there onto the rest of the ride, followed as any route is. Saved before
+     * it's made, as [goTo] is: a move that can't be kept isn't made, and says so. Nothing moves when the
+     * trip has moved past [ride] meanwhile.
+     */
+    suspend fun take(ride: TripLeg, branch: OffPlan.Branch) = withContext(compute) {
+        lock.withLock {
+            val before = _trip.value ?: return@withLock
+            if (_progress.value == TripProgress.Arrived) return@withLock
+            val index = before.route.legs.indexOf(ride).takeIf { it >= before.legIndex } ?: return@withLock
+            val now = clock()
+            // A "get off soon" said for the train the ride was on names a stop that's no longer theirs: it's
+            // taken back once the reroute is saved, as a step moved past it is ([goTo]; Codex, #583).
+            val taken = OffPlan.take(before, index, branch, now)?.let { at ->
+                at.copy(alertLeft = before.warnedLeg == before.legIndex && at.warnedLeg != before.warnedLeg)
+            } ?: return@withLock
+            unsaved = true
+            val saved = withContext(io) { save(taken) }
+            unsaved = !saved
+            _notKept.value = !saved
+            if (!saved) return@withLock
+            if (taken.alertLeft) {
+                onGetOffSoonDone()
+                unsaved = true
+            }
+            // The rides' directions are kept by leg, which the split has moved: learned again.
+            rideDirections.clear()
+            _trip.value = taken.copy(alertLeft = false)
+            // The rerouted ride has no answer of its own yet: the last one's isn't passed off as its.
+            _updatedAt.value = null
+            _progress.value = standing(taken, now)
+            settleBoard()
+            val boards = HashMap<TripLeg, Result<NextBoard>>()
+            // A walk to the ride already past its time moves on to it in the first step, and the second
+            // picks its train, as [goTo] does (Codex, #583).
+            if (step(null, boards)) step(null, boards)
             checkDisruptions(boards)
         }
     }

@@ -110,7 +110,7 @@ data class LineSequence(
 
 // "St Pancras International" and "St Pancras International LL" are one station; "King's Cross" is
 // not. Either name may carry the qualifier, as TfL's ids don't say which one is the main.
-private fun sameStation(rawA: String, rawB: String): Boolean {
+internal fun sameStation(rawA: String, rawB: String): Boolean {
     // By the matching form, so a line qualifier on one spelling doesn't part them ([matchStopName]);
     // two that name different lines do: Hammersmith's two stations share an interchange
     // ([conflictingQualifiers]).

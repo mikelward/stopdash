@@ -36,6 +36,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -46,6 +47,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -72,12 +74,14 @@ import app.stopdash.domain.StopDistance
 import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RouteDisruption
 import app.stopdash.RouteDisruptionAlert
+import app.stopdash.domain.DepartureLabels
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopGrouping
 import app.stopdash.domain.StopGroup
 import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.DestinationAbbreviations
+import app.stopdash.domain.OffPlan
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.cleanStopName
 import app.stopdash.domain.TripLeg
@@ -137,6 +141,9 @@ internal fun OnTheWayScreen(
     // The coming stations' other notices ([ActiveTripTracker.stationNotes]): a lift or an escalator out,
     // an exit shut. Shown, never alerted (maintainer, 2026-10-04); worked out off the main thread.
     notes: List<RouteDisruption.StationNote> = emptyList(),
+    // The rider reroutes onto a branch on the board that leaves the plan ([ActiveTripTracker.take], maintainer
+    // 2026-10-05). Null offers none.
+    onTake: ((TripLeg, OffPlan.Branch) -> Unit)? = null,
 ) {
     BackHandler(onBack = onBack)
     val destination = trip?.destinationName
@@ -222,7 +229,7 @@ internal fun OnTheWayScreen(
             item(key = "next") {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     NextStep(destination, eta?.takeIf { !stale }, progress, now, current)
-                    if (nextTrains != null && trip != null) NextTrainsSection(nextTrains, now)
+                    if (nextTrains != null && trip != null) NextTrainsSection(nextTrains, now, onTake)
                 }
             }
             if (trip != null) {
@@ -367,10 +374,51 @@ data class NextTrains(
     // [trains] and [others] as the board draws them, a header per pole ([nextTrainsGroups]): worked out
     // with them on the worker, so the section only draws them.
     val groups: List<StopGroup> = emptyList(),
+    // The board's trains that leave the plan ([OffPlan], maintainer 2026-10-05), a row per heading,
+    // worked out on the worker with the rest: grayed under the plan's own, each one the rider can take.
+    val offPlan: List<OffPlanRow> = emptyList(),
 ) {
-    /** Whether no pole has a train listed: the board's own ([trains]) nor any of [others]. */
-    val none: Boolean get() = trains.isEmpty() && others.all { it.trains.isEmpty() }
+    /**
+     * Whether no pole has a train listed: the board's own ([trains]) nor any of [others], nor any that
+     * leaves the plan ([offPlan]), which a failed refresh keeps showing as it keeps the rest (Codex, #583).
+     */
+    val none: Boolean get() = trains.isEmpty() && others.all { it.trains.isEmpty() } && offPlan.isEmpty()
 }
+
+/**
+ * A branch that leaves the plan ([OffPlan.Branch]) as the board lists it: "(Bank)", grayed, as it isn't
+ * the plan's (maintainer, 2026-10-05), with the next few [trains] TfL lists for it (none where TfL
+ * lists none, or labels them otherwise). [key] tells the row apart across boards, so one opened stays
+ * open as times come and go.
+ */
+data class OffPlanRow(
+    val key: String,
+    val lineId: String,
+    val lineName: String,
+    val mode: String,
+    val heading: String,
+    val branch: OffPlan.Branch,
+    val trains: List<Departure>,
+)
+
+/**
+ * [branches] of [ride] as rows, nearest fork first: the first [MAX_OFF_PLAN_ROWS], so the card composes
+ * a bounded few (Codex, #583), each with its next [MAX_OFF_PLAN_TIMES] trains.
+ */
+@WorkerThread
+internal fun offPlanRows(ride: TripLeg, branches: List<OffPlan.Branch>): List<OffPlanRow> =
+    branches.take(MAX_OFF_PLAN_ROWS).map { branch ->
+        OffPlanRow(
+            "${branch.forkIndex}|${branch.label}", ride.lineId, ride.lineName, ride.mode, branch.label, branch,
+            branch.trains.take(MAX_OFF_PLAN_TIMES),
+        )
+    }
+
+// As many branches as the card lists: a branching line's few, never a whole board.
+internal const val MAX_OFF_PLAN_ROWS = 4
+
+// As many times as a board's row shows.
+private const val MAX_OFF_PLAN_TIMES = 3
 
 /**
  * A pole of the boarding stop pair besides the ride's own ([NextTrains.others]): its trains that take
@@ -411,7 +459,7 @@ internal fun rememberNextTrains(
             return@LaunchedEffect
         }
         if (lineIds.board === read) return@LaunchedEffect
-        lineIds = BoardLines(read, withContext(worker) { OnTheWay.boardLineIds(read.ride, read.boards.values.flatten()) })
+        lineIds = BoardLines(read, withContext(worker) { nextBoardLineIds(read.ride, read.boards.values.flatten()) })
     }
     val loads = rememberLineLoads(lineIds.ids, now)
     val sequences = loads.sequences
@@ -503,7 +551,19 @@ private class BoardKey(val board: ActiveTripTracker.NextBoard) {
     override fun hashCode(): Int = System.identityHashCode(board)
 }
 
-// The line ids read off [board]'s departures ([OnTheWay.boardLineIds]); none before the first board.
+/**
+ * The lines whose routes a board of [ride] needs: those read off its [departures] ([OnTheWay.boardLineIds]),
+ * and the ride's own line, whose route finds the branches off it ([OffPlan.branches]) even when TfL lists
+ * none of its trains (Codex, #583). Not a bus's, which has none.
+ */
+@WorkerThread
+internal fun nextBoardLineIds(ride: TripLeg, departures: List<Departure>): List<String> {
+    val listed = OnTheWay.boardLineIds(ride, departures)
+    if (ride.isBus || ride.isWalk || ride.lineId.isBlank() || ride.lineId in listed) return listed
+    return (listed + ride.lineId).sorted()
+}
+
+// The line ids a board needs ([nextBoardLineIds]); none before the first board.
 private class BoardLines(val board: ActiveTripTracker.NextBoard?, val ids: List<String>)
 
 // What a board's trains are worked out from: the board by identity (a new one each read), so the key
@@ -577,8 +637,14 @@ internal fun trainsTimeline(board: ActiveTripTracker.NextBoard, sequences: Map<S
     val others = board.others.map { other ->
         other to OnTheWay.placeTrains(otherRide(board, other), other.departures, fetchedAt, sequences, at)
     }
-    val instants = (listOf(at) + own.changes + others.flatMap { it.second.changes }).filter { !it.isBefore(at) }.distinct().sorted()
-    val entries = instants.map { instant -> nextTrainsAt(board, own.trainsAt(instant), others.map { (other, placed) -> other to placed.trainsAt(instant) }) }
+    // The ride's own pole's trains that leave the plan, placed once and dropped as each leaves.
+    val offPlan = OffPlan.branches(board.ride, board.departures, sequences, at)
+    val instants = (listOf(at) + own.changes + others.flatMap { it.second.changes } + offPlan.flatMap { branch -> branch.trains.map { it.expectedArrival } })
+        .filter { !it.isBefore(at) }.distinct().sorted()
+    val entries = instants.map { instant ->
+        nextTrainsAt(board, own.trainsAt(instant), others.map { (other, placed) -> other to placed.trainsAt(instant) })
+            .copy(offPlan = offPlanRows(board.ride, offPlan.map { branch -> branch.copy(trains = branch.trains.filter { !Countdown.hasDeparted(it, instant) }) }))
+    }
     // Misses are reported once per board, so only the first instant's are gathered.
     return TrainsTimeline(instants, entries, own.missesAt(at) + others.flatMap { it.second.missesAt(at) }).around(0)
 }
@@ -693,7 +759,12 @@ internal fun nextDueOf(board: ActiveTripTracker.NextBoard, sequences: Map<String
  * and announces no action.
  */
 @Composable
-private fun NextTrainsSection(next: NextTrains, now: Instant) {
+private fun NextTrainsSection(
+    next: NextTrains,
+    now: Instant,
+    // The rider takes a train that leaves the plan ([OffPlanCard]); null offers none.
+    onTake: ((TripLeg, OffPlan.Branch) -> Unit)? = null,
+) {
     val groups = next.groups
     Column(Modifier.fillMaxWidth().testTag("onTheWayTrains"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         // A failed update is said whatever else shows: the rows may be the last good board's.
@@ -715,12 +786,96 @@ private fun NextTrainsSection(next: NextTrains, now: Instant) {
                 grayBefore = next.readyAt,
             )
         }
+        // The trains that leave the plan, under the plan's own (maintainer, 2026-10-05).
+        if (next.offPlan.isNotEmpty()) OffPlanCard(next.offPlan, next.ride, now, onTake)
         // What the rows may be missing, said rather than left to be taken as the whole answer.
         when {
             next.pending && groups.isEmpty() -> NoteText(stringResource(R.string.on_the_way_trains_loading))
             next.pending -> NoteText(stringResource(R.string.on_the_way_trains_checking))
             next.unresolved -> NoteText(stringResource(R.string.on_the_way_trains_unchecked))
             groups.isEmpty() -> NoteText(stringResource(R.string.on_the_way_trains_none, next.ride.toName))
+        }
+    }
+}
+
+/**
+ * The branches that leave the plan ([NextTrains.offPlan]): a row per branch, its pill, its name in
+ * brackets and any times TfL lists for it, all gray, as none is the plan's (maintainer, 2026-10-05). A
+ * tap opens **Take this one** under the row, with where the rider would change, so a stray tap changes
+ * nothing; taking it reroutes the trip that way ([OffPlan.take]).
+ */
+@Composable
+private fun OffPlanCard(
+    rows: List<OffPlanRow>,
+    ride: TripLeg,
+    now: Instant,
+    onTake: ((TripLeg, OffPlan.Branch) -> Unit)?,
+) {
+    // The row opened, by its key: it stays open as its times come and go, and closes once it's gone.
+    var open by rememberSaveable { mutableStateOf<String?>(null) }
+    val gray = MaterialTheme.colorScheme.outline
+    val takeLabel = stringResource(R.string.on_the_way_take_this)
+    // As a board's card caps its pills: half the card's inner width, so a long name can't starve the times.
+    val pillMax = (LocalConfiguration.current.screenWidthDp.dp - 64.dp) * 0.5f
+    OutlinedCard(Modifier.fillMaxWidth().testTag("onTheWayOffPlan")) {
+        Column {
+            rows.forEachIndexed { index, row ->
+                if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                val expanded = onTake != null && open == row.key
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (onTake != null) {
+                                Modifier.clickable(onClickLabel = takeLabel) { open = if (expanded) null else row.key }
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        LinePill(row.lineName, row.lineId, row.mode, Modifier.widthIn(max = pillMax))
+                        Text(
+                            stringResource(R.string.on_the_way_off_plan_heading, row.heading),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = gray,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                        )
+                        // A row's few times, no more ([MAX_OFF_PLAN_TIMES]); none where TfL lists none.
+                        if (row.trains.isNotEmpty()) {
+                            Text(
+                                stringResource(
+                                    R.string.on_the_way_off_plan_times,
+                                    row.trains.joinToString(" · ") { Countdown.minutes(it.expectedArrival, now).toString() },
+                                ),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = gray,
+                                maxLines = 1,
+                                softWrap = false,
+                            )
+                        }
+                    }
+                    if (expanded && onTake != null) {
+                        Text(
+                            stringResource(R.string.on_the_way_off_plan_change, row.branch.forkName),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Button(
+                            onClick = {
+                                open = null
+                                onTake(ride, row.branch)
+                            },
+                            modifier = Modifier.heightIn(min = 48.dp).testTag("onTheWayTakeThis"),
+                        ) { Text(takeLabel) }
+                    }
+                }
+            }
         }
     }
 }
