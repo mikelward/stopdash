@@ -5476,6 +5476,128 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `a network just chosen is asked about at once, not at the next refresh`() = runTest(dispatcher) {
+        // Holds its answers while [held] is set, so a check can be seen under way.
+        var held: CompletableDeferred<Unit>? = null
+        val client = object : HubLinesClient() {
+            override suspend fun lineStatuses(lineIds: Collection<String>): List<LineStatus> {
+                held?.await()
+                return super.lineStatuses(lineIds)
+            }
+        }
+        var networks = setOf("tube")
+        var clockNow = now
+        val vm = MainViewModel(
+            client, listOf(seeds[0].copy(lines = listOf(LineRef("victoria", "Victoria", "tube")))), clock = { clockNow }, io = dispatcher,
+            alwaysNetworks = { networks },
+        )
+        advanceUntilIdle()
+        val before = client.statusCalls.size
+        networks = setOf("tube", "dlr")
+        vm.checkAlways()
+        advanceUntilIdle()
+        // One request straight away, the new line in it (a test reuses no verdict, so the tube's go too).
+        val asked = client.statusCalls.drop(before)
+        assertEquals(1, asked.size)
+        assertTrue("dlr" in asked.single())
+        assertEquals(setOf("dlr") + HomeLines.TUBE_IDS, checkNotNull(vm.always.value).askedFor)
+        // Asked again with nothing new chosen (the screen showing again), it sends nothing.
+        val after = client.statusCalls.size
+        vm.checkAlways()
+        advanceUntilIdle()
+        assertEquals(after, client.statusCalls.size)
+        // Once those verdicts have aged (the row off a while, then on), it asks again, the aged lines read
+        // as being asked meanwhile, not as unchecked.
+        clockNow = now.plus(Duration.ofMinutes(10))
+        val gate = CompletableDeferred<Unit>().also { held = it }
+        vm.checkAlways()
+        advanceUntilIdle()
+        assertFalse("dlr" in checkNotNull(vm.always.value).askedFor)
+        // Called again while that one is out (a rotation), it waits and sends nothing more.
+        vm.checkAlways()
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(after + 1, client.statusCalls.size)
+        assertTrue("dlr" in checkNotNull(vm.always.value).askedFor)
+        // Called while a refresh is asking about the same aged lines, it waits for that refresh's answer
+        // rather than sending its own.
+        clockNow = now.plus(Duration.ofMinutes(20))
+        val refreshGate = CompletableDeferred<Unit>().also { held = it }
+        val dlrAsked = { client.statusCalls.count { "dlr" in it } }
+        val beforeRefresh = dlrAsked()
+        vm.refresh()
+        advanceUntilIdle()
+        vm.checkAlways()
+        refreshGate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(beforeRefresh + 1, dlrAsked())
+    }
+
+    @Test
+    fun `a refresh starting while a settings check is out waits for it and keeps its answer`() = runTest(dispatcher) {
+        // Holds its answers while [held] is set; fails a request made while [failing] is set.
+        var held: CompletableDeferred<Unit>? = null
+        var failing = false
+        val client = object : HubLinesClient() {
+            override suspend fun lineStatuses(lineIds: Collection<String>): List<LineStatus> {
+                val fail = failing
+                held?.await()
+                if (fail) throw java.io.IOException("offline")
+                return super.lineStatuses(lineIds)
+            }
+        }
+        var networks = setOf("tube")
+        var clockNow = now
+        val vm = MainViewModel(
+            client, listOf(seeds[0].copy(lines = listOf(LineRef("victoria", "Victoria", "tube")))), clock = { clockNow }, io = dispatcher,
+            alwaysNetworks = { networks }, lineStatusReuse = LINE_STATUS_REUSE,
+        )
+        advanceUntilIdle()
+        // The settings check goes out and waits on its answer; a refresh starts meanwhile, and would fail.
+        networks = setOf("tube", "dlr")
+        val gate = CompletableDeferred<Unit>().also { held = it }
+        vm.checkAlways()
+        advanceUntilIdle()
+        val dlrAsked = { client.statusCalls.count { "dlr" in it } }
+        failing = true
+        vm.refresh()
+        advanceUntilIdle()
+        // The settings check's answer comes in after the refresh began.
+        clockNow = now.plusSeconds(2)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        // The refresh reused the settings check's answer rather than asking again, so its failure never
+        // replaced it: the DLR reads as checked.
+        assertEquals(1, dlrAsked())
+        assertTrue(checkNotNull(vm.always.value).current("dlr", clockNow))
+    }
+
+    @Test
+    fun `a network chosen during the first load is asked about once that load is in`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val client = object : HubLinesClient() {
+            override suspend fun lineStatuses(lineIds: Collection<String>): List<LineStatus> {
+                gate.await()
+                return super.lineStatuses(lineIds)
+            }
+        }
+        var networks = setOf("tube")
+        val vm = MainViewModel(
+            client, listOf(seeds[0].copy(lines = listOf(LineRef("victoria", "Victoria", "tube")))), clock = { now }, io = dispatcher,
+            alwaysNetworks = { networks },
+        )
+        advanceUntilIdle()
+        // The first load has asked about the tube and waits on its answer; the rider chooses the DLR meanwhile.
+        networks = setOf("tube", "dlr")
+        vm.checkAlways()
+        advanceUntilIdle()
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertTrue(client.statusCalls.any { "dlr" in it })
+        assertTrue("dlr" in checkNotNull(vm.always.value).askedFor)
+    }
+
+    @Test
     fun `a cold start asks about the stored networks, never the default in their place`() = runTest(dispatcher) {
         val client = object : HubLinesClient() {}
         val stored = CompletableDeferred<Set<String>>()
