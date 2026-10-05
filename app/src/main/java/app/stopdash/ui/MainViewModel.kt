@@ -68,6 +68,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -1149,7 +1150,7 @@ class MainViewModel(
             // The lines the row always covers, as chosen: the stored choice once it's read, never the
             // default in its place on a cold start (Codex, #592), worked out while the arrivals are out.
             val alwaysAsked = async(compute) { HomeLines.idsOf(alwaysNetworks()) }
-            val earlyCheck = async { if (linesGo.await()) checkLines(declaredLineIds + alwaysAsked.await(), now) else null }
+            val earlyCheck = async { if (linesGo.await()) checkLines(declaredLineIds + alwaysAsked.await()) else null }
             when {
                 declaredLineIds.isEmpty() -> linesGo.complete(false)
                 stops.any { prior[it.id] != null } -> linesGo.complete(true)
@@ -1473,7 +1474,7 @@ class MainViewModel(
                 warn("disruption status unknown: $blankLineIdCount prediction(s) had no line id to check")
             }
             val rest = lineIds - earlyLines?.asked.orEmpty()
-            if (rest.isNotEmpty()) lateLines = checkLines(rest, now)
+            if (rest.isNotEmpty()) lateLines = checkLines(rest)
             // Only the lines shown: the early check can have covered a stop that then showed nothing.
             val statuses = listOfNotNull(earlyLines, lateLines).flatMap { it.statuses }.filter { it.lineId in lineIds }
             lineStatuses = statuses.filter { it.hasAlerts }.associateBy { it.lineId }
@@ -1517,12 +1518,20 @@ class MainViewModel(
     }
 
     /**
-     * Check the status of [lineIds] at [now]: lines checked within [lineStatusReuse] keep that
+     * Check the status of [lineIds] now: lines checked within [lineStatusReuse] keep that
      * verdict, and only the rest are asked for, in as many requests as TfL accepts
      * ([LineStatusBatch]). Updates the caches as the answers come back. A request that fails leaves
      * its lines undetermined, so they read unchecked rather than clean (SPEC principle 1).
      */
-    private suspend fun checkLines(lineIds: Set<String>, now: Instant): LineCheck {
+    private suspend fun checkLines(lineIds: Set<String>): LineCheck =
+        // One at a time: a check starting while another is out (a refresh beginning after a settings
+        // check, or the reverse) waits for it and reuses its answers, never asking the same twice nor
+        // publishing a newer failure over the other's success (Codex, #599). Aged as of when it gets
+        // its turn, not when it was called: the other's answers are newer than that (Codex, #599).
+        lineCheckLock.withLock { checkLinesNow(lineIds, clock()) }
+    private val lineCheckLock = Mutex()
+
+    private suspend fun checkLinesNow(lineIds: Set<String>, now: Instant): LineCheck {
         // Not one still waiting on its alerts' directions: asked again, it splits by direction.
         val cachedStatuses = lineIds.mapNotNull { id ->
             lineStatusCache[id]?.takeIf { (at, status) -> isWithin(at, now, lineStatusReuse) && !status.awaitingDirections }?.second
@@ -1727,6 +1736,47 @@ class MainViewModel(
      * [automatic] refresh (the on-screen timer, not the user) also carries over a far stop fetched
      * within [farArrivalsReuse] — see [recentlyFetched].
      */
+    /**
+     * The rider just changed which networks the disruptions row covers (or turned it on): asks about
+     * their lines now rather than at the next refresh, so a network just chosen doesn't sit on
+     * "Checking…" for the refresh interval (maintainer, 2026-10-05). One line-status request at most,
+     * none for lines with a current verdict ([checkLines] reuses them). Nothing at all when every chosen
+     * line's verdict is in and current, so the screen may call it whenever it shows, a return from
+     * Settings included, without spending a request (Codex, #599); an aged one is asked again, the row
+     * turned back on after a while included (Codex, #599). A call during the first load waits for it to
+     * finish its own line check, then asks about whatever it didn't, a choice changed meanwhile included
+     * (Codex, #599).
+     */
+    fun checkAlways() {
+        // One at a time: a call while one is out (the screen recreated on a rotation, say) waits for it, then
+        // finds its answer current, never sending the same request again (Codex, #599).
+        val before = alwaysCheck
+        alwaysCheck = viewModelScope.launch {
+            before?.join()
+            // Nor alongside a refresh, whose own line check asks the same: once it's in, its answers stand
+            // and only what it didn't ask goes out (Codex, #599).
+            _refreshing.first { !it }
+            _state.first { it is DeparturesUiState.Loaded && !it.statusPending }
+            val held = _always.value
+            val now = clock()
+            // The chosen lines, and those of them whose verdict is missing or aged: those being asked about.
+            val (asked, stale) = withContext(compute) {
+                val ids = HomeLines.idsOf(alwaysNetworks())
+                ids to ids.filterTo(HashSet()) { held == null || !held.current(it, now) }
+            }
+            if (asked.isEmpty() || stale.isEmpty()) return@launch
+            // Read as being asked meanwhile: an aged verdict's line says "Checking…" while this is out,
+            // never "Unknown" for a check under way (Codex, #599).
+            if (held != null) {
+                _always.value = HomeLines.Always(held.statuses, held.at, held.asked, held.askedFor - stale, held.stamps)
+            }
+            publishAlways(checkLines(asked), now, asked)
+        }
+    }
+
+    // The last [checkAlways], which the next waits for. Main thread.
+    private var alwaysCheck: Job? = null
+
     fun refresh(automatic: Boolean = false) {
         // A same-set reconcile on its way refreshes once it lands, with the new tiers; one now would
         // fetch the old ones.

@@ -274,6 +274,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -1944,6 +1945,14 @@ class MainActivity : ComponentActivity() {
             val journeyDestinationStops by viewModel.journeyDestinationStops.collectAsStateWithLifecycle()
             val journeyDestinationsUnknown by viewModel.journeyDestinationsUnknown.collectAsStateWithLifecycle()
             val departuresRefreshing by viewModel.refreshing.collectAsStateWithLifecycle()
+            // A network just chosen, or the row just turned on, is checked at once, not at the next refresh:
+            // on each change, and each time this shows (a return from Settings, where the choice was made,
+            // included). A no-op while every chosen line has been asked about (Codex, #599).
+            LaunchedEffect(viewModel) {
+                combine(DisruptionsRowSetting.changes, SummaryNetworksSetting.changes) { on, networks -> on to networks }
+                    .distinctUntilChanged()
+                    .collect { (on, _) -> if (on) viewModel.checkAlways() }
+            }
             // A relocate holds the indicator on for the whole fresh fix, not just the departures
             // fetch that follows a same-set confirmation.
             val relocatingNow by relocating.collectAsStateWithLifecycle()

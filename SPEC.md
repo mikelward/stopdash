@@ -2155,8 +2155,9 @@ flashes up. Under it, **Always include** picks the networks
 covered whatever's near (maintainer, 2026-10-05): Tube, Overground, Elizabeth line,
 DLR and Tram, all on by default (their 20 lines ride the list's one status request, splitting it
 only when many nearby lines push it past TfL's length limit); the lines near the rider are always included, a choice of none leaving them alone. A
-network chosen with no current check of its lines reads "Checking…" until the next refresh asks
-about it, never a verdict it can't stand behind; one chosen again before any refresh since may show the
+network chosen with no current check of its lines reads "Checking…" while it's asked about, at once
+on the choice (or on turning the row on), not at the next refresh: one line-status request at most,
+current verdicts reused (maintainer, 2026-10-05); never a verdict it can't stand behind; one chosen again before any refresh since may show the
 check it still has. With the row off, the chosen networks aren't
 asked about at all.
 
