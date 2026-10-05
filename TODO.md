@@ -2476,7 +2476,8 @@ Builds on Phase 1's minimal line-status marking.
 - [x] **The home screen has a one-line disruptions row** (maintainer, 2026-10-05): every tube
       line, and every line with a departure from a stop within the walking reach (500 m), under the
       favorite places' chips; "+N" for what doesn't fit, a tap opening the lines page (`HomeLines`, `HomeDisruptionsRow`).
-  - [ ] **Add the Overground and the Elizabeth line** to the row's always-covered lines, as the tube is.
+  - [x] **Choose the networks the row always covers** (maintainer, 2026-10-05): "Always include" in
+        Settings, Tube by default, plus Overground, Elizabeth line, DLR and Tram; nearby lines always.
   - [x] **A switch to turn the row off**: "Disruptions summary", second in Settings (maintainer,
         2026-10-05: narrower than "Show disruptions").
   - [x] **What's dismissed stays off the row and goes down the page** (maintainer, 2026-10-05): off the

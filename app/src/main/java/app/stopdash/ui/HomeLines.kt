@@ -10,56 +10,97 @@ import java.time.Instant
 
 /**
  * The home screen's disruptions row (maintainer, 2026-10-05): the trip's one-row summary ([TripRow])
- * over the lines a rider near here may take: every tube line, and each line with a departure (or the
+ * over the lines a rider near here may take: every line of the networks they chose ([Network], the tube
+ * by default), and each line with a departure (or the
  * list's status row for one with an alert and none) from a stop within the walking reach ([NEARBY_METERS], the list's eager radius). A tap opens the same lines
  * page as a trip's ([TripLinesPage]).
  */
 object HomeLines {
-    /** The tube's lines, by TfL id and name, in TfL's order. */
-    val TUBE: List<LineRef> = listOf(
-        "bakerloo" to "Bakerloo",
-        "central" to "Central",
-        "circle" to "Circle",
-        "district" to "District",
-        "hammersmith-city" to "Hammersmith & City",
-        "jubilee" to "Jubilee",
-        "metropolitan" to "Metropolitan",
-        "northern" to "Northern",
-        "piccadilly" to "Piccadilly",
-        "victoria" to "Victoria",
-        "waterloo-city" to "Waterloo & City",
-    ).map { (id, name) -> LineRef(id, name, TUBE_MODE) }
+    /**
+     * The networks the row can always cover, whatever's near (maintainer, 2026-10-05: a modes setting,
+     * the tube on by default): each with its lines, by TfL id and name, in TfL's order. [key] is how a
+     * choice is stored.
+     */
+    enum class Network(val key: String, val lines: List<LineRef>) {
+        TUBE(
+            "tube",
+            listOf(
+                "bakerloo" to "Bakerloo",
+                "central" to "Central",
+                "circle" to "Circle",
+                "district" to "District",
+                "hammersmith-city" to "Hammersmith & City",
+                "jubilee" to "Jubilee",
+                "metropolitan" to "Metropolitan",
+                "northern" to "Northern",
+                "piccadilly" to "Piccadilly",
+                "victoria" to "Victoria",
+                "waterloo-city" to "Waterloo & City",
+            ).map { (id, name) -> LineRef(id, name, "tube") },
+        ),
+        OVERGROUND(
+            "overground",
+            listOf("liberty" to "Liberty", "lioness" to "Lioness", "mildmay" to "Mildmay", "suffragette" to "Suffragette", "weaver" to "Weaver", "windrush" to "Windrush")
+                .map { (id, name) -> LineRef(id, name, "overground") },
+        ),
+        ELIZABETH("elizabeth", listOf(LineRef("elizabeth", "Elizabeth line", "elizabeth-line"))),
+        DLR("dlr", listOf(LineRef("dlr", "DLR", "dlr"))),
+        TRAM("tram", listOf(LineRef("tram", "Tram", "tram"))),
+        ;
+
+        companion object {
+            /** The networks [keys] name, in the row's order; a key this build doesn't know is left out. */
+            fun of(keys: Set<String>): Set<Network> = entries.filterTo(LinkedHashSet()) { it.key in keys }
+        }
+    }
+
+    /** What the row covers until the rider chooses: the tube. */
+    val DEFAULT_NETWORKS: Set<String> = setOf(Network.TUBE.key)
+
+    /** The tube's lines. */
+    val TUBE: List<LineRef> = Network.TUBE.lines
 
     val TUBE_IDS: Set<String> = TUBE.mapTo(LinkedHashSet()) { it.id }
+
+    /** Every line of the [networks] (by key), in the row's order. Walks every network: on a worker only. */
+    @WorkerThread
+    fun linesOf(networks: Set<String>): List<LineRef> = Network.of(networks).flatMap { it.lines }
+
+    /** Their ids, for the list's status request to ask about. On a worker only. */
+    @WorkerThread
+    fun idsOf(networks: Set<String>): Set<String> = linesOf(networks).mapTo(LinkedHashSet()) { it.id }
 
     /** How near a stop counts: the near-me list's walking reach (maintainer, 2026-10-05). */
     const val NEARBY_METERS: Int = NearbySelection.EAGER_RADIUS_METERS
 
     /**
-     * The tube's lines as the list's last check found them: the [statuses] TfL gave (good or not; a line
-     * missing went undetermined), as of [at], the oldest verdict's stamp (by the steady clock), for a
-     * check asked at [asked].
+     * The always-covered lines as the list's last check found them: the [statuses] TfL gave (good or not;
+     * a line missing went undetermined) for the lines it [askedFor], as of [at], the oldest verdict's
+     * stamp (by the steady clock), for a check asked at [asked].
      */
-    class Tube(val statuses: Map<String, LineStatus>, val at: Instant, val asked: Instant = at)
+    class Always(val statuses: Map<String, LineStatus>, val at: Instant, val asked: Instant = at, val askedFor: Set<String> = statuses.keys)
 
     /**
      * The row for the list as it stands ([loaded], null while none is), the stops' distances ([distances],
-     * empty for the watched list, whose every stop counts), the tube's check ([tube]), and what the rider
-     * [dismissed]. A line both lists is judged by the list's own check where it has one. Walks every
-     * stop's departures: on a worker only.
+     * empty for the watched list, whose every stop counts), the [networks] the rider chose to cover (by key) and
+     * their check ([always]), and what the rider [dismissed]. A line both lists is judged by the list's
+     * own check where it has one. Walks every stop's departures: on a worker only.
      */
     @WorkerThread
     internal fun row(
         loaded: DeparturesUiState.Loaded?,
         distances: Map<String, Double>,
-        tube: Tube?,
+        always: Always?,
         dismissed: Set<DismissedAlert>,
         now: Instant,
-        // A refresh under way, whose check of the tube's lines may yet answer.
+        // A refresh under way, whose check of the always-covered lines may yet answer.
         refreshing: Boolean = false,
+        networks: Set<String> = DEFAULT_NETWORKS,
     ): TripRow {
+        val alwaysLines = linesOf(networks)
         val refs = LinkedHashMap<String, LineRef>()
-        TUBE.forEach { refs[it.id] = it }
+        alwaysLines.forEach { refs[it.id] = it }
+        val alwaysIds = alwaysLines.mapTo(HashSet()) { it.id }
         val near = loaded?.stops.orEmpty().filter { stop ->
             distances.isEmpty() || distances[stop.stopId]?.let { it <= NEARBY_METERS } == true
         }
@@ -88,7 +129,7 @@ object HomeLines {
         } else {
             ""
         }
-        val tubeCurrent = tube?.takeIf { checkCurrent(it.at, now) }
+        val alwaysCurrent = always?.takeIf { checkCurrent(it.at, now) }
         // Each line's status as checked (good or not), and whether it's checked at all.
         val raw = HashMap<String, LineStatus>()
         val known = HashSet<String>()
@@ -99,16 +140,16 @@ object HomeLines {
                     known += id
                     loaded?.lineStatuses?.get(id)?.let { raw[id] = it }
                 }
-                tubeCurrent != null && id in tubeCurrent.statuses -> {
+                alwaysCurrent != null && id in alwaysCurrent.statuses -> {
                     known += id
-                    tubeCurrent.statuses.getValue(id).takeIf { it.hasAlerts }?.let { raw[id] = it }
+                    alwaysCurrent.statuses.getValue(id).takeIf { it.hasAlerts }?.let { raw[id] = it }
                 }
-                // Still being asked: a cold load's line not back yet, the tube before its first check, or
-                // the tube's lines while a refresh is under way, their last check too old to stand (back
-                // from the background, say): "Checking…", never "couldn't check" for a check not yet
-                // asked again (maintainer, 2026-10-05).
-                loaded == null || (loaded.statusPending && !loaded.checkFailed && (id in loaded.pendingLineIds || id in TUBE_IDS && tube == null)) ||
-                    (refreshing && id in TUBE_IDS) ->
+                // Still being asked: a cold load's line not back yet, an always-covered line before its
+                // first check, or while a refresh is under way, its last check too old to stand (back from
+                // the background, say), or one just chosen that no check has asked about yet: "Checking…",
+                // never "couldn't check" for a check not yet asked (maintainer, 2026-10-05).
+                loaded == null || (loaded.statusPending && !loaded.checkFailed && (id in loaded.pendingLineIds || id in alwaysIds && always == null)) ||
+                    (id in alwaysIds && (refreshing || always?.askedFor?.contains(id) == false)) ->
                     checking += id
             }
         }
@@ -141,5 +182,4 @@ object HomeLines {
         )
     }
 
-    private const val TUBE_MODE = "tube"
 }

@@ -5440,12 +5440,57 @@ class MainViewModelTest {
         val vm = MainViewModel(client, listOf(seeds[0].copy(lines = listOf(LineRef("victoria", "Victoria", "tube")))), clock = { now }, io = dispatcher)
         advanceUntilIdle()
 
-        val tube = checkNotNull(vm.tube.value)
+        val tube = checkNotNull(vm.always.value)
         assertEquals(HomeLines.TUBE_IDS, tube.statuses.keys)
         assertEquals("Severe Delays", tube.statuses.getValue("central").description)
         assertTrue(HomeLines.TUBE_IDS.all { line -> client.statusCalls.first().contains(line) })
         // The list itself is about its own lines only: a tube line it doesn't show isn't on it.
         assertFalse("central" in (vm.state.value as DeparturesUiState.Loaded).lineStatuses)
+    }
+
+    @Test
+    fun `the networks the row always covers are asked about as chosen, and none where there's no row`() = runTest(dispatcher) {
+        val client = object : HubLinesClient() {}
+        val chosen = HomeLines.idsOf(setOf("tube", "dlr"))
+        // The choice is expanded on the worker, never the caller: the worker marks what it runs.
+        val onWorker = ThreadLocal.withInitial { false }
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                dispatcher.dispatch(context, Runnable { onWorker.set(true); try { block.run() } finally { onWorker.set(false) } })
+            }
+        }
+        val readOnWorker = mutableListOf<Boolean>()
+        val vm = MainViewModel(
+            client, listOf(seeds[0].copy(lines = listOf(LineRef("victoria", "Victoria", "tube")))), clock = { now }, io = dispatcher,
+            compute = worker, alwaysNetworks = { readOnWorker += onWorker.get(); setOf("tube", "dlr") },
+        )
+        advanceUntilIdle()
+        assertEquals(listOf(true), readOnWorker.distinct())
+        assertEquals(chosen, checkNotNull(vm.always.value).askedFor)
+        assertTrue("dlr" in client.statusCalls.first())
+        // A list with no row asks about only its own lines.
+        val quiet = object : HubLinesClient() {}
+        MainViewModel(quiet, listOf(seeds[0].copy(lines = listOf(LineRef("victoria", "Victoria", "tube")))), clock = { now }, io = dispatcher, alwaysNetworks = { emptySet() })
+        advanceUntilIdle()
+        assertFalse(quiet.statusCalls.flatten().any { it == "dlr" || it == "central" })
+    }
+
+    @Test
+    fun `a cold start asks about the stored networks, never the default in their place`() = runTest(dispatcher) {
+        val client = object : HubLinesClient() {}
+        val stored = CompletableDeferred<Set<String>>()
+        val vm = MainViewModel(
+            client, listOf(seeds[0].copy(lines = listOf(LineRef("victoria", "Victoria", "tube")))), clock = { now }, io = dispatcher,
+            alwaysNetworks = { stored.await() },
+        )
+        advanceUntilIdle()
+        // Not read yet: the status request waits for it rather than asking about the tube.
+        assertTrue(client.statusCalls.isEmpty())
+        stored.complete(setOf("dlr"))
+        advanceUntilIdle()
+        assertTrue("dlr" in client.statusCalls.first())
+        assertFalse("central" in client.statusCalls.first())
+        assertEquals(setOf("dlr"), checkNotNull(vm.always.value).askedFor)
     }
 
     @Test

@@ -213,6 +213,10 @@ class MainViewModel(
     // once per member. Shared with a trip on the way ([HubInfoCache.SHARED] in
     // the app); a test gets its own.
     private val hubNames: HubInfoCache = HubInfoCache(),
+    // The networks the home screen's disruptions row always covers ([HomeLines.Network], the rider's
+    // choice, by key, once it's read), whose lines are asked about with the list's own: read at each refresh, so a new
+    // choice is asked next, and expanded into lines on [compute], since that walks them (Codex, #592).
+    private val alwaysNetworks: suspend () -> Set<String> = { HomeLines.DEFAULT_NETWORKS },
     // Monotonic milliseconds for timing a fetch, and the shared rate limiter's running total of
     // time spent waiting — both only feed the per-fetch debug-log line ([LoadStats]).
     private val elapsedMillis: () -> Long = { System.nanoTime() / 1_000_000 },
@@ -717,20 +721,20 @@ class MainViewModel(
     // A line TfL gave no status for, or a failed request, is never cached. In-memory, main thread.
     private val lineStatusCache = mutableMapOf<String, Pair<Instant, LineStatus>>()
 
-    // The tube's lines as the latest check found them, for the home screen's disruptions row
+    // The always-covered lines as the latest check found them, for the home screen's disruptions row
     // ([HomeLines]): null until one is had. Never persisted, like the list's own checks.
-    private val _tube = MutableStateFlow<HomeLines.Tube?>(null)
-    val tube: StateFlow<HomeLines.Tube?> = _tube.asStateFlow()
+    private val _always = MutableStateFlow<HomeLines.Always?>(null)
+    val always: StateFlow<HomeLines.Always?> = _always.asStateFlow()
 
     // [check]'s verdicts on the tube's lines, kept unless a newer check's are already held.
     // Each verdict is stamped as the cache stamped it (a reused one as old as it is); the check as of
     // its oldest, so the row doesn't call a reused verdict newer than it is.
-    private fun publishTube(check: LineCheck, now: Instant) {
+    private fun publishAlways(check: LineCheck, now: Instant, askedFor: Set<String>) {
         val asked = SteadyClock.stamp(now)
-        if (_tube.value?.let { asked.isBefore(it.asked) } == true) return
-        val statuses = check.statuses.filter { it.lineId in HomeLines.TUBE_IDS }.associateBy { it.lineId }
+        if (_always.value?.let { asked.isBefore(it.asked) } == true) return
+        val statuses = check.statuses.filter { it.lineId in askedFor }.associateBy { it.lineId }
         val at = statuses.keys.mapNotNull { lineStatusCache[it]?.first }.minOrNull() ?: asked
-        _tube.value = HomeLines.Tube(statuses, at, asked)
+        _always.value = HomeLines.Always(statuses, at, asked, askedFor)
     }
     // The dismissed alerts' count ([DismissedAlertsStore.mark]) each cached status was asked at: a
     // refresh settling dismissals on a reused verdict is as old as it. In-memory, main thread, like it.
@@ -1135,7 +1139,10 @@ class MainViewModel(
             // The tube's lines ride along for the home screen's disruptions row ([HomeLines]), sharing the
             // request and the reuse window, so a refresh costs no request more than it would (maintainer,
             // 2026-10-05).
-            val earlyCheck = async { if (linesGo.await()) checkLines(declaredLineIds + HomeLines.TUBE_IDS, now) else null }
+            // The lines the row always covers, as chosen: the stored choice once it's read, never the
+            // default in its place on a cold start (Codex, #592), worked out while the arrivals are out.
+            val alwaysAsked = async(compute) { HomeLines.idsOf(alwaysNetworks()) }
+            val earlyCheck = async { if (linesGo.await()) checkLines(declaredLineIds + alwaysAsked.await(), now) else null }
             when {
                 declaredLineIds.isEmpty() -> linesGo.complete(false)
                 stops.any { prior[it.id] != null } -> linesGo.complete(true)
@@ -1328,7 +1335,7 @@ class MainViewModel(
             val arrivalResults = arrivals.map { it?.await() }
             // No stop's arrivals came back (and none was shown from before): the check isn't sent.
             linesGo.complete(arrivalResults.any { it?.isSuccess == true })
-            Triple(arrivalResults, disruptions.map { it?.await() }, earlyCheck.await()?.also { publishTube(it, now) })
+            Triple(arrivalResults, disruptions.map { it?.await() }, earlyCheck.await()?.also { publishAlways(it, now, alwaysAsked.await()) })
         }
 
         // Resolve each interchange once, in parallel, only for a hub with a stop that has a fresh
