@@ -81,6 +81,11 @@ data class ActiveTrip(
     // the trip starts, so its steps never change on the way. Null on a trip kept by an older build,
     // which goes by the names alone.
     val onFootChanges: Set<Int>? = null,
+    // The next stop last known ahead of a rider on board leg [aheadLeg], as an index into its path: kept
+    // with the trip, so a fork already behind them isn't offered once their train is lost, even after a
+    // restart (Codex, #586). -1 with none known; a later leg's index of its own replaces it.
+    val aheadLeg: Int = -1,
+    val aheadStop: Int = -1,
 ) {
     /** The leg the rider is on, or null once they've arrived. */
     val leg: TripLeg? get() = route.legs.getOrNull(legIndex)
@@ -139,9 +144,13 @@ sealed interface TripProgress {
     /**
      * The train followed can't be placed on [leg] — it doesn't call at the boarding stop or where
      * the rider gets off (the wrong train, or TfL lost it) — so another is to be picked; nothing is
-     * claimed meanwhile (SPEC principle 1).
+     * claimed meanwhile (SPEC principle 1). [ahead], for a rider on board, is the index into [leg]'s
+     * path of the next stop last known ahead of them, before their train was lost: a stop before it
+     * is behind them (Codex, #586). Null when not known. [placed] when this answer's own calls placed the
+     * train on the ride: without them (none came back, or none were asked for), where it is now isn't
+     * known, so no branch is offered or taken from it (Codex, #586).
      */
-    data class Lost(val leg: TripLeg) : TripProgress
+    data class Lost(val leg: TripLeg, val ahead: Int? = null, val placed: Boolean = false) : TripProgress
 
     data object Arrived : TripProgress
 }
@@ -1621,7 +1630,7 @@ object OnTheWay {
     fun atLeg(trip: ActiveTrip, index: Int, now: Instant): ActiveTrip = trip.copy(
         legIndex = index.coerceIn(0, trip.route.legs.size), legStartedAt = now,
         vehicleId = "", vehicleLeg = null, vehicleOffId = "", boardsAt = null, boarded = false, boardedAt = null, dueOffAt = null, warnedLeg = -1, waitFrom = null, heldFrom = null,
-        onBoardSeen = false, seenAlongStop = -1, seenAlongAt = null,
+        onBoardSeen = false, seenAlongStop = -1, seenAlongAt = null, aheadLeg = -1, aheadStop = -1,
     )
 
     /**
@@ -1991,6 +2000,22 @@ object OnTheWay {
     }
 
     // Whether [call] is at [leg]'s boarding or alighting stop.
+    /**
+     * Where a train with [calls] ahead of it stands on [leg], as an index into its path: the first of its
+     * calls that's one of the ride's stops (the boarding stop counts as the first), or, with none of them,
+     * the path's size, past every stop of it. A train that has turned off the ride ([TripProgress.Lost])
+     * has every fork it shared with the ride behind it (Codex, #586).
+     */
+    @WorkerThread
+    fun aheadOnLeg(leg: TripLeg, calls: List<VehicleCall>): Int {
+        for (call in calls) {
+            if (callsFrom(call, leg)) return 0
+            val at = leg.path.indices.firstOrNull { i -> calls(call, leg, leg.path[i], leg.pathNames.getOrNull(i).orEmpty()) }
+            if (at != null) return at
+        }
+        return leg.path.size
+    }
+
     private fun callsFrom(call: VehicleCall, leg: TripLeg): Boolean = calls(call, leg, leg.fromId, leg.fromName)
     private fun callsTo(call: VehicleCall, leg: TripLeg): Boolean = calls(call, leg, leg.toId, leg.toName)
 

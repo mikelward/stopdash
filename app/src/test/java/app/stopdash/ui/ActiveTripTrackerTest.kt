@@ -64,6 +64,7 @@ class ActiveTripTrackerTest {
 
     private val departures = mutableMapOf<String, List<Departure>>()
     private val trains = mutableMapOf<String, List<VehicleCall>>()
+    private var afterRead: (() -> Unit)? = null
     private var failing = false
     // Trains whose own lookups fail.
     private val failingFor = mutableSetOf<String>()
@@ -199,7 +200,10 @@ class ActiveTripTrackerTest {
                 asked += vehicleId
                 askedOn += "$vehicleId/$lineId"
                 // By its line and id where a test gives two lines' trains one id, as TfL's ids are each line's own.
-                return (trains["$lineId/$vehicleId"] ?: trains[vehicleId]).orEmpty()
+                val calls = (trains["$lineId/$vehicleId"] ?: trains[vehicleId]).orEmpty()
+                // What changes once this read is answered, for a test's next read to see.
+                afterRead?.let { afterRead = null; it() }
+                return calls
             }
         },
         stationPlaces = { stop ->
@@ -3577,7 +3581,7 @@ class ActiveTripTrackerTest {
         now = at(10)
         trains["3"] = emptyList()
         tracker.refresh()
-        assertEquals(TripProgress.Lost(ride), tracker.progress.value)
+        assertEquals(ride, (tracker.progress.value as TripProgress.Lost).leg)
         assertEquals("3", tracker.trip.value?.vehicleId)
         assertTrue(checkNotNull(tracker.trip.value).boarded)
     }
@@ -4149,25 +4153,358 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `on board, a branch taken keeps the rider on their train and gets them off at the fork`() = runTest {
+        // Their train changed its branch on the way (maintainer, 2026-10-05): it now turns off at B.
+        sequences["red"] = app.stopdash.domain.LineSequence(
+            listOf(app.stopdash.domain.LineRoute("A ↔ C", listOf("A", "B", "C")), app.stopdash.domain.LineRoute("A ↔ Y", listOf("A", "B", "Y"))),
+            mapOf("A" to "A", "B" to "B", "C" to "C", "Y" to "Y"),
+        )
+        departures["A"] = listOf(train("1", 1))
+        trains["1"] = listOf(call("A", 1), call("B", 4), call("C", 7))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        // It leaves with the rider on it, as planned.
+        now = at(2)
+        trains["1"] = listOf(call("B", 4), call("C", 7))
+        tracker.refresh()
+        assertTrue(checkNotNull(tracker.trip.value).boarded)
+        // Then its calls switch to the other branch: the trip can't place it on the ride any more.
+        trains["1"] = listOf(call("B", 4), call("Y", 7))
+        tracker.refresh()
+        assertTrue(tracker.progress.value is TripProgress.Lost)
+        val branch = app.stopdash.domain.OffPlan.branches(ride, emptyList(), sequences, now).single()
+        tracker.take(ride, branch)
+        val taken = checkNotNull(tracker.trip.value)
+        assertEquals("1", taken.vehicleId)
+        assertTrue(taken.boarded)
+        assertEquals(listOf("B", "C"), taken.route.legs.map { it.toId })
+        // A stop from B: get off soon, there.
+        now = at(3)
+        tracker.refresh()
+        assertEquals("B", (tracker.progress.value as TripProgress.Riding).leg.toId)
+        assertEquals("said B", alerts.last())
+    }
+
+    @Test
+    fun `a fork the rider's train passed before it was lost isn't taken`() = runTest {
+        // The ride A to D through B and C; the line forks at B for Y (Codex, #586).
+        val long = ride.copy(toId = "D", toName = "D", path = listOf("B", "C", "D"))
+        sequences["red"] = app.stopdash.domain.LineSequence(
+            listOf(app.stopdash.domain.LineRoute("A ↔ D", listOf("A", "B", "C", "D")), app.stopdash.domain.LineRoute("A ↔ Y", listOf("A", "B", "Y"))),
+            mapOf("A" to "A", "B" to "B", "C" to "C", "D" to "D", "Y" to "Y"),
+        )
+        departures["A"] = listOf(Departure("red", "Red", "outbound", "D", null, at(1), "tube", vehicleId = "1"))
+        trains["1"] = listOf(call("A", 1), call("B", 4), call("C", 6), call("D", 8))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(TripRoute(listOf(long)), "D", readyAt = now)
+        tracker.refresh()
+        // Past B, next at C.
+        now = at(5)
+        trains["1"] = listOf(call("C", 6), call("D", 8))
+        tracker.refresh()
+        assertEquals(2, (tracker.progress.value as TripProgress.Riding).stopsLeft)
+        // Then lost: the last known stop ahead is kept.
+        trains["1"] = listOf(call("C", 6), call("Z", 8))
+        tracker.refresh()
+        assertEquals(1, (tracker.progress.value as TripProgress.Lost).ahead)
+        val branch = app.stopdash.domain.OffPlan.branches(long, emptyList(), sequences, now).single()
+        assertEquals(0, branch.forkIndex)
+        tracker.take(long, branch)
+        assertEquals(listOf("D"), tracker.trip.value?.route?.legs?.map { it.toId })
+    }
+
+    @Test
+    fun `a fork passed before a restart isn't taken once the train is lost`() = runTest {
+        // Kept by the trip before the app died: on board, the next stop known ahead C (Codex, #586).
+        val long = ride.copy(toId = "D", toName = "D", path = listOf("B", "C", "D"))
+        sequences["red"] = app.stopdash.domain.LineSequence(
+            listOf(app.stopdash.domain.LineRoute("A ↔ D", listOf("A", "B", "C", "D")), app.stopdash.domain.LineRoute("A ↔ Y", listOf("A", "B", "Y"))),
+            mapOf("A" to "A", "B" to "B", "C" to "C", "D" to "D", "Y" to "Y"),
+        )
+        val stored = ActiveTrip(
+            TripRoute(listOf(long)), "D", startedAt = t0, vehicleId = "1", boardsAt = at(1), boarded = true, boardedAt = at(1),
+            aheadLeg = 0, aheadStop = 1,
+        )
+        now = at(5)
+        trains["1"] = listOf(call("C", 6), call("Z", 8))
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { stored })
+        tracker.restore()
+        tracker.refresh()
+        assertEquals(1, (tracker.progress.value as TripProgress.Lost).ahead)
+        val branch = app.stopdash.domain.OffPlan.branches(long, emptyList(), sequences, now).single()
+        tracker.take(long, branch)
+        assertEquals(listOf("D"), tracker.trip.value?.route?.legs?.map { it.toId })
+    }
+
+    @Test
+    fun `the stop known ahead goes once the rider is waiting again`() = runTest {
+        // Kept from a train taken to be theirs that left without them: waiting again, it's forgotten, so a later
+        // train's forks aren't judged by it (Codex, #586).
+        val stored = ActiveTrip(TripRoute(listOf(ride)), "C", startedAt = t0, aheadLeg = 0, aheadStop = 1)
+        departures["A"] = listOf(train("2", 6))
+        trains["2"] = listOf(call("A", 6), call("B", 8), call("C", 10))
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { stored })
+        tracker.restore()
+        tracker.refresh()
+        assertEquals(-1, kept?.aheadLeg)
+        assertEquals(-1, kept?.aheadStop)
+    }
+
+    @Test
+    fun `the stop known ahead on board is kept with the trip`() = runTest {
+        val long = ride.copy(toId = "D", toName = "D", path = listOf("B", "C", "D"))
+        departures["A"] = listOf(Departure("red", "Red", "outbound", "D", null, at(1), "tube", vehicleId = "1"))
+        trains["1"] = listOf(call("A", 1), call("B", 4), call("C", 6), call("D", 8))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(TripRoute(listOf(long)), "D", readyAt = now)
+        tracker.refresh()
+        now = at(5)
+        trains["1"] = listOf(call("C", 6), call("D", 8))
+        tracker.refresh()
+        assertEquals(0, kept?.aheadLeg)
+        assertEquals(1, kept?.aheadStop)
+    }
+
+    @Test
+    fun `on board, a branch isn't taken from an answer too old to say where the train is`() = runTest {
+        sequences["red"] = app.stopdash.domain.LineSequence(
+            listOf(app.stopdash.domain.LineRoute("A ↔ C", listOf("A", "B", "C")), app.stopdash.domain.LineRoute("A ↔ Y", listOf("A", "B", "Y"))),
+            mapOf("A" to "A", "B" to "B", "C" to "C", "Y" to "Y"),
+        )
+        departures["A"] = listOf(train("1", 1))
+        trains["1"] = listOf(call("A", 1), call("B", 4), call("C", 7))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        now = at(2)
+        trains["1"] = listOf(call("B", 4), call("C", 7))
+        tracker.refresh()
+        assertTrue(checkNotNull(tracker.trip.value).boarded)
+        // No answer since: the train may have passed B by now (Codex, #586).
+        now = at(2).plus(ActiveTripTracker.CURRENT_FOR).plusSeconds(1)
+        val branch = app.stopdash.domain.OffPlan.branches(ride, emptyList(), sequences, now).single()
+        tracker.take(ride, branch)
+        assertEquals(listOf("C"), tracker.trip.value?.route?.legs?.map { it.toId })
+    }
+
+    @Test
+    fun `a train whose calls have already turned off at the fork has it behind it`() = runTest {
+        // A to C, forking at B for Y: the train's calls name only Y, so it's past B (Codex, #586).
+        sequences["red"] = app.stopdash.domain.LineSequence(
+            listOf(app.stopdash.domain.LineRoute("A ↔ C", listOf("A", "B", "C")), app.stopdash.domain.LineRoute("A ↔ Y", listOf("A", "B", "Y"))),
+            mapOf("A" to "A", "B" to "B", "C" to "C", "Y" to "Y"),
+        )
+        departures["A"] = listOf(train("1", 1))
+        trains["1"] = listOf(call("A", 1), call("B", 4), call("C", 7))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        now = at(2)
+        trains["1"] = listOf(call("B", 4), call("C", 7))
+        tracker.refresh()
+        now = at(5)
+        trains["1"] = listOf(call("Y", 7))
+        tracker.refresh()
+        assertEquals(2, (tracker.progress.value as TripProgress.Lost).ahead)
+        val branch = app.stopdash.domain.OffPlan.branches(ride, emptyList(), sequences, now).single()
+        tracker.take(ride, branch)
+        assertEquals(listOf("C"), tracker.trip.value?.route?.legs?.map { it.toId })
+    }
+
+    @Test
+    fun `a lost train with no calls to place it offers no branch`() = runTest {
+        // TfL answers with no calls for the rider's train: where it is now isn't known (Codex, #586).
+        sequences["red"] = app.stopdash.domain.LineSequence(
+            listOf(app.stopdash.domain.LineRoute("A ↔ C", listOf("A", "B", "C")), app.stopdash.domain.LineRoute("A ↔ Y", listOf("A", "B", "Y"))),
+            mapOf("A" to "A", "B" to "B", "C" to "C", "Y" to "Y"),
+        )
+        departures["A"] = listOf(train("1", 1))
+        trains["1"] = listOf(call("A", 1), call("B", 4), call("C", 7))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        now = at(2)
+        trains["1"] = listOf(call("B", 4), call("C", 7))
+        tracker.refresh()
+        trains["1"] = emptyList()
+        tracker.refresh()
+        val lost = tracker.progress.value as TripProgress.Lost
+        assertFalse(lost.placed)
+        val branch = app.stopdash.domain.OffPlan.branches(ride, emptyList(), sequences, now).single()
+        tracker.take(ride, branch)
+        assertEquals(listOf("C"), tracker.trip.value?.route?.legs?.map { it.toId })
+    }
+
+    @Test
+    fun `a branch taken just before the fork, the train past it by the lookup, isn't taken`() = runTest {
+        // Tapped with B still ahead, but by the reroute's own lookup the train has gone on to Y: the rider,
+        // on it, is past B too, so a change there would be behind them (Codex, #586).
+        sequences["red"] = app.stopdash.domain.LineSequence(
+            listOf(app.stopdash.domain.LineRoute("A ↔ C", listOf("A", "B", "C")), app.stopdash.domain.LineRoute("A ↔ Y", listOf("A", "B", "Y"))),
+            mapOf("A" to "A", "B" to "B", "C" to "C", "Y" to "Y"),
+        )
+        departures["A"] = listOf(train("1", 1))
+        trains["1"] = listOf(call("A", 1), call("B", 4), call("C", 7))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        now = at(2)
+        trains["1"] = listOf(call("B", 4), call("C", 7))
+        tracker.refresh()
+        assertTrue(tracker.progress.value is TripProgress.Riding)
+        // Within the answer's freshness: the tap is taken.
+        now = at(2).plusSeconds(30)
+        trains["1"] = listOf(call("Y", 7))
+        val branch = app.stopdash.domain.OffPlan.branches(ride, emptyList(), sequences, now).single()
+        tracker.take(ride, branch)
+        assertEquals(listOf("C"), tracker.trip.value?.route?.legs?.map { it.toId })
+        assertEquals(listOf("C"), kept?.route?.legs?.map { it.toId })
+        // Worked out afresh: lost on the way to Y, with B behind it.
+        assertEquals(2, (tracker.progress.value as TripProgress.Lost).ahead)
+    }
+
+    @Test
+    fun `a branch taken just before the fork keeps when it's due there, for a train past it by the next read`() = runTest {
+        // Short of B by the reroute's own lookup, past it by the step's: when it was due at B, from the
+        // first, still moves the rider on to the change there (Codex, #586).
+        sequences["red"] = app.stopdash.domain.LineSequence(
+            listOf(app.stopdash.domain.LineRoute("A ↔ C", listOf("A", "B", "C")), app.stopdash.domain.LineRoute("A ↔ Y", listOf("A", "B", "Y"))),
+            mapOf("A" to "A", "B" to "B", "C" to "C", "Y" to "Y"),
+        )
+        departures["A"] = listOf(train("1", 1))
+        trains["1"] = listOf(call("A", 1), call("B", 4), call("C", 7))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        now = at(2)
+        trains["1"] = listOf(call("B", 4), call("C", 7))
+        tracker.refresh()
+        // Within the answer's freshness, B half a minute off.
+        now = at(2).plusSeconds(30)
+        trains["1"] = listOf(call("B", 3), call("Y", 7))
+        afterRead = { trains["1"] = listOf(call("Y", 7)) }
+        val branch = app.stopdash.domain.OffPlan.branches(ride, emptyList(), sequences, now).single()
+        tracker.take(ride, branch)
+        // Off at B: on to the rest of the ride from there.
+        assertEquals(1, tracker.trip.value?.legIndex)
+        assertEquals("B", tracker.trip.value?.leg?.fromId)
+    }
+
+    @Test
+    fun `a branch taken on board while its train can't be read isn't taken`() = runTest {
+        // The reroute's own lookup fails: the train may be past the fork, so nothing is rerouted (Codex, #586).
+        sequences["red"] = app.stopdash.domain.LineSequence(
+            listOf(app.stopdash.domain.LineRoute("A ↔ C", listOf("A", "B", "C")), app.stopdash.domain.LineRoute("A ↔ Y", listOf("A", "B", "Y"))),
+            mapOf("A" to "A", "B" to "B", "C" to "C", "Y" to "Y"),
+        )
+        departures["A"] = listOf(train("1", 1))
+        trains["1"] = listOf(call("A", 1), call("B", 4), call("C", 7))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        now = at(2)
+        trains["1"] = listOf(call("B", 4), call("C", 7))
+        tracker.refresh()
+        assertTrue(tracker.progress.value is TripProgress.Riding)
+        now = at(2).plusSeconds(30)
+        failingFor += "1"
+        val branch = app.stopdash.domain.OffPlan.branches(ride, emptyList(), sequences, now).single()
+        tracker.take(ride, branch)
+        assertEquals(listOf("C"), tracker.trip.value?.route?.legs?.map { it.toId })
+        assertEquals(listOf("C"), kept?.route?.legs?.map { it.toId })
+        // Said, and the old answer no longer stood behind.
+        assertTrue(tracker.failed.value)
+        assertNull(tracker.updatedAt.value)
+    }
+
+    @Test
+    fun `a branch taken on board isn't taken when its train's calls come back empty`() = runTest {
+        // Nothing to place the train by: it may be past the fork (Codex, #586).
+        takenWithLookup(testScheduler, emptyList())
+    }
+
+    @Test
+    fun `a branch taken on board isn't taken once its train is past the fork on the plan's way`() = runTest {
+        // The ride to the fork would have nothing to finish by: the train has gone on the rider's own way.
+        val tracker = takenWithLookup(testScheduler, listOf(call("C", 7)))
+        // Worked out afresh: riding on, the fork behind.
+        assertTrue(tracker.progress.value is TripProgress.Riding)
+    }
+
+    @Test
+    fun `a branch taken on board isn't taken once its train is past the fork on another branch`() = runTest {
+        // Forking at B for Y and for Z: the rider takes Y, but their train has gone on to Z (Codex, #586).
+        sequences["red"] = app.stopdash.domain.LineSequence(
+            listOf(
+                app.stopdash.domain.LineRoute("A ↔ C", listOf("A", "B", "C")),
+                app.stopdash.domain.LineRoute("A ↔ Y", listOf("A", "B", "Y")),
+                app.stopdash.domain.LineRoute("A ↔ Z", listOf("A", "B", "Z")),
+            ),
+            mapOf("A" to "A", "B" to "B", "C" to "C", "Y" to "Y", "Z" to "Z"),
+        )
+        departures["A"] = listOf(train("1", 1))
+        trains["1"] = listOf(call("A", 1), call("B", 4), call("C", 7))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        now = at(2)
+        trains["1"] = listOf(call("B", 4), call("C", 7))
+        tracker.refresh()
+        now = at(2).plusSeconds(30)
+        trains["1"] = listOf(call("Z", 7))
+        val branch = app.stopdash.domain.OffPlan.branches(ride, emptyList(), sequences, now).single { it.label == "Y" }
+        tracker.take(ride, branch)
+        assertEquals(listOf("C"), tracker.trip.value?.route?.legs?.map { it.toId })
+        assertEquals(listOf("C"), kept?.route?.legs?.map { it.toId })
+    }
+
+    // A rider on board taps a branch forking at B with the trip's answer current, and the reroute's own
+    // lookup of their train returns [lookup]: not one that places it short of the fork, so nothing changes.
+    private suspend fun takenWithLookup(scheduler: kotlinx.coroutines.test.TestCoroutineScheduler, lookup: List<VehicleCall>): ActiveTripTracker {
+        sequences["red"] = app.stopdash.domain.LineSequence(
+            listOf(app.stopdash.domain.LineRoute("A ↔ C", listOf("A", "B", "C")), app.stopdash.domain.LineRoute("A ↔ Y", listOf("A", "B", "Y"))),
+            mapOf("A" to "A", "B" to "B", "C" to "C", "Y" to "Y"),
+        )
+        departures["A"] = listOf(train("1", 1))
+        trains["1"] = listOf(call("A", 1), call("B", 4), call("C", 7))
+        val tracker = tracker(StandardTestDispatcher(scheduler))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        now = at(2)
+        trains["1"] = listOf(call("B", 4), call("C", 7))
+        tracker.refresh()
+        assertTrue(tracker.progress.value is TripProgress.Riding)
+        now = at(2).plusSeconds(30)
+        trains["1"] = lookup
+        val branch = app.stopdash.domain.OffPlan.branches(ride, emptyList(), sequences, now).single()
+        tracker.take(ride, branch)
+        assertEquals(listOf("C"), tracker.trip.value?.route?.legs?.map { it.toId })
+        assertEquals(listOf("C"), kept?.route?.legs?.map { it.toId })
+        return tracker
+    }
+
+    @Test
     fun `a get off soon said for the train before a reroute is taken back`() = runTest {
         sequences["red"] = app.stopdash.domain.LineSequence(
             listOf(app.stopdash.domain.LineRoute("A ↔ C", listOf("A", "B", "C")), app.stopdash.domain.LineRoute("A ↔ Y", listOf("A", "B", "Y"))),
             mapOf("A" to "A", "B" to "B", "C" to "C", "Y" to "Y"),
         )
-        // The plan's train has left with the rider only taken to be on it, a stop from C: get off soon is said.
+        // The plan's train has left with the rider only taken to be on it, two minutes from C: get off soon
+        // is said, with the fork at B still ahead.
         departures["A"] = listOf(train("1", 1))
-        trains["1"] = listOf(call("A", 1), call("B", 3), call("C", 5))
+        trains["1"] = listOf(call("A", 1), call("B", 5), call("C", 6))
         val tracker = tracker(StandardTestDispatcher(testScheduler))
         tracker.start(route, "C", readyAt = now)
         tracker.refresh()
         now = at(4)
-        trains["1"] = listOf(call("C", 5))
+        trains["1"] = listOf(call("B", 5), call("C", 6))
         tracker.refresh()
         assertEquals("said C", alerts.last())
         val branch = app.stopdash.domain.OffPlan.branches(ride, emptyList(), sequences, now).single()
         tracker.take(ride, branch)
-        // Its stop isn't theirs any more: taken back, and the reroute kept with the mark cleared.
-        assertEquals("done", alerts.last())
+        // Its stop isn't theirs any more: taken back, said again for the fork, and the mark cleared.
+        assertEquals(listOf("done", "said B"), alerts.takeLast(2))
         assertFalse(checkNotNull(tracker.trip.value).alertLeft)
         assertEquals(listOf("B", "C"), tracker.trip.value?.route?.legs?.map { it.toId })
     }

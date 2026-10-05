@@ -90,6 +90,18 @@ class FileActiveTripStoreTest {
     }
 
     @Test
+    fun `the stop known ahead on board is kept across a reload, and absent from an older trip`() {
+        val file = File(tmp.root, "active-trip.json")
+        val ahead = trip.copy(aheadLeg = 0, aheadStop = 1)
+        FileActiveTripStore(file).save(ahead)
+        assertEquals(ahead, FileActiveTripStore(file).load())
+        // As an older build wrote it: none known.
+        file.writeText(file.readText().replace(Regex(",?\"ahead(Leg|Stop)\":-?[0-9]+"), ""))
+        assertFalse(file.readText().contains("ahead"))
+        assertEquals(trip, FileActiveTripStore(file).load())
+    }
+
+    @Test
     fun `a trip kept by an older build has no changes on foot decided, and goes by the names`() {
         // As an older build wrote it: no decision in the file at all.
         val file = File(tmp.root, "active-trip.json")

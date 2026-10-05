@@ -127,20 +127,27 @@ object OffPlan {
     /**
      * [trip] rerouted onto [branch] for the ride at leg [rideIndex] (maintainer, 2026-10-05: like a
      * reroute, nothing followed specially): the ride split where the branch turns off, into a ride to
-     * there and the rest of the ride from there, a change between. The trip then goes on as on any route:
-     * the ride to the fork picks the next train that reaches it, whatever TfL calls its way, and the
-     * change picks the next on from there. Leg indices past the ride move up one, and what was heard or
-     * let go of on the ride holds for both its parts. On the ride, its train is looked for afresh; on the
-     * walk to it, the walk goes on. Null when [rideIndex] isn't the ride the rider is on, or on their way
-     * to, or once they're seen on board it.
+     * there and the rest of the ride from there, a change between. The trip then goes on as on any route.
+     * Leg indices past the ride move up one, and what was heard or let go of on the ride holds for both
+     * its parts.
+     *
+     * Waiting for the ride, its train is looked for afresh: the next that reaches the fork, whatever TfL
+     * calls its way. On board (by their word, their train, or where they were seen), they stay on the
+     * train they're on, now ridden to the fork: a train that changed its branch on the way (maintainer,
+     * 2026-10-05), or one TfL labels wrongly. A "get off soon" said for the ride's old end is done with.
+     * On the walk to the ride, the walk goes on. Null when [rideIndex] isn't the ride the rider is on, or
+     * on their way to; when the fork is behind them; or when they're on another of the ride's lines,
+     * whose own route the branch wasn't found on.
      */
     @WorkerThread
     fun take(trip: ActiveTrip, rideIndex: Int, branch: Branch, now: Instant): ActiveTrip? {
         val ride = trip.route.legs.getOrNull(rideIndex) ?: return null
         if (ride.isWalk || branch.forkIndex !in 0 until ride.path.size - 1) return null
-        val onIt = rideIndex == trip.legIndex && !trip.onBoardSeen
+        val onIt = rideIndex == trip.legIndex
         val walkingTo = rideIndex == trip.legIndex + 1 && trip.leg?.isWalk == true
         if (!onIt && !walkingTo) return null
+        val aboard = onIt && (trip.boarded || trip.onBoardSeen)
+        if (aboard && (trip.vehicleLeg != null || trip.seenAlongStop > branch.forkIndex)) return null
         val (first, rest) = split(ride, branch)
         val legs = trip.route.legs.take(rideIndex) + first + rest + trip.route.legs.drop(rideIndex + 1)
         fun shift(index: Int) = if (index > rideIndex) index + 1 else index
@@ -152,7 +159,12 @@ object OffPlan {
             disruptionsDismissed = shiftKeys(trip.disruptionsDismissed, rideIndex),
             leftRide = null,
         )
-        return if (onIt) OnTheWay.atLeg(split, rideIndex, now) else split
+        return when {
+            walkingTo -> split
+            // Their train, if one is followed, is still theirs; when it's due at the fork is learned afresh.
+            aboard -> split.copy(warnedLeg = if (trip.warnedLeg == rideIndex) -1 else split.warnedLeg, dueOffAt = null)
+            else -> OnTheWay.atLeg(split, rideIndex, now)
+        }
     }
 
     // [ride] as two: to where [branch] leaves it, and on from there. The Planner's times are shared out

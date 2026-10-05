@@ -24,6 +24,16 @@ class OnTheWayTest {
         Departure("red", "Red", "outbound", "C", null, at(minutes), "tube", vehicleId = vehicle)
 
     @Test
+    fun `where a train's calls put it on the ride, or past it once they leave it`() {
+        // The ride A to C through B (Codex, #586).
+        assertEquals(0, OnTheWay.aheadOnLeg(ride, listOf(call("A", 5), call("B", 9))))
+        assertEquals(0, OnTheWay.aheadOnLeg(ride, listOf(call("B", 9), call("Y", 12))))
+        assertEquals(1, OnTheWay.aheadOnLeg(ride, listOf(call("C", 14))))
+        // Turned off the ride: past every stop of it.
+        assertEquals(2, OnTheWay.aheadOnLeg(ride, listOf(call("Y", 12))))
+    }
+
+    @Test
     fun `Start follows the next train the rider can catch`() {
         val trains = listOf(train("7", 2), train("", 4), train("9", 6), train("8", 5))
         // Ready at 4 min: the 2-minute train is gone, the 4-minute one has no id to follow.
