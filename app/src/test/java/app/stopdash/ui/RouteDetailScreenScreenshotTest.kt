@@ -140,6 +140,46 @@ class RouteDetailScreenScreenshotTest {
     }
 
     @Test
+    fun anEqualRowPassedAfresh_keepsItsCountdown_andARefreshedRowShowsOnlyItsOwnTrains() {
+        fun rowOf(vararg minutes: Long): DepartureRow {
+            val stop = StopArrivals(
+                stopId = "940GZZLUVIC",
+                stopName = "Victoria",
+                departures = minutes.map { Departure("victoria", "Victoria", "northbound", "Walthamstow Central", null, now.plusSeconds(it * 60), "tube") },
+                fetchedAt = now,
+            )
+            return DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
+        }
+        var row by androidx.compose.runtime.mutableStateOf(rowOf(2, 5), androidx.compose.runtime.neverEqualPolicy())
+        setDetail {
+            StopDashTheme {
+                RouteDetailScreen(
+                    row = row,
+                    isStarred = false,
+                    starrable = true,
+                    disruptionUnknown = false,
+                    stale = false,
+                    now = now,
+                    onToggleStar = {},
+                    onBack = {},
+                    routeStops = RouteStopsUi.Loading,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("2 · 5 min").assertIsDisplayed()
+        // The trip page passes an equal copy on each recomposition: its answer still stands.
+        row = row.copy()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("2 · 5 min").assertIsDisplayed()
+        // A refresh that lost a train shows only the trains it has.
+        row = rowOf(5)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("5 min").assertIsDisplayed()
+        composeRule.onAllNodes(androidx.compose.ui.test.hasText("2 · 5 min")).assertCountEquals(0)
+    }
+
+    @Test
     fun aRailTrainWithNoTime_listsInItsPlaceAmongTheTimes() {
         fun train(minutes: Long) = Departure(
             "great-northern", "Great Northern", "", "Cambridge", "Platform 4", now.plusSeconds(minutes * 60), "national-rail",

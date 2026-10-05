@@ -25,17 +25,6 @@
 
     <issue
         id="WorkerThreadCall"
-        message="`DepartureRows.destinationLines` is marked @WorkerThread but called on the main thread, in composable `RouteDetailScreen`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="        DepartureRows.destinationLines(row, MAX_TIMES, LocalRouteTopology.current)"
-        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/MainScreen.kt"
-            line="4664"
-            column="9"/>
-    </issue>
-
-    <issue
-        id="WorkerThreadCall"
         message="`DepartureRows.stopStatusFolded` is marked @WorkerThread but called on the main thread (through `cardClosures()`), in composable `RideStops`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
         errorLine1="                val stopNotices = cardClosures(card, index, closures, rideLines).map { closure ->"
         errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
