@@ -156,6 +156,20 @@ class HomeLinesTest {
     }
 
     @Test
+    fun `each always-covered line stands on its own check's age, an aged one never taking a current one down`() {
+        val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now, determinedLineIds = setOf("73"))
+        val good = { id: String -> LineStatus(id, LineStatus.GOOD_SERVICE, "Good Service") }
+        // The DLR's verdict is current; the Overground's (since dropped from the choice) has aged.
+        val overground = HomeLines.idsOf(setOf("overground"))
+        val ids = overground + "dlr"
+        val stamps = overground.associateWith { now.minus(Duration.ofMinutes(10)) } + ("dlr" to now.minus(Duration.ofMinutes(1)))
+        val always = HomeLines.Always(ids.associateWith(good), stamps.values.min(), askedFor = ids, stamps = stamps)
+        val dlr = row(HomeLines.row(loaded, mapOf("near" to 50.0), always, emptySet(), now, networks = setOf("dlr")), "dlr")
+        assertFalse(dlr.unknown)
+        assertFalse(dlr.checking)
+    }
+
+    @Test
     fun `back from the background, the tube's old check reads checking while the refresh runs, not couldn't check`() {
         val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now, determinedLineIds = setOf("73"))
         val old = tube(at = now.minus(Duration.ofMinutes(10)))
