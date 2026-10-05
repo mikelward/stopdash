@@ -2152,7 +2152,8 @@ flashes up. Under it, **Always include** picks the networks
 covered whatever's near (maintainer, 2026-10-05): Tube (on by default), Overground, Elizabeth line,
 DLR and Tram; the lines near the rider are always included, a choice of none leaving them alone. A
 network chosen with no current check of its lines reads "Checking…" until the next refresh asks
-about it; one chosen again within a check's five minutes shows that check. With the row off, the chosen networks aren't
+about it, never a verdict it can't stand behind; one chosen again before any refresh since may show the
+check it still has. With the row off, the chosen networks aren't
 asked about at all.
 
 A disrupted line is always kept flagged — its countdowns are never shown as verified-clean
