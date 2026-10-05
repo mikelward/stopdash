@@ -35,7 +35,7 @@ class OffPlanTest {
     private val trip = ActiveTrip(TripRoute(listOf(ride, walkOn)), "Z", startedAt = t0)
 
     private fun train(vehicle: String, to: String, minutes: Long, line: String = "red", branch: String? = null) =
-        Departure(line, "Red", "outbound", to, null, at(minutes), "tube", branch = branch, vehicleId = vehicle)
+        Departure(line, line.replaceFirstChar { it.uppercase() }, "outbound", to, null, at(minutes), "tube", branch = branch, vehicleId = vehicle)
 
     private val loop get() = OffPlan.branches(ride, emptyList(), sequences, at(0)).single { it.label == "E" }
 
@@ -89,6 +89,39 @@ class OffPlanTest {
         assertTrue(branches.single { it.label == "W" }.trains.isEmpty())
         // Gone by then: not listed.
         assertEquals(listOf("3"), OffPlan.branches(ride, board, sequences, at(4)).single { it.label == "E" }.trains.map { it.vehicleId })
+    }
+
+    @Test
+    fun `another line from the platform that turns off the ride is a branch of its own`() {
+        // Blue runs A, B, C with the ride, then off to Q; green runs on to X, the ride's own way, so its
+        // trains are the board's, not a branch's (maintainer, 2026-10-05: the Circle beside the District).
+        val blue = LineSequence(listOf(LineRoute("A ↔ Q", listOf("A", "B", "C", "Q"))), mapOf("A" to "A", "B" to "B", "C" to "C", "Q" to "Q"))
+        val green = LineSequence(listOf(LineRoute("A ↔ X", listOf("A", "B", "C", "D", "X"))), line.stopNames)
+        val board = listOf(train("2", "Q", 3, line = "blue"), train("3", "X", 4, line = "green"), train("4", "Q", 6, line = "blue"))
+        val branches = OffPlan.branches(ride, board, sequences + ("blue" to blue) + ("green" to green), at(0))
+        // The ride's own line's first, then the other's.
+        assertEquals(listOf("W" to "", "E" to "", "Q" to "blue"), branches.map { it.label to it.lineId })
+        val q = branches.last()
+        assertEquals(1, q.forkIndex)
+        assertEquals("C", q.forkName)
+        assertEquals("Blue", q.lineName)
+        assertEquals(listOf("2", "4"), q.trains.map { it.vehicleId })
+        // Not without its route loaded.
+        assertEquals(listOf("W", "E"), OffPlan.branches(ride, board, sequences, at(0)).map { it.label })
+    }
+
+    @Test
+    fun `taking another line's branch rides that line to where it turns off`() {
+        val blue = LineSequence(listOf(LineRoute("A ↔ Q", listOf("A", "B", "C", "Q"))), mapOf("A" to "A", "B" to "B", "C" to "C", "Q" to "Q"))
+        val board = listOf(train("2", "Q", 3, line = "blue"))
+        val q = OffPlan.branches(ride, board, sequences + ("blue" to blue), at(0)).single { it.otherLine }
+        val taken = OffPlan.take(trip, 0, q, at(1))!!
+        val (first, rest) = taken.route.legs
+        assertEquals("blue" to "C", first.lineId to first.toId)
+        // The rest of the ride stays on the ride's own line.
+        assertEquals("red" to "C", rest.lineId to rest.fromId)
+        // Not once on board a train of the ride's own.
+        assertNull(OffPlan.take(trip.copy(boarded = true), 0, q, at(1)))
     }
 
     @Test

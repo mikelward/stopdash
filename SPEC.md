@@ -1962,7 +1962,13 @@ them there:
   ("(Battersea)"), with the next few times TfL lists for it while there's a board. They're read from the
   line's route, not TfL's live labels, so a branch shows even when TfL lists none of its trains or names
   them for the other branch, as it can; route patterns that run on alike past the fork are one row,
-  named by a "via" past the fork, else by where it ends. On board, only forks still ahead are offered,
+  named by a "via" past the fork, else by where it ends. **Other lines from the platform** are offered
+  the same way, each under its own pill (maintainer, 2026-10-05): a line of the ride's mode on the boarding
+  stop's board that runs the ride's way for a stop or more and then turns off it (the Circle beside the
+  District), after the ride's own line's rows; one that takes the rider where they get off is no row, as
+  its trains are already the board's own. Taking one rides that line to where it turns off. They come
+  from the board, so they're offered only while there is one: on board, the rider is on a train of the
+  ride's own line. On board, only forks still ahead are offered,
   as the last stop known ahead says (kept with the trip, so through a restart), and only from an answer
   current enough to stand behind (D4): from an older one the train may have passed a fork since.
   A tap on a row opens **Take this one** under it with where the rider would change ("Change at

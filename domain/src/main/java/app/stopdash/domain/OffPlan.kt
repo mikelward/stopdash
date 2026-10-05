@@ -7,9 +7,10 @@ import java.time.Instant
 /**
  * The ways a trip on the way's ride can be left (maintainer, 2026-10-05): at a ride's boarding stop, a
  * branch of the ride's line that runs the ride's way for a stop or more and then turns off it, as the
- * Bank branch does at Camden Town for a rider going down the Charing Cross branch. Read from the line's
- * route, not from TfL's live labels, which can name a Bank train Charing Cross. The trip's board lists
- * them grayed, and **Take this one** reroutes the trip ([take]): a ride to where the branch turns off,
+ * Bank branch does at Camden Town for a rider going down the Charing Cross branch; or another line from
+ * the same platform that does, as the Circle can beside the District. Read from the lines' routes, not
+ * from TfL's live labels, which can name a Bank train Charing Cross. The trip's board lists them grayed,
+ * and **Take this one** reroutes the trip ([take]): a ride to where the branch turns off, on its line,
  * then a change there onto the rest of the ride, followed as any route is.
  */
 object OffPlan {
@@ -18,7 +19,8 @@ object OffPlan {
      * [forkIndex] ([TripLeg.path]), named [forkName]: where the rider changes back. [trains] are the
      * board's trains whose way TfL's labels put on it, soonest first: none where TfL lists none, or
      * sends them another way. [ways] are the stop ids the branch runs on past the fork, one per route
-     * pattern merged into it: patterns that run on alike are one branch, whatever their names.
+     * pattern merged into it: patterns that run on alike are one branch, whatever their names. [lineId]
+     * and [lineName] are another line's from the same platform; blank, the ride's own.
      */
     data class Branch(
         val label: String,
@@ -26,19 +28,45 @@ object OffPlan {
         val forkName: String,
         val trains: List<Departure> = emptyList(),
         val ways: List<List<String>> = emptyList(),
-    )
+        val lineId: String = "",
+        val lineName: String = "",
+    ) {
+        /** Whether this is another line's, not the ride's own. */
+        val otherLine: Boolean get() = lineId.isNotBlank()
+    }
 
     /**
-     * The branches that leave [ride] ([Branch]), by its line's route ([sequences], by line), nearest
-     * fork first, each with the trains of [departures] still to come at [now] whose way runs on it.
-     * Route patterns that run on alike past the same fork are one branch (Codex, #583), and so are two
-     * that would read the same. None for a bus, whose path is too loose to send a rider to change on
-     * (as a journey card's change at a fork, SPEC *Journeys*), or with the line's route not loaded.
+     * The branches that leave [ride] ([Branch]), by its lines' routes ([sequences], by line), nearest
+     * fork first and the ride's own line's before another's, each with the trains of [departures] still
+     * to come at [now] whose way runs on it. Besides the ride's own line, each other line of its mode
+     * that [departures] list at the stop (another from the same platform, as the Circle beside the
+     * District) offers its own; one whose route takes the rider where they get off isn't one, as its
+     * trains are already the board's own ([OnTheWay.boardTrains]). Route patterns that run on alike past
+     * the same fork are one branch (Codex, #583), and so are two of a line that would read the same.
+     * None for a bus, whose path is too loose to send a rider to change on (as a journey card's change
+     * at a fork, SPEC *Journeys*), nor of a line whose route isn't loaded.
      */
     @WorkerThread
     fun branches(ride: TripLeg, departures: List<Departure>, sequences: Map<String, LineSequence?>, now: Instant): List<Branch> {
         if (ride.isWalk || ride.isBus || !OnTheWay.checkable(ride)) return emptyList()
-        val sequence = sequences[ride.lineId]?.callingAt(ride.fromId) ?: return emptyList()
+        val others = departures.filter { it.mode.equals(ride.mode, ignoreCase = true) && it.lineId.isNotBlank() && it.lineId != ride.lineId }
+            .distinctBy { it.lineId }.sortedBy { it.lineId }
+        val own = lineBranches(ride, ride.lineId, "", "", departures, sequences, now)
+        return own + others.flatMap { lineBranches(ride, it.lineId, it.lineId, it.lineName, departures, sequences, now) }
+    }
+
+    // The branches off [ride] of the line [lineId] ([branches]), as [Branch.lineId] [asLine] (blank for the
+    // ride's own) named [lineName].
+    private fun lineBranches(
+        ride: TripLeg,
+        lineId: String,
+        asLine: String,
+        lineName: String,
+        departures: List<Departure>,
+        sequences: Map<String, LineSequence?>,
+        now: Instant,
+    ): List<Branch> {
+        val sequence = sequences[lineId]?.callingAt(ride.fromId) ?: return emptyList()
         val found = LinkedHashMap<Pair<Int, String>, Branch>()
         for (route in sequence.routes) {
             for (at in route.stopIds.indices.filter { route.stopIds[it] == ride.fromId }) {
@@ -50,10 +78,11 @@ object OffPlan {
                 if (found.values.any { it.forkIndex == fork && way in it.ways }) continue
                 val label = labelOf(route, on) ?: continue
                 val branch = found[fork to label]
-                found[fork to label] = branch?.copy(ways = branch.ways + listOf(way)) ?: Branch(label, fork, forkName(ride, fork, sequence), ways = listOf(way))
+                found[fork to label] = branch?.copy(ways = branch.ways + listOf(way))
+                    ?: Branch(label, fork, forkName(ride, fork, sequence), ways = listOf(way), lineId = asLine, lineName = lineName)
             }
         }
-        val listed = Countdown.upcoming(departures.filter { it.lineId == ride.lineId }, now).sortedBy { it.expectedArrival }
+        val listed = Countdown.upcoming(departures.filter { it.lineId == lineId }, now).sortedBy { it.expectedArrival }
             .mapNotNull { train -> wayOf(ride, train, sequence)?.let { train to it } }
         return found.values.sortedWith(compareBy({ it.forkIndex }, { it.label })).map { branch ->
             branch.copy(trains = listed.filter { (_, way) -> onBranch(branch, way) }.map { it.first })
@@ -127,7 +156,8 @@ object OffPlan {
     /**
      * [trip] rerouted onto [branch] for the ride at leg [rideIndex] (maintainer, 2026-10-05: like a
      * reroute, nothing followed specially): the ride split where the branch turns off, into a ride to
-     * there and the rest of the ride from there, a change between. The trip then goes on as on any route.
+     * there (on the branch's line, for another line's) and the rest of the ride from there, a change
+     * between. The trip then goes on as on any route.
      * Leg indices past the ride move up one, and what was heard or let go of on the ride holds for both
      * its parts.
      *
@@ -136,8 +166,9 @@ object OffPlan {
      * train they're on, now ridden to the fork: a train that changed its branch on the way (maintainer,
      * 2026-10-05), or one TfL labels wrongly. A "get off soon" said for the ride's old end is done with.
      * On the walk to the ride, the walk goes on. Null when [rideIndex] isn't the ride the rider is on, or
-     * on their way to; when the fork is behind them; or when they're on another of the ride's lines,
-     * whose own route the branch wasn't found on.
+     * on their way to; when the fork is behind them; when they're on another of the ride's lines, whose
+     * own route the branch wasn't found on; or for another line's branch once they're on board, on a
+     * train of the ride's.
      */
     @WorkerThread
     fun take(trip: ActiveTrip, rideIndex: Int, branch: Branch, now: Instant): ActiveTrip? {
@@ -147,7 +178,7 @@ object OffPlan {
         val walkingTo = rideIndex == trip.legIndex + 1 && trip.leg?.isWalk == true
         if (!onIt && !walkingTo) return null
         val aboard = onIt && (trip.boarded || trip.onBoardSeen)
-        if (aboard && (trip.vehicleLeg != null || trip.seenAlongStop > branch.forkIndex)) return null
+        if (aboard && (branch.otherLine || trip.vehicleLeg != null || trip.seenAlongStop > branch.forkIndex)) return null
         val (first, rest) = split(ride, branch)
         val legs = trip.route.legs.take(rideIndex) + first + rest + trip.route.legs.drop(rideIndex + 1)
         fun shift(index: Int) = if (index > rideIndex) index + 1 else index
@@ -167,14 +198,15 @@ object OffPlan {
         }
     }
 
-    // [ride] as two: to where [branch] leaves it, and on from there. The Planner's times are shared out
-    // by stops, as no time is known for the stop between.
+    // [ride] as two: to where [branch] leaves it, on its line, and on from there. The Planner's times are
+    // shared out by stops, as no time is known for the stop between.
     private fun split(ride: TripLeg, branch: Branch): Pair<TripLeg, TripLeg> {
         val k = branch.forkIndex
         val forkId = ride.path[k]
         val stops = ride.path.size
         val at = ride.departure.plus(Duration.ofMillis(ride.run.toMillis() * (k + 1) / stops))
         val first = ride.copy(
+            lineId = branch.lineId.ifBlank { ride.lineId }, lineName = branch.lineName.ifBlank { ride.lineName },
             toId = forkId, toName = branch.forkName, arrival = at, path = ride.path.take(k + 1), pathNames = ride.pathNames.take(k + 1),
             changeAfter = Duration.ZERO, toArea = "", toAt = null, plannedToId = "",
         )

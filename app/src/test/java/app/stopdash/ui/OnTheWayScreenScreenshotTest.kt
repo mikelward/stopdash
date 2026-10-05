@@ -473,6 +473,30 @@ class OnTheWayScreenScreenshotTest {
         composeRule.onNodeWithTag("onTheWayOtherRoutes").assertDoesNotExist()
     }
 
+    @Test
+    fun another_line_from_the_platform_is_offered_under_its_own_pill() {
+        // A District ride from Paddington, where a Circle train shares the platform for a stop before
+        // turning off (maintainer, 2026-10-05): its row wears the Circle's pill, the change where it turns off.
+        val district = TripLeg(
+            "tube", "district", "District", "940GZZLUPAC", "Paddington", "940GZZLUWIM", "Wimbledon", at(5), at(40),
+            path = listOf("940GZZLUBWT", "940GZZLUWIM"), pathNames = listOf("Bayswater", "Wimbledon"),
+        )
+        val wimbledon = Departure("district", "District", "outbound", "Wimbledon", null, at(5), "tube", vehicleId = "EXAMPLE1")
+        val circle = Departure("circle", "Circle", "outbound", "Hammersmith", null, at(2), "tube", vehicleId = "EXAMPLE2")
+        val off = OffPlan.Branch("Hammersmith", forkIndex = 0, forkName = "Bayswater", trains = listOf(circle), lineId = "circle", lineName = "Circle")
+        val onIt = trip.copy(route = TripRoute(listOf(district)), destinationName = "Wimbledon", legIndex = 0)
+        show(
+            onIt, TripProgress.Waiting(district, at(5)),
+            nextTrains = NextTrains(district, listOf(wimbledon), readyAt = now, offPlan = offPlanRows(district, listOf(off))).withGroups(now),
+            onTake = { _, _ -> },
+        )
+        composeRule.onNodeWithTag("onTheWayOtherRoutes").performClick()
+        composeRule.onNodeWithText("(Hammersmith)").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Circle").assertIsDisplayed()
+        composeRule.onNodeWithText("(Hammersmith)").performClick()
+        composeRule.onNodeWithText("Change at Bayswater").assertIsDisplayed()
+    }
+
     private fun showsBranchesOnBoard(current: Boolean = true, progress: (TripLeg) -> TripProgress) {
         // Riding south from Waterloo to Morden, seen on board: the board's gone, Other routes stays, from the
         // line's route, for a train that changes its branch on the way (maintainer, 2026-10-05).
