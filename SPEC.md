@@ -1335,9 +1335,12 @@ cards may not bear out. The "Checking routes…" banner over the list is held th
 (maintainer, 2026-10-04: not a sheet), with the app's menu and Back returning to the trip where it
 was, and one the home screen can open too: one row per line, its pill and the worst status any card shows for it (a line not
 running ahead of one running with delays, whatever TfL's numbers say). Disruptions come first, worst
-first; then any the rider dismissed, still named but toned down, since a dismissal quiets the alert,
-not the line's state; then lines that couldn't be checked (a failed or left-out check stays so until
-one succeeds); then "Checking…" lines; then the good services. A line with no current status is never
+first; then lines that couldn't be checked (a failed or left-out check stays so until one succeeds);
+then "Checking…" lines; then any the rider dismissed, just above the good services, still named but
+toned down, since a dismissal quiets the alert, not the line's state (maintainer, 2026-10-05: demoted,
+not hidden); then the good services. A dismissed line is never on the row's pills: on the home
+screen's row, a line counts as dismissed once its alert is dismissed every way it's disrupted, as the
+list's rows dismiss their own way's alert. A line with no current status is never
 called a good service. The stops the row names follow, then, only when a line couldn't be checked, a
 note that its times may be wrong. While the page is open each line keeps its place, so a check landing
 changes what a line says, never where it is; a line new since it opened goes last, one gone from the trip
