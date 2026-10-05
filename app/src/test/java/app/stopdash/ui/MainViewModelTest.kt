@@ -4555,7 +4555,7 @@ class MainViewModelTest {
         }
         cards.open(fartherPlace, Coordinates(0.0, 0.0))
         advanceUntilIdle()
-        val load = cards.cards.value[fartherPlace.key]
+        val load = cards.picked.value.loads[fartherPlace.key]
         assertTrue("open after the lookup: $load", load is FartherLoad.Open)
         assertEquals(setOf("MA"), (load as FartherLoad.Open).distanceMeters.keys)
         assertEquals(listOf("MA"), shownIds(openModel(cards)))
@@ -4567,7 +4567,7 @@ class MainViewModelTest {
         val bus = CollapsedPlaces.Place("bus:J1", "", "Farther", 600.0, emptyList(), stops = listOf(fartherStop))
         cards.open(bus, Coordinates(0.0, 0.0))
         advanceUntilIdle()
-        val load = cards.cards.value[bus.key]
+        val load = cards.picked.value.loads[bus.key]
         assertTrue("open with its own poles: $load", load is FartherLoad.Open)
         assertEquals(listOf("MA"), shownIds(cards.model(bus.key)!!))
     }
@@ -4581,7 +4581,7 @@ class MainViewModelTest {
         val moved = bus.copy(stops = listOf(fartherStop.copy(id = "E")))
         cards.retain(listOf(moved), Coordinates(0.0, 0.0))
         advanceUntilIdle()
-        val load = cards.cards.value[bus.key]
+        val load = cards.picked.value.loads[bus.key]
         assertTrue("reopened on the new poles: $load", load is FartherLoad.Open)
         assertEquals(setOf("E"), (load as FartherLoad.Open).distanceMeters.keys)
         assertEquals(listOf("E"), shownIds(cards.model(bus.key)!!))
@@ -4596,11 +4596,11 @@ class MainViewModelTest {
         }
         cards.open(fartherPlace, Coordinates(0.0, 0.0))
         advanceUntilIdle()
-        assertEquals(FartherLoad.Failed, cards.cards.value[fartherPlace.key])
+        assertEquals(FartherLoad.Failed, cards.picked.value.loads[fartherPlace.key])
         fail = false
         cards.open(fartherPlace, Coordinates(0.0, 0.0))
         advanceUntilIdle()
-        assertTrue(cards.cards.value[fartherPlace.key] is FartherLoad.Open)
+        assertTrue(cards.picked.value.loads[fartherPlace.key] is FartherLoad.Open)
     }
 
     @Test
@@ -4616,7 +4616,7 @@ class MainViewModelTest {
         cards.retain(listOf(fartherPlace), Coordinates(51.51, 0.0))
         gate.complete(Unit)
         advanceUntilIdle()
-        val open = cards.cards.value[fartherPlace.key] as FartherLoad.Open
+        val open = cards.picked.value.loads[fartherPlace.key] as FartherLoad.Open
         assertEquals(0.0, open.distanceMeters.getValue("MA"), 1.0)
     }
 
@@ -4641,7 +4641,7 @@ class MainViewModelTest {
             scheduler.advanceUntilIdle()
             advanceUntilIdle()
         }
-        val open = cards.cards.value[fartherPlace.key] as FartherLoad.Open
+        val open = cards.picked.value.loads[fartherPlace.key] as FartherLoad.Open
         assertEquals(0.0, open.distanceMeters.getValue("MA"), 1.0)
         assertEquals(0.0, openModel(cards).distanceMeters.getValue("MA"), 1.0)
     }
@@ -4654,7 +4654,7 @@ class MainViewModelTest {
         val model = openModel(cards)
         cards.retain(emptyList(), Coordinates(0.0, 0.0))
         advanceUntilIdle()
-        assertTrue(cards.cards.value.isEmpty())
+        assertTrue(cards.picked.value.loads.isEmpty())
         assertFalse("the closed card's model is cleared", model.viewModelScope.coroutineContext[kotlinx.coroutines.Job]!!.isActive)
     }
 
@@ -4670,7 +4670,7 @@ class MainViewModelTest {
         cards.retain(emptyList(), Coordinates(0.0, 0.0))
         gate.complete(Unit)
         advanceUntilIdle()
-        assertTrue(cards.cards.value.isEmpty())
+        assertTrue(cards.picked.value.loads.isEmpty())
     }
 
     @Test
@@ -6222,22 +6222,22 @@ class MainViewModelTest {
             )[FartherCardsViewModel::class]
             cards.open(fartherPlace, Coordinates(0.0, 0.0))
             repeat(50) {
-                if (cards.cards.value[fartherPlace.key] is FartherLoad.Open) return@repeat
+                if (cards.picked.value.loads[fartherPlace.key] is FartherLoad.Open) return@repeat
                 worker.flush()
                 advanceUntilIdle()
             }
-            val opened = cards.cards.value[fartherPlace.key] as FartherLoad.Open
+            val opened = cards.picked.value.loads[fartherPlace.key] as FartherLoad.Open
             assertEquals(0.0, opened.distanceMeters.getValue("MA"), 0.001)
             val reads = java.util.Collections.synchronizedList(mutableListOf<String>())
             cards.retain(NotingList(listOf(fartherPlace), reads), Coordinates(0.001, 0.0))
             // Nothing is worked out on the caller's thread: the card stands as it was until the worker answers.
-            assertSame(opened, cards.cards.value[fartherPlace.key])
+            assertSame(opened, cards.picked.value.loads[fartherPlace.key])
             repeat(50) {
-                if (cards.cards.value[fartherPlace.key] !== opened) return@repeat
+                if (cards.picked.value.loads[fartherPlace.key] !== opened) return@repeat
                 worker.flush()
                 advanceUntilIdle()
             }
-            val moved = cards.cards.value[fartherPlace.key] as FartherLoad.Open
+            val moved = cards.picked.value.loads[fartherPlace.key] as FartherLoad.Open
             assertTrue("measured from the new fix: ${moved.distanceMeters}", moved.distanceMeters.getValue("MA") > 100.0)
             assertTrue(reads.isNotEmpty())
             assertEquals(setOf("retain-worker"), reads.toSet())

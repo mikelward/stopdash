@@ -57,7 +57,7 @@ exercises the whole spine the widget later renders from.
       (`MainViewModel.reconcile`, with `reconcileSameSet`'s journey checks) is worked out on the
       worker too, and applied, prune first, before its refetch.
 - [ ] The smaller per-tick and per-recomposition passes: `MainActivity`'s farther
-      cards built (`fartherCards`, `fartherDistanceMeters`, `openedStates`) and the farther stations
+      cards built (`fartherCards`, `fartherDistanceMeters`) and the farther stations
       reached (`reachedStopIds`, `fartherReached`, and `FartherBuses.stationStops`/`candidates`
       before their `produceState` hops), all in composition; the search and lookup results worked over after their requests
       (`StationSearchViewModel.start`'s filter and map, `StationStopsViewModel.retry`'s centered stops,

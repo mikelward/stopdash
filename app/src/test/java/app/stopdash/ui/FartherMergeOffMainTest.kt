@@ -1,130 +1,120 @@
 package app.stopdash.ui
 
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.test.junit4.createComposeRule
 import app.stopdash.domain.StopArrivals
+import app.stopdash.domain.StopLocation
 import java.time.Instant
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
-import org.junit.Rule
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
 
 /**
- * The list's opened farther cards are merged into it on the screen's worker ([LocalWorker]), never
- * the main thread (AGENTS.md *Main thread: read and dispatch only*): the merge walks every card's stops.
+ * The list's opened farther cards are merged into it on the compute dispatcher, never the main thread
+ * (AGENTS.md *Main thread: read and dispatch only*), and the screen gets only finished merges: the
+ * list never arrives without the opened rows (which collapsed them and lost the list's place), nor
+ * with rows from another moment than their cards' standing and failures.
  */
-@RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36], qualifiers = "en-rGB")
 class FartherMergeOffMainTest {
-    @get:Rule
-    val composeRule = createComposeRule()
-
-    private val worker = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }.asCoroutineDispatcher()
+    private val compute = Executors.newSingleThreadExecutor { Thread(it, "test-compute") }.asCoroutineDispatcher()
 
     @After
     fun tearDown() {
-        worker.close()
+        compute.close()
     }
 
     private val now = Instant.parse("2026-09-18T08:00:00Z")
     private val list = DeparturesUiState.Loaded(stops = listOf(StopArrivals("E", "Euston", emptyList(), now)), fetchedAt = now)
     private val card = DeparturesUiState.Loaded(stops = listOf(StopArrivals("MA", "Farther", emptyList(), now)), fetchedAt = now)
+    private val second = DeparturesUiState.Loaded(stops = listOf(StopArrivals("MB", "Farther still", emptyList(), now)), fetchedAt = now)
+    private val openA = FartherLoad.Open(listOf(StopLocation("MA", "Farther", 51.5, -0.12)), mapOf("MA" to 2000.0))
+    private val openB = FartherLoad.Open(listOf(StopLocation("MB", "Farther still", 51.5, -0.12)), mapOf("MB" to 2500.0))
+
+    private fun cards(vararg open: Pair<String, Pair<FartherLoad.Open, DeparturesUiState>>) = OpenedCards(
+        null,
+        open.associate { (key, pair) -> key to pair.first },
+        open.map { (_, pair) -> pair.first.distanceMeters.keys to pair.second },
+    )
+
+    private fun DeparturesUiState.ids() = (this as DeparturesUiState.Loaded).stops.map { it.stopId }
 
     @Test
-    fun openedCards_areMergedOnTheWorker() {
+    fun openedCards_areMergedOnCompute() = runBlocking {
         val threads = mutableListOf<String>()
-        var kept: MergedFarther? = null
-        var shown: DeparturesUiState = DeparturesUiState.Loading
-        // A card's stop ids are the same set from one composition to the next, as the screen's are.
-        val ids = setOf("MA")
-        composeRule.setContent {
-            CompositionLocalProvider(LocalWorker provides worker) {
-                shown = rememberWithOpenedFarther(
-                    list,
-                    listOf(ids to card),
-                    cached = null,
-                    onMerged = { kept = it },
-                    merge = { l, o ->
-                        synchronized(threads) { threads += Thread.currentThread().name }
-                        withOpenedFarther(l, o)
-                    },
-                )
-            }
-        }
-        composeRule.waitUntil(timeoutMillis = 5_000) { (shown as? DeparturesUiState.Loaded)?.stops?.size == 2 }
+        val shown = shownWithOpened(
+            MutableStateFlow(list),
+            MutableStateFlow(cards("a" to (openA to card))),
+            compute,
+            merge = { l, o ->
+                synchronized(threads) { threads += Thread.currentThread().name }
+                withOpenedFarther(l, o)
+            },
+        ).first()
 
-        assertEquals(listOf("E", "MA"), (shown as DeparturesUiState.Loaded).stops.map { it.stopId })
-        assertTrue("merged on $threads", threads.isNotEmpty() && threads.all { it.startsWith("test-worker") })
-        assertTrue(kept?.merged === shown)
+        assertEquals(listOf("E", "MA"), shown.state.ids())
+        assertTrue("merged on $threads", threads.isNotEmpty() && threads.all { it.startsWith("test-compute") })
     }
 
     @Test
-    fun aNewList_showsAloneUntilItsOwnMergeIsBack() {
-        // Another set's list, say: the last list's merge isn't this one's.
-        val other = DeparturesUiState.Loaded(stops = listOf(StopArrivals("K", "King's Cross", emptyList(), now)), fetchedAt = now)
-        var current by mutableStateOf(list)
+    fun anotherCardOpening_neverShowsTheListWithoutTheOpenedRows() = runBlocking {
+        // The bug: a second card tapped open dropped the first one's rows until the merge was back, so
+        // the list collapsed them and landed on another card's rows. Every update the screen gets
+        // carries every open card's rows.
+        val opened = MutableStateFlow(cards("a" to (openA to card)))
         val release = CountDownLatch(1)
-        var shown: DeparturesUiState = DeparturesUiState.Loading
-        val ids = setOf("MA")
-        composeRule.setContent {
-            CompositionLocalProvider(LocalWorker provides worker) {
-                shown = rememberWithOpenedFarther(
-                    current,
-                    listOf(ids to card),
-                    cached = null,
-                    onMerged = {},
-                    merge = { l, o ->
-                        if (l === other) release.await()
-                        withOpenedFarther(l, o)
-                    },
-                )
-            }
+        val updates = mutableListOf<ShownFarther>()
+        val job = launch {
+            shownWithOpened(MutableStateFlow(list), opened, compute, merge = { l, o ->
+                if (o.size == 2) release.await()
+                withOpenedFarther(l, o)
+            }).take(2).toList(updates)
         }
-        composeRule.waitUntil(timeoutMillis = 5_000) { (shown as? DeparturesUiState.Loaded)?.stops?.size == 2 }
-
-        current = other
-        composeRule.waitForIdle()
-        assertEquals(listOf("K"), (shown as DeparturesUiState.Loaded).stops.map { it.stopId })
-
+        while (synchronized(updates) { updates.isEmpty() }) yield()
+        opened.value = cards("a" to (openA to card), "b" to (openB to second))
         release.countDown()
-        composeRule.waitUntil(timeoutMillis = 5_000) { (shown as? DeparturesUiState.Loaded)?.stops?.map { it.stopId } == listOf("K", "MA") }
+        job.join()
+
+        assertEquals(listOf(listOf("E", "MA"), listOf("E", "MA", "MB")), updates.map { it.state.ids() })
+        // Each with the cards' standing it was merged with.
+        assertEquals(listOf(setOf("a"), setOf("a", "b")), updates.map { it.loads.keys })
     }
 
     @Test
-    fun aRecreatedScreen_showsTheLastMergeOfTheSameStatesAtOnce() {
-        val opened = listOf(setOf("MA") to card)
-        val merged = withOpenedFarther(list, opened)
-        var first: DeparturesUiState? = null
-        composeRule.setContent {
-            // Never merged here, so the first frame is what it had before working anything out.
-            val shown = rememberWithOpenedFarther(
-                list, opened, cached = MergedFarther(list, opened, merged), onMerged = {}, merge = { l, _ -> l },
-            )
-            if (first == null) first = shown
-        }
-        composeRule.waitForIdle()
-        assertTrue(first === merged)
+    fun aFailingCard_arrivesWithItsRows() = runBlocking {
+        // A card's failed refresh and its rows come in the same update, so its banner never waits
+        // behind a picture that reads clean.
+        val failed = card.copy(refreshFailure = DeparturesUiState.Error.Kind.NETWORK, partialRefresh = true)
+        val shown = shownWithOpened(MutableStateFlow(list), MutableStateFlow(cards("a" to (openA to failed))), compute).first()
+        assertTrue((shown.state as DeparturesUiState.Loaded).partialRefresh)
+        assertEquals(listOf("E", "MA"), shown.state.ids())
     }
 
     @Test
-    fun aKeptMerge_matchesOnlyTheVerySameInputs() {
-        val ids = setOf("MA")
-        val opened = listOf(ids to card)
-        val kept = MergedFarther(list, opened, withOpenedFarther(list, opened))
-        assertTrue(kept.isOf(list, listOf(ids to card)))
-        // Compared by identity, so the check never walks a card's stop ids: an equal copy is new.
-        assertFalse(kept.isOf(list, listOf(HashSet(ids) to card)))
-        assertFalse(kept.isOf(list.copy(), opened))
+    fun aCardReopening_dropsItsRowsWithItsNewStanding() = runBlocking {
+        // A bus card reopened on new poles goes back to loading: its old rows go in the same update.
+        val loads = mapOf<String, FartherLoad>("a" to FartherLoad.Loading)
+        val shown = shownWithOpened(MutableStateFlow(list), MutableStateFlow(OpenedCards(null, loads, emptyList())), compute).first()
+        assertSame(loads, shown.loads)
+        assertSame(list, shown.state)
+    }
+
+    @Test
+    fun aListNotLoaded_passesThrough() = runBlocking {
+        val shown = shownWithOpened(
+            MutableStateFlow<DeparturesUiState>(DeparturesUiState.Loading),
+            MutableStateFlow(cards("a" to (openA to card))),
+            compute,
+        ).first()
+        assertSame(DeparturesUiState.Loading, shown.state)
     }
 }
