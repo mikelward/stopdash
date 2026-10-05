@@ -76,15 +76,9 @@ internal class RouteDisruptionChecks(
         // Each stop as old as its own answer, a reused lookup perhaps (each stop is its own place,
         // [stopDismissalCheck]); the lines, asked afresh, as old as this check.
         val since = DismissalMarks(ticket.dismissals, checked.dismissals)
-        var cleared = try {
-            dismissedStore.dismissed().first()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // Read back as nothing dismissed: the alert may then say what the rider cleared, never hide what they didn't.
-            warn("on the way: dismissals unreadable: ${e::class.simpleName}")
-            emptySet()
-        }
+        // What's dismissed, read once this check's turn to settle comes ([StopClosureCache.settling]): one
+        // dismissed while it waited is left out of what it says too (Codex, PR #580).
+        var cleared = emptySet<DismissedAlert>()
         // Only checks still current count ([Staleness]): a stop's reused lookup ages from when it was asked.
         val at = clock()
         val current = checked.found.filterKeys { id -> checked.at[id]?.let { !Staleness.isStale(it, at) } == true }
@@ -94,18 +88,31 @@ internal class RouteDisruptionChecks(
         // the same alert coming back later is heard again even when nothing else checks its line or stop
         // (Codex, PR #441): each line answered, and each stop checked, as its own place, settled against
         // what this check found live.
-        // Every live alert's identity, each line's under way ones included: on [io], never the caller's
-        // (the main) thread (Codex on #519).
-        val (live, checkedPlaces) = withContext(io) {
-            val lineCheck = statuses?.let { lineDismissalCheck(it.statuses, it.answered, at) } ?: (emptySet<DismissedAlert>() to emptySet())
-            val stopCheck = stopDismissalCheck(current, at)
-            (lineCheck.first + stopCheck.first) to (lineCheck.second + stopCheck.second)
+        // Each stop only while its answer here is still its newest, one check at a time across every
+        // screen ([StopClosureCache.settling]): one another check has a newer answer for is that one's.
+        closureCache.settling(io, current.keys.asSequence()) { newest ->
+            cleared = try {
+                dismissedStore.dismissed().first()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Read back as nothing dismissed: the alert may then say what the rider cleared, never hide what they didn't.
+                warn("on the way: dismissals unreadable: ${e::class.simpleName}")
+                emptySet()
+            }
+            // Every live alert's identity, each line's under way ones included: on [io], never the caller's
+            // (the main) thread (Codex on #519).
+            val (live, checkedPlaces) = withContext(io) {
+                val lineCheck = statuses?.let { lineDismissalCheck(it.statuses, it.answered, at) } ?: (emptySet<DismissedAlert>() to emptySet())
+                val stopCheck = stopDismissalCheck(current.filter { (id, _) -> checked.asks[id]?.let { newest.isNewest(id, it) } == true }, at)
+                (lineCheck.first + stopCheck.first) to (lineCheck.second + stopCheck.second)
+            }
+            reconcileDismissals(
+                cleared, live, checkedPlaces, dismissedStore, io, warn, "on the way", since,
+                pruned = { gone -> cleared = cleared - gone },
+                restored = { back -> cleared = cleared + back },
+            )
         }
-        reconcileDismissals(
-            cleared, live, checkedPlaces, dismissedStore, io, warn, "on the way", since,
-            pruned = { gone -> cleared = cleared - gone },
-            restored = { back -> cleared = cleared + back },
-        )
         // The routes of the coming bus lines whose alert could be left out for naming only stops off
         // the ride ([RouteDisruption.offRide]), read exactly as [RouteDisruption.signals] reads them —
         // the same day, direction and dismissals — so one that can't change the answer costs no route;

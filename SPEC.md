@@ -2302,8 +2302,12 @@ check prunes it the same way, so an alert dismissed on a trip shows again when i
 waiting for the list to check that line. A trip's own closure checks prune a stop's closure dismissal
 the same way, and so do a trip on the way's: each stop it checked, as its own place only. A
 dismissal made at an interchange or stop area, which also holds stops the trip didn't look at, is
-left to the list, which looks at the whole place. Expiring a dismissal after a day is a `TODO.md`
-follow-up.
+left to the list, which looks at the whole place. Each stop's closure dismissal is settled only by
+its **newest answer**, whichever screen asked: a check whose answer for a stop has been overtaken by
+another screen's newer one leaves that stop to the newer one, and checks settle one at a time, so an
+older "clear" landing late never lets go of a closure a newer check found back. One whose newer check
+was dropped before it answered (the trip was left) still settles it. Expiring a dismissal after a
+day is a `TODO.md` follow-up.
 
 The order is **dedupe, then title, then strip** (maintainer, 2026-09-22): the near-me fold groups
 by place first, on the newline-normalized-but-**not-name-stripped** text, so it stays independent
