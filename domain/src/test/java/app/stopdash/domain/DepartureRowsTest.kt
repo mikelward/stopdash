@@ -1527,6 +1527,18 @@ class DepartureRowsTest {
     }
 
     @Test
+    fun `nearbyDeduped never moves a direction onto a stop with older data`() {
+        // The pair's southbound pole kept a stale snapshot after a partial refresh failure: southbound
+        // stays at the lone pole's fresh row rather than showing the pair's guess.
+        val stalePairSouth = pairSouth.map { it.copy(fetchedAt = now.minusSeconds(600)) }
+        val deduped = DepartureRows.nearbyDeduped(
+            pairNorth + stalePairSouth + loneSouth,
+            mapOf("PN" to 100.0, "PS" to 128.0, "LS" to 103.0),
+        )
+        assertEquals(setOf("PN", "LS"), deduped.mapTo(HashSet()) { it.stopId })
+    }
+
+    @Test
     fun `nearbyDeduped moves a route only to a place serving every direction`() {
         // The lone pole is nearest southbound and nearly so northbound, but serves only southbound.
         val deduped = DepartureRows.nearbyDeduped(
