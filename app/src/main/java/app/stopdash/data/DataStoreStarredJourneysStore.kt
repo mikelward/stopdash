@@ -50,13 +50,17 @@ class DataStoreStarredJourneysStore internal constructor(
                 emit(null)
             }
 
-    override suspend fun toggle(journey: StarredJourney) {
+    override suspend fun toggle(journey: StarredJourney) = edit { Journeys.toggle(it, journey) }
+
+    override suspend fun remove(journey: StarredJourney) = edit { Journeys.remove(it, journey) }
+
+    private suspend fun edit(change: (List<StarredJourney>) -> List<StarredJourney>) {
         dataStore.updateData { stored ->
             if (stored != null && stored.toDomain() == null) {
                 warn("starred journeys file is a newer schema version; preserving it, not overwriting")
                 stored
             } else {
-                Journeys.toggle(stored?.toDomain() ?: emptyList(), journey).toPersisted()
+                change(stored?.toDomain() ?: emptyList()).toPersisted()
             }
         }
     }

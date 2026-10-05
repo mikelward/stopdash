@@ -207,6 +207,9 @@ import app.stopdash.ui.ProvideEmptyTimes
 import app.stopdash.ui.RideLineChecks
 import app.stopdash.ui.RouteDisruptionChecks
 import app.stopdash.ui.SettingsScreen
+import app.stopdash.ui.StarredJourneysUi
+import app.stopdash.ui.StarredJourneysScreen
+import app.stopdash.ui.removeStarredJourney
 import app.stopdash.ui.StationPlaceholderScreen
 import app.stopdash.ui.StationSearchScreen
 import app.stopdash.ui.StationSearchViewModel
@@ -258,6 +261,7 @@ import java.time.LocalDate
 import java.time.ZonedDateTime
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.SupervisorJob
@@ -634,6 +638,11 @@ class MainActivity : ComponentActivity() {
                 // The favorite-places editor (SPEC D9), opened from Settings and layered above it, so
                 // its Back returns to Settings.
                 var favoritePlacesOpen by rememberSaveable { mutableStateOf(false) }
+                // The starred-journeys list, opened from Settings and layered above it.
+                var starredJourneysOpen by rememberSaveable { mutableStateOf(false) }
+                // Process-lived, like the removal itself, so a failure after Back or a rotation still
+                // says so on reopening (Codex on #589).
+                val journeyRemoveFailed by JourneyRemovals.failed.collectAsStateWithLifecycle()
                 // The saved places were opened by a long press in a From… station's To… search: a place
                 // picked there routes that station's trip, not one from here (Codex, #347).
                 var placesFromStation by rememberSaveable { mutableStateOf(false) }
@@ -958,7 +967,7 @@ class MainActivity : ComponentActivity() {
                     },
                 ) {
                     NearbyArea(
-                        overlayOpen = onTheWayOpen || licensesOpen || settingsOpen || favoritePlacesOpen || stationSearchOpen || openStationId != null,
+                        overlayOpen = onTheWayOpen || licensesOpen || settingsOpen || favoritePlacesOpen || starredJourneysOpen || stationSearchOpen || openStationId != null,
                         aboveOverlay = {
                             ForegroundReturnLatcher(
                                 isReady = { nearbyViewModel.state.value is NearbyStopsViewModel.State.Ready },
@@ -970,7 +979,7 @@ class MainActivity : ComponentActivity() {
                         },
                         overlayContent = {
                             // Which one shows when several are open ([topOverlay]); each closes via its own Back.
-                            val top = topOverlay(licenses = licensesOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, settings = settingsOpen)
+                            val top = topOverlay(licenses = licensesOpen, onTheWay = onTheWayOpen, favoritePlaces = favoritePlacesOpen, settings = settingsOpen, starredJourneys = starredJourneysOpen)
                             if (top == TopOverlay.LICENSES) {
                                 LicensesScreen(onBack = { licensesOpen = false })
                             } else if (top == TopOverlay.ON_THE_WAY) {
@@ -1112,6 +1121,29 @@ class MainActivity : ComponentActivity() {
                                     onCancelEditor = favoritePlacesModel::cancelEditor,
                                     onRetrySearch = favoritePlacesModel::retrySearch,
                                     onDismissWriteError = favoritePlacesModel::dismissWriteError,
+                                )
+                            } else if (top == TopOverlay.STARRED_JOURNEYS) {
+                                // Layered above Settings; its Back returns there (settingsOpen stays set).
+                                val journeyStore = remember { DataStoreStarredJourneysStore.from(applicationContext, warn = ::logStarWarning) }
+                                // Wrapped, so "not read yet" (null here) is told from "unreadable" (a null list).
+                                // Retry re-reads: a failed read's flow has ended, so a new one is collected.
+                                var journeysAttempt by remember { mutableIntStateOf(0) }
+                                val read by remember(journeyStore, journeysAttempt) { journeyStore.journeys().map { JourneysRead(it) } }
+                                    .collectAsStateWithLifecycle(initialValue = null)
+                                // The process's scope, not this overlay's: a Remove followed at once by Back or a
+                                // rotation still lands (Codex on #589).
+                                val overlayScope = rememberCoroutineScope()
+                                val removeScope = (application as? StopdashApp)?.applicationScope ?: overlayScope
+                                StarredJourneysScreen(
+                                    state = StarredJourneysUi(read?.journeys, loaded = read != null, writeFailed = journeyRemoveFailed),
+                                    onBack = { starredJourneysOpen = false },
+                                    onRemove = { journey ->
+                                        JourneyRemovals.attempt(removeScope, warn = ::logStarWarning) {
+                                            removeStarredJourney(journey, journeyStore, WidgetSnapshotStore(applicationContext), warn = ::logStarWarning)
+                                        }
+                                    },
+                                    onDismissWriteError = { JourneyRemovals.failed.value = false },
+                                    onRetry = { journeysAttempt++ },
                                 )
                             } else if (top == TopOverlay.STATIONS) {
                                 // Planning the trip on the way again: Start takes its place, rather than opening it.
@@ -1269,6 +1301,7 @@ class MainActivity : ComponentActivity() {
                                     stepFreeWriteFailed = stepFreeWriteFailed,
                                     onDismissStepFreeError = StepFreeSetting::writeFailureShown,
                                     onOpenFavoritePlaces = { favoritePlacesOpen = true },
+                                    onOpenStarredJourneys = { starredJourneysOpen = true },
                                     onInstallOnWatch = installOnWatch.takeIf { watchInstallAvailable },
                                     // One item shown again at a time; the lists showing nearby stops
                                     // re-pick for it as they come back into view.
@@ -3774,19 +3807,26 @@ internal fun StopDashAppRoot(
 }
 
 /** The activity-level overlays, as [topOverlay] picks between them. */
-internal enum class TopOverlay { LICENSES, ON_THE_WAY, FAVORITE_PLACES, STATIONS, SETTINGS }
+internal enum class TopOverlay { LICENSES, ON_THE_WAY, FAVORITE_PLACES, STARRED_JOURNEYS, STATIONS, SETTINGS }
 
 /**
  * Which overlay shows when several are open at once. Licenses first: About opens it from any
  * screen's overflow, On the way's included, and its Back returns to the screen beneath — ranked
  * under the trip it was a tap that did nothing (Codex on #377). Then the trip on the way, what the
- * rider opened last; the saved places, layered above Settings; the station pages and search,
+ * rider opened last; the saved places, then the starred journeys, layered above Settings; the station pages and search,
  * unless Settings is open, which is last.
  */
-internal fun topOverlay(licenses: Boolean, onTheWay: Boolean, favoritePlaces: Boolean, settings: Boolean): TopOverlay = when {
+internal fun topOverlay(
+    licenses: Boolean,
+    onTheWay: Boolean,
+    favoritePlaces: Boolean,
+    settings: Boolean,
+    starredJourneys: Boolean = false,
+): TopOverlay = when {
     licenses -> TopOverlay.LICENSES
     onTheWay -> TopOverlay.ON_THE_WAY
     favoritePlaces -> TopOverlay.FAVORITE_PLACES
+    starredJourneys -> TopOverlay.STARRED_JOURNEYS
     !settings -> TopOverlay.STATIONS
     else -> TopOverlay.SETTINGS
 }
@@ -4313,6 +4353,32 @@ private fun logUpdateWarning(message: String) = StopdashDebugLog.warning("update
 
 /** One read of the saved journeys: [journeys] is null when the store couldn't be read. */
 private class JourneysRead(val journeys: List<StarredJourney>?)
+
+/**
+ * Settings' starred-journey removals, process-lived as each runs on the process's scope: [failed] says
+ * whether the latest one failed to save. Numbered, so an earlier attempt that ends after a later one
+ * can't set or clear what the later one says (Codex on #589).
+ */
+internal object JourneyRemovals {
+    val failed = MutableStateFlow(false)
+    private val latest = java.util.concurrent.atomic.AtomicLong()
+
+    /** Runs [remove] on [scope]; only the latest attempt's result reaches [failed]. */
+    fun attempt(scope: CoroutineScope, warn: (String) -> Unit = {}, remove: suspend () -> Unit): Job {
+        val mine = latest.incrementAndGet()
+        failed.value = false
+        return scope.launch {
+            val ok = try {
+                remove()
+                true
+            } catch (e: IOException) {
+                warn("starred journey remove failed: ${e::class.simpleName}")
+                false
+            }
+            if (latest.get() == mine) failed.value = !ok
+        }
+    }
+}
 
 /**
  * The departures model for an opened farther station's card (SPEC *Finding stops → Farther

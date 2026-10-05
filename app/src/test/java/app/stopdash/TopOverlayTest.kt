@@ -23,6 +23,18 @@ class TopOverlayTest {
     }
 
     @Test
+    fun `the starred journeys sit above Settings, under the saved places`() {
+        assertEquals(
+            TopOverlay.STARRED_JOURNEYS,
+            topOverlay(licenses = false, onTheWay = false, favoritePlaces = false, settings = true, starredJourneys = true),
+        )
+        assertEquals(
+            TopOverlay.FAVORITE_PLACES,
+            topOverlay(licenses = false, onTheWay = false, favoritePlaces = true, settings = true, starredJourneys = true),
+        )
+    }
+
+    @Test
     fun `with none of those open, the station pages and search show`() {
         assertEquals(TopOverlay.STATIONS, topOverlay(licenses = false, onTheWay = false, favoritePlaces = false, settings = false))
     }

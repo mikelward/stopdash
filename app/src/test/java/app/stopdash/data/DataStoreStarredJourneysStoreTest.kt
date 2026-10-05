@@ -49,6 +49,17 @@ class DataStoreStarredJourneysStoreTest {
     }
 
     @Test
+    fun `remove unstars a journey, either way round, and never stars one`() = runTest {
+        val store = DataStoreStarredJourneysStore(FakeDataStore(null))
+        store.toggle(journey)
+        store.remove(journey.reversed())
+        assertEquals(emptyList<StarredJourney>(), store.journeys().first())
+        // A second Remove, landing after the first's write, leaves it unstarred.
+        store.remove(journey)
+        assertEquals(emptyList<StarredJourney>(), store.journeys().first())
+    }
+
+    @Test
     fun `a newer-version file reads as unavailable and a toggle preserves it`() = runTest {
         val future = listOf(journey).toPersisted().copy(version = PersistedStarredJourneys.CURRENT_VERSION + 1)
         val data = FakeDataStore(future)

@@ -116,6 +116,10 @@ object Journeys {
     fun toggle(starred: List<StarredJourney>, journey: StarredJourney): List<StarredJourney> =
         if (starred.any { it.key == journey.key }) starred.filterNot { it.key == journey.key } else starred + journey
 
+    /** [starred] without [journey] (by [StarredJourney.key]); one not there leaves it as it is. */
+    fun remove(starred: List<StarredJourney>, journey: StarredJourney): List<StarredJourney> =
+        starred.filterNot { it.key == journey.key }
+
     /**
      * [journey] with the end nearer ([latitude], [longitude]) as its origin, so the list shows the
      * trains the rider can catch from where they are. Without a position (a location-free list) or
@@ -596,18 +600,25 @@ object Journeys {
  * Reads and writes the starred journeys (SPEC *Journeys*). A seam so a ViewModel depends on the
  * capability, not DataStore; mirrors [StarredRowsStore]. [journeys] emits the saved list at once
  * and on every change — null when a stored list exists that this build can't read (a newer schema),
- * which the store then preserves rather than overwrite. [toggle] runs off the main thread.
+ * which the store then preserves rather than overwrite. [toggle] and [remove] run off the main thread.
  */
 interface StarredJourneysStore {
     fun journeys(): kotlinx.coroutines.flow.Flow<List<StarredJourney>?>
 
     suspend fun toggle(journey: StarredJourney)
 
+    /**
+     * Unstars [journey] if it's starred, and never stars it: Settings' Remove, where a second tap
+     * landing after the first's write must not bring the journey back. Off the main thread.
+     */
+    suspend fun remove(journey: StarredJourney)
+
     companion object {
         /** Persists nothing and reads an empty list: tests and an unwired build. */
         val NONE: StarredJourneysStore = object : StarredJourneysStore {
             override fun journeys() = kotlinx.coroutines.flow.flowOf<List<StarredJourney>?>(emptyList())
             override suspend fun toggle(journey: StarredJourney) {}
+            override suspend fun remove(journey: StarredJourney) {}
         }
     }
 }
