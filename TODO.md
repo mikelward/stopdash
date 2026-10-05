@@ -95,18 +95,17 @@ exercises the whole spine the widget later renders from.
         refresh settling meanwhile may have kept that stored record only because the tap was in flight.
         The alert then stays hidden until the next refresh lets it go (a minute or so). It needs a disk
         write failure during that settle; tracking why each record was kept would close it.
-- [ ] Settle stop closures by a single owner per place. Requests are single-flight now
-      (`StopClosureCache.lookUp`: one per stop out at a time, shared by every screen), so two answers for
-      a stop no longer race; what's left is the settling. The trip's checks take each stop over before
-      their request (`closureAsks`) and hand it back if canceled first, but a check that has already
-      settled without a stop it lost doesn't take it back, so one left unanswered by a canceled
-      successor keeps an ended closure's dismissal until the list next checks that stop. The list's
-      refreshes and journey-destination checks keep separate turns (`Turns`), so a stop that's both
-      on the board and a destination can be settled by an older destination check after a newer
-      refresh found its closure back. A per-place queue of pending verdicts, shared by every kind of
-      check and settled newest-first as each lands, would close both. It would also close a card
-      built from a lookup that another screen's later, failed lookup overtakes in the instant before
-      the card is shown: until the next check, the card shows the earlier answer.
+- [ ] A check canceled after its closure answer lands but before it settles (the trip left, a refresh
+      superseded) leaves that newer answer unsettled, and older checks skip the stop for it
+      (`StopClosureCache.settling`), so a cleared closure's dismissal stays until the next check of
+      that stop, which reuses the answer and settles it. Tracking which check still owes each answer a
+      settle (released when it settles or is canceled) would let an older check settle in its place.
+- [ ] A surface built from a closure lookup that another screen's newer one overtakes before it's
+      shown keeps the earlier answer until its own next check: a destination card (the newer lookup
+      failed, say), or the on-the-way check's signals and notes once its settling has waited on a newer
+      request (`StopClosureCache.settling` already tells it which answers are no longer the newest).
+      Dismissals already settle by each stop's newest answer; the surfaces could read the cache's
+      newest the same way as they're published.
 - [ ] Finish marking `@WorkerThread`: the first sweep marked the route, alert, journey and board-wide
       work; smaller loops the UI still calls in composition (a row's `Countdown.entries`, and the like)
       aren't marked yet, so `WorkerThreadCall` can't see them. Mark each as its screen moves off the

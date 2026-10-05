@@ -34,13 +34,15 @@ internal class StopClosureChecks(
      * What one check found: each stop's notices ([found]) and when they were looked up ([at], by the
      * steady clock), and the stops whose request failed with no later lookup kept ([failed]). [dismissals]
      * is the dismissed alerts' count each found stop's answer was asked at ([StopClosureCache.Ask.dismissals]):
-     * a dismissal counted after is newer than that stop's answer.
+     * a dismissal counted after is newer than that stop's answer. [asks] is each found stop's answer's
+     * place in line, to settle it by only while it's the stop's newest ([StopClosureCache.settling]).
      */
     class Result(
         val found: Map<String, List<StopDisruption>>,
         val at: Map<String, Instant>,
         val failed: Set<String>,
         val dismissals: Map<String, Long>,
+        val asks: Map<String, StopClosureCache.Ask> = emptyMap(),
     )
 
     /**
@@ -53,6 +55,7 @@ internal class StopClosureChecks(
         val found = HashMap<String, List<StopDisruption>>()
         val at = HashMap<String, Instant>()
         val dismissals = HashMap<String, Long>()
+        val asks = HashMap<String, StopClosureCache.Ask>()
         val failed = HashSet<String>()
         coroutineScope {
             val pending = cache.lookUp(
@@ -81,11 +84,12 @@ internal class StopClosureChecks(
                         found[id] = it.notices
                         at[id] = it.at
                         dismissals[id] = it.ask.dismissals
+                        asks[id] = it.ask
                     }
                     .onFailure { failed += id }
             }
         }
-        return Result(found, at, failed, dismissals)
+        return Result(found, at, failed, dismissals, asks)
     }
 
     // One closure request's answer, or its failure (logged: an error kind and what was asked).

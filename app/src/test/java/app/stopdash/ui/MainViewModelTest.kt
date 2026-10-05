@@ -6612,6 +6612,86 @@ class MainViewModelTest {
         }
 
     @Test
+    fun `an older destination check settling after a newer refresh found a closure back keeps its dismissal`() =
+        runTest(dispatcher) {
+            val backing = MutableStateFlow<Set<DismissedAlert>>(emptySet())
+            val store = object : DismissedAlertsStore {
+                override fun dismissed() = backing
+                override suspend fun dismiss(alert: DismissedAlert) {
+                    backing.value = Dismissed.dismiss(backing.value, alert)
+                }
+                override suspend fun reconcile(live: Set<DismissedAlert>, checkedPlaces: Set<String>) {
+                    backing.value = Dismissed.reconcile(backing.value, live, checkedPlaces)
+                }
+            }
+            // Holds what's handed to it while [holding], as a busy worker would.
+            val held = mutableListOf<Pair<CoroutineContext, Runnable>>()
+            var holding = false
+            val worker = object : CoroutineDispatcher() {
+                override fun dispatch(context: CoroutineContext, block: Runnable) {
+                    if (holding) held += context to block else dispatcher.dispatch(context, block)
+                }
+            }
+            // Lets the held work go a round at a time until [done].
+            fun letGo(done: () -> Boolean) {
+                while (!done() && held.isNotEmpty()) {
+                    val next = held.toList()
+                    held.clear()
+                    for ((context, block) in next) dispatcher.dispatch(context, block)
+                    advanceUntilIdle()
+                }
+            }
+            var current = now
+            val client = ReuseCountingClient()
+            val closed = listOf(StopDisruption("Station closed"))
+            client.closures[ksxId] = closed
+            val kingsCross = StopRef(ksxId, "King's Cross St. Pancras")
+            val vm = MainViewModel(
+                client, listOf(seeds.first()), clock = { current }, io = dispatcher, compute = worker,
+                disruptionCache = StopClosureCache(), disruptionReuse = DISRUPTION_REUSE, dismissedStore = store,
+            )
+            advanceUntilIdle()
+            // King's Cross is on the board and a journey's far end, with Euston; it's closed, and dismissed.
+            vm.setJourneyStops(listOf(kingsCross))
+            vm.setJourneyDestinations(listOf(kingsCross, StopRef("940GZZLUEUS", "Euston")))
+            advanceUntilIdle()
+            val closure = DepartureRows.across(vm.journeyDestinationStops.value, current).single { it.stopDisruption != null }
+            vm.dismissAlert(closure)
+            advanceUntilIdle()
+            val atKsx = backing.value.single()
+
+            // Later, a destination check finds it clear; it's held as it settles.
+            current = current.plus(DISRUPTION_REUSE).plusSeconds(1)
+            client.closures.remove(ksxId)
+            holding = true
+            vm.setJourneyDestinations(listOf(kingsCross))
+            advanceUntilIdle()
+            letGo { vm.journeyDestinationStops.value.singleOrNull()?.disruptions?.isEmpty() == true }
+            val destination = held.toList()
+            held.clear()
+
+            // A refresh after it finds the closure back and settles; the next destination check it starts
+            // is held before it settles.
+            current = current.plus(DISRUPTION_REUSE).plusSeconds(1)
+            client.closures[ksxId] = closed
+            vm.refresh()
+            advanceUntilIdle()
+            letGo { !vm.refreshing.value }
+            assertEquals(setOf(atKsx), backing.value)
+            val next = held.toList()
+            held.clear()
+
+            // The older destination check settles last: the refresh's newer answer stands, and the dismissal stays.
+            held += destination
+            letGo { false }
+            assertEquals(setOf(atKsx), backing.value)
+            held += next
+            holding = false
+            letGo { false }
+            assertEquals(setOf(atKsx), backing.value)
+        }
+
+    @Test
     fun `a journey's destination is checked for a closure, reused within the window, and kept through a failure`() =
         runTest(dispatcher) {
             var current = now

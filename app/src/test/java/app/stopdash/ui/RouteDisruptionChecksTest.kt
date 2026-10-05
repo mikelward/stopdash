@@ -18,7 +18,10 @@ import app.stopdash.domain.TripProgress
 import app.stopdash.domain.TripRoute
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -348,6 +351,25 @@ class RouteDisruptionChecksTest {
         dismissedFails = true
         assertEquals(1, checks.check(trip, waiting, emptyMap()).signals.size)
         assertTrue(logged.any { it.startsWith("on the way: dismissals unreadable") })
+    }
+
+    @Test
+    fun `an alert dismissed while the check waits its turn to settle isn't said`() = runTest {
+        val cache = StopClosureCache()
+        val checks = checks(cache, StandardTestDispatcher(testScheduler))
+        val severe = LineStatus("red", 6, "Severe Delays")
+        statuses = mapOf("red" to severe)
+        // Another screen is settling; this check waits its turn.
+        val gate = CompletableDeferred<Unit>()
+        val other = launch { cache.settling(kotlinx.coroutines.Dispatchers.Unconfined, sequenceOf("Z")) { gate.await() } }
+        advanceUntilIdle()
+        val found = async { checks.check(trip, waiting, emptyMap()) }
+        advanceUntilIdle()
+        // The rider dismisses the line's alert meanwhile.
+        dismissed = setOf(DismissedAlert.ofLineStatus(severe))
+        gate.complete(Unit)
+        other.join()
+        assertEquals(RouteDisruption.Found.NONE, found.await())
     }
 
     @Test

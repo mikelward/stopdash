@@ -1137,6 +1137,8 @@ class TripViewModel(
         // The dismissed alerts' count when each stop's answer was asked ([StopClosureChecks.Result.dismissals]),
         // each stop its own place: one dismissed after stays.
         val since: DismissalMarks,
+        // Each found stop's answer's place in line, settled only while it's the stop's newest.
+        val asks: Map<String, StopClosureCache.Ask>,
     )
 
     /**
@@ -1165,7 +1167,7 @@ class TripViewModel(
             throw e
         }
         // Each stop as old as its own answer, a cached one perhaps: a dismissal counted after stays.
-        return ClosureCheck(checked.found, checked.at, checked.failed, ids, ticket, DismissalMarks(ticket.dismissals, checked.dismissals))
+        return ClosureCheck(checked.found, checked.at, checked.failed, ids, ticket, DismissalMarks(ticket.dismissals, checked.dismissals), checked.asks)
     }
 
     // What a status check found: the statuses TfL returned, answered [at], the lines it gave a verdict
@@ -1180,22 +1182,18 @@ class TripViewModel(
     // was answered: the last statuses stay rather than pass the lines off as running normally.
     // Settles the dismissals of the stops [check] found, each as its own place ([stopDismissalCheck]),
     // so a closure dismissed on the trip shows again when it recurs, without waiting for the list to
-    // check that stop (Codex on #367). Only the stops no later check has asked about since: an older
-    // answer landing late isn't evidence over a newer one.
+    // check that stop (Codex on #367). Only the stops whose answer here is still their newest, one check
+    // at a time across every screen ([StopClosureCache.settling]): a stop another check (this trip's
+    // later one, the list's) has a newer answer for is that one's to settle, as an older answer landing
+    // late isn't evidence over a newer one; one whose later check never answered is this one's.
     private suspend fun reconcileStopDismissals(check: ClosureCheck) {
         val now = clock()
         // Once the check is in, settling it outlasts the trip, as its write does: leaving while the
         // worker has it would otherwise keep an ended closure's dismissal stored, to hide it coming back.
         withContext(NonCancellable) {
-            var latest = check.latest()
-            while (true) {
-                val (live, checked) = withContext(compute) { stopDismissalCheck(check.found.filterKeys { it in latest }, now) }
-                // A later check that took over a stop while the worker had this one settles that stop
-                // itself: this one's verdict on it is older, so it's worked out again without it.
-                val still = check.latest()
-                if (still != latest) {
-                    latest = still
-                    continue
+            closureCache.settling(compute, check.found.keys.asSequence()) { newest ->
+                val (live, checked) = withContext(compute) {
+                    stopDismissalCheck(check.found.filter { (id, _) -> check.asks[id]?.let { newest.isNewest(id, it) } == true }, now)
                 }
                 val since = check.since
                 reconcileDismissals(
@@ -1205,7 +1203,6 @@ class TripViewModel(
                     pruned = { gone -> dismissedStore.prune(gone, since) { still -> _dismissed.update { it - still } } },
                     restored = { back -> _dismissed.update { it + back } },
                 )
-                break
             }
         }
     }

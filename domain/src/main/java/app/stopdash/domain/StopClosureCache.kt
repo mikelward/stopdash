@@ -10,6 +10,8 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -199,6 +201,55 @@ class StopClosureCache {
         }
         sent.forEach { it.start() }
         pending
+    }
+
+    /**
+     * Which answers are each stop's newest as a check settles ([settling]): the lookups kept then, and
+     * the stops whose newest lookup failed.
+     */
+    class Newest internal constructor(private val kept: Map<String, Ask>, private val failed: Set<String>) {
+        /**
+         * Whether the answer [ask] names is [stopId]'s newest: none asked after it kept, and no failure
+         * since. One that isn't leaves the stop to the check with the newer answer, which settles it
+         * in turn; a stop whose newest failed is known to no check.
+         */
+        fun isNewest(stopId: String, ask: Ask): Boolean =
+            stopId !in failed && (kept[stopId]?.order ?: ask.order) <= ask.order
+    }
+
+    // Held while a check settles its verdicts ([settling]): one at a time, across every screen.
+    private val settles = Mutex()
+
+    /**
+     * Runs [block], a check's settling of what [ids] were found to hold (the dismissals it lets go of),
+     * one check at a time across every screen, told which of its answers are still each stop's newest
+     * ([Newest]): a stop another check has a newer answer for is that one's to settle, whatever kind of
+     * check each is, so an older verdict settling last never undoes a newer one. A request out for any of
+     * [ids] is waited for first, landed or dropped: one dropped (the check that sent it left) leaves the
+     * older answer the newest, to settle. One sent once [block] has begun is newer than its verdict, and
+     * settles after it. Worked out on [worker], whatever the caller's thread: it grows with [ids].
+     */
+    suspend fun <T> settling(worker: CoroutineDispatcher, ids: Sequence<String>, block: suspend (Newest) -> T): T {
+        val stops = withContext(worker) { ids.toSet() }
+        while (true) {
+            // Whether a request is out, and if not each stop's newest, read in one step under the lock, so no
+            // request sent in between goes unseen (Codex, PR #580).
+            val out = settles.withLock {
+                val (out, newest) = withContext(worker) {
+                    synchronized(this@StopClosureCache) {
+                        val out = stops.mapNotNull { inFlight[it] }
+                        val kept = HashMap<String, Ask>()
+                        val failed = HashSet<String>()
+                        if (out.isEmpty()) for (id in stops) get(id)?.let { kept[id] = it.ask } ?: run { if (id in failures) failed += id }
+                        out to Newest(kept, failed)
+                    }
+                }
+                if (out.isEmpty()) return block(newest)
+                out
+            }
+            // Landed or dropped: either way it's out no more. Only this caller's own cancellation stops it.
+            out.forEach { it.join() }
+        }
     }
 
     /** A lookup of [stopId] asked after [ask], if one is kept: a newer answer than its. */

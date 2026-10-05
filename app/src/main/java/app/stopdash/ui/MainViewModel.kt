@@ -2476,7 +2476,12 @@ class MainViewModel(
         val current = turns?.take() ?: { true }
         // Once the refresh's checks are in, settling them outlasts the list, as the write below does:
         // leaving while the worker has them would otherwise keep an ended notice's dismissal stored.
-        withContext(NonCancellable) { settleDismissals(queriedStops, shownStops, lineStatuses, checkedLineIds, stopsDisruptionUnknown, now, since, stopAsks, lineMarks, current) }
+        // One check at a time across every screen, each stop on its newest answer ([StopClosureCache.settling]).
+        withContext(NonCancellable) {
+            disruptionCache.settling(compute, queriedStops.asSequence().map { it.id }) { newest ->
+                settleDismissals(queriedStops, shownStops, lineStatuses, checkedLineIds, stopsDisruptionUnknown, now, since, stopAsks, lineMarks, current, newest)
+            }
+        }
     }
 
     // [reconcileDismissals]'s work, run to the end once begun.
@@ -2491,6 +2496,9 @@ class MainViewModel(
         stopAsks: Map<String, StopClosureCache.Ask>,
         lineMarks: List<Map<String, Long>>,
         current: () -> Boolean,
+        // Which of the stops' answers are still their newest: a place with one that isn't is the newer
+        // answer's check to settle.
+        newest: StopClosureCache.Newest,
     ) {
         val dismissed = _dismissed.value
         // Worked out across the whole board, so off the main thread: every live alert, each line's under
@@ -2502,8 +2510,9 @@ class MainViewModel(
             fun placeOf(stop: StopRef) = stopPlaceKey(stop.hubId, stop.clusterId, stop.name, stop.id)
             // A place with any member whose disruption lookup failed this cycle is not fully known, so it
             // is excluded from the checked set and its dismissals are retained.
+            // So is one with a member another check has a newer answer for, or whose newest lookup failed.
             val unknownPlaces = queriedStops.asSequence()
-                .filter { it.id in stopsDisruptionUnknown }
+                .filter { stop -> stop.id in stopsDisruptionUnknown || stopAsks[stop.id]?.let { !newest.isNewest(stop.id, it) } == true }
                 .mapTo(mutableSetOf()) { placeOf(it) }
             val checkedPlaces = queriedStops.asSequence()
                 .map { placeOf(it) }

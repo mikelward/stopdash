@@ -554,6 +554,63 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `a trip's closure check that settles while a later check of a stop is out still settles it once that one is dropped`() = runTest(dispatcher) {
+        val card = DepartureRows.across(
+            listOf(StopArrivals("X", "", emptyList(), SteadyClock.stamp(now), disruptions = stationClosed)),
+            now,
+        ).single { it.stopDisruption != null }
+        val atX = DismissedAlert.ofStopClosure(card)
+        val store = reconcilingStore(setOf(atX))
+        // Holds what's handed to it until let go, as a busy worker would.
+        val held = mutableListOf<Pair<CoroutineContext, Runnable>>()
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                held += context to block
+            }
+        }
+        val models = ViewModelStore()
+        val client = FakeClient(mutableMapOf())
+        val trip = ViewModelProvider.create(
+            models,
+            viewModelFactory {
+                initializer {
+                    TripViewModel(
+                        FakePlanner(listOf(route)), client, "A", listOf(TripDestination.Stop("C")),
+                        clock = { now }, io = dispatcher, compute = worker, dismissedStore = store,
+                    )
+                }
+            },
+        )[TripViewModel::class]
+        // A stop the screen shows is checked and found clear; its settling is held.
+        trip.checkShownStops(setOf("X"))
+        advanceUntilIdle()
+        letGo(held) { "X" in trip.state.value.closuresAt }
+        val first = held.size
+        // A refresh asks about the stop again; its answer doesn't come.
+        now = now.plus(Duration.ofMinutes(6))
+        client.disruptionGates["X"] = CompletableDeferred()
+        trip.refresh()
+        advanceUntilIdle()
+        letGo(held, keep = first) { client.disruptionAsks.count { "X" in it } == 2 }
+        // The first check settles while the refresh's request is out, then the trip is left, dropping it.
+        while (held.isNotEmpty()) {
+            val next = held.toList()
+            held.clear()
+            for ((context, block) in next) dispatcher.dispatch(context, block)
+            advanceUntilIdle()
+        }
+        models.clear()
+        while (held.isNotEmpty()) {
+            val next = held.toList()
+            held.clear()
+            for ((context, block) in next) dispatcher.dispatch(context, block)
+            advanceUntilIdle()
+        }
+        // The refresh never answered, so the first check's "clear" is the newest: the dismissal goes.
+        assertTrue("${store.stored.value}", store.stored.value.isEmpty())
+    }
+
+    @Test
     fun `a trip's line check forgets a dismissal when TfL answers the line with no status`() = runTest(dispatcher) {
         val blue = DismissedAlert.ofLineStatus(LineStatus("blue", 6, "Severe Delays"))
         val store = reconcilingStore(setOf(blue))

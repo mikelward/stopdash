@@ -260,4 +260,119 @@ class StopClosureCacheTest {
             executor.shutdownNow()
         }
     }
+
+    @Test
+    fun `a check settles a stop only while its answer is the stop's newest`() = runTest {
+        val cache = StopClosureCache()
+        val older = cache.ask(now)
+        val newer = cache.ask(now)
+        cache.keep("A", older, emptyList())
+        cache.keep("B", older, emptyList())
+        // Another check has since answered B anew; C's newest lookup failed.
+        cache.keep("B", newer, closed)
+        val failed = cache.ask(now)
+        cache.keep("C", older, emptyList())
+        cache.settle("C", failed, Result.failure(IllegalStateException("offline")))
+        cache.settling(Dispatchers.Unconfined, sequenceOf("A", "B", "C")) { newest ->
+            assertTrue(newest.isNewest("A", older))
+            assertFalse(newest.isNewest("B", older))
+            assertTrue(newest.isNewest("B", newer))
+            assertFalse(newest.isNewest("C", older))
+        }
+    }
+
+    @Test
+    fun `a check settles after a request out for its stop, on whichever answer is newest then`() = runTest {
+        val cache = StopClosureCache()
+        val mine = cache.ask(now)
+        cache.keep("A", mine, emptyList())
+        val sender = Sender().apply { gate = CompletableDeferred() }
+        // Another check asks A anew; this one settles while that request is out.
+        cache.lookUp(this, Dispatchers.Unconfined, listOf("A"), reusable = { false }, now = { now }, dismissals = { 0L }, send = sender::send)
+        advanceUntilIdle()
+        var settledNewest: Boolean? = null
+        val settle = launch { cache.settling(Dispatchers.Unconfined, sequenceOf("A")) { settledNewest = it.isNewest("A", mine) } }
+        advanceUntilIdle()
+        assertNull("settled before the request out landed", settledNewest)
+        sender.gate!!.complete(Unit)
+        settle.join()
+        assertEquals(false, settledNewest)
+    }
+
+    @Test
+    fun `a request out for a stop dropped by the check that sent it leaves the older answer to settle`() = runTest {
+        val cache = StopClosureCache()
+        val mine = cache.ask(now)
+        cache.keep("A", mine, emptyList())
+        val sender = Sender().apply { gate = CompletableDeferred() }
+        val owner = kotlinx.coroutines.CoroutineScope(coroutineContext + kotlinx.coroutines.Job(coroutineContext[kotlinx.coroutines.Job]))
+        cache.lookUp(owner, Dispatchers.Unconfined, listOf("A"), reusable = { false }, now = { now }, dismissals = { 0L }, send = sender::send)
+        advanceUntilIdle()
+        var settledNewest: Boolean? = null
+        val settle = launch { cache.settling(Dispatchers.Unconfined, sequenceOf("A")) { settledNewest = it.isNewest("A", mine) } }
+        advanceUntilIdle()
+        assertNull(settledNewest)
+        // The check that sent it leaves before it's answered.
+        owner.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
+        settle.join()
+        assertEquals(true, settledNewest)
+    }
+
+    @Test
+    fun `a request sent while a check waits its turn to settle is waited for too`() = runTest {
+        val cache = StopClosureCache()
+        val mine = cache.ask(now)
+        cache.keep("A", mine, emptyList())
+        // Another check is settling; this one waits its turn, with nothing out for A yet.
+        val gate = CompletableDeferred<Unit>()
+        val other = launch { cache.settling(Dispatchers.Unconfined, sequenceOf("B")) { gate.await() } }
+        advanceUntilIdle()
+        var settledNewest: Boolean? = null
+        val settle = launch { cache.settling(Dispatchers.Unconfined, sequenceOf("A")) { settledNewest = it.isNewest("A", mine) } }
+        advanceUntilIdle()
+        // Meanwhile a third check asks A anew, and that request is out when the turn comes.
+        val sender = Sender().apply { this.gate = CompletableDeferred() }
+        cache.lookUp(this, Dispatchers.Unconfined, listOf("A"), reusable = { false }, now = { now }, dismissals = { 0L }, send = sender::send)
+        advanceUntilIdle()
+        gate.complete(Unit)
+        other.join()
+        advanceUntilIdle()
+        assertNull("settled while a newer request was out", settledNewest)
+        sender.gate!!.complete(Unit)
+        settle.join()
+        assertEquals(false, settledNewest)
+    }
+
+    @Test
+    fun `checks settle one at a time`() = runTest {
+        val cache = StopClosureCache()
+        val gate = CompletableDeferred<Unit>()
+        val order = mutableListOf<String>()
+        val first = launch { cache.settling(Dispatchers.Unconfined, sequenceOf("A")) { order += "first in"; gate.await(); order += "first out" } }
+        advanceUntilIdle()
+        val second = launch { cache.settling(Dispatchers.Unconfined, sequenceOf("B")) { order += "second" } }
+        advanceUntilIdle()
+        assertEquals(listOf("first in"), order)
+        gate.complete(Unit)
+        first.join()
+        second.join()
+        assertEquals(listOf("first in", "first out", "second"), order)
+    }
+
+    @Test
+    fun `a check's stops are looked over on the worker, not the caller's thread`() = runTest {
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val worker = executor.asCoroutineDispatcher()
+            val cache = StopClosureCache()
+            val caller = Thread.currentThread()
+            val readOn = mutableSetOf<Thread>()
+            val ids = sequence { synchronized(readOn) { readOn += Thread.currentThread() }; yield("A"); yield("B") }
+            cache.settling(worker, ids) {}
+            assertTrue("$readOn", readOn.isNotEmpty() && caller !in readOn)
+        } finally {
+            executor.shutdownNow()
+        }
+    }
 }
+
