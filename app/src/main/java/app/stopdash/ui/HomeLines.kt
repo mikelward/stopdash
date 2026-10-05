@@ -159,7 +159,8 @@ object HomeLines {
                 // the background, say), or one just chosen that no check has asked about yet: "Checking…",
                 // never "couldn't check" for a check not yet asked (maintainer, 2026-10-05).
                 loaded == null || (loaded.statusPending && !loaded.checkFailed && (id in loaded.pendingLineIds || id in alwaysIds && always == null)) ||
-                    (id in alwaysIds && (refreshing || always?.askedFor?.contains(id) == false)) ->
+                    // No check published at all (a refresh with no line to ask about) is one not asked yet either (Codex, #592).
+                    (id in alwaysIds && (refreshing || always == null || id !in always.askedFor)) ->
                     checking += id
             }
         }
