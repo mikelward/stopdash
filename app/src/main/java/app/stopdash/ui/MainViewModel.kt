@@ -657,6 +657,10 @@ class MainViewModel(
     // can't read) pins nothing rather than guessing — the stars are preserved on disk.
     private val _starred = MutableStateFlow<Set<StarredRow>>(emptySet())
     val starred: StateFlow<Set<StarredRow>> = _starred.asStateFlow()
+    private val _starredKnown = MutableStateFlow(false)
+
+    /** Whether [starred] is the stored set yet: read, or found unreadable (then empty for good). */
+    val starredKnown: StateFlow<Boolean> = _starredKnown.asStateFlow()
 
     // The service alerts the user has dismissed (SPEC *Disruptions*): the screen drops a matching
     // stop-status row and a matching line status. Collected from the store so a dismiss hides the card at once, and a
@@ -808,12 +812,14 @@ class MainViewModel(
                             _starringAvailable.value = false
                         }
                     }
+                    _starredKnown.value = true
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 _starred.value = emptySet()
                 _starringAvailable.value = false
+                _starredKnown.value = true
                 warn("starred set read failed: ${reason(e)}")
             }
         }

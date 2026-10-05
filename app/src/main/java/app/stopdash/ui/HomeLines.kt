@@ -5,6 +5,7 @@ import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.NearbySelection
+import app.stopdash.domain.StarredRow
 import app.stopdash.domain.TripLeg
 import java.time.Instant
 
@@ -111,6 +112,10 @@ object HomeLines {
         // A refresh under way, whose check of the always-covered lines may yet answer.
         refreshing: Boolean = false,
         networks: Set<String> = DEFAULT_NETWORKS,
+        // The rider's favorites, whose lines lead the pills with the nearby ones: their starred rows, and
+        // every line their starred journeys ride ([journeyLines]).
+        starred: Set<StarredRow> = emptySet(),
+        journeyLines: Set<String> = emptySet(),
     ): TripRow {
         val alwaysLines = linesOf(networks)
         val refs = LinkedHashMap<String, LineRef>()
@@ -122,9 +127,21 @@ object HomeLines {
         // A line with a departure; a declared one only with an alert, the status row the list shows for a
         // line with none (a suspended one), never every route a stop could serve (Codex, #577).
         val alerts = loaded?.lineStatuses.orEmpty()
+        // The lines near the rider, an always-covered one among them: ranked ahead of the rest within a severity.
+        val nearby = HashSet<String>()
         for (stop in near) {
-            stop.departures.forEach { if (it.lineId.isNotBlank()) refs.putIfAbsent(it.lineId, LineRef(it.lineId, it.lineName, it.mode)) }
-            stop.lines.forEach { if (it.id.isNotBlank() && alerts[it.id]?.hasAlerts == true) refs.putIfAbsent(it.id, it) }
+            stop.departures.forEach {
+                if (it.lineId.isNotBlank()) {
+                    refs.putIfAbsent(it.lineId, LineRef(it.lineId, it.lineName, it.mode))
+                    nearby += it.lineId
+                }
+            }
+            stop.lines.forEach {
+                if (it.id.isNotBlank() && alerts[it.id]?.hasAlerts == true) {
+                    refs.putIfAbsent(it.id, it)
+                    nearby += it.id
+                }
+            }
         }
         val listChecked = loaded?.determinedLineIds.orEmpty()
         // What the list couldn't check, said here in place of its banner (maintainer, 2026-10-05): its line
@@ -174,6 +191,10 @@ object HomeLines {
         // 2026-10-05: what's dismissed stays off it).
         fun everyWayDismissed(status: LineStatus) = status.byDirection.values.filter { it.disrupted }
             .let { ways -> ways.isNotEmpty() && ways.all { DismissedAlert.ofLineStatus(it) in dismissed } }
+        // The lines that matter most to the rider: near them, or a favorite's.
+        val mine = HashSet<String>(nearby)
+        starred.forEach { mine += it.lineId }
+        mine += journeyLines
         val every = refs.values.map { ref ->
             val id = ref.id
             val was = raw[id]
@@ -188,8 +209,12 @@ object HomeLines {
                 checking = id in checking,
                 unknown = id !in known && id !in checking,
             )
-        }.sortedWith(tripLineOrder)
-        val disrupted = every.filter { it.disrupted && !it.dismissed }.map { it.leg }
+        // The page: worst first as a trip's orders them, then, as bad as each other, the rider's own lines
+        // ahead of a network's far away (maintainer, 2026-10-05).
+        }.sortedWith(tripLineOrder.thenBy { it.leg.lineId !in mine })
+        // The pills: the rider's own lines first whatever their severity, worst first within each, so "+N"
+        // takes the far ones first (maintainer, 2026-10-05); a dismissed one is never a pill.
+        val disrupted = every.filter { it.disrupted && !it.dismissed }.sortedBy { it.leg.lineId !in mine }.map { it.leg }
         val unknown = every.filter { it.unknown }.map { it.leg }
         return TripRow(
             checking = checking.isNotEmpty(),
