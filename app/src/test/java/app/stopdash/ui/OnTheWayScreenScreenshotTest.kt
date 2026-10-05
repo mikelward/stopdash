@@ -526,7 +526,7 @@ class OnTheWayScreenScreenshotTest {
                 androidx.compose.foundation.layout.Box(
                     androidx.compose.ui.Modifier.pointerInput(Unit) { detectTapGestures(onTap = { touched = true }) },
                 ) {
-                    StopGroupCard(group, now, starred = emptySet(), onToggleStar = {}, starringAvailable = false, onOpenDetail = null)
+                    StopGroupCard(stopCard(group, app.stopdash.domain.RouteTopology.EMPTY), now, starred = emptySet(), onToggleStar = {}, starringAvailable = false, onOpenDetail = null)
                 }
             }
         }

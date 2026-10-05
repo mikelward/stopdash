@@ -672,6 +672,9 @@ fun MainScreen(
     // The journey cards: the trains or buses from each journey's origin that call at its far end, on
     // any line, the origin's closure notice if it has one, or why they can't be shown yet (SPEC
     // principle 1).
+    // How the list's and the journey cards' stop cards group a branching line's trains ([stopCard]):
+    // worked out with them on the list's worker, again if it's replaced once its patterns load.
+    val topology = LocalRouteTopology.current
     // Judged against the snapshot and time [rows] were built from ([ListRows.source]), with the list
     // they're drawn beside, on the list's worker ([shownRowsOf]'s stage) (Codex, #524).
     fun judgeCards(rows: ListRows): List<JourneyCard> {
@@ -755,6 +758,7 @@ fun MainScreen(
                                 incomplete = trains.unresolved || siblingsMissed || trains.rows.isEmpty() && !current,
                                 retry = trains.routeFailed || polesFailed,
                                 changes = changes,
+                                topology = topology,
                             )
                         // A route that failed to load is the one gap a retry can close.
                         trains.routeFailed -> JourneyCardState.RouteFailed
@@ -817,7 +821,7 @@ fun MainScreen(
         listKey,
         Inputs(
             listRows, nearbyRows, starred, stopDistanceMeters, cardJourneys, journeySegments, journeySequences,
-            journeyAreas, journeyPoles, journeySiblings, journeyDestinationIds, segmentsPending, siblingsPending,
+            journeyAreas, journeyPoles, journeySiblings, journeyDestinationIds, segmentsPending, siblingsPending, topology,
         ),
     )
     val shownHeld = listWork.shown.value?.key
@@ -831,7 +835,7 @@ fun MainScreen(
             val cards = judgeCards(from)
             // What the journey cards above already show: a near-me row they cover in full isn't repeated.
             val cardRows = cards.flatMap { (it.state as? JourneyCardState.Trains)?.shownRows.orEmpty() }
-            shownRowsOf(from, nearbyRows, cardRows, starred, stopDistanceMeters, cards, cardJourneys)
+            shownRowsOf(from, nearbyRows, cardRows, starred, stopDistanceMeters, cards, cardJourneys, topology)
         }
     }?.takeIf { listRows != null }
     val journeyCards = shown?.cards.orEmpty()
@@ -959,7 +963,7 @@ fun MainScreen(
         listWork.platform,
         PlatformInputs(
             platformStopIds.orEmpty(), platformKey, platformIsStation,
-            Inputs(shown, platformTitle, starred, dismissed, hiddenModes, alertSequences),
+            Inputs(shown, platformTitle, starred, dismissed, hiddenModes, alertSequences, topology),
         ),
         keep = PlatformInputs.sameView,
     ) {
@@ -973,7 +977,7 @@ fun MainScreen(
         } else {
             platformViewOf(
                 drawn.from.source, drawn.from.now, ids, platformKey, platformIsStation, platformTitle, starred, dismissed,
-                drawn.rows, hiddenModes, alertSequences,
+                drawn.rows, hiddenModes, alertSequences, topology,
             )
         }
     }?.takeIf { platformStopIds != null }
@@ -1005,6 +1009,8 @@ fun MainScreen(
     LaunchedEffect(platformGone, platformStopIds, platformIsStation) { if (platformGone) closeView() }
     val platformRows = platformView?.rows?.takeUnless { platformGone } ?: emptyList<DepartureRow>().takeIf { platformPending }
     val shownRows = platformRows ?: rows
+    // The drawn rows' stop cards, worked out with them: the platform view's own, or the list's.
+    val shownCards = if (platformRows != null) platformView?.takeUnless { platformGone }?.listCards ?: ListCards.NONE else shown?.listCards ?: ListCards.NONE
     BackHandler(enabled = platformRows != null) { closeView() }
     val drawnNow = (if (platformRows != null) platformView?.now else drawnFrom?.now) ?: now
     // A platform or station view's rows are built apart from the list's, maybe from another
@@ -1386,6 +1392,7 @@ fun MainScreen(
                 } else {
                     LoadedContent(
                         drawnState ?: state, drawnNow, onPullRefresh ?: onRefresh, refreshing, content, shownRows,
+                        listCards = shownCards,
                         listState = if (platformRows != null) drillListState else listState,
                         dismissedClosures = if (platformRows != null) emptyList() else dismissedClosures,
                         sharedNotices = sharedNotices,
@@ -1571,6 +1578,8 @@ private fun LoadedContent(
     // The rows to render, computed once by the caller so the list and the route-detail page share
     // the same grouping/ordering (SPEC D4 / D8).
     rows: List<DepartureRow>,
+    // [rows] as the list's stop cards draw them, worked out with them on the list's worker.
+    listCards: ListCards = ListCards.NONE,
     listState: LazyListState = rememberLazyListState(),
     // The near-me closures dismissed, for a closed place's heading ([DepartureList]).
     dismissedClosures: List<DepartureRow> = emptyList(),
@@ -1762,7 +1771,7 @@ private fun LoadedContent(
                 }
             } else {
                 DepartureList(
-                    rows, now, starred, onToggleStar, starringAvailable, stopDistanceMeters,
+                    rows, listCards, now, starred, onToggleStar, starringAvailable, stopDistanceMeters,
                     farther = farther,
                     onOpenFarther = onOpenFarther,
                     pending = shownPending,
@@ -2168,6 +2177,8 @@ internal fun ActionBanner(
 @Composable
 private fun DepartureList(
     rows: List<DepartureRow>,
+    // [rows] grouped as the list draws them, each group's card with it ([ListCards]).
+    listCards: ListCards,
     now: Instant,
     starred: Set<StarredRow>,
     onToggleStar: (DepartureRow) -> Unit,
@@ -2263,9 +2274,8 @@ private fun DepartureList(
     // its header (SPEC *Disruptions*).
     // On the near-me list (distances present) a place is ordered by distance, not lifted for
     // carrying a line-status alert; the watched list keeps warnings leading (D1, SPEC *Disruptions*).
-    val groups = remember(rows, stopDistanceMeters) {
-        StopGrouping.groupByStop(rows, warningsLead = stopDistanceMeters.isEmpty())
-    }
+    // Worked out with the rows on the list's worker ([ListCards.of]), never here.
+    val groups = listCards.groups
     // The groups with a stop whose closure check is still out, by key, worked out off the main
     // thread ([LocalWorker]) so each heading only looks itself up. None to find when none is out.
     val closureWorker = LocalWorker.current
@@ -2447,7 +2457,7 @@ private fun DepartureList(
                             }
                             item(key = "journey-card|${card.journey.key}|${group.key}") {
                                 StopGroupCard(
-                                    group,
+                                    state.cards[groupIndex],
                                     now,
                                     starred = starred,
                                     onToggleStar = onToggleStar,
@@ -2583,7 +2593,7 @@ private fun DepartureList(
             }
             item(key = "card|${group.key}") {
                 StopGroupCard(
-                    group,
+                    listCards.of(group),
                     now,
                     starred = starred,
                     onToggleStar = onToggleStar,
@@ -3707,6 +3717,8 @@ internal sealed interface JourneyCardState {
         val retry: Boolean = false,
         // Trains on another branch, with where to change, when no direct train is due.
         val changes: List<JourneyChange> = emptyList(),
+        // How the card's stop cards group a branching line's trains ([stopCard]).
+        val topology: RouteTopology = RouteTopology.EMPTY,
     ) : JourneyCardState {
         /**
          * Every row the card shows, the direct trains and those to change from, with the two parts of
@@ -3722,14 +3734,18 @@ internal sealed interface JourneyCardState {
         /** [rows] by boarding stop, as the card draws them: grouped where the card is judged, on the worker. */
         val groups: List<StopGroup> = StopGrouping.groupByStop(rows, warningsLead = false)
 
+        /** Each of [groups] as its stop card draws it ([stopCard]), worked out with them. */
+        val cards: List<StopCard> = groups.map { stopCard(it, topology) }
+
         /** [changes] by change stop, in order, each stop's rows by boarding stop as [groups] are. */
         val changeStops: List<ChangeStop> = changes.groupBy { it.stopId }.map { (stopId, atStop) ->
-            ChangeStop(stopId, atStop.first().stopName, StopGrouping.groupByStop(atStop.map { it.row }, warningsLead = false))
+            val groups = StopGrouping.groupByStop(atStop.map { it.row }, warningsLead = false)
+            ChangeStop(stopId, atStop.first().stopName, groups, groups.map { stopCard(it, topology) })
         }
     }
 
-    /** A stop to change at ([Trains.changeStops]), and the trains to change from, by boarding stop. */
-    class ChangeStop(val stopId: String, val stopName: String, val groups: List<StopGroup>)
+    /** A stop to change at ([Trains.changeStops]), and the trains to change from, by boarding stop, each with its card. */
+    class ChangeStop(val stopId: String, val stopName: String, val groups: List<StopGroup>, val cards: List<StopCard>)
 }
 
 /**
@@ -3763,10 +3779,10 @@ private fun LazyListScope.journeyChanges(
                 ),
             )
         }
-        change.groups.forEach { group ->
-            item(key = "journey-change-card|${card.journey.key}|$stopId|${group.key}") {
+        change.cards.forEach { stopCard ->
+            item(key = "journey-change-card|${card.journey.key}|$stopId|${stopCard.group.key}") {
                 StopGroupCard(
-                    group,
+                    stopCard,
                     now,
                     starred = starred,
                     onToggleStar = onToggleStar,
@@ -3933,24 +3949,6 @@ class StopCard(val group: StopGroup, val lines: List<List<DestinationGroup>>)
 @WorkerThread
 internal fun stopCard(group: StopGroup, topology: RouteTopology): StopCard =
     StopCard(group, group.rows.map { row -> if (row.hasTrains) DepartureRows.destinationLines(row, MAX_TIMES, topology) else emptyList() })
-
-/**
- * [StopGroupCard] for a [group] whose card isn't worked out off the main thread yet: the main list and
- * its journey cards, until their groups are (TODO.md). Works the card out here.
- */
-@Composable
-internal fun StopGroupCard(
-    group: StopGroup,
-    now: Instant,
-    starred: Set<StarredRow>,
-    onToggleStar: (DepartureRow) -> Unit,
-    starringAvailable: Boolean,
-    onOpenDetail: ((DepartureRow, RouteFocus?) -> Unit)?,
-    onOpenSettings: () -> Unit = {},
-    onHideMode: ((String) -> Unit)? = null,
-) = StopGroupCard(
-    stopCard(group, LocalRouteTopology.current), now, starred, onToggleStar, starringAvailable, onOpenDetail, onOpenSettings, onHideMode,
-)
 
 @Composable
 internal fun StopGroupCard(

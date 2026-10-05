@@ -1,5 +1,6 @@
 package app.stopdash.ui
 
+import androidx.annotation.WorkerThread
 import app.stopdash.domain.ClosedNotice
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DepartureRows
@@ -7,12 +8,15 @@ import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.StarredJourney
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopArrivals
+import app.stopdash.domain.StopGroup
 import app.stopdash.domain.StopGrouping
 import app.stopdash.domain.stopPlaceKey
 import java.time.Instant
+import java.util.IdentityHashMap
 
 /**
  * What a stage of the list is worked out from: [parts] for the answer, and [listKey], the list it
@@ -54,6 +58,28 @@ internal class ListRows(
     val destinationsUnknown: Set<String>,
 )
 
+/**
+ * The list's [rows] as its stop cards draw them: grouped by place and direction ([groups],
+ * [StopGrouping.groupByStop]), each group's card worked out with it ([stopCard]), found by the group
+ * itself ([of], by identity, so a lookup compares no rows). Worked out with the rows on the list's
+ * worker, never in composition (AGENTS.md *Main thread*).
+ */
+internal class ListCards private constructor(val groups: List<StopGroup>, private val byGroup: Map<StopGroup, StopCard>) {
+    /** [group]'s card; [group] must be one of [groups]. */
+    fun of(group: StopGroup): StopCard = checkNotNull(byGroup[group]) { "a group the list didn't work out" }
+
+    companion object {
+        val NONE = ListCards(emptyList(), emptyMap())
+
+        /** [rows] grouped as the list draws them, warnings first unless [warningsLead] is false, under [topology]. */
+        @WorkerThread
+        fun of(rows: List<DepartureRow>, warningsLead: Boolean, topology: RouteTopology): ListCards {
+            val groups = StopGrouping.groupByStop(rows, warningsLead = warningsLead)
+            return ListCards(groups, groups.associateWithTo(IdentityHashMap()) { stopCard(it, topology) })
+        }
+    }
+}
+
 /** No rows, one object, so a key holding it stays the same while the list's rows are worked out. */
 internal val noRows = RowsRevision(emptyList())
 
@@ -65,6 +91,8 @@ internal val noRows = RowsRevision(emptyList())
  */
 internal class ShownRows(
     val rows: List<DepartureRow>,
+    // [rows] as the list's stop cards draw them.
+    val listCards: ListCards,
     val dismissedClosures: List<DepartureRow>,
     val from: ListRows,
     val cards: List<JourneyCard>,
@@ -91,7 +119,14 @@ internal class PlatformInputs(val stopIds: String, val splitKey: String, val sta
  * A platform or station view's rows, and its title; a null title means its group is gone. [source]
  * and [now] are the snapshot and time the rows were built from, which the view is drawn against.
  */
-internal class PlatformView(val rows: List<DepartureRow>, val title: String?, val source: DeparturesUiState.Loaded, val now: Instant)
+internal class PlatformView(
+    val rows: List<DepartureRow>,
+    val title: String?,
+    val source: DeparturesUiState.Loaded,
+    val now: Instant,
+    // [rows] as the view's stop cards draw them (one place, so warnings lead).
+    val listCards: ListCards = ListCards.NONE,
+)
 
 /** [ListRows] for [stops], worked out on the list's worker, never in composition. */
 internal fun listRowsOf(
@@ -153,6 +188,7 @@ internal fun shownRowsOf(
     stopDistanceMeters: Map<String, Double>,
     cards: List<JourneyCard> = emptyList(),
     journeys: List<StarredJourney> = emptyList(),
+    topology: RouteTopology = RouteTopology.EMPTY,
 ): ShownRows {
     val rows = DepartureRows.pinStarred(
         DepartureRows.withoutShownAbove(nearbyRows, journeyRowsShown),
@@ -166,7 +202,10 @@ internal fun shownRowsOf(
             val shown = nearbyRows.toHashSet()
             from.nearby.filter { it !in shown && it.stopDisruption?.let(ClosedNotice::saysClosed) == true }
         }
-    return ShownRows(rows, dismissedClosures, from, cards, journeyRowsShown, journeys)
+    // On the near-me list (distances present) a place is ordered by distance, not lifted for carrying a
+    // line-status alert; the watched list keeps warnings leading (D1, SPEC *Disruptions*).
+    val listCards = ListCards.of(rows, warningsLead = stopDistanceMeters.isEmpty(), topology)
+    return ShownRows(rows, listCards, dismissedClosures, from, cards, journeyRowsShown, journeys)
 }
 
 /**
@@ -193,6 +232,7 @@ internal fun platformViewOf(
     rows: List<DepartureRow>,
     hiddenModes: Set<String>,
     alertSequences: Map<String, LineSequence?>,
+    topology: RouteTopology = RouteTopology.EMPTY,
 ): PlatformView {
     val stops = source.stops
     val lineStatuses = source.lineStatuses
@@ -230,5 +270,6 @@ internal fun platformViewOf(
     // a card dismissed on either screen carries one identity and stays hidden on both (Codex).
     val places = platformStops.mapTo(HashSet()) { stopPlaceKey(it) }
     val closures = rows.filter { it.stopDisruption != null && stopPlaceKey(it) in places }
-    return PlatformView(closures + stopRows.filter { it.stopDisruption == null && it in groupRows }, title, source, now)
+    val viewRows = closures + stopRows.filter { it.stopDisruption == null && it in groupRows }
+    return PlatformView(viewRows, title, source, now, ListCards.of(viewRows, warningsLead = true, topology))
 }
