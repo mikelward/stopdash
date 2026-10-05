@@ -125,6 +125,13 @@ fun SettingsScreen(
     onDismissStepFreeError: () -> Unit = {},
     // Opens the favorite-places editor (SPEC D9), hosted as its own overlay by the caller.
     onOpenFavoritePlaces: () -> Unit = {},
+    // Whether the home screen shows its disruptions row (maintainer, 2026-10-05), as [distanceUnits] is
+    // handled: held until read, a choice that didn't save said here until dismissed.
+    showDisruptionsRow: Boolean = true,
+    onShowDisruptionsRowChange: (Boolean) -> Unit = {},
+    showDisruptionsRowLoaded: Boolean = true,
+    showDisruptionsRowWriteFailed: Boolean = false,
+    onDismissShowDisruptionsRowError: () -> Unit = {},
     // The modes and lines hidden from the near-me list (SPEC *Finding stops → Hiding a mode*), listed
     // while any are, each with a Show that brings back just that one ([onShowHidden]).
     hiddenModes: Set<String> = emptySet(),
@@ -191,6 +198,22 @@ fun SettingsScreen(
                     onClick = onOpenFavoritePlaces,
                     testTag = "favoritePlacesRow",
                 )
+                // The home screen's disruptions row, second (maintainer, 2026-10-05): like the places, it
+                // decides what the home screen leads with.
+                SettingSwitchRow(
+                    title = stringResource(R.string.settings_disruptions_row_title),
+                    summary = stringResource(R.string.settings_disruptions_row_summary),
+                    checked = showDisruptionsRow,
+                    onCheckedChange = onShowDisruptionsRowChange,
+                    enabled = showDisruptionsRowLoaded,
+                    switchTestTag = "disruptionsRowSwitch",
+                )
+                if (showDisruptionsRowWriteFailed) {
+                    SettingErrorRow(
+                        text = stringResource(R.string.settings_disruptions_row_write_failed),
+                        onDismiss = onDismissShowDisruptionsRowError,
+                    )
+                }
                 // What's hidden, under the places: like them, it decides what the list shows. Only
                 // while something is, as with the list's banner.
                 val hiddenItems = ModeGroups.hiddenItems(hiddenModes)

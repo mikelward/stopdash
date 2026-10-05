@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.glance.appwidget.updateAll
 import app.stopdash.data.DataStoreAppSettings
 import app.stopdash.data.DeviceSteadyClock
+import app.stopdash.data.DisruptionsRowSetting
 import app.stopdash.data.DistanceUnitsSetting
 import app.stopdash.data.MaxWalkSetting
 import app.stopdash.data.StepFreeSetting
@@ -256,6 +257,7 @@ open class StopdashApp : Application() {
         RailApiKeySetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         HiddenModesSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         DistanceUnitsSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
+        DisruptionsRowSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         WalkingSpeedSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         MaxWalkSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))
         StepFreeSetting.warm(DataStoreAppSettings.from(this, warn = ::logAppSettingsWarning))

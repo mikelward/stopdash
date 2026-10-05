@@ -417,6 +417,10 @@
     <!-- Settings row that opens the favorite-places editor (SPEC D9). -->
     <string name="settings_favorite_places_title">Favorite places</string>
     <string name="settings_favorite_places_summary">Save places to route to, like Home and Work</string>
+    <!-- Settings switch for the home screen's one-line disruptions row. -->
+    <string name="settings_disruptions_row_title">Disruptions summary</string>
+    <string name="settings_disruptions_row_summary">One row on the home screen for the tube and lines near you</string>
+    <string name="settings_disruptions_row_write_failed">Couldn\'t save that; it resets when StopDash restarts</string>
     <!-- Settings' list of the modes and lines hidden from the near-me list, shown only while
          something is; each has a Show action that brings just that one back. -->
     <string name="settings_hidden_title">Hidden</string>

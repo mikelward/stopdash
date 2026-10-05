@@ -2101,6 +2101,9 @@ Where the row shows, it takes the place of the list's "Couldn't check for disrup
 (maintainer, 2026-10-05), so nothing comes and goes over the list: a line on the list whose check
 didn't answer, however far its stop, is named after "Unknown:"; a stop whose closure check failed is
 named on its page; and what can't be named (a departure with no line to check) still reads "Unknown".
+A **Disruptions summary** switch, second in Settings under the favorite places, turns the row off
+(maintainer, 2026-10-05; on by default; the banner comes back with it off). The row waits for the
+stored choice, so one turned off never flashes up.
 
 A disrupted line is always kept flagged — its countdowns are never shown as verified-clean
 (principle 1). The chip's label is TfL's own wording where it names the disruption ("Part
