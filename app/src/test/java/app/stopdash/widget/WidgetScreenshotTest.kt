@@ -478,8 +478,8 @@ class WidgetScreenshotTest {
         )
     }
 
-    // A tablet-portrait cell (about 760dp wide, twice a phone's full-width widget) and a phone's,
-    // with the same stops: each drawn at its own size, as the launcher reports it.
+    // A tablet-portrait cell (about 760dp wide, twice a phone's full-width widget), in two columns, and
+    // a phone's, in one, with the same stops: each drawn at its own size, as the launcher reports it.
     @Test
     fun `a double-width cell is drawn at its own size`() = captureCell("widget-double-width.png", DpSize(760.dp, 400.dp))
 
@@ -579,6 +579,21 @@ class WidgetScreenshotTest {
         val drawn = texts(inflate(ApplicationProvider.getApplicationContext(), model, DpSize(380.dp, 900.dp)))
         assertEquals(destinations, drawn.filter { it in destinations })
         assertEquals(listOf("Stop 0", "Stop 3", "Stop 6", "Stop 9"), drawn.filter { it.startsWith("Stop ") })
+    }
+
+    // In two columns, every row in the model is drawn too, across both.
+    @Test
+    fun `every row in the model is drawn across two columns`() {
+        val destinations = listOf("Brixton", "Walthamstow Central", "Cockfosters", "Heathrow Terminal 5", "Morden", "Edgware")
+        val rows = destinations.mapIndexed { i, destination ->
+            rowModel(row("line$i", "Line $i", destination, 60L * (i + 1)))
+                .let { if (i % 3 == 0) it.copy(header = WidgetHeader("Stop $i", "Stop $i")) else it }
+        }
+        val model = WidgetModel(hasData = true, stale = false, uncertain = false, stamp = "Updated just now", rows = rows, columnBreak = 3)
+        RuntimeEnvironment.setQualifiers("+notnight")
+        RuntimeEnvironment.setFontScale(1f)
+        val drawn = texts(inflate(ApplicationProvider.getApplicationContext(), model, DpSize(760.dp, 400.dp)))
+        assertEquals(destinations, drawn.filter { it in destinations })
     }
 
     /**

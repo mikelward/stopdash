@@ -84,6 +84,7 @@ import app.stopdash.domain.riderLineName
 import app.stopdash.ui.hiddenGroupsLabel
 import app.stopdash.ui.BudgetedRow
 import app.stopdash.ui.BudgetedRows
+import app.stopdash.ui.GroupHeader
 import app.stopdash.ui.LineCosts
 import app.stopdash.ui.groupHeaderTitle
 import app.stopdash.ui.PillColors
@@ -366,6 +367,9 @@ internal data class WidgetModel(
     // When the soonest stale line's guess ("21:14?", [Countdown.staleLabel]) drawn here is due: its
     // train has gone by then, so the widget redraws to drop it. Null with no stale line drawn.
     val guessExpiresAt: Instant? = null,
+    // Where the second column starts, on a widget wide enough for two ([WIDGET_TWO_COLUMN_WIDTH]): the
+    // index in [rows] of its first row. Null in one column.
+    val columnBreak: Int? = null,
 )
 
 /**
@@ -428,6 +432,8 @@ internal fun widgetModel(
     hiddenModes: Set<String> = emptySet(),
     // The last tap's refresh ([WidgetTapRefresh.note]), said in the note line.
     tap: WidgetTapNote? = null,
+    // Two columns where the cell is wide enough ([WIDGET_TWO_COLUMN_WIDTH]); false lays out one.
+    columns: Boolean = true,
 ): WidgetModel {
     if (snapshot == null) {
         return WidgetModel(hasData = false, stale = false, uncertain = false, stamp = null, rows = emptyList())
@@ -523,6 +529,9 @@ internal fun widgetModel(
     val currentStops = shownStops.filter {
         it.arrivalsFresh && !Staleness.isStale(it.fetchedAt, now)
     }.mapTo(HashSet()) { it.stopId }
+    // Wide enough for two columns, side by side: each row is then costed at its column's width.
+    val twoColumns = columns && geometry != null && geometry.width >= WIDGET_TWO_COLUMN_WIDTH
+    val rowWidth = geometry?.let { if (twoColumns) widgetColumnWidth(it.width) else it.width }
     // Each destination line's layout, decided from its own countdown and the cell's width (see
     // widgetRowStacked), so the lines a tight budget drops can't change the ones it keeps; without a
     // geometry nothing stacks. The planned-work calendar sits before the first line's countdown.
@@ -531,7 +540,7 @@ internal fun widgetModel(
         val countdown = if (Staleness.isStale(row.fetchedAt, now)) Countdown.staleLabel(line.times) else Countdown.mergedLabel(line.times, now)
         val calendar = row.status == null && row.plannedAlerts.isNotEmpty() &&
             DepartureRows.destinationLines(row, WIDGET_MAX_TIMES, topology).firstOrNull() == line
-        return widgetRowStacked(listOf(countdown), calendar, geometry.width, geometry.fontScale)
+        return widgetRowStacked(listOf(countdown), calendar, rowWidth!!, geometry.fontScale)
     }
     // Whether a row's status, and the reason for no times it shows after it ("No key", see
     // widgetNoTimes), fits beside the pill's column; without a geometry it's taken to.
@@ -539,7 +548,7 @@ internal fun widgetModel(
         val status = row.status ?: return true
         if (geometry == null) return true
         val detail = if (reason) widgetNoTimes(row, current = row.stopId in currentStops)?.let { WIDGET_NO_TIMES_ESTIMATE } else null
-        return widgetStatusFits(status.description, detail, geometry.width, geometry.fontScale)
+        return widgetStatusFits(status.description, detail, rowWidth!!, geometry.fontScale)
     }
     // Drawn as its status alone, the status is all the row says, so it stacks rather than be cut:
     // the pill and the reason (where a countdown would sit), then the status at full width.
@@ -560,6 +569,24 @@ internal fun widgetModel(
     // BudgetedRows.select would have to draw: its first destination line with its status under it,
     // or its status alone.
     val oneLine = pinned.mapNotNull { BudgetedRows.least(it, WIDGET_MAX_TIMES, topology, costs) }.minOrNull() ?: 1
+    // The rows two columns of [budget] each hold, and where the second starts: chosen for both columns'
+    // room, and split so each fits, a header counted where the second repeats one ([widgetColumns]).
+    // Rows that don't split into two that fit (a branching row too tall for one column, say) are
+    // chosen again, in priority order, for a line less room, so a split never drops a sooner row than
+    // one it keeps; with no split at all, the rows one column holds.
+    fun columns(budget: Int): Pair<List<BudgetedRow>, Int?> {
+        fun cost(row: BudgetedRow) = (if (row.header != null) costs.header else 0) +
+            row.groups.sumOf { costs.line(row.row, it) } +
+            (if (row.row.status != null) costs.status(row.row, row.groups.isEmpty()) else 0)
+        var room = budget * 2
+        while (room > budget) {
+            val rows = BudgetedRows.select(pinned, room, WIDGET_MAX_TIMES, topology, ::grouped, costs)
+            if (rows.size >= 2) widgetColumns(rows, budget, costs.header, ::cost)?.let { return it }
+            room -= costs.header
+        }
+        return BudgetedRows.select(pinned, budget, WIDGET_MAX_TIMES, topology, ::grouped, costs) to null
+    }
+    var columnBreak: Int? = null
     fun layout(withNote: Boolean): Triple<Boolean, Int, List<BudgetedRow>> {
         // The same condition WidgetContent draws the note under (a stamp is always set here).
         val fullBudget = geometry?.let { widgetRowsHeight(it.height, it.fontScale, withNote = withNote) }
@@ -573,7 +600,13 @@ internal fun widgetModel(
             fullBudget
         }
         // The budgeted rows and their stop headers, chosen the way every glanceable surface chooses
-        // them (the watch tile too): see [BudgetedRows.select].
+        // them (the watch tile too): see [BudgetedRows.select]. The compact layout keeps one column.
+        if (twoColumns && !compact) {
+            val (rows, at) = columns(budget)
+            columnBreak = at
+            return Triple(false, budget, rows)
+        }
+        columnBreak = null
         return Triple(compact, budget, BudgetedRows.select(pinned, budget, WIDGET_MAX_TIMES, topology, ::grouped, costs))
     }
     // A failed tap is said only while what it couldn't replace is out of date (in place of "Tap to
@@ -591,6 +624,11 @@ internal fun widgetModel(
         budget = b2
         chosen = again
         statusUnknown = unchecked(again)
+    }
+    // Rows costed for two columns that end up in one (no split fits, or the compact layout) are laid out
+    // again at the cell's whole width, so none stacks, or is dropped, for a half width it isn't drawn at.
+    if (twoColumns && columnBreak == null) {
+        return widgetModel(snapshot, now, starred, maxLines, maxLinesWithNote, maxLinesCompact, geometry, topology, hiddenModes, tap, columns = false)
     }
     // Only when there's a departure to fit: with none, the empty states ("No upcoming departures",
     // "may be out of date") are the honest message and fit any size.
@@ -621,7 +659,47 @@ internal fun widgetModel(
             .filter { Staleness.isStale(it.row.fetchedAt, now) }
             .mapNotNull { row -> row.groups.mapNotNull { it.times.firstOrNull()?.expectedArrival }.minOrNull() }
             .minOrNull(),
+        columnBreak = columnBreak,
     )
+}
+
+/**
+ * [rows] (in the order they read, as [BudgetedRows.select] returns them) split into two columns of at
+ * most [budget] each, where the taller of the two is shortest, so they read down the first and then the
+ * second. A place that runs on into the second column has its header again at the top ([header] more).
+ * The rows, that header added, and where the second column starts; null when they don't split into two
+ * that fit (the caller chooses fewer).
+ */
+internal fun widgetColumns(
+    rows: List<BudgetedRow>,
+    budget: Int,
+    header: Int,
+    cost: (BudgetedRow) -> Int,
+): Pair<List<BudgetedRow>, Int>? {
+    val costs = rows.map(cost)
+    // The header the second column repeats if it starts at each row: the place's above it, if any.
+    val headers = arrayOfNulls<GroupHeader>(rows.size)
+    var last: GroupHeader? = null
+    for (i in rows.indices) {
+        headers[i] = if (rows[i].header == null) last else null
+        rows[i].header?.let { last = it }
+    }
+    val total = costs.sum()
+    var best: Int? = null
+    var bestTaller = Int.MAX_VALUE
+    var first = 0
+    for (at in 1 until rows.size) {
+        first += costs[at - 1]
+        val second = total - first + if (headers[at] != null) header else 0
+        val taller = maxOf(first, second)
+        if (first <= budget && second <= budget && taller < bestTaller) {
+            best = at
+            bestTaller = taller
+        }
+    }
+    val at = best ?: return null
+    val repeated = headers[at] ?: return rows to at
+    return rows.toMutableList().also { it[at] = it[at].copy(header = repeated) } to at
 }
 
 /**
@@ -756,6 +834,15 @@ internal fun WidgetContent(
                     WidgetMessage(
                         if (model.uncertain) "Departures may be out of date" else "No upcoming departures",
                     )
+                model.columnBreak != null -> Row(modifier = GlanceModifier.fillMaxWidth()) {
+                    Column(modifier = GlanceModifier.defaultWeight()) {
+                        WidgetRows(model.rows.subList(0, model.columnBreak), now, fontScale)
+                    }
+                    Spacer(GlanceModifier.width(WIDGET_COLUMN_GAP))
+                    Column(modifier = GlanceModifier.defaultWeight()) {
+                        WidgetRows(model.rows.subList(model.columnBreak, model.rows.size), now, fontScale)
+                    }
+                }
                 else -> WidgetRows(model.rows, now, fontScale)
             }
         }
@@ -1356,6 +1443,21 @@ internal fun widgetStatusFits(description: String, detail: String?, width: Dp, f
 
 /** The widget's padding either side of its rows (12dp each side). */
 private val WIDGET_HORIZONTAL_PADDING = 24.dp
+
+/** The gap between the widget's two columns ([WIDGET_TWO_COLUMN_WIDTH]). */
+internal val WIDGET_COLUMN_GAP = 16.dp
+
+/**
+ * From this width the widget's rows go in two columns side by side, each then 244dp wide as a cell of
+ * its own ([widgetColumnWidth]), room for a destination and its times (a row stacks where they don't
+ * fit, as in a narrow widget): a tablet's widget, or a wide one in landscape; never a phone's in
+ * portrait, which is narrower (maintainer, 2026-10-05, from screenshots of the two layouts at widths
+ * from 400 to 900dp).
+ */
+internal val WIDGET_TWO_COLUMN_WIDTH = 480.dp
+
+/** Each of two columns' width in a cell [width] wide, as the width of a cell of its own (padding and all). */
+internal fun widgetColumnWidth(width: Dp): Dp = (width - WIDGET_HORIZONTAL_PADDING - WIDGET_COLUMN_GAP) / 2 + WIDGET_HORIZONTAL_PADDING
 
 /**
  * How wide [text] draws, in ems of its bold or medium text, by the kind of each character: Roboto's
