@@ -1,9 +1,6 @@
 package app.stopdash.ui
 
 import androidx.annotation.WorkerThread
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
@@ -19,10 +16,20 @@ import app.stopdash.domain.Workers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -46,10 +53,19 @@ class FartherCardsViewModel(
     // [viewModelScope] only publishes it.
     private val compute: CoroutineDispatcher = Workers.compute,
 ) : ViewModel() {
-    private val _cards = MutableStateFlow<Map<String, FartherLoad>>(emptyMap())
+    // The places offered as cards (null until the first [retain]) and where each tapped one stands,
+    // in one flow, so a relocation's new places and the cards it closed are published together.
+    private val _picked = MutableStateFlow(Picked(null, emptyMap()))
 
-    /** Where each tapped card stands, by card key; a card never tapped (or collapsed) is absent. */
-    val cards: StateFlow<Map<String, FartherLoad>> = _cards.asStateFlow()
+    /** The places offered as cards and where each tapped one stands. */
+    internal val picked: StateFlow<Picked> = _picked.asStateFlow()
+
+    // Where each tapped card stands, by card key; a card never tapped (or collapsed) is absent.
+    private var loads: Map<String, FartherLoad>
+        get() = _picked.value.loads
+        set(value) {
+            _picked.value = _picked.value.copy(loads = value)
+        }
 
     // Each opened card's model lives in its own store, cleared when the card closes.
     private val stores = HashMap<String, ViewModelStore>()
@@ -66,12 +82,12 @@ class FartherCardsViewModel(
      */
     fun open(place: CollapsedPlaces.Place, fix: Coordinates) {
         from = fix
-        if (_cards.value[place.key] is FartherLoad.Open) {
+        if (loads[place.key] is FartherLoad.Open) {
             models[place.key]?.refresh()
             return
         }
         if (lookups[place.key]?.isActive == true) return
-        _cards.value = _cards.value + (place.key to FartherLoad.Loading)
+        loads = loads + (place.key to FartherLoad.Loading)
         lookups[place.key] = viewModelScope.launch {
             val stops = if (place.stops.isNotEmpty()) place.stops else try {
                 withContext(io) { stationStops(place.stationId) }
@@ -79,12 +95,12 @@ class FartherCardsViewModel(
                 throw e
             } catch (e: Exception) {
                 warn("farther station lookup failed for ${place.stationId}: ${e::class.simpleName}")
-                _cards.value = _cards.value + (place.key to FartherLoad.Failed)
+                loads = loads + (place.key to FartherLoad.Failed)
                 return@launch
             }
             if (stops.isEmpty()) {
                 warn("farther station ${place.stationId} has no stops with departures")
-                _cards.value = _cards.value + (place.key to FartherLoad.Failed)
+                loads = loads + (place.key to FartherLoad.Failed)
                 return@launch
             }
             // Measured from the latest fix: a relocation while this is worked out measures it again.
@@ -103,7 +119,7 @@ class FartherCardsViewModel(
                 viewModelFactory { initializer { newModel(refs, distances) } },
             )[place.key, MainViewModel::class]
             models[place.key] = model
-            _cards.value = _cards.value + (place.key to FartherLoad.Open(stops, distances))
+            loads = loads + (place.key to FartherLoad.Open(stops, distances, model.state))
         }
     }
 
@@ -112,7 +128,7 @@ class FartherCardsViewModel(
         lookups.remove(key)?.cancel()
         models.remove(key)
         stores.remove(key)?.clear()
-        _cards.value = _cards.value - key
+        loads = loads - key
     }
 
     /**
@@ -126,13 +142,14 @@ class FartherCardsViewModel(
         val asked = ++retains
         viewModelScope.launch {
             while (true) {
-                val cards = _cards.value
+                val cards = loads
                 val plan = withContext(compute) { retainPlan(cards, places, fix) }
                 if (asked != retains) return@launch
-                if (_cards.value !== cards) continue
+                if (loads !== cards) continue
                 // Every key with a lookup or a model has a card, so closing by the cards closes them all.
                 for (key in plan.closed) close(key)
-                _cards.value = plan.cards
+                // The new places with the cards kept for them, in one update.
+                _picked.value = Picked(places, plan.cards)
                 // The card's model takes the new distances too: its rows hide terminating services
                 // by where the rider is, and its far stops refresh less often.
                 for ((key, distances) in plan.remeasured) models[key]?.remeasure(distances)
@@ -186,9 +203,29 @@ class FartherCardsViewModel(
     /** The departures model of [key]'s card, while it is open. */
     fun model(key: String): MainViewModel? = models[key]
 
-    // The list as last shown with its opened cards merged in ([rememberWithOpenedFarther]), and what
-    // it was merged from: the screen recreated (a rotation) shows it at once while it's still current.
-    internal var lastMerged: MergedFarther? = null
+    /** [picked] with each open card's stop ids and its model's state, worked out on [compute]. */
+    private val opened: StateFlow<OpenedCards> = openedCards(picked, compute)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, OpenedCards.NONE)
+
+    // The list this set's screen shows, with its merge ([shownWith]); one per list, kept across a rotation.
+    private var shown: Pair<StateFlow<DeparturesUiState>, StateFlow<ShownFarther>>? = null
+
+    /**
+     * [list] with the open cards' departures merged in, and the cards' standing they were merged with
+     * ([ShownFarther]), worked out on [compute] whenever either changes ([shownWithOpened]). The screen
+     * reads only finished merges, so it never draws the list without the opened rows (which would
+     * collapse them and lose the list's place) or with rows from a moment other than their cards' and
+     * their failures'. Kept here, in the set's store, so a recreated screen draws the last one at once.
+     * A call from composition reads or builds the flow, no more.
+     */
+    fun shownWith(list: StateFlow<DeparturesUiState>): StateFlow<ShownFarther> {
+        shown?.let { (from, flow) -> if (from === list) return flow }
+        // No card standing yet, so no rows to miss, until the first merge is in.
+        val flow = shownWithOpened(list, opened, compute)
+            .stateIn(viewModelScope, SharingStarted.Eagerly, ShownFarther(list.value, null, emptyMap()))
+        shown = list to flow
+        return flow
+    }
 
     /** Refresh every opened card's departures, as the list refreshes its own. */
     fun refresh() {
@@ -211,6 +248,73 @@ class FartherCardsViewModel(
         stops.associate { it.id to NearestStops.distanceMeters(fix.latitude, fix.longitude, it.latitude, it.longitude) }
 }
 
+/** The places offered as cards ([offered], null until first picked) and where each tapped one stands. */
+internal data class Picked(val offered: List<CollapsedPlaces.Place>?, val loads: Map<String, FartherLoad>)
+
+/**
+ * The places offered as cards ([offered]), where every tapped card stands ([loads]), and the open
+ * ones' stop ids and states ([cards]), published together, so a card's new standing (reopening on
+ * new poles, say) never meets its old rows, nor a place no longer offered its rows.
+ */
+class OpenedCards(
+    val offered: List<CollapsedPlaces.Place>?,
+    val loads: Map<String, FartherLoad>,
+    val cards: List<Pair<Set<String>, DeparturesUiState>>,
+) {
+    companion object {
+        val NONE = OpenedCards(null, emptyMap(), emptyList())
+    }
+}
+
+/**
+ * The list as the screen shows it, its opened cards merged in ([state]), with the places offered as
+ * cards ([offered], null until first picked) and those cards' standing ([loads]) it was merged with.
+ */
+class ShownFarther(val state: DeparturesUiState, val offered: List<CollapsedPlaces.Place>?, val loads: Map<String, FartherLoad>)
+
+/**
+ * [list] with [opened]'s departures merged in ([merge]), alongside the cards' standing, each change
+ * worked out on [compute]: the merge walks every card's stops (AGENTS *Main thread*). A newer change
+ * supersedes a merge still running, so the screen gets the latest whole picture, never a part one.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+internal fun shownWithOpened(
+    list: Flow<DeparturesUiState>,
+    opened: Flow<OpenedCards>,
+    compute: CoroutineDispatcher,
+    merge: (DeparturesUiState.Loaded, List<Pair<Set<String>, DeparturesUiState>>) -> DeparturesUiState.Loaded = ::withOpenedFarther,
+): Flow<ShownFarther> = combine(list, opened) { state, cards -> state to cards }
+    .mapLatest { (state, cards) ->
+        val merged = if (state is DeparturesUiState.Loaded && cards.cards.isNotEmpty()) merge(state, cards.cards) else state
+        ShownFarther(merged, cards.offered, cards.loads)
+    }
+    .flowOn(compute)
+
+/**
+ * [cards] with the open ones' departures, each change worked out on [compute]: an open card's stop
+ * ids are its [FartherLoad.Open.distanceMeters] keys, and its departures the model it was opened
+ * with ([FartherLoad.Open.departures]), carried in the load itself, so a card and its rows are
+ * always one snapshot — never a card read open against a model since closed or replaced.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+internal fun openedCards(
+    cards: Flow<Picked>,
+    compute: CoroutineDispatcher,
+): Flow<OpenedCards> = cards
+    .flatMapLatest { (offered, loads) ->
+        val each = loads.values.mapNotNull { load ->
+            val open = load as? FartherLoad.Open ?: return@mapNotNull null
+            val ids = open.distanceMeters.keys
+            open.departures.map { ids to it }
+        }
+        if (each.isEmpty()) {
+            flowOf(OpenedCards(offered, loads, emptyList()))
+        } else {
+            combine(each) { states -> OpenedCards(offered, loads, states.toList()) }
+        }
+    }
+    .flowOn(compute)
+
 /**
  * Where a farther station's card stands (SPEC *Finding stops → Farther stations*): its stops being
  * looked up, the lookup failed (tap to try again), or open, with its stops and each one's distance
@@ -219,8 +323,16 @@ class FartherCardsViewModel(
 sealed interface FartherLoad {
     data object Loading : FartherLoad
     data object Failed : FartherLoad
-    data class Open(val stops: List<StopLocation>, val distanceMeters: Map<String, Double>) : FartherLoad
+    data class Open(
+        val stops: List<StopLocation>,
+        val distanceMeters: Map<String, Double>,
+        // The card's own departures model's state, published with the card so they never part.
+        val departures: StateFlow<DeparturesUiState> = NO_DEPARTURES,
+    ) : FartherLoad
 }
+
+// An open card built without a model (a preview): its departures read as still loading.
+private val NO_DEPARTURES: StateFlow<DeparturesUiState> = MutableStateFlow(DeparturesUiState.Loading).asStateFlow()
 
 /**
  * [list] with each opened farther card's departures added (SPEC *Finding stops → Farther
@@ -329,62 +441,6 @@ internal fun withOpenedFarther(
 internal class FartherFor(val key: String, val places: List<CollapsedPlaces.Place>) {
     /** The cards if they were picked for [set], else null: another set's aren't this one's. */
     fun forSet(set: String): List<CollapsedPlaces.Place>? = places.takeIf { key == set }
-}
-
-internal class MergedFarther(
-    val list: DeparturesUiState.Loaded,
-    val opened: List<Pair<Set<String>, DeparturesUiState>>,
-    val merged: DeparturesUiState.Loaded,
-) {
-    /** Merged from these very states. */
-    fun isOf(list: DeparturesUiState.Loaded, opened: List<Pair<Set<String>, DeparturesUiState>>): Boolean =
-        sameStates(this.list, this.opened, list, opened)
-}
-
-/** The same states and cards' stop sets, by identity, so the check walks neither their stops nor the sets. */
-private fun sameStates(
-    list: DeparturesUiState.Loaded,
-    opened: List<Pair<Set<String>, DeparturesUiState>>,
-    otherList: DeparturesUiState.Loaded,
-    otherOpened: List<Pair<Set<String>, DeparturesUiState>>,
-): Boolean = list === otherList && opened.size == otherOpened.size &&
-    opened.indices.all { opened[it].first === otherOpened[it].first && opened[it].second === otherOpened[it].second }
-
-/**
- * [state] with each opened card's stops shown through the list ([withOpenedFarther]), merged on
- * [LocalWorker], not in composition: the merge walks every card's stops (AGENTS *Main thread*).
- * Until it's back, [cached] if merged from the same states (the screen recreated by a rotation),
- * else the list alone, shows. Each merge is handed to [onMerged] to keep.
- */
-@Composable
-internal fun rememberWithOpenedFarther(
-    state: DeparturesUiState,
-    opened: List<Pair<Set<String>, DeparturesUiState>>,
-    cached: MergedFarther?,
-    onMerged: (MergedFarther) -> Unit,
-    merge: (DeparturesUiState.Loaded, List<Pair<Set<String>, DeparturesUiState>>) -> DeparturesUiState.Loaded = ::withOpenedFarther,
-): DeparturesUiState {
-    val list = state as? DeparturesUiState.Loaded ?: return state
-    if (opened.isEmpty()) return list
-    val worker = LocalWorker.current
-    // Keyed by identity, so a recomposition doesn't compare the states' stops to see if they changed.
-    val key = MergeKey(list, opened)
-    // Tagged with the states it merged, so a new list (another set's, say) shows alone until its own
-    // merge is back rather than the last one's.
-    val merged by produceState(initialValue = cached?.takeIf { it.isOf(list, opened) }, key) {
-        val done = MergedFarther(list, opened, withContext(worker) { merge(list, opened) })
-        onMerged(done)
-        value = done
-    }
-    return merged?.takeIf { it.isOf(list, opened) }?.merged ?: list
-}
-
-/** The merge's inputs, equal only to the same ones ([sameStates]). */
-private class MergeKey(val list: DeparturesUiState.Loaded, val opened: List<Pair<Set<String>, DeparturesUiState>>) {
-    override fun equals(other: Any?): Boolean =
-        other is MergeKey && sameStates(list, opened, other.list, other.opened)
-
-    override fun hashCode(): Int = System.identityHashCode(list)
 }
 
 /**

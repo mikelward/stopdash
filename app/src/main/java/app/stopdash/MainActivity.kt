@@ -240,7 +240,6 @@ import app.stopdash.ui.rememberListWork
 import app.stopdash.ui.rememberNextTrains
 import app.stopdash.ui.rememberPendingTracker
 import app.stopdash.ui.rememberShownPlaces
-import app.stopdash.ui.rememberWithOpenedFarther
 import app.stopdash.ui.theme.StopDashTheme
 import app.stopdash.ui.tripRepickId
 import app.stopdash.ui.tripStartId
@@ -2073,28 +2072,26 @@ class MainActivity : ComponentActivity() {
                     }
                 },
             )
-            val fartherLoads by fartherModels.cards.collectAsStateWithLifecycle()
+            // The list with the opened cards' rows merged in, the places offered as cards and the
+            // cards' standing, published together off the main thread: the screen only ever draws a
+            // finished merge, and a place a relocation drops goes with its rows, not before them.
+            val shownFarther by remember(fartherModels, viewModel) { fartherModels.shownWith(viewModel.state) }
+                .collectAsStateWithLifecycle()
+            val fartherLoads = shownFarther.loads
             LaunchedEffect(farther, ready.location) { farther?.let { fartherModels.retain(it, ready.location) } }
-            val fartherCards = remember(farther, fartherLoads) { farther.orEmpty().map { FartherCard(it, fartherLoads[it.key]) } }
+            val fartherOffered = shownFarther.offered
+            val fartherCards = remember(fartherOffered, fartherLoads) { fartherOffered.orEmpty().map { FartherCard(it, fartherLoads[it.key]) } }
             val fartherDistanceMeters = remember(fartherLoads) {
                 fartherLoads.values.filterIsInstance<FartherLoad.Open>().fold(emptyMap<String, Double>()) { acc, open -> acc + open.distanceMeters }
             }
             // Each open card's departures, kept live while shown as the list's are, then shown
             // through the list's own rows beside its card.
-            val openedStates = fartherLoads.entries.mapNotNull { (cardKey, load) ->
-                val open = load as? FartherLoad.Open ?: return@mapNotNull null
-                val model = fartherModels.model(cardKey) ?: return@mapNotNull null
-                key(cardKey) {
-                    AutoRefresh(model, relocating)
-                    open.distanceMeters.keys to model.state.collectAsStateWithLifecycle().value
-                }
+            for ((cardKey, load) in fartherLoads) {
+                if (load !is FartherLoad.Open) continue
+                val model = fartherModels.model(cardKey) ?: continue
+                key(cardKey) { AutoRefresh(model, relocating) }
             }
-            val shownState = rememberWithOpenedFarther(
-                state,
-                openedStates,
-                cached = fartherModels.lastMerged,
-                onMerged = { fartherModels.lastMerged = it },
-            )
+            val shownState = shownFarther.state
             // These background refreshes are composed only while the departures view is shown:
             // the licenses screen is hosted above this subtree (see onCreate), so opening it
             // removes DeparturesForStops from composition and stops the polling (Codex).
