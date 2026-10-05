@@ -733,8 +733,9 @@ class MainViewModel(
         val asked = SteadyClock.stamp(now)
         if (_always.value?.let { asked.isBefore(it.asked) } == true) return
         val statuses = check.statuses.filter { it.lineId in askedFor }.associateBy { it.lineId }
-        val at = statuses.keys.mapNotNull { lineStatusCache[it]?.first }.minOrNull() ?: asked
-        _always.value = HomeLines.Always(statuses, at, asked, askedFor)
+        val stamps = statuses.keys.mapNotNull { id -> lineStatusCache[id]?.first?.let { id to it } }.toMap()
+        val at = stamps.values.minOrNull() ?: asked
+        _always.value = HomeLines.Always(statuses, at, asked, askedFor, stamps)
     }
     // The dismissed alerts' count ([DismissedAlertsStore.mark]) each cached status was asked at: a
     // refresh settling dismissals on a reused verdict is as old as it. In-memory, main thread, like it.

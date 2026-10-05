@@ -76,9 +76,20 @@ object HomeLines {
     /**
      * The always-covered lines as the list's last check found them: the [statuses] TfL gave (good or not;
      * a line missing went undetermined) for the lines it [askedFor], as of [at], the oldest verdict's
-     * stamp (by the steady clock), for a check asked at [asked].
+     * stamp (by the steady clock), for a check asked at [asked]. Each line's own verdict is stamped in
+     * [stamps], [at] standing in for one missing: a line's check stands on its own age, so dropping a
+     * network whose verdict had aged never takes a current one down with it (Codex, #592).
      */
-    class Always(val statuses: Map<String, LineStatus>, val at: Instant, val asked: Instant = at, val askedFor: Set<String> = statuses.keys)
+    class Always(
+        val statuses: Map<String, LineStatus>,
+        val at: Instant,
+        val asked: Instant = at,
+        val askedFor: Set<String> = statuses.keys,
+        val stamps: Map<String, Instant> = emptyMap(),
+    ) {
+        /** Whether [id]'s verdict is in and still current at [now]. */
+        fun current(id: String, now: Instant): Boolean = id in statuses && checkCurrent(stamps[id] ?: at, now)
+    }
 
     /**
      * The row for the list as it stands ([loaded], null while none is), the stops' distances ([distances],
@@ -129,7 +140,6 @@ object HomeLines {
         } else {
             ""
         }
-        val alwaysCurrent = always?.takeIf { checkCurrent(it.at, now) }
         // Each line's status as checked (good or not), and whether it's checked at all.
         val raw = HashMap<String, LineStatus>()
         val known = HashSet<String>()
@@ -140,9 +150,9 @@ object HomeLines {
                     known += id
                     loaded?.lineStatuses?.get(id)?.let { raw[id] = it }
                 }
-                alwaysCurrent != null && id in alwaysCurrent.statuses -> {
+                always != null && always.current(id, now) -> {
                     known += id
-                    alwaysCurrent.statuses.getValue(id).takeIf { it.hasAlerts }?.let { raw[id] = it }
+                    always.statuses.getValue(id).takeIf { it.hasAlerts }?.let { raw[id] = it }
                 }
                 // Still being asked: a cold load's line not back yet, an always-covered line before its
                 // first check, or while a refresh is under way, its last check too old to stand (back from
