@@ -256,7 +256,7 @@ class StopDashWidget : GlanceAppWidget() {
         }
         val models = widgetModels(shown, now, starred, fontScale, topology, hiddenModes, sizes, tap)
         StopdashDebugLog.info(
-            "widget: drew %d to %d rows across sizes, data %d s old",
+            "widget: drew %s to %s rows across sizes, data %s s old",
             models.all.minOf { it.rows.size },
             models.all.maxOf { it.rows.size },
             shown?.let { JavaDuration.between(it.fetchedAt, now).seconds } ?: -1L,
@@ -1333,7 +1333,7 @@ internal suspend fun scopedToNearby(context: Context, snapshot: DeparturesSnapsh
     // snapshot lacks them from one whose stored nearby set left them out.
     if (snapshot != null) {
         StopdashDebugLog.info(
-            "widget: render keeps %d of %d stored stops (nearby set %d, %d journeys, %d missing)",
+            "widget: render keeps %s of %s stored stops (nearby set %s, %s journeys, %s missing)",
             scoped?.stops?.size ?: 0,
             snapshot.stops.size,
             read.stopIds?.size ?: -1,

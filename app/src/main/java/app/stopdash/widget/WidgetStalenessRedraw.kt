@@ -164,7 +164,7 @@ class WidgetStalenessWorker(appContext: Context, params: WorkerParameters) :
             // How late Android ran it: the widget holds its last render meanwhile, so a long delay here
             // is a widget showing times that have passed.
             val due = inputData.getLong(DUE_KEY, 0L)
-            if (due > 0L) StopdashDebugLog.info("widget: redraw ran %d s after due", (System.currentTimeMillis() - due) / 1000)
+            if (due > 0L) StopdashDebugLog.info("widget: redraw ran %s s after due", (System.currentTimeMillis() - due) / 1000)
             try {
                 redrawWidgets(applicationContext)
             } finally {
