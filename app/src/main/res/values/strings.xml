@@ -417,6 +417,19 @@
     <!-- Settings row that opens the favorite-places editor (SPEC D9). -->
     <string name="settings_favorite_places_title">Favorite places</string>
     <string name="settings_favorite_places_summary">Save places to route to, like Home and Work</string>
+    <!-- Settings row that opens the starred-journeys list, to see and remove them. -->
+    <string name="settings_starred_journeys_title">Starred journeys</string>
+    <string name="settings_starred_journeys_summary">See and remove the journeys you\'ve starred</string>
+    <string name="starred_journeys_title">Starred journeys</string>
+    <string name="starred_journeys_loading">Loading…</string>
+    <string name="starred_journeys_empty">None yet. Long-press a stop on a route page to star the journey there.</string>
+    <!-- A failed read or a file from a newer StopDash; Retry reads it again. -->
+    <string name="starred_journeys_unavailable">Can\'t read your starred journeys.</string>
+    <string name="starred_journeys_retry">Retry</string>
+    <string name="starred_journeys_write_failed">Couldn\'t remove that journey</string>
+    <string name="starred_journey_remove">Remove</string>
+    <!-- Content description for a starred journey's Remove button; %1$s and %2$s are its two stops. -->
+    <string name="starred_journey_remove_description">Remove %1$s to %2$s</string>
     <!-- Settings switch for the home screen's one-line disruptions row. -->
     <string name="settings_disruptions_row_title">Disruptions summary</string>
     <string name="settings_disruptions_row_summary">One row on the home screen for the tube and lines near you</string>

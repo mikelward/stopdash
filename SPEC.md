@@ -1064,7 +1064,9 @@ too loose to send a rider to change on. The widget keeps showing direct trains o
 (the eventual goal behind starring home and work) builds on *Trips with a change* below. The long-press entry point has no
 cue of its own, so a starrable stop list opens with a one-line tip ("Long-press a stop to star the journey
 there") until the user dismisses it (maintainer, 2026-09-24); the dismissal is kept with the app's
-settings. Starred journeys are
+settings. **Settings lists the starred journeys** (maintainer, 2026-10-05), third, under the
+disruptions switch: each by its two stops and line, with **Remove**, so one starred by mistake can be
+found and dropped without riding past its card; Remove only ever unstars. Starred journeys are
 kept on the device with the rest of the user's config and never logged (*Privacy*).
 
 ### Trips with a change
@@ -2529,8 +2531,8 @@ the Open Government Licence v3.0. A test pins the credits so a rewording can't d
 
 An overflow-menu entry opens a Settings screen, hosted at the activity top level like the
 licenses screen (an overlay whose own Back closes it) rather than through a navigation graph
-— stopdash still has no nav library. Its first row opens the favorite-places editor (D9);
-the opt-in "refresh widget every minute" toggle (D5) follows below it. The screen composable
+— stopdash still has no nav library. Its first row opens the favorite-places editor (D9), and the third the starred journeys (*Journeys*);
+the opt-in "refresh widget every minute" toggle (D5) follows below them. The screen composable
 is UI-only for the toggle: it reflects the setting and reports a
 change, while persistence (a typed DataStore, mirroring the starred-rows store) and the
 refresh scheduler (WorkManager) are wired by the activity, so the screen stays

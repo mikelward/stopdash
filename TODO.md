@@ -2011,6 +2011,13 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         now says a long press stars.
     - [ ] **What a plain tap on a stop does** — nothing for now; the stop's own departures is the
           candidate.
+  - [x] **Starred journeys in Settings** (maintainer, 2026-10-05): listed by their stops and line,
+        each with Remove.
+  - [ ] **Rename a starred journey** — needs a label in the stored file (a schema version bump, so
+        an older build can't drop it on its next write).
+  - [ ] **Converge "journey" and "trip"** (maintainer, 2026-10-05: "longer term we'll need to
+        converge those"): a starred journey is a direct segment, a trip a planned route with changes;
+        a starred trip with a change would make them one thing to the rider.
   - [x] **Bus journeys, and a journey as a segment on any line** (maintainer, 2026-09-23: "really
         I'd like to star the segment", e.g. two stops shared by the 43 and the 134). A journey is two
         stops, not a line; the card shows every line from the origin that calls at the far end. The
