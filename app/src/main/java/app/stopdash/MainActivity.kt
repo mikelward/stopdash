@@ -76,6 +76,7 @@ import app.stopdash.data.DataStoreNearbySetStore
 import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.data.DataStoreStarredJourneysStore
 import app.stopdash.data.DataStoreStarredRowsStore
+import app.stopdash.data.DisruptionsRowSetting
 import app.stopdash.data.DistanceUnitsSetting
 import app.stopdash.data.FileActiveTripStore
 import app.stopdash.data.FileNearbyStopsStore
@@ -783,6 +784,9 @@ class MainActivity : ComponentActivity() {
                 val distanceUnits by DistanceUnitsSetting.changes.collectAsStateWithLifecycle()
                 val distanceUnitsLoaded by DistanceUnitsSetting.isLoaded.collectAsStateWithLifecycle()
                 val distanceUnitsWriteFailed by DistanceUnitsSetting.writeFailed.collectAsStateWithLifecycle()
+                val showDisruptionsRow by DisruptionsRowSetting.changes.collectAsStateWithLifecycle()
+                val showDisruptionsRowLoaded by DisruptionsRowSetting.isLoaded.collectAsStateWithLifecycle()
+                val showDisruptionsRowWriteFailed by DisruptionsRowSetting.writeFailed.collectAsStateWithLifecycle()
                 val walkingSpeed by WalkingSpeedSetting.changes.collectAsStateWithLifecycle()
                 val walkingSpeedLoaded by WalkingSpeedSetting.isLoaded.collectAsStateWithLifecycle()
                 val walkingSpeedWriteFailed by WalkingSpeedSetting.writeFailed.collectAsStateWithLifecycle()
@@ -1240,6 +1244,11 @@ class MainActivity : ComponentActivity() {
                                     distanceUnitsLoaded = distanceUnitsLoaded,
                                     distanceUnitsWriteFailed = distanceUnitsWriteFailed,
                                     onDismissDistanceUnitsError = DistanceUnitsSetting::writeFailureShown,
+                                    showDisruptionsRow = showDisruptionsRow,
+                                    onShowDisruptionsRowChange = DisruptionsRowSetting::set,
+                                    showDisruptionsRowLoaded = showDisruptionsRowLoaded,
+                                    showDisruptionsRowWriteFailed = showDisruptionsRowWriteFailed,
+                                    onDismissShowDisruptionsRowError = DisruptionsRowSetting::writeFailureShown,
                                     walkingSpeed = walkingSpeed,
                                     onWalkingSpeedChange = WalkingSpeedSetting::set,
                                     walkingSpeedLoaded = walkingSpeedLoaded,
@@ -2169,8 +2178,11 @@ class MainActivity : ComponentActivity() {
                     pendingTracker = shownTracker,
                     listWork = shownWork,
                     state = shownState,
-                    // The lines near here and the tube, atop the list (maintainer, 2026-10-05).
-                    showDisruptionsRow = true,
+                    // The lines near here and the tube, under the place chips (maintainer, 2026-10-05),
+                    // unless turned off in Settings; not before the choice is read, so one turned off
+                    // never flashes up.
+                    showDisruptionsRow = DisruptionsRowSetting.isLoaded.collectAsStateWithLifecycle().value &&
+                        DisruptionsRowSetting.changes.collectAsStateWithLifecycle().value,
                     tube = viewModel.tube.collectAsStateWithLifecycle().value,
                     now = tickingNow(),
                     // Re-locates then re-fetches (see onRelocate above) — the same action a return

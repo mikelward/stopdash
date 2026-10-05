@@ -511,3 +511,36 @@ object DistanceUnitsSetting {
     /** Settings has told the user a choice didn't save. */
     fun writeFailureShown() = holder.writeFailureShown()
 }
+
+/**
+ * Whether the home screen shows its disruptions row (maintainer, 2026-10-05), held in memory and
+ * persisted in order as [DistanceUnitsSetting] is. On by default; the list shows the row only once the
+ * stored choice is read ([isLoaded]), so one turned off never flashes up first.
+ */
+object DisruptionsRowSetting {
+    private val holder = StoredSettingHolder(
+        CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        initial = true,
+        read = AppSettings::showDisruptionsRow,
+        write = { settings, shown -> settings.setShowDisruptionsRow(shown) },
+        label = "disruptions row",
+    )
+
+    /** Whether the row is shown, as a flow, for the list and the Settings switch. */
+    val changes: StateFlow<Boolean> get() = holder.changes
+
+    /** Begins reading the stored choice. Idempotent. */
+    fun warm(appSettings: AppSettings) = holder.warm(appSettings)
+
+    /** Whether the stored choice has been read. */
+    val isLoaded: StateFlow<Boolean> get() = holder.isLoaded
+
+    /** The user turned the row on or off: applied at once, persisted in order. */
+    fun set(shown: Boolean) = holder.set(shown)
+
+    /** True while the latest choice failed to save; Settings says so. */
+    val writeFailed: StateFlow<Boolean> get() = holder.writeFailed
+
+    /** Settings has told the user a choice didn't save. */
+    fun writeFailureShown() = holder.writeFailureShown()
+}

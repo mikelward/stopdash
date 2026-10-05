@@ -114,6 +114,12 @@ interface AppSettings {
     /** Set [distanceUnits]. Suspending, off the main thread; best-effort. */
     suspend fun setDistanceUnits(units: DistanceUnits) {}
 
+    /** Whether the home screen shows its disruptions row (maintainer, 2026-10-05); on by default. */
+    fun showDisruptionsRow(): Flow<Boolean> = flowOf(true)
+
+    /** Set [showDisruptionsRow]. Suspending, off the main thread; best-effort. */
+    suspend fun setShowDisruptionsRow(shown: Boolean) {}
+
     /** How fast the rider walks, for a trip's walks ([WalkingSpeed]); the Planner's average until chosen. */
     fun walkingSpeed(): Flow<WalkingSpeed> = flowOf(WalkingSpeed.AVERAGE)
 

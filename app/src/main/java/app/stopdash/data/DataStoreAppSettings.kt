@@ -125,6 +125,13 @@ class DataStoreAppSettings internal constructor(
         dataStore.updateData { (it ?: PersistedSettings()).copy(hiddenModes = modes) }
     }
 
+    override fun showDisruptionsRow(): Flow<Boolean> =
+        persisted().map { it?.showDisruptionsRow ?: true }
+
+    override suspend fun setShowDisruptionsRow(shown: Boolean) {
+        dataStore.updateData { (it ?: PersistedSettings()).copy(showDisruptionsRow = shown) }
+    }
+
     override fun distanceUnits(): Flow<DistanceUnits> =
         persisted().map { DistanceUnits.fromStored(it?.distanceUnits) }
 
@@ -273,6 +280,8 @@ data class PersistedSettings(
     // The distance-units choice by enum name, or null for the default (follow the locale). A string,
     // not the enum, so a value a newer build adds reads back as the default rather than corrupting.
     val distanceUnits: String? = null,
+    // Whether the home screen shows its disruptions row; null (an older file) for the default, shown.
+    val showDisruptionsRow: Boolean? = null,
     // The walking-speed choice by enum name, or null for the Planner's average; a string for the same
     // reason as [distanceUnits].
     val walkingSpeed: String? = null,

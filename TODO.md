@@ -2458,6 +2458,8 @@ Builds on Phase 1's minimal line-status marking.
       line, and every line with a departure from a stop within the walking reach (500 m), under the
       favorite places' chips; "+N" for what doesn't fit, a tap opening the lines page (`HomeLines`, `HomeDisruptionsRow`).
   - [ ] **Add the Overground and the Elizabeth line** to the row's always-covered lines, as the tube is.
+  - [x] **A switch to turn the row off**: "Disruptions summary", second in Settings (maintainer,
+        2026-10-05: narrower than "Show disruptions").
   - [ ] **Let the rider choose what the row covers** (maintainer, 2026-10-05): a list of lines,
         favorite routes, or favorite trips? And how to rank and collapse it when many are disrupted.
   - [ ] **Name the walking reach's closed stops on the row**, as a trip's row names its closed stops.

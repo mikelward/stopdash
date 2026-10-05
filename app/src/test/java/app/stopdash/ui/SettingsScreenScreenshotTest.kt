@@ -66,6 +66,24 @@ class SettingsScreenScreenshotTest {
     }
 
     @Test
+    fun the_disruptions_summary_switch_comes_second_and_turns_the_row_off() {
+        val chosen = mutableListOf<Boolean>()
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(
+                    liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {},
+                    showDisruptionsRow = true, onShowDisruptionsRowChange = { chosen += it },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Disruptions summary").assertIsDisplayed()
+        captureSnapshot("settings-disruptions-summary.png")
+        composeRule.onNodeWithTag("disruptionsRowSwitch").performClick()
+        org.junit.Assert.assertEquals(listOf(false), chosen)
+    }
+
+    @Test
     fun settings_with_the_app_menu() {
         // As the activity hosts it: Back and the app's overflow share the header's end.
         composeRule.setContent {
@@ -138,7 +156,7 @@ class SettingsScreenScreenshotTest {
         }
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("Couldn't update live refresh").assertIsDisplayed()
+        composeRule.onNodeWithText("Couldn't update live refresh").performScrollTo().assertIsDisplayed()
         captureSnapshot("settings-error.png")
     }
 
@@ -159,7 +177,7 @@ class SettingsScreenScreenshotTest {
         }
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("Dismiss").performClick()
+        composeRule.onNodeWithText("Dismiss").performScrollTo().performClick()
         composeRule.runOnIdle { assert(dismissed) }
     }
 
@@ -260,7 +278,7 @@ class SettingsScreenScreenshotTest {
         telemetry = false
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("telemetrySwitch").assertIsOff()
-        composeRule.onNodeWithText("Help make StopDash better").performClick()
+        composeRule.onNodeWithText("Help make StopDash better").performScrollTo().performClick()
         composeRule.runOnIdle { assert(latest == true) }
     }
 
@@ -795,7 +813,7 @@ class SettingsScreenScreenshotTest {
         composeRule.waitForIdle()
         val message = composeRule.activity.getString(app.stopdash.R.string.hidden_modes_write_failed)
         composeRule.onNodeWithText(message).assertIsDisplayed()
-        composeRule.onNodeWithText("Dismiss").performClick()
+        composeRule.onNodeWithText("Dismiss").performScrollTo().performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText(message).assertDoesNotExist()
     }
@@ -854,7 +872,7 @@ class SettingsScreenScreenshotTest {
         composeRule.waitForIdle()
         val message = composeRule.activity.getString(app.stopdash.R.string.hidden_modes_write_failed)
         composeRule.onNodeWithText(message).performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Dismiss").performClick()
+        composeRule.onNodeWithText("Dismiss").performScrollTo().performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText(message).assertDoesNotExist()
     }
