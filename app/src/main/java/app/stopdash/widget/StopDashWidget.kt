@@ -714,22 +714,43 @@ internal fun WidgetContent(
                     WidgetMessage(
                         if (model.uncertain) "Departures may be out of date" else "No upcoming departures",
                     )
-                else ->
-                    model.rows.forEachIndexed { index, rowModel ->
-                        rowModel.header?.let { header ->
+                else -> WidgetRows(model.rows, now, fontScale)
+            }
+        }
+    }
+}
+
+/**
+ * The departures, each under its stop's header where it starts a place. Glance draws at most ten
+ * children in a Column and silently drops the rest, so each row (with its header and spacing) is a
+ * Column of its own, and the rows go in Columns of at most ten: a tall widget shows every row its
+ * model fits, not just the first few.
+ */
+@androidx.compose.runtime.Composable
+private fun WidgetRows(rows: List<WidgetRowModel>, now: Instant, fontScale: Float) {
+    Column(modifier = GlanceModifier.fillMaxWidth()) {
+        for (start in rows.indices step GLANCE_MAX_CHILDREN) {
+            Column(modifier = GlanceModifier.fillMaxWidth()) {
+                for (index in start until minOf(start + GLANCE_MAX_CHILDREN, rows.size)) {
+                    Column(modifier = GlanceModifier.fillMaxWidth()) {
+                        rows[index].header?.let { header ->
                             // Extra space above every header but the first marks the break between
                             // places, as in the in-app list; 4dp ties the header to its rows.
                             if (index > 0) Spacer(GlanceModifier.height(4.dp))
                             WidgetStopHeader(header)
                             Spacer(GlanceModifier.height(4.dp))
                         }
-                        WidgetRow(rowModel, now, fontScale)
+                        WidgetRow(rows[index], now, fontScale)
                         Spacer(GlanceModifier.height(8.dp))
                     }
+                }
             }
         }
     }
 }
+
+/** The most children Glance draws in one Row, Column or Box; it drops any past this. */
+private const val GLANCE_MAX_CHILDREN = 10
 
 /**
  * The title and the stamp on one row — the stamp top-right, as in the app's top bar — so the
