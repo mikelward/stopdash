@@ -4153,6 +4153,29 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `another line's branch taken while waiting picks a train of that line to the fork`() = runTest {
+        // Green shares the platform at A and runs with the ride to B before turning off for Z
+        // (maintainer, 2026-10-05: the Circle beside the District). Its train comes first.
+        sequences["red"] = app.stopdash.domain.LineSequence(listOf(app.stopdash.domain.LineRoute("A ↔ C", listOf("A", "B", "C"))), mapOf("A" to "A", "B" to "B", "C" to "C"))
+        sequences["green"] = app.stopdash.domain.LineSequence(listOf(app.stopdash.domain.LineRoute("A ↔ Z", listOf("A", "B", "Z"))), mapOf("A" to "A", "B" to "B", "Z" to "Z"))
+        val green = Departure("green", "Green", "outbound", "Z", null, at(2), "tube", vehicleId = "9")
+        departures["A"] = listOf(train("1", 8), green)
+        trains["1"] = listOf(call("A", 8), call("B", 10), call("C", 12))
+        trains["9"] = listOf(call("A", 2), call("B", 4), call("Z", 6))
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        tracker.start(route, "C", readyAt = now)
+        tracker.refresh()
+        assertEquals("1", tracker.trip.value?.vehicleId)
+        val branch = app.stopdash.domain.OffPlan.branches(ride, departures["A"].orEmpty(), sequences, now).single()
+        assertEquals("green", branch.lineId)
+        tracker.take(ride, branch)
+        val taken = checkNotNull(tracker.trip.value)
+        assertEquals(listOf("green" to "B", "red" to "C"), taken.route.legs.map { it.lineId to it.toId })
+        // The green train, the next to reach B.
+        assertEquals("9", taken.vehicleId)
+    }
+
+    @Test
     fun `on board, a branch taken keeps the rider on their train and gets them off at the fork`() = runTest {
         // Their train changed its branch on the way (maintainer, 2026-10-05): it now turns off at B.
         sequences["red"] = app.stopdash.domain.LineSequence(

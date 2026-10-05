@@ -422,8 +422,8 @@ data class OffPlanRow(
 internal fun offPlanRows(ride: TripLeg, branches: List<OffPlan.Branch>): List<OffPlanRow> =
     branches.take(MAX_OFF_PLAN_ROWS).map { branch ->
         OffPlanRow(
-            "${branch.forkIndex}|${branch.label}", ride.lineId, ride.lineName, ride.mode, branch.label, branch,
-            branch.trains.take(MAX_OFF_PLAN_TIMES),
+            "${branch.lineId}|${branch.forkIndex}|${branch.label}", branch.lineId.ifBlank { ride.lineId },
+            branch.lineName.ifBlank { ride.lineName }, ride.mode, branch.label, branch, branch.trains.take(MAX_OFF_PLAN_TIMES),
         )
     }
 

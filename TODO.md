@@ -1644,8 +1644,10 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             **Other routes** under the board, and under the step on board (riding, or lost on a train
             that changed its branch), lists the branches still ahead and reroutes from the one picked,
             keeping the rider on their train when on board.
-      - [ ] **Other lines from the platform in Other routes**: a line sharing the platform that also
-            reaches the rider's stop or a change (the Circle beside the District) isn't offered yet.
+      - [x] **Other lines from the platform in Other routes** (maintainer, 2026-10-05): a line on the
+            boarding stop's board that runs the ride's way and then turns off it (the Circle beside the
+            District) is a row under its own pill, and taking it rides that line to where it turns off.
+            One that reaches the rider's stop was already the board's own.
       - [ ] **Change where both branches call, not only at the fork**: a Bank-branch rider bound for
             the Charing Cross branch can change at Euston as well as Camden Town; offer the choice.
       - [ ] (Consider, maintainer 2026-10-01) **A train held short of the stop reads "0" for
