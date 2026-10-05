@@ -3961,6 +3961,71 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `the list's stop cards are worked out on the list's worker, never in composition`() {
+        // The cards are grouped and their lines worked out with the list's rows, on its worker
+        // ([ListCards]): with the worker held, a new route topology leaves the drawn cards as they
+        // were; worked out in composition, the merged line would show at once (Codex, #590).
+        val queued = java.util.concurrent.LinkedBlockingQueue<Runnable>()
+        val worker = java.util.concurrent.Executor { queued.add(it) }.asCoroutineDispatcher()
+        fun runQueued() {
+            repeat(10) {
+                composeRule.waitForIdle()
+                val thread = Thread { while (true) (queued.poll() ?: break).run() }
+                thread.start()
+                thread.join()
+            }
+            composeRule.waitForIdle()
+        }
+        val merging = RouteTopology(
+            mapOf(
+                "northern" to listOf(
+                    RoutePattern(
+                        "Bank",
+                        listOf("940GZZLUHBT", "940GZZLUHGT", "940GZZLUCTN", "940GZZLUEUS", "940GZZLUBNK", "940GZZLUKNG", "940GZZLUMDN"),
+                        "High Barnet",
+                        "Morden",
+                    ),
+                    RoutePattern(
+                        "Charing X",
+                        listOf("940GZZLUHBT", "940GZZLUHGT", "940GZZLUCTN", "940GZZLUMTC", "940GZZLUEUS", "940GZZLUCHX", "940GZZLUKNG", "940GZZLUMDN"),
+                        "High Barnet",
+                        "Morden",
+                    ),
+                ),
+            ),
+        )
+        val stop = StopArrivals(
+            "940GZZLUHGT",
+            "Highgate",
+            listOf(
+                dep("northern", "Northern", "northbound", "High Barnet", 120, "Platform 1", branch = "Bank"),
+                dep("northern", "Northern", "northbound", "High Barnet", 300, "Platform 1", branch = "Charing X"),
+            ),
+            fetchedAt = now.minusSeconds(60),
+        )
+        var topology by mutableStateOf(RouteTopology.EMPTY)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalWorker provides worker, LocalRouteTopology provides topology) {
+                        MainScreen(DeparturesUiState.Loaded(listOf(stop), now.minusSeconds(60)), now, {})
+                    }
+                }
+            }
+        }
+        runQueued()
+        // No topology: each branch its own line.
+        composeRule.onAllNodesWithText("High Barnet").assertCountEquals(2)
+        topology = merging
+        composeRule.waitForIdle()
+        // The worker held: the cards drawn are still the ones it worked out.
+        composeRule.onAllNodesWithText("High Barnet").assertCountEquals(2)
+        runQueued()
+        // Worked out again under the new topology: one merged line.
+        composeRule.onAllNodesWithText("High Barnet").assertCountEquals(1)
+    }
+
+    @Test
     fun `loaded, dark`() {
         capture("main-loaded-dark.png", dark = true) {
             MainScreen(

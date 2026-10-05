@@ -73,16 +73,11 @@ exercises the whole spine the widget later renders from.
       library as it is, and finds a restored one again on the worker; the main screen's
       `emptyStateUncertain` ages its stops on the worker each tick; the route page's saved journeys here,
       lift check and step-free levels are worked out on the worker.)
-- [ ] Clear the `WorkerThreadCall` lint baseline (`app/lint-baseline.xml`): composition that reaches a
-      `@WorkerThread` domain function, directly or through a helper, today the list's stop grouping,
-      a stop card's destination lines (`stopCard`: a trip's open ride and On the way's board pass theirs
-      worked out; the main list and its journey cards still go through the overload that works the card
-      out in composition). (The view models'
-      dismissal checks moved to their worker; the On the way screen's next trains in #557; the
-      widget's model and the watch's complication picker have no entries left; the route page's
-      trains and termini (`routeDetailWork`); a trip's open ride (`rideLegView`); a trip card's ride notices (`TripCardView.rideClosures`).)
-      Each moves off the main thread, worked out with the data it comes from and published with it,
-      one screen per PR.
+- [x] Clear the `WorkerThreadCall` lint baseline (`app/lint-baseline.xml`): every screen now works out
+      what its composition used to with the data it comes from, on the worker (the route page's
+      `routeDetailWork`, a trip's open ride `rideLegView` and card notices `TripCardView.rideClosures`,
+      On the way's board, every stop card's `stopCard`, the main list's and platform view's `ListCards`,
+      journey cards' `JourneyCardState.Trains.cards`). The baseline is empty, so any new call fails lint.
 - [x] Prune the saved dismissals off the main thread: the list, the trip and the line checks settle
       what they let go of on the worker and drop it from the set atomically (#519), and the store
       lets go of only the dismissals the check saw, so one made after it (of a notice a newer
