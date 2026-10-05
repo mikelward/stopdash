@@ -141,6 +141,7 @@ import app.stopdash.domain.StarredRowSet
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.StepFreeAccess
 import app.stopdash.domain.StopClosureCache
+import app.stopdash.domain.Workers
 import app.stopdash.domain.StopMap
 import app.stopdash.domain.TflClient
 import app.stopdash.domain.TimetableRepository
@@ -3434,7 +3435,7 @@ class MainActivity : ComponentActivity() {
             val client = departuresClient(context)
             return RouteDisruptionChecks(
                 client = client,
-                closures = StopClosureChecks(client, StopClosureCache.SHARED, DISRUPTION_REUSE, Dispatchers.IO, ::logDepartureWarning, "on the way"),
+                closures = StopClosureChecks(client, StopClosureCache.SHARED, DISRUPTION_REUSE, Dispatchers.IO, Workers.compute, ::logDepartureWarning, "on the way"),
                 closureCache = StopClosureCache.SHARED,
                 hubNames = HubInfoCache.SHARED,
                 // The process's own, so a hub's names looked up for a later check outlive this one.
@@ -3454,7 +3455,7 @@ class MainActivity : ComponentActivity() {
             val client = departuresClient(context)
             return RideLineChecks(
                 client = client,
-                closures = StopClosureChecks(client, StopClosureCache.SHARED, DISRUPTION_REUSE, Dispatchers.IO, ::logDepartureWarning, "on the way"),
+                closures = StopClosureChecks(client, StopClosureCache.SHARED, DISRUPTION_REUSE, Dispatchers.IO, Workers.compute, ::logDepartureWarning, "on the way"),
                 closureCache = StopClosureCache.SHARED,
                 dismissals = { DataStoreDismissedAlertsStore.from(context, warn = ::logDepartureWarning).mark() },
                 sequence = { lineId -> routeStops(context).let { it.cached(lineId, "") ?: it.load(lineId, "") } },

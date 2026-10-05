@@ -38,9 +38,8 @@ exercises the whole spine the widget later renders from.
         already), and the callbacks the page's effects make into it as routes and estimates
         change (`boardAt`, `noteWithheld`, `checkShownStops`).
 - [ ] The near-me list's refresh off the main thread, before its requests: `checkJourneyDestinations`'
-      choice of which to ask and its request bookkeeping (each matched to its request in
-      `destinationRequests`, a main-thread map a request removes itself from when done; worked out off
-      the thread, a request can land between the choice and the match), `refresh`'s own setup ahead of `fetchBatch` (the prior stops by id, `recentlyFetched`, both id sets, `fetchedStops`),
+      choice of which to ask (its requests now go through the cache's single flight,
+      `StopClosureCache.lookUp`, which can be asked from the worker), `refresh`'s own setup ahead of `fetchBatch` (the prior stops by id, `recentlyFetched`, both id sets, `fetchedStops`),
       `fetchBatch`'s setup (the shared arrivals taken, the lines declared, each stop's request and the
       pole batches built from `stops`) and the widget's snapshot and journey checks (`forWidget`, `widgetLineChecks`, `setWidgetJourneys`/`writeWidgetJourneys` ahead of their write,
       which read the line-status caches main-thread code writes) still run on `viewModelScope` at each
@@ -95,7 +94,9 @@ exercises the whole spine the widget later renders from.
         refresh settling meanwhile may have kept that stored record only because the tap was in flight.
         The alert then stays hidden until the next refresh lets it go (a minute or so). It needs a disk
         write failure during that settle; tracking why each record was kept would close it.
-- [ ] Settle stop closures by a single owner per place: the trip's checks take each stop over before
+- [ ] Settle stop closures by a single owner per place. Requests are single-flight now
+      (`StopClosureCache.lookUp`: one per stop out at a time, shared by every screen), so two answers for
+      a stop no longer race; what's left is the settling. The trip's checks take each stop over before
       their request (`closureAsks`) and hand it back if canceled first, but a check that has already
       settled without a stop it lost doesn't take it back, so one left unanswered by a canceled
       successor keeps an ended closure's dismissal until the list next checks that stop. The list's

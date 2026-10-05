@@ -1,6 +1,16 @@
 package app.stopdash.domain
 
 import java.time.Instant
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 
 /**
  * Each stop's last successful closure lookup ([TflClient.stopDisruptions]: a closure, a moved stop)
@@ -15,6 +25,10 @@ import java.time.Instant
  * last. So each lookup takes its place in line from [ask] before it's sent, and [settle] holds on to
  * the one asked last, whichever lands last — by that order, not by clock, which can tie or step back.
  * A failure settles the same way: a lookup asked after it that already succeeded answers for it.
+ *
+ * [lookUp] keeps one request per stop in flight at a time: a check that needs a stop no recent
+ * lookup answers joins the request already out for it, if any, rather than send its own, so the
+ * screens never ask TfL about one stop twice at once and two answers for it never cross.
  */
 class StopClosureCache {
     /**
@@ -100,6 +114,92 @@ class StopClosureCache {
                 }
             },
         )
+
+    // Each stop's request in flight ([lookUp]), until it settles.
+    private val inFlight = HashMap<String, Deferred<Result<Lookup>>>()
+
+    /**
+     * One stop's answer to a [lookUp]: a lookup already kept ([cached]), the request another check
+     * already had out for it ([joined]), or the caller's own, sent now (neither). [await] waits for it.
+     */
+    class Pending internal constructor(
+        private val answer: Deferred<Result<Lookup>>,
+        val cached: Boolean,
+        val joined: Boolean,
+        // Asks again in the caller's own scope: for a joined request its owner canceled.
+        private val again: suspend () -> Result<Lookup>,
+    ) {
+        /**
+         * The stop's answer: success with the lookup kept, or the request's failure. A joined request
+         * canceled by the check that sent it (that check left) is asked again for this caller.
+         */
+        suspend fun await(): Result<Lookup> =
+            try {
+                answer.await()
+            } catch (e: CancellationException) {
+                // This caller canceled: as it should. Else the request's owner did: asked again.
+                currentCoroutineContext().ensureActive()
+                if (!joined) throw e
+                again()
+            }
+    }
+
+    /**
+     * Each of [ids]' closure answer: from a lookup kept that [reusable] accepts, else the request in
+     * flight for it, else asked now — the rest asked together, grouped by [group] (bus poles several
+     * to a request), one [send] per group, each sent in [scope] with its place in line taken as it's
+     * sent ([ask], at [now], with [dismissals] counted then) and settled here as it lands ([settle]).
+     * Which way each goes is decided in one step, so no stop is ever asked twice at once. [send]
+     * returns each id's outcome, a failure for one TfL couldn't answer. Worked out, sent and settled on
+     * [worker], whatever the caller's thread: each grows with [ids].
+     */
+    suspend fun lookUp(
+        scope: CoroutineScope,
+        worker: CoroutineDispatcher,
+        ids: Collection<String>,
+        reusable: (Lookup) -> Boolean,
+        now: () -> Instant,
+        dismissals: () -> Long,
+        group: (List<String>) -> List<List<String>> = { listOf(it) },
+        send: suspend (List<String>) -> Map<String, Result<List<StopDisruption>>>,
+    ): Map<String, Pending> = withContext(worker) {
+        fun again(id: String): suspend () -> Result<Lookup> = {
+            lookUp(scope, worker, listOf(id), reusable, now, dismissals, group, send).getValue(id).await()
+        }
+        val sent = ArrayList<Deferred<*>>()
+        val pending = synchronized(this@StopClosureCache) {
+            val found = LinkedHashMap<String, Pending>()
+            val missing = ArrayList<String>()
+            for (id in ids.distinct()) {
+                val kept = get(id)?.takeIf(reusable)
+                val out = inFlight[id]
+                when {
+                    kept != null -> found[id] = Pending(CompletableDeferred(Result.success(kept)), cached = true, joined = false, again(id))
+                    out != null -> found[id] = Pending(out, cached = false, joined = true, again(id))
+                    else -> missing += id
+                }
+            }
+            for (batch in if (missing.isEmpty()) emptyList() else group(missing)) {
+                // Started once registered, outside this lock: never run while it's held.
+                val request = scope.async(worker, start = CoroutineStart.LAZY) {
+                    val ask = ask(now(), dismissals())
+                    val answer = send(batch)
+                    batch.associateWith { id -> settle(id, ask, answer[id] ?: Result.failure(NoSuchElementException(id))) }
+                }
+                sent += request
+                for (id in batch) {
+                    val one = scope.async(worker, start = CoroutineStart.LAZY) { request.await().getValue(id) }
+                    inFlight[id] = one
+                    one.invokeOnCompletion { synchronized(this@StopClosureCache) { if (inFlight[id] === one) inFlight.remove(id) } }
+                    sent += one
+                    found[id] = Pending(one, cached = false, joined = false, again(id))
+                }
+            }
+            found
+        }
+        sent.forEach { it.start() }
+        pending
+    }
 
     /** A lookup of [stopId] asked after [ask], if one is kept: a newer answer than its. */
     @Synchronized

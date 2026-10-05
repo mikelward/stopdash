@@ -50,10 +50,12 @@ import app.stopdash.telemetry.UsageEvents
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.ContinuationInterceptor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -476,40 +478,43 @@ class MainViewModel(
     private var journeyDestinationsReport: List<StopRef>? = null
     private var journeyDestinationsJob: Job? = null
 
-    // Each destination closure request in flight. Run in [viewModelScope], not the check's own job, so
-    // a check restarted by a changed destination set (routes arriving one by one) waits on the same
-    // request rather than cancel it and ask again. A success is cached as it lands; each leaves this
-    // map when done, so a failure is asked again next time.
-    private val destinationRequests = HashMap<String, Deferred<Result<StopClosureCache.Lookup>>>()
-
-    /** Starts a closure request for each of [ids] (bus poles batched, as in [fetchBatch]). */
-    private fun requestDestinationDisruptions(ids: List<String>) {
-        val (poles, others) = ids.partition(StopDisruptionBatch::isPole)
-        val requests = poles.chunked(StopDisruptionBatch.MAX_PER_REQUEST).flatMap { batchIds ->
-            val batch = viewModelScope.async {
-                // In line as asked, not as answered: a lookup asked later (a trip's) is the newer.
-                val ask = disruptionCache.ask(clock(), dismissedStore.mark())
-                val answer = runCatchingTfl { withContext(io) { client.poleDisruptions(batchIds) } }
-                    // Logged here, not by the check: a request can outlive the check that asked for it.
-                    .onFailure { e -> batchIds.forEach { warn("destination disruption fetch failed for stop $it: ${reason(e)}") } }
-                // Each shown as the cache settles it: a later lookup (a trip's) wins over this one,
-                // failed or not.
-                batchIds.associateWith { id -> disruptionCache.settle(id, ask, answer.map { it[id].orEmpty() }) }
+    /**
+     * [ids]' closures through [disruptionCache], shared with every screen that checks stops: each from a
+     * lookup within [disruptionReuse], else the request already out for it, else asked now, bus poles
+     * several to a request (as TfL takes them), sent in [scope] ([StopClosureCache.lookUp]). [logAs] names
+     * the asker in the log of a failed request, where the caller doesn't log it itself; [onSend] is told of
+     * each request as it's sent, on [compute]. Worked out, and each answer settled, on [compute], whatever
+     * the caller's thread.
+     */
+    private suspend fun lookUpClosures(
+        scope: CoroutineScope,
+        ids: Collection<String>,
+        logAs: String? = null,
+        onSend: (List<String>) -> Unit = {},
+    ): Map<String, StopClosureCache.Pending> =
+        disruptionCache.lookUp(
+            scope, compute, ids,
+            // Aged by the clock now, not the caller's start: an answer from meanwhile is newer, and would
+            // read as from the future.
+            reusable = { isWithin(it.at, clock(), disruptionReuse) },
+            now = clock,
+            dismissals = { dismissedStore.mark() },
+            group = { missing ->
+                val (poles, others) = missing.partition(StopDisruptionBatch::isPole)
+                poles.chunked(StopDisruptionBatch.MAX_PER_REQUEST) + others.map { listOf(it) }
+            },
+        ) { asked ->
+            onSend(asked)
+            val answer = if (asked.all(StopDisruptionBatch::isPole)) {
+                runCatchingTfl { withContext(io) { client.poleDisruptions(asked) } }
+            } else {
+                val id = asked.single()
+                runCatchingTfl { withContext(io) { mapOf(id to client.stopDisruptions(id)) } }
             }
-            batchIds.map { id -> id to viewModelScope.async { batch.await().getValue(id) } }
-        } + others.map { id ->
-            id to viewModelScope.async {
-                val ask = disruptionCache.ask(clock(), dismissedStore.mark())
-                val answer = runCatchingTfl { withContext(io) { client.stopDisruptions(id) } }
-                    .onFailure { e -> warn("destination disruption fetch failed for stop $id: ${reason(e)}") }
-                disruptionCache.settle(id, ask, answer)
-            }
+            // Logged here, for a caller that doesn't: a request can outlive the check that asked for it.
+            if (logAs != null) answer.onFailure { e -> asked.forEach { warn("$logAs disruption fetch failed for stop $it: ${reason(e)}") } }
+            asked.associateWith { id -> answer.map { it[id].orEmpty() } }
         }
-        for ((id, request) in requests) {
-            destinationRequests[id] = request
-            request.invokeOnCompletion { if (destinationRequests[id] === request) destinationRequests.remove(id) }
-        }
-    }
 
     /**
      * Checks each journey destination's stop-level disruption: from [disruptionCache] within
@@ -541,12 +546,11 @@ class MainViewModel(
             fun latest(id: String) = disruptionCache[id]?.takeIf { isWithin(it.at, clock(), disruptionReuse) }
             fun cached(id: String) = lookup(id)?.notices
             fun failedInFetch(id: String) = joinedFetchAt != null && disruptionFailedAt[id] == joinedFetchAt
-            // Which to ask, matched to the requests in flight in the same step, as the map they're kept in is
-            // the main thread's: still on it (TODO.md).
+            // Which to ask: each joins a request another check already has out for it, else is asked now. Sent
+            // in [viewModelScope], not this check's own job, so a check restarted by a changed destination set
+            // (routes arriving one by one) joins the same request rather than cancel it and ask again.
             val toAsk = stops.map { it.id }.distinct().filter { cached(it) == null && !failedInFetch(it) }
-            requestDestinationDisruptions(toAsk.filter { it !in destinationRequests })
-            // Taken before any await: a request that finishes leaves the map.
-            val requests = toAsk.associateWith { destinationRequests.getValue(it) }
+            val requests = lookUpClosures(viewModelScope, toAsk, logAs = "destination")
             val fetched: Map<String, Result<StopClosureCache.Lookup>> = requests.mapValues { (_, request) -> request.await() }
             val shown = _journeyDestinationStops.value
             // The cards, worked out on the worker from the answers, each as the cache holds it then, else as
@@ -1067,9 +1071,9 @@ class MainViewModel(
         // real failure (offline, rate-limited) behind the generic banner (SPEC principle 2).
         val disruptionFromCache = BooleanArray(stops.size)
         // The poles whose closure check went in a shared batch request, and how many batches — for
-        // the per-fetch log line.
+        // the per-fetch log line. Counted as each is sent, on the worker.
         val poleBatchIds = HashSet<String>()
-        var poleBatchCount = 0
+        val poleBatchCount = AtomicInteger()
         // The near-me places by distance, for [Terminating]: every eager and "more" stop, since the
         // rider's nearest place may sit in either tier.
         val places = nearbyPlaces()
@@ -1160,8 +1164,7 @@ class MainViewModel(
             val poleFromCache = HashSet<String>()
             stops
                 .filter {
-                    !reused(it) && cachedDisruption(it) == null && it.id !in destinationRequests &&
-                        StopDisruptionBatch.isPole(it.id)
+                    !reused(it) && cachedDisruption(it) == null && StopDisruptionBatch.isPole(it.id)
                 }
                 .map { it.id }
                 .distinct()
@@ -1170,39 +1173,13 @@ class MainViewModel(
                     val batch = async {
                         // Departures first: sent once each of its poles' departures request has settled.
                         ids.forEach { id -> arrivalOf[id]?.await() }
-                        // Looked at again after the wait: another screen may have answered for a pole
-                        // meanwhile, and its answer is reused rather than asked for again.
-                        val known = HashMap<String, Result<StopClosureCache.Lookup>>()
-                        for (id in ids) {
-                            // Aged by the clock now, not the batch's start (nor before an earlier pole's
-                            // wait below): an answer from meanwhile is newer, and would read as from the future.
-                            val cached = disruptionCache[id]?.takeIf { isWithin(it.at, clock(), disruptionReuse) }
-                            val inFlight = destinationRequests[id]
-                            when {
-                                cached != null -> {
-                                    known[id] = Result.success(cached)
-                                    poleFromCache += id
-                                }
-                                inFlight != null -> {
-                                    // Another lookup's answer, not this fetch's own, as a cache hit is.
-                                    poleFromCache += id
-                                    known[id] = inFlight.await().onFailure { disruptionFailedAt[id] = now }
-                                }
-                            }
-                        }
-                        val toAsk = ids.filter { it !in known }
-                        // Its place in line ([StopClosureCache.ask]) taken as it's sent, after the wait, so
-                        // a lookup another screen sent meanwhile counts as the older one.
-                        val ask = disruptionCache.ask(clock(), dismissedStore.mark())
+                        // Looked up after the wait: a pole another screen answered meanwhile, or has a request
+                        // out for, is taken from that rather than asked again, and isn't news, as a cache hit isn't.
                         // Counted only when sent: every pole answered meanwhile costs no request.
-                        if (toAsk.isNotEmpty()) poleBatchCount++
-                        val answer = if (toAsk.isEmpty()) null else runCatchingTfl { withContext(io) { client.poleDisruptions(toAsk) } }
-                        // As the cache settles each: a later lookup (a trip's) wins over this one,
-                        // failed or not.
-                        ids.associateWith { id ->
-                            known[id] ?: disruptionCache.settle(id, ask, answer!!.map { it[id].orEmpty() })
-                                .onFailure { disruptionFailedAt[id] = now }
-                        }
+                        val pending = lookUpClosures(this, ids, onSend = { poleBatchCount.incrementAndGet() })
+                        for ((id, answer) in pending) if (answer.cached || answer.joined) poleFromCache += id
+                        // As the cache settles each: a later lookup (a trip's) wins over this one, failed or not.
+                        ids.associateWith { id -> pending.getValue(id).await().onFailure { disruptionFailedAt[id] = now } }
                     }
                     ids.forEach { poleBatches[it] = batch }
                     poleBatchIds += ids
@@ -1210,8 +1187,6 @@ class MainViewModel(
             val disruptions: List<Deferred<Result<StopClosureCache.Lookup>>?> = stops.mapIndexed { i, stop ->
                 val cached = cachedDisruption(stop)
                 val batch = poleBatches[stop.id]
-                // A journey destination's check already asking about this stop: wait on it, not ask twice.
-                val inFlight = destinationRequests[stop.id]
                 when {
                     reused(stop) -> null
                     // Ahead of the cache check: a batch that already finished has written this
@@ -1223,35 +1198,14 @@ class MainViewModel(
                         disruptionFromCache[i] = true
                         CompletableDeferred(Result.success(cached))
                     }
-                    inFlight != null -> {
-                        // Answered by that lookup, not a request of this fetch's own.
-                        disruptionFromCache[i] = true
-                        async { inFlight.await().onFailure { disruptionFailedAt[stop.id] = now } }
-                    }
                     else -> async {
                         // Departures first: sent once this stop's departures request has settled.
                         arrivals[i]?.await()
-                        // Looked at again after the wait: another screen may have answered meanwhile,
-                        // and its answer is reused rather than asked for again.
-                        // Aged by the clock now, not the batch's start, as the pole batch does.
-                        val answered = disruptionCache[stop.id]?.takeIf { isWithin(it.at, clock(), disruptionReuse) }
-                        val asking = destinationRequests[stop.id]
-                        when {
-                            answered != null -> {
-                                disruptionFromCache[i] = true
-                                Result.success(answered)
-                            }
-                            asking != null -> {
-                                disruptionFromCache[i] = true
-                                asking.await().onFailure { disruptionFailedAt[stop.id] = now }
-                            }
-                            else -> {
-                                // Its place in line taken as it's sent, after the wait, as the pole batch's.
-                                val ask = disruptionCache.ask(clock(), dismissedStore.mark())
-                                disruptionCache.settle(stop.id, ask, runCatchingTfl { withContext(io) { client.stopDisruptions(stop.id) } })
-                                    .onFailure { disruptionFailedAt[stop.id] = now }
-                            }
-                        }
+                        // Looked up after the wait: another screen may have answered meanwhile, or have a
+                        // request out for it, and that's taken rather than asked again: not news, as a cache hit isn't.
+                        val answer = lookUpClosures(this, listOf(stop.id)).getValue(stop.id)
+                        if (answer.cached || answer.joined) disruptionFromCache[i] = true
+                        answer.await().onFailure { disruptionFailedAt[stop.id] = now }
                     }
                 }
             }
@@ -1521,7 +1475,7 @@ class MainViewModel(
                     closures = stops.indices.count { i ->
                         !reused(stops[i]) && !disruptionFromCache[i] && stops[i].id !in poleBatchIds
                     },
-                    closureBatches = poleBatchCount,
+                    closureBatches = poleBatchCount.get(),
                     lineStatus = lineStatusRequests,
                     hubs = hubRequests,
                 ),

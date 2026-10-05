@@ -1052,7 +1052,7 @@ class TripViewModel(
     private val closureAsks = HashMap<String, StopClosureCache.Ask>()
 
     // How the trip's stops are checked for closures: as a trip on the way checks its own.
-    private val closureChecks = StopClosureChecks(client, closureCache, closureReuse, io, warn, "trip")
+    private val closureChecks = StopClosureChecks(client, closureCache, closureReuse, io, compute, warn, "trip")
 
     // The stops of [this] check that no check since has asked about: the ones its verdict settles.
     private fun ClosureCheck.latest(): Set<String> = ids.filterTo(HashSet()) { closureAsks[it] === ask }

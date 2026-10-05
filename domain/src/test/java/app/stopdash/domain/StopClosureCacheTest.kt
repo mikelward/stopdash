@@ -1,7 +1,17 @@
 package app.stopdash.domain
 
 import java.time.Instant
+import java.util.concurrent.Executors
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -130,5 +140,124 @@ class StopClosureCacheTest {
         // (Codex, PR #375).
         repeat(StopClosureCache.MAX) { cache.settle("S$it", cache.ask(now.plusSeconds(20)), Result.failure(IllegalStateException())) }
         assertNull(cache["A"])
+    }
+
+    // Every lookup this cache's single-flight test client is sent, and a gate each waits on.
+    private class Sender {
+        val sent = mutableListOf<List<String>>()
+        var gate: CompletableDeferred<Unit>? = null
+        var fail = false
+
+        suspend fun send(ids: List<String>): Map<String, Result<List<StopDisruption>>> {
+            sent += ids
+            gate?.await()
+            return ids.associateWith { if (fail) Result.failure(IllegalStateException("offline")) else Result.success(emptyList()) }
+        }
+    }
+
+    private suspend fun TestScope.look(cache: StopClosureCache, sender: Sender, vararg ids: String, group: (List<String>) -> List<List<String>> = { listOf(it) }) =
+        cache.lookUp(this, Dispatchers.Unconfined, ids.toList(), reusable = { true }, now = { now }, dismissals = { 0L }, group = group, send = sender::send)
+
+    @Test
+    fun `two checks needing one stop at once send one request and share its answer`() = runTest {
+        val cache = StopClosureCache()
+        val sender = Sender().apply { gate = CompletableDeferred() }
+        val first = look(cache, sender, "A")
+        val second = look(cache, sender, "A")
+        assertTrue(second.getValue("A").joined)
+        val a = async { first.getValue("A").await() }
+        val b = async { second.getValue("A").await() }
+        advanceUntilIdle()
+        sender.gate!!.complete(Unit)
+        assertEquals(a.await().getOrThrow().ask, b.await().getOrThrow().ask)
+        assertEquals(listOf(listOf("A")), sender.sent)
+    }
+
+    @Test
+    fun `a stop answered recently is taken from the cache, not asked again`() = runTest {
+        val cache = StopClosureCache()
+        val sender = Sender()
+        look(cache, sender, "A").getValue("A").await()
+        val again = look(cache, sender, "A").getValue("A")
+        assertTrue(again.cached)
+        assertEquals(1, sender.sent.size)
+    }
+
+    @Test
+    fun `a failed request's failure is shared, not asked again in turn by each waiting`() = runTest {
+        val cache = StopClosureCache()
+        val sender = Sender().apply { gate = CompletableDeferred(); fail = true }
+        val first = look(cache, sender, "A")
+        val second = look(cache, sender, "A")
+        val a = async { first.getValue("A").await() }
+        val b = async { second.getValue("A").await() }
+        advanceUntilIdle()
+        sender.gate!!.complete(Unit)
+        assertTrue(a.await().isFailure)
+        assertTrue(b.await().isFailure)
+        assertEquals(1, sender.sent.size)
+    }
+
+    @Test
+    fun `a request its owner cancels is asked again for a check that joined it`() = runTest {
+        val cache = StopClosureCache()
+        val sender = Sender().apply { gate = CompletableDeferred() }
+        val owner = kotlinx.coroutines.CoroutineScope(coroutineContext + kotlinx.coroutines.Job(coroutineContext[kotlinx.coroutines.Job]))
+        cache.lookUp(owner, Dispatchers.Unconfined, listOf("A"), reusable = { true }, now = { now }, dismissals = { 0L }, send = sender::send)
+        advanceUntilIdle()
+        val joined = look(cache, sender, "A").getValue("A")
+        assertTrue(joined.joined)
+        val answer = async { joined.await() }
+        advanceUntilIdle()
+        // The owner leaves before the answer comes; the joiner asks again in its own scope.
+        owner.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
+        sender.gate = null
+        advanceUntilIdle()
+        assertTrue(answer.await().isSuccess)
+        assertEquals(2, sender.sent.size)
+    }
+
+    @Test
+    fun `stops asked together go in one batch, each answered on its own`() = runTest {
+        val cache = StopClosureCache()
+        val sender = Sender().apply { gate = CompletableDeferred() }
+        val batch = look(cache, sender, "P1", "P2", "P3")
+        // Another check needing one of them, and one more: joins that one, asks only the other.
+        val other = look(cache, sender, "P2", "P4")
+        assertTrue(other.getValue("P2").joined)
+        assertFalse(other.getValue("P4").joined)
+        launch { batch.values.forEach { it.await() } }
+        launch { other.values.forEach { it.await() } }
+        advanceUntilIdle()
+        sender.gate!!.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(listOf(listOf("P1", "P2", "P3"), listOf("P4")), sender.sent)
+        assertTrue(cache["P2"] != null)
+    }
+
+    @Test
+    fun `which stops to ask, and each answer, are worked out on the worker, not the caller's thread`() = runTest {
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val worker = executor.asCoroutineDispatcher()
+            val cache = StopClosureCache()
+            val caller = Thread.currentThread()
+            // Where each step ran: the reuse check, the grouping, the place in line, and the answer's handling.
+            val ranOn = mutableMapOf<String, MutableSet<Thread>>()
+            fun ran(step: String) = synchronized(ranOn) { ranOn.getOrPut(step) { mutableSetOf() } += Thread.currentThread() }
+            cache.keep("A", cache.ask(now, 0L), emptyList())
+            val pending = cache.lookUp(
+                this, worker, listOf("A", "B", "C"),
+                reusable = { ran("reusable"); true },
+                now = { ran("now"); now }, dismissals = { 0L },
+                group = { ran("group"); listOf(it) },
+            ) { ids -> ran("send"); ids.associateWith { Result.success(emptyList()) } }
+            assertTrue(pending.getValue("A").cached)
+            assertTrue(pending.getValue("C").await().isSuccess)
+            assertEquals(setOf("reusable", "group", "now", "send"), ranOn.keys)
+            assertTrue("$ranOn", ranOn.values.none { caller in it })
+        } finally {
+            executor.shutdownNow()
+        }
     }
 }

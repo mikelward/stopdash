@@ -55,6 +55,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -432,7 +433,7 @@ class TripViewModelTest {
         val models = ViewModelStore()
         // B checked clear: its closure's dismissal is to go.
         val client = FakeClient(mutableMapOf())
-        ViewModelProvider.create(
+        val trip = ViewModelProvider.create(
             models,
             viewModelFactory {
                 initializer {
@@ -442,8 +443,11 @@ class TripViewModelTest {
                     )
                 }
             },
-        )[TripViewModel::class].refresh()
+        )[TripViewModel::class]
+        trip.refresh()
         advanceUntilIdle()
+        // The worker works out what to ask and takes TfL's answer; it's then handed the settling.
+        letGo(held) { "B" in trip.state.value.closuresAt }
         assertTrue("nothing handed to the worker", held.isNotEmpty())
         // The rider leaves while the worker still has the check: it's settled and stored all the same,
         // so the closure coming back on a later trip isn't hidden.
@@ -528,11 +532,16 @@ class TripViewModelTest {
         // refresh asks about the stop again, and the trip is left before its answer comes.
         trip.checkShownStops(setOf("X"))
         advanceUntilIdle()
+        letGo(held) { "X" in trip.state.value.closuresAt }
         assertTrue("nothing handed to the worker", held.isNotEmpty())
         now = now.plus(Duration.ofMinutes(6))
         client.disruptionGates["X"] = CompletableDeferred()
+        // The first check's settling stays held while the refresh's own work is let go until it asks.
+        val first = held.size
         trip.refresh()
         advanceUntilIdle()
+        letGo(held, keep = first) { client.disruptionAsks.count { "X" in it } == 2 }
+        assertEquals(2, client.disruptionAsks.count { "X" in it })
         models.clear()
         while (held.isNotEmpty()) {
             val next = held.toList()
@@ -4244,19 +4253,17 @@ class TripViewModelTest {
     }
 
     @Test
-    fun `an older check of a shown stop landing last never undoes a newer one's failure`() = runTest(dispatcher) {
+    fun `a shown stop checked again while its check is out joins it rather than asking twice`() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
         var s2Calls = 0
         val fake = FakeClient(mutableMapOf("A" to listOf(train("red", "End", 2))))
         val client = object : TflClient by fake {
             override suspend fun stopDisruptions(stopId: String): List<StopDisruption> {
                 if (stopId != "S2") return fake.stopDisruptions(stopId)
-                // The first check of S2 is slow and finds nothing; the next one fails at once.
-                if (++s2Calls == 1) {
-                    gate.await()
-                    return emptyList()
-                }
-                throw TflException.Offline(null)
+                // The check of S2 is slow, and finds nothing.
+                ++s2Calls
+                gate.await()
+                return emptyList()
             }
         }
         val trip = model(FakePlanner(listOf(route)), client)
@@ -4264,28 +4271,17 @@ class TripViewModelTest {
         advanceUntilIdle()
         trip.checkShownStops(setOf("S2"))
         runCurrent()
-        // Its route hidden and shown again while that check is out: S2 is checked again, and fails.
+        // Its route hidden and shown again while that check is out: S2 is checked again, joining the
+        // request already out (StopClosureCache.lookUp), so TfL is asked once and the two answers can't
+        // land out of order.
         trip.checkShownStops(emptySet())
         trip.checkShownStops(setOf("S2"))
         runCurrent()
-        assertTrue("S2" in trip.state.value.closuresFailed)
-        // The first check lands last: its older "nothing there" doesn't pass S2 off as checked open.
         gate.complete(Unit)
         advanceUntilIdle()
-        assertTrue("S2" in trip.state.value.closuresFailed)
-        assertNull(trip.state.value.closures["S2"])
-        // Nor once the trip is shown again and takes what the shared cache holds, which is that older
-        // lookup: asked before the check that failed, it doesn't answer for it (Codex, PR #375).
-        trip.refreshFor(null)
-        assertTrue("S2" in trip.state.value.closuresFailed)
-        // Nor on the refresh being shown again starts, within the reuse window: S2 is asked again
-        // rather than taken from that older lookup, and fails again, so it still counts as failed
-        // (Codex, PR #375).
-        val calls = s2Calls
-        advanceUntilIdle()
-        assertEquals(calls + 1, s2Calls)
-        assertTrue("S2" in trip.state.value.closuresFailed)
-        assertNull(trip.state.value.closures["S2"])
+        assertEquals(1, s2Calls)
+        assertEquals(emptyList<StopDisruption>(), trip.state.value.closures["S2"])
+        assertFalse("S2" in trip.state.value.closuresFailed)
     }
 
     @Test
@@ -4382,5 +4378,16 @@ class TripViewModelTest {
         val card = listOf(atQ1, atQ2).map { TripTiming.Estimate(it, TripTiming.Basis.LIVE, null, emptyList(), false, now) }
         val shared = card.fold(emptyMap<String, DepartureRow>()) { found, e -> found + routeClosures(e.route, state, now, emptySet()) }
         assertEquals(1, cardClosures(card, 0, shared).size)
+    }
+
+    // Lets a held worker's work go a round at a time (each round's own hand-offs held again) until [done],
+    // keeping the first [keep] held: what a check hands the worker before it asks TfL, let through.
+    private fun TestScope.letGo(held: MutableList<Pair<CoroutineContext, Runnable>>, keep: Int = 0, done: () -> Boolean) {
+        while (!done() && held.size > keep) {
+            val next = held.subList(keep, held.size).toList()
+            repeat(next.size) { held.removeAt(keep) }
+            for ((context, block) in next) dispatcher.dispatch(context, block)
+            advanceUntilIdle()
+        }
     }
 }

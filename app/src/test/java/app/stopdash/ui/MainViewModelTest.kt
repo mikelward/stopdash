@@ -1652,9 +1652,11 @@ class MainViewModelTest {
         holding = true
         vm.setJourneyDestinations(listOf(StopRef(ksxId, "King's Cross St. Pancras")))
         advanceUntilIdle()
-        // The report; then its request comes back, and the cards are held.
-        release()
-        advanceUntilIdle()
+        // The report, and the choice of what to ask; then its request comes back, and the cards are held.
+        while (client.disruptionCalls[ksxId] == null && held.isNotEmpty()) {
+            release()
+            advanceUntilIdle()
+        }
         assertEquals(1, client.disruptionCalls[ksxId])
         assertTrue(held.isNotEmpty())
         current = now.plusSeconds(30)

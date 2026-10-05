@@ -2750,7 +2750,9 @@ surface.)
   while line status, the fast-moving signal, is reused for 90 s — so the 60 s auto-refresh
   re-checks it every other cycle and a new suspension still shows within about two minutes. Both live in memory
   only; a failed request is never reused, nor is a closure answer asked before a check of that
-  stop that has failed since, so the stop is asked again. A junction's **bus poles share one closure request**
+  stop that has failed since, so the stop is asked again. Every screen that checks stops shares these
+  closure answers, and **one closure request per stop is out at a time**: a check needing a stop already
+  being asked about waits for that answer, failed or not, rather than send its own. A junction's **bus poles share one closure request**
   (TfL takes several stop ids at once); each pole gets only its own notices, so an open pole
   never shows a sibling's closure. A station keeps its own request, since its closures live on
   child platforms. Keyless, the app sends up to **20 requests at once, then 40 a minute**, at most
