@@ -3256,6 +3256,15 @@ Mirrors the sibling fleet:
     requests and nothing in the background. Without it the widget, off by default, read "Tap to
     refresh" whenever the app hadn't refreshed in the last five minutes, and the tap only opened
     the app.
+  - **Refresh on unlock, while the app is running (2026-10-05).** Unlocking the phone refreshes the
+    widget's stored stops once, silently and location-free, as a tap does, so the widget and a paired
+    watch show live times when someone looks. Only with somewhere to show them (a placed widget, or a
+    watch with the app), and stops fetched moments ago aren't fetched again. Android stopped
+    delivering the unlock broadcast to an app that isn't running in 8.0, so it's heard only while the
+    app's process lives (after the app, widget or watch was last used, until Android reclaims it);
+    otherwise the widget still says "Tap to refresh". No new wakeup: it rides an unlock. Its cost is
+    one round of requests per unlock that finds stale stops. A periodic background refresh that
+    works with the process gone is a possible follow-up, as an opt-in (maintainer, 2026-10-05).
   - **Opt-in live refresh (off by default).** A Settings toggle, "refresh widget every
     minute", drives a self-rescheduling one-shot WorkManager chain that re-fetches
     arrivals for exactly the widget's persisted stops (location-free, D1) about once a

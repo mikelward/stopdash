@@ -2802,14 +2802,16 @@ and these carry the rest as their own PRs:
         refresh of the stored stops (`WidgetTapRefreshWorker`), "Refreshing…" and the failure
         reason in the note; the departures still open the app. Needs a device check that a tap
         from the home screen runs it at once.
-      - [ ] **Refresh on unlock by default** (`ACTION_USER_PRESENT`, a manifest receiver —
-        one fetch when the device is unlocked; battery-negligible because it piggybacks on
-        active use rather than waking the radio from idle; cellular data is the only real cost,
-        ~2–5 MB/day, gate on WiFi/charging if wanted). This is the default path for a user who
-        never opts into the every-minute loop.
-        Check first: Android 8+ likely no longer delivers `ACTION_USER_PRESENT` to a
-        manifest-declared receiver (it isn't on the implicit-broadcast exemption list), which would
-        need a running process to hear it — verify on a device before building on it.
+      - [x] **Refresh on unlock, while the app is running** (`UnlockRefresh`): Android 8+ doesn't
+        deliver `ACTION_USER_PRESENT` to a manifest receiver (it isn't on the implicit-broadcast
+        exemption list), so it's registered at runtime and heard only while the process lives
+        (maintainer, 2026-10-05: start with that). One silent refresh per unlock, only with a widget
+        placed or a watch with the app; the watch gets the saved snapshot through `WatchSync`. Needs a
+        device check that an unlock some minutes after using the app refreshes the widget.
+      - [ ] **A periodic refresh that works with the process gone** (opt-in, maintainer 2026-10-05:
+        a follow-up to the unlock refresh): a WorkManager periodic job (15 min is the floor, and
+        Doze defers it) while a widget is placed or a watch paired. A new wakeup and ~1–2 MB/day, so a
+        setting beside "refresh widget every minute", off by default.
       - [ ] **Mechanism A — foreground service, the screen-off follow-up** (recorded as the
         maintainer asked: *start with B, record A as a possible follow-up if B doesn't work*,
         2026-09-20). B is Doze-deferred, so it does **not** guarantee the exact minute with the

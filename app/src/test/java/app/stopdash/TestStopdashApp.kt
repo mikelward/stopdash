@@ -51,6 +51,11 @@ class TestStopdashApp : StopdashApp() {
         // DataStore to follow; WidgetDismissalRedrawTest drives the redraw with fakes.
     }
 
+    override fun installUnlockRefresh() {
+        // Intentionally empty — UnlockRefreshTest registers it itself, so no other test's broadcast
+        // queues a refresh.
+    }
+
     override fun installMainThreadWatch() {
         // Intentionally empty — Robolectric runs everything on its main thread, so the watch would
         // report the tests' own setup; MainThreadViolationsTest covers what it says.

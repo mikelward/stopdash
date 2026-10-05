@@ -32,6 +32,7 @@ import app.stopdash.telemetry.startTelemetry
 import app.stopdash.watch.WatchSync
 import app.stopdash.widget.WidgetDismissalRedraw
 import app.stopdash.widget.StopDashWidget
+import app.stopdash.widget.UnlockRefresh
 import com.mikelward.androidlog.DebugLog
 import com.mikelward.androidlog.android.DebugFileSink
 import com.mikelward.androidlog.android.LogcatSink
@@ -125,6 +126,20 @@ open class StopdashApp : Application() {
         warmSharedState()
         installWatchSync()
         installWidgetDismissalRedraw()
+        installUnlockRefresh()
+    }
+
+    /**
+     * Refreshes the widget's stops on each unlock while the process runs ([UnlockRefresh]). `open` so
+     * the test [Application] can skip it; guarded, since a refresh that can't be heard is a lost
+     * convenience, never a reason to take the app down.
+     */
+    protected open fun installUnlockRefresh() {
+        try {
+            UnlockRefresh.start(this)
+        } catch (e: Exception) {
+            StopdashDebugLog.warning("widget: unlock refresh start failed: %s", e::class.simpleName)
+        }
     }
 
     /**
