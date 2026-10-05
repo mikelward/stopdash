@@ -75,10 +75,10 @@ exercises the whole spine the widget later renders from.
       lift check and step-free levels are worked out on the worker.)
 - [ ] Clear the `WorkerThreadCall` lint baseline (`app/lint-baseline.xml`): composition that reaches a
       `@WorkerThread` domain function, directly or through a helper, today the list's stop grouping,
-      a stop card's destination lines, TripScreen's line rows and card helpers. (The view models'
+      a stop card's destination lines. (The view models'
       dismissal checks moved to their worker; the On the way screen's next trains in #557; the
       widget's model and the watch's complication picker have no entries left; the route page's
-      trains and termini (`routeDetailWork`); a trip's open ride (`rideLegView`).)
+      trains and termini (`routeDetailWork`); a trip's open ride (`rideLegView`); a trip card's ride notices (`TripCardView.rideClosures`).)
       Each moves off the main thread, worked out with the data it comes from and published with it,
       one screen per PR.
 - [x] Prune the saved dismissals off the main thread: the list, the trip and the line checks settle

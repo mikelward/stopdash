@@ -67,7 +67,8 @@ internal class TripListView(
 
 /**
  * A card as drawn: its modes and lines for its long press, its lines' alerts ([statuses]), the walk to
- * its first stop ([walk]), its stops' closure notices ([closures]) and its first ride's trains ([times]).
+ * its first stop ([walk]), its stops' closure notices ([closures]), each ride's own in its ⚠
+ * ([rideClosures], by ride, [cardClosures]) and its first ride's trains ([times]).
  */
 internal class TripCardView(
     val card: List<TripTiming.Estimate>,
@@ -76,6 +77,7 @@ internal class TripCardView(
     val statuses: Map<String, LineStatus>,
     val walk: Duration,
     val closures: Map<String, DepartureRow>,
+    val rideClosures: List<List<DepartureRow>>,
     val times: CardTimes,
 )
 
@@ -157,6 +159,8 @@ private fun listView(
 ): TripListView {
     // The row over the cards is the list's own work ([rememberTripRow]), kept apart so it outlives an open route.
     val views = cards.map { card ->
+        // Every route's on the card: another line's ride may use another pole of the pair.
+        val closures = card.fold(emptyMap<String, DepartureRow>()) { found, estimate -> found + routeClosures(estimate.route, state, now, dismissed, sequences, rideLines, hubOf) }
         TripCardView(
             card = card,
             modes = cardModes(card),
@@ -164,8 +168,8 @@ private fun listView(
             // Each line's alerts for the way the card rides it, less those dismissed.
             statuses = shownStatuses(cardStatuses(card, rideLines, state, now, sequences), dismissed),
             walk = walkToStart(card.first().route, access),
-            // Every route's on the card: another line's ride may use another pole of the pair.
-            closures = card.fold(emptyMap()) { found, estimate -> found + routeClosures(estimate.route, state, now, dismissed, sequences, rideLines, hubOf) },
+            closures = closures,
+            rideClosures = card.first().route.rides.indices.map { cardClosures(card, it, closures, rideLines) },
             times = cardTimes(card, state, now, access, sequences, rideLines),
         )
     }
