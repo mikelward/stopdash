@@ -44,6 +44,36 @@ class HomeLinesTest {
     }
 
     @Test
+    fun `the rider's own lines lead the pills whatever their severity, the page going worst first`() {
+        // The tube's Central and a bus at a near stop, both with severe delays; the tube's lines come first
+        // in TfL's order, the bus only after them.
+        val central = LineStatus("central", 6, "Severe Delays")
+        val loaded = DeparturesUiState.Loaded(
+            listOf(stop("near", "73" to "bus")), now, lineStatuses = mapOf("73" to severe), determinedLineIds = setOf("73"),
+        )
+        val row = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to central)), emptySet(), now)
+        assertEquals(listOf("73", "central"), row.lines.map { it.lineId })
+        assertEquals(listOf("73", "central"), row.every.take(2).map { it.leg.lineId })
+        // A worse one far away: still after the near one on the pills, but first on the page.
+        val suspended = LineStatus("central", 16, "Suspended")
+        val worse = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to suspended)), emptySet(), now)
+        assertEquals(listOf("73", "central"), worse.lines.map { it.lineId })
+        assertEquals(listOf("central", "73"), worse.every.take(2).map { it.leg.lineId })
+        // A favorite's line counts as the rider's own, far away or not.
+        val victoria = LineStatus("victoria", 20, "Service Closed")
+        val starred = setOf(app.stopdash.domain.StarredRow("elsewhere", "central", "outbound"))
+        val fav = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to central) + ("victoria" to victoria)), emptySet(), now, starred = starred)
+        // Both the rider's own (as bad as each other, in the row's order), then the closed one.
+        assertEquals(listOf("central", "73", "victoria"), fav.lines.map { it.lineId })
+        // So does any line a starred journey rides, not only the one it was starred from.
+        val ridden = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to central) + ("victoria" to victoria)), emptySet(), now, journeyLines = setOf("central"))
+        assertEquals(listOf("central", "73", "victoria"), ridden.lines.map { it.lineId })
+        // A dismissed one is never a pill, however near.
+        val gone = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to central)), setOf(DismissedAlert.ofLineStatus(severe)), now)
+        assertEquals(listOf("central"), gone.lines.map { it.lineId })
+    }
+
+    @Test
     fun `a nearby stop's route with no departure is left out, unless the list shows its alert`() {
         val quiet = stop("near", "73" to "bus").copy(lines = listOf(LineRef("73", "73", "bus"), LineRef("n73", "N73", "bus"), LineRef("25", "25", "bus")))
         val suspended = LineStatus("25", 16, "Suspended")

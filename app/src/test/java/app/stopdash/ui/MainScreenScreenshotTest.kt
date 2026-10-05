@@ -307,6 +307,48 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `the disruptions row waits for the favorites it ranks by, never reshuffling as they land`() {
+        val stops = stops(now.minusSeconds(60))
+        capture("main-disruptions-favorites-loading.png") {
+            MainScreen(
+                DeparturesUiState.Loaded(
+                    stops, now.minusSeconds(60), lineStatuses = statuses(),
+                    determinedLineIds = stops.flatMap { stop -> stop.departures.map { it.lineId } + stop.lines.map { it.id } }.toSet(),
+                ),
+                now,
+                {},
+                showDisruptionsRow = true,
+                always = HomeLines.Always(HomeLines.TUBE_IDS.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") }, now.minusSeconds(60)),
+                starredKnown = false,
+            )
+        }
+        composeRule.onNodeWithContentDescription("Disruptions: Checking", substring = true).assertExists()
+    }
+
+    @Test
+    fun `an unreadable journey store never holds the disruptions row`() {
+        val stops = stops(now.minusSeconds(60))
+        capture("main-disruptions-journeys-unreadable.png") {
+            MainScreen(
+                DeparturesUiState.Loaded(
+                    stops, now.minusSeconds(60), lineStatuses = statuses(),
+                    determinedLineIds = stops.flatMap { stop -> stop.departures.map { it.lineId } + stop.lines.map { it.id } }.toSet(),
+                ),
+                now,
+                {},
+                showDisruptionsRow = true,
+                always = HomeLines.Always(HomeLines.TUBE_IDS.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") }, now.minusSeconds(60)),
+                alwaysNetworks = setOf("tube"),
+                // The store answered, but with nothing it could read: not known, yet settled.
+                journeysKnown = false,
+                journeysSettled = true,
+            )
+        }
+        composeRule.onNodeWithContentDescription("Disruptions: Checking", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithTag("homeDisruptions").assertExists()
+    }
+
+    @Test
     fun `where the disruptions row shows, it says what couldn't be checked in place of the banner`() {
         val stops = stops(now.minusSeconds(60))
         capture("main-disruptions-unknown.png") {

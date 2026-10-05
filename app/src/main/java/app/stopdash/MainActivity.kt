@@ -2279,6 +2279,7 @@ class MainActivity : ComponentActivity() {
                     // widget's journey pins aren't written from the empty list shown meanwhile, which would
                     // clear them, nor from an answer standing in for a star or unstar since (Codex, #593).
                     journeysKnown = savedJourneys != null && journeysWorked.current,
+                    journeysSettled = journeysRead != null && (savedJourneys == null || journeysWorked.current),
                     journeysLoading = journeysRead == null || savedJourneys != null && journeysShown == null,
                     // Null (stations inert) while the saved journeys are a newer app version's file this
                     // build can't read: it's preserved untouched, so a toggle could only be ignored.
@@ -2341,6 +2342,7 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     starred = starred,
+                    starredKnown = viewModel.starredKnown.collectAsStateWithLifecycle().value,
                     onToggleStar = viewModel::toggleStar,
                     starringAvailable = starringAvailable,
                     starWriteFailed = starWriteFailed,
