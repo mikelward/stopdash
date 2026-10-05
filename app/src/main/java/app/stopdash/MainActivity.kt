@@ -224,6 +224,10 @@ import app.stopdash.ui.WriteFailures
 import app.stopdash.ui.chipsPending
 import app.stopdash.ui.fartherCardsKey
 import app.stopdash.ui.fartherReached
+import app.stopdash.ui.Inputs
+import app.stopdash.ui.ShownJourneys
+import app.stopdash.ui.Worked
+import app.stopdash.ui.rememberShownJourneys
 import app.stopdash.ui.favoriteRouteName
 import app.stopdash.ui.hereAnchor
 import app.stopdash.ui.reachedStopIds
@@ -1996,23 +2000,20 @@ class MainActivity : ComponentActivity() {
                 .collectAsStateWithLifecycle(initialValue = null)
             val savedJourneys = journeysRead?.journeys
             var flippedJourneys by rememberSaveable { mutableStateOf(emptyList<String>()) }
-            val shownJourneys = remember(savedJourneys, ready.location, flippedJourneys) {
-                savedJourneys.orEmpty().map { journey ->
-                    val oriented = Journeys.oriented(journey, ready.location.latitude, ready.location.longitude)
-                    if (journey.key in flippedJourneys) oriented.reversed() else oriented
-                }
-            }
-            // Journeys more than a mile from both ends wait behind the Faraway favorites button,
+            // Each turned so its origin is the end nearer this fix, or flipped by a tap on its card;
+            // journeys more than a mile from both ends wait behind the Faraway favorites button,
             // unfetched (SPEC *Journeys*). Only a confirmed fix holds one back: without a fix, or on
-            // an approximate or unrefreshed one (a banner is up), every journey shows in full.
-            val farJourneyMeters = remember(shownJourneys, ready.location, locationBannerNow) {
-                Journeys.farJourneys(
-                    shownJourneys,
-                    ready.location.latitude,
-                    ready.location.longitude,
-                    fixConfirmed = locationBannerNow == null,
-                )
-            }
+            // an approximate or unrefreshed one (a banner is up), every journey shows in full. Worked
+            // out on the worker ([rememberShownJourneys]); none until the first answer is in, while
+            // the journeys read as still loading.
+            // One slot per nearby set: a relocation to another set (a new departures model, whose fetch
+            // skips the same-set reconcile's hold-back) never sees the last set's journeys stand in, so
+            // none it would now hold back reports its origin to the new model (Codex, #593).
+            val journeysWork = remember(stopsKey) { mutableStateOf<Worked<Inputs, ShownJourneys>?>(null) }
+            val journeysWorked = rememberShownJourneys(journeysWork, savedJourneys, ready.location, flippedJourneys, fixConfirmed = locationBannerNow == null)
+            val journeysShown = journeysWorked.shown
+            val shownJourneys = journeysShown?.journeys.orEmpty()
+            val farJourneyMeters = journeysShown?.farMeters.orEmpty()
             val journeyScope = rememberCoroutineScope()
             var journeyWriteFailed by rememberSaveable { mutableStateOf(false) }
             // The route page's journey tip: hidden (true) until the setting is read, so it never
@@ -2259,8 +2260,11 @@ class MainActivity : ComponentActivity() {
                     journeyDestinationStops = journeyDestinationStops,
                     journeyDestinationsUnknown = journeyDestinationsUnknown,
                     onWidgetJourneys = viewModel::setWidgetJourneys,
-                    journeysKnown = savedJourneys != null,
-                    journeysLoading = journeysRead == null,
+                    // Known once read and worked out for them as they are now ([rememberShownJourneys]): the
+                    // widget's journey pins aren't written from the empty list shown meanwhile, which would
+                    // clear them, nor from an answer standing in for a star or unstar since (Codex, #593).
+                    journeysKnown = savedJourneys != null && journeysWorked.current,
+                    journeysLoading = journeysRead == null || savedJourneys != null && journeysShown == null,
                     // Null (stations inert) while the saved journeys are a newer app version's file this
                     // build can't read: it's preserved untouched, so a toggle could only be ignored.
                     onToggleJourney = if (savedJourneys == null) {

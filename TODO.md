@@ -56,8 +56,7 @@ exercises the whole spine the widget later renders from.
       (`rememberHereOrigin`) followed onto the worker. A relocation that keeps the same cluster set
       (`MainViewModel.reconcile`, with `reconcileSameSet`'s journey checks) is worked out on the
       worker too, and applied, prune first, before its refetch.
-- [ ] The smaller per-tick and per-recomposition passes: `MainActivity`'s saved
-      journeys mapped, oriented and measured (`shownJourneys`, `farJourneyMeters`), its farther
+- [ ] The smaller per-tick and per-recomposition passes: `MainActivity`'s farther
       cards built (`fartherCards`, `fartherDistanceMeters`, `openedStates`) and the farther stations
       reached (`reachedStopIds`, `fartherReached`, and `FartherBuses.stationStops`/`candidates`
       before their `produceState` hops), all in composition; the search and lookup results worked over after their requests
@@ -72,7 +71,8 @@ exercises the whole spine the widget later renders from.
       work on the worker; the licenses dialog now opens the tapped
       library as it is, and finds a restored one again on the worker; the main screen's
       `emptyStateUncertain` ages its stops on the worker each tick; the route page's saved journeys here,
-      lift check and step-free levels are worked out on the worker.)
+      lift check and step-free levels are worked out on the worker; so are `MainActivity`'s saved
+      journeys oriented and measured, `rememberShownJourneys`.)
 - [x] Clear the `WorkerThreadCall` lint baseline (`app/lint-baseline.xml`): every screen now works out
       what its composition used to with the data it comes from, on the worker (the route page's
       `routeDetailWork`, a trip's open ride `rideLegView` and card notices `TripCardView.rideClosures`,
