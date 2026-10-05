@@ -3834,7 +3834,9 @@ class TripScreenScreenshotTest {
         val running = planned.copy(statuses = lines.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") })
         val disrupted = running.copy(statuses = running.statuses + ("jubilee" to LineStatus("jubilee", 9, "Minor Delays")))
         composeRule.mainClock.autoAdvance = false
-        show(disrupted, worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
+        // The routes loaded inline too, so the frames the list takes don't hang on another thread's pace.
+        val inline = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher()
+        show(disrupted, routeStops = RouteStopsRepository(source, io = inline, compute = inline), worker = inline)
         composeRule.mainClock.advanceTimeBy(100)
         // The row is worked out behind the placeholder: the list appears with it, never with "Checking…"
         // that gives way to pills under the rider a moment later (Codex, #543).

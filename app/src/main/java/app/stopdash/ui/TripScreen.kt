@@ -703,17 +703,40 @@ internal fun cardKey(route: TripRoute): String {
 }
 
 /**
- * The lines whose route data a trip loads: [settled] while a first plan's answers are still landing,
- * else [timedLineIds] and the other lines at those rides' boarding stops ([rideLineIds]). A re-plan keeps the last plan until it lands whole, so that plan's lines load
- * at once, even on a screen shown again with nothing settled yet.
+ * The lines whose route data a trip loads: [timedLineIds] and the other lines at those rides' boarding
+ * stops ([rideLineIds]). While a first plan's answers are still landing, those of the routes in so far,
+ * kept with the lines already [settled] on: each line loads as soon as a route it's on lands rather
+ * than once the slowest answer is in (a second the list waited, maintainer, 2026-10-05), and one a
+ * later answer pushes out of the top few isn't canceled midway. A re-plan keeps the last plan until it
+ * lands whole, so that plan's lines load at once, even on a screen shown again with nothing settled yet.
  */
+@WorkerThread
 internal fun sequenceLineIds(state: TripViewModel.State, hidden: Set<String>, settled: List<String>, keep: Collection<String> = emptyList()): List<String> {
-    if (state.planning && state.plannedAt == null) return settled
+    val landing = state.planning && state.plannedAt == null
+    if (landing && state.routes == null) return settled
     val shown = state.shownRoutes(hidden).orEmpty()
     // And every other line at a timed ride's boarding stop, to tell whether it serves the ride's
     // stops too ([rideLines]): a route each, loaded once a day like the rest.
     val timed = TripViewModel.bestOf(shown.filterNot { route -> route.rides.any { HiddenModes.isHidden(it.mode, it.lineId, hidden) } }, keep)
-    return (timedLineIds(shown, hidden, keep) + rideLineIds(timed, state, hidden)).distinct()
+    val lines = timedLineIds(shown, hidden, keep) + rideLineIds(timed, state, hidden)
+    return (if (landing) settled + lines else lines).distinct()
+}
+
+/**
+ * [sequenceLineIds] for [planned], with the [open] route's own ride, worked out on the worker
+ * ([LocalWorker]) as each answer lands (AGENTS.md *Main thread*): the last set stands meanwhile, none
+ * before the first.
+ */
+@Composable
+internal fun rememberTripLineIds(planned: TripViewModel.State, excluded: Set<String>, open: OpenRoute?): List<String> {
+    val slot = remember { mutableStateOf<Worked<Inputs, List<String>>?>(null) }
+    // The set last worked out, kept apart from [slot] for the worker to read: runs go one at a time, so
+    // it's the newest, and the worker never reads the state itself off the main thread.
+    val last = remember { java.util.concurrent.atomic.AtomicReference(emptyList<String>()) }
+    return rememberWorked(slot, Inputs(planned.routes, excluded, planned.planning, planned.live, planned.areaPoles, open), keep = { _, _ -> true }) {
+        (sequenceLineIds(planned, excluded, last.get(), open?.keys.orEmpty()) + listOfNotNull(open?.ride?.lineId)).distinct()
+            .also(last::set)
+    } ?: emptyList()
 }
 
 /**
@@ -1070,13 +1093,8 @@ private fun TripContent(
     }
     // Only the timed routes' lines: a hidden mode's routes, and those past the cap (but the open one,
     // and its train through a change), load no route data. While a plan's answers are still landing,
-    // the last settled plan's lines stand, so a passing top six never starts loads a later answer
-    // would make pointless.
-    val settledLines = remember { arrayOf(emptyList<String>()) }
-    val lineIds = remember(planned.routes, excluded, planned.planning, planned.live, planned.areaPoles, openRef) {
-        (sequenceLineIds(planned, excluded, settledLines[0], openRef?.keys.orEmpty()) + listOfNotNull(openRef?.ride?.lineId))
-            .distinct().also { settledLines[0] = it }
-    }
+    // each answer's lines join those already loading ([sequenceLineIds]).
+    val lineIds = rememberTripLineIds(planned, excluded, openRef)
     val loads = rememberLineLoads(lineIds, tickNow)
     val routeSequences = loads.sequences
     // Each bus leg at the poles its bus uses, once its route says which (the Planner's may be the

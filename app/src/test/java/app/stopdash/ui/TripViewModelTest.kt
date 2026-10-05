@@ -1596,9 +1596,13 @@ class TripViewModelTest {
     }
 
     @Test
-    fun `route data loads for a plan once it settles, not for each answer as it lands`() {
+    fun `route data loads for each answer as it lands, keeping what's loading, and settles with the plan`() {
+        // Nothing in yet: what's loading stands.
+        assertEquals(listOf("old"), sequenceLineIds(TripViewModel.State(planning = true), emptySet(), settled = listOf("old")))
+        // An answer in: its lines join what's loading, rather than wait for the slowest answer.
         val landing = TripViewModel.State(routes = listOf(route), planning = true)
-        assertEquals(listOf("old"), sequenceLineIds(landing, emptySet(), settled = listOf("old")))
+        assertEquals(listOf("old", "red", "blue"), sequenceLineIds(landing, emptySet(), settled = listOf("old")))
+        // Settled: the plan's own lines alone.
         assertEquals(listOf("red", "blue"), sequenceLineIds(landing.copy(planning = false), emptySet(), settled = listOf("old")))
         // A re-plan keeps the last plan until it lands whole: its lines load at once, even with none
         // settled (a screen shown again over a retained trip).
