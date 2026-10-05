@@ -2852,7 +2852,9 @@ widget follows the app's last refresh rather than waking on the OS's periodic sc
 (battery). Because the widget's host never re-renders it on its own (no periodic update),
 the widget also schedules **one render-only redraw at its staleness boundary**, so a widget
 left untouched after the app closes flips itself to the stale treatment ("21:14?", D4) instead of
-holding live-looking countdowns forever (D4) — a single bounded wake per snapshot, not a
+holding live-looking countdowns forever (D4) — and its header stamps the data with the **clock time** it is from
+("Updated 13:00"), not an age, since Android can defer that redraw and an age frozen at the last
+render would read as newer than the data is (maintainer bug report, 2026-10-05) — a single bounded wake per snapshot, not a
 polling cadence, and not a data refresh (fetching new data while the app isn't driving the
 widget stays deferred, D5). A setting of the device's clock redraws a placed widget at once too,
 since its countdowns and age are drawn against the clock as it read then (*Freshness*). The snapshot also records which of the stops it should show a

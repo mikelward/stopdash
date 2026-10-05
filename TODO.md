@@ -2809,14 +2809,25 @@ and these carry the rest as their own PRs:
         refresh of the stored stops (`WidgetTapRefreshWorker`), "Refreshing…" and the failure
         reason in the note; the departures still open the app. Needs a device check that a tap
         from the home screen runs it at once.
-      - [ ] **Refresh on unlock by default** (`ACTION_USER_PRESENT`, a manifest receiver —
-        one fetch when the device is unlocked; battery-negligible because it piggybacks on
-        active use rather than waking the radio from idle; cellular data is the only real cost,
-        ~2–5 MB/day, gate on WiFi/charging if wanted). This is the default path for a user who
-        never opts into the every-minute loop.
-        Check first: Android 8+ likely no longer delivers `ACTION_USER_PRESENT` to a
-        manifest-declared receiver (it isn't on the implicit-broadcast exemption list), which would
-        need a running process to hear it — verify on a device before building on it.
+      - ~~**Refresh on unlock**~~ — dropped (2026-10-05). Android 8+ won't deliver
+        `ACTION_USER_PRESENT` to a manifest receiver, and on Android 14+ (our minSdk) SystemUI
+        sends it with `DEFERRAL_POLICY_UNTIL_ACTIVE`, so a runtime receiver in a cached process
+        doesn't hear it until something else wakes the process: an unlock to glance at the widget
+        would almost never refresh it. Only a live component (mechanism A) or a cooperating
+        launcher saying it's showing the widget could.
+      - [x] **Stamp the widget with a clock time, not an age** (maintainer bug report, 2026-10-05:
+        a widget not redrawn for ~40 min still read "Updated 7 min ago" beside "13:08?" at 13:44).
+        The debug log now says how late each boundary redraw ran, and how many stored stops each
+        render keeps against the nearby set.
+      - [ ] **The widget left out nearby bus stops the app listed** (maintainer bug report,
+        2026-10-05): it showed one station while the app showed several bus stops 100 m away. Read
+        the new render lines in the next report (stored stops vs nearby set) to tell a snapshot that
+        lacked them from a nearby set that dropped them.
+      - [ ] **Boundary redraws Android defers** — if the log shows them running long after due, an
+        inexact `AlarmManager` alarm allowed while idle may hold the time better than WorkManager.
+      - [ ] **Let the rider choose what the widget leads with** (maintainer, 2026-10-05: "might be
+        intentional to prefer tube or let the user choose"): today it mirrors the near-me list;
+        a mode preference (tube first, say) is the candidate, after the bugs above.
       - [ ] **Mechanism A — foreground service, the screen-off follow-up** (recorded as the
         maintainer asked: *start with B, record A as a possible follow-up if B doesn't work*,
         2026-09-20). B is Doze-deferred, so it does **not** guarantee the exact minute with the

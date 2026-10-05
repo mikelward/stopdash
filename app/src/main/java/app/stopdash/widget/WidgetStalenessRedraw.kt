@@ -1,6 +1,7 @@
 package app.stopdash.widget
 
 import android.content.Context
+import app.stopdash.StopdashDebugLog
 import androidx.glance.appwidget.updateAll
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
@@ -30,6 +31,9 @@ internal const val WIDGET_STALENESS_WORK = "stopdash-widget-staleness-redraw"
 internal const val WIDGET_STALENESS_WORK_NEXT = "stopdash-widget-staleness-redraw-next"
 
 private const val SLOT_KEY = "slot"
+
+/** When a redraw was due, wall-clock millis, so the log can say how late Android ran it. */
+private const val DUE_KEY = "due"
 
 /** The slot of the redraw running now in this process, if any; set by [WidgetStalenessWorker]. */
 @Volatile
@@ -133,7 +137,7 @@ private fun enqueueStalenessRedraw(workManager: WorkManager, delay: Duration, ru
         ExistingWorkPolicy.REPLACE,
         OneTimeWorkRequestBuilder<WidgetStalenessWorker>()
             .setInitialDelay(delay.inWholeMilliseconds, TimeUnit.MILLISECONDS)
-            .setInputData(workDataOf(SLOT_KEY to target))
+            .setInputData(workDataOf(SLOT_KEY to target, DUE_KEY to System.currentTimeMillis() + delay.inWholeMilliseconds))
             .build(),
     )
     if (other != running) workManager.cancelUniqueWork(other)
@@ -158,6 +162,10 @@ class WidgetStalenessWorker(appContext: Context, params: WorkerParameters) :
             // Marks this slot running while the render it triggers schedules the next boundary
             // ([applyStalenessRedrawPlan]), so that one goes into the other slot.
             runningStalenessSlot = inputData.getString(SLOT_KEY) ?: WIDGET_STALENESS_WORK
+            // How late Android ran it: the widget holds its last render meanwhile, so a long delay here
+            // is a widget showing times that have passed.
+            val due = inputData.getLong(DUE_KEY, 0L)
+            if (due > 0L) StopdashDebugLog.info("widget: redraw ran %d s after due", (System.currentTimeMillis() - due) / 1000)
             try {
                 StopDashWidget().updateAll(applicationContext)
             } finally {

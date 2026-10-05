@@ -158,8 +158,15 @@ class WidgetModelTest {
         val model = widgetModel(snapshot, now)
         assertTrue(model.hasData)
         assertFalse(model.stale)
-        assertEquals("Updated just now", model.stamp)
+        // The clock time the data is from, in London (BST in September), not an age a frozen render keeps.
+        assertEquals("Updated 08:59", model.stamp)
         assertEquals(listOf("victoria"), model.rows.map { it.row.lineId })
+    }
+
+    @Test
+    fun `the stamp is a clock time, with the weekday once it isn't today`() {
+        assertEquals("Updated 09:00", widgetStamp(now, now))
+        assertEquals("Updated Thu 23:50", widgetStamp(Instant.parse("2026-09-17T22:50:00Z"), now))
     }
 
     @Test
