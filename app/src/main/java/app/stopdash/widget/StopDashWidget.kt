@@ -67,7 +67,6 @@ import app.stopdash.domain.JourneyCall
 import app.stopdash.domain.NoTimes
 import app.stopdash.domain.PlannedAlert
 import app.stopdash.domain.isStatusOnly
-import app.stopdash.domain.RelativeTime
 import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.Staleness
 import app.stopdash.domain.StarredRow
@@ -86,6 +85,7 @@ import app.stopdash.ui.PillColors
 import app.stopdash.ui.pillColors
 import java.time.Duration as JavaDuration
 import java.time.Instant
+import kotlin.time.toJavaDuration
 import kotlin.time.toKotlinDuration
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.CancellationException
@@ -213,6 +213,12 @@ class StopDashWidget : GlanceAppWidget() {
         // host only ever draws one of [WIDGET_BUCKETS], so composition just looks its model up.
         val fontScale = context.resources.configuration.fontScale
         val models = widgetModels(shown, now, starred, fontScale, topology, hiddenModes, tap)
+        StopdashDebugLog.info(
+            "widget: drew %d to %d rows across sizes, data %d s old",
+            models.bySize.values.minOf { it.rows.size },
+            models.bySize.values.maxOf { it.rows.size },
+            shown?.let { JavaDuration.between(it.fetchedAt, now).seconds } ?: -1L,
+        )
         // A stale line's guess ("21:14?") goes once its train is due, as a countdown drops a departed
         // train; nothing else redraws a stale widget, so the redraw is due by the soonest one drawn.
         val guessExpiry = models.guessExpiresAt?.let { JavaDuration.between(now, it).toKotlinDuration() }
@@ -392,7 +398,7 @@ internal fun widgetModel(
         hasData = true,
         stale = stale,
         uncertain = true,
-        stamp = "Updated ${RelativeTime.formatAge(age)}",
+        stamp = widgetStamp(now.minus(age.toJavaDuration()), now),
         rows = emptyList(),
         tap = tap,
     )
@@ -563,7 +569,7 @@ internal fun widgetModel(
         stale = stale,
         uncertain = uncertain,
         statusUnknown = statusUnknown,
-        stamp = "Updated ${RelativeTime.formatAge(age)}",
+        stamp = widgetStamp(now.minus(age.toJavaDuration()), now),
         rows = rows,
         compact = compact,
         tooSmall = tooSmall,
@@ -1154,8 +1160,39 @@ internal val WIDGET_SURFACE_NIGHT = Color(0xFF1C1B1F)
 internal suspend fun scopedToNearby(context: Context, snapshot: DeparturesSnapshot?): Pair<DeparturesSnapshot?, Boolean> {
     val read = DataStoreNearbySetStore.from(context, warn = ::logWidgetSnapshotWarning).read()
     val scoped = snapshot?.let { s -> read.stopIds?.let(s::scopedTo) ?: s }
+    // Counts only (SPEC *Privacy*): enough to tell a widget missing the app's stops because the
+    // snapshot lacks them from one whose stored nearby set left them out.
+    if (snapshot != null) {
+        StopdashDebugLog.info(
+            "widget: render keeps %d of %d stored stops (nearby set %d, %d journeys, %d missing)",
+            scoped?.stops?.size ?: 0,
+            snapshot.stops.size,
+            read.stopIds?.size ?: -1,
+            snapshot.journeys.size,
+            scoped?.missingStopIds?.size ?: 0,
+        )
+    }
     return scoped to read.failed
 }
+
+/**
+ * The header's stamp: the clock time the shown data is from ("Updated 13:00"), with its weekday
+ * when that isn't today in London ("Updated Sun 23:50"). A clock time, not an age ("7 min ago"):
+ * the widget is static text that Android may not redraw for a while (a deferred boundary redraw,
+ * Doze), and an age frozen at its last render reads as newer than the data is, where a clock time
+ * stays true however long the widget goes unredrawn (SPEC D4, maintainer bug report 2026-10-05).
+ * [shownAt] is the data's time on the [now] clock (now minus its steady age), so a clock that was
+ * set since doesn't move it.
+ */
+internal fun widgetStamp(shownAt: Instant, now: Instant): String {
+    val at = shownAt.atZone(WIDGET_LONDON)
+    val sameDay = at.toLocalDate() == now.atZone(WIDGET_LONDON).toLocalDate()
+    return "Updated " + (if (sameDay) WIDGET_STAMP_TIME else WIDGET_STAMP_DAY_TIME).format(at)
+}
+
+private val WIDGET_LONDON: java.time.ZoneId = java.time.ZoneId.of("Europe/London")
+private val WIDGET_STAMP_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private val WIDGET_STAMP_DAY_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE HH:mm", java.util.Locale.UK)
 
 internal fun logWidgetSnapshotWarning(message: String) = StopdashDebugLog.warning("widget: %s", message)
 
