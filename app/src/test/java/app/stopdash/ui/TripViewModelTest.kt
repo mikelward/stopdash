@@ -3717,6 +3717,23 @@ class TripViewModelTest {
     }
 
     @Test
+    fun `an open ride's view groups its rows by stop, and says how often a later ride runs`() {
+        val sequences = mapOf("red" to red, "green" to greenAlike, "blue" to blue)
+        val red = viaRedOnly.rides.first()
+        val green = red.copy(lineId = "green", lineName = "green")
+        val state = redAndGreenAt(train("red", "End", 6), train("green", "End", 3))
+        val lines = RideLines(listOf(red, green), listOf(red, green))
+        // The next ride counts down: no headways. Green, not yet checked as running, is quiet, under red's stop.
+        val next = rideLegView(lines, state, now, sequences, emptySet(), countsDown = true)
+        assertEquals(null, next.headways)
+        assertEquals(listOf("red"), next.groups.flatMap { group -> group.rows.map { it.lineId } }.distinct())
+        assertEquals(listOf(green), next.placed.values.flatten())
+        // A later ride says how often each of its lines runs instead.
+        val later = rideLegView(lines, state, now, sequences, emptySet(), countsDown = false)
+        assertEquals(setOf("red", "green"), later.headways?.keys)
+    }
+
+    @Test
     fun `another line at a pole whose refresh failed doesn't time the ride`() {
         val red = viaRedOnly.rides.first()
         val green = red.copy(lineId = "green", lineName = "green", fromId = "A2")

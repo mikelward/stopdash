@@ -2587,8 +2587,6 @@ private fun RouteLegs(
             val closure = closures[id]?.takeIf { carded.add(id) } ?: return
             item(key = "closure|$id") { StopClosureCard(closure, onDismissAlert?.let { dismiss -> { dismiss(closure) } }) }
         }
-        // Only the rider's next ride counts down; they aren't at a later one's stop yet.
-        val nextRide = estimate.route.legs.indexOfFirst { !it.isWalk }
         estimate.route.legs.forEachIndexed { index, leg ->
             // A change on foot, as the trip decides them ([TripViewModel.State.changesOnFoot]), between two rides.
             if (leg in state.changesOnFoot && index > 0 && !estimate.route.legs[index - 1].isWalk &&
@@ -2614,8 +2612,10 @@ private fun RouteLegs(
                 val ride = rideLines[leg] ?: RideLines.only(leg)
                 val shown = ride.legs
                 (listOf(leg) + shown).forEach { closureCard(it.fromId) }
+                // Its rows from the frame ([TripOpenView.rides]), worked out with the rest of the route.
+                val rideView = view.rides.getOrNull(index)
                 item(key = "leg$index") {
-                    RideLeg(leg, ride, index == 0, index == nextRide, state, now, sequences, dismissed, onOpenDetail, onHideMode, ready)
+                    RideLeg(leg, ride, rideView, index == 0, state, now, sequences, dismissed, onOpenDetail, onHideMode, ready)
                 }
                 (listOf(leg) + shown).forEach { closureCard(it.toId) }
                 // A change the Planner allows time for after this ride (not a walk leg of its own):
@@ -3929,9 +3929,9 @@ private fun RideLeg(
     leg: TripLeg,
     // Every line between the leg's two stops ([RideLines]), the Planner's first: a row for each.
     ride: RideLines,
+    // Its rows grouped by stop, from the frame ([rideLegView]); null draws only its stop count.
+    view: RideLegView?,
     first: Boolean,
-    // The rider's next ride, whose rows count down; a later one's say how often each line runs.
-    countsDown: Boolean,
     state: TripViewModel.State,
     now: Instant,
     sequences: Map<String, LineSequence?>,
@@ -3941,26 +3941,14 @@ private fun RideLeg(
     // When the rider can board ([TripTiming.readyAt]): a time before it is grayed; null grays none.
     grayBefore: Instant?,
 ) {
-    // Each line's rows; a line with none still gets a row of its own below, so every line the pill
-    // names is on the page.
     val lines = ride.legs
-    val byLine = remember(ride, state, now, sequences, dismissed) { rideLegRows(ride, state, now, sequences, dismissed) }
-    // A later ride's rows say how often their line runs instead of counting down, as the list's card
-    // does (maintainer, 2026-09-29): the rider isn't there yet, so its next few trains say nothing
-    // they can use. Each line's own figure, from the trains the card's comes from ([linesHeadway]),
-    // so a ride on one line reads the same on both; none where too few are known.
-    val headways = remember(countsDown, lines, state, now, sequences) {
-        if (countsDown) null else lines.associate { it.lineId to linesHeadway(listOf(it), state, now, sequences) }
-    }
-    val groups = remember(byLine) { StopGrouping.groupByStop(byLine.values.flatten()) }
-    val quiet = lines.filter { byLine[it].isNullOrEmpty() }
+    val groups = view?.groups.orEmpty()
+    val headways = view?.headways
     // A row opens its own line's page: the leg as that line rides it.
     fun legOf(row: DepartureRow) = lines.firstOrNull { it.lineId == row.lineId } ?: leg
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        // A quiet line sits under the group of the stop it boards at, so it never reads as boarding at
-        // another pole (the other side of the road); one at a stop no group shows gets that stop's own
-        // header.
-        val (placed, unplaced) = placeQuiet(groups, quiet)
+        val placed = view?.placed.orEmpty()
+        val unplaced = view?.unplaced.orEmpty()
         groups.forEachIndexed { index, group ->
             StopGroupHeader(group.stopName, group.qualifier, distanceLabel = null, firstOnScreen = first && index == 0)
             StopGroupCard(
@@ -3991,6 +3979,45 @@ private fun RideLeg(
             )
         }
     }
+}
+
+/**
+ * What an open ride shows ([RideLeg]): its rows grouped by stop, each quiet line (no live rows; it
+ * still gets a row of its own, so every line the pill names is on the page) under the group of the
+ * stop it boards at, or [unplaced] under a header of its own, and each line's [headways] for a later
+ * ride (null for the rider's next, which counts down).
+ */
+internal class RideLegView(
+    val groups: List<StopGroup>,
+    val placed: Map<StopGroup, List<TripLeg>>,
+    val unplaced: List<List<TripLeg>>,
+    val headways: Map<String, Headway.Range?>?,
+)
+
+/**
+ * [RideLegView] for [ride]: its lines' rows ([rideLegRows]) grouped by stop, which walks every row
+ * ([StopGrouping.groupByStop]), so on the worker, never in composition (AGENTS.md *Main thread*).
+ * A later ride's rows say how often their line runs instead of counting down, as the list's card does
+ * (maintainer, 2026-09-29): the rider isn't there yet, so its next few trains say nothing they can
+ * use. Each line's own figure, from the trains the card's comes from ([linesHeadway]), so a ride on
+ * one line reads the same on both; none where too few are known. A quiet line sits under the group of
+ * the stop it boards at, so it never reads as boarding at another pole (the other side of the road);
+ * one at a stop no group shows gets that stop's own header ([placeQuiet]).
+ */
+@WorkerThread
+internal fun rideLegView(
+    ride: RideLines,
+    state: TripViewModel.State,
+    now: Instant,
+    sequences: Map<String, LineSequence?>,
+    dismissed: Set<DismissedAlert>,
+    countsDown: Boolean,
+): RideLegView {
+    val byLine = rideLegRows(ride, state, now, sequences, dismissed)
+    val headways = if (countsDown) null else ride.legs.associate { it.lineId to linesHeadway(listOf(it), state, now, sequences) }
+    val groups = StopGrouping.groupByStop(byLine.values.flatten())
+    val (placed, unplaced) = placeQuiet(groups, ride.legs.filter { byLine[it].isNullOrEmpty() })
+    return RideLegView(groups, placed, unplaced, headways)
 }
 
 /** How many stops every one of a ride's [lines] takes to its getting-off stop, or null where they differ. */

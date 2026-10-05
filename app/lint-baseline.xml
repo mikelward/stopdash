@@ -34,15 +34,4 @@
             column="35"/>
     </issue>
 
-    <issue
-        id="WorkerThreadCall"
-        message="`StopGrouping.groupByStop` is marked @WorkerThread but called on the main thread, in composable `RideLeg`: work it out off the main thread (`withContext(worker)` in a `produceState`, or a view model)"
-        errorLine1="    val groups = remember(byLine) { StopGrouping.groupByStop(byLine.values.flatten()) }"
-        errorLine2="                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/app/stopdash/ui/TripScreen.kt"
-            line="3940"
-            column="37"/>
-    </issue>
-
 </issues>
