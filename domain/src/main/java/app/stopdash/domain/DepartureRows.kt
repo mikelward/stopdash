@@ -507,7 +507,7 @@ object DepartureRows {
                 .filter { (_, row) -> distanceOf(row.stopId) - distanceOf(nearest) <= TOGETHER_SLACK_METERS }
                 .filter { (place, _) -> byScore.compare(score(place), own) > 0 }
                 // Never trade the row for an older one: a stop that kept stale data after a partial
-                // refresh failure would show its countdown as "?" in place of a fresh one (Codex).
+                // refresh failure would show a guess ("21:14?") in place of a live countdown (Codex).
                 .filter { (_, row) -> row.fetchedAt >= nearestRow.fetchedAt }
                 .minWithOrNull(
                     Comparator<Map.Entry<String, DepartureRow>> { a, b -> byScore.compare(score(b.key), score(a.key)) }
@@ -540,7 +540,9 @@ object DepartureRows {
      * line warning the user hasn't dismissed heads its own), not the interchange-wide identity [stopPlaceKey] folds notices
      * by, and only timed rows with a line and TfL direction take part. A direction never moves onto a
      * stop with a notice in force ([noticed]: closed, or moved) — TfL can still list times at a
-     * closed pole — so a direction's open nearest stop keeps it. Updates [nearestStopByKey].
+     * closed pole — so a direction's open nearest stop keeps it; nor onto one with older data than
+     * its own, as [joinAnchoredPlaces] refuses: a stop that kept stale times after a partial refresh
+     * failure would trade a live countdown for a guess (Codex, #528). Updates [nearestStopByKey].
      */
     private fun keepDirectionsTogether(
         lineRows: List<DepartureRow>,
@@ -563,7 +565,8 @@ object DepartureRows {
             // Already one place: nothing to move.
             val places = keys.mapTo(HashSet()) { key -> headerPlaceOf(rows.first { it.stopId == nearestStopByKey[key] }) }
             if (places.size < 2) continue
-            // Each place's nearest stop for each of the line's directions.
+            // Each place's nearest stop for each of the line's directions, and when each stop's row was fetched.
+            val fetched = rows.associate { (dedupeKeyOf(it) to it.stopId) to it.fetchedAt }
             val byPlace = HashMap<String, HashMap<RowKey, String>>()
             for (row in rows) {
                 val poles = byPlace.getOrPut(headerPlaceOf(row)) { HashMap() }
@@ -576,6 +579,12 @@ object DepartureRows {
                 .filter { poles -> keys.none { key -> poles.getValue(key).let { it != nearestStopByKey[key] && it in noticed } } }
                 .filter { poles ->
                     keys.all { key -> distanceOf(poles.getValue(key)) - distanceOf(nearestStopByKey.getValue(key)) <= TOGETHER_SLACK_METERS }
+                }
+                .filter { poles ->
+                    keys.all { key ->
+                        val own = fetched.getValue(key to nearestStopByKey.getValue(key))
+                        !fetched.getValue(key to poles.getValue(key)).isBefore(own)
+                    }
                 }
                 .minByOrNull { poles -> keys.maxOf { distanceOf(poles.getValue(it)) } }
                 ?: continue

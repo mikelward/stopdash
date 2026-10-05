@@ -916,11 +916,11 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         page has no times and no words yet for why (copy to agree with the maintainer first).
         Until then a "?" row's planned work shows only as its calendar glyph: its full notice and
         dismissal are on that page (Codex, #505).
-    - [ ] **Don't move a route's direction onto a stop with older data** (Codex, #528): the
-      "directions together" rule picks a place by distance alone, so after a partial refresh
-      failure it can trade a direction's fresh row for the other place's stale one, which shows
-      "?" instead of a countdown. The one-way join added in #528 already refuses an older stop;
-      give `keepDirectionsTogether` the same check.
+    - [x] **Don't move a route's direction onto a stop with older data** (Codex, #528): the
+      "directions together" rule picked a place by distance alone, so after a partial refresh
+      failure it could trade a direction's fresh row for the other place's stale one (a "21:14?"
+      guess in place of a countdown). `keepDirectionsTogether` now refuses an older stop, as the
+      one-way join from #528 does.
 
 ## Phase 2 — Watched stops and settings
 
