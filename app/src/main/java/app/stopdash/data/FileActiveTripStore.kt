@@ -293,6 +293,10 @@ private data class PersistedActiveTrip(
     // The walks decided to be changes on foot when the trip started, by leg index. Absent from a trip
     // kept before it was: its walks go by their names alone, as that trip was shown.
     val onFootChanges: List<Int>? = null,
+    // The next stop last known ahead on board leg [aheadLeg]. Absent from a trip kept before it was:
+    // none known, so every branch is offered, as then.
+    val aheadLeg: Int = -1,
+    val aheadStop: Int = -1,
 ) {
     fun toTrip() = ActiveTrip(
         route = TripRoute(legs.map { it.toLeg() }),
@@ -322,6 +326,8 @@ private data class PersistedActiveTrip(
         destinationIds = destinationIds,
         destinationStopId = destinationStopId,
         onFootChanges = onFootChanges?.toSet(),
+        aheadLeg = aheadLeg,
+        aheadStop = aheadStop,
     )
 
     companion object {
@@ -352,6 +358,8 @@ private data class PersistedActiveTrip(
             destinationIds = trip.destinationIds,
             onFootChanges = trip.onFootChanges?.sorted(),
             destinationStopId = trip.destinationStopId,
+            aheadLeg = trip.aheadLeg,
+            aheadStop = trip.aheadStop,
         )
     }
 }

@@ -1640,13 +1640,12 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
             **Take this one** reroutes the trip with a change where the branch turns off (`OffPlan`).
       - [ ] **Notice a branch taken without a tap**: a rider who boards the other branch's train
             without saying so is still lost on it once it turns off.
-      - [ ] **Change branch, from the trip's screen, riding or waiting** (maintainer, 2026-10-05; next
-            PR): a train can switch branch mid-ride (announced as Morden via Bank, then via Charing
-            Cross), and TfL's labels can be wrong. A **Change branch** action on the trip's view lists
-            every service from the platform, the plan's and every branch off it, and reroutes the trip
-            from the one picked, as *Take this one* does.
-      - [ ] **An "Other routes" button under the departures card** (maintainer, 2026-10-05): a way
-            into every route from the platform without the off-plan rows taking room on the board.
+      - [x] **Change branch, from the trip's screen, riding or waiting** (maintainer, 2026-10-05):
+            **Other routes** under the board, and under the step on board (riding, or lost on a train
+            that changed its branch), lists the branches still ahead and reroutes from the one picked,
+            keeping the rider on their train when on board.
+      - [ ] **Other lines from the platform in Other routes**: a line sharing the platform that also
+            reaches the rider's stop or a change (the Circle beside the District) isn't offered yet.
       - [ ] **Change where both branches call, not only at the fork**: a Bank-branch rider bound for
             the Charing Cross branch can change at Euston as well as Camden Town; offer the choice.
       - [ ] (Consider, maintainer 2026-10-01) **A train held short of the stop reads "0" for

@@ -34,6 +34,10 @@ import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Departure
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.OffPlan
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.runtime.CompositionLocalProvider
+import app.stopdash.domain.LineSequence
+import app.stopdash.domain.LineRoute
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RouteDisruption
@@ -436,6 +440,9 @@ class OnTheWayScreenScreenshotTest {
             nextTrains = NextTrains(northern, listOf(morden), readyAt = now, offPlan = offPlanRows(northern, listOf(off))).withGroups(now),
             onTake = { _, branch -> taken += branch },
         )
+        // Behind Other routes, so they don't crowd the board (maintainer, 2026-10-05).
+        composeRule.onNodeWithText("(Battersea)").assertDoesNotExist()
+        composeRule.onNodeWithTag("onTheWayOtherRoutes").performClick()
         composeRule.onNodeWithText("(Battersea)").assertIsDisplayed()
         // A tap only opens the row: nothing is taken until the button.
         composeRule.onNodeWithText("(Battersea)").performClick()
@@ -444,6 +451,118 @@ class OnTheWayScreenScreenshotTest {
         captureSnapshot("on_the_way_off_plan_open")
         composeRule.onNodeWithTag("onTheWayTakeThis").performClick()
         assertEquals(listOf(off), taken)
+    }
+
+    @Test
+    fun on_board_the_ride_the_board_is_for_its_branches_wait_for_the_train_to_be_placed() {
+        // Taken to have left with its train, the board still up: its branches don't say which forks are
+        // behind them, and a train the trip can't place offers none (Codex, #586).
+        val northern = TripLeg(
+            "tube", "northern", "Northern", "940GZZLUWLO", "Waterloo", "940GZZLUMDN", "Morden", at(-2), at(20),
+            path = listOf("940GZZLUKNG", "940GZZLUMDN"), pathNames = listOf("Kennington", "Morden"),
+        )
+        val morden = Departure("northern", "Northern", "inbound", "Morden", null, at(11), "tube", vehicleId = "EXAMPLE1")
+        val off = OffPlan.Branch("Battersea", forkIndex = 0, forkName = "Kennington")
+        val onBoard = trip.copy(route = TripRoute(listOf(northern)), destinationName = "Morden", legIndex = 0, boarded = true, vehicleId = "EXAMPLE1")
+        show(
+            onBoard, TripProgress.Lost(northern),
+            nextTrains = NextTrains(northern, listOf(morden), readyAt = now, offPlan = offPlanRows(northern, listOf(off))).withGroups(now),
+            onTake = { _, _ -> },
+        )
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("onTheWayOtherRoutes").assertDoesNotExist()
+    }
+
+    private fun showsBranchesOnBoard(current: Boolean = true, progress: (TripLeg) -> TripProgress) {
+        // Riding south from Waterloo to Morden, seen on board: the board's gone, Other routes stays, from the
+        // line's route, for a train that changes its branch on the way (maintainer, 2026-10-05).
+        val northern = TripLeg(
+            "tube", "northern", "Northern", "940GZZLUWLO", "Waterloo", "940GZZLUMDN", "Morden", at(-2), at(20),
+            path = listOf("940GZZLUKNG", "940GZZLUMDN"), pathNames = listOf("Kennington", "Morden"),
+        )
+        val line = LineSequence(
+            listOf(
+                LineRoute("Edgware ↔ Morden via Charing Cross", listOf("940GZZLUWLO", "940GZZLUKNG", "940GZZLUMDN")),
+                LineRoute("Edgware ↔ Battersea Power Station", listOf("940GZZLUWLO", "940GZZLUKNG", "940GZZLUBSP")),
+            ),
+            mapOf("940GZZLUWLO" to "Waterloo", "940GZZLUKNG" to "Kennington", "940GZZLUMDN" to "Morden", "940GZZLUBSP" to "Battersea Power Station"),
+        )
+        val onBoard = trip.copy(route = TripRoute(listOf(northern)), destinationName = "Morden", legIndex = 0, boarded = true, onBoardSeen = true)
+        val taken = mutableListOf<OffPlan.Branch>()
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(
+                    LocalRouteStops provides app.stopdash.domain.RouteStopsRepository(
+                        object : app.stopdash.domain.RouteSequenceSource {
+                            override suspend fun routeSequence(lineId: String, direction: String) = line
+                        },
+                        io = kotlinx.coroutines.Dispatchers.Unconfined,
+                    ),
+                ) {
+                    OnTheWayScreen(
+                        onBoard, progress(northern), false, now, {}, {}, current = current,
+                        onTake = { _, branch -> taken += branch },
+                    )
+                }
+            }
+        }
+        if (!current) {
+            // From an answer too old to stand behind, the train may have passed a fork since (Codex, #586).
+            composeRule.waitForIdle()
+            composeRule.onNodeWithTag("onTheWayOtherRoutes").assertDoesNotExist()
+            return
+        }
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("onTheWayOtherRoutes").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithTag("onTheWayOtherRoutes").performClick()
+        composeRule.onNodeWithText("(Battersea)").performClick()
+        composeRule.onNodeWithText("Change at Kennington").assertIsDisplayed()
+        composeRule.onNodeWithTag("onTheWayTakeThis").performClick()
+        assertEquals(listOf("Battersea"), taken.map { it.label })
+    }
+
+    @Test
+    fun on_board_other_routes_offers_the_branches_still_ahead() = showsBranchesOnBoard { TripProgress.Riding(it, "Kennington", 2, null, false) }
+
+    @Test
+    fun on_board_other_routes_waits_for_a_current_answer() = showsBranchesOnBoard(current = false) { TripProgress.Riding(it, "Kennington", 2, null, false) }
+
+    @Test
+    fun on_board_a_train_that_changed_its_branch_still_offers_other_routes() = showsBranchesOnBoard { TripProgress.Lost(it, placed = true) }
+
+    @Test
+    fun on_board_a_train_its_calls_dont_place_offers_no_other_routes() = showsBranchesOnBoard(current = false) { TripProgress.Lost(it) }
+
+    @Test
+    fun on_board_a_fork_passed_before_the_train_was_lost_isnt_offered() {
+        // Lost past Kennington (the next stop known was Morden, index 1): its Battersea branch is behind them.
+        val northern = TripLeg(
+            "tube", "northern", "Northern", "940GZZLUWLO", "Waterloo", "940GZZLUMDN", "Morden", at(-2), at(20),
+            path = listOf("940GZZLUKNG", "940GZZLUMDN"), pathNames = listOf("Kennington", "Morden"),
+        )
+        val line = LineSequence(
+            listOf(
+                LineRoute("Edgware ↔ Morden via Charing Cross", listOf("940GZZLUWLO", "940GZZLUKNG", "940GZZLUMDN")),
+                LineRoute("Edgware ↔ Battersea Power Station", listOf("940GZZLUWLO", "940GZZLUKNG", "940GZZLUBSP")),
+            ),
+            mapOf("940GZZLUWLO" to "Waterloo", "940GZZLUKNG" to "Kennington", "940GZZLUMDN" to "Morden", "940GZZLUBSP" to "Battersea Power Station"),
+        )
+        val onBoard = trip.copy(route = TripRoute(listOf(northern)), destinationName = "Morden", legIndex = 0, boarded = true, onBoardSeen = true)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(
+                    LocalRouteStops provides app.stopdash.domain.RouteStopsRepository(
+                        object : app.stopdash.domain.RouteSequenceSource {
+                            override suspend fun routeSequence(lineId: String, direction: String) = line
+                        },
+                        io = kotlinx.coroutines.Dispatchers.Unconfined,
+                    ),
+                ) {
+                    OnTheWayScreen(onBoard, TripProgress.Lost(northern, ahead = 1), false, now, {}, {}, onTake = { _, _ -> })
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("onTheWayOtherRoutes").assertDoesNotExist()
     }
 
     @Test

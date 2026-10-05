@@ -419,7 +419,7 @@ class ActiveTripTracker(
                 alertTaken.copy(disruptionsHeard = alertTaken.disruptionsHeard + shown)
             }
             _trip.value = trip
-            _progress.value = standing(trip, clock())
+            _progress.value = withAhead(trip, standing(trip, clock()))
             settleBoard()
         }
         return true
@@ -566,11 +566,38 @@ class ActiveTripTracker(
             if (_progress.value == TripProgress.Arrived) return@withLock
             val index = before.route.legs.indexOf(ride).takeIf { it >= before.legIndex } ?: return@withLock
             val now = clock()
+            // Not a fork already behind a rider on board (Codex, #586), nor one judged from an answer too old to
+            // say: their train may have passed it since.
+            val aboard = index == before.legIndex && (before.boarded || before.onBoardSeen)
+            if (aboard && !isCurrent(_updatedAt.value, now)) return@withLock
+            // Lost with no calls that placed the train this time: where it is now isn't known (Codex, #586).
+            if (aboard && (_progress.value as? TripProgress.Lost)?.placed == false) return@withLock
+            if (index == before.legIndex && listOfNotNull(aheadOn(_progress.value, ride), keptAhead(before)).any { branch.forkIndex < it }) return@withLock
             // A "get off soon" said for the train the ride was on names a stop that's no longer theirs: it's
             // taken back once the reroute is saved, as a step moved past it is ([goTo]; Codex, #583).
-            val taken = OffPlan.take(before, index, branch, now)?.let { at ->
+            val split = OffPlan.take(before, index, branch, now)?.let { at ->
                 at.copy(alertLeft = before.warnedLeg == before.legIndex && at.warnedLeg != before.warnedLeg)
             } ?: return@withLock
+            val taken = if (aboard) {
+                when (val check = passedFork(split, now)) {
+                    is ForkCheck.Taken -> check.trip
+                    // Where the train is couldn't be read: not rerouted on a guess, and the failed update is
+                    // said, so the stale answer stops being offered (Codex, #586).
+                    ForkCheck.Failed -> {
+                        _failed.value = true
+                        _updatedAt.value = null
+                        return@withLock
+                    }
+                    // Not placed, or already past the fork: not rerouted, and the step is worked out afresh,
+                    // so the screen shows where the train is now (Codex, #586).
+                    ForkCheck.Refused -> {
+                        if (step(null, HashMap())) step(null, HashMap())
+                        return@withLock
+                    }
+                }
+            } else {
+                split
+            }
             unsaved = true
             val saved = withContext(io) { save(taken) }
             unsaved = !saved
@@ -593,6 +620,41 @@ class ActiveTripTracker(
             if (step(null, boards)) step(null, boards)
             checkDisruptions(boards)
         }
+    }
+
+    // What the train's calls say of a reroute on board ([take]), read once after the split.
+    private sealed interface ForkCheck {
+        // Saved as [trip]: still short of the fork, with when it's due there.
+        data class Taken(val trip: ActiveTrip) : ForkCheck
+        // The calls couldn't be read.
+        data object Failed : ForkCheck
+        // No calls to place the train by, none on the ride to the fork (it's past it), or no time it's due there.
+        data object Refused : ForkCheck
+    }
+
+    // [trip], just rerouted on board ([take]), checked against its train's calls: taken only while one of
+    // them is on the ride to the fork, so the train is short of it. A train already past the fork has the
+    // rider past it too, whichever way it went, and a change there is behind them (Codex, #586). Taken with
+    // when the train is due at the fork, from these calls: the step's own read, just after, may find it
+    // gone on past, and that time is what moves the rider on to the change then (Codex, #586). Calls that
+    // can't be read, none at all, or none that time the fork, don't place it: [ForkCheck].
+    private suspend fun passedFork(trip: ActiveTrip, now: Instant): ForkCheck {
+        val toFork = trip.leg ?: return ForkCheck.Taken(trip)
+        // Counted by where they were seen, not by a train: [OffPlan.take] has judged the fork by that.
+        if (trip.vehicleId.isBlank()) return ForkCheck.Taken(trip)
+        val calls = try {
+            vehicles.vehicleCalls(trip.vehicleId, OnTheWay.followedLine(trip))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: TflException) {
+            warn("on the way: train lookup after a reroute failed for line ${OnTheWay.followedLine(trip)}: ${e::class.simpleName}")
+            return ForkCheck.Failed
+        }
+        if (calls.isEmpty()) return ForkCheck.Refused
+        val due = withContext(compute) {
+            if (OnTheWay.aheadOnLeg(toFork, calls) < toFork.path.size) OnTheWay.advance(trip, calls, now).first.dueOffAt else null
+        }
+        return if (due != null) ForkCheck.Taken(trip.copy(dueOffAt = due)) else ForkCheck.Refused
     }
 
     /**
@@ -1126,6 +1188,13 @@ class ActiveTripTracker(
         // train's call there is theirs, however late, not a loop's next lap ([OnTheWay.atBoarding]).
         val atBoarding = OnTheWay.atBoarding(trip, rider?.let { aged(it, Duration.ofMillis(elapsed() - reading)) })
         var (next, progress) = OnTheWay.advance(trip, calls, now, atBoarding)
+        // Lost on board: where its calls put the train says which forks are behind it, one it has turned off
+        // at included (Codex, #586).
+        val lost = progress as? TripProgress.Lost
+        if (lost != null && (next.boarded || next.onBoardSeen) && next.legIndex == trip.legIndex && !calls.isNullOrEmpty()) {
+            val byCalls = OnTheWay.aheadOnLeg(OnTheWay.ridden(next) ?: lost.leg, calls)
+            progress = lost.copy(ahead = maxOf(lost.ahead ?: -1, byCalls), placed = true)
+        }
         // How far the walk's end is, from this refresh's fix, or as last seen on the same walk: a refresh
         // without one doesn't blank it. Shown on the trip's screen only, never logged (SPEC *Privacy*).
         // The newest fix seen: a later walk's first distance, as an estimate, until a fix on it ([recentFix]).
@@ -1767,10 +1836,11 @@ class ActiveTripTracker(
         }
     }
 
-    private suspend fun keep(trip: ActiveTrip, progress: TripProgress) {
+    private suspend fun keep(stepped: ActiveTrip, progress: TripProgress) {
+        val trip = withAheadKept(stepped, progress)
         if (trip != _trip.value) unsaved = true
         _trip.value = trip
-        _progress.value = progress
+        _progress.value = withAhead(trip, progress)
         // Saved again after a save that failed, or was cut short, though unchanged, so it's kept
         // once it can be.
         if (unsaved) {
@@ -1787,6 +1857,39 @@ class ActiveTripTracker(
             unsaved = true
         }
         settleBoard()
+    }
+
+    // A rider on board whose train the trip can no longer place ([TripProgress.Lost]) keeps the next stop
+    // last known ahead of them on the ride ([TripProgress.Lost.ahead]), from the step before or where they
+    // were seen, so a fork already behind them isn't offered or taken (Codex, #586).
+    private fun withAhead(trip: ActiveTrip, progress: TripProgress): TripProgress {
+        if (progress !is TripProgress.Lost || !(trip.boarded || trip.onBoardSeen)) return progress
+        val ahead = listOfNotNull(progress.ahead, aheadOn(_progress.value, progress.leg), keptAhead(trip)).maxOrNull() ?: return progress
+        return progress.copy(ahead = ahead)
+    }
+
+    // The next stop known ahead on the leg [trip]'s rider is on board, as kept with it ([ActiveTrip.aheadStop])
+    // or where they were seen; null with none.
+    private fun keptAhead(trip: ActiveTrip): Int? =
+        listOfNotNull(trip.aheadStop.takeIf { trip.aheadLeg == trip.legIndex && it >= 0 }, trip.seenAlongStop.takeIf { it >= 0 }).maxOrNull()
+
+    // [trip] keeping the next stop [progress] knows ahead of its rider on board ([ActiveTrip.aheadStop]), so
+    // a restart still knows which forks are behind them (Codex, #586). A train doesn't go back: the furthest.
+    private fun withAheadKept(trip: ActiveTrip, progress: TripProgress): ActiveTrip {
+        // Waiting again (left behind by a train taken to be theirs, or back by their word): what that train
+        // reached isn't theirs, so a later train's forks aren't judged by it (Codex, #586).
+        if (!trip.boarded && !trip.onBoardSeen) return if (trip.aheadLeg < 0) trip else trip.copy(aheadLeg = -1, aheadStop = -1)
+        val leg = trip.leg ?: return trip
+        val known = aheadOn(progress, leg) ?: return trip
+        val ahead = maxOf(known, trip.aheadStop.takeIf { trip.aheadLeg == trip.legIndex } ?: -1)
+        return if (trip.aheadLeg == trip.legIndex && trip.aheadStop == ahead) trip else trip.copy(aheadLeg = trip.legIndex, aheadStop = ahead)
+    }
+
+    // The index into [leg]'s path of the next stop ahead of a rider on board it, as [progress] knows it.
+    private fun aheadOn(progress: TripProgress?, leg: TripLeg): Int? = when (progress) {
+        is TripProgress.Riding -> progress.stopsLeft?.takeIf { sameRide(progress.leg, leg) }?.let { leg.path.size - it }
+        is TripProgress.Lost -> progress.ahead?.takeIf { sameRide(progress.leg, leg) }
+        else -> null
     }
 
     // A "time to board" that no longer stands ([OnTheWay.boardStands]) is taken down: the rider

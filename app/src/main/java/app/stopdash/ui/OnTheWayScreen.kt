@@ -39,11 +39,13 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
@@ -212,6 +214,7 @@ internal fun OnTheWayScreen(
         // once ([OnTheWay.etaFrom]); until it's in, none shows.
         val tailSlot = remember { mutableStateOf<Worked<Inputs, OnTheWay.EtaTail?>?>(null) }
         val etaTail = rememberWorked(tailSlot, Inputs(trip?.route, trip?.legIndex)) { trip?.let(OnTheWay::etaTail) }
+        val ridingBranches = rememberRidingBranches(trip, progress, now)
         LazyColumn(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -230,7 +233,14 @@ internal fun OnTheWayScreen(
             item(key = "next") {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     NextStep(destination, eta?.takeIf { !stale }, progress, now, current)
-                    if (nextTrains != null && trip != null) NextTrainsSection(nextTrains, now, onTake)
+                    // On board the ride the board is for (its train taken to have left with them, say): the
+                    // board's branches don't say which forks are behind them, so the ride's own stand in (Codex, #586).
+                    val aboardBoard = nextTrains != null && trip != null && (trip.boarded || trip.onBoardSeen) && sameRide(nextTrains.ride, trip.leg)
+                    if (nextTrains != null && trip != null) NextTrainsSection(nextTrains, now, onTake, offPlan = !aboardBoard)
+                    // On board, the board's gone (or isn't theirs to change from): the branches still ahead, for a
+                    // train that changed its branch on the way or that TfL labels wrongly (maintainer, 2026-10-05).
+                    // Only from a current answer: from an old one, the train may have passed a fork since (Codex, #586).
+                    if ((nextTrains == null || aboardBoard) && trip != null && current) ridingBranches.ride?.let { OtherRoutes(ridingBranches.rows, it, now, onTake) }
                 }
             }
             if (trip != null) {
@@ -781,6 +791,8 @@ private fun NextTrainsSection(
     now: Instant,
     // The rider takes a train that leaves the plan ([OffPlanCard]); null offers none.
     onTake: ((TripLeg, OffPlan.Branch) -> Unit)? = null,
+    // Whether the board offers its branches off the plan: not once the rider is on board its ride.
+    offPlan: Boolean = true,
 ) {
     val groups = next.groups
     Column(Modifier.fillMaxWidth().testTag("onTheWayTrains"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -805,7 +817,8 @@ private fun NextTrainsSection(
             )
         }
         // The trains that leave the plan, under the plan's own (maintainer, 2026-10-05).
-        if (next.offPlan.isNotEmpty()) OffPlanCard(next.offPlan, next.ride, now, onTake)
+        // The branches off the plan, behind Other routes so they don't crowd the board (maintainer, 2026-10-05).
+        if (offPlan) OtherRoutes(next.offPlan, next.ride, now, onTake)
         // What the rows may be missing, said rather than left to be taken as the whole answer.
         when {
             next.pending && groups.isEmpty() -> NoteText(stringResource(R.string.on_the_way_trains_loading))
@@ -814,6 +827,69 @@ private fun NextTrainsSection(
             groups.isEmpty() -> NoteText(stringResource(R.string.on_the_way_trains_none, next.ride.toName))
         }
     }
+}
+
+/**
+ * **Other routes** (maintainer, 2026-10-05): a button that shows the branches off the plan ([OffPlanCard])
+ * under it, and hides them again, so they're there when wanted without crowding the board. Nothing when
+ * there are none.
+ */
+@Composable
+private fun OtherRoutes(rows: List<OffPlanRow>, ride: TripLeg, now: Instant, onTake: ((TripLeg, OffPlan.Branch) -> Unit)?) {
+    if (rows.isEmpty() || onTake == null) return
+    var shown by rememberSaveable { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        TextButton(
+            onClick = { shown = !shown },
+            modifier = Modifier.heightIn(min = 48.dp).testTag("onTheWayOtherRoutes"),
+        ) { Text(stringResource(R.string.on_the_way_other_routes)) }
+        if (shown) OffPlanCard(rows, ride, now, onTake)
+    }
+}
+
+/** The ride the rider is on board and its branches still ahead ([rememberRidingBranches]); none while not riding. */
+internal class RidingBranches(val ride: TripLeg?, val rows: List<OffPlanRow>)
+
+/**
+ * While the rider is on board [trip]'s ride ([TripProgress.Riding]), or on board a train the trip can no
+ * longer place on it ([TripProgress.Lost]: one that changed its branch on the way, maintainer
+ * 2026-10-05), its branches whose fork is still ahead of them ([OffPlan.branches]), as rows: none passed,
+ * as far as the stops left say. Worked out on the page's worker from the ride's line's route, kept a day
+ * and shared with the board's; nothing on a bus, or a ride taken on another of its lines.
+ */
+@Composable
+internal fun rememberRidingBranches(trip: ActiveTrip?, progress: TripProgress?, now: Instant): RidingBranches {
+    val riding = progress as? TripProgress.Riding
+    // Lost, only once this answer's calls placed the train: with none, where it is now isn't known (Codex, #586).
+    val leg = riding?.leg ?: (progress as? TripProgress.Lost)?.takeIf { it.placed }?.leg?.takeIf { trip?.boarded == true || trip?.onBoardSeen == true }
+    val ride = trip?.leg?.takeIf { leg != null && sameRide(it, leg) && !it.isWalk && !it.isBus && trip.vehicleLeg == null }
+    val loads = rememberLineLoads(listOfNotNull(ride?.lineId), now)
+    // Read inside the effect, which keys on the routes' version: held by reference, so no recomposition
+    // compares a route or a ride's path on the main thread (Codex, #586).
+    val sequencesHeld = remember { mutableStateOf(loads.sequences, referentialEqualityPolicy()) }
+    sequencesHeld.value = loads.sequences
+    val rideHeld = remember { mutableStateOf(ride, referentialEqualityPolicy()) }
+    rideHeld.value = ride
+    // The next stop's index on the ride's path: a fork before it is behind them. Lost, the last known before
+    // their train was (Codex, #586). Unknown, none is ruled out.
+    val next = riding?.stopsLeft?.let { left -> ride?.let { it.path.size - left } } ?: (progress as? TripProgress.Lost)?.ahead
+    val worker = LocalWorker.current
+    var held by remember { mutableStateOf(RidingBranches(null, emptyList())) }
+    LaunchedEffect(ride?.fromId, ride?.toId, ride?.departure, ride?.lineId, loads.version, next, worker) {
+        val on = rideHeld.value ?: run {
+            held = RidingBranches(null, emptyList())
+            return@LaunchedEffect
+        }
+        val seq = sequencesHeld.value[on.lineId] ?: return@LaunchedEffect
+        val at = now
+        held = RidingBranches(
+            on,
+            withContext(worker) {
+                offPlanRows(on, OffPlan.branches(on, emptyList(), mapOf(on.lineId to seq), at).filter { next == null || it.forkIndex >= next })
+            },
+        )
+    }
+    return held.takeIf { ride != null && sameRide(it.ride, ride) } ?: RidingBranches(null, emptyList())
 }
 
 /**

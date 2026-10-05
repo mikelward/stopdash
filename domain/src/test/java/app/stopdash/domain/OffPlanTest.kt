@@ -121,14 +121,38 @@ class OffPlanTest {
     }
 
     @Test
-    fun `a train followed before is let go, so the next is looked for`() {
-        // The plan's train left, the rider only taken to be on it.
-        val left = OnTheWay.follow(trip, train("1", "X", 5)).copy(boarded = true, boardedAt = at(5), dueOffAt = at(15))
-        val taken = OffPlan.take(left, 0, loop, at(5))!!
+    fun `waiting, a train followed is let go, so the next to reach the fork is looked for`() {
+        val waiting = OnTheWay.follow(trip, train("1", "X", 5))
+        val taken = OffPlan.take(waiting, 0, loop, at(2))!!
         assertEquals("", taken.vehicleId)
         assertFalse(taken.boarded)
-        assertNull(taken.boardedAt)
+    }
+
+    @Test
+    fun `on board, the rider stays on their train, now ridden to the fork`() {
+        // Their train changed its branch on the way, or TfL labels it wrongly (maintainer, 2026-10-05).
+        val riding = OnTheWay.follow(trip, train("1", "X", 5)).copy(boarded = true, boardedAt = at(5), dueOffAt = at(15), warnedLeg = 0)
+        val taken = OffPlan.take(riding, 0, loop, at(6))!!
+        assertEquals("1", taken.vehicleId)
+        assertTrue(taken.boarded)
+        assertEquals(at(5), taken.boardedAt)
+        // The old end's "get off soon" and due time are done with.
+        assertEquals(-1, taken.warnedLeg)
         assertNull(taken.dueOffAt)
+        assertEquals("C", taken.leg?.toId)
+        // Its calls now end the ride at C.
+        val (_, progress) = OnTheWay.advance(taken, listOf(VehicleCall("C", "C", null, at(9))), at(8))
+        progress as TripProgress.Riding
+        assertTrue(progress.getOffSoon)
+        assertEquals("C", progress.leg.toId)
+    }
+
+    @Test
+    fun `a fork already behind a rider seen on board isn't taken`() {
+        val seen = trip.copy(boarded = true, onBoardSeen = true, seenAlongStop = 2)
+        assertNull(OffPlan.take(seen, 0, loop, at(8)))
+        // Seen short of it, it is.
+        assertEquals("C", OffPlan.take(seen.copy(seenAlongStop = 1), 0, loop, at(8))?.leg?.toId)
     }
 
     @Test
@@ -139,9 +163,8 @@ class OffPlanTest {
         assertEquals(0, taken.legIndex)
         assertEquals(t0, taken.legStartedAt)
         assertEquals(listOf("A", "C", "X"), taken.route.legs.map { it.toId })
-        // Not a ride already behind the rider, nor one they're seen riding.
+        // Not a ride already behind the rider.
         assertNull(OffPlan.take(walking.copy(legIndex = 2), 1, loop, at(3)))
-        assertNull(OffPlan.take(trip.copy(onBoardSeen = true), 0, loop, at(3)))
     }
 
     @Test

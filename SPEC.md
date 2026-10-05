@@ -1953,21 +1953,29 @@ them there:
   swiped away) isn't brought back short of something new. Each refresh asks TfL for the coming lines' statuses, one batched
   request, and the stops still to reach through the closure lookups the trip's screen and the list
   share, each reused for five minutes, and a change's board as above.
-- **Branches off the plan** (maintainer, 2026-10-05): under the board of trains that take the rider
-  on, the branches of the ride's line that run its way for a stop or more and then turn off it (the
-  Bank branch where the ride keeps to the Charing Cross branch, Battersea where it goes on to Morden)
-  are listed too, **grayed, their name in brackets** ("(Battersea)"), with the next few times TfL
-  lists for each. They're read from the line's route, not TfL's live labels, so a branch shows even
-  when TfL lists none of its trains or names them for the other branch, as it can. A tap on a row
-  opens **Take this one** under it with where the rider would change ("Change at Kennington", where
-  the Bank branch's Morden trains call too); a stray tap changes nothing. Taking it **reroutes the
-  trip**: a ride to where the branch turns off, then a change there onto the rest of the ride, followed
-  as any route is (maintainer, 2026-10-05: like a reroute, no timing or tracking of its own). The ride
-  to the fork takes the next train that reaches it, whatever TfL calls its way, says "get off soon"
-  there, and the change picks the next train on. Taken while walking to the ride, the walk goes on.
-  No request added: the route is the one the board already loads. A bus has none. Plan again
-  wouldn't serve here: the Planner works from the timetable and would offer the same direct train.
-  The ride's planned time is shared between its two parts by stops.
+- **Branches off the plan** (maintainer, 2026-10-05): the branches of the ride's line that run its
+  way for a stop or more and then turn off it (the Bank branch where the ride keeps to the Charing Cross
+  branch, Battersea where it goes on to Morden) are offered behind an **Other routes** button, so they
+  don't crowd the board: under the board of trains that take the rider on while they walk to or wait
+  for the ride, and under the step while they're on board it (riding, or on a train the trip can no
+  longer place on the ride), when the board is gone. Each is a row, **grayed, its name in brackets**
+  ("(Battersea)"), with the next few times TfL lists for it while there's a board. They're read from the
+  line's route, not TfL's live labels, so a branch shows even when TfL lists none of its trains or names
+  them for the other branch, as it can; route patterns that run on alike past the fork are one row,
+  named by a "via" past the fork, else by where it ends. On board, only forks still ahead are offered,
+  as the last stop known ahead says (kept with the trip, so through a restart), and only from an answer
+  current enough to stand behind (D4): from an older one the train may have passed a fork since.
+  A tap on a row opens **Take this one** under it with where the rider would change ("Change at
+  Kennington", where the Bank branch's Morden trains call too); a stray tap changes nothing. Taking it
+  **reroutes the trip**: a ride to where the branch turns off, then a change there onto the rest of the
+  ride, followed as any route is (maintainer, 2026-10-05: like a reroute, no timing or tracking of its
+  own). Waiting, the ride to the fork takes the next train that reaches it, whatever TfL calls its way.
+  On board, the rider stays on the train they're on, now ridden to the fork: one that changed its branch
+  on the way, or one TfL labels wrongly; a "get off soon" said for the old end is taken back. Either
+  way "get off soon" is said for the fork, and the change picks the next train on. Taken while walking to
+  the ride, the walk goes on. No request added: the route is the one the board already loads, kept a
+  day. A bus has none. Plan again wouldn't serve here: the Planner works from the timetable and would
+  offer the same direct train. The ride's planned time is shared between its two parts by stops.
 - **Plan again:** while something is known wrong ahead, the trip's screen offers **Plan again from
   ‹station›**: the trip list from **the station still ahead on the route that's nearest the rider**
   (maintainer, 2026-10-02), not their raw position, to where they chose to go (a station complex
