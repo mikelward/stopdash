@@ -1,5 +1,6 @@
 package app.stopdash
 
+import app.stopdash.widget.redrawWidgets
 import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -46,7 +47,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.HasDefaultViewModelProviderFactory
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -1915,7 +1915,7 @@ class MainActivity : ComponentActivity() {
                             // Re-render the widget when a star changes (its pinned order — SPEC
                             // D8) or after a refresh that didn't save, so its age/staleness stays
                             // current rather than frozen at the last save (SPEC D4).
-                            redrawWidget = { StopDashWidget().updateAll(appContext) },
+                            redrawWidget = { redrawWidgets(appContext) },
                             // A quick retry after a rate-limited refresh refetches only the
                             // stops still missing, and a stop's closure check is reused for a
                             // few minutes — both spare TfL's keyless rate budget.
@@ -3251,7 +3251,7 @@ class MainActivity : ComponentActivity() {
                         // Not the widget's list: the near-me model keeps the journey pins.
                         ownsWidgetJourneys = false,
                         // A star set here reorders the widget's pinned rows too, so redraw it.
-                        redrawWidget = { StopDashWidget().updateAll(appContext) },
+                        redrawWidget = { redrawWidgets(appContext) },
                         writeFailures = writeFailures,
                         onStarToggled = { row -> rememberStarredPlace(appContext, row) },
                     )

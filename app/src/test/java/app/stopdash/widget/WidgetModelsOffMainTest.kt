@@ -125,4 +125,39 @@ class WidgetModelsOffMainTest {
         assertEquals(now.plusSeconds(600), models.guessExpiresAt)
         assertEquals(models.guessExpiresAt, runBlocking { models.including(DpSize(380.dp, 900.dp)) }.guessExpiresAt)
     }
+
+    // Glance only recomposes a session it kept open, so a redraw in that window drew the old models
+    // and a tap to refresh did nothing visible (maintainer bug report, 2026-10-05).
+    @Test
+    fun `a redraw an open session sees draws again on the worker, and only for a new generation`() {
+        val pool = Executors.newSingleThreadExecutor { Thread(it, "test-worker") }
+        try {
+            val ranOn = mutableSetOf<String>()
+            val worker = recordingWorker(pool.asCoroutineDispatcher(), ranOn)
+            val first = WidgetDrawing(
+                runBlocking { widgetModels(snapshot, now, emptySet(), 1f, RouteTopology.EMPTY, emptySet(), listOf(portrait)) },
+                now,
+                1f,
+                generation = 3,
+            )
+            val drawnFor = mutableListOf<Long>()
+            val later = now.plusSeconds(60)
+            val draw: suspend (Long) -> WidgetDrawing = { generation ->
+                drawnFor += generation
+                first.copy(now = later, generation = generation)
+            }
+            // The caller's single thread never does the work.
+            val same = runBlocking { redrawn(first, 3, portrait, worker, draw) }
+            assertSame(first, same)
+            assertEquals(emptyList<Long>(), drawnFor)
+            ranOn.clear()
+            val again = runBlocking { redrawn(first, 4, portrait, worker, draw) }
+            assertEquals(listOf(4L), drawnFor)
+            assertEquals(4L, again.generation)
+            assertEquals(later, again.now)
+            assertEquals(setOf("test-worker"), ranOn)
+        } finally {
+            pool.shutdown()
+        }
+    }
 }

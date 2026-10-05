@@ -1,9 +1,9 @@
 package app.stopdash
 
+import app.stopdash.widget.redrawWidgets
 import android.app.Application
 import android.content.Context
 import android.util.Log
-import androidx.glance.appwidget.updateAll
 import app.stopdash.data.DataStoreAppSettings
 import app.stopdash.data.DeviceSteadyClock
 import app.stopdash.data.DisruptionsRowSetting
@@ -274,7 +274,7 @@ open class StopdashApp : Application() {
                 .drop(1)
                 .collect {
                     try {
-                        StopDashWidget().updateAll(this@StopdashApp)
+                        redrawWidgets(this@StopdashApp)
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {

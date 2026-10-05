@@ -1,7 +1,6 @@
 package app.stopdash.widget
 
 import android.content.Context
-import androidx.glance.appwidget.updateAll
 import app.stopdash.data.DataStoreSnapshotStore
 import app.stopdash.domain.DeparturesSnapshot
 import app.stopdash.domain.FoldChoice
@@ -112,7 +111,7 @@ class WidgetSnapshotStore(context: Context) : SnapshotStore {
      */
     private suspend fun pokeWidget() {
         try {
-            StopDashWidget().updateAll(appContext)
+            redrawWidgets(appContext)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
