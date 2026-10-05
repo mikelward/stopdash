@@ -4026,6 +4026,36 @@ class MainScreenScreenshotTest {
     }
 
     @Test
+    fun `nothing is reported for the widget's journey pins until the journeys are known`() {
+        // The screen passes an empty list while its saved journeys are read or worked out
+        // (rememberShownJourneys), unknown: reporting it would clear every pin on the widget (Codex, #593).
+        val reports = mutableListOf<Set<String>>()
+        var known by mutableStateOf(false)
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    MainScreen(
+                        DeparturesUiState.Loaded(listOf(manorHouse()), now.minusSeconds(60)),
+                        now,
+                        {},
+                        stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
+                        journeys = emptyList(),
+                        journeysKnown = known,
+                        journeysLoading = !known,
+                        onWidgetJourneys = { keys, _, _, _ -> reports += keys },
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        assertTrue(reports.isEmpty())
+        // Known, and truly none: that is reported.
+        known = true
+        composeRule.waitForIdle()
+        assertEquals(listOf(emptySet<String>()), reports)
+    }
+
+    @Test
     fun `loaded, dark`() {
         capture("main-loaded-dark.png", dark = true) {
             MainScreen(

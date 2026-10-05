@@ -1,6 +1,7 @@
 package app.stopdash.domain
 
 import androidx.annotation.WorkerThread
+
 /**
  * One end of a [StarredJourney]: a station the rider boards or alights at, with its published
  * position (TfL's, from the route sequence — never the rider's own fix) so the nearer end can be
@@ -159,6 +160,7 @@ object Journeys {
      * holds a journey back: an approximate (last-known) or unrefreshed one may be where the rider
      * was, not is, so on [fixConfirmed] false none is far and every journey shows in full.
      */
+    @WorkerThread
     fun farJourneys(
         journeys: List<StarredJourney>,
         latitude: Double?,
