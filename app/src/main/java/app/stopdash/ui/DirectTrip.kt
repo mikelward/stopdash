@@ -2,12 +2,14 @@ package app.stopdash.ui
 
 import androidx.annotation.WorkerThread
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.stopdash.domain.Coordinates
@@ -18,10 +20,15 @@ import app.stopdash.domain.NearestStops
 import app.stopdash.domain.TflException
 import java.time.Instant
 import kotlinx.collections.immutable.PersistentSet
+import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.persistentSetOf
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The routes (both directions) of [lineIds]: absent while loading, null when the load failed (so a
@@ -48,43 +55,98 @@ internal fun rememberLineLoads(lineIds: List<String>, now: Instant): LineLoads {
     // The lines loading, one persistent set for each change, a line added or removed without copying
     // the rest, and never changed once handed out: work under way on the worker reads the set of its own
     // moment, never a later one (Codex, #529). What keys on it keys on [loadingVersion], bumped on each
-    // change, never on its contents. A load is canceled (and so leaves it) when [lineIds] change.
+    // change, never on its contents. A load is canceled (and so leaves it) when its line leaves [lineIds].
     val loading = remember { mutableStateOf<PersistentSet<String>>(persistentSetOf()) }
     val loadingVersion = remember { mutableIntStateOf(0) }
     // Bumped on each load stored, a retry's included, so what's worked out from the routes can key on it
     // without comparing them (Codex, PR #520).
     val version = remember { mutableIntStateOf(0) }
     val recheck = now.epochSecond / 3600
+    // Each line's load runs on its own: a line added or dropped (a trip's plan landing answer by answer)
+    // starts or cancels only its own, never one still wanted, whose fetch would start over. Held as one
+    // persistent map, so the worker reads the set of its own moment without a copy.
+    val scope = rememberCoroutineScope()
+    val worker = LocalWorker.current
+    val jobs = remember(repository) { arrayOf(persistentMapOf<String, LineLoad>()) }
+    // The lines with a route held in [loaded], as a plain persistent set the worker reads: never the
+    // state map itself, off the main thread.
+    val heldIds = remember { arrayOf(persistentSetOf<String>()) }
+    // The loads run in a scope of the repository's own, so a repository replaced (or the screen gone)
+    // stops them with one cancel, never a walk over every line on the main thread (Codex, #602).
+    val loadScope = remember(scope, repository) { CoroutineScope(scope.coroutineContext + Job(scope.coroutineContext[Job])) }
+    DisposableEffect(loadScope) { onDispose { loadScope.cancel() } }
     LaunchedEffect(repository, lineIds, recheck) {
         val routes = repository ?: return@LaunchedEffect
+        // Nothing wanted and nothing running: nothing to work out.
+        if (lineIds.isEmpty() && jobs[0].isEmpty()) return@LaunchedEffect
+        val running = jobs[0]
+        // Which loads to stop and which to start, worked out on the worker: it walks every line
+        // (AGENTS.md *Main thread*). Here only what it names is dispatched.
+        val routesHeld = heldIds[0]
+        val (dropped, needed) = withContext(worker) {
+            lineLoadChanges(lineIds, running, recheck) { it in routesHeld && routes.cached(it, "") != null }
+        }
+        for (lineId in dropped) {
+            jobs[0][lineId]?.job?.cancel()
+            jobs[0] = jobs[0].remove(lineId)
+        }
         // Every line at once: one slow line (a National Rail route can take TfL several seconds)
         // no longer holds up the rest, and each is checked as soon as its own route arrives.
-        coroutineScope {
-            for (lineId in lineIds) {
-                val held = loaded[lineId]
-                if (held != null && routes.cached(lineId, "") != null) continue
-                launch {
-                    loading.value = loading.value.add(lineId)
-                    loadingVersion.intValue++
-                    try {
-                        loaded[lineId] = (routes.cached(lineId, "") ?: try {
-                            routes.load(lineId, "")
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: TflException) {
-                            // Logged (sanitized) by the repository. A day-old copy beats none; with none,
-                            // null marks the failure so the page says some routes couldn't be checked.
-                            held
-                        }).also { version.intValue++ }
-                    } finally {
+        for (lineId in needed) {
+            if (jobs[0][lineId]?.job?.isActive == true) continue
+            val held = loaded[lineId]
+            // Registered before it starts: one that finishes at once (its route already held) then
+            // finds itself the line's load, and so clears it from [loading] (Codex, #602).
+            val job = loadScope.launch(start = CoroutineStart.LAZY) {
+                loading.value = loading.value.add(lineId)
+                loadingVersion.intValue++
+                try {
+                    loaded[lineId] = (routes.cached(lineId, "") ?: try {
+                        routes.load(lineId, "")
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: TflException) {
+                        // Logged (sanitized) by the repository. A day-old copy beats none; with none,
+                        // null marks the failure so the page says some routes couldn't be checked.
+                        held
+                    }).also {
+                        heldIds[0] = if (it != null) heldIds[0].add(lineId) else heldIds[0].remove(lineId)
+                        version.intValue++
+                    }
+                } finally {
+                    // Unless a load started since for the line (dropped and wanted again) is under way.
+                    if (jobs[0][lineId].let { it == null || it.job === coroutineContext[Job] }) {
                         loading.value = loading.value.remove(lineId)
                         loadingVersion.intValue++
                     }
                 }
             }
+            jobs[0] = jobs[0].put(lineId, LineLoad(job, recheck))
+            job.start()
         }
     }
     return LineLoads(lineIds.filter { it in loaded }.associateWith { loaded[it] }, loading.value, version.intValue, loadingVersion.intValue)
+}
+
+/** A line's load in [rememberLineLoads], and the hour ([period]) it started in. */
+internal class LineLoad(val job: Job, val period: Long)
+
+/**
+ * The loads [rememberLineLoads] stops and starts as [lineIds] change: those [running] for a line no
+ * longer wanted, and the wanted lines with no load under way and no [current] route held. One already
+ * tried this [period] isn't tried again until the next: a failed route is asked about hourly, not again
+ * with each line joining (a trip's plan landing answer by answer, Codex, #602). Walks every line: on a
+ * worker only.
+ */
+@WorkerThread
+internal fun lineLoadChanges(lineIds: List<String>, running: Map<String, LineLoad>, period: Long, current: (String) -> Boolean): Pair<List<String>, List<String>> {
+    val wanted = lineIds.toHashSet()
+    val dropped = running.keys.filterNot { it in wanted }
+    val needed = lineIds.filter { id ->
+        val load = running[id]
+        load?.job?.isActive != true && load?.period != period && !current(id)
+    }
+    return dropped to needed
 }
 
 /**
