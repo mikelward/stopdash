@@ -6,7 +6,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.TextView
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.glance.appwidget.GlanceRemoteViews
@@ -486,15 +488,45 @@ class WidgetScreenshotTest {
         // from this context's configuration, as a real host does.
         RuntimeEnvironment.setFontScale(fontScale)
         val context = ApplicationProvider.getApplicationContext<Context>()
+        val view = inflate(context, model, size, fontScale)
+        // Capture at the widget's own size in px (420dpi), so a small size shows its real clipping.
+        val density = context.resources.displayMetrics.density
+        captureSnapshot(view, name, (size.width.value * density).toInt(), (size.height.value * density).toInt())
+    }
+
+    private fun inflate(context: Context, model: WidgetModel, size: DpSize, fontScale: Float = 1f): View {
         val result = runBlocking {
             GlanceRemoteViews().compose(context, size = size) {
                 WidgetContent(model, now, fontScale)
             }
         }
-        val view = result.remoteViews.apply(context, FrameLayout(context))
-        // Capture at the widget's own size in px (420dpi), so a small size shows its real clipping.
-        val density = context.resources.displayMetrics.density
-        captureSnapshot(view, name, (size.width.value * density).toInt(), (size.height.value * density).toInt())
+        return result.remoteViews.apply(context, FrameLayout(context))
+    }
+
+    private fun texts(view: View): List<String> = when (view) {
+        is TextView -> listOf(view.text.toString())
+        is ViewGroup -> (0 until view.childCount).flatMap { texts(view.getChildAt(it)) }
+        else -> emptyList()
+    }
+
+    // Glance drops a Column's children past the tenth, which once cut a tall widget off after its
+    // first few rows (or left a stop's header with none under it): every row in the model is drawn.
+    @Test
+    fun `every row in the model is drawn, past Glance's ten children per column`() {
+        val destinations = listOf(
+            "Brixton", "Walthamstow Central", "Cockfosters", "Heathrow Terminal 5", "Morden", "Edgware",
+            "High Barnet", "Richmond", "Upminster", "Stanmore", "Stratford", "Ealing Broadway",
+        )
+        val rows = destinations.mapIndexed { i, destination ->
+            rowModel(row("line$i", "Line $i", destination, 60L * (i + 1)))
+                .let { if (i % 3 == 0) it.copy(header = WidgetHeader("Stop $i", "Stop $i")) else it }
+        }
+        val model = WidgetModel(hasData = true, stale = false, uncertain = false, stamp = "Updated just now", rows = rows)
+        RuntimeEnvironment.setQualifiers("+notnight")
+        RuntimeEnvironment.setFontScale(1f)
+        val drawn = texts(inflate(ApplicationProvider.getApplicationContext(), model, DpSize(380.dp, 900.dp)))
+        assertEquals(destinations, drawn.filter { it in destinations })
+        assertEquals(listOf("Stop 0", "Stop 3", "Stop 6", "Stop 9"), drawn.filter { it.startsWith("Stop ") })
     }
 
     /**
