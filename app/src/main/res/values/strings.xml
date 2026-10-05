@@ -125,6 +125,10 @@
     <!-- Beside a line on the trip's lines page that dropped off the trip since the page opened. -->
     <!-- TODO: translate -->
     <string name="trip_lines_gone" tools:ignore="MissingTranslation">No longer on this trip</string>
+    <!-- The home screen's disruptions row, counting what doesn't fit on its one line: "+3". -->
+    <string name="home_disruptions_more" tools:ignore="MissingTranslation">+%1$d</string>
+    <!-- On the home screen's lines page, a line whose stops are no longer near since it opened. -->
+    <string name="home_lines_gone" tools:ignore="MissingTranslation">No longer nearby</string>
     <!-- Click label of a disrupted line on the trip's lines page: it opens TfL's reason. -->
     <!-- TODO: translate -->
     <string name="trip_lines_reason" tools:ignore="MissingTranslation">Show reason</string>

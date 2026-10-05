@@ -1086,10 +1086,10 @@ class MainViewModelTest {
         assertEquals(listOf(lined[1].id), partial.pendingStops.map { it.id })
         assertTrue(partial.statusPending)
         // Every line the stops declare was checked alongside the arrivals, so nothing reads unchecked.
-        assertEquals(listOf(setOf("victoria", "circle")), client.asked)
+        assertEquals(listOf(setOf("victoria", "circle") + HomeLines.TUBE_IDS), client.asked)
         assertFalse(partial.disruptionUnknown)
         assertFalse(partial.checkFailed)
-        assertEquals(setOf("victoria", "circle"), partial.determinedLineIds)
+        assertEquals(setOf("victoria", "circle") + HomeLines.TUBE_IDS, partial.determinedLineIds)
 
         gate.complete(Unit)
         advanceUntilIdle()
@@ -1119,13 +1119,13 @@ class MainViewModelTest {
     @Test
     fun `a line only a prediction names is checked once every stop is in`() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
-        val client = LinedClient(lined[1].id, gate, predicted = mapOf(lined[0].id to listOf("victoria", "northern")))
+        val client = LinedClient(lined[1].id, gate, predicted = mapOf(lined[0].id to listOf("victoria", "elizabeth")))
         val vm = MainViewModel(client, lined, clock = { now }, io = dispatcher)
         advanceUntilIdle()
 
         // The declared lines are vouched for, but the predicted-only one isn't asked about yet.
         val partial = vm.state.value as DeparturesUiState.Loaded
-        assertEquals(listOf(setOf("victoria", "circle")), client.asked)
+        assertEquals(listOf(setOf("victoria", "circle") + HomeLines.TUBE_IDS), client.asked)
         assertTrue(partial.disruptionUnknown)
         assertTrue(partial.statusPending)
         // Not asked yet, so still being checked rather than failed.
@@ -1133,7 +1133,7 @@ class MainViewModelTest {
 
         gate.complete(Unit)
         advanceUntilIdle()
-        assertEquals(listOf(setOf("victoria", "circle"), setOf("northern")), client.asked)
+        assertEquals(listOf(setOf("victoria", "circle") + HomeLines.TUBE_IDS, setOf("elizabeth")), client.asked)
         assertFalse((vm.state.value as DeparturesUiState.Loaded).disruptionUnknown)
     }
 
@@ -5426,6 +5426,24 @@ class MainViewModelTest {
         }
         open fun answer(lineIds: Collection<String>): List<LineStatus> = lineIds.map { LineStatus(it, 10, "Good Service") }
         override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
+    }
+
+    @Test
+    fun `the tube's lines are checked with the list's own, for the disruptions row`() = runTest(dispatcher) {
+        // The list's lines and the tube's go out together: the tube costs no request of its own.
+        val client = object : HubLinesClient() {
+            override fun answer(lineIds: Collection<String>): List<LineStatus> =
+                lineIds.map { if (it == "central") LineStatus(it, 6, "Severe Delays") else LineStatus(it, 10, "Good Service") }
+        }
+        val vm = MainViewModel(client, listOf(seeds[0].copy(lines = listOf(LineRef("victoria", "Victoria", "tube")))), clock = { now }, io = dispatcher)
+        advanceUntilIdle()
+
+        val tube = checkNotNull(vm.tube.value)
+        assertEquals(HomeLines.TUBE_IDS, tube.statuses.keys)
+        assertEquals("Severe Delays", tube.statuses.getValue("central").description)
+        assertTrue(HomeLines.TUBE_IDS.all { line -> client.statusCalls.first().contains(line) })
+        // The list itself is about its own lines only: a tube line it doesn't show isn't on it.
+        assertFalse("central" in (vm.state.value as DeparturesUiState.Loaded).lineStatuses)
     }
 
     @Test

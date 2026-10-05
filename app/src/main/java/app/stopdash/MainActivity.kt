@@ -2168,6 +2168,9 @@ class MainActivity : ComponentActivity() {
                     pendingTracker = shownTracker,
                     listWork = shownWork,
                     state = shownState,
+                    // The lines near here and the tube, atop the list (maintainer, 2026-10-05).
+                    showDisruptionsRow = true,
+                    tube = viewModel.tube.collectAsStateWithLifecycle().value,
                     now = tickingNow(),
                     // Re-locates then re-fetches (see onRelocate above) — the same action a return
                     // to the foreground runs, so the refresh control and reopening the app both move
