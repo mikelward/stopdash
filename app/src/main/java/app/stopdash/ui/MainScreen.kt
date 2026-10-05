@@ -321,6 +321,10 @@ fun MainScreen(
     // shows every alert. [onDismissAlert] is called with the alert's row when its dismiss is tapped.
     dismissed: Set<DismissedAlert> = emptySet(),
     onDismissAlert: (DepartureRow) -> Unit = {},
+    // The home screen's disruptions row ([HomeLines]), at the very top (maintainer, 2026-10-05): shown
+    // when true, with the tube's lines as the list's checks found them ([tube]).
+    showDisruptionsRow: Boolean = false,
+    tube: HomeLines.Tube? = null,
     // True while a dismiss write has failed and not yet been surfaced (SPEC principle 2): same
     // snackbar seam as [starWriteFailed], so a dismiss tap that didn't persist isn't swallowed
     // silently. Acknowledged state; the screen calls [onDismissWriteFailureShown] to clear it.
@@ -652,6 +656,16 @@ fun MainScreen(
         }
     }
     val rowsPending = loaded != null && listRows == null
+    // The disruptions row, worked out off the main thread, the last one standing while the next is
+    // (a moment's old row over a "Checking…" that blinks); "Checking…" until the first is in.
+    val homeWork = remember { mutableStateOf<Worked<HomeInputs, TripRow>?>(null) }
+    val disruptionsRow = if (showDisruptionsRow) {
+        rememberWorked(homeWork, HomeInputs(loaded, stopDistanceMeters, tube, dismissed, now), keep = { _, _ -> true }) {
+            HomeLines.row(loaded, stopDistanceMeters, tube, dismissed, now)
+        } ?: TripRow.CHECKING
+    } else {
+        null
+    }
     // The journey cards: the trains or buses from each journey's origin that call at its far end, on
     // any line, the origin's closure notice if it has one, or why they can't be shown yet (SPEC
     // principle 1).
@@ -1468,6 +1482,8 @@ fun MainScreen(
                         watchInstall = watchInstall.takeIf {
                             onTelemetryInviteAnswer == null && platformRows == null && stationTitle == null
                         },
+                        // The full list only, as the place chips: not a platform, station or searched page.
+                        disruptionsRow = disruptionsRow.takeIf { platformRows == null && stationTitle == null },
                     )
                 }
 
@@ -1612,6 +1628,8 @@ private fun LoadedContent(
     onTelemetryInviteAnswer: ((Boolean) -> Unit)? = null,
     // The watch install offer (see [MainScreen]); null shows no card.
     watchInstall: WatchInstallActions? = null,
+    // The disruptions row ([HomeDisruptionsRow]), under the place chips; null shows none.
+    disruptionsRow: TripRow? = null,
 ) {
     // Hiding a mode applies to the loading cards too, as to the loaded rows.
     val shownPending = remember(pending, hiddenModes) { visiblePending(pending, hiddenModes) }
@@ -1707,6 +1725,8 @@ private fun LoadedContent(
                             centered = true,
                         )
                     }
+                    // Under the place chips, as atop the list.
+                    disruptionsRow?.let { HomeDisruptionsRow(it, Modifier.padding(bottom = 16.dp)) }
                     // A stale snapshot with nothing left can't be read as "no departures"
                     // — the data is too old to trust that conclusion, and newer ones may
                     // exist (SPEC D4). Prompt a refresh instead of asserting an empty list.
@@ -1786,6 +1806,7 @@ private fun LoadedContent(
                     // Not in a journey's own view, which is about that journey.
                     onTelemetryInviteAnswer = onTelemetryInviteAnswer.takeIf { !journeyView },
                     watchInstall = watchInstall.takeIf { !journeyView },
+                    disruptionsRow = disruptionsRow.takeIf { !journeyView },
                     nearbyEmptyNote = if (rows.isEmpty() && !journeyView && !nearbyShownAbove && shownPending.isEmpty() && dismissedClosures.isEmpty()) {
                         // With modes hidden, say so rather than "no departures": they may be running.
                         if (hiddenModes.isNotEmpty()) {
@@ -2214,6 +2235,8 @@ private fun DepartureList(
     onTelemetryInviteAnswer: ((Boolean) -> Unit)? = null,
     // The watch install offer, first in the list too; null shows no card.
     watchInstall: WatchInstallActions? = null,
+    // The disruptions row ([HomeDisruptionsRow]), under the place chips; null shows none.
+    disruptionsRow: TripRow? = null,
     modifier: Modifier,
 ) {
     // The units near-me distances are written in: the Settings choice, resolved against the locale;
@@ -2485,6 +2508,10 @@ private fun DepartureList(
         if (favoritePlaces.isNotEmpty()) {
             item(key = "favorite-chips") { FavoriteChips(favoritePlaces, onRouteToPlace, contentPadding = PaddingValues(0.dp), onEditPlaces = onEditFavoritePlaces) }
         }
+        // The lines a rider here may take and how they're running, under the place chips, so Home and
+        // the favorites keep the top (maintainer, 2026-10-05). One line high whatever it says, so
+        // nothing under it moves.
+        disruptionsRow?.let { row -> item(key = "disruptions") { HomeDisruptionsRow(row) } }
         // Starred journeys lead the list (SPEC *Journeys*): each a header naming the direction shown,
         // tappable to show the other, over a card of just the trains that call at the far end.
         journeyItems(journeyCards)
@@ -5404,3 +5431,12 @@ internal fun mergeJourneyOrigins(refs: List<StopRef>): List<StopRef> =
             hubId = same.firstOrNull { it.hubId.isNotBlank() }?.hubId.orEmpty(),
         )
     }
+
+// What the disruptions row is worked out from ([HomeLines.row]).
+private data class HomeInputs(
+    val loaded: DeparturesUiState.Loaded?,
+    val distances: Map<String, Double>,
+    val tube: HomeLines.Tube?,
+    val dismissed: Set<DismissedAlert>,
+    val now: Instant,
+)

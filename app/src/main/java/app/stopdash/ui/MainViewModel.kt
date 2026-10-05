@@ -712,6 +712,22 @@ class MainViewModel(
     // one needn't re-ask about the same lines.
     // A line TfL gave no status for, or a failed request, is never cached. In-memory, main thread.
     private val lineStatusCache = mutableMapOf<String, Pair<Instant, LineStatus>>()
+
+    // The tube's lines as the latest check found them, for the home screen's disruptions row
+    // ([HomeLines]): null until one is had. Never persisted, like the list's own checks.
+    private val _tube = MutableStateFlow<HomeLines.Tube?>(null)
+    val tube: StateFlow<HomeLines.Tube?> = _tube.asStateFlow()
+
+    // [check]'s verdicts on the tube's lines, kept unless a newer check's are already held.
+    // Each verdict is stamped as the cache stamped it (a reused one as old as it is); the check as of
+    // its oldest, so the row doesn't call a reused verdict newer than it is.
+    private fun publishTube(check: LineCheck, now: Instant) {
+        val asked = SteadyClock.stamp(now)
+        if (_tube.value?.let { asked.isBefore(it.asked) } == true) return
+        val statuses = check.statuses.filter { it.lineId in HomeLines.TUBE_IDS }.associateBy { it.lineId }
+        val at = statuses.keys.mapNotNull { lineStatusCache[it]?.first }.minOrNull() ?: asked
+        _tube.value = HomeLines.Tube(statuses, at, asked)
+    }
     // The dismissed alerts' count ([DismissedAlertsStore.mark]) each cached status was asked at: a
     // refresh settling dismissals on a reused verdict is as old as it. In-memory, main thread, like it.
     private val lineStatusMarks = mutableMapOf<String, Long>()
@@ -1112,7 +1128,10 @@ class MainViewModel(
             // requests as checking after the merge, only sooner). After the arrivals are launched,
             // so the departures still tend to go out first.
             val linesGo = CompletableDeferred<Boolean>()
-            val earlyCheck = async { if (linesGo.await()) checkLines(declaredLineIds, now) else null }
+            // The tube's lines ride along for the home screen's disruptions row ([HomeLines]), sharing the
+            // request and the reuse window, so a refresh costs no request more than it would (maintainer,
+            // 2026-10-05).
+            val earlyCheck = async { if (linesGo.await()) checkLines(declaredLineIds + HomeLines.TUBE_IDS, now) else null }
             when {
                 declaredLineIds.isEmpty() -> linesGo.complete(false)
                 stops.any { prior[it.id] != null } -> linesGo.complete(true)
@@ -1355,7 +1374,7 @@ class MainViewModel(
             val arrivalResults = arrivals.map { it?.await() }
             // No stop's arrivals came back (and none was shown from before): the check isn't sent.
             linesGo.complete(arrivalResults.any { it?.isSuccess == true })
-            Triple(arrivalResults, disruptions.map { it?.await() }, earlyCheck.await())
+            Triple(arrivalResults, disruptions.map { it?.await() }, earlyCheck.await()?.also { publishTube(it, now) })
         }
 
         // Resolve each interchange once, in parallel, only for a hub with a stop that has a fresh

@@ -3009,6 +3009,13 @@ internal class TripRow(
     // Every line the cards ride, each with its status, as the row's lines page lists them ([TripLine]).
     val every: List<TripLine> = emptyList(),
 ) {
+    /**
+     * [lines]' and [unknownLines]' names, as a screen reader hears a one-line row that draws only the
+     * pills that fit ([HomeDisruptionsRow]): joined with the row, on the worker.
+     */
+    val linesSpoken: String = lines.joinToString(", ") { it.lineName }
+    val unknownSpoken: String = unknownLines.joinToString(", ") { it.lineName }
+
     /** Whether a line in [every] couldn't be checked: the page's note says so, not for a stop alone. */
     val linesUnknown: Boolean = every.any { it.unknown }
 
@@ -3210,12 +3217,16 @@ internal fun tripLines(
             unknown = id in unknown || (inDoubt && !pending),
         )
     }
-    return lines.sortedWith(
-        compareBy<TripLine>(
-            { if (it.disrupted && !it.dismissed) 0 else if (it.disrupted) 1 else if (it.unknown) 2 else if (it.checking) 3 else 4 },
-        ).thenComparator { a, b -> if (a.disrupted && b.disrupted) worstFirst.compare(checkNotNull(a.status), checkNotNull(b.status)) else 0 },
-    )
+    return lines.sortedWith(tripLineOrder)
 }
+
+/**
+ * How a lines page orders its lines: disruptions first, worst first, then the dismissed, the unchecked,
+ * those still being checked, and the good services; a tie keeps its place.
+ */
+internal val tripLineOrder: Comparator<TripLine> = compareBy<TripLine>(
+    { if (it.disrupted && !it.dismissed) 0 else if (it.disrupted) 1 else if (it.unknown) 2 else if (it.checking) 3 else 4 },
+).thenComparator { a, b -> if (a.disrupted && b.disrupted) worstFirst.compare(checkNotNull(a.status), checkNotNull(b.status)) else 0 }
 
 /**
  * The disruptions row for [cards] ([tripRow]), worked out on the worker and held as one value
@@ -3330,7 +3341,7 @@ private fun DisruptionsRow(row: TripRow) {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun TripLinesPage(row: TripRow, onClose: () -> Unit) {
+internal fun TripLinesPage(row: TripRow, onClose: () -> Unit, @StringRes gone: Int = R.string.trip_lines_gone) {
     val held = rememberOpenedOrder(row)
     val lines = held.lines
     // The line whose reason is open, by its place, which holds while the page is open
@@ -3409,6 +3420,7 @@ internal fun TripLinesPage(row: TripRow, onClose: () -> Unit) {
                     lines,
                     pending = held.pending,
                     state = listState,
+                    gone = gone,
                     onOpenLine = { index, line ->
                         reasonId = line.leg.lineId
                         reasonName = line.leg.lineName
@@ -3546,7 +3558,7 @@ internal fun inOpenedOrder(
  * disruption opens it on a tap ([onOpen]), on a page of its own, never inline.
  */
 @Composable
-private fun TripLineRow(line: TripLine, onOpen: (() -> Unit)? = null) {
+private fun TripLineRow(line: TripLine, onOpen: (() -> Unit)? = null, @StringRes gone: Int = R.string.trip_lines_gone) {
     val style = MaterialTheme.typography.bodyMedium
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val status = line.status
@@ -3570,7 +3582,7 @@ private fun TripLineRow(line: TripLine, onOpen: (() -> Unit)? = null) {
             when {
                 // Restoring after a rotation: the pill alone, in its place, no word for a status not back yet.
                 line.restoring -> Unit
-                line.gone -> Text(stringResource(R.string.trip_lines_gone), style = style, color = muted, maxLines = 1)
+                line.gone -> Text(stringResource(gone), style = style, color = muted, maxLines = 1)
                 line.unknown -> Text(stringResource(R.string.trip_lines_unknown), style = style, color = MaterialTheme.colorScheme.error, maxLines = 1)
                 line.checking -> Text(stringResource(R.string.trip_disruptions_checking), style = style, color = muted, maxLines = 1)
                 !line.disrupted -> Text(stringResource(R.string.trip_lines_good), style = style, color = muted, maxLines = 1)
@@ -3597,6 +3609,8 @@ internal fun TripLinesContent(
     state: LazyListState = rememberLazyListState(),
     // A line with a reason tapped, at its place in [lines]: its own page.
     onOpenLine: ((Int, TripLine) -> Unit)? = null,
+    // What a line no longer among the row's says: off the trip, or (home) no longer near.
+    @StringRes gone: Int = R.string.trip_lines_gone,
 ) {
     val style = MaterialTheme.typography.bodyMedium
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
@@ -3628,7 +3642,7 @@ internal fun TripLinesContent(
             item(key = "none") { Text(stringResource(none), style = style, color = muted) }
         }
         itemsIndexed(lines, key = { _, line -> line.leg.lineId }) { index, line ->
-            TripLineRow(line, onOpenLine?.let { open -> { open(index, line) } })
+            TripLineRow(line, onOpenLine?.let { open -> { open(index, line) } }, gone)
         }
         if (row.stops.isNotEmpty()) {
             item(key = "stops") { Text(stringResource(R.string.trip_lines_stops, row.stops), style = style) }

@@ -274,6 +274,38 @@ class MainScreenScreenshotTest {
         composeRule.onNodeWithText("ⓘ").assertDoesNotExist()
     }
 
+    @Test
+    fun `the disruptions row sits under the place chips, one line high, counting what doesn't fit`() {
+        // Half the tube in trouble as well as the list's own District and Elizabeth line: more pills
+        // than fit, so the last are counted (maintainer, 2026-10-05).
+        val troubled = setOf("central", "jubilee", "northern", "piccadilly", "victoria", "bakerloo")
+        val tube = HomeLines.Tube(
+            HomeLines.TUBE_IDS.associateWith {
+                if (it in troubled) LineStatus(it, 6, "Severe Delays", fullText = "Signal failure") else LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service")
+            },
+            now.minusSeconds(60),
+        )
+        val stops = stops(now.minusSeconds(60))
+        capture("main-disruptions-row.png") {
+            MainScreen(
+                DeparturesUiState.Loaded(
+                    stops, now.minusSeconds(60), lineStatuses = statuses(),
+                    determinedLineIds = stops.flatMap { stop -> stop.departures.map { it.lineId } + stop.lines.map { it.id } }.toSet(),
+                ),
+                now,
+                {},
+                favoritePlaces = places,
+                showDisruptionsRow = true,
+                tube = tube,
+            )
+        }
+        // Heard whole, every disrupted line named, whatever fits on the line.
+        composeRule.onNodeWithContentDescription("Disruptions: Elizabeth line", substring = true).assertExists()
+        // A tap opens every line it covers with its status.
+        composeRule.onNodeWithTag("homeDisruptions").performClick()
+        composeRule.onNodeWithText("Line status").assertExists()
+    }
+
     // Stock stand-in places on synthetic coordinates, never a real person's (SPEC *Privacy*).
     private val places = listOf(
         // Home is set to show its icon alone, Work shows its icon and name (the default), and Gym, with

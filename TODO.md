@@ -2451,8 +2451,18 @@ Builds on Phase 1's minimal line-status marking.
       `tripLines`): one row per line with its worst-severity status, disruptions first, dismissed ones
       toned down, unchecked lines marked with what that means, then the row's stops; a disrupted line's
       reason on its own page. A sheet was tried first; the maintainer chose a full-screen dialog.
-  - [ ] **Open the lines page from the home screen too** (maintainer, 2026-10-04): the page reads only
+  - [x] **Open the lines page from the home screen too** (maintainer, 2026-10-04): the page reads only
         the lines it's given and the app's menu, so the home screen supplies its own.
+- [x] **The home screen has a one-line disruptions row** (maintainer, 2026-10-05): every tube
+      line, and every line with a departure from a stop within the walking reach (500 m), under the
+      favorite places' chips; "+N" for what doesn't fit, a tap opening the lines page (`HomeLines`, `HomeDisruptionsRow`).
+  - [ ] **Add the Overground and the Elizabeth line** to the row's always-covered lines, as the tube is.
+  - [ ] **Let the rider choose what the row covers** (maintainer, 2026-10-05): a list of lines,
+        favorite routes, or favorite trips? And how to rank and collapse it when many are disrupted.
+  - [ ] **Name the walking reach's closed stops on the row**, as a trip's row names its closed stops.
+  - [ ] **Fold the list's "couldn't check for disruptions" banner into the row**, so the very top is one
+        status line rather than a row and a banner (maintainer, 2026-10-05: "use that slot as a
+        loading/status row?").
   - [ ] **Check a bug report sent from the lines page** on a device: the report's screenshot is taken
         of the app's window, which may leave out the dialog's.
 - [x] **On the way notes the coming stations' notices** (maintainer, 2026-10-04): a notice that neither
