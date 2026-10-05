@@ -837,10 +837,9 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         **Start landed:** the widget is now laid out at the exact size the launcher reports
         (`SizeMode.Exact`); below 220dp the stamp drops its "Updated" prefix. Labels can key off
         the same width.
-  - [ ] **Show the widget in two columns whenever there's room** (maintainer, 2026-10-05), as
-        on a tablet or in landscape: one column at those widths leaves a wide gap between each
-        destination and its times. Decide the breakpoint (each column at least as wide as a
-        phone's widget) and how rows split between the columns, with a screenshot test.
+  - [x] **Show the widget in two columns whenever there's room** (maintainer, 2026-10-05), as
+        on a tablet or in landscape: from 480dp wide, the breakpoint chosen from screenshots of both
+        layouts at 400–900dp; rows split where the columns come out closest in height.
 - [x] **Hide services terminating at the current stop by default** (maintainer, 2026-09-20).
       A train that terminates where you're standing isn't boardable onward, so listing it as
       an upcoming departure is misleading — filter it out by default (a departure whose

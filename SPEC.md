@@ -2861,7 +2861,12 @@ The widget is laid out for **each size the launcher reports for it** (portrait a
 say), not the nearest of a few canned sizes, so it fills its cell: a tall widget shows as many
 departures as fit, and a wide one wraps a row's times under its destination only when they really
 don't fit beside it. A size it hasn't laid out yet (a resize) briefly draws the minimum size's
-layout, which fits any cell, until its own is ready.
+layout, which fits any cell, until its own is ready. From **480dp wide** (a tablet's widget, or a wide one in
+landscape; never a phone's in portrait) the rows go in **two columns** side by side, read down the
+first and then the second, split where the two come out closest in height, with a place that runs on
+into the second column named again at its top. The rows are chosen by priority for both columns'
+room, as for one taller column, so a split never drops a sooner departure than one it keeps
+(maintainer, 2026-10-05, from screenshots of both layouts at widths from 400 to 900dp).
 
 The widget renders the **persisted last-good snapshot** the app writes — never the
 network. It reads the snapshot once when the host asks it to update and renders from it,
