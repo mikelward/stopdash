@@ -135,10 +135,11 @@ class WidgetTapRefreshTest {
             val redrawnOn = mutableListOf<String>()
             val redraw: suspend (Context) -> Unit = { redrawnOn += Thread.currentThread().name.substringBefore(" @") }
             runBlocking { requestWidgetRefresh(context, worker, redraw) }
-            val first = work()
-            assertEquals(1, first.size)
+            // One refresh enqueued, whatever state it's reached: the test WorkManager may already have
+            // run it (with no stored snapshot it ends at once and drops "Refreshing…"), so neither its
+            // state nor the note is asserted here; the note's own tests cover it.
+            assertEquals(1, WorkManager.getInstance(context).getWorkInfosForUniqueWork(WIDGET_TAP_REFRESH_WORK).get().size)
             assertEquals(listOf("test-worker"), redrawnOn)
-            assertEquals(WidgetTapNote.REFRESHING, WidgetTapRefresh.note(android.os.SystemClock.elapsedRealtime(), stamp))
         } finally {
             pool.shutdown()
         }
@@ -151,8 +152,4 @@ class WidgetTapRefreshTest {
         assertEquals(ListenableWorker.Result.success(), result)
         assertNull(WidgetTapRefresh.note(android.os.SystemClock.elapsedRealtime(), stamp))
     }
-
-    private fun work(): List<WorkInfo> =
-        WorkManager.getInstance(context).getWorkInfosForUniqueWork(WIDGET_TAP_REFRESH_WORK).get()
-            .filter { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.RUNNING }
 }
