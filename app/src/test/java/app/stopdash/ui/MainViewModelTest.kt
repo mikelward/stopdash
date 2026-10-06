@@ -2058,6 +2058,158 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `a closure another screen finds while a refresh is out is shown with it`() = runTest(dispatcher) {
+        val client = ReuseCountingClient()
+        val cache = StopClosureCache()
+        val (carried, fetched) = seeds.map { it.id }
+        // The second stop's first fetch fails, so a refresh moments later asks it again and carries the
+        // first over.
+        client.failingArrivals += fetched
+        val vm = MainViewModel(client, seeds, clock = { now }, io = dispatcher, arrivalsReuse = ARRIVALS_REUSE, disruptionCache = cache)
+        advanceUntilIdle()
+        client.failingArrivals.clear()
+        val gate = CompletableDeferred<Unit>()
+        client.arrivalsGate = gate
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(1, client.arrivalCalls[carried])
+        // While the refresh waits on the second stop, another screen finds the first one closed.
+        val closed = StopDisruption("Station closed")
+        cache.keep(carried, cache.ask(now), listOf(closed))
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        val shown = (vm.state.value as DeparturesUiState.Loaded).stops.single { it.stopId == carried }
+        assertEquals(listOf(closed), shown.disruptions)
+    }
+
+    @Test
+    fun `a closure check another screen fails while a refresh is out leaves the stop unchecked`() = runTest(dispatcher) {
+        val client = ReuseCountingClient()
+        val cache = StopClosureCache()
+        val (carried, fetched) = seeds.map { it.id }
+        client.failingArrivals += fetched
+        val vm = MainViewModel(client, seeds, clock = { now }, io = dispatcher, arrivalsReuse = ARRIVALS_REUSE, disruptionCache = cache)
+        advanceUntilIdle()
+        client.failingArrivals.clear()
+        val gate = CompletableDeferred<Unit>()
+        client.arrivalsGate = gate
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(1, client.arrivalCalls[carried])
+        // While the refresh waits on the second stop, another screen's newer check of the first fails.
+        cache.settle(carried, cache.ask(now), Result.failure(java.io.IOException("offline")))
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        val loaded = vm.state.value as DeparturesUiState.Loaded
+        assertTrue(carried in loaded.stopsDisruptionUnknown)
+        assertTrue(loaded.disruptionUnknown)
+    }
+
+    @Test
+    fun `a closure another screen finds after a refresh's own check failed is shown with it`() = runTest(dispatcher) {
+        val (held, failing) = seeds.map { it.id }
+        val gate = CompletableDeferred<Unit>()
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String): List<Departure> {
+                if (stopId == held) gate.await()
+                return listOf(departure("victoria", "Victoria", 120))
+            }
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String): List<StopDisruption> =
+                if (stopId == failing) throw TflException.RateLimited(null) else emptyList()
+        }
+        val cache = StopClosureCache()
+        val vm = MainViewModel(client, seeds, clock = { now }, io = dispatcher, disruptionCache = cache)
+        // The second stop's closure check fails while the first stop's departures are still out.
+        advanceUntilIdle()
+        assertNull(cache[failing])
+        // Before the load is shown, another screen finds the second stop closed.
+        val closed = StopDisruption("Station closed")
+        cache.keep(failing, cache.ask(now), listOf(closed))
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        val loaded = vm.state.value as DeparturesUiState.Loaded
+        assertEquals(listOf(closed), loaded.stops.single { it.stopId == failing }.disruptions)
+        assertFalse(failing in loaded.stopsDisruptionUnknown)
+    }
+
+    /**
+     * A cold load of [seeds] whose second stop's arrivals fail but whose closure check finds it closed,
+     * so it's kept for that closure alone, while the first stop's arrivals are held until [settle] has
+     * run: what another screen does meanwhile.
+     */
+    private fun TestScope.closureOnlyLoad(cache: StopClosureCache, settle: (String) -> Unit): DeparturesUiState.Loaded {
+        val (held, closedStop) = seeds.map { it.id }
+        val gate = CompletableDeferred<Unit>()
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String): List<Departure> {
+                if (stopId == held) gate.await()
+                if (stopId == closedStop) throw TflException.RateLimited(null)
+                return listOf(departure("victoria", "Victoria", 120))
+            }
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String): List<StopDisruption> =
+                if (stopId == closedStop) listOf(StopDisruption("Station closed")) else emptyList()
+        }
+        val vm = MainViewModel(client, seeds, clock = { now }, io = dispatcher, disruptionCache = cache)
+        testScheduler.advanceUntilIdle()
+        assertEquals(listOf(StopDisruption("Station closed")), cache[closedStop]?.notices)
+        settle(closedStop)
+        gate.complete(Unit)
+        testScheduler.advanceUntilIdle()
+        return vm.state.value as DeparturesUiState.Loaded
+    }
+
+    @Test
+    fun `a stop kept for its closure alone goes when another screen finds it clear meanwhile`() = runTest(dispatcher) {
+        val cache = StopClosureCache()
+        val closedStop = seeds[1].id
+        val loaded = closureOnlyLoad(cache) { cache.keep(it, cache.ask(now), emptyList()) }
+
+        assertFalse(loaded.stops.any { it.stopId == closedStop })
+        assertTrue(closedStop in loaded.unavailableStopIds)
+    }
+
+    @Test
+    fun `a stop kept for its closure alone goes when another screen's check of it fails meanwhile`() = runTest(dispatcher) {
+        val cache = StopClosureCache()
+        val closedStop = seeds[1].id
+        val loaded = closureOnlyLoad(cache) { cache.settle(it, cache.ask(now), Result.failure(java.io.IOException("offline"))) }
+
+        assertFalse(loaded.stops.any { it.stopId == closedStop })
+        assertTrue(closedStop in loaded.unavailableStopIds)
+    }
+
+    @Test
+    fun `a move while a refresh is out isn't undone by it`() = runTest(dispatcher) {
+        val client = ReuseCountingClient()
+        val (carried, fetched) = seeds.map { it.id }
+        client.failingArrivals += fetched
+        val vm = MainViewModel(
+            client, seeds, clock = { now }, io = dispatcher, arrivalsReuse = ARRIVALS_REUSE,
+            stopDistanceMeters = mapOf(carried to 100.0, fetched to 900.0),
+        )
+        advanceUntilIdle()
+        client.failingArrivals.clear()
+        val gate = CompletableDeferred<Unit>()
+        client.arrivalsGate = gate
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(1, client.arrivalCalls[carried])
+        // While the refresh waits on the second stop, the rider moves: the second is now the nearer.
+        vm.remeasure(mapOf(carried to 900.0, fetched to 100.0))
+        advanceUntilIdle()
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        val shown = (vm.state.value as DeparturesUiState.Loaded).stops.single { it.stopId == carried }
+        assertTrue(fetched in shown.nearer.ids)
+    }
+
+    @Test
     fun `arrivals another screen fetches while the worker plans the batch are taken over a carry-over`() = runTest(dispatcher) {
         // Runs what's handed to it at once, or, once holding, keeps it until let go, as a busy worker would.
         val held = mutableListOf<Runnable>()
