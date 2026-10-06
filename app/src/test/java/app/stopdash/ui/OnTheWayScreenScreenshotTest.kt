@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -23,6 +24,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -101,6 +103,7 @@ class OnTheWayScreenScreenshotTest {
         onDismissNote: ((RouteDisruption.StationNote) -> Unit)? = null,
         onTake: ((TripLeg, OffPlan.Branch) -> Unit)? = null,
         asOf: java.time.Instant? = null,
+        lineChecks: RouteDisruption.LinesChecked? = null,
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -108,7 +111,7 @@ class OnTheWayScreenScreenshotTest {
                     trip, progress, failed, now, onEnd, onBack, current = current, notKept = notKept, endFailed = endFailed, alertsOff = alertsOff,
                     appOpenOnly = appOpenOnly, nextTrains = nextTrains, onGoTo = onGoTo, disruptions = disruptions, cards = cards,
                     replanFrom = replanFrom, onPlanAgain = onPlanAgain, onDismissDisruptions = onDismissDisruptions, notes = notes,
-                    onDismissNote = onDismissNote, onTake = onTake, asOf = asOf,
+                    onDismissNote = onDismissNote, onTake = onTake, asOf = asOf, lineChecks = lineChecks,
                 )
             }
         }
@@ -704,10 +707,101 @@ class OnTheWayScreenScreenshotTest {
         val card = composeRule.onNodeWithTag("onTheWayNext").getUnclippedBoundsInRoot()
         val ride = composeRule.onNodeWithText("Stratford → Canary Wharf").getUnclippedBoundsInRoot()
         assertTrue(board.top >= card.bottom && board.bottom <= ride.top)
-        // Nothing to open from here: no row takes a tap or announces one.
-        assertTrue(composeRule.onAllNodes(hasClickAction() and hasAnyDescendant(hasText("Stanmore"))).fetchSemanticsNodes().isEmpty())
+        // A row opens its line's page (maintainer, 2026-10-06).
+        assertTrue(composeRule.onAllNodes(hasClickAction() and hasAnyDescendant(hasText("Stanmore"))).fetchSemanticsNodes().isNotEmpty())
         composeRule.onNodeWithText("Wembley Park").assertIsDisplayed()
         captureSnapshot("on_the_way_walking_next_trains")
+    }
+
+    @Test
+    fun a_train_on_the_board_opens_its_lines_page() {
+        // A tap on a train on the board opens its line's page, with the status the trip's last check found,
+        // rather than a "View line" item (maintainer, 2026-10-06). Back closes it onto the trip.
+        val walking = trip.copy(legIndex = 1)
+        val delays = LineStatus("jubilee", 9, "Minor Delays")
+        var back = 0
+        show(
+            walking, TripProgress.Walking(walk, at(24)),
+            nextTrains = NextTrains(jubilee, listOf(jubileeTrain("Stanmore", 21)), readyAt = at(24)).withGroups(now),
+            lineChecks = RouteDisruption.LinesChecked(setOf("jubilee"), mapOf("jubilee" to delays), app.stopdash.domain.SteadyClock.stamp(now)),
+            onBack = { back++ },
+        )
+        composeRule.onNodeWithText("Stanmore").performClick()
+        val onLinePage = androidx.compose.ui.test.hasAnyAncestor(hasTestTag("tripLinesPage"))
+        composeRule.waitUntil(10_000) { composeRule.onAllNodes(hasText("Minor Delays") and onLinePage).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(composeRule.onAllNodes(hasText("Jubilee") and onLinePage).fetchSemanticsNodes().isNotEmpty())
+        composeRule.onNode(hasText(composeRule.activity.getString(app.stopdash.R.string.trip_lines_unknown)) and onLinePage).assertDoesNotExist()
+        composeRule.onNode(androidx.compose.ui.test.hasContentDescription(composeRule.activity.getString(app.stopdash.R.string.action_back)) and onLinePage).performClick()
+        composeRule.onNodeWithTag("tripLinesPage").assertDoesNotExist()
+        assertEquals(0, back)
+    }
+
+    @Test
+    fun a_train_on_the_board_keeps_its_ride_on_the_map_when_the_trip_ends() {
+        // The page keeps the ride the train was tapped for, where it gets off included: the trip ending under
+        // it never takes that stretch off its map, nor does a rotation after it (Codex, #627).
+        val line = LineSequence(
+            listOf(LineRoute("Stratford ↔ Stanmore", listOf("940GZZLUSTD", "940GZZLUWHM", "940GZZLUCGT", "940GZZLUCYF"))),
+            mapOf("940GZZLUSTD" to "Stratford", "940GZZLUWHM" to "West Ham", "940GZZLUCGT" to "Canning Town", "940GZZLUCYF" to "Canary Wharf"),
+        )
+        val live = androidx.compose.runtime.mutableStateOf<ActiveTrip?>(trip.copy(legIndex = 1))
+        val restoration = androidx.compose.ui.test.junit4.StateRestorationTester(composeRule)
+        restoration.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(
+                    LocalRouteStops provides app.stopdash.domain.RouteStopsRepository(
+                        object : app.stopdash.domain.RouteSequenceSource {
+                            override suspend fun routeSequence(lineId: String, direction: String) = line
+                        },
+                        io = kotlinx.coroutines.Dispatchers.Unconfined,
+                    ),
+                ) {
+                    OnTheWayScreen(
+                        live.value, TripProgress.Walking(walk, at(24)), false, now, {}, {},
+                        nextTrains = NextTrains(jubilee, listOf(jubileeTrain("Stanmore", 21)), readyAt = at(24)).withGroups(now),
+                        lineChecks = RouteDisruption.LinesChecked(
+                            setOf("jubilee"), mapOf("jubilee" to LineStatus("jubilee", LineStatus.GOOD_SERVICE, "Good Service")),
+                            app.stopdash.domain.SteadyClock.stamp(now),
+                        ),
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("Stanmore").performClick()
+        val onLinePage = androidx.compose.ui.test.hasAnyAncestor(hasTestTag("tripLinesPage"))
+        val yours = androidx.compose.ui.test.SemanticsMatcher.expectValue(
+            androidx.compose.ui.semantics.SemanticsProperties.StateDescription,
+            composeRule.activity.getString(app.stopdash.R.string.route_stop_current),
+        )
+        fun getsOffMarked() = runCatching {
+            composeRule.onNode(androidx.compose.ui.test.hasScrollAction() and onLinePage)
+                .performScrollToNode(hasText("Canary Wharf"))
+            composeRule.onNode(hasText("Canary Wharf") and onLinePage).assert(yours)
+        }.isSuccess
+        composeRule.waitUntil(10_000) { getsOffMarked() }
+        live.value = null
+        composeRule.waitForIdle()
+        assertTrue("the ride's stop where it gets off stays marked", getsOffMarked())
+        // Rotated with the trip over: nothing live is left to find the ride in, and it's still marked.
+        restoration.emulateSavedInstanceStateRestore()
+        composeRule.waitUntil(10_000) { getsOffMarked() }
+    }
+
+    @Test
+    fun a_train_on_the_board_whose_line_was_not_checked_never_reads_good_service() {
+        // The trip's check couldn't reach TfL: the line's page says it couldn't check (SPEC D4).
+        val walking = trip.copy(legIndex = 1)
+        show(
+            walking, TripProgress.Walking(walk, at(24)),
+            nextTrains = NextTrains(jubilee, listOf(jubileeTrain("Stanmore", 21)), readyAt = at(24)).withGroups(now),
+            lineChecks = RouteDisruption.LinesChecked(setOf("jubilee"), emptyMap(), null),
+        )
+        composeRule.onNodeWithText("Stanmore").performClick()
+        val onLinePage = androidx.compose.ui.test.hasAnyAncestor(hasTestTag("tripLinesPage"))
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodes(hasText(composeRule.activity.getString(app.stopdash.R.string.trip_lines_unknown)) and onLinePage).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNode(hasText(composeRule.activity.getString(app.stopdash.R.string.trip_lines_good)) and onLinePage).assertDoesNotExist()
     }
 
     @Test

@@ -97,6 +97,13 @@ exercises the whole spine the widget later renders from.
       `emptyStateUncertain` ages its stops on the worker each tick; the route page's saved journeys here,
       lift check and step-free levels are worked out on the worker; so are `MainActivity`'s saved
       journeys oriented and measured, `rememberShownJourneys`.)
+- [ ] **The trip's other flows taken in by identity**: `MainActivity` collects the tracker's
+      `nextBoard`, `routeDisruptions` and `stationNotes` with `collectAsStateWithLifecycle`, which
+      compares each new value with the last by its data class `equals` on the main thread, walking its
+      departures, signals or notes. `lineChecks` takes `collectByIdentityWithLifecycle` instead (Codex,
+      #627): the `StateFlow` has already compared them where they were written, so a reference check
+      is all the main thread needs. Move the three over, and sweep the other screens' collections of
+      data classes holding collections the same way.
 - [x] Clear the `WorkerThreadCall` lint baseline (`app/lint-baseline.xml`): every screen now works out
       what its composition used to with the data it comes from, on the worker (the route page's
       `routeDetailWork`, a trip's open ride `rideLegView` and card notices `TripCardView.rideClosures`,
@@ -2590,13 +2597,15 @@ Builds on Phase 1's minimal line-status marking.
 - [ ] **"View line" wherever a stop or departure is shown** (maintainer, 2026-10-06), opening the line's
       page with its map. The route page's overflow has it, a trip's ride's route page included. On the
       way, no menu item: tapping a train on the board opens its line's page instead (maintainer,
-      2026-10-06), next. No long-press item either: a tap on a departure or a trip's ride already opens
-      its route page, which has it.
+      2026-10-06), done. No long-press item either: a tap on a departure or a trip's ride already opens
+      its route page, which has it. Still to do on the way: a line page there marks an alert the rider
+      dismissed elsewhere as dismissed, and offers its dismiss, as the list's line pages do.
 - [ ] **A line page drops its last row when a closure's stretch changes, not only its count** (Codex,
-      PR #623). While a route's line page works out its next row, it keeps the last one up only while
-      the alert reads the same (`sameVerdict`/`sameAlert`): same severity, words and number of closures.
-      A closure whose stretch or own words change, its count and the shown alert's words unchanged, keeps
-      the old closed stretch on the map until the new row is in, a worker's moment. Comparing every
+      PR #623). While a line's own page (a route page's, or a train's on the way) works out its next
+      row, it keeps the last one up only while the alert reads the same (`sameVerdict`/`sameAlert`):
+      same severity, words and number of closures. A closure whose stretch or own words change, its
+      count and the shown alert's words unchanged, keeps the old closed stretch on the map until the
+      new row is in, a worker's moment. Comparing every
       closure's stretches in composition would break the main-thread rule, and comparing by object
       blanks the page every 90 s, since each check fetches its statuses as new objects. The fix is at
       the source: reuse the previous `LineStatus` where a check brings back an equal one (worked out on

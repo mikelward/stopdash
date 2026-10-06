@@ -58,11 +58,13 @@ internal class RouteDisruptionChecks(
 ) {
     /**
      * Checks [trip] as it stands ([progress]): [directions] is the direction a coming leg's trains are
-     * seen going, by leg, where one is known ([LineStatus.forDirection]).
+     * seen going, by leg, where one is known ([LineStatus.forDirection]). [alsoLines] are asked about
+     * in the same request, the next board's, so a train tapped there opens its line's page with a
+     * status (maintainer, 2026-10-06); they're in [RouteDisruption.Found.lines], never a signal.
      */
-    suspend fun check(trip: ActiveTrip, progress: TripProgress?, directions: Map<Int, String>): RouteDisruption.Found {
+    suspend fun check(trip: ActiveTrip, progress: TripProgress?, directions: Map<Int, String>, alsoLines: Collection<String> = emptyList()): RouteDisruption.Found {
         if (progress == null || progress == TripProgress.Arrived) return RouteDisruption.Found.NONE
-        val lines = RouteDisruption.comingLines(trip)
+        val lines = (RouteDisruption.comingLines(trip) + alsoLines.filter { it.isNotBlank() }).distinct()
         val stops = RouteDisruption.comingStops(trip, progress).map { it.value }.distinctBy { it.id }
         val now = clock()
         // The dismissals so far, before anything is asked: one made after is newer than this check's
@@ -180,7 +182,8 @@ internal class RouteDisruptionChecks(
         }
         // Said, never quietly dropped (principle 1): which stops it named stays out of the log.
         if (leftOff > 0) warn("on the way: $leftOff line alert(s) left out, naming only stops off the ride")
-        return found
+        // Every line asked about, as it came: one with no status here couldn't be checked.
+        return found.copy(lines = RouteDisruption.LinesChecked(lines.toSet(), statuses?.statuses.orEmpty(), statuses?.at))
     }
 
     // What a check of the coming lines' statuses found: the [statuses] TfL returned, the lines it gave a

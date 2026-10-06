@@ -115,9 +115,10 @@ class ActiveTripTracker(
     // A "time to board" said no longer stands ([OnTheWay.boardStands]): taken down.
     private val onBoardSoonDone: () -> Unit = {},
     // "Route disruption": what's known that may stop a coming leg ([RouteDisruptionChecks.check]),
-    // asked after each refresh, given the direction a coming leg's trains are seen going, by leg.
-    private val disruptions: suspend (ActiveTrip, TripProgress, Map<Int, String>) -> RouteDisruption.Found =
-        { _, _, _ -> RouteDisruption.Found.NONE },
+    // asked after each refresh, given the direction a coming leg's trains are seen going, by leg, and the
+    // lines the next board lists, asked about with the trip's own ([RouteDisruption.Found.lines]).
+    private val disruptions: suspend (ActiveTrip, TripProgress, Map<Int, String>, Collection<String>) -> RouteDisruption.Found =
+        { _, _, _, _ -> RouteDisruption.Found.NONE },
     // Posts what's known, as [DisruptionPost] says, standing until the given time: whether it's up,
     // so one that couldn't be heard is tried on the next refresh, and one that can't be kept up is
     // taken down ([onDisruptionDone]), not brought back.
@@ -238,6 +239,15 @@ class ActiveTripTracker(
 
     private val _routeDisruptions = MutableStateFlow<KnownDisruptions?>(null)
     val routeDisruptions: StateFlow<KnownDisruptions?> = _routeDisruptions.asStateFlow()
+
+    /**
+     * The lines' statuses the last disruption check asked for ([RouteDisruption.LinesChecked]): the trip's
+     * coming lines and the next board's, so a train tapped on the board opens its line's page with a
+     * status (maintainer, 2026-10-06). Null before a check is made, or once the trip is over; a check that
+     * failed has every line asked about without a status.
+     */
+    private val _lineChecks = MutableStateFlow<RouteDisruption.LinesChecked?>(null)
+    val lineChecks: StateFlow<RouteDisruption.LinesChecked?> = _lineChecks.asStateFlow()
 
     /**
      * What's known wrong on the route ahead ([signals]), standing [until] its evidence goes stale, as
@@ -554,6 +564,7 @@ class ActiveTripTracker(
                 unsaved = true
             }
             _trip.value = moved.copy(alertLeft = false)
+            refollow()
             // The step moved to has no answer of its own yet: the last one's isn't passed off as its
             // (a ride's time, its next stop still blank), which waits for the pick below (Codex, PR #384).
             _updatedAt.value = null
@@ -634,6 +645,7 @@ class ActiveTripTracker(
         // The rides' directions are kept by leg, which the split has moved: learned again.
         rideDirections.clear()
         _trip.value = taken.copy(alertLeft = false)
+        refollow()
         // The rerouted ride has no answer of its own yet: the last one's isn't passed off as its.
         _updatedAt.value = null
         _answeredAt.value = null
@@ -810,6 +822,7 @@ class ActiveTripTracker(
         _endFailures.value = 0
         _trip.value = null
         _stationNotes.value = null
+        _lineChecks.value = null
         forgetFixes()
         _progress.value = null
         _nextBoard.value = null
@@ -882,6 +895,26 @@ class ActiveTripTracker(
         }
     }
 
+    // The next board's lines, asked with the trip's own in the same request: a train tapped there opens
+    // its line's page with a status (maintainer, 2026-10-06). Only the ride's mode, as the board shows
+    // ([OnTheWay.boardLineIds]), never every line at an interchange, which could split the request
+    // (Codex, #627). The board's last cut, routes reaching where the rider gets off, needs the routes
+    // the screen loads, so a same-mode line that doesn't is still asked. None from a failed board.
+    private fun boardLinesNow(): List<String> =
+        _nextBoard.value?.takeIf { !it.failed }?.let { board -> OnTheWay.boardLineIds(board.ride, board.boards.values.flatten()) }.orEmpty()
+
+    // Which lines the trip follows now ([RouteDisruption.LinesChecked.following]), said as soon as the trip
+    // or its board moves on, not when the next check goes out: a line it no longer follows (the board moved
+    // on to the next ride, or failed; a ride left behind) no longer has its last status taken as current,
+    // even while this refresh is still on its way to that check (Codex, #627). Called on [compute], where
+    // the trip's steps and boards are worked out.
+    private fun refollow() {
+        val checks = _lineChecks.value ?: return
+        val trip = _trip.value
+        val following = if (trip == null) emptySet() else (RouteDisruption.comingLines(trip) + boardLinesNow()).toSet()
+        if (following != checks.following) _lineChecks.value = checks.copy(following = following)
+    }
+
     /**
      * "Route disruption" (SPEC *On the way*): what's known now that may stop a coming leg
      * ([RouteDisruption.signals]). Something not heard before on this trip is heard
@@ -896,11 +929,18 @@ class ActiveTripTracker(
         val progress = _progress.value
         if (trip == null || progress == null || progress == TripProgress.Arrived) {
             _stationNotes.value = null
+            _lineChecks.value = null
             takeDisruptionDown()
             return
         }
+        val boardLines = boardLinesNow()
+        // What this check asks about, said while it's out: a board line's page reads "Checking…" only for
+        // a line a check is really asking about, never one the board no longer lists (Codex, #627).
+        val asking = (RouteDisruption.comingLines(trip) + boardLines).toSet()
+        _lineChecks.value = (_lineChecks.value ?: RouteDisruption.LinesChecked(emptySet(), emptyMap(), null))
+            .copy(asking = asking, following = asking)
         val found = try {
-            disruptions(trip, progress, directionsOf(trip))
+            disruptions(trip, progress, directionsOf(trip), boardLines)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -908,6 +948,8 @@ class ActiveTripTracker(
             warn("on the way: disruption check failed: ${e::class.simpleName}")
             RouteDisruption.Found.NONE
         }
+        // Every line it would have asked about, unchecked, where the check failed before it could say.
+        _lineChecks.value = (found.lines ?: RouteDisruption.LinesChecked(asking, emptyMap(), null)).copy(following = asking)
         // No longer than its evidence is current, nor than the trip's own answer stays live ([CURRENT_FOR]
         // from when it was had, [updatedAt]): renewed by each refresh, it comes down by itself once nothing
         // follows the trip (the app closed with no ongoing notification), and at once with a refresh that
@@ -1169,6 +1211,7 @@ class ActiveTripTracker(
                 _endFailures.value = 0
                 _trip.value = null
                 _stationNotes.value = null
+                _lineChecks.value = null
                 forgetFixes()
             }
             return false
@@ -1400,6 +1443,7 @@ class ActiveTripTracker(
         val ahead = OnTheWay.upcomingRide(next)
         if (_nextBoard.value?.ride != ahead) {
             if (ahead == null) _nextBoard.value = null else fetchBoard(next, now, boards)
+            refollow()
         }
         // Counted from where they were seen, nothing shown stands on the failed lookup (no train's time,
         // no arrival: [OnTheWay.eta]), so the step is current; the failure is still said.
@@ -1430,6 +1474,7 @@ class ActiveTripTracker(
             _endFailures.value = 0
             _trip.value = null
             _stationNotes.value = null
+            _lineChecks.value = null
             forgetFixes()
             // Forgotten: no trip left for an alert to belong to.
             if (next.alertLeft) onGetOffSoonDone()
@@ -1919,6 +1964,7 @@ class ActiveTripTracker(
         val ride = OnTheWay.upcomingRide(trip)
         if (ride == null) {
             _nextBoard.value = null
+            refollow()
             return null
         }
         return boards.getOrPut(ride) { readBoard(ride, now) }
@@ -1930,7 +1976,10 @@ class ActiveTripTracker(
         val board = boards[from]?.getOrNull() ?: return
         val moved = board.copy(ride = to)
         boards[to] = Result.success(moved)
-        if (_nextBoard.value == board) _nextBoard.value = moved
+        if (_nextBoard.value == board) {
+            _nextBoard.value = moved
+            refollow()
+        }
         if (boardSeenRide == from) boardSeenRide = to
     }
 
@@ -1939,6 +1988,7 @@ class ActiveTripTracker(
             // Stamped by the steady clock, as every fetch is ([SteadyClock]).
             Result.success(boardOf(ride, SteadyClock.stamp(now)).also { board ->
                 _nextBoard.value = board
+                refollow()
                 if (boardSeenRide != ride) {
                     boardSeenRide = ride
                     boardSeen.clear()
@@ -1956,6 +2006,7 @@ class ActiveTripTracker(
             // kept, marked failed; another ride's board is no board of this one's.
             val last = _nextBoard.value?.takeIf { it.ride == ride }
             _nextBoard.value = last?.copy(failed = true) ?: NextBoard(ride, emptyList(), fetchedAt = null, failed = true)
+            refollow()
             Result.failure(e)
         }
 
@@ -1985,6 +2036,7 @@ class ActiveTripTracker(
         val trip = withAheadKept(stepped, progress)
         if (trip != _trip.value) unsaved = true
         _trip.value = trip
+        refollow()
         _progress.value = withAhead(trip, progress)
         // Saved again after a save that failed, or was cut short, though unchanged, so it's kept
         // once it can be.

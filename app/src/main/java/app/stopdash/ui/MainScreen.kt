@@ -4543,35 +4543,47 @@ private fun CollapsibleStatus(
 internal fun DepartureRow.detailKey(): String = "$stopId|$lineId|$directionKey|$platform"
 
 /**
- * [row]'s line on a page of its own ([TripLinesPage]), as a route page's "View line" opens it
- * (maintainer, 2026-10-06). Worked out on the worker ([routeLineRow]); the page is up at once, the
- * line's pill alone claiming no status until it's in, so Back closes this page, never the route page
- * under it (Codex, #623).
+ * [row]'s line on a page of its own ([OneLinePage]), as a route page's "View line" opens it (maintainer,
+ * 2026-10-06), its row worked out by [routeLineRow].
  */
 @Composable
 private fun RouteLinePage(row: DepartureRow, ride: TripLeg?, unknown: Boolean, checking: Boolean, onClose: () -> Unit) {
     val slot = remember { mutableStateOf<Worked<Inputs, TripRow>?>(null) }
-    val lineRow = rememberWorked(slot, Inputs(row, ride, unknown, checking), keep = ::sameVerdict) {
+    val status = row.status ?: row.statusBehind
+    val lineRow = rememberWorked(slot, Inputs(row, ride, status, row.statusDismissed, unknown, checking), keep = ::sameVerdict) {
         routeLineRow(row, ride, unknown, checking)
     }
-    val shown = lineRow ?: remember(row.lineId, row.lineName, row.mode) { routeLineStandIn(row) }
+    OneLinePage(lineRow, row.lineId, row.lineName, row.mode, onClose)
+}
+
+/**
+ * One line on a page of its own ([TripLinesPage] alone): a route page's "View line", or a train tapped on
+ * a trip's board (maintainer, 2026-10-06). Its row ([lineRow]) is worked out on the worker by the caller,
+ * kept while the next is worked out only while it says the same, as sure ([sameVerdict]). The page is up
+ * at once, the line's pill alone claiming no status until the row is in ([lineStandIn]), so Back closes
+ * this page, never the one under it (Codex, #623).
+ */
+@Composable
+internal fun OneLinePage(lineRow: TripRow?, lineId: String, lineName: String, mode: String, onClose: () -> Unit) {
+    val shown = lineRow ?: remember(lineId, lineName, mode) { lineStandIn(lineId, lineName, mode) }
     TripLinesPage(shown, onClose, dismissal = LocalDismissLineAlert.current, alone = true)
 }
 
 /**
- * Whether [RouteLinePage]'s row worked out for [held] may stay up while [wanted]'s is worked out: only
- * while it says the same, as sure as before (Codex, #623). A check gone stale, failed or out again
- * never leaves the last verdict up meanwhile, nor does an alert that began, ended or was dismissed:
- * its map would draw a closure that has ended, or none where one began (SPEC *Line page*). Statuses are
- * fetched again as new objects with every check, so the alert is compared by what the page shows of it
- * ([sameAlert]); one fetched again unchanged keeps the page, and its map, still. [held] and [wanted]
- * are the page's [Inputs]: the row, the ride, unknown, checking.
+ * Whether a one-line page's row ([OneLinePage]) worked out for [held] may stay up while [wanted]'s is
+ * worked out: only while it says the same, as sure as before (Codex, #623). A check gone stale, failed
+ * or out again never leaves the last verdict up meanwhile, nor does an alert that began, ended or was
+ * dismissed: its map would draw a closure that has ended, or none where one began (SPEC *Line page*).
+ * Statuses are fetched again as new objects with every check, so the alert is compared by what the
+ * page shows of it ([sameAlert]); one fetched again unchanged keeps the page, and its map, still.
+ * [held] and [wanted] are the page's [Inputs], ending with the line's status, whether it was dismissed,
+ * unknown and checking.
  */
 internal fun sameVerdict(held: Inputs, wanted: Inputs): Boolean {
-    val was = held.parts[0] as DepartureRow
-    val now = wanted.parts[0] as DepartureRow
-    return held.parts[2] == wanted.parts[2] && held.parts[3] == wanted.parts[3] &&
-        was.statusDismissed == now.statusDismissed && sameAlert(was.status ?: was.statusBehind, now.status ?: now.statusBehind)
+    val n = held.parts.size
+    if (n < 4 || wanted.parts.size != n) return false
+    return sameAlert(held.parts[n - 4] as LineStatus?, wanted.parts[n - 4] as LineStatus?) &&
+        (n - 3 until n).all { held.parts[it] == wanted.parts[it] }
 }
 
 /**
@@ -4585,32 +4597,54 @@ internal fun sameAlert(a: LineStatus?, b: LineStatus?): Boolean =
         a.fullText == b.fullText && a.closures.size == b.closures.size)
 
 /**
- * [row]'s line as its page stands in for it while [routeLineRow] is worked out: its pill alone, no
+ * A line as its page ([OneLinePage]) stands in for it while its row is worked out: its pill alone, no
  * status claimed and no map drawn ([TripLine.restoring]). One line, so cheap enough to build in place.
  */
-internal fun routeLineStandIn(row: DepartureRow): TripRow {
-    val leg = TripLeg(row.mode, row.lineId, row.lineName, "", "", "", "", Instant.EPOCH, Instant.EPOCH)
+internal fun lineStandIn(lineId: String, lineName: String, mode: String): TripRow {
+    val leg = TripLeg(mode, lineId, lineName, "", "", "", "", Instant.EPOCH, Instant.EPOCH)
     return TripRow(checking = true, every = listOf(TripLine(pillNamed(leg), status = null, restoring = true)))
 }
 
 /**
  * The row of one line a route page's "View line" opens ([RouteLinePage]): the line's status as the
- * route page has it, an alert behind the stop included since the page is about the whole line. The
- * trip's [ride] on it, where there is one, gives its map where the ride boards and gets off and its
- * stretch ([TripLine.rides]); else the route's stop is kept on the map as the rider's. [unknown] where
- * the route page couldn't check the line or its check has gone stale, so the page never claims a good
- * service it can't stand behind (SPEC D4), and says so beside a status kept from before too (Codex, #623).
+ * route page has it, an alert behind the stop included since the page is about the whole line
+ * ([lineRow]). [unknown] where the route page couldn't check the line or its check has gone stale.
  */
 @WorkerThread
-internal fun routeLineRow(row: DepartureRow, ride: TripLeg?, unknown: Boolean, checking: Boolean): TripRow {
-    val mode = row.mode.ifBlank { ride?.mode.orEmpty() }.ifBlank { Connections.knownMode(row.lineId).orEmpty() }
-    val leg = ride?.takeIf { it.lineId == row.lineId }
-        ?: TripLeg(mode, row.lineId, row.lineName, row.stopId, row.stopName, "", "", Instant.EPOCH, Instant.EPOCH)
-    val status = row.status ?: row.statusBehind
+internal fun routeLineRow(row: DepartureRow, ride: TripLeg?, unknown: Boolean, checking: Boolean): TripRow =
+    lineRow(
+        row.mode, row.lineId, row.lineName, row.stopId, row.stopName,
+        status = row.status ?: row.statusBehind, dismissed = row.statusDismissed, ride = ride, unknown = unknown, checking = checking,
+    )
+
+/**
+ * The row of one line on a page of its own ([OneLinePage]), at [stopId]: its [status] and whether the
+ * rider [dismissed] it. The trip's [ride] on it, where there is one, gives its map where the ride boards
+ * and gets off and its stretch ([TripLine.rides]); else [stopId] is kept on the map as the rider's.
+ * [unknown] where its check couldn't be made or has gone stale, so the page never claims a good service
+ * it can't stand behind (SPEC D4), and says so beside a status kept from before too (Codex, #623);
+ * [checking] while its check is out.
+ */
+@WorkerThread
+internal fun lineRow(
+    mode: String,
+    lineId: String,
+    lineName: String,
+    stopId: String,
+    stopName: String,
+    status: LineStatus?,
+    dismissed: Boolean,
+    ride: TripLeg?,
+    unknown: Boolean,
+    checking: Boolean,
+): TripRow {
+    val known = mode.ifBlank { ride?.mode.orEmpty() }.ifBlank { Connections.knownMode(lineId).orEmpty() }
+    val leg = ride?.takeIf { it.lineId == lineId }
+        ?: TripLeg(known, lineId, lineName, stopId, stopName, "", "", Instant.EPOCH, Instant.EPOCH)
     val line = TripLine(
-        pillNamed(leg.copy(mode = mode, lineName = row.lineName.ifBlank { leg.lineName })),
+        pillNamed(leg.copy(mode = known, lineName = lineName.ifBlank { leg.lineName })),
         status,
-        dismissed = row.statusDismissed,
+        dismissed = dismissed,
         checking = checking,
         unknown = unknown && !checking,
         // What its map draws of the alert, so the same alert fetched again keeps the map up (Codex, #623).

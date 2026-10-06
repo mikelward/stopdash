@@ -50,6 +50,7 @@ import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,8 +70,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.ActiveTrip
+import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Countdown
 import app.stopdash.domain.Departure
+import app.stopdash.domain.LineStatus
+import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.StopDistance
@@ -153,8 +157,22 @@ internal fun OnTheWayScreen(
     // The rider reroutes onto a branch on the board that leaves the plan ([ActiveTripTracker.take], maintainer
     // 2026-10-05). Null offers none.
     onTake: ((TripLeg, OffPlan.Branch) -> Unit)? = null,
+    // The lines' statuses the trip's last check found ([ActiveTripTracker.lineChecks]), the board's among
+    // them: a train tapped on the board opens its line's page with its status (maintainer, 2026-10-06).
+    lineChecks: RouteDisruption.LinesChecked? = null,
 ) {
     BackHandler(onBack = onBack)
+    // A train tapped on the board: its line's page over this one, instead of a "View line" item
+    // (maintainer, 2026-10-06). Kept as the line and the stop it was tapped at, so a rotation keeps it open
+    // whatever the board has done meanwhile.
+    var boardLine by rememberSaveable { mutableStateOf<List<String>?>(null) }
+    // And the ride it was tapped for, kept whole and saved with the page ([TappedRideSaver]): its stretch
+    // stays on the map whatever the trip does since, its end and a rotation after it included, with nothing
+    // live to find it again in (Codex, #627).
+    var boardRide by rememberSaveable(stateSaver = TappedRideSaver) { mutableStateOf<TripLeg?>(null) }
+    boardLine?.let { line ->
+        BoardLinePage(line, boardRide, lineChecks, now, onClose = { boardLine = null; boardRide = null })
+    }
     val destination = trip?.destinationName
     Scaffold(
         topBar = {
@@ -251,7 +269,13 @@ internal fun OnTheWayScreen(
                     // On board the ride the board is for (its train taken to have left with them, say): the
                     // board's branches don't say which forks are behind them, so the ride's own stand in (Codex, #586).
                     val aboardBoard = nextTrains != null && trip != null && (trip.boarded || trip.onBoardSeen) && sameRide(nextTrains.ride, trip.leg)
-                    if (nextTrains != null && trip != null) NextTrainsSection(nextTrains, now, onTake, offPlan = !aboardBoard)
+                    if (nextTrains != null && trip != null) {
+                        NextTrainsSection(nextTrains, now, onTake, offPlan = !aboardBoard) { row ->
+                            val ride = listOfNotNull(nextTrains.ride, trip.leg).firstOrNull { it.lineId == row.lineId }
+                            boardRide = ride
+                            boardLine = listOf(row.lineId, row.lineName, row.mode, row.stopId, row.stopName)
+                        }
+                    }
                     // On board, the board's gone (or isn't theirs to change from): the branches still ahead, for a
                     // train that changed its branch on the way or that TfL labels wrongly (maintainer, 2026-10-05).
                     // Only from a current answer: from an old one, the train may have passed a fork since (Codex, #586).
@@ -810,8 +834,8 @@ internal fun nextDueOf(board: ActiveTripTracker.NextBoard, sequences: Map<String
  * The next ride's trains ([NextTrains]) under that ride's own row, drawn as the departures board
  * draws a stop (maintainer, 2026-09-28): its platform header over the board's own card, a row per
  * line and terminus with its next few times, so they read as the board rather than as another step.
- * A time due before the rider can be there is grayed. Nothing to open from here: a row takes no tap
- * and announces no action.
+ * A time due before the rider can be there is grayed. A row tapped opens its line's page
+ * ([onOpenLine], maintainer 2026-10-06); null leaves the rows with nothing to open.
  */
 @Composable
 private fun NextTrainsSection(
@@ -821,6 +845,7 @@ private fun NextTrainsSection(
     onTake: ((TripLeg, OffPlan.Branch) -> Unit)? = null,
     // Whether the board offers its branches off the plan: not once the rider is on board its ride.
     offPlan: Boolean = true,
+    onOpenLine: ((DepartureRow) -> Unit)? = null,
 ) {
     val groups = next.groups
     Column(Modifier.fillMaxWidth().testTag("onTheWayTrains"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -840,7 +865,7 @@ private fun NextTrainsSection(
                 starred = emptySet(),
                 onToggleStar = {},
                 starringAvailable = false,
-                onOpenDetail = null,
+                onOpenDetail = onOpenLine?.let { open -> { row, _ -> open(row) } },
                 grayBefore = next.readyAt,
             )
         }
@@ -872,6 +897,84 @@ private fun NextTrainsSection(
             groups.isEmpty() -> NoteText(stringResource(R.string.on_the_way_trains_none, next.ride.toName))
         }
     }
+}
+
+/**
+ * The line of a train tapped on the board ([line]: its id, name, mode and the stop it was tapped at) on a
+ * page of its own ([OneLinePage]), with its status as the trip's last check found it ([boardLineStatus]).
+ * The ride it was tapped for ([tapped], kept as it was tapped) gives its map where it boards and gets off
+ * and its stretch, whatever the trip has done since, its end included; with none (another line's train)
+ * the board's stop is kept on the map as the rider's.
+ */
+@Composable
+private fun BoardLinePage(
+    line: List<String>,
+    tapped: TripLeg?,
+    checks: RouteDisruption.LinesChecked?,
+    now: Instant,
+    onClose: () -> Unit,
+) {
+    val (lineId, lineName, mode, stopId, stopName) = line
+    val found = boardLineStatus(checks, lineId, now)
+    val slot = remember { mutableStateOf<Worked<Inputs, TripRow>?>(null) }
+    val worked = rememberWorked(
+        slot,
+        Inputs(lineId, lineName, mode, stopId, stopName, tapped, found.status, false, found.unknown, found.checking),
+        keep = ::sameVerdict,
+    ) {
+        lineRow(mode, lineId, lineName, stopId, stopName, found.status, dismissed = false, ride = tapped, unknown = found.unknown, checking = found.checking)
+    }
+    OneLinePage(worked, lineId, lineName, mode, onClose)
+}
+
+/**
+ * The ride a board's train was tapped for, saved whole with the page (Codex, #627): once the trip has
+ * ended, nothing live is left to find it again in. Its ends are public stops, kept on the device like the
+ * trip itself. Saving and restoring hand over a fixed set of references, the ride's lists as they are (a
+ * parcel writes any list as one), so neither walks a route on the main thread (Codex, #627).
+ */
+internal val TappedRideSaver = Saver<TripLeg?, ArrayList<Any?>>(
+    save = { leg ->
+        leg?.let {
+            arrayListOf(
+                it.mode, it.lineId, it.lineName, it.fromId, it.fromName, it.toId, it.toName, it.departure, it.arrival,
+                it.path, it.pathNames, it.changeAfter, it.headings, it.fromArea, it.toArea,
+                it.fromAt?.latitude, it.fromAt?.longitude, it.toAt?.latitude, it.toAt?.longitude, it.plannedFromId, it.plannedToId,
+            )
+        }
+    },
+    restore = { saved ->
+        @Suppress("UNCHECKED_CAST")
+        fun strings(i: Int) = saved[i] as List<String>
+        fun at(i: Int) = (saved[i] as Double?)?.let { lat -> (saved[i + 1] as Double?)?.let { lon -> Coordinates(lat, lon) } }
+        TripLeg(
+            saved[0] as String, saved[1] as String, saved[2] as String, saved[3] as String, saved[4] as String,
+            saved[5] as String, saved[6] as String, saved[7] as Instant, saved[8] as Instant,
+            strings(9), strings(10), saved[11] as Duration, strings(12), saved[13] as String, saved[14] as String,
+            fromAt = at(15), toAt = at(17), plannedFromId = saved[19] as String, plannedToId = saved[20] as String,
+        )
+    },
+)
+
+/** A line's status as the trip's last check found it ([boardLineStatus]). */
+internal class BoardLineStatus(val status: LineStatus?, val unknown: Boolean, val checking: Boolean)
+
+/**
+ * [lineId]'s status as the trip's last check found it ([checks]; the board's lines are asked with the
+ * trip's on each refresh), by one rule (Codex, #627): its status while that check is current and the trip
+ * still follows the line ([RouteDisruption.LinesChecked.following], kept up as the trip or its board moves
+ * on). Else in doubt, its status kept beside that (SPEC D4): [BoardLineStatus.checking] while a check under
+ * way asks about it ([RouteDisruption.LinesChecked.asking]), a line the last check got no status for
+ * included (its request failed, or TfL left it out); else [BoardLineStatus.unknown], since none will (the
+ * board failed, or moved on to the next ride). A line with no id can't be asked about.
+ */
+internal fun boardLineStatus(checks: RouteDisruption.LinesChecked?, lineId: String, now: Instant): BoardLineStatus {
+    if (lineId.isBlank()) return BoardLineStatus(null, unknown = true, checking = false)
+    val status = checks?.takeIf { lineId in it.asked }?.statuses?.get(lineId)
+    val asking = checks?.asking?.contains(lineId) == true
+    val followed = checks != null && lineId in checks.following
+    if (status != null && followed && checkCurrent(checks?.at, now)) return BoardLineStatus(status, unknown = false, checking = false)
+    return BoardLineStatus(status, unknown = !asking, checking = asking)
 }
 
 /**
