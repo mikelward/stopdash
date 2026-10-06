@@ -12,7 +12,7 @@ class RevealLogTest {
     private val log = RevealLog(clock.markNow())
 
     private fun waiting(hasPlan: Boolean = true, hasCards: Boolean = true, routesLoading: Int = 0, rowIn: Boolean = true, widthsIn: Boolean = true) =
-        log.waitingFor(hasPlan, hasCards, refreshing = false, planning = false, checking = false, bannerSettled = true, ordered = true, widthsIn = widthsIn, rowIn = rowIn, routesLoading = routesLoading)
+        log.waitingFor(hasPlan, hasCards, refreshing = false, planning = false, checking = false, ordered = true, widthsIn = widthsIn, rowIn = rowIn, routesLoading = routesLoading)
 
     @Test
     fun `names what the list last waited for, with when its routes came`() {

@@ -2469,6 +2469,8 @@ Builds on Phase 1's minimal line-status marking.
 - [ ] **A trip's disruptions row is one line** (maintainer, 2026-10-04). The row shows the chips that
       fit, then "+N more", so it never wraps and pushes the routes down (Codex, PR #543); it bounds the
       pills composed on the main thread too. The sheet below already lists everything the row cuts.
+      More pills can reach it since the lines whose trains couldn't be checked joined "Unknown:"
+      (Codex on #618), so a refresh adding or dropping enough of them can wrap it until this lands.
 - [x] **Every line a trip rides, with its status, a tap on the disruptions row away** (maintainer,
       2026-10-04). Done as a page of its own (`TripLinesPage`, worked out with the row on the worker:
       `tripLines`): one row per line with its worst-severity status, disruptions first, dismissed ones
@@ -2526,12 +2528,13 @@ Builds on Phase 1's minimal line-status marking.
       force (an escalator out, say); the stop's own notice belongs there too.
 - [ ] **An opened trip route shows each station's notice where it reaches it**, as closures are shown
       (maintainer's pick, third of three, 2026-10-04); the list's cards stay without them.
-- [ ] **"Some routes couldn't be checked" moves the trip list when it comes or goes** (Codex, PR #543).
+- [x] **"Some routes couldn't be checked" moves the trip list when it comes or goes** (Codex, PR #543).
       Once the list is showing, a refresh that turns a check from checking to couldn't-check inserts
       the banner over the routes (after its 1.5 s hold), shifting every card; the reverse removes it.
       It predates the hold-still work. Decided (maintainer, 2026-10-04, mock C): it moves into the
       disruptions row, which always holds its place, under "Unknown:" with the pill of each line whose
-      trains couldn't be checked; the expand view says what that means. The banner goes.
+      trains couldn't be checked; the expand view says what that means. The banner goes. Done: the
+      trip list's banner is gone, and its row names each such line ([trainsUnchecked]).
 - [x] **Build the trip list hidden behind its placeholder, then show it** (Codex, PR #543). Everything
       the list draws is now worked out before it shows: the cards' times, order and headers in #529's
       frame, the disruptions row, and each card's pill width, measured behind "Checking routes…" and

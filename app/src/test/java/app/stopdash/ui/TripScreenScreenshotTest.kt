@@ -3415,9 +3415,9 @@ class TripScreenScreenshotTest {
     }
 
     @Test
-    fun a_trip_list_waits_for_the_couldnt_check_banner_before_it_appears() {
+    fun a_trip_list_names_a_line_it_couldnt_check_on_its_disruptions_row() {
         // The Jubilee's route fails once the test says so: the routes can't all be checked, and the
-        // banner saying so holds a moment before it's drawn ([NOTE_SETTLE_MILLIS]).
+        // disruptions row says so once it has held ([NOTE_SETTLE_MILLIS]), never a banner over the list.
         val jubilee = kotlinx.coroutines.CompletableDeferred<Unit>()
         val gated = object : RouteSequenceSource {
             override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
@@ -3434,17 +3434,15 @@ class TripScreenScreenshotTest {
         composeRule.mainClock.advanceTimeBy(1_000)
         jubilee.complete(Unit)
         composeRule.waitForIdle()
-        // The banner hasn't settled: the list waits for it rather than be pushed down by it (Codex, #543).
-        composeRule.mainClock.advanceTimeBy(500)
-        composeRule.onAllNodes(hasTestTag("tripRoutes")).assertCountEquals(0)
-        composeRule.mainClock.advanceTimeBy(2_000)
-        composeRule.onNodeWithText("Some routes couldn't be checked").assertExists()
+        composeRule.mainClock.advanceTimeBy(2_500)
         composeRule.onNodeWithTag("tripRoutes").assertExists()
+        inRow(hasText("Unknown:")).assertExists()
+        composeRule.onNodeWithText("Some routes couldn't be checked").assertDoesNotExist()
     }
 
     @Test
-    fun a_plan_starting_afresh_never_shows_the_last_plans_couldnt_check_banner() {
-        // The Jubilee's route fails: the routes can't all be checked, and the banner says so.
+    fun a_plan_starting_afresh_never_shows_the_last_plans_couldnt_check() {
+        // The Jubilee's route fails: the routes can't all be checked, and the disruptions row says so.
         val failing = object : RouteSequenceSource {
             override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
                 if (lineId == "jubilee") throw app.stopdash.domain.TflException.Offline(null)
@@ -3456,18 +3454,18 @@ class TripScreenScreenshotTest {
         composeRule.mainClock.autoAdvance = false
         show(planned, routeStops = RouteStopsRepository(failing, io = inline, compute = inline), worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher(), held = held)
         composeRule.mainClock.advanceTimeBy(3_000)
-        composeRule.onNodeWithText("Some routes couldn't be checked").assertExists()
+        inRow(hasText("Unknown:")).assertExists()
         // A new plan: no cards while it's planned. The last plan's failure never stands over its
-        // placeholder for the banner's hold (Codex, #543).
+        // placeholder for the row's hold (Codex, #543).
         held.value = planned.copy(routes = null, planning = true)
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(100)
-        composeRule.onNodeWithText("Some routes couldn't be checked").assertDoesNotExist()
+        inRow(hasText("Unknown:")).assertDoesNotExist()
     }
 
     @Test
-    fun a_line_avoided_takes_its_couldnt_check_banner_with_it() {
-        // The Jubilee's route fails: the routes can't all be checked, and the banner says so.
+    fun a_line_avoided_takes_its_couldnt_check_with_it() {
+        // The Jubilee's route fails: the routes can't all be checked, and the disruptions row says so.
         val failing = object : RouteSequenceSource {
             override suspend fun routeSequence(lineId: String, direction: String): LineSequence {
                 if (lineId == "jubilee") throw app.stopdash.domain.TflException.Offline(null)
@@ -3490,14 +3488,14 @@ class TripScreenScreenshotTest {
             }
         }
         composeRule.mainClock.advanceTimeBy(3_000)
-        composeRule.onNodeWithText("Some routes couldn't be checked").assertExists()
+        inRow(hasText("Unknown:")).assertExists()
         // The Jubilee avoided, and the trip planned without it: the route left was all checked, and the
-        // banner goes at once, never standing over it for its hold (Codex, #543).
+        // row's "Unknown:" goes at once, never standing over it for its hold (Codex, #543).
         avoided.value = setOf("jubilee")
         state.value = planned.copy(routes = listOf(viaWhitechapel))
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(100)
-        composeRule.onNodeWithText("Some routes couldn't be checked").assertDoesNotExist()
+        inRow(hasText("Unknown:")).assertDoesNotExist()
     }
 
     @Test
