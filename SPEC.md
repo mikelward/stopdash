@@ -2447,7 +2447,16 @@ than showing normal-looking times whose disruption status was never actually che
 **Every line opens a page of its own from the lines page, its map on it whatever its status**
 (maintainer, 2026-10-06: "tapping on any line should show the line name and the route map, even ones
 with good service"). The page is the line's row as the lines page shows it, TfL's reason where it's
-disrupted, then the map.
+disrupted, then the map. A route page opens its line's page too, from its overflow's **View line**
+(maintainer, 2026-10-06), over the route page, which Back returns to: the line's status as the route
+page has it (an alert behind the stop included, the page being about the whole line; "Couldn't
+check" where the line's own check failed or has gone stale, beside a status kept from before too,
+the stop's closure check being the route page's to doubt, not the line's), and the route's stop
+kept on the map as the rider's. It opens on the tap, the line's pill alone until its status is in.
+It holds still through the same alert fetched again, but an alert that began, ended or changed, or
+its check now more or less sure, takes the old verdict down at once, the pill alone until the new one is
+in. A trip's ride's route page keeps where the ride boards and gets off, its stretch shown as on the
+trip's lines page.
 
 **Map.** The whole line, one station a row down the page, each branch on a rail of its own in the
 line's color, curving into another where branches meet and out where they part, as TfL's own line

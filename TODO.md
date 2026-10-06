@@ -2556,9 +2556,22 @@ Builds on Phase 1's minimal line-status marking.
       is taken on its own, so the map no longer works out which one the page shows. Starred stops stand
       in for a ride from the home screen.
 - [ ] **"View line" wherever a stop or departure is shown** (maintainer, 2026-10-06), opening the line's
-      page with its map: next up. First the route page's overflow and a trip's ride; then where else it
-      fits (the on-the-way screen with the ride's stretch open, a stop's line pills), checked in the code
-      before it's offered.
+      page with its map. The route page's overflow has it, a trip's ride's route page included. On the
+      way, no menu item: tapping a train on the board opens its line's page instead (maintainer,
+      2026-10-06), next. No long-press item either: a tap on a departure or a trip's ride already opens
+      its route page, which has it.
+- [ ] **A line page drops its last row when a closure's stretch changes, not only its count** (Codex,
+      PR #623). While a route's line page works out its next row, it keeps the last one up only while
+      the alert reads the same (`sameVerdict`/`sameAlert`): same severity, words and number of closures.
+      A closure whose stretch or own words change, its count and the shown alert's words unchanged, keeps
+      the old closed stretch on the map until the new row is in, a worker's moment. Comparing every
+      closure's stretches in composition would break the main-thread rule, and comparing by object
+      blanks the page every 90 s, since each check fetches its statuses as new objects. The fix is at
+      the source: reuse the previous `LineStatus` where a check brings back an equal one (worked out on
+      the worker, where each check is answered: `MainViewModel`, `FartherCardsViewModel`,
+      `TripViewModel`, `RideLineChecks`, `RouteDisruptionChecks`), so `sameAlert` can be the same
+      object alone. The trip page and the home screen's lines page hold their last frame through a
+      refresh the same way today (`mayStandIn`, `sameList`), and would gain from it too.
 - [ ] **The route page as its origin, a folded span, the current station and the rest of the route**
       (maintainer's idea, 2026-10-06: explore, or discard). Pairs with the folding-map item above.
 - [ ] **Rethink long-pressing a stop on the route page** (maintainer, 2026-10-06). It was meant to offer

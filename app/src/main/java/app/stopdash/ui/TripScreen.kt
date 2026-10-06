@@ -1334,6 +1334,10 @@ private fun TripContent(
             } else {
                 null
             },
+            ride = detailLeg,
+            // Its line's page has the line's own check alone, not its stop's.
+            lineUnknown = tripLineInDoubt(state, detailRow.lineId, now),
+            lineChecking = tripLineChecking(state, detailRow.lineId, now),
         )
         return
     }
@@ -2879,6 +2883,24 @@ internal fun legStopUnchecked(leg: TripLeg, state: TripViewModel.State, now: Ins
 }
 
 /**
+ * Whether [lineId]'s status isn't one the trip can stand behind at [now]: none, a blank id, one TfL
+ * couldn't give, its latest check failed, or one gone stale. As [tripLines] has it, for a route page's
+ * line page ("View line", Codex, #623).
+ */
+internal fun tripLineInDoubt(state: TripViewModel.State, lineId: String, now: Instant): Boolean =
+    lineId.isBlank() || lineId in state.statusUnknown || lineId !in state.statuses || lineId in state.statusFailedLines ||
+        !checkCurrent(state.statusesAt[lineId], now)
+
+/**
+ * Whether [lineId]'s status check is still out: in doubt ([tripLineInDoubt]) while a refresh or a plan
+ * runs, but not once its latest check failed or TfL left it out of an answer already in, as [tripLines]
+ * has it (Codex, #623).
+ */
+internal fun tripLineChecking(state: TripViewModel.State, lineId: String, now: Instant): Boolean =
+    (state.refreshing || state.planning) && tripLineInDoubt(state, lineId, now) &&
+        lineId !in state.statusFailedLines && lineId !in state.statusOmitted
+
+/**
  * Whether a check stamped [at] still stands as current at [now]: made, and younger than the shared
  * staleness threshold, as a countdown shown from it would be ([Staleness]). Aged by the steady clock
  * it's stamped by ([SteadyClock]), so setting the device's clock doesn't change it. One stamped more
@@ -3487,6 +3509,9 @@ internal fun TripLinesPage(
     // Dismisses a line's alert from its page (maintainer, 2026-10-06), as a departure's line page does;
     // null offers none.
     dismissal: LineAlertDismissal? = null,
+    // Opened on the page of [row]'s one line alone, as a route page's "View line" opens it: Back closes
+    // the page rather than going to the lines.
+    alone: Boolean = false,
 ) {
     val onDismiss = dismissal?.dismiss
     // Open: the screen under it holds its word on a dismiss that didn't save, which this page says.
@@ -3511,16 +3536,22 @@ internal fun TripLinesPage(
     val lines = held.lines
     // The line whose reason is open, by its place, which holds while the page is open
     // ([rememberOpenedOrder]): read straight off the list, its status as it is now.
-    var reasonAt by rememberSaveable { mutableStateOf<Int?>(null) }
-    var reasonId by rememberSaveable { mutableStateOf<String?>(null) }
+    val only = row.every.firstOrNull()?.takeIf { alone }?.leg
+    var reasonAt by rememberSaveable { mutableStateOf(only?.let { 0 }) }
+    var reasonId by rememberSaveable { mutableStateOf(only?.lineId) }
     // Its name, for the title while a restored order is still being applied (no lines yet).
-    var reasonName by rememberSaveable { mutableStateOf<String?>(null) }
+    var reasonName by rememberSaveable { mutableStateOf(only?.lineName) }
     // Its pill's mode and the reason last shown, so a restored reason page shows what the rider was
     // reading while its line comes back (Codex, #559).
     var reasonMode by rememberSaveable { mutableStateOf("") }
     var reasonText by rememberSaveable { mutableStateOf<String?>(null) }
     var quietedText by rememberSaveable { mutableStateOf<String?>(null) }
-    val reasonLine = reasonAt?.let { lines?.getOrNull(it) }?.takeIf { it.leg.lineId == reasonId }
+    // Alone, the row's one line as it is now: no order to hold, nor an old line to hold over a newer row.
+    val reasonLine = if (alone) {
+        row.every.firstOrNull()?.takeIf { it.leg.lineId == reasonId }
+    } else {
+        reasonAt?.let { lines?.getOrNull(it) }?.takeIf { it.leg.lineId == reasonId }
+    }
     if (reasonLine != null) {
         SideEffect {
             reasonMode = reasonLine.leg.mode
@@ -3531,7 +3562,7 @@ internal fun TripLinesPage(
     // A reason page restored (a rotation) stays up, titled, until its line is in again: never the
     // lines for a moment in between (Codex, #559).
     val onReason = reasonLine != null || (reasonAt != null && lines == null)
-    val back = { if (reasonAt != null) reasonAt = null else onClose() }
+    val back = { if (reasonAt != null && !alone) reasonAt = null else onClose() }
     val listState = rememberLazyListState()
     // A page drawn in a window of its own over the trip, full screen: the trip under it keeps its
     // place, its list and its work, for Back to return to.
@@ -3647,7 +3678,8 @@ internal fun TripLineReason(
     val reason = line.reason ?: restored
     // The worse alert the rider dismissed, under the one that stands, toned down.
     val quieted = line.quietedReason ?: restoredQuieted
-    val map = if (restoring) null else rememberLineMapSection(line, starred)
+    // A stand-in line ([TripLine.restoring]) has no map either: its status isn't in.
+    val map = if (restoring || line.restoring) null else rememberLineMapSection(line, starred)
     val railColor = lineRailColor(line.leg.lineId, line.leg.mode, line.leg.lineName)
     // A list, so a long line's map draws only the stations on screen.
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
@@ -3803,6 +3835,8 @@ private fun TripLineRow(
                 line.gone -> Text(stringResource(gone), style = style, color = muted, maxLines = 1)
                 line.unknown -> Text(stringResource(R.string.trip_lines_unknown), style = style, color = MaterialTheme.colorScheme.error, maxLines = 1)
                 line.checking -> Text(stringResource(R.string.trip_disruptions_checking), style = style, color = muted, maxLines = 1)
+                // Dismissed with no alert to name, as a route page's line is: never "Good service".
+                !line.disrupted && line.dismissed -> Text(stringResource(R.string.route_detail_alert_dismissed), style = style, color = muted, maxLines = 1)
                 !line.disrupted -> Text(stringResource(R.string.trip_lines_good), style = style, color = muted, maxLines = 1)
             }
         }

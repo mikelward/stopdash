@@ -50,6 +50,9 @@
     <string name="route_stop_current">Your stop</string>
     <string name="route_detail_no_disruption">No disruptions reported</string>
     <string name="route_detail_alert_dismissed">Service alert dismissed</string>
+    <!-- Overflow item on a route's page: opens its line's page, with the line's map. -->
+    <!-- TODO: translate -->
+    <string name="route_detail_view_line" tools:ignore="MissingTranslation">View line</string>
     <!-- A line alert wholly before the rider's stop, which a bus from there has passed: %1$s is its label ("Diversion"). -->
     <string name="route_detail_alert_behind">%1$s before this stop</string>
     <!-- As route_detail_alert_behind, %2$s being where it is ("Bank to Moorgate"). -->

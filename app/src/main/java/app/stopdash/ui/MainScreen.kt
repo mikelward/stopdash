@@ -158,8 +158,10 @@ import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.JourneySegment
 import app.stopdash.domain.JourneyTrains
 import app.stopdash.domain.Journeys
+import app.stopdash.domain.LineMap
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineSequence
+import app.stopdash.domain.LineStatus
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.NATIONAL_RAIL_MODE
 import app.stopdash.domain.NoTimes
@@ -186,6 +188,7 @@ import app.stopdash.domain.StopLocation
 import app.stopdash.domain.StopQualifier
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripDestination
+import app.stopdash.domain.TripLeg
 import app.stopdash.domain.UntimedTrain
 import app.stopdash.domain.UsageEvent
 import app.stopdash.domain.WidgetJourneyCheck
@@ -1180,13 +1183,15 @@ fun MainScreen(
             // one TfL omitted), OR its stop's own disruption lookup (a closure/move) failed. Either
             // leaves the row unchecked — clean only when TfL checked its line AND its stop's
             // disruption returned (SPEC principle 1).
-            disruptionUnknown = detailRow.lineId.isBlank() ||
-                detailRow.lineId !in detailLoaded.determinedLineIds ||
+            disruptionUnknown = detailLoaded.lineUncheckedFor(detailRow) ||
                 detailRow.stopId in detailLoaded.stopsDisruptionUnknown,
             // A check for this row still out on a cold load — its stop's closure check, or its line's
             // status with nothing failed yet: "checking", neither "couldn't check" nor a clean
             // "no disruptions" until it's back.
             disruptionChecking = detailLoaded.checkingDisruptionsFor(detailRow),
+            // Its line's page has its line's check alone, aged by its own stamp (SPEC D4).
+            lineUnknown = detailLoaded.lineDoubtedFor(detailRow, detailNow),
+            lineChecking = detailLoaded.checkingLineFor(detailRow),
             // This row's own age (the same per-row rule the card uses to withhold countdowns): a
             // stale snapshot's disruption status isn't presented as current (SPEC D4).
             stale = Staleness.isStale(detailRow.fetchedAt, detailNow),
@@ -4617,6 +4622,83 @@ private fun CollapsibleStatus(
 internal fun DepartureRow.detailKey(): String = "$stopId|$lineId|$directionKey|$platform"
 
 /**
+ * [row]'s line on a page of its own ([TripLinesPage]), as a route page's "View line" opens it
+ * (maintainer, 2026-10-06). Worked out on the worker ([routeLineRow]); the page is up at once, the
+ * line's pill alone claiming no status until it's in, so Back closes this page, never the route page
+ * under it (Codex, #623).
+ */
+@Composable
+private fun RouteLinePage(row: DepartureRow, ride: TripLeg?, unknown: Boolean, checking: Boolean, onClose: () -> Unit) {
+    val slot = remember { mutableStateOf<Worked<Inputs, TripRow>?>(null) }
+    val lineRow = rememberWorked(slot, Inputs(row, ride, unknown, checking), keep = ::sameVerdict) {
+        routeLineRow(row, ride, unknown, checking)
+    }
+    val shown = lineRow ?: remember(row.lineId, row.lineName, row.mode) { routeLineStandIn(row) }
+    TripLinesPage(shown, onClose, dismissal = LocalDismissLineAlert.current, alone = true)
+}
+
+/**
+ * Whether [RouteLinePage]'s row worked out for [held] may stay up while [wanted]'s is worked out: only
+ * while it says the same, as sure as before (Codex, #623). A check gone stale, failed or out again
+ * never leaves the last verdict up meanwhile, nor does an alert that began, ended or was dismissed:
+ * its map would draw a closure that has ended, or none where one began (SPEC *Line page*). Statuses are
+ * fetched again as new objects with every check, so the alert is compared by what the page shows of it
+ * ([sameAlert]); one fetched again unchanged keeps the page, and its map, still. [held] and [wanted]
+ * are the page's [Inputs]: the row, the ride, unknown, checking.
+ */
+internal fun sameVerdict(held: Inputs, wanted: Inputs): Boolean {
+    val was = held.parts[0] as DepartureRow
+    val now = wanted.parts[0] as DepartureRow
+    return held.parts[2] == wanted.parts[2] && held.parts[3] == wanted.parts[3] &&
+        was.statusDismissed == now.statusDismissed && sameAlert(was.status ?: was.statusBehind, now.status ?: now.statusBehind)
+}
+
+/**
+ * Whether [a] and [b] read the same on a line's page: the same object, or the same severity and words,
+ * with as many closures under way. Field reads and the words compared, never a walk of the alert's
+ * stretches, so it's cheap enough for composition. A closure's stretch changed with its count and the
+ * words shown unchanged reads the same here until its row is in (`TODO.md`).
+ */
+internal fun sameAlert(a: LineStatus?, b: LineStatus?): Boolean =
+    a === b || (a != null && b != null && a.severity == b.severity && a.description == b.description &&
+        a.fullText == b.fullText && a.closures.size == b.closures.size)
+
+/**
+ * [row]'s line as its page stands in for it while [routeLineRow] is worked out: its pill alone, no
+ * status claimed and no map drawn ([TripLine.restoring]). One line, so cheap enough to build in place.
+ */
+internal fun routeLineStandIn(row: DepartureRow): TripRow {
+    val leg = TripLeg(row.mode, row.lineId, row.lineName, "", "", "", "", Instant.EPOCH, Instant.EPOCH)
+    return TripRow(checking = true, every = listOf(TripLine(pillNamed(leg), status = null, restoring = true)))
+}
+
+/**
+ * The row of one line a route page's "View line" opens ([RouteLinePage]): the line's status as the
+ * route page has it, an alert behind the stop included since the page is about the whole line. The
+ * trip's [ride] on it, where there is one, gives its map where the ride boards and gets off and its
+ * stretch ([TripLine.rides]); else the route's stop is kept on the map as the rider's. [unknown] where
+ * the route page couldn't check the line or its check has gone stale, so the page never claims a good
+ * service it can't stand behind (SPEC D4), and says so beside a status kept from before too (Codex, #623).
+ */
+@WorkerThread
+internal fun routeLineRow(row: DepartureRow, ride: TripLeg?, unknown: Boolean, checking: Boolean): TripRow {
+    val mode = row.mode.ifBlank { ride?.mode.orEmpty() }.ifBlank { Connections.knownMode(row.lineId).orEmpty() }
+    val leg = ride?.takeIf { it.lineId == row.lineId }
+        ?: TripLeg(mode, row.lineId, row.lineName, row.stopId, row.stopName, "", "", Instant.EPOCH, Instant.EPOCH)
+    val status = row.status ?: row.statusBehind
+    val line = TripLine(
+        pillNamed(leg.copy(mode = mode, lineName = row.lineName.ifBlank { leg.lineName })),
+        status,
+        dismissed = row.statusDismissed,
+        checking = checking,
+        unknown = unknown && !checking,
+        // What its map draws of the alert, so the same alert fetched again keeps the map up (Codex, #623).
+        mapKey = LineMap.alertKey(status),
+    )
+    return TripRow(checking = checking, every = listOf(line))
+}
+
+/**
  * The tap-to-open route detail (SPEC D8 / *Disruptions*, `TODO.md`): a full-screen page — reached by
  * a tap on a timed or line-status card (a stop-closure card expands in place, so it never reaches
  * here) — that replaces the departures screen with its own app bar. The bar names the route (line
@@ -4680,8 +4762,20 @@ internal fun RouteDetailScreen(
     onToggleJourney: ((StarredJourney) -> Unit)? = null,
     // Dismisses the tip on starring a journey from the stop list; null shows none.
     onDismissJourneyTip: (() -> Unit)? = null,
+    // The trip's ride this page is for: its line's page ("View line") keeps where it boards and gets off,
+    // and shows an alert on its stretch in full. Null keeps the row's own stop alone.
+    ride: TripLeg? = null,
+    // The line's own check alone, for its page ("View line"): couldn't be made or isn't current
+    // ([lineUnknown]), or still out ([lineChecking]). That page is about the line, not this stop, so the
+    // stop's closure check behind [disruptionUnknown] and [disruptionChecking] stays off it (Codex, #623).
+    lineUnknown: Boolean = disruptionUnknown || stale,
+    lineChecking: Boolean = disruptionChecking,
 ) {
     BackHandler(onBack = onBack)
+    // "View line" in the overflow: the line's own page over this one, with its map (maintainer,
+    // 2026-10-06).
+    var lineOpen by rememberSaveable { mutableStateOf(false) }
+    if (lineOpen) RouteLinePage(row, ride, unknown = lineUnknown, checking = lineChecking, onClose = { lineOpen = false })
     val followed = followedDeparture(row, focus, LocalRouteTopology.current)
     var routeStopsRetry by rememberSaveable { mutableIntStateOf(0) }
     // A stale row's soonest prediction may not be the next train any more, so its stop list is
@@ -4828,7 +4922,18 @@ internal fun RouteDetailScreen(
                             )
                         }
                     }
-                    AppMenuOverflow()
+                    AppMenuOverflow { close ->
+                        // A status row about a stop has no line to show.
+                        if (row.lineId.isNotBlank()) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.route_detail_view_line)) },
+                                onClick = {
+                                    close()
+                                    lineOpen = true
+                                },
+                            )
+                        }
+                    }
                 },
             )
         },
