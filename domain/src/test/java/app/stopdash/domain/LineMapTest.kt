@@ -400,6 +400,18 @@ class LineMapTest {
     }
 
     @Test
+    fun `a junction an alert names still shows, the runs either side folding`() {
+        // Camden Town, where the Edgware and High Barnet branches meet the two trunks, named in a delay's
+        // words: it stays on the page, never folded with the stations beside it (maintainer, 2026-10-06).
+        val map = LineMap.of(northern(), alertText = "Minor delays between Chalk Farm and Camden Town.")!!
+        assertEquals(LineMap.Level.WARNING, map.row("Camden Town").level)
+        val labels = map.folded(emptySet()).labels()
+        assertTrue("Camden Town" in labels)
+        assertTrue("Chalk Farm" !in labels)
+        assertEquals("[8 WARNING]", labels[labels.indexOf("Edgware") + 1])
+    }
+
+    @Test
     fun `an end of the line an alert names still shows, the stations along it folding`() {
         // The Metropolitan line, trimmed at Baker Street, with a delay between Harrow-on-the-Hill and
         // Uxbridge: Uxbridge, the branch's end, stays on the page; the stations along it fold, saying
