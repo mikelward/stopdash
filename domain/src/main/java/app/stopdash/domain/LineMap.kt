@@ -166,9 +166,9 @@ class LineMap internal constructor(
      * The map as the page draws it, with the folds keyed in [opened] open, or every station with [all].
      * With an alert placed on the rider's own stops or a stretch they ride, every other stretch that
      * leads to an end of the line folds to one line naming where it leads, so the page opens on what's
-     * theirs with the rest of the line around it; an open stretch, or one between two kept stations
-     * leading nowhere, shows its ends and junctions with its plain runs still folded. Otherwise the
-     * line's ends and junctions show and its plain runs fold. An alert off the rider's own stops and
+     * theirs with the rest of the line around it; one between two kept stations leading nowhere shows
+     * its ends and junctions with its plain runs folded. Otherwise the line's ends and junctions show
+     * and its plain runs fold. A fold opened shows every station it holds. An alert off the rider's own stops and
      * stretches folds with the plain stations around it on its track, a station on its own included,
      * its fold saying how many and how bad ([Item.Fold.level]) without naming any of them
      * ([Item.Fold.unnamed]; maintainer, 2026-10-06). The rider's own stops never fold (SPEC *Line
@@ -196,7 +196,8 @@ class LineMap internal constructor(
             // jumps between them.
             val leadsSomewhere = (i until end).any { rows[it].end }
             when {
-                key in opened -> runs(i, end, opened, items)
+                // Opened in one tap, every station it holds, never to its ends with the rest folded again.
+                key in opened -> (i until end).mapTo(items) { Item.Station(rows[it]) }
                 alerted && leadsSomewhere -> items += sectionFold(key, i, end)
                 else -> runs(i, end, opened, items)
             }

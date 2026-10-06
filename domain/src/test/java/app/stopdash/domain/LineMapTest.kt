@@ -556,19 +556,16 @@ class LineMapTest {
     }
 
     @Test
-    fun `an opened stretch shows its ends and junctions, its runs still folded`() {
+    fun `an opened stretch shows every station it holds in one tap`() {
         val ride = ids("Angel", "Old Street", "Moorgate")
         val rides = listOf(ids("King's Cross St. Pancras", "Bank"))
         val map = LineMap.of(northern(), closures = listOf(ride, ride.asReversed()), riding = rides.flatten().toSet(), rides = rides)!!
-        val north = map.folded(emptySet()).first()
-        assertEquals(
-            listOf(
-                "Edgware", "[Burnt Oak to Chalk Farm]", "High Barnet", "[Totteridge & Whetstone to West Finchley]",
-                "Mill Hill East", "Finchley Central", "[East Finchley to Kentish Town]", "Camden Town",
-                "[Mornington Crescent to Waterloo]", "Euston", "King's Cross St. Pancras",
-            ),
-            map.folded(setOf(north.key)).labels().let { it.subList(0, it.indexOf("King's Cross St. Pancras") + 1) },
-        )
+        val north = map.folded(emptySet()).first() as LineMap.Item.Fold
+        val opened = map.folded(setOf(north.key)).labels().let { it.subList(0, it.indexOf("King's Cross St. Pancras")) }
+        // Its ends and every station between, never its ends alone with the rest folded again.
+        assertTrue(opened.none { it.startsWith("[") })
+        assertEquals(listOf("Edgware", "Burnt Oak", "Colindale"), opened.take(3))
+        assertEquals("Euston on each trunk", north.count + 1, opened.size)
     }
 
     @Test
