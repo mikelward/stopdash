@@ -2161,10 +2161,11 @@ Where the row shows, it takes the place of the list's "Couldn't check for disrup
 (maintainer, 2026-10-05), so nothing comes and goes over the list: a line on the list whose check
 didn't answer, however far its stop, is named after "Unknown:"; a stop whose closure check failed is
 named on its page; and what can't be named (a departure with no line to check) still reads "Unknown".
-**Disruptions summary**, second in Settings under the favorite places, says what the row covers ("All
-networks and lines near you", "Tube and lines near you", or "Off") and opens its own page, since its settings control only the row
-(maintainer, 2026-10-05); the lines page's menu opens Settings on that page too, its Back going up to
-Settings. There a **Show on home screen** switch turns the row off (on by default;
+**Disruptions summary**, second in Settings under the favorite places, says what the row does ("Show
+alerts and delays on the home screen", maintainer 2026-10-06: the name alone doesn't say it), or "Off",
+and opens its own page, since its settings control only the row (maintainer, 2026-10-05); what the row
+covers is set and seen there. The lines page's menu opens Settings on that page too, its Back going up
+to Settings. There a **Show on home screen** switch turns the row off (on by default;
 the banner comes back with it off); the row waits for the stored choice, so one turned off never
 flashes up. Under it, **Always include** picks the networks
 covered whatever's near (maintainer, 2026-10-05): Tube, Overground, Elizabeth line,
