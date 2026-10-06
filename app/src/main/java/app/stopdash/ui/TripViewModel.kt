@@ -462,6 +462,11 @@ class TripViewModel(
         viewModelScope.launch { dismissAlert(dismissedStore, row, io, _dismissWriteFailed, warn, _dismissed) }
     }
 
+    /** Dismisses a line's [status] as its lines page shows it, as a row's × does its line alert. */
+    fun dismissLineAlert(status: LineStatus) {
+        viewModelScope.launch { dismissAlertOf(dismissedStore, io, _dismissWriteFailed, warn, _dismissed) { DismissedAlert.ofLineStatus(status) } }
+    }
+
     fun dismissWriteFailureShown() {
         _dismissWriteFailed.value = false
     }

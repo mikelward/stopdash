@@ -187,6 +187,8 @@ import app.stopdash.ui.LINE_STATUS_REUSE
 import app.stopdash.ui.LicensesScreen
 import app.stopdash.ui.ListWork
 import app.stopdash.ui.LocalAlertsBehind
+import app.stopdash.ui.LocalDismissLineAlert
+import app.stopdash.ui.LineAlertDismissal
 import app.stopdash.ui.LocalAppMenu
 import app.stopdash.ui.LocalHideUndoCarrier
 import app.stopdash.ui.LocalLiftsOut
@@ -2056,6 +2058,8 @@ class MainActivity : ComponentActivity() {
             val starWriteFailed by viewModel.starWriteFailed.collectAsStateWithLifecycle()
             val dismissed by viewModel.dismissed.collectAsStateWithLifecycle()
             val dismissWriteFailed by viewModel.dismissWriteFailed.collectAsStateWithLifecycle()
+            // The lines pages open over the near-me list, which say a failed dismiss themselves.
+            val linesPagesOpen = remember { mutableIntStateOf(0) }
             // Each farther station's collapsed card and where it stands; a relocation keeps the ones
             // still offered open, measured from the new fix.
             // An opened card has its own departures model, as a From… page's station does, kept in
@@ -2231,6 +2235,10 @@ class MainActivity : ComponentActivity() {
                 LocalAlertsBehind provides remember(appContext) {
                     AlertsBehindRecorder(DataStoreAlertsBehindStore.from(appContext, warn = ::logDepartureWarning), ::logDepartureWarning)
                 },
+                // The disruptions row's lines page dismisses a line's alert (maintainer, 2026-10-06).
+                LocalDismissLineAlert provides LineAlertDismissal(
+                    viewModel::dismissLineAlert, dismissWriteFailed, viewModel::dismissWriteFailureShown, linesPagesOpen,
+                ),
             ) {
                 MainScreen(
                     listState = listState,
@@ -3156,6 +3164,7 @@ class MainActivity : ComponentActivity() {
             openRoute = trip.openRoute,
             dismissed = trip.dismissed.collectAsStateWithLifecycle().value,
             onDismissAlert = trip::dismissAlert,
+            onDismissLineAlert = trip::dismissLineAlert,
             dismissWriteFailed = trip.dismissWriteFailed.collectAsStateWithLifecycle().value,
             onDismissWriteFailureShown = trip::dismissWriteFailureShown,
             // Start: followed from here to [toName], the rider at the first stop once they've walked there,

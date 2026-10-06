@@ -1156,8 +1156,10 @@ fun MainScreen(
     // the snackbar host lives in the departures Scaffold, not the full-screen route page below, so a
     // failure while the page is open holds the flag until the user returns, then shows.
     val dismissWriteFailedMessage = stringResource(R.string.dismiss_write_failed)
-    LaunchedEffect(dismissWriteFailed, detailRow == null) {
-        if (dismissWriteFailed && detailRow == null) {
+    // And held while a lines page is open over the list, which says it itself (Codex, #603).
+    val linesOpen = LocalDismissLineAlert.current?.pagesOpen?.intValue ?: 0
+    LaunchedEffect(dismissWriteFailed, detailRow == null && linesOpen == 0) {
+        if (dismissWriteFailed && detailRow == null && linesOpen == 0) {
             // Clear-then-show, same reasoning as the star-write snackbar above.
             onDismissWriteFailureShown()
             snackbarHostState.showSnackbar(dismissWriteFailedMessage)
