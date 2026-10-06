@@ -187,6 +187,7 @@ object OffPlan {
             warnedLeg = if (trip.warnedLeg < 0) trip.warnedLeg else shift(trip.warnedLeg),
             // Said through the ride to its fork: a split of that ride, or one before it, carries it on (Codex, #630).
             branchTakenLeg = if (trip.branchTakenLeg < rideIndex) trip.branchTakenLeg else trip.branchTakenLeg + 1,
+            pastLeg = if (trip.pastLeg <= rideIndex) trip.pastLeg else trip.pastLeg + 1,
             onFootChanges = trip.onFootChanges?.mapTo(HashSet(), ::shift),
             disruptionsHeard = shiftKeys(trip.disruptionsHeard, rideIndex),
             disruptionsDismissed = shiftKeys(trip.disruptionsDismissed, rideIndex),

@@ -142,6 +142,7 @@ internal object RouteDisruptionAlert {
             signal.stopName.ifBlank { signal.stopId },
         )
         // As the trip's screen says it, under the step: with no name for where to change, no "Change at" (Codex, #633).
+        is RouteDisruption.Signal.Missed -> context.getString(R.string.route_disruption_missed, signal.stopName)
         is RouteDisruption.Signal.NoneDirect -> if (signal.forkName.isBlank()) {
             context.getString(R.string.on_the_way_trains_none_direct, signal.toName)
         } else {

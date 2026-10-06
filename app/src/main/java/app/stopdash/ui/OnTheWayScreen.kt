@@ -290,7 +290,8 @@ internal fun OnTheWayScreen(
                 }
                 // Only while it's still ahead of the trip as shown: worked out by the last check, it can lag
                 // a step the trip has since taken, and a stop now behind the rider is never offered (Codex on #479).
-                val planFrom = replanFrom?.takeIf { it.id in ReplanOrigin.stopsAhead(trip, ReplanOrigin.rideAhead(trip, progress)) }
+                // Or the stop the rider was seen past theirs at, off the plan's way (maintainer, 2026-10-06).
+                val planFrom = replanFrom?.takeIf { it.id == trip.pastAtId || it.id in ReplanOrigin.stopsAhead(trip, ReplanOrigin.rideAhead(trip, progress)) }
                 val planAgain = planFrom?.takeIf { onPlanAgain != null }
                 // Only under a card: a branch the trip took by itself is said under the step, and neither a new
                 // plan (the Planner offers the same train) nor Keep going answers it (Codex, #633).

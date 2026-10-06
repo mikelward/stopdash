@@ -99,6 +99,23 @@ class FileActiveTripStoreTest {
     }
 
     @Test
+    fun `a stop the rider was seen past is kept across a reload, and absent from an older trip`() {
+        val file = File(tmp.root, "active-trip.json")
+        // Said until they're back or board on, a restart included (maintainer, 2026-10-06).
+        val past = trip.copy(pastLeg = 0, pastAtId = "940GZZLUKNG", pastAtName = "Kennington")
+        FileActiveTripStore(file).save(past)
+        assertEquals(past, FileActiveTripStore(file).load())
+        // As an older build wrote it: none seen.
+        file.writeText(file.readText().replace(Regex(",?\"past(Leg|AtId|AtName)\":(-?[0-9]+|\"[^\"]*\")"), ""))
+        assertFalse(file.readText().contains("past"))
+        assertEquals(trip, FileActiveTripStore(file).load())
+        // The ride got off as another of its lines ran it, kept for where the stop gone past is looked for (Codex, #635).
+        val offLeg = trip.copy(offLeg = trip.route.legs.first { !it.isWalk }.copy(lineId = "blue", lineName = "Blue"), offAt = java.time.Instant.parse("2026-10-06T08:10:00Z"))
+        FileActiveTripStore(file).save(offLeg)
+        assertEquals(offLeg, FileActiveTripStore(file).load())
+    }
+
+    @Test
     fun `the stop known ahead on board is kept across a reload, and absent from an older trip`() {
         val file = File(tmp.root, "active-trip.json")
         val ahead = trip.copy(aheadLeg = 0, aheadStop = 1)

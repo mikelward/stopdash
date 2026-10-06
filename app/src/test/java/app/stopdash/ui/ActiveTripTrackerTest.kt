@@ -1085,6 +1085,35 @@ class ActiveTripTrackerTest {
     }
 
     @Test
+    fun `a route disruption dismissed with another left up is sorted out off the caller's thread`() {
+        // AGENTS.md *Main thread*: Keep going on one of two; what's left, and whether a stop gone past is among
+        // it, is worked out on the worker, not the caller (Codex, #635).
+        val caller = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "caller") }.asCoroutineDispatcher()
+        val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }.asCoroutineDispatcher()
+        try {
+            val tracker = tracker(worker)
+            departures["A"] = listOf(train("3", 8))
+            trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+            val severe = line(0, 6, "Severe Delays")
+            val suspended = line(0, 3, "Part Suspended")
+            val read = mutableListOf<String>()
+            known = Watched(listOf(severe, suspended), read)
+            kotlinx.coroutines.runBlocking(caller) {
+                tracker.start(route, "C", readyAt = now)
+                tracker.refresh()
+                read.clear()
+                tracker.dismissDisruptions(Watched(listOf(severe), read))
+            }
+            assertEquals(listOf(suspended), tracker.routeDisruptions.value?.signals)
+            assertTrue(read.isNotEmpty())
+            assertEquals(setOf("worker"), read.toSet())
+        } finally {
+            caller.close()
+            worker.close()
+        }
+    }
+
+    @Test
     fun `a change with no train predicted is joined with what else is known off the caller's thread`() {
         // AGENTS.md *Main thread*: the refresh runs on Main; joining the change's signal with the rest,
         // in a list that notes each thread reading it, is done on the worker (Codex on #519).
@@ -1744,6 +1773,165 @@ class ActiveTripTrackerTest {
         stopNames = mapOf("A" to "A", "B" to "B", "C" to "C"),
         stopPositions = mapOf("A" to (51.5 to -0.12), "B" to (51.51 to -0.12), "C" to (51.52 to -0.12)),
     )
+    @Test
+    fun `a rider seen past where they got off is told, with where to plan again from, until they're back`() = runTest {
+        // Off at B, walking east to W; seen a minute later at C, on north: on the train still (maintainer, 2026-10-06).
+        sequences["red"] = redLine.copy(
+            routes = listOf(app.stopdash.domain.LineRoute("A ↔ D", listOf("A", "B", "C", "D"))),
+            stopNames = redLine.stopNames + ("D" to "D"),
+            stopPositions = redLine.stopPositions + ("D" to (51.53 to -0.12)),
+        )
+        val toB = ride.copy(toId = "B", toName = "B", path = listOf("B"), arrival = at(10))
+        val toW = TripLeg(TripLeg.WALKING, "", "", "B", "B", "W", "W", at(10), at(20), toAt = app.stopdash.domain.Coordinates(51.51, -0.105))
+        val off = ActiveTrip(TripRoute(listOf(toB, toW)), "W", startedAt = t0, legIndex = 1, legStartedAt = at(10))
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { off })
+        now = at(11)
+        tracker.restore()
+        tracker.refresh(fixAt(51.52))
+        val past = checkNotNull(tracker.trip.value)
+        assertEquals(Triple(0, "C", "C"), Triple(past.pastLeg, past.pastAtId, past.pastAtName))
+        assertEquals(past, kept)
+        assertTrue(disruptionAlerts.any { it == "new missed/0/B" })
+        assertEquals(app.stopdash.domain.ReplanOrigin.Stop("C", "C"), tracker.replanFrom.value)
+        // The log names the ride and a stop, never where the rider is.
+        assertTrue(logged.contains("on the way: seen past the stop of ride 0, by stop C"))
+        // Further on, at D: planned again from there, not from C behind them, and not sounded again (Codex, #635).
+        now = at(12)
+        tracker.refresh(fixAt(51.53))
+        assertEquals("D", tracker.trip.value?.pastAtId)
+        assertEquals(app.stopdash.domain.ReplanOrigin.Stop("D", "D"), tracker.replanFrom.value)
+        assertEquals(1, disruptionAlerts.count { it.startsWith("new") })
+        // Back at B: no longer.
+        now = at(16)
+        tracker.refresh(fixAt(51.51))
+        assertEquals(-1, tracker.trip.value?.pastLeg)
+        assertTrue(tracker.routeDisruptions.value?.signals.orEmpty().none { it is RouteDisruption.Signal.Missed })
+    }
+
+    @Test
+    fun `back where the trip keeps the stop placed is seen before a slow route read ages the fix out`() = runTest {
+        // Marked past B; the line's route takes 20 s to read, longer than a fix stays fresh. Back at B, where the
+        // trip keeps it placed: let go of all the same (Codex, #635).
+        sequences["red"] = redLine
+        sequenceTakesFor["red"] = 20_000
+        val toB = ride.copy(toId = "B", toName = "B", path = listOf("B"), arrival = at(10), toAt = app.stopdash.domain.Coordinates(51.51, -0.12))
+        val toW = TripLeg(TripLeg.WALKING, "", "", "B", "B", "W", "W", at(10), at(20), toAt = app.stopdash.domain.Coordinates(51.51, -0.105))
+        val off = ActiveTrip(
+            TripRoute(listOf(toB, toW)), "W", startedAt = t0, legIndex = 1, legStartedAt = at(10),
+            pastLeg = 0, pastAtId = "C", pastAtName = "C",
+        )
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { off })
+        now = at(12)
+        tracker.restore()
+        tracker.refresh(fixAt(51.51))
+        assertEquals(-1, tracker.trip.value?.pastLeg)
+    }
+
+    @Test
+    fun `at the next ride's platform is seen before a slow read of the gone-past line's route`() = runTest {
+        // Marked past B; the red route takes 20 s to read. At N2, the platform the next (blue) line calls N by,
+        // which the Planner didn't place: let go of all the same (Codex, #635).
+        sequences["red"] = redLine
+        sequenceTakesFor["red"] = 20_000
+        sequences["blue"] = app.stopdash.domain.LineSequence(
+            routes = listOf(app.stopdash.domain.LineRoute("N ↔ X", listOf("N2", "X"))),
+            stopNames = mapOf("N" to "N", "N2" to "N", "X" to "X"),
+            stopPositions = mapOf("N2" to (51.515 to -0.11), "X" to (51.53 to -0.11)),
+            stopHubs = mapOf("N" to "HUBN", "N2" to "HUBN"),
+        )
+        val toB = ride.copy(toId = "B", toName = "B", path = listOf("B"), arrival = at(10))
+        val toN = TripLeg(TripLeg.WALKING, "", "", "B", "B", "N", "N", at(10), at(20))
+        val onBlue = ride.copy(lineId = "blue", lineName = "Blue", fromId = "N", fromName = "N", toId = "X", toName = "X", path = listOf("X"), departure = at(22), arrival = at(30))
+        val off = ActiveTrip(
+            TripRoute(listOf(toB, toN, onBlue)), "X", startedAt = t0, legIndex = 1, legStartedAt = at(10),
+            pastLeg = 0, pastAtId = "C", pastAtName = "C",
+        )
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { off })
+        now = at(15)
+        tracker.restore()
+        tracker.refresh(fixAt(51.515, -0.11))
+        assertEquals(-1, tracker.trip.value?.pastLeg)
+    }
+
+    @Test
+    fun `precise location taken away while the line's route is read keeps a fix from marking a stop gone past`() = runTest {
+        // Off at B, a fix at C a minute later would mark it; precise location is turned off as the red route is
+        // read, so it doesn't (Codex, #635).
+        var precise = true
+        sequenceClock = { if (it == "red") precise = false }
+        sequences["red"] = redLine
+        val toB = ride.copy(toId = "B", toName = "B", path = listOf("B"), arrival = at(10))
+        val toW = TripLeg(TripLeg.WALKING, "", "", "B", "B", "W", "W", at(10), at(20), toAt = app.stopdash.domain.Coordinates(51.51, -0.105))
+        val off = ActiveTrip(TripRoute(listOf(toB, toW)), "W", startedAt = t0, legIndex = 1, legStartedAt = at(10))
+        val tracker = tracker(StandardTestDispatcher(testScheduler), preciseAllowed = { precise }, load = { off })
+        now = at(11)
+        tracker.restore()
+        tracker.refresh(fixAt(51.52))
+        assertEquals(-1, tracker.trip.value?.pastLeg)
+    }
+
+    @Test
+    fun `a stop gone past and kept going from isn't where another alert plans again from`() = runTest {
+        // Seen past B at C, then Keep going: with another alert up, plan again isn't from C (Codex, #635).
+        sequences["red"] = redLine
+        val toB = ride.copy(toId = "B", toName = "B", path = listOf("B"), arrival = at(10))
+        val toW = TripLeg(TripLeg.WALKING, "", "", "B", "B", "W", "W", at(10), at(20), toAt = app.stopdash.domain.Coordinates(51.51, -0.105))
+        val off = ActiveTrip(TripRoute(listOf(toB, toW)), "W", startedAt = t0, legIndex = 1, legStartedAt = at(10))
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { off })
+        now = at(11)
+        tracker.restore()
+        tracker.refresh(fixAt(51.52))
+        assertEquals(app.stopdash.domain.ReplanOrigin.Stop("C", "C"), tracker.replanFrom.value)
+        // Kept going while another alert is up: plan again isn't from C at once, not only after a refresh.
+        known = listOf(line(0, 6, "Severe Delays"))
+        tracker.refresh(fixAt(51.52))
+        tracker.dismissDisruptions(tracker.routeDisruptions.value?.signals.orEmpty().filterIsInstance<RouteDisruption.Signal.Missed>())
+        assertTrue(tracker.routeDisruptions.value?.signals.orEmpty().isNotEmpty())
+        assertNotEquals(app.stopdash.domain.ReplanOrigin.Stop("C", "C"), tracker.replanFrom.value)
+        tracker.refresh(fixAt(51.52))
+        assertTrue(tracker.routeDisruptions.value?.signals.orEmpty().isNotEmpty())
+        assertNotEquals(app.stopdash.domain.ReplanOrigin.Stop("C", "C"), tracker.replanFrom.value)
+        // Let go of, and not marked again on that ride by a fix still past it: no fixes asked for to follow it (Codex, #635).
+        assertEquals("", tracker.trip.value?.pastAtId)
+        assertFalse(app.stopdash.domain.OnTheWay.wantsFix(checkNotNull(tracker.trip.value), at(40)))
+    }
+
+    @Test
+    fun `a stop gone past is let go of once the rider boards on, so going back can't bring it back`() = runTest {
+        // Seen past B, then seen or said on the next ride: the mark goes with the next refresh, fix or none (Codex, #635).
+        val toB = ride.copy(toId = "B", toName = "B", path = listOf("B"), arrival = at(10))
+        val toW = TripLeg(TripLeg.WALKING, "", "", "B", "B", "W", "W", at(10), at(12))
+        val onward = ride.copy(fromId = "W", fromName = "W", departure = at(13), arrival = at(20))
+        val aboard = ActiveTrip(
+            TripRoute(listOf(toB, toW, onward)), "C", startedAt = t0, legIndex = 2, legStartedAt = at(13), boarded = true, boardedAt = at(13),
+            onBoardSeen = true, pastLeg = 0, pastAtId = "C", pastAtName = "C",
+        )
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { aboard })
+        now = at(14)
+        tracker.restore()
+        tracker.refresh()
+        assertEquals(Triple(-1, "", ""), tracker.trip.value?.let { Triple(it.pastLeg, it.pastAtId, it.pastAtName) })
+        assertEquals(-1, kept?.pastLeg)
+    }
+
+    @Test
+    fun `a stop gone past stands while boarding on is only taken from the next train's time`() = runTest {
+        // Seen past B; the next train's time went by, so the trip took them as on it, though nothing saw or
+        // said so: they may still be on the train they went past B on, so it stands (Codex, #635).
+        val toB = ride.copy(toId = "B", toName = "B", path = listOf("B"), arrival = at(10))
+        val toW = TripLeg(TripLeg.WALKING, "", "", "B", "B", "W", "W", at(10), at(12))
+        val onward = ride.copy(fromId = "W", fromName = "W", departure = at(13), arrival = at(20))
+        val taken = ActiveTrip(
+            TripRoute(listOf(toB, toW, onward)), "C", startedAt = t0, legIndex = 2, legStartedAt = at(13), boarded = true, boardedAt = at(13),
+            pastLeg = 0, pastAtId = "C", pastAtName = "C",
+        )
+        val tracker = tracker(StandardTestDispatcher(testScheduler), load = { taken })
+        now = at(14)
+        tracker.restore()
+        tracker.refresh()
+        assertEquals(0, tracker.trip.value?.pastLeg)
+    }
+
     // Synthetic stops, well clear of the red line.
     private val blueLine = app.stopdash.domain.LineSequence(
         routes = listOf(app.stopdash.domain.LineRoute("D ↔ F", listOf("D", "E", "F"))),

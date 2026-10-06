@@ -205,6 +205,29 @@ class OnTheWayScreenScreenshotTest {
     }
 
     @Test
+    fun a_change_gone_past_says_so_and_plans_again_from_where_the_rider_is() {
+        // Off the Elizabeth line at Liverpool Street to change, seen a minute on at Whitechapel (maintainer,
+        // 2026-10-06): the change is behind them, so planning again starts where they are. Times made up.
+        val elizabeth = TripLeg("elizabeth-line", "elizabeth", "Elizabeth line", "910GTOTCTRD", "Tottenham Court Road", "910GLIVSTLL", "Liverpool Street", at(0), at(6))
+        val toTube = TripLeg(TripLeg.WALKING, "", "", "910GLIVSTLL", "Liverpool Street", "940GZZLULVT", "Liverpool Street", at(6), at(10))
+        val central = TripLeg("tube", "central", "Central", "940GZZLULVT", "Liverpool Street", "940GZZLUBNK", "Bank", at(11), at(13))
+        val past = trip.copy(
+            route = TripRoute(listOf(elizabeth, toTube, central)), destinationName = "Bank", legIndex = 1,
+            pastLeg = 0, pastAtId = "910GWCHAPXR", pastAtName = "Whitechapel",
+        )
+        val missed = checkNotNull(RouteDisruption.missed(past, TripProgress.Walking(toTube, at(10))))
+        val planned = mutableListOf<ReplanOrigin.Stop>()
+        show(
+            past, TripProgress.Walking(toTube, at(10)), disruptions = listOf(missed),
+            replanFrom = ReplanOrigin.Stop("910GWCHAPXR", "Whitechapel"), onPlanAgain = { planned += it }, onDismissDisruptions = {},
+        )
+        composeRule.onNodeWithText("Missed Liverpool Street").assertIsDisplayed()
+        captureSnapshot("on-the-way-missed.png")
+        composeRule.onNodeWithText("Plan again from Whitechapel").assertIsDisplayed().performClick()
+        assertEquals(listOf(ReplanOrigin.Stop("910GWCHAPXR", "Whitechapel")), planned)
+    }
+
+    @Test
     fun a_branch_taken_by_itself_alone_offers_neither_plan_again_nor_keep_going() {
         // Said under the step, not as a card: nothing for either button to answer (Codex, #633).
         val none = RouteDisruption.Signal.NoneDirect(0, "mildmay", "Mildmay", "Stratford", "Highbury & Islington")
