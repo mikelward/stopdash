@@ -405,13 +405,30 @@ class RouteDisruptionTest {
             RouteDisruption.stationNotes(trip, waiting, prefixed, mapOf("C" to kgx, "D" to kgx), emptySet(), at(3))
                 .map { note -> Triple(note.stopName, note.text, note.support.map { it.keys }) },
         )
+        // Its dismissal is the same notice before the interchange's names, or the interchange itself, are
+        // known, though they clean its words and fold its stops differently once in (Codex, #609).
+        val named = RouteDisruption.stationNotes(trip, waiting, prefixed, mapOf("C" to kgx, "D" to kgx), emptySet(), at(3))
+        val unnamedHub = RouteDisruption.StopPlace(hub = "HUBKGX")
+        val unnamed = RouteDisruption.stationNotes(trip, waiting, prefixed, mapOf("C" to unnamedHub, "D" to unnamedHub), emptySet(), at(3))
+        assertEquals(named.map { it.dismissKeys }, unnamed.map { it.dismissKeys })
+        val unfolded = RouteDisruption.stationNotes(trip, waiting, prefixed, emptyMap(), emptySet(), at(3))
+        assertEquals(2, unfolded.size)
+        // Each stop's note let go of before the index warmed: the interchange's note after is too.
+        assertTrue(named.single().dismissedIn(unfolded.flatMapTo(HashSet()) { it.dismissKeys }))
+        // One of them only: the interchange's still has a notice not let go of.
+        assertFalse(named.single().dismissedIn(unfolded.first().dismissKeys))
+        // And the interchange's let go of: each stop's alone is too.
+        assertTrue(unfolded.all { it.dismissedIn(named.single().dismissKeys) })
         // Two places of one name each keep their own note (Codex, #567).
         val sameName = ActiveTrip(
             TripRoute(listOf(TripLeg("tube", "red", "Red", "A", "A", "C", "High Street", at(5), at(15), path = listOf("C")), walk.copy(fromName = "High Street"), second.copy(fromName = "High Street"))),
             "E", startedAt = t0,
         )
         val lifts = mapOf("C" to listOf(StopDisruption("Lift out of order")), "D" to listOf(StopDisruption("Lift out of order")))
-        assertEquals(listOf("C", "D"), RouteDisruption.stationNotes(sameName, waiting, lifts, emptyMap(), emptySet(), at(3)).map { it.stopId })
+        val apart = RouteDisruption.stationNotes(sameName, waiting, lifts, emptyMap(), emptySet(), at(3))
+        assertEquals(listOf("C", "D"), apart.map { it.stopId })
+        // And each is dismissed on its own (Codex, #609).
+        assertFalse(apart[1].dismissedIn(apart[0].dismissKeys))
         // Said once at an interchange, though only one of its stops is also closed (Codex, #567).
         val hub = RouteDisruption.StopPlace(hub = "HUBX", hubName = "Example Hub")
         val shared = both + ("D" to listOf(StopDisruption("Lift out of order")))

@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardColors
@@ -144,6 +145,8 @@ internal fun OnTheWayScreen(
     // The coming stations' other notices ([ActiveTripTracker.stationNotes]): a lift or an escalator out,
     // an exit shut. Shown, never alerted (maintainer, 2026-10-04); worked out off the main thread.
     notes: List<RouteDisruption.StationNote> = emptyList(),
+    // The rider dismissed a note with its × ([ActiveTripTracker.dismissNote]). Null offers none.
+    onDismissNote: ((RouteDisruption.StationNote) -> Unit)? = null,
     // The rider reroutes onto a branch on the board that leaves the plan ([ActiveTripTracker.take], maintainer
     // 2026-10-05). Null offers none.
     onTake: ((TripLeg, OffPlan.Branch) -> Unit)? = null,
@@ -281,7 +284,9 @@ internal fun OnTheWayScreen(
             if (trip != null) {
                 // Each coming station's notice that neither closes nor moves it, after anything that may stop
                 // the trip, quieter than it: worth knowing on the way, no reason to change plans.
-                items(notes, key = { note -> "note/${note.legIndex}/${note.stopId}" }) { note -> StationNoteCard(note) }
+                items(notes, key = { note -> "note/${note.legIndex}/${note.stopId}" }) { note ->
+                    StationNoteCard(note, onDismissNote?.let { dismiss -> { dismiss(note) } })
+                }
             }
             if (endFailed && trip != null) {
                 item(key = "endFailed") {
@@ -1343,15 +1348,30 @@ private fun DisruptionCard(signal: RouteDisruption.Signal, leg: TripLeg?) {
 
 /**
  * A coming station's notice that neither closes nor moves it ([RouteDisruption.StationNote]): headed by
- * the station, then TfL's words. Muted, as a medium alert's card, and never sounded.
+ * the station, then TfL's words. Muted, as a medium alert's card, and never sounded. Its × ([onDismiss],
+ * null offers none) lets it go for the trip, as a closure card's does on the list.
  */
 @Composable
-private fun StationNoteCard(note: RouteDisruption.StationNote) {
+private fun StationNoteCard(note: RouteDisruption.StationNote, onDismiss: (() -> Unit)?) {
     val colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
     Card(colors = colors, modifier = Modifier.fillMaxWidth().testTag("onTheWayStationNote")) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(note.stopName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(note.text, style = MaterialTheme.typography.bodyMedium)
+        // The × sits in the top corner, 4dp in, so its 48dp target doesn't push the text down; the
+        // heading leaves room for it.
+        Box(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    note.stopName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = if (onDismiss != null) Modifier.padding(end = 40.dp) else Modifier,
+                )
+                Text(note.text, style = MaterialTheme.typography.bodyMedium)
+            }
+            if (onDismiss != null) {
+                IconButton(onClick = onDismiss, modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).testTag("onTheWayStationNoteDismiss")) {
+                    Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.alert_dismiss))
+                }
+            }
         }
     }
 }

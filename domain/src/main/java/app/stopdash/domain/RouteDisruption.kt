@@ -640,7 +640,31 @@ object RouteDisruption {
         val text: String,
         val until: Instant? = null,
         val support: List<Map<String, Instant?>> = listOf(mapOf(stopId to until)),
-    )
+        // TfL's own notices behind [text], as found (normalized, before any station name is cleaned off),
+        // each with the stops that list it: what it says, whatever names are known yet to clean it by.
+        val listed: Map<String, Set<String>> = mapOf(text to setOf(stopId)),
+    ) {
+        /**
+         * What its × lets go of ([ActiveTrip.disruptionsDismissed]): each of TfL's notices ([listed]) at each
+         * stop that lists it. By stop ids and TfL's words, never the place or [text], which change as an
+         * interchange's names and stops are learned (Codex, #609); so another place's of the same name and
+         * words still shows. No leg in it (a `-` where a signal's sits, so [OffPlan]'s split leaves it as it
+         * is): the same notice at the same stop is the same, whichever leg reaches it.
+         */
+        @get:WorkerThread
+        val dismissKeys: Set<String> get() = listed.flatMapTo(LinkedHashSet()) { (notice, stops) -> stops.map { noteKey(it, notice) } }
+
+        /**
+         * Whether the rider let it go ([dismissKeys] in [dismissed]): each of its notices dismissed at a stop
+         * that lists it, so a note folded into an interchange's, or split from one, is still the one let go of,
+         * and one with a notice new to it shows.
+         */
+        @WorkerThread
+        fun dismissedIn(dismissed: Set<String>): Boolean =
+            listed.isNotEmpty() && listed.all { (notice, stops) -> stops.any { noteKey(it, notice) in dismissed } }
+
+        private fun noteKey(stopId: String, notice: String) = "note/-/$stopId/$notice"
+    }
 
     /**
      * Each coming stop's notices in force ([closureCards]) that the rider hasn't dismissed and that say
@@ -707,7 +731,7 @@ object RouteDisruption {
                 }
             }
             val text = said.keys.joinToString("\n\n")
-            StationNote(legOf.getValue(row.stopId), row.stopId, row.hubName.ifBlank { row.stopName }, text, until, support)
+            StationNote(legOf.getValue(row.stopId), row.stopId, row.hubName.ifBlank { row.stopName }, text, until, support, retained.associateWith { listing(it).keys })
         }
     }
 
