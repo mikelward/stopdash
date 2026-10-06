@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -54,7 +55,12 @@ class DataStoreFavoriteJourneysStore internal constructor(
 
     override suspend fun remove(journey: FavoriteJourney) = edit { Journeys.remove(it, journey) }
 
-    private suspend fun edit(change: (List<FavoriteJourney>) -> List<FavoriteJourney>) {
+    override suspend fun add(journey: FavoriteJourney) = edit { Journeys.add(it, journey) }
+
+    // On the worker first: DataStore runs the transform in the caller's context, and the edit maps and
+    // searches the whole list, so a tap from the main thread must not do it there (AGENTS.md *Main
+    // thread*; Codex on #631).
+    private suspend fun edit(change: (List<FavoriteJourney>) -> List<FavoriteJourney>): Unit = withContext(compute) {
         dataStore.updateData { stored ->
             if (stored != null && stored.toDomain() == null) {
                 warn("favorite journeys file is a newer schema version; preserving it, not overwriting")

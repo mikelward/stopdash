@@ -9,6 +9,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.input.pointer.pointerInput
@@ -278,6 +279,8 @@ internal fun RouteStopsSection(
     // Whether a stop tap may star now: false while the page's saved journeys, which a tap goes by, are
     // still being worked out. The tip stays put meanwhile, so the rail under it never shifts.
     journeyTapsReady: Boolean = true,
+    // Opens a tapped station's own page (maintainer, 2026-10-06); null leaves a tap inert.
+    onOpenStop: ((RouteStop) -> Unit)? = null,
 ) {
     val note = when (state) {
         RouteStopsUi.Hidden -> return
@@ -310,6 +313,7 @@ internal fun RouteStopsSection(
                     inAlert = stop.id in alertStopIds,
                     stepFree = stepFree[stop.id],
                     onClick = if (index > 0 && journeyTapsReady) onToggleJourneyTo?.let { toggle -> { toggle(stop) } } else null,
+                    onOpen = onOpenStop?.let { open -> { open(stop) } },
                 )
             }
         } else if (note != null) {
@@ -386,13 +390,16 @@ private fun StopOnRail(
     // How far the station is step-free for this line: TfL's symbol after the name ([StepFreeMark]),
     // read out as its words. None, or null, shows nothing.
     stepFree: StepFreeLevel? = null,
-    // Stars or unstars the journey to this station; null leaves the row inert.
+    // Saves or removes the favorite journey to this station, by a long press; null offers none.
     onClick: (() -> Unit)? = null,
+    // Opens this station's page, by a tap; null offers none.
+    onOpen: (() -> Unit)? = null,
 ) {
     val surface = MaterialTheme.colorScheme.surface
     val starredLabel = stringResource(R.string.route_stop_journey_starred)
     val haptics = LocalHapticFeedback.current
     val toggleLabel = stringResource(if (starred) R.string.action_unstar_journey else R.string.action_star_journey)
+    val openLabel = stringResource(R.string.action_show_stop)
     val starColor = MaterialTheme.colorScheme.primary
     val alertColor = MaterialTheme.colorScheme.error
     val alertLabel = stringResource(R.string.route_stop_in_alert)
@@ -465,18 +472,28 @@ private fun StopOnRail(
             { connections.forEach { line -> LinePill(lineName = line.name, lineId = line.id, mode = line.mode) } },
         ),
         modifier = Modifier.fillMaxWidth()
-            // A long press, not a tap, so a stray tap while scrolling the stops can't star a journey
-            // (maintainer, 2026-10-05); TalkBack offers it as the long-press action.
+            // A tap opens the station (maintainer, 2026-10-06). Saving the journey is a long press, so a
+            // stray tap while scrolling the stops can't save one (maintainer, 2026-10-05); TalkBack offers
+            // each as its own action.
             .then(
-                if (onClick != null) {
+                if (onClick != null || onOpen != null) {
                     Modifier
-                        .pointerInput(onClick) {
-                            detectTapGestures(onLongPress = {
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onClick()
-                            })
+                        .pointerInput(onClick, onOpen) {
+                            detectTapGestures(
+                                onTap = onOpen?.let { open -> { open() } },
+                                onLongPress = onClick?.let { toggle ->
+                                    {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        toggle()
+                                    }
+                                },
+                            )
                         }
-                        .semantics { onLongClick(label = toggleLabel) { onClick(); true } }
+                        .semantics {
+                            // `this.`: the row's own `onClick` parameter would shadow the semantics action.
+                            if (onOpen != null) this.onClick(label = openLabel) { onOpen(); true }
+                            if (onClick != null) onLongClick(label = toggleLabel) { onClick(); true }
+                        }
                 } else {
                     Modifier
                 },

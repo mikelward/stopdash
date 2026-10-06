@@ -487,7 +487,8 @@
     <string name="settings_favorite_journeys_summary">See, add and remove them</string>
     <string name="favorite_journeys_title">Favorite journeys</string>
     <string name="favorite_journeys_loading">Loading…</string>
-    <string name="favorite_journeys_empty">None yet. Tap Add, or long-press a stop on a route page.</string>
+    <string name="favorite_journeys_empty">None yet. Tap Add, pick a station and a line, then the stop you get off at.</string>
+    <string name="favorite_journeys_add">Add</string>
     <!-- A failed read or a file from a newer StopDash; Retry reads it again. -->
     <string name="favorite_journeys_unavailable">Can\'t read your favorite journeys.</string>
     <string name="favorite_journeys_retry">Retry</string>
@@ -688,6 +689,8 @@
     <string name="action_show_platform">Show this stop only</string>
     <!-- Screen-reader action on a stop/platform header: opens the view of the whole station. -->
     <string name="action_show_station">Show whole station</string>
+    <!-- Screen-reader action on a route page's station: opens that station's page. -->
+    <string name="action_show_stop">Show stop</string>
     <string name="action_show_on_map">Show on map</string>
     <string name="action_star_journey">Favorite journey</string>
     <string name="action_flip_journey">Swap direction</string>
@@ -720,6 +723,11 @@
     <string name="journey_incomplete">Some routes couldn\'t be checked</string>
     <string name="action_unstar_journey">Remove favorite</string>
     <string name="route_stop_journey_starred">Favorite journey</string>
+    <!-- Atop a stop's page opened from a route page's stop: saves the journey there as a favorite. -->
+    <string name="station_journey_add">Favorite</string>
+    <string name="station_journey_write_failed">Couldn\'t save that change</string>
+    <!-- Said app-wide when that change failed after its stop's page was left. -->
+    <string name="station_journey_write_failed_away">Couldn\'t save your favorite journey</string>
     <!-- Screen-reader state of a station on a route page that the line's alert names, or that lies
          in a stretch it names ("between X and Y"). -->
     <string name="route_stop_in_alert">In the service alert</string>
