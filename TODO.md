@@ -58,19 +58,12 @@ exercises the whole spine the widget later renders from.
       the loop starts safe there first: the early line check (`checkLines`) writes main-thread state
       (`lineStatusMarks`, `unknownLineIds`), and the batch's bookkeeping (`arrivalOf`, `poleFromCache`,
       the hub lookups) assumes one thread (Codex, #619).
-- [ ] **A stop's closure as the list publishes it, not as it was read** (Codex, #619; the design is the
-      maintainer's call). A near-me refresh reads each stop's closure from the shared cache once: as the
-      stop is launched (a carry-over's `closureStillShown`, a cached lookup) or as its own lookup settles.
-      It publishes after the batch's other work (the other stops, the line check), so a newer lookup
-      another screen finishes in between, a closure found or a check failed, shows only at the next
-      refresh, which `closureStillShown` makes ask again. `fetchBatch` has always worked this way: it
-      decided a carry-over before its awaits. Two ways to close it: reconcile every stop with the cache's
-      current lookup at the merge, which narrows the gap to the hop back to the main thread; or have the
-      list follow the closure cache and re-merge a stop whose shown lookup is superseded, which closes it.
-      The near-me places a refresh merges (`Terminating.nearer`) have the same shape: worked out from the
-      distances the batch began with, so a `remeasure` that publishes while the batch is out is
-      overwritten by the refresh's older places until the next fix or refresh (Codex, #619). Whichever
-      design is chosen should cover both.
+- [x] **A stop's closure as the list publishes it, not as it was read** (Codex, #619; the maintainer
+      had no preference, so the smaller design). A near-me refresh now takes each stop as the caches
+      stand when it publishes (`asPublished`, in the publish pass on the worker): the closure cache's
+      newest lookup of it, a failed one leaving it unchecked, and its nearer places from the distances
+      then, so a `remeasure` the batch ran past isn't undone. What's left is the hop from that pass to
+      the main thread, which following the cache instead would close.
 - [x] The trip tracker off the main thread (#536): `restore`, `start`, `goTo`, `end` and `refresh`
       each hop to `compute` before taking the tracker's lock, so a refresh's step, a tap's move, a
       start and a restore walk the trip's route on the worker.

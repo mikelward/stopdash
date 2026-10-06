@@ -997,6 +997,20 @@ class MainViewModel(
         // The lines TfL doesn't know, as this batch's last line check copied them ([LineCheck.unknown]),
         // so the list can be worked out off the main thread without copying the live set there.
         val unknownLineIds: Set<String> = emptySet(),
+        // The stops kept only for a closure this batch found ([Snapshot.mergeStop]): their arrivals failed
+        // and none was shown before, so one whose closure is gone by the time it's published goes too.
+        val closureOnly: Set<String> = emptySet(),
+    )
+
+    /**
+     * What a refresh publishes, worked out in one pass on the worker: the list, what the widget is given
+     * of it and whether that's saved, and the batch as the caches stood then ([asPublished]).
+     */
+    private data class Publish(
+        val state: DeparturesUiState,
+        val widget: DeparturesSnapshot?,
+        val toSave: DeparturesSnapshot?,
+        val batch: FetchBatch,
     )
 
     /** What a refresh is for ([refresh]), worked out on the worker before it sends anything. */
@@ -1101,6 +1115,59 @@ class MainViewModel(
         disruptionCache[stopId]?.takeIf { isWithin(it.at, now, disruptionReuse) }
 
     /**
+     * [batch] as the caches stand when it's published, rather than as each stop was read: a batch reads
+     * a stop's closure once, as it's launched or as its lookup settles, and publishes after the rest of
+     * its work (the other stops, the line check), while another screen can finish a newer lookup of it.
+     * So each stop takes the cache's current lookup ([StopClosureCache.get]): a newer one found is shown,
+     * over a check of its own that failed too, titled by its interchange where the hub's name is already
+     * known ([hubNames]); one that failed, or
+     * that the cache no longer holds, leaves its closure unknown, as a failed lookup of its own would.
+     * A stop kept only for its closure ([FetchBatch.closureOnly]) goes when that closure is gone, cleared
+     * or now unknown, as the merge itself would have left it out ([Snapshot.mergeStop]). And each stop's
+     * nearer places ([Terminating.nearer]) are worked out from [places], as the rider stands now, so a
+     * [remeasure] the batch ran past isn't undone by it. Walks every stop, so it's worked out on the
+     * worker.
+     */
+    @WorkerThread
+    private fun asPublished(batch: FetchBatch, places: List<Terminating.Place>): FetchBatch {
+        val asks = HashMap(batch.closureAsks)
+        val unknown = HashSet(batch.stopsDisruptionUnknown)
+        // [stop] showing [lookup]'s notices, as of [lookup] ([asks]).
+        fun showing(stop: StopArrivals, lookup: StopClosureCache.Lookup): StopArrivals {
+            asks[stop.stopId] = lookup.ask
+            if (lookup.notices == stop.disruptions) return stop
+            val hub = hubNames[stop.hubId].takeIf { stop.hubName.isBlank() && lookup.notices.isNotEmpty() }
+            return stop.copy(
+                disruptions = lookup.notices,
+                hubName = hub?.name ?: stop.hubName,
+                placeAliases = hub?.aliases ?: stop.placeAliases,
+            )
+        }
+        val merged = batch.merged.mapNotNull { stop ->
+            val id = stop.stopId
+            val nearer = Terminating.nearer(id, places)
+            val latest = if (nearer == stop.nearer) stop else stop.copy(nearer = nearer)
+            val current = disruptionCache[id]
+            // Checked by this batch, or carried over with the lookup it showed.
+            val shown = asks[id] ?: closureShown[id]
+            val published = when {
+                // Its own check failed: a lookup the cache answers with now was asked after it, since the
+                // cache answers with none asked before a failure that stands ([StopClosureCache.get]).
+                id in unknown -> current?.let { unknown -= id; showing(latest, it) } ?: latest
+                shown == null || current?.ask === shown -> latest
+                current == null -> {
+                    unknown += id
+                    asks -= id
+                    latest.copy(disruptions = emptyList())
+                }
+                else -> showing(latest, current)
+            }
+            published.takeUnless { id in batch.closureOnly && it.disruptions.isEmpty() }
+        }
+        return batch.copy(merged = merged, closureAsks = asks, stopsDisruptionUnknown = unknown)
+    }
+
+    /**
      * Fetch [stops] (arrivals + disruptions, each merged into its [prior] at age [now]) and check the
      * status of every line they show, returning a [FetchBatch]. Pure of UI state — the caller decides
      * how to turn it into a [DeparturesUiState] and whether to save.
@@ -1162,6 +1229,7 @@ class MainViewModel(
         // not overwrite a complete saved snapshot with carried arrivalsFresh=false rows.
         val freshArrivalStopIds = mutableSetOf<String>()
         val closureAsks = HashMap<String, StopClosureCache.Ask>()
+        val closureOnly = HashSet<String>()
         // Stop ids whose OWN stop-level disruption request failed this batch (a closure/move was
         // never checked) — an axis independent of line status, carried out so a per-stop surface
         // says "couldn't check" for it even when its line was determined (SPEC principle 1).
@@ -1551,6 +1619,7 @@ class MainViewModel(
                 if (stop.id in skippedNow) boardSkipped += stop.id else boardSkipped -= stop.id
             }
             if (departures != null || (disruptions != null && !disruptionFromCache[i])) anyFreshData = true
+            if (departures == null && prior[stop.id] == null && mergedStop.stop != null) closureOnly += stop.id
             mergedStop.stop?.let { merged += it }
         }
 
@@ -1621,6 +1690,7 @@ class MainViewModel(
             anyFreshData = anyFreshData,
             freshArrivalStopIds = freshArrivalStopIds,
             closureAsks = closureAsks,
+            closureOnly = closureOnly,
             lineDismissals = listOfNotNull(earlyLines, lateLines).map { it.dismissals },
             firstError = firstError,
             arrivalsErrors = arrivalsErrors,
@@ -2061,24 +2131,28 @@ class MainViewModel(
             })
             // Done within the grace: the whole batch paints below, once.
             graceJob?.cancel()
-            val merged = batch.merged
             val firstError = batch.firstError
             val anyArrivalsFailed = batch.anyArrivalsFailed
             val anyFreshData = batch.anyFreshData
             val lineStatuses = batch.lineStatuses
             val determinedLineIds = batch.determinedLineIds
-            val stopsDisruptionUnknown = batch.stopsDisruptionUnknown
             val partial = if (anyFreshData) anyArrivalsFailed else priorPartial
             // The list worked out off the main thread ([compute]), from what this fetch was for: the stops
             // it asked for ([toFetch]), how far each is, and the lines TfL doesn't know as its line
             // check copied them, so nothing is copied or rebuilt here first.
             val seeds = toFetch
             val distances = stopDistanceMeters
+            val eager0 = eagerStops
+            val more0 = more
             val unknown = batch.unknownLineIds
             // With what the widget is given of it (below), in the same pass: no step of the worker's comes
             // between the list shown and the refresh's settling of its checks, which a list left meanwhile
-            // would otherwise skip.
-            val (newState, widgetSnapshot, toSave) = withContext(compute) {
+            // would otherwise skip. Each stop as the caches stand now ([asPublished]), not as the batch
+            // read it, with its nearer places from where the rider stands now.
+            val (newState, widgetSnapshot, toSave, published) = withContext(compute) {
+                val published = asPublished(batch, nearbyPlacesOf(eager0, more0, distances))
+                val merged = published.merged
+                val stopsDisruptionUnknown = published.stopsDisruptionUnknown
                 val newState = when {
                     merged.isNotEmpty() ->
                         // Grouping into rows is the screen's job, recomputed from the live
@@ -2137,10 +2211,10 @@ class MainViewModel(
                 val carriedFresh = judged.any { it.stopId in reuse && it.arrivalsFresh }
                 val freshNear = judged.any { it.stopId in batch.freshArrivalStopIds }
                 val authoritative = freshNear || carriedFresh || (widgetStops.isEmpty() && firstError == null)
-                Triple(newState, snapshot, snapshot?.takeIf { authoritative })
+                Publish(newState, snapshot, snapshot?.takeIf { authoritative }, published)
             }
             _state.value = newState
-            closureShown += batch.closureAsks
+            closureShown += published.closureAsks
             coldLoadUnfinished = false
 
             // Persist the new last-good so a later launch — and the widget — render it before
@@ -2250,8 +2324,9 @@ class MainViewModel(
             // Each place and line as old as its own answer, a reused lookup or line status perhaps: a
             // dismissal counted after stays.
             reconcileDismissals(
-                toFetch, merged, lineStatuses, determinedLineIds, stopsDisruptionUnknown, since, refreshSettles,
-                stopAsks = batch.closureAsks,
+                toFetch, published.merged, lineStatuses, determinedLineIds, published.stopsDisruptionUnknown, since,
+                refreshSettles,
+                stopAsks = published.closureAsks,
                 lineMarks = batch.lineDismissals,
             )
         }
