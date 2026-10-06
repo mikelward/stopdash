@@ -1647,20 +1647,26 @@ class MainViewModel(
                 // arrivals came back but before it was published leaves a newer stamp here than the
                 // stop on screen, and carrying that older stop over would pass it off as just fetched.
                 val fetchedAt = arrivalsFetchedAt[stop.stopId]
-                // Nor may a closure lookup asked after the one shown be skipped: a later, superseded
-                // batch whose arrivals failed, or a trip, can have cached a newer closure for the stop,
-                // and carrying the stop over would keep its departures up without it. Told by the
-                // lookups' order ([StopClosureCache.since]), not their clock, which two can share.
-                val shownClosure = closureShown[stop.stopId]
+                // Nor may a closure lookup asked after the one shown be skipped ([closureStillShown]).
                 fetchedAt != null &&
                     fetchedAt == stop.fetchedAt &&
-                    shownClosure != null && disruptionCache.since(stop.stopId, shownClosure) == null &&
+                    closureStillShown(stop.stopId) &&
                     // Aged by the steady clock the fetch is stamped by ([SteadyClock]).
                     SteadyClock.age(fetchedAt, now).let { !it.isNegative && it < window } &&
                     stop.arrivalsFresh &&
                     stop.stopId !in loaded.stopsDisruptionUnknown
             }
             .mapTo(mutableSetOf()) { it.stopId }
+
+    // Whether the closure lookup [stopId] shows ([closureShown]) is still the one the cache answers with
+    // ([StopClosureCache.get]): one asked after it, by a later batch whose arrivals failed or by a trip,
+    // that the cache kept is a newer closure the stop would show without, and one that failed leaves its
+    // closure unknown, which a carry-over would pass off as checked. Told by the lookups' order, which the
+    // cache keeps, not their clock, which two can share. Only then may the stop be carried over unasked.
+    private fun closureStillShown(stopId: String): Boolean {
+        val shown = closureShown[stopId] ?: return false
+        return disruptionCache[stopId]?.ask === shown
+    }
 
     /**
      * The screen-wide "some shown departures' disruption state is unverified" flag, derived from the

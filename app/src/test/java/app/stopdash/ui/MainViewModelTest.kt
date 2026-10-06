@@ -1705,6 +1705,36 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `a newer closure lookup that failed stops a stop being carried over`() = runTest(dispatcher) {
+        val fetched = mutableListOf<String>()
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120)).also { fetched += stopId }
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
+        }
+        val cache = StopClosureCache()
+        val vm = MainViewModel(
+            client,
+            listOf(seeds.first()),
+            clock = { now },
+            io = dispatcher,
+            arrivalsReuse = java.time.Duration.ofMinutes(5),
+            disruptionCache = cache,
+        )
+        advanceUntilIdle()
+        assertEquals(listOf(seeds.first().id), fetched)
+        fetched.clear()
+        // Another screen's lookup of the stop, asked after the one it shows, fails: its closure is unknown
+        // now, and carried over it would read as checked.
+        cache.settle(seeds.first().id, cache.ask(now), Result.failure(java.io.IOException("offline")))
+
+        vm.refresh()
+        advanceUntilIdle()
+
+        assertEquals(listOf(seeds.first().id), fetched)
+    }
+
+    @Test
     fun `a cold load all back within the grace paints once, whole`() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
         val vm = viewModel(GatedClient(seeds[1].id, gate))
