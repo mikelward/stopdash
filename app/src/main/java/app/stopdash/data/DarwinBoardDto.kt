@@ -52,7 +52,8 @@ data class DarwinLocationDto(
 private val UK = ZoneId.of("Europe/London")
 
 /** The board's trains with a time ([toBoard]'s departures). */
-fun DarwinBoardDto.toDepartures(warn: (String) -> Unit = {}): List<Departure> = toBoard(warn).departures
+fun DarwinBoardDto.toDepartures(stopIdFor: (String) -> String? = { null }, warn: (String) -> Unit = {}): List<Departure> =
+    toBoard(stopIdFor, warn).departures
 
 /**
  * The board as stopdash shows it (SPEC principle 1): each train with an expected time, as an absolute
@@ -63,9 +64,10 @@ fun DarwinBoardDto.toDepartures(warn: (String) -> Unit = {}): List<Departure> = 
  * from it. Throws when a board with trains has no readable [generatedAt], or when every train with a
  * time has one it can't read (missing or garbled; those are left out and reported via [warn]), so the
  * failure is reported rather than read as empty. An untimed train whose schedule can't be read is left
- * out and reported too.
+ * out and reported too. A train's terminus gets TfL's id for it from its code ([stopIdFor]), so its
+ * stop list matches it however the board spells the name ([Departure.destinationId]).
  */
-fun DarwinBoardDto.toBoard(warn: (String) -> Unit = {}): RailBoard {
+fun DarwinBoardDto.toBoard(stopIdFor: (String) -> String? = { null }, warn: (String) -> Unit = {}): RailBoard {
     val services = trainServices.orEmpty()
     if (services.isEmpty()) return RailBoard(emptyList())
     // A board with trains but no readable time it was made at can't date them: a failure (the
@@ -93,7 +95,9 @@ fun DarwinBoardDto.toBoard(warn: (String) -> Unit = {}): RailBoard {
         // Each place cleaned on its own, so a train dividing for two keeps neither's qualifier.
         val destination = service.destination.orEmpty().mapNotNull { it.locationName?.trim()?.ifBlank { null }?.let(::cleanStopName) }
         // Only a train with one destination: a dividing train's portions each run their own way.
-        val via = service.destination?.singleOrNull()?.let { railVia(it.via) }.orEmpty()
+        val only = service.destination?.singleOrNull()
+        val via = only?.let { railVia(it.via) }.orEmpty()
+        val destinationId = only?.crs?.trim()?.ifBlank { null }?.let(stopIdFor).orEmpty()
         fun train(at: Instant) = Departure(
             lineId = railLineId(operator, service.operatorCode),
             // Named as a rider knows it, here where the feed's name comes in (SPEC *Line pill colors*).
@@ -103,6 +107,7 @@ fun DarwinBoardDto.toBoard(warn: (String) -> Unit = {}): RailBoard {
             platform = service.platform?.trim()?.ifBlank { null }?.let { "Platform $it" },
             expectedArrival = at,
             mode = NATIONAL_RAIL_MODE,
+            destinationId = destinationId,
             via = via,
         )
         if (canceled || etd == "Delayed") {

@@ -26,7 +26,9 @@ import java.time.Instant
  * the line id. Empty when TfL omits it.
  *
  * [destinationId] is TfL's `destinationNaptanId`, the terminus stop's id (blank when TfL gives
- * none), so a service ending where the rider already is can be recognized ([Terminating]).
+ * none), so a service ending where the rider already is can be recognized ([Terminating]). A
+ * National Rail train's is its board's terminus code as TfL's stop id
+ * ([RailStationCodes.stopIdFor]), blank where that's not one station or the train divides.
  *
  * [branch] is the "via" branch TfL names in its `towards` field — normalized to one short
  * label per trunk (`Bank`, `Charing X` on the Northern line), the form its platform boards

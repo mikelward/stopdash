@@ -266,8 +266,10 @@ object RouteStops {
      *
      * A route matches when it calls at [stopId] and, later, at a stop named [destination] — so a
      * short-working (a Northern train terminating at Kennington) ends where the train does, not at
-     * the line's end. A route with no such stop still matches if its *name* ends at [destination]
-     * (a bus destination TfL spells differently from its last stop), running to its end. Where TfL
+     * the line's end. A route with no such stop still matches where it later calls at the stop whose
+     * id is [destinationId] (a National Rail board's "St Albans" for TfL's "St Albans City"), and
+     * failing that if its *name* ends at [destination] (a bus destination TfL spells differently from
+     * its last stop), running to its end. Where TfL
      * names the branch ("via Bank"), only matching routes count; the answer must then be one
      * unambiguous path. Each stop carries its connections other than [lineId], the line ridden.
      *
@@ -380,20 +382,24 @@ object RouteStops {
         // loop, a bus route passing a place twice, TfL's line qualifiers that [matchStopName]
         // drops). Nothing on the arrival says which, so each pairing is its own path, and more
         // than one leaves the answer ambiguous below rather than picking the first.
-        // Per route: its stop-name matches, else (none on that route) its route-name terminus — so
-        // one variant matching by stop name can't hide another that only matches by its name.
+        // Per route: its stop-name matches, else (none on that route) its stop with the terminus's id,
+        // else its route-name terminus — so one variant matching by stop name can't hide another that
+        // only matches by its name.
         // A destination with a line qualifier ("Paddington (H&C)") takes the stops of that exact name
         // where any match, and only failing those every stop of its name without one ([isLineQualified]).
+        // Failing its stop names, a route's stop that is TfL's id for the terminus ([destinationId]):
+        // a National Rail board names a station its own way ("St Albans" for TfL's "St Albans City").
         fun matchedBy(same: (String?, String) -> Boolean) = sequence.routes.flatMap { route ->
-            val byStopName = visits(route, stopId).flatMap { i ->
-                (i + 1 until route.stopIds.size).filter { k ->
-                    same(sequence.stopNames[route.stopIds[k]], destination)
-                }.map { j -> route to route.stopIds.subList(i, j + 1) }
+            fun endingAt(end: (String) -> Boolean) = visits(route, stopId).flatMap { i ->
+                (i + 1 until route.stopIds.size).filter { k -> end(route.stopIds[k]) }
+                    .map { j -> route to route.stopIds.subList(i, j + 1) }
             }
-            byStopName.ifEmpty {
-                if (!same(terminusOf(route.name), destination)) return@ifEmpty emptyList()
-                toEnd(route, stopId)
-            }
+            endingAt { same(sequence.stopNames[it], destination) }
+                .ifEmpty { if (destinationId.isBlank()) emptyList() else endingAt { it == destinationId } }
+                .ifEmpty {
+                    if (!same(terminusOf(route.name), destination)) return@ifEmpty emptyList()
+                    toEnd(route, stopId)
+                }
         }
         val matched = when {
             unknown -> sequence.routes.flatMap { toEnd(it, stopId) }

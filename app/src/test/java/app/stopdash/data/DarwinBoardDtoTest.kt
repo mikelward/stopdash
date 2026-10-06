@@ -59,6 +59,19 @@ class DarwinBoardDtoTest {
     }
 
     @Test
+    fun `a train's terminus comes in by TfL's id for its code, but not a dividing train's`() {
+        val service = board().trainServices!!.first()
+        val one = service.copy(destination = listOf(DarwinLocationDto("Guildford", "GLD")))
+        val dividing = service.copy(destination = listOf(DarwinLocationDto("Guildford", "GLD"), DarwinLocationDto("Reading", "RDG")))
+        val unknown = service.copy(destination = listOf(DarwinLocationDto("Elsewhere", "ZZZ")))
+        val ids = mapOf("GLD" to "910GGUILDFD", "RDG" to "910GRDNGSTN")
+        val read = board().copy(trainServices = listOf(one, dividing, unknown)).toDepartures(stopIdFor = ids::get)
+        assertEquals(listOf("910GGUILDFD", "", ""), read.map { it.destinationId })
+        // With no codes to read it by, as before.
+        assertTrue(board().toDepartures().all { it.destinationId.isEmpty() })
+    }
+
+    @Test
     fun `a canceled or delayed train with no schedule to place it is left out and reported`() {
         val delayed = board().trainServices!!.first().copy(etd = "Delayed", std = null)
         val warnings = mutableListOf<String>()

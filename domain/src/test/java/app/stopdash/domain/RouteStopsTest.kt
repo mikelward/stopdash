@@ -33,6 +33,26 @@ class RouteStopsTest {
     }
 
     @Test
+    fun `a terminus its stops don't name is found by its id, never in place of one they do`() {
+        // A National Rail board's "St Albans" for the route's "St Albans City", one stop short of
+        // the line's end: by the id the train ends where it does, not at the end of the line.
+        val rail = LineSequence(
+            routes = listOf(LineRoute("Brighton &harr; Bedford", listOf("P", "K", "S", "L", "B"))),
+            stopNames = mapOf("P" to "St Pancras", "K" to "Kentish Town", "S" to "St Albans City", "L" to "Luton", "B" to "Bedford"),
+        )
+        assertEquals(listOf("P", "K", "S"), RouteStops.ahead(rail, "P", "St Albans", null, destinationId = "S")?.map { it.id })
+        // Without it the name matches nothing, and a train's list isn't guessed.
+        assertEquals(RouteStops.Resolution.NoMatch, RouteStops.resolve(rail, "P", "St Albans", null))
+        // An id no route calls at changes nothing.
+        assertEquals(RouteStops.Resolution.NoMatch, RouteStops.resolve(rail, "P", "St Albans", null, destinationId = "ELSEWHERE"))
+        // Where the name does match a stop, it is where the train ends, as before.
+        assertEquals(listOf("P", "K", "S", "L"), RouteStops.ahead(rail, "P", "Luton", null, destinationId = "ELSEWHERE")?.map { it.id })
+        // Ahead of the route's name: a bus short of its route's end stops where its id says.
+        assertEquals(listOf("B", "C"), RouteStops.ahead(bus, "B", "Victoria", null, bus = true, destinationId = "C")?.map { it.id })
+        assertEquals(listOf("A", "B"), RouteStops.ahead(bus, "A", "Victoria", null, bus = true, destinationId = "B")?.map { it.id })
+    }
+
+    @Test
     fun `the whole route a stop list runs on is the longest route holding it, from its first stop`() {
         val routes = LineSequence(
             routes = listOf(
