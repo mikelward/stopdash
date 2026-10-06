@@ -169,6 +169,8 @@ class StopDashWidget : GlanceAppWidget() {
                 logWidgetSnapshotWarning("widget sizes read failed: ${e::class.simpleName}")
                 emptyList()
             }
+            // The trip's own updates redraw it; no departures' change is due.
+            WidgetRedraws.nextChangeAt = null
             return TripDrawing(trip, WidgetTripLayouts.of(trip, tripScale, tripSizes, WIDGET_MIN_SIZE), tripScale, generation)
         }
         // Off the render path: read the persisted snapshot before composing. A read failure
@@ -294,6 +296,7 @@ class StopDashWidget : GlanceAppWidget() {
             ?.takeIf { it.isPositive() }
         val within = listOfNotNull(NEARBY_SET_RETRY.takeIf { nearbyUnreadable }, tapExpiry, guessExpiry).minOrNull()
         scheduleStalenessRedrawFor(context, shown, now, within = within)
+        WidgetRedraws.nextChangeAt = models.nextChangeAt
         return DeparturesDrawing(models, now, fontScale, generation)
     }
 
@@ -347,8 +350,31 @@ internal suspend fun widgetModels(
         )
     }
     val everyRow = build(DpSize(WIDGET_MIN_WIDTH, WIDGET_UNBOUNDED_HEIGHT))
-    WidgetModels(sizes.associateWith(build), fallback = build(WIDGET_MIN_SIZE), everyRow.guessExpiresAt, build, worker)
+    WidgetModels(
+        sizes.associateWith(build),
+        fallback = build(WIDGET_MIN_SIZE),
+        everyRow.guessExpiresAt,
+        build,
+        worker,
+        nextChangeAt = nextCountdownChange(snapshot?.stops.orEmpty().flatMap { it.departures }, now),
+    )
 }
+
+/**
+ * The first instant after [now] at which any of [departures]' countdowns changes: one departing, or
+ * one's count going down just after a whole minute before it (at exactly 2:00 left it still reads
+ * "2 min"), as the watch's timelines break; null with none to come. So a redraw lands where a
+ * countdown actually changes, not on the clock's whole minute (Codex on #612).
+ */
+internal fun nextCountdownChange(departures: List<app.stopdash.domain.Departure>, now: Instant): Instant? =
+    departures.mapNotNull { departure ->
+        val due = departure.expectedArrival
+        if (due <= now) return@mapNotNull null
+        // The latest tick (due - k minutes + 1 ms) still after now, else the departure itself.
+        val left = JavaDuration.between(now, due).plusMillis(1).toMillis()
+        val k = (left + 59_999) / 60_000 - 1
+        if (k >= 1) due.minusSeconds(60 * k).plusMillis(1) else due
+    }.minOrNull()
 
 /**
  * The models [widgetModels] worked out, looked up in constant time while composing. The launcher
@@ -366,6 +392,8 @@ internal class WidgetModels(
     val guessExpiresAt: Instant?,
     private val build: (DpSize) -> WidgetModel,
     private val worker: CoroutineDispatcher,
+    /** When the first of the snapshot's countdowns next changes ([nextCountdownChange]). */
+    val nextChangeAt: Instant? = null,
 ) {
     operator fun get(size: DpSize): WidgetModel = bySize[size] ?: fallback
 
@@ -374,7 +402,7 @@ internal class WidgetModels(
         if (size in bySize) {
             this
         } else {
-            withContext(worker) { WidgetModels(bySize + (size to build(size)), fallback, guessExpiresAt, build, worker) }
+            withContext(worker) { WidgetModels(bySize + (size to build(size)), fallback, guessExpiresAt, build, worker, nextChangeAt) }
         }
 
     /** Every model worked out, the fallback's too: never empty. */
@@ -1688,6 +1716,9 @@ internal data class TripDrawing(
  */
 internal object WidgetRedraws {
     val generation = kotlinx.coroutines.flow.MutableStateFlow(0L)
+
+    /** When the departures last drawn next change ([WidgetModels.nextChangeAt]), for [WidgetMinuteTicks]. */
+    @Volatile var nextChangeAt: Instant? = null
 }
 
 /**

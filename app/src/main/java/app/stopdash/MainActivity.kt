@@ -1,6 +1,5 @@
 package app.stopdash
 
-import app.stopdash.widget.redrawWidgets
 import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -250,11 +249,12 @@ import app.stopdash.ui.tripStartId
 import app.stopdash.ui.widgetNearbySet
 import app.stopdash.watch.WatchInstall
 import app.stopdash.widget.LiveWidgetRefreshResult
-import app.stopdash.widget.StopDashWidget
+import app.stopdash.widget.WidgetMinuteTicks
 import app.stopdash.widget.WidgetSnapshotStore
 import app.stopdash.widget.applyLiveWidgetRefresh
 import app.stopdash.widget.logWidgetSnapshotWarning
 import app.stopdash.widget.redrawWidgetNow
+import app.stopdash.widget.redrawWidgets
 import app.stopdash.widget.syncLiveWidgetRefreshSchedule
 import com.mikelward.androidlog.DebugLog
 import com.mikelward.androidlog.android.DebugReport
@@ -467,6 +467,8 @@ class MainActivity : ComponentActivity() {
         // StopdashApp (every process, so a widget-only process has it too), not here. The request
         // clients read the current key per request — a paste raises the budget on the next refresh
         // without rebuilding them (SPEC D7).
+        // The widget's countdowns redrawn each minute while the app is on screen.
+        lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { WidgetMinuteTicks.hold(applicationContext) } }
         lifecycleScope.launch {
             routeTopology.value = withContext(Dispatchers.IO) { RouteTopologyStore.load(applicationContext) }
             // Then TfL's current routes over the bundled ones where they still cover them, so a line
