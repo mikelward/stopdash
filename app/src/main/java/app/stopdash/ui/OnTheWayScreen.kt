@@ -240,6 +240,14 @@ internal fun OnTheWayScreen(
             item(key = "next") {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     NextStep(destination, eta?.takeIf { !stale || asOf != null }, progress, now, current, asOf = asOf)
+                    // Why the ride now runs only to a change: none of the plan's trains was listed, so the trip
+                    // took a branch by itself, said loudly until the rider is past it (maintainer, 2026-10-06).
+                    trip?.takeIf { it.branchTakenLeg >= 0 && it.legIndex <= it.branchTakenLeg }?.let {
+                        WarningText(
+                            stringResource(R.string.on_the_way_trains_none_direct, it.branchTakenTo),
+                            it.branchTakenFork.takeIf { fork -> fork.isNotBlank() }?.let { fork -> stringResource(R.string.on_the_way_off_plan_change, fork) },
+                        )
+                    }
                     // On board the ride the board is for (its train taken to have left with them, say): the
                     // board's branches don't say which forks are behind them, so the ride's own stand in (Codex, #586).
                     val aboardBoard = nextTrains != null && trip != null && (trip.boarded || trip.onBoardSeen) && sameRide(nextTrains.ride, trip.leg)
@@ -403,6 +411,9 @@ data class NextTrains(
     // otherwise): worked out with [groups] on the worker ([withGroups]), so the section only reads them.
     val offPlanListed: Boolean = false,
     val offPlanFork: String? = null,
+    // The plan's own row's name where none of its trains is listed: the terminus the Planner's train runs
+    // to ("High Barnet"), as the platform's boards say it, else where the rider gets off. Worked out with them.
+    val plannedHeading: String = "",
 ) {
     /**
      * Whether no pole has a train listed: the board's own ([trains]) nor any of [others], nor any that
@@ -722,7 +733,8 @@ internal fun NextTrains.withGroups(now: Instant, topology: RouteTopology = Route
     // The branches with trains listed, and the one stop they all turn off at, if they share it.
     val listed = offPlan.filter { it.trains.isNotEmpty() }
     val fork = listed.map { it.branch.forkName }.distinct().singleOrNull()?.takeIf { it.isNotBlank() }
-    return copy(groups = groups, cards = groups.map { stopCard(it, topology) }, offPlanListed = listed.isNotEmpty(), offPlanFork = fork)
+    val heading = ride.headings.firstOrNull()?.let { DepartureLabels.destinationLabel(it, "") ?: it } ?: ride.toName
+    return copy(groups = groups, cards = groups.map { stopCard(it, topology) }, offPlanListed = listed.isNotEmpty(), offPlanFork = fork, plannedHeading = heading)
 }
 
 /** [next]'s trains as the board draws them at [now]: the ride's own pole first, then the pair's others, each its own header ("Stop N"). */
@@ -844,10 +856,10 @@ private fun NextTrainsSection(
             // one TfL's live board doesn't list, with no alert to say so), and where to change when every
             // listed train turns off at the same place (maintainer, 2026-10-06).
             WarningText(
-                stringResource(R.string.on_the_way_trains_none, next.ride.toName),
+                stringResource(R.string.on_the_way_trains_none_direct, next.ride.toName),
                 next.offPlanFork?.let { stringResource(R.string.on_the_way_off_plan_change, it) },
             )
-            OffPlanCard(next.offPlan, next.ride, now, onTake, planned = true)
+            OffPlanCard(next.offPlan, next.ride, now, onTake, planned = next.plannedHeading.ifEmpty { next.ride.toName })
             return@Column
         }
         if (offPlan && !next.stale) OtherRoutes(next.offPlan, next.ride, now, onTake)
@@ -937,8 +949,9 @@ private fun OffPlanCard(
     ride: TripLeg,
     now: Instant,
     onTake: ((TripLeg, OffPlan.Branch) -> Unit)?,
-    // Led by the plan's own row, its times a dash: none of its trains listed (maintainer, 2026-10-06).
-    planned: Boolean = false,
+    // Led by the plan's own row, named [planned], its times a dash: none of its trains listed (maintainer,
+    // 2026-10-06). Null leaves it out.
+    planned: String? = null,
 ) {
     // The row opened, by its key: it stays open as its times come and go, and closes once it's gone.
     var open by rememberSaveable { mutableStateOf<String?>(null) }
@@ -948,15 +961,15 @@ private fun OffPlanCard(
     val pillMax = (LocalConfiguration.current.screenWidthDp.dp - 64.dp) * 0.5f
     OutlinedCard(Modifier.fillMaxWidth().testTag("onTheWayOffPlan")) {
         Column {
-            if (planned) {
-                val none = stringResource(R.string.on_the_way_trains_none, ride.toName)
+            if (planned != null) {
+                val none = stringResource(R.string.on_the_way_trains_none, planned)
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).testTag("onTheWayPlannedRow"),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     LinePill(ride.lineName, ride.lineId, ride.mode, Modifier.widthIn(max = pillMax))
                     Text(
-                        ride.toName,
+                        planned,
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -972,7 +985,7 @@ private fun OffPlanCard(
                 }
             }
             rows.forEachIndexed { index, row ->
-                if (index > 0 || planned) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                if (index > 0 || planned != null) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 val expanded = onTake != null && open == row.key
                 Column(
                     Modifier

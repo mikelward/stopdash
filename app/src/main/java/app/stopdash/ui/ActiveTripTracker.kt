@@ -8,6 +8,7 @@ import app.stopdash.domain.Departure
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.LocationFix
 import app.stopdash.domain.OffPlan
+import app.stopdash.domain.Staleness
 import app.stopdash.domain.OnTheWay
 import app.stopdash.domain.ReplanOrigin
 import app.stopdash.domain.RideLines
@@ -611,28 +612,62 @@ class ActiveTripTracker(
             } else {
                 split
             }
-            unsaved = true
-            val saved = withContext(io) { save(taken) }
-            unsaved = !saved
-            _notKept.value = !saved
-            if (!saved) return@withLock
-            if (taken.alertLeft) {
-                onGetOffSoonDone()
-                unsaved = true
-            }
-            // The rides' directions are kept by leg, which the split has moved: learned again.
-            rideDirections.clear()
-            _trip.value = taken.copy(alertLeft = false)
-            // The rerouted ride has no answer of its own yet: the last one's isn't passed off as its.
-            _updatedAt.value = null
-            _answeredAt.value = null
-            _progress.value = standing(taken, now)
-            settleBoard()
             val boards = HashMap<TripLeg, Result<NextBoard>>()
-            // A walk to the ride already past its time moves on to it in the first step, and the second
-            // picks its train, as [goTo] does (Codex, #583).
-            if (step(null, boards)) step(null, boards)
-            checkDisruptions(boards)
+            if (rerouted(taken, now, boards)) checkDisruptions(boards)
+        }
+    }
+
+    // [taken], a reroute ([OffPlan.take]), saved and followed from now, under [lock]; false where it
+    // couldn't be saved, when nothing moves. [boardOf], a ride whose board this refresh read is the
+    // rerouted ride's too, once saved ([rekeyBoard]).
+    private suspend fun rerouted(taken: ActiveTrip, now: Instant, boards: HashMap<TripLeg, Result<NextBoard>>, boardOf: TripLeg? = null): Boolean {
+        unsaved = true
+        val saved = withContext(io) { save(taken) }
+        unsaved = !saved
+        _notKept.value = !saved
+        if (!saved) return false
+        if (taken.alertLeft) {
+            onGetOffSoonDone()
+            unsaved = true
+        }
+        boardOf?.let { from -> OnTheWay.upcomingRide(taken)?.let { to -> rekeyBoard(from, to, boards) } }
+        // The rides' directions are kept by leg, which the split has moved: learned again.
+        rideDirections.clear()
+        _trip.value = taken.copy(alertLeft = false)
+        // The rerouted ride has no answer of its own yet: the last one's isn't passed off as its.
+        _updatedAt.value = null
+        _answeredAt.value = null
+        _progress.value = standing(taken, now)
+        settleBoard()
+        // A walk to the ride already past its time moves on to it in the first step, and the second
+        // picks its train, as [goTo] does (Codex, #583).
+        if (step(null, boards)) step(null, boards)
+        return true
+    }
+
+    /**
+     * The branch the trip takes by itself (maintainer, 2026-10-06): the ride still to board, with no
+     * train followed, has a fresh board, every train on it checked, and none of the plan's listed, but
+     * trains that run its way and turn off before where the rider gets off (the Planner's timetable can
+     * route a direct train TfL's live board doesn't list). The rider will take one of those, so the
+     * trip goes that way, by the soonest they can catch, as **Take this one** would, and its change
+     * there shows the next board. Null where it doesn't.
+     */
+    private suspend fun branchToTake(trip: ActiveTrip, now: Instant): Pair<Int, OffPlan.Branch>? {
+        val ride = OnTheWay.upcomingRide(trip) ?: return null
+        if (trip.boarded || trip.onBoardSeen || trip.vehicleId.isNotBlank()) return null
+        val board = _nextBoard.value?.takeIf { it.ride == ride && !it.failed && !it.partial && it.others.isEmpty() } ?: return null
+        val fetchedAt = board.fetchedAt?.takeIf { !Staleness.isStale(it, now) } ?: return null
+        val sequences = withContext(compute) { OnTheWay.boardLineIds(ride, board.departures) }.associateWith { routeOf(it) }
+        if (sequences.values.any { it == null }) return null
+        val readyAt = OnTheWay.readyAt(trip, _progress.value) ?: now
+        return withContext(compute) {
+            val own = OnTheWay.boardTrains(ride, board.departures, fetchedAt, sequences, now)
+            if (own.trains.isNotEmpty() || own.pending || own.unresolved) return@withContext null
+            val branch = OffPlan.branches(ride, board.departures, sequences, now)
+                .flatMap { b -> b.trains.filter { !it.expectedArrival.isBefore(readyAt) }.map { b to it.expectedArrival } }
+                .minByOrNull { it.second }?.first ?: return@withContext null
+            trip.route.legs.indexOf(ride).takeIf { it >= 0 }?.let { it to branch }
         }
     }
 
@@ -814,16 +849,35 @@ class ActiveTripTracker(
                 // Each boarding stop's board is asked for at most once a refresh, answer or failure,
                 // however long TfL takes: the steps share this refresh's attempts.
                 val boards = HashMap<TripLeg, Result<NextBoard>>()
-                // The trip's own last fix let go once past its use, whether or not TfL answers (Codex, #542).
-                expireFix()
+                // Each line's route too ([routesRead]).
+                routesRead = HashMap()
                 try {
-                    if (step(fresh, boards)) step(null, boards)
-                } finally {
+                    // The trip's own last fix let go once past its use, whether or not TfL answers (Codex, #542).
                     expireFix()
+                    try {
+                        if (step(fresh, boards)) step(null, boards)
+                    } finally {
+                        expireFix()
+                    }
+                    // None of the plan's trains running, only branches off it: the trip takes one by itself.
+                    _trip.value?.let { trip ->
+                        val now = clock()
+                        branchToTake(trip, now)?.let { (index, branch) ->
+                            OffPlan.take(trip, index, branch, now)?.let { taken ->
+                                warn("on the way: none of the plan's trains listed; took the branch off at stop ${branch.forkIndex}")
+                                // Said until the rider is past the ride to the fork ([ActiveTrip.branchTakenLeg]).
+                                val said = OffPlan.takenBySelf(trip, taken, index, branch)
+                                // The board just read is the shortened ride's too: from the same stop, not asked for again (Codex, #630).
+                                rerouted(said, now, boards, boardOf = trip.route.legs[index])
+                            }
+                        }
+                    }
+                    // The fix as given, with when: aged once, where it's used, for all the time since (Codex on #479).
+                    // Only a fix precise location still allows picks where to plan again from (Codex, #542).
+                    checkDisruptions(boards, rider?.takeIf { allowed && preciseAllowed() }, asked)
+                } finally {
+                    routesRead = null
                 }
-                // The fix as given, with when: aged once, where it's used, for all the time since (Codex on #479).
-                // Only a fix precise location still allows picks where to plan again from (Codex, #542).
-                checkDisruptions(boards, rider?.takeIf { allowed && preciseAllowed() }, asked)
             }
         }
     }
@@ -1741,10 +1795,15 @@ class ActiveTripTracker(
         return OnTheWay.Twin.APART to false
     }
 
+    // Each line's route as a refresh read it, answer or failure: asked for once a refresh, so a failing
+    // TfL brings no second request for it (Codex, #630). Null outside a refresh.
+    private var routesRead: HashMap<String, LineSequence?>? = null
+
     // [lineId]'s route ([lineSequence]), or null when it can't be had: a failure said coarsely, by
     // the line and the kind of error.
-    private suspend fun routeOf(lineId: String): LineSequence? =
-        try {
+    private suspend fun routeOf(lineId: String): LineSequence? {
+        routesRead?.let { read -> if (lineId in read) return read[lineId] }
+        val route = try {
             lineSequence(lineId)
         } catch (e: CancellationException) {
             throw e
@@ -1752,6 +1811,9 @@ class ActiveTripTracker(
             warn("on the way: route lookup failed for line $lineId: ${e::class.simpleName}")
             null
         }
+        routesRead?.put(lineId, route)
+        return route
+    }
 
     // What [pick] found: the train to follow, with the ride as its line runs it and its calls, or none;
     // and whether the boards list a train of a line that went unchecked ([RideLinesNow.uncheckedOn]), or
@@ -1860,6 +1922,16 @@ class ActiveTripTracker(
             return null
         }
         return boards.getOrPut(ride) { readBoard(ride, now) }
+    }
+
+    // [from]'s board this refresh, taken as [to]'s, a ride from the same stop ([OffPlan.take]'s first part).
+    private fun rekeyBoard(from: TripLeg, to: TripLeg, boards: MutableMap<TripLeg, Result<NextBoard>>) {
+        if (from.fromId != to.fromId) return
+        val board = boards[from]?.getOrNull() ?: return
+        val moved = board.copy(ride = to)
+        boards[to] = Result.success(moved)
+        if (_nextBoard.value == board) _nextBoard.value = moved
+        if (boardSeenRide == from) boardSeenRide = to
     }
 
     private suspend fun readBoard(ride: TripLeg, now: Instant): Result<NextBoard> =

@@ -462,11 +462,12 @@ class OnTheWayScreenScreenshotTest {
     @Test
     fun with_no_train_of_the_plan_listed_the_branches_show_open() {
         // Southbound from Waterloo to Morden with only a Battersea train listed (it turns off at Kennington):
-        // the board's only live train, shown open under "None going to Morden", never an empty board over
-        // a button (maintainer, 2026-10-06).
+        // the board's only live train, shown open under "None direct to Morden", never an empty board over a
+        // button (maintainer, 2026-10-06).
         val northern = TripLeg(
             "tube", "northern", "Northern", "940GZZLUWLO", "Waterloo", "940GZZLUMDN", "Morden", at(11), at(40),
             path = listOf("940GZZLUKNG", "940GZZLUMDN"), pathNames = listOf("Kennington", "Morden"),
+            headings = listOf("Morden Underground Station"),
         )
         val battersea = Departure("northern", "Northern", "inbound", "Battersea Power Station", null, at(3), "tube", vehicleId = "EXAMPLE2")
         val off = OffPlan.Branch("Battersea", forkIndex = 0, forkName = "Kennington", trains = listOf(battersea))
@@ -480,11 +481,13 @@ class OnTheWayScreenScreenshotTest {
         )
         // Said loudly, with where to change as every listed train turns off at Kennington.
         composeRule.onNodeWithTag("onTheWayTrainsWarning").assertIsDisplayed()
-        composeRule.onNodeWithText("None going to Morden").assertIsDisplayed()
+        composeRule.onNodeWithText("None direct to Morden").assertIsDisplayed()
         composeRule.onNodeWithText("Change at Kennington").assertIsDisplayed()
         composeRule.onNodeWithTag("onTheWayOtherRoutes").assertDoesNotExist()
-        // The plan's own row leads, its times a dash (maintainer, 2026-10-06).
+        // The plan's own row leads, named by the terminus the Planner's train runs to, as the platform's
+        // boards say it, its times a dash (maintainer, 2026-10-06).
         composeRule.onNodeWithTag("onTheWayPlannedRow").assertIsDisplayed()
+        composeRule.onNodeWithText("Morden").assertIsDisplayed()
         composeRule.onNodeWithText("—").assertIsDisplayed()
         composeRule.onNodeWithText("(Battersea)").assertIsDisplayed()
         // Still taken from its row, as behind the button.
@@ -512,6 +515,27 @@ class OnTheWayScreenScreenshotTest {
         )
         composeRule.onNodeWithTag("onTheWayTrainsWarning").assertDoesNotExist()
         composeRule.onNodeWithTag("onTheWayOtherRoutes").assertIsDisplayed()
+    }
+
+    @Test
+    fun a_branch_the_trip_took_by_itself_is_said_until_its_ride_is_done() {
+        // Rerouted to change at Kennington, none of the plan's trains to Morden being listed (Codex, #630).
+        val toFork = TripLeg(
+            "tube", "northern", "Northern", "940GZZLUWLO", "Waterloo", "940GZZLUKNG", "Kennington", at(3), at(8),
+            path = listOf("940GZZLUKNG"), pathNames = listOf("Kennington"),
+        )
+        val onFrom = TripLeg(
+            "tube", "northern", "Northern", "940GZZLUKNG", "Kennington", "940GZZLUMDN", "Morden", at(10), at(40),
+            path = listOf("940GZZLUMDN"), pathNames = listOf("Morden"),
+        )
+        val rerouted = trip.copy(
+            route = TripRoute(listOf(toFork, onFrom)), destinationName = "Morden", legIndex = 0,
+            branchTakenLeg = 0, branchTakenTo = "Morden", branchTakenFork = "Kennington",
+        )
+        show(rerouted, TripProgress.Waiting(toFork, at(3)))
+        composeRule.onNodeWithTag("onTheWayTrainsWarning").assertIsDisplayed()
+        composeRule.onNodeWithText("None direct to Morden").assertIsDisplayed()
+        composeRule.onNodeWithText("Change at Kennington").assertIsDisplayed()
     }
 
     @Test

@@ -201,6 +201,28 @@ class OffPlanTest {
     }
 
     @Test
+    fun `a branch taken by itself is still said through a later split of its ride`() {
+        // The ride the trip took a branch for by itself, split again: said on to the fork, its second part (Codex, #630).
+        val said = trip.copy(branchTakenLeg = 0, branchTakenTo = "Z", branchTakenFork = "X")
+        assertEquals(1, OffPlan.take(said, 0, loop, at(1))?.branchTakenLeg)
+        // A later ride's mark moves up with it; an earlier one's stays, as does none.
+        val walk = TripLeg(TripLeg.WALKING, "", "", "S", "S", "A", "A", at(0), at(5))
+        val walking = ActiveTrip(TripRoute(listOf(walk, ride)), "X", startedAt = t0)
+        assertEquals(0, OffPlan.take(walking.copy(branchTakenLeg = 0), 1, loop, at(3))?.branchTakenLeg)
+        assertEquals(-1, OffPlan.take(trip, 0, loop, at(1))?.branchTakenLeg)
+    }
+
+    @Test
+    fun `a branch taken by itself is marked, and a second keeps the first mark`() {
+        val first = OffPlan.takenBySelf(trip, OffPlan.take(trip, 0, loop, at(1))!!, 0, loop)
+        assertEquals(Triple(0, "X", "C"), Triple(first.branchTakenLeg, first.branchTakenTo, first.branchTakenFork))
+        // Split again before C: still what the rider was going to, said on through the ride to C (Codex, #630).
+        val again = OffPlan.take(first, 0, loop.copy(forkIndex = 0, forkName = "B"), at(2))!!
+        val said = OffPlan.takenBySelf(first, again, 0, loop.copy(forkIndex = 0, forkName = "B"))
+        assertEquals(Triple(1, "X", "C"), Triple(said.branchTakenLeg, said.branchTakenTo, said.branchTakenFork))
+    }
+
+    @Test
     fun `what was heard on the ride holds for both its parts, a later leg's moves up`() {
         val heard = setOf("line/0/a/b", "stop/1/Z/k/s", "unpredicted/0/red/A")
         val taken = OffPlan.take(trip.copy(disruptionsHeard = heard, disruptionsDismissed = setOf("line/1/a/b")), 0, loop, at(1))!!

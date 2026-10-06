@@ -87,6 +87,13 @@ data class ActiveTrip(
     // restart (Codex, #586). -1 with none known; a later leg's index of its own replaces it.
     val aheadLeg: Int = -1,
     val aheadStop: Int = -1,
+    // A branch the trip took by itself (maintainer, 2026-10-06): none of the plan's trains to
+    // [branchTakenTo] was listed, so leg [branchTakenLeg] now runs to [branchTakenFork], a change there.
+    // Said until the rider is past that leg, and kept with the trip so a restart still says it (Codex,
+    // #630). -1 with none.
+    val branchTakenLeg: Int = -1,
+    val branchTakenTo: String = "",
+    val branchTakenFork: String = "",
 ) {
     /** The leg the rider is on, or null once they've arrived. */
     val leg: TripLeg? get() = route.legs.getOrNull(legIndex)
