@@ -79,7 +79,7 @@ sealed interface DeparturesUiState {
         val stopsDisruptionUnknown: Set<String> = emptySet(),
         // Stops the last fetch asked for but has nothing to show: their arrivals failed with no
         // earlier result to keep. Tells a stop that couldn't be fetched apart from one still loading
-        // (a starred journey's origin says "Couldn't check trains", not "Checking trains…").
+        // (a favorite journey's origin says "Couldn't check trains", not "Checking trains…").
         val unavailableStopIds: Set<String> = emptySet(),
         // A cold load still out: the stops not back yet, each shown as a collapsed "Loading" card
         // where it will land, while [stops] holds the ones that are. Never persisted (SPEC D4).

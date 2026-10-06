@@ -35,7 +35,7 @@ import kotlin.time.toKotlinDuration
 data class DeparturesSnapshot(
     val stops: List<StopArrivals>,
     val fetchedAt: Instant,
-    // The starred journeys the widget pins to its top (SPEC *Journeys*): each origin's departures
+    // The favorite journeys the widget pins to its top (SPEC *Journeys*): each origin's departures
     // that call at the far end, as the app last worked them out from the route data it has.
     val journeys: List<WidgetJourney> = emptyList(),
     // Stops kept only as a journey's origin (not nearby): the widget shows just their journey
@@ -362,9 +362,9 @@ data class LineStatusCheck(
 }
 
 /**
- * A starred journey as the widget shows it, which can't load route data itself: the departures at
+ * A favorite journey as the widget shows it, which can't load route data itself: the departures at
  * [originId] that the app found to call at the far end, identified by their [calls]. [key] is the
- * journey's ([StarredJourney.key]), so the app can pick up what it last saved after a restart.
+ * journey's ([FavoriteJourney.key]), so the app can pick up what it last saved after a restart.
  */
 data class WidgetJourney(
     val originId: String,
@@ -389,7 +389,7 @@ data class WidgetJourneyCheck(
 )
 
 /**
- * What the app's screen reports for the widget's journey pins: the starred journeys' [keys] (all of
+ * What the app's screen reports for the widget's journey pins: the favorite journeys' [keys] (all of
  * them — a key missing is an unstar), each placed card's latest [checks], and the stop each journey
  * is shown [from] (its direction), so a flip drops the old direction's pin even before the new
  * direction's route can be checked.

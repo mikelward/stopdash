@@ -10,7 +10,7 @@ import app.stopdash.domain.LineSequence
 import app.stopdash.domain.RouteSequenceSource
 import app.stopdash.domain.RouteStops
 import app.stopdash.domain.RouteStopsRepository
-import app.stopdash.domain.StarredJourney
+import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StopArrivals
 import java.io.File
 import java.time.Instant
@@ -99,7 +99,7 @@ class RouteSequenceThameslinkTest {
             listOf(StopArrivals(ST_PANCRAS_DOMESTIC, "London St Pancras International", listOf(departure), fetchedAt = now)),
             now,
         )
-        val journey = StarredJourney(
+        val journey = FavoriteJourney(
             JourneyEnd(ST_PANCRAS_DOMESTIC, "London St Pancras International"),
             JourneyEnd(FINSBURY_PARK, "Finsbury Park"),
             "thameslink",

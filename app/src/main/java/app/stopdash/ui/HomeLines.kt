@@ -7,7 +7,7 @@ import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.NearbySelection
 import app.stopdash.domain.NearestByLine
-import app.stopdash.domain.StarredJourney
+import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.TripLeg
 import java.time.Instant
@@ -116,11 +116,11 @@ object HomeLines {
         refreshing: Boolean = false,
         networks: Set<String> = DEFAULT_NETWORKS,
         // The rider's favorites, whose lines lead the pills with the nearby ones: their starred rows, and
-        // every line their starred journeys ride ([journeyLines]).
+        // every line their favorite journeys ride ([journeyLines]).
         starred: Set<StarredRow> = emptySet(),
         journeyLines: Set<String> = emptySet(),
-        // Their starred journeys, whose ends a line's map keeps on the page with the starred rows' stops.
-        journeys: List<StarredJourney> = emptyList(),
+        // Their favorite journeys, whose ends a line's map keeps on the page with the starred rows' stops.
+        journeys: List<FavoriteJourney> = emptyList(),
         // Each line's stop nearest the rider within reach by the nearby stops' own data, both tiers, a
         // stop whose times aren't fetched included ([NearbyStopsViewModel.State.Ready.nearestStopByLine]).
         nearestStops: Map<String, String> = emptyMap(),

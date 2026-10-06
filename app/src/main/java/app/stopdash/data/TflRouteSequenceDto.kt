@@ -79,7 +79,7 @@ data class TflMatchedStopDto(
     val stationId: String = "",
     val modes: List<String> = emptyList(),
     val lines: List<TflLineIdentifierDto> = emptyList(),
-    // The stop's published position — lets a starred journey pick its nearer end (SPEC *Journeys*).
+    // The stop's published position — lets a favorite journey pick its nearer end (SPEC *Journeys*).
     val lat: Double? = null,
     val lon: Double? = null,
 ) {

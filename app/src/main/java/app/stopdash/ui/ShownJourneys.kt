@@ -6,14 +6,14 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.remember
 import app.stopdash.domain.Coordinates
 import app.stopdash.domain.Journeys
-import app.stopdash.domain.StarredJourney
+import app.stopdash.domain.FavoriteJourney
 
 /**
  * The saved journeys as the list shows them ([shownJourneysOf]): each turned so its origin is the end
  * nearer the rider, or the other way if they flipped it ([journeys]), and those held back behind the
  * Faraway favorites button with each one's meters to its nearer end ([farMeters], SPEC *Journeys*).
  */
-internal class ShownJourneys(val journeys: List<StarredJourney>, val farMeters: Map<String, Double>)
+internal class ShownJourneys(val journeys: List<FavoriteJourney>, val farMeters: Map<String, Double>)
 
 /**
  * [ShownJourneys] for [saved] at [at]: each oriented, the [flipped] ones reversed, and the far ones
@@ -22,7 +22,7 @@ internal class ShownJourneys(val journeys: List<StarredJourney>, val farMeters: 
  */
 @WorkerThread
 internal fun shownJourneysOf(
-    saved: List<StarredJourney>,
+    saved: List<FavoriteJourney>,
     at: Coordinates,
     flipped: List<String>,
     fixConfirmed: Boolean,
@@ -50,7 +50,7 @@ internal class WorkedJourneys(val shown: ShownJourneys?, val current: Boolean)
 @Composable
 internal fun rememberShownJourneys(
     slot: MutableState<Worked<Inputs, ShownJourneys>?>,
-    saved: List<StarredJourney>?,
+    saved: List<FavoriteJourney>?,
     at: Coordinates,
     flipped: List<String>,
     fixConfirmed: Boolean,

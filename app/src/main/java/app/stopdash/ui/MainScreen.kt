@@ -175,7 +175,7 @@ import app.stopdash.domain.RouteStop
 import app.stopdash.domain.RouteStops
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.Staleness
-import app.stopdash.domain.StarredJourney
+import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StepFreeAccess
 import app.stopdash.domain.StepFreeLevel
@@ -255,9 +255,9 @@ fun MainScreen(
     // Shows a near-me stop (`stopId`, place name) in the maps app, from a tap on its header's
     // distance; null leaves the distance inert.
     onOpenStopMap: ((String, String) -> Unit)? = null,
-    // The starred journeys (SPEC *Journeys*), each already turned so its origin is the end nearer the
+    // The favorite journeys (SPEC *Journeys*), each already turned so its origin is the end nearer the
     // rider: shown as cards atop the near-me list, and starrable from a route page's stop list.
-    journeys: List<StarredJourney> = emptyList(),
+    journeys: List<FavoriteJourney> = emptyList(),
     // The journeys more than a mile from the rider (key → meters to the nearer end): held behind the
     // Faraway favorites button, and not fetched until it's tapped ([Journeys.farJourneys]).
     farJourneyMeters: Map<String, Double> = emptyMap(),
@@ -275,7 +275,7 @@ fun MainScreen(
     // The list's rows as last worked out off the main thread ([ListWork]), kept above the list as
     // [pendingTracker] is, so a return to it draws them at once. It follows [listKey] too.
     listWork: ListWork = remember(listKey) { ListWork() },
-    onToggleJourney: ((StarredJourney) -> Unit)? = null,
+    onToggleJourney: ((FavoriteJourney) -> Unit)? = null,
     // Dismisses the route page's tip on starring a journey; null (dismissed, or not read yet) hides it.
     onDismissJourneyTip: (() -> Unit)? = null,
     // The journeys' far ends as shown, reported so their closures are checked; and those checks, as
@@ -285,7 +285,7 @@ fun MainScreen(
     // The far ends whose closure check failed with nothing known ([JourneyCard.destinationUnchecked]).
     journeyDestinationsUnknown: Set<String> = emptySet(),
     // Shows the other direction of a journey card (a tap on its header).
-    onFlipJourney: (StarredJourney) -> Unit = {},
+    onFlipJourney: (FavoriteJourney) -> Unit = {},
     // True while a journey-star write has failed and not yet been surfaced: the same acknowledged
     // snackbar seam as [starWriteFailed], cleared by [onJourneyWriteFailureShown].
     journeyWriteFailed: Boolean = false,
@@ -297,7 +297,7 @@ fun MainScreen(
     // own view is open (kept however far), so a relocate can drop a journey's stops the moment it's
     // held back, before the screen reports again.
     onJourneyStopIds: (Map<String, Set<String>>, String?) -> Unit = { _, _ -> },
-    // The starred journeys' keys and each placed journey's latest check (the departures found to call
+    // The favorite journeys' keys and each placed journey's latest check (the departures found to call
     // at its far end), for the widget to pin (it can't load route data itself); reported whenever
     // they change. The ViewModel keeps what they add up to.
     onWidgetJourneys: (Set<String>, List<WidgetJourneyCheck>, Map<String, String>, Map<String, Set<String>>) -> Unit =
@@ -441,7 +441,7 @@ fun MainScreen(
             if (id in loadedSequences) put(id, loadedSequences[id]) else routeStopsRepository?.cached(id, "")?.let { put(id, it) }
         }
     }
-    // The starred journey whose own view is open (its key), from a tap on its heading, or null.
+    // The favorite journey whose own view is open (its key), from a tap on its heading, or null.
     var journeyViewKey by rememberSaveable { mutableStateOf<String?>(null) }
     // Whether the rider has tapped "Faraway favorites" to show the far journeys in full, for this
     // nearby set ([rememberFarReveal]).
@@ -976,7 +976,7 @@ fun MainScreen(
     // (this one is off while a drill-down is open, so the handler above takes that back).
     BackHandler(enabled = stationTitle != null && platformRows == null, onBack = onCloseStation)
 
-    // The starred journey whose own view is open (its key), from a tap on its heading, or null. It
+    // The favorite journey whose own view is open (its key), from a tap on its heading, or null. It
     // resolves against the current cards each recomposition, so it follows a swap and its trains stay
     // live; once the saved journeys are known and it isn't among them (unstarred), the view closes.
     val journeyViewCard = journeyViewKey?.let { key -> journeyCards.firstOrNull { it.journey.key == key } }
@@ -1285,7 +1285,7 @@ fun MainScreen(
     ) { innerPadding ->
         // The trip on the way, pinned above the near-me list (SPEC *On the way*): from the tracker's
         // state, no request of its own. Not on a station's page, nor a drill-down from the list (a
-        // station, a platform or a starred journey), each its own view.
+        // station, a platform or a favorite journey), each its own view.
         val onTheWay = LocalOnTheWayBanner.current?.takeIf { stationTitle == null && platformRows == null && !journeyViewOpen }
         Column(Modifier.fillMaxSize().padding(innerPadding)) {
             if (onTheWay != null) OnTheWayBanner(onTheWay, now, Modifier.padding(start = 16.dp, top = 8.dp, end = 16.dp))
@@ -1549,11 +1549,11 @@ private fun LoadedContent(
     journeyCards: List<JourneyCard> = emptyList(),
     // True when the nearby list is empty only because the journey cards above already show it all.
     nearbyShownAbove: Boolean = false,
-    onFlipJourney: (StarredJourney) -> Unit = {},
+    onFlipJourney: (FavoriteJourney) -> Unit = {},
     onRetryJourneyRoutes: () -> Unit = {},
-    onOpenJourney: ((StarredJourney) -> Unit)? = null,
+    onOpenJourney: ((FavoriteJourney) -> Unit)? = null,
     journeyView: Boolean = false,
-    onUnstarJourney: ((StarredJourney) -> Unit)? = null,
+    onUnstarJourney: ((FavoriteJourney) -> Unit)? = null,
     farJourneyCards: List<JourneyCard> = emptyList(),
     farJourneyMeters: Map<String, Double> = emptyMap(),
     onRevealFar: (() -> Unit)? = null,
@@ -1662,7 +1662,7 @@ private fun LoadedContent(
             if (state.disruptionUnknown && !state.checkingDisruptions && disruptionsRow == null) {
                 Banner(stringResource(R.string.disruptions_unknown))
             }
-            // Starred journeys still show when nothing nearby has departures: their origins can be
+            // Favorite journeys still show when nothing nearby has departures: their origins can be
             // farther away, and hiding them behind "No departures" would drop live trains.
             // A dismissed closure still draws its place's heading, so it keeps the list up.
             if (rows.isEmpty() && journeyCards.isEmpty() && farJourneyCards.isEmpty() && onRevealFar == null && shownPending.isEmpty() && dismissedClosures.isEmpty()) {
@@ -1847,7 +1847,7 @@ internal fun emptyStateUncertain(state: DeparturesUiState.Loaded, stamps: StopSt
         (state.stops.isEmpty() && Staleness.isStale(state.fetchedAt, now))
 
 /** Each saved journey that boards at a route page's stop, with the page's stops it ends at, and all of those. */
-internal class JourneysHere(val byJourney: Map<StarredJourney, Set<String>>, val starredStopIds: Set<String>) {
+internal class JourneysHere(val byJourney: Map<FavoriteJourney, Set<String>>, val starredStopIds: Set<String>) {
     companion object {
         val NONE = JourneysHere(emptyMap(), emptySet())
     }
@@ -1869,7 +1869,7 @@ internal class JourneysShown(val here: JourneysHere, val current: Boolean)
  */
 @Composable
 internal fun rememberJourneysHere(
-    journeys: List<StarredJourney>,
+    journeys: List<FavoriteJourney>,
     stops: RouteStopsUi,
     stopId: String,
     lineId: String,
@@ -2005,7 +2005,7 @@ internal fun sameRowAndLine(held: Inputs, wanted: Inputs): Boolean =
  */
 @WorkerThread
 internal fun journeysHere(
-    journeys: List<StarredJourney>,
+    journeys: List<FavoriteJourney>,
     page: RouteStopsUi.Loaded?,
     stopId: String,
     lineId: String,
@@ -2186,10 +2186,10 @@ private fun DepartureList(
     onOpenStation: ((StopGroup) -> Unit)? = null,
     onOpenStopMap: ((String, String) -> Unit)? = null,
     journeyCards: List<JourneyCard> = emptyList(),
-    onFlipJourney: (StarredJourney) -> Unit = {},
+    onFlipJourney: (FavoriteJourney) -> Unit = {},
     onRetryJourneyRoutes: () -> Unit = {},
     // Opens a journey's own view from a tap on its heading; null leaves the heading inert.
-    onOpenJourney: ((StarredJourney) -> Unit)? = null,
+    onOpenJourney: ((FavoriteJourney) -> Unit)? = null,
     // The faraway journeys' cards once revealed, with each one's meters to its nearer end; and the
     // button that reveals them, null once they are (or when there are none).
     farJourneyCards: List<JourneyCard> = emptyList(),
@@ -2199,7 +2199,7 @@ private fun DepartureList(
     // each of its groups is headed by its platform/pole so the rider sees where to board.
     journeyView: Boolean = false,
     // Unstars a journey from its own view's action row; null hides the button.
-    onUnstarJourney: ((StarredJourney) -> Unit)? = null,
+    onUnstarJourney: ((FavoriteJourney) -> Unit)? = null,
     // Why the near-me part is empty, shown under the journey cards when there are no nearby rows.
     nearbyEmptyNote: String? = null,
     // The favorite places to route to, as a chip row atop the list (near-me only); empty for none.
@@ -2486,7 +2486,7 @@ private fun DepartureList(
         // the favorites keep the top (maintainer, 2026-10-05). One line high whatever it says, so
         // nothing under it moves.
         disruptionsRow?.let { row -> item(key = "disruptions") { HomeDisruptionsRow(row) } }
-        // Starred journeys lead the list (SPEC *Journeys*): each a header naming the direction shown,
+        // Favorite journeys lead the list (SPEC *Journeys*): each a header naming the direction shown,
         // tappable to show the other, over a card of just the trains that call at the far end.
         journeyItems(journeyCards)
         nearbyEmptyNote?.let { note ->
@@ -3629,13 +3629,13 @@ internal fun StopClosureCard(row: DepartureRow, onDismiss: (() -> Unit)?) {
  * withholds its countdowns ("?") while a fresh stop's card beside it stays live (SPEC D4).
  */
 /**
- * A starred journey as shown on the near-me list: [journey] turned to the direction shown, and its
+ * A favorite journey as shown on the near-me list: [journey] turned to the direction shown, and its
  * [rows] — the trains from its origin that call at its destination ([Journeys.rows]). Null rows while
  * the origin's departures or the line's route aren't in yet, so the card says it's checking rather
  * than claim there are no trains (SPEC principle 1).
  */
 internal data class JourneyCard(
-    val journey: StarredJourney,
+    val journey: FavoriteJourney,
     val state: JourneyCardState,
     // The (undismissed) closure notices of its boarding stops and far end, shown whatever the trains'
     // state: each one notice, as the rows of every pole that carries it (dismissed together).
@@ -3776,7 +3776,7 @@ private fun JourneyNote(text: String, onRetry: (() -> Unit)? = null) {
  * view a rider opens to act on the journey.
  */
 @Composable
-private fun JourneyActions(journey: StarredJourney, onSwap: () -> Unit, onUnstar: (() -> Unit)?) {
+private fun JourneyActions(journey: FavoriteJourney, onSwap: () -> Unit, onUnstar: (() -> Unit)?) {
     val spoken = stringResource(R.string.journey_title_spoken, journey.from.name, journey.to.name)
     Column {
         // The journey in full, wrapping as far as it needs, so both names show however long they are
@@ -3824,7 +3824,7 @@ private fun JourneyActions(journey: StarredJourney, onSwap: () -> Unit, onUnstar
  */
 @Composable
 private fun JourneyHeader(
-    journey: StarredJourney,
+    journey: FavoriteJourney,
     firstOnScreen: Boolean,
     // Null hides the ⇄ (a far journey's collapsed heading: nothing below it to swap).
     onSwap: (() -> Unit)?,
@@ -3859,7 +3859,7 @@ private fun JourneyHeader(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )
-            // The gold star marks a starred journey, telling its heading apart from a bus place's
+            // The gold star marks a favorite journey, telling its heading apart from a bus place's
             // "Place ➔ Destination" header (maintainer, 2026-09-24). Decorative: the card is a journey
             // by construction, so it adds nothing to the spoken label.
             Icon(
@@ -4708,13 +4708,13 @@ internal fun RouteDetailScreen(
     onDismissAlert: (() -> Unit)? = null,
     // Dismisses one of the row's planned alerts ([DepartureRow.plannedAlerts]); null offers no ×.
     onDismissPlanned: ((PlannedAlert) -> Unit)? = null,
-    // The starred journeys (SPEC *Journeys*): a station on the stop list with one from this stop is
+    // The favorite journeys (SPEC *Journeys*): a station on the stop list with one from this stop is
     // starred, and tapping a station stars or unstars the journey there. Null (a bus, whose return
     // leaves from another pole, or a caller without journeys) leaves the stations inert.
-    journeys: List<StarredJourney> = emptyList(),
+    journeys: List<FavoriteJourney> = emptyList(),
     // True while the saved journeys are still being read: an empty [journeys] isn't yet "none saved".
     journeysLoading: Boolean = false,
-    onToggleJourney: ((StarredJourney) -> Unit)? = null,
+    onToggleJourney: ((FavoriteJourney) -> Unit)? = null,
     // Dismisses the tip on starring a journey from the stop list; null shows none.
     onDismissJourneyTip: (() -> Unit)? = null,
     // The trip's ride this page is for: its line's page ("View line") keeps where it boards and gets off,
@@ -5195,7 +5195,7 @@ internal fun RouteDetailScreen(
                             // A tap's own lookup, over this row's few saved journeys.
                             val existing = journeysHere.here.byJourney.entries.firstOrNull { stop.id in it.value }?.key
                             toggle(
-                                existing ?: StarredJourney(
+                                existing ?: FavoriteJourney(
                                     end(row.stopId, row.stopName), end(stop.id, stop.name), row.lineId, row.lineName, rowMode,
                                 ),
                             )

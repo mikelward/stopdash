@@ -294,7 +294,7 @@ The app finds stops two ways:
   **The user's own stops** (maintainer, 2026-09-24) come without a TfL search. Before anything
   is typed, the search lists them **by last use** (maintainer, 2026-09-26): **Recent** first (the
   last eight places picked from that search, the most recent on top), then **Starred** (the ends
-  of starred journeys, then the places holding a starred row, each recorded when starred), less
+  of favorite journeys, then the places holding a starred row, each recorded when starred), less
   any picked lately. *From…* and *To…* keep **separate recent lists** — where the rider looks from
   and where they go — so each search lists its own history. As the user types, those and every place the app has lately shown near them (the
   widget's last departures and the nearby-lookup cache) match on the device alongside the
@@ -446,13 +446,13 @@ The app finds stops two ways:
   row opens a small menu, pinning or unpinning it and **"Hide all ‹group› services"** (a bare "Hide
   Train" read as hiding that one train); a long press on a place's header offers it for each group
   it serves. Starring a near-me row therefore takes the
-  menu's first item. Journey cards keep a long press as a direct star, since a starred journey is
+  menu's first item. Journey cards keep a long press as a direct star, since a favorite journey is
   the user's explicit choice and hiding doesn't reach it.
   A hidden mode's stops aren't picked for the near-me set, so they cost no request; a place that also
   serves other modes keeps them, with the hidden mode's rows left out, and the widget leaves them
   out too. With National Rail hidden, such a place's National Rail board isn't asked for either,
   from the next refresh of the list, a farther station's card, a trip or the widget, since it
-  would only fill rows left out; a starred journey taking a National Rail line from the place still gets its
+  would only fill rows left out; a favorite journey taking a National Rail line from the place still gets its
   times, and a place showing National Rail again ("Show all", or a journey starred from it) is
   fetched with its board at once. A searched station's page shows all its services, so it keeps its
   board. A closure still shows at a place that keeps an unhidden mode, so hiding one mode never
@@ -977,21 +977,22 @@ shade — a cosmetic gap, not a correctness failure.
 
 ### Journeys
 
-A rider can **star a journey** — a segment between two stops, rail or bus (maintainer, 2026-09-23):
-on a route page, a long press on a stop on the stop list (after the boarding stop) stars the segment
-from the boarding stop to it — both directions — and marks the stop with a star; another long press
-unstars it. A long press, not a tap (maintainer, 2026-10-05): a stray tap while scrolling the stops
-starred journeys the rider never meant to, which then pinned to the widget.
+A rider can **favorite a journey** — a segment between two stops, rail or bus (maintainer, 2026-09-23;
+called *starred* until 2026-10-06, when the maintainer renamed them *favorite journeys*, en-GB
+*favourite*): on a route page, a long press on a stop on the stop list (after the boarding stop) saves
+the segment from the boarding stop to it — both directions — and marks the stop with a star; another
+long press removes it. A long press, not a tap (maintainer, 2026-10-05): a stray tap while scrolling the stops
+favorite journeys the rider never meant to, which then pinned to the widget.
 A journey is a **segment, not a line**: the same two stops starred from another line's page (the 43
-or the 134 between two shared stops) are the same journey. Starred journeys lead the near-me list as
+or the 134 between two shared stops) are the same journey. Favorite journeys lead the near-me list as
 cards, each headed by the direction shown ("Highgate ➔ King's Cross St. Pancras ★", the gold star
-marking a starred journey so its heading reads apart from a bus place's "Place ➔ Destination" header,
+marking a favorite journey so its heading reads apart from a bus place's "Place ➔ Destination" header,
 maintainer 2026-09-24) with the trains or
 buses **on any line** from the origin that **call at the far end** (from each line's route; one whose
 path can't be resolved is left out, not guessed). The origin is whichever end is **nearer the rider's
 fix**, from TfL's published stop positions; the ⇄ button at the end of the heading shows the other
 direction in place, for planning the way back (maintainer, 2026-09-24). A tap on the heading opens
-the **journey's own view**: the journey in full, **Swap direction** and **Unstar journey** buttons, and
+the **journey's own view**: the journey in full, **Swap direction** and **Remove favorite** buttons, and
 its trains with each group headed by where it boards (the platform or pole), rendered from the same
 snapshot as the list; unstarring closes it.
 
@@ -1051,7 +1052,7 @@ shows a closure or move at its **far end**, so a trip can't end somewhere shut (
 2026-09-24). Only the destination's stop-level disruption is checked, not its departures: with each
 refresh, reusing the same few-minute cache as every stop's closure check (bus poles batched), so a
 destination costs a request only every few minutes. A failed check keeps the last known notice and
-claims nothing new. Alerts on lines with no starred journey (a separate favorite-lines list) stay a
+claims nothing new. Alerts on lines with no favorite journey (a separate favorite-lines list) stay a
 `TODO.md` idea.
 
 **Change at a fork.** When a line runs only one branch from the origin (a Northern line train to
@@ -1064,13 +1065,13 @@ changing mostly lands the rider on that same train at the fork. It names only wh
 the connecting train's time, which isn't known. Rail only: a bus's path is often the route's end,
 too loose to send a rider to change on. The widget keeps showing direct trains only.
 
-**Direct only, for now.** A starred journey is one line between two stops; a starred trip with a change
+**Direct only, for now.** A favorite journey is one line between two stops; a starred trip with a change
 (the eventual goal behind starring home and work) builds on *Trips with a change* below. The long-press entry point has no
-cue of its own, so a starrable stop list opens with a one-line tip ("Long-press a stop to star the journey
+cue of its own, so a starrable stop list opens with a one-line tip ("Long-press a stop to favorite the journey
 there") until the user dismisses it (maintainer, 2026-09-24); the dismissal is kept with the app's
-settings. **Settings lists the starred journeys** (maintainer, 2026-10-05), third, under the
+settings. **Settings lists the favorite journeys** (maintainer, 2026-10-05), third, under the
 disruptions switch: each by its two stops and line, with **Remove**, so one starred by mistake can be
-found and dropped without riding past its card; Remove only ever unstars. Starred journeys are
+found and dropped without riding past its card; Remove only ever removes the favorite. Favorite journeys are
 kept on the device with the rest of the user's config and never logged (*Privacy*).
 
 ### Trips with a change
@@ -1293,7 +1294,7 @@ line's status and its stop's closure check are known and current, as the list's 
 be as old as a stale countdown (D4), as the checks a trip shown again holds are while it checks
 again. The route is still ranked by them meanwhile. **Every stop a route boards
 or gets off at** is checked for a closure or a moved stop — each leg's boarding and alighting stop,
-so both ends of a walk between stations or from a stop the route starts at, and the destination, as a starred journey's far end is
+so both ends of a walk between stations or from a stop the route starts at, and the destination, as a favorite journey's far end is
 (*Alerts for the journey shown*), from the list's own few-minute cache, so a stop the list just
 checked isn't asked about again, and a trip shown again takes a closure the list found since. For a
 bus, every pole of the stop pair is checked, since the one it uses may be the other side of the road:
@@ -2059,7 +2060,7 @@ them there:
   top of the main view**, the trip screen's own card (where to and when, then the next step;
   maintainer, 2026-10-04), its arrival without the board's next train, which only the trip screen
   fetches (the near-me list, under the top bar, not scrolling with it; a station's
-  page, and a station, platform or starred journey opened from the list, are each their own view),
+  page, and a station, platform or favorite journey opened from the list, are each their own view),
   pinned in the same place over the location prompt and the "Finding stops near you…" spinner too,
   while near me can't come up or isn't up yet (maintainer, 2026-09-29: at the top, not centered
   with them). On a short window or with large text, where pinned it could crowd out the prompt's
@@ -2701,7 +2702,7 @@ the Open Government Licence v3.0. A test pins the credits so a rewording can't d
 
 An overflow-menu entry opens a Settings screen, hosted at the activity top level like the
 licenses screen (an overlay whose own Back closes it) rather than through a navigation graph
-— stopdash still has no nav library. Its first row opens the favorite-places editor (D9), and the third the starred journeys (*Journeys*);
+— stopdash still has no nav library. Its first row opens the favorite-places editor (D9), and the third the favorite journeys (*Journeys*);
 the opt-in "refresh widget every minute" toggle (D5) follows below them. The screen composable
 is UI-only for the toggle: it reflects the setting and reports a
 change, while persistence (a typed DataStore, mirroring the starred-rows store) and the
@@ -2889,7 +2890,7 @@ surface.)
   platform's header or hidden in a row naming none. A line, platform or destination whose every train has no
   time is drawn as its own row or route line, never as a "No departures" warning: it goes after
   the trains that are coming, since none of its is known to be, and opening it follows its own
-  route, never another's train. A starred journey's card shows one only beside a train of the
+  route, never another's train. A favorite journey's card shows one only beside a train of the
   journey to the same place, as its route to the far end goes unchecked. Nothing that times a
   journey sees it: a trip, the widget and the watch leave it out, as before. The TfL-run services a board also lists (Overground, Elizabeth line,
   and tube trains on shared platforms, such as the District at Richmond) come from TfL alone. A board's train

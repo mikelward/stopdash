@@ -10,7 +10,7 @@ import app.stopdash.domain.JourneySegment
 import app.stopdash.domain.Journeys
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.SiblingPoles
-import app.stopdash.domain.StarredJourney
+import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.WidgetJourneyCheck
@@ -28,7 +28,7 @@ import app.stopdash.domain.WidgetJourneysReport
  */
 @WorkerThread
 internal fun journeyOriginsOf(
-    journeys: List<StarredJourney>,
+    journeys: List<FavoriteJourney>,
     segments: Map<String, JourneySegment?>,
     starSequences: Map<String, LineSequence?>,
     poles: Map<String, List<StopLocation>?>,
@@ -67,7 +67,7 @@ internal fun journeyLineIdsOf(
     starLines: List<String>,
     origins: List<StopRef>,
     stops: List<StopArrivals>,
-    journeys: List<StarredJourney>,
+    journeys: List<FavoriteJourney>,
     segments: Map<String, JourneySegment?>,
     poles: Map<String, List<StopLocation>?>,
 ): List<String> {
@@ -94,7 +94,7 @@ internal fun journeyLineIdsOf(
 @WorkerThread
 internal fun journeyStopsOf(
     origins: List<StopRef>,
-    journeys: List<StarredJourney>,
+    journeys: List<FavoriteJourney>,
     segments: Map<String, JourneySegment?>,
     siblings: Map<String, SiblingPoles>,
     viewKey: String?,
@@ -126,7 +126,7 @@ internal fun journeyStopsOf(
 @WorkerThread
 internal fun cardReportsOf(
     shown: ShownRows?,
-    journeys: List<StarredJourney>,
+    journeys: List<FavoriteJourney>,
     farJourneyMeters: Map<String, Double>,
     areas: Map<String, String>,
     poles: Map<String, List<StopLocation>?>,

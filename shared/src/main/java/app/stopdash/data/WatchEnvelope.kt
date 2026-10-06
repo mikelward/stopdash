@@ -27,7 +27,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * widget's stops as [PersistedStop]s, unchanged, so the watch builds its rows with the widget's
  * own code from the widget's own inputs, plus the starred-row keys the widget pins by (D8).
  *
- * It carries no coordinate and no key ([PersistedStop] has neither), and no starred journeys (an
+ * It carries no coordinate and no key ([PersistedStop] has neither), and no favorite journeys (an
  * open question in the plan). It does carry the carried stops' line status checks, age-stamped as
  * the widget keeps them ([lineStatuses]); stop closures stay off it, as they aren't persisted.
  * Each stop's nearer-stop

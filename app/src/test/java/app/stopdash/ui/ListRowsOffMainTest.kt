@@ -17,7 +17,7 @@ import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.RouteSequenceSource
 import app.stopdash.domain.RouteStopsRepository
-import app.stopdash.domain.StarredJourney
+import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StopArrivals
 import app.stopdash.ui.theme.StopDashTheme
 import java.time.Instant
@@ -222,7 +222,7 @@ class ListRowsOffMainTest {
         routes = listOf(LineRoute("Brixton ↔ Walthamstow Central", listOf("940GZZLUVIC", "940GZZLUWRR", "940GZZLUWWL"))),
         stopNames = mapOf("940GZZLUVIC" to "Victoria", "940GZZLUWRR" to "Warren Street", "940GZZLUWWL" to "Walthamstow Central"),
     )
-    private val victoriaToWarrenStreet = StarredJourney(
+    private val victoriaToWarrenStreet = FavoriteJourney(
         JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria",
     )
 

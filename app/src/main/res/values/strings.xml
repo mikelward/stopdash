@@ -15,7 +15,7 @@
     <!-- Departures list -->
     <string name="departures_loading">Loading departures…</string>
     <string name="departures_empty">No upcoming departures</string>
-    <!-- Under the starred-journey cards, when the nearby stops have nothing. -->
+    <!-- Under the favorite-journey cards, when the nearby stops have nothing. -->
     <string name="departures_empty_nearby">No departures nearby</string>
     <!-- Empty list from a stale snapshot: don't assert "none" from data too old to
          trust — say it may be out of date and prompt a refresh (SPEC D4). -->
@@ -73,8 +73,8 @@
     <string name="route_stops_failed_key_rejected">Couldn\'t load stops — TfL rejected your API key</string>
     <string name="route_stops_stale">Stops shown once departures refresh</string>
     <string name="route_stops_retry">Retry</string>
-    <!-- The route page's one-time tip on starring a journey (SPEC *Journeys*), and its dismiss action. -->
-    <string name="journey_tip">Long-press a stop to star the journey there</string>
+    <!-- The route page's one-time tip on favoriting a journey (SPEC *Journeys*), and its dismiss action. -->
+    <string name="journey_tip">Long-press a stop to favorite the journey there</string>
     <string name="journey_tip_dismiss">Got it</string>
     <!-- Shown when some watched stops refreshed but at least one failed. -->
     <string name="partial_refresh">Some stops couldn\'t be refreshed</string>
@@ -482,19 +482,19 @@
     <!-- Settings row that opens the favorite-places editor (SPEC D9). -->
     <string name="settings_favorite_places_title">Favorite places</string>
     <string name="settings_favorite_places_summary">Save places to route to, like Home and Work</string>
-    <!-- Settings row that opens the starred-journeys list, to see and remove them. -->
-    <string name="settings_starred_journeys_title">Starred journeys</string>
-    <string name="settings_starred_journeys_summary">See and remove the journeys you\'ve starred</string>
-    <string name="starred_journeys_title">Starred journeys</string>
-    <string name="starred_journeys_loading">Loading…</string>
-    <string name="starred_journeys_empty">None yet. Long-press a stop on a route page to star the journey there.</string>
+    <!-- Settings row that opens the favorite-journeys list, to see, add and remove them. -->
+    <string name="settings_favorite_journeys_title">Favorite journeys</string>
+    <string name="settings_favorite_journeys_summary">See, add and remove them</string>
+    <string name="favorite_journeys_title">Favorite journeys</string>
+    <string name="favorite_journeys_loading">Loading…</string>
+    <string name="favorite_journeys_empty">None yet. Tap Add, or long-press a stop on a route page.</string>
     <!-- A failed read or a file from a newer StopDash; Retry reads it again. -->
-    <string name="starred_journeys_unavailable">Can\'t read your starred journeys.</string>
-    <string name="starred_journeys_retry">Retry</string>
-    <string name="starred_journeys_write_failed">Couldn\'t remove that journey</string>
-    <string name="starred_journey_remove">Remove</string>
-    <!-- Content description for a starred journey's Remove button; %1$s and %2$s are its two stops. -->
-    <string name="starred_journey_remove_description">Remove %1$s to %2$s</string>
+    <string name="favorite_journeys_unavailable">Can\'t read your favorite journeys.</string>
+    <string name="favorite_journeys_retry">Retry</string>
+    <string name="favorite_journeys_write_failed">Couldn\'t remove that journey</string>
+    <string name="favorite_journey_remove">Remove</string>
+    <!-- Content description for a favorite journey's Remove button; %1$s and %2$s are its two stops. -->
+    <string name="favorite_journey_remove_description">Remove %1$s to %2$s</string>
     <!-- Settings switch for the home screen's one-line disruptions row. -->
     <string name="settings_disruptions_row_title">Disruptions summary</string>
     <string name="settings_disruptions_row_summary">One row of line status above the list</string>
@@ -689,11 +689,11 @@
     <!-- Screen-reader action on a stop/platform header: opens the view of the whole station. -->
     <string name="action_show_station">Show whole station</string>
     <string name="action_show_on_map">Show on map</string>
-    <string name="action_star_journey">Star journey</string>
+    <string name="action_star_journey">Favorite journey</string>
     <string name="action_flip_journey">Swap direction</string>
     <!-- Screen-reader action on a journey heading: opens the journey's own view. -->
     <string name="action_open_journey">Show journey</string>
-    <!-- Above the starred journeys more than a mile away, collapsed to their headings. -->
+    <!-- Above the favorite journeys more than a mile away, collapsed to their headings. -->
     <string name="journeys_faraway">Faraway favorites</string>
     <string name="journey_title">%1$s ➔ %2$s</string>
     <!-- The journey heading as a screen reader hears it, in place of the arrow icon. -->
@@ -718,8 +718,8 @@
     <!-- A journey's far end whose closure check failed: it may be closed. %1$s is the stop's name. -->
     <string name="journey_destination_unchecked">Couldn\'t check %1$s for closures</string>
     <string name="journey_incomplete">Some routes couldn\'t be checked</string>
-    <string name="action_unstar_journey">Unstar journey</string>
-    <string name="route_stop_journey_starred">Starred journey</string>
+    <string name="action_unstar_journey">Remove favorite</string>
+    <string name="route_stop_journey_starred">Favorite journey</string>
     <!-- Screen-reader state of a station on a route page that the line's alert names, or that lies
          in a stretch it names ("between X and Y"). -->
     <string name="route_stop_in_alert">In the service alert</string>

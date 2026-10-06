@@ -78,7 +78,7 @@ import app.stopdash.domain.RoutePattern
 import app.stopdash.domain.RouteSequenceSource
 import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.RouteTopology
-import app.stopdash.domain.StarredJourney
+import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.StopAreaSource
 import app.stopdash.domain.StopArrivals
@@ -2587,7 +2587,7 @@ class MainScreenScreenshotTest {
         )
 
     @Test
-    fun `a starred journey shows only the trains that reach its far end, atop the near-me list`() {
+    fun `a favorite journey shows only the trains that reach its far end, atop the near-me list`() {
         // Victoria line from Victoria: northbound trains reach Warren Street, southbound ones don't.
         // Public station ids/names as examples; the journey origin isn't one of the near-me stops.
         val sequence = LineSequence(
@@ -2616,10 +2616,10 @@ class MainScreenScreenshotTest {
             ),
             fetchedAt = now.minusSeconds(60),
         )
-        val journey = StarredJourney(
+        val journey = FavoriteJourney(
             JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria",
         )
-        var flipped: StarredJourney? = null
+        var flipped: FavoriteJourney? = null
         // The saved journeys, reloadable: after a rotation they re-read from disk (unknown, empty).
         var saved by mutableStateOf(listOf(journey))
         var savedKnown by mutableStateOf(true)
@@ -2659,7 +2659,7 @@ class MainScreenScreenshotTest {
         // A tap on the heading opens the journey's own view: its trains headed by where they board,
         // under Swap and Unstar, with the near-me list gone.
         composeRule.onNodeWithText("Victoria ➔ Warren Street").performClick()
-        composeRule.onNodeWithText("Unstar journey").assertExists()
+        composeRule.onNodeWithText("Remove favourite").assertExists()
         composeRule.onNodeWithText("Platform 5", substring = true).assertExists()
         composeRule.onAllNodesWithText("Manor House", substring = true).assertCountEquals(0)
         captureSnapshot("main-journey-view.png")
@@ -2678,7 +2678,7 @@ class MainScreenScreenshotTest {
         savedKnown = true
         savedLoading = false
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Unstar journey").assertExists()
+        composeRule.onNodeWithText("Remove favourite").assertExists()
 
         // A read that failed isn't loading: the view closes to the list rather than spin forever.
         saved = emptyList()
@@ -2691,7 +2691,7 @@ class MainScreenScreenshotTest {
         routes = listOf(LineRoute("Brixton ↔ Walthamstow Central", listOf("940GZZLUVIC", "940GZZLUWRR", "940GZZLUWWL"))),
         stopNames = mapOf("940GZZLUVIC" to "Victoria", "940GZZLUWRR" to "Warren Street", "940GZZLUWWL" to "Walthamstow Central"),
     )
-    private val victoriaToWarrenStreet = StarredJourney(
+    private val victoriaToWarrenStreet = FavoriteJourney(
         JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria",
     )
 
@@ -2742,7 +2742,7 @@ class MainScreenScreenshotTest {
         // Its heading still opens its own view.
         composeRule.onNodeWithText("Victoria ➔ Warren Street", substring = true).performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Unstar journey").assertExists()
+        composeRule.onNodeWithText("Remove favourite").assertExists()
     }
 
     @Test
@@ -2854,7 +2854,7 @@ class MainScreenScreenshotTest {
     private fun journeyScreen(
         origin: StopArrivals,
         source: RouteSequenceSource,
-        journey: StarredJourney = victoriaToWarrenStreet,
+        journey: FavoriteJourney = victoriaToWarrenStreet,
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -2887,7 +2887,7 @@ class MainScreenScreenshotTest {
             "NORTH" to "North End",
         ),
     )
-    private val kingToNorthEnd = StarredJourney(JourneyEnd("KING", "King"), JourneyEnd("NPARK", "North Park"), "northern")
+    private val kingToNorthEnd = FavoriteJourney(JourneyEnd("KING", "King"), JourneyEnd("NPARK", "North Park"), "northern")
 
     private fun forkedOrigin(vararg departures: Pair<String, Long>) = StopArrivals(
         "KING", "King",
@@ -3212,7 +3212,7 @@ class MainScreenScreenshotTest {
             // The way-back pole's routes: another bus, and an interchange line of no single mode.
             stopLines = mapOf("490000002S" to listOf(LineRef("b2", "B2", "bus"), LineRef("hubline", "Hub", ""))),
         )
-        val parkToHill = StarredJourney(
+        val parkToHill = FavoriteJourney(
             JourneyEnd("490000001N", "Park"), JourneyEnd("490000002N", "Hill"), "b1", "B1", "bus",
         )
         var origins: List<StopRef> = emptyList()
@@ -3270,7 +3270,7 @@ class MainScreenScreenshotTest {
             listOf(Departure(line, line.uppercase(), "outbound", "Hill", null, now.plusSeconds(inSeconds), "bus")),
             fetchedAt = now.minusSeconds(60), clusterId = "490G1", stopLetter = letter,
         )
-        val parkToHill = StarredJourney(JourneyEnd("490000001L", "Park"), JourneyEnd("490000002N", "Hill"), "b1", "B1", "bus")
+        val parkToHill = FavoriteJourney(JourneyEnd("490000001L", "Park"), JourneyEnd("490000002N", "Hill"), "b1", "B1", "bus")
         var origins: List<StopRef> = emptyList()
         var stops by mutableStateOf(listOf(manorHouse(), pole("490000001L", "L", "b1", 120), pole("490000001K", "K", "b3", 240)))
         composeRule.setContent {
@@ -3334,7 +3334,7 @@ class MainScreenScreenshotTest {
                             {},
                             stopDistanceMeters = mapOf("940GZZLUMRH" to 300.0),
                             journeys = listOf(
-                                StarredJourney(JourneyEnd("490000001N", "Park"), JourneyEnd("490000002N", "Hill"), "b1", "B1", "bus"),
+                                FavoriteJourney(JourneyEnd("490000001N", "Park"), JourneyEnd("490000002N", "Hill"), "b1", "B1", "bus"),
                             ),
                         )
                     }
@@ -3474,7 +3474,7 @@ class MainScreenScreenshotTest {
 
     @Test
     fun `a journey whose route isn't known yet says it's checking, not that there are no trains`() {
-        val journey = StarredJourney(
+        val journey = FavoriteJourney(
             JourneyEnd("940GZZLUMRH", "Manor House"), JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"), "piccadilly",
         )
         composeRule.setContent {

@@ -16,4 +16,11 @@
     <string name="step_free_station_detail">Street to platform, for luggage or a buggy</string>
     <string name="countdown_canceled">Cancelled</string>
     <string name="countdown_canceled_description">cancelled</string>
+    <string name="journey_tip">Long-press a stop to favourite the journey there</string>
+    <string name="settings_favorite_journeys_title">Favourite journeys</string>
+    <string name="favorite_journeys_title">Favourite journeys</string>
+    <string name="favorite_journeys_unavailable">Can\'t read your favourite journeys.</string>
+    <string name="action_star_journey">Favourite journey</string>
+    <string name="action_unstar_journey">Remove favourite</string>
+    <string name="route_stop_journey_starred">Favourite journey</string>
 </resources>

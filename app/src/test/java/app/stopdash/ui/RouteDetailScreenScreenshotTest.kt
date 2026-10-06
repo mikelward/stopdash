@@ -37,7 +37,7 @@ import app.stopdash.domain.RouteStopsRepository
 import app.stopdash.domain.TflException
 import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
-import app.stopdash.domain.StarredJourney
+import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StopArrivals
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -1109,10 +1109,10 @@ class RouteDetailScreenScreenshotTest {
         )
         // Synthetic positions: the journey keeps them to pick its nearer end.
         val positions = mapOf("940GZZLUVIC" to (51.5 to -0.12), "940GZZLUOXC" to (51.51 to -0.12))
-        val starredToOxford = StarredJourney(
+        val starredToOxford = FavoriteJourney(
             JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUOXC", "Oxford Circus"), "victoria",
         )
-        val toggled = mutableListOf<StarredJourney>()
+        val toggled = mutableListOf<FavoriteJourney>()
         setDetail {
             StopDashTheme {
                 RouteDetailScreen(
@@ -1132,8 +1132,8 @@ class RouteDetailScreenScreenshotTest {
         }
         composeRule.waitForIdle()
 
-        // The starred journey's end carries a star, and a screen reader hears it.
-        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Starred journey"))
+        // The favorite journey's end carries a star, and a screen reader hears it.
+        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Favourite journey"))
             .assertIsDisplayed()
         composeRule.onNodeWithText("Oxford Circus", substring = true).assertIsDisplayed()
 
@@ -1145,7 +1145,7 @@ class RouteDetailScreenScreenshotTest {
         composeRule.onNodeWithText("Green Park", substring = true).performTouchInput { longClick() }
         composeRule.waitForIdle()
         assertEquals(
-            StarredJourney(
+            FavoriteJourney(
                 JourneyEnd("940GZZLUVIC", "Victoria", 51.5, -0.12),
                 JourneyEnd("940GZZLUGPK", "Green Park"),
                 "victoria",
@@ -1186,7 +1186,7 @@ class RouteDetailScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Long-press a stop to star the journey there").assertIsDisplayed()
+        composeRule.onNodeWithText("Long-press a stop to favourite the journey there").assertIsDisplayed()
         captureSnapshot("route-detail-journey-tip.png")
         composeRule.onNodeWithText("Got it").performClick()
         assertEquals(1, dismissed)
@@ -1211,13 +1211,13 @@ class RouteDetailScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Long-press a stop to star the journey there").assertDoesNotExist()
+        composeRule.onNodeWithText("Long-press a stop to favourite the journey there").assertDoesNotExist()
     }
 
     @Test
     fun tappingAnUnnamedStation_savesTheIdItShows() {
         val stops = listOf(RouteStop("940GZZLUVIC", "Victoria"), RouteStop("940GZZLUGPK", ""))
-        val toggled = mutableListOf<StarredJourney>()
+        val toggled = mutableListOf<FavoriteJourney>()
         setDetail {
             StopDashTheme {
                 RouteDetailScreen(
@@ -1254,7 +1254,7 @@ class RouteDetailScreenScreenshotTest {
             fetchedAt = now,
         )
         val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
-        val toggled = mutableListOf<StarredJourney>()
+        val toggled = mutableListOf<FavoriteJourney>()
         setDetail {
             StopDashTheme {
                 RouteDetailScreen(
@@ -1276,11 +1276,11 @@ class RouteDetailScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        // The one station after the boarding stop, found by its "Star journey" long-press action (its
+        // The one station after the boarding stop, found by its "Favourite journey" long-press action (its
         // name is also the header's destination).
         composeRule.onNode(
             SemanticsMatcher("star journey action") {
-                it.config.getOrNull(SemanticsActions.OnLongClick)?.label == "Star journey"
+                it.config.getOrNull(SemanticsActions.OnLongClick)?.label == "Favourite journey"
             },
         ).performTouchInput { longClick() }
         composeRule.waitForIdle()
@@ -1306,8 +1306,8 @@ class RouteDetailScreenScreenshotTest {
             fetchedAt = now,
         )
         val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
-        val starredOutbound = StarredJourney(JourneyEnd("490000001N", "Park"), JourneyEnd("490000002N", "Hill"), "b1", "B1", "bus")
-        val toggled = mutableListOf<StarredJourney>()
+        val starredOutbound = FavoriteJourney(JourneyEnd("490000001N", "Park"), JourneyEnd("490000002N", "Hill"), "b1", "B1", "bus")
+        val toggled = mutableListOf<FavoriteJourney>()
         setDetail {
             StopDashTheme {
                 RouteDetailScreen(
@@ -1330,7 +1330,7 @@ class RouteDetailScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        val star = SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Starred journey")
+        val star = SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Favourite journey")
         composeRule.onNode(star).assertIsDisplayed()
         composeRule.onNode(star).performTouchInput { longClick() }
         composeRule.waitForIdle()
@@ -1356,8 +1356,8 @@ class RouteDetailScreenScreenshotTest {
             fetchedAt = now,
         )
         val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
-        val saved = StarredJourney(JourneyEnd("490000001N", "Park"), JourneyEnd("490000002X", "Hill"), "b1", "B1", "bus")
-        val toggled = mutableListOf<StarredJourney>()
+        val saved = FavoriteJourney(JourneyEnd("490000001N", "Park"), JourneyEnd("490000002X", "Hill"), "b1", "B1", "bus")
+        val toggled = mutableListOf<FavoriteJourney>()
         setDetail {
             StopDashTheme {
                 RouteDetailScreen(
@@ -1380,7 +1380,7 @@ class RouteDetailScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        val star = SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Starred journey")
+        val star = SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Favourite journey")
         composeRule.onNode(star).assertIsDisplayed()
         composeRule.onNode(star).performTouchInput { longClick() }
         composeRule.waitForIdle()
@@ -1397,7 +1397,7 @@ class RouteDetailScreenScreenshotTest {
         )
         val row = DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
         // Starred from the b1's page; this is the b2's.
-        val starredOnB1 = StarredJourney(JourneyEnd("490000001N", "Park"), JourneyEnd("490000002N", "Hill"), "b1", "B1", "bus")
+        val starredOnB1 = FavoriteJourney(JourneyEnd("490000001N", "Park"), JourneyEnd("490000002N", "Hill"), "b1", "B1", "bus")
         setDetail {
             StopDashTheme {
                 RouteDetailScreen(
@@ -1419,7 +1419,7 @@ class RouteDetailScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Starred journey"))
+        composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Favourite journey"))
             .assertIsDisplayed()
     }
 

@@ -9,8 +9,8 @@ import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.dataStoreFile
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.Journeys
-import app.stopdash.domain.StarredJourney
-import app.stopdash.domain.StarredJourneysStore
+import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.FavoriteJourneysStore
 import app.stopdash.domain.Workers
 import app.stopdash.domain.riderLineName
 import java.io.IOException
@@ -25,39 +25,39 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * The DataStore-backed [StarredJourneysStore], mirroring [DataStoreStarredRowsStore]: one JSON file
+ * The DataStore-backed [FavoriteJourneysStore], mirroring [DataStoreStarredRowsStore]: one JSON file
  * in the app's files dir, a process-wide instance, a corrupt file logged and discarded, and a file
  * from a newer schema preserved untouched (read as null). Like the starred rows it rides the user's
  * own Android backup (docs/PRIVACY.md); it is never logged.
  */
-class DataStoreStarredJourneysStore internal constructor(
-    private val dataStore: DataStore<PersistedStarredJourneys?>,
+class DataStoreFavoriteJourneysStore internal constructor(
+    private val dataStore: DataStore<PersistedFavoriteJourneys?>,
     private val warn: (String) -> Unit = {},
     // Where the stored file is turned into the app's values: work that grows with what's stored, never
     // on the collector's thread, which can be the main one (AGENTS.md *Main thread: read and dispatch only*).
     private val compute: CoroutineDispatcher = Workers.compute,
-) : StarredJourneysStore {
+) : FavoriteJourneysStore {
 
     // A disk read failure (DataStore's IOException) reads as unavailable — starring journeys is
     // withheld and none are shown — rather than escaping into the screen's collector (Codex).
-    override fun journeys(): Flow<List<StarredJourney>?> =
+    override fun journeys(): Flow<List<FavoriteJourney>?> =
         dataStore.data
             .map { stored -> if (stored == null) emptyList() else stored.toDomain() }
             .flowOn(compute)
             .catch { e ->
                 if (e !is IOException) throw e
-                warn("starred journeys read failed: ${e::class.simpleName}")
+                warn("favorite journeys read failed: ${e::class.simpleName}")
                 emit(null)
             }
 
-    override suspend fun toggle(journey: StarredJourney) = edit { Journeys.toggle(it, journey) }
+    override suspend fun toggle(journey: FavoriteJourney) = edit { Journeys.toggle(it, journey) }
 
-    override suspend fun remove(journey: StarredJourney) = edit { Journeys.remove(it, journey) }
+    override suspend fun remove(journey: FavoriteJourney) = edit { Journeys.remove(it, journey) }
 
-    private suspend fun edit(change: (List<StarredJourney>) -> List<StarredJourney>) {
+    private suspend fun edit(change: (List<FavoriteJourney>) -> List<FavoriteJourney>) {
         dataStore.updateData { stored ->
             if (stored != null && stored.toDomain() == null) {
-                warn("starred journeys file is a newer schema version; preserving it, not overwriting")
+                warn("favorite journeys file is a newer schema version; preserving it, not overwriting")
                 stored
             } else {
                 change(stored?.toDomain() ?: emptyList()).toPersisted()
@@ -66,19 +66,20 @@ class DataStoreStarredJourneysStore internal constructor(
     }
 
     companion object {
+        // The name it was first saved under, when favorites were "starred": kept so none are lost.
         private const val FILE_NAME = "starred-journeys.json"
 
         @Volatile
-        private var instance: DataStoreStarredJourneysStore? = null
+        private var instance: DataStoreFavoriteJourneysStore? = null
 
         /** The process-wide store: DataStore allows one active instance per file per process. */
-        fun from(context: Context, warn: (String) -> Unit = {}): DataStoreStarredJourneysStore =
+        fun from(context: Context, warn: (String) -> Unit = {}): DataStoreFavoriteJourneysStore =
             instance ?: synchronized(this) {
-                instance ?: DataStoreStarredJourneysStore(
+                instance ?: DataStoreFavoriteJourneysStore(
                     DataStoreFactory.create(
-                        serializer = StarredJourneysSerializer,
+                        serializer = FavoriteJourneysSerializer,
                         corruptionHandler = ReplaceFileCorruptionHandler {
-                            warn("starred journeys file was unreadable and has been discarded")
+                            warn("favorite journeys file was unreadable and has been discarded")
                             null
                         },
                     ) {
@@ -91,9 +92,9 @@ class DataStoreStarredJourneysStore internal constructor(
 }
 
 @Serializable
-internal data class PersistedStarredJourneys(
+internal data class PersistedFavoriteJourneys(
     val version: Int = CURRENT_VERSION,
-    val journeys: List<PersistedStarredJourney> = emptyList(),
+    val journeys: List<PersistedFavoriteJourney> = emptyList(),
 ) {
     companion object {
         /** The current on-disk format. Bump when a field's meaning changes incompatibly. */
@@ -111,7 +112,7 @@ internal data class PersistedJourneyEnd(
 )
 
 @Serializable
-internal data class PersistedStarredJourney(
+internal data class PersistedFavoriteJourney(
     val from: PersistedJourneyEnd,
     val to: PersistedJourneyEnd,
     val lineId: String,
@@ -122,40 +123,40 @@ internal data class PersistedStarredJourney(
 private fun JourneyEnd.toPersisted() = PersistedJourneyEnd(stopId, name, latitude, longitude, areaId)
 private fun PersistedJourneyEnd.toDomain() = JourneyEnd(stopId, name, latitude, longitude, areaId)
 
-internal fun List<StarredJourney>.toPersisted(): PersistedStarredJourneys =
-    PersistedStarredJourneys(journeys = map { PersistedStarredJourney(it.from.toPersisted(), it.to.toPersisted(), it.lineId, it.lineName, it.mode) })
+internal fun List<FavoriteJourney>.toPersisted(): PersistedFavoriteJourneys =
+    PersistedFavoriteJourneys(journeys = map { PersistedFavoriteJourney(it.from.toPersisted(), it.to.toPersisted(), it.lineId, it.lineName, it.mode) })
 
-internal fun PersistedStarredJourneys.toDomain(): List<StarredJourney>? {
-    if (version != PersistedStarredJourneys.CURRENT_VERSION) return null
+internal fun PersistedFavoriteJourneys.toDomain(): List<FavoriteJourney>? {
+    if (version != PersistedFavoriteJourneys.CURRENT_VERSION) return null
     // One journey per segment: a file from before journeys were line-free may hold the same two
     // stations starred on two lines; the first stands for both.
-    return journeys.map { StarredJourney(it.from.toDomain(), it.to.toDomain(), it.lineId, riderLineName(it.lineName, it.mode), it.mode) }
+    return journeys.map { FavoriteJourney(it.from.toDomain(), it.to.toDomain(), it.lineId, riderLineName(it.lineName, it.mode), it.mode) }
         .distinctBy { it.key }
 }
 
 /** JSON (de)serialization; a corrupt file throws [CorruptionException] so the handler replaces it. */
-internal object StarredJourneysSerializer : Serializer<PersistedStarredJourneys?> {
+internal object FavoriteJourneysSerializer : Serializer<PersistedFavoriteJourneys?> {
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
     }
 
-    override val defaultValue: PersistedStarredJourneys? = null
+    override val defaultValue: PersistedFavoriteJourneys? = null
 
-    override suspend fun readFrom(input: InputStream): PersistedStarredJourneys? {
+    override suspend fun readFrom(input: InputStream): PersistedFavoriteJourneys? {
         val bytes = input.readBytes()
         if (bytes.isEmpty()) return null
         return try {
-            json.decodeFromString(PersistedStarredJourneys.serializer(), bytes.decodeToString())
+            json.decodeFromString(PersistedFavoriteJourneys.serializer(), bytes.decodeToString())
         } catch (e: kotlinx.serialization.SerializationException) {
-            throw CorruptionException("starred journeys could not be decoded", e)
+            throw CorruptionException("favorite journeys could not be decoded", e)
         } catch (e: IllegalArgumentException) {
-            throw CorruptionException("starred journeys could not be decoded", e)
+            throw CorruptionException("favorite journeys could not be decoded", e)
         }
     }
 
-    override suspend fun writeTo(t: PersistedStarredJourneys?, output: OutputStream) {
+    override suspend fun writeTo(t: PersistedFavoriteJourneys?, output: OutputStream) {
         if (t == null) return
-        output.write(json.encodeToString(PersistedStarredJourneys.serializer(), t).encodeToByteArray())
+        output.write(json.encodeToString(PersistedFavoriteJourneys.serializer(), t).encodeToByteArray())
     }
 }

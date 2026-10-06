@@ -626,7 +626,7 @@ class WidgetModelTest {
         departure(lineId, offsetSeconds).copy(destination = destination)
 
     @Test
-    fun `a starred journey's departures lead the widget, and only those from a journey-only stop`() {
+    fun `a favorite journey's departures lead the widget, and only those from a journey-only stop`() {
         // 490000001A is nearby; 490000009Z is only a journey origin, where the b1 to Hill is the journey.
         val snapshot = DeparturesSnapshot(
             stops = listOf(

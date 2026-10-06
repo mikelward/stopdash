@@ -67,7 +67,7 @@ class HomeLinesTest {
         val fav = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to central) + ("victoria" to victoria)), emptySet(), now, starred = starred)
         // Both the rider's own (as bad as each other, in the row's order), then the closed one.
         assertEquals(listOf("central", "73", "victoria"), fav.lines.map { it.lineId })
-        // So does any line a starred journey rides, not only the one it was starred from.
+        // So does any line a favorite journey rides, not only the one it was starred from.
         val ridden = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to central) + ("victoria" to victoria)), emptySet(), now, journeyLines = setOf("central"))
         assertEquals(listOf("central", "73", "victoria"), ridden.lines.map { it.lineId })
         // A dismissed one is never a pill, however near.
@@ -79,7 +79,7 @@ class HomeLinesTest {
     fun `the rider's starred stops ride with the row, for a line's map to keep`() {
         // Big interchanges stand in for the rider's own.
         val starred = setOf(app.stopdash.domain.StarredRow("940GZZLUKSX", "victoria", "outbound"))
-        val journey = app.stopdash.domain.StarredJourney(
+        val journey = app.stopdash.domain.FavoriteJourney(
             from = app.stopdash.domain.JourneyEnd("940GZZLUBNK", "Bank", areaId = "HUBBAN"),
             to = app.stopdash.domain.JourneyEnd("940GZZLUWLO", "Waterloo"),
             lineId = "northern",

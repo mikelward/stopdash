@@ -39,7 +39,7 @@ data class LineSequence(
     val routes: List<LineRoute>,
     val stopNames: Map<String, String>,
     val stopLines: Map<String, List<LineRef>> = emptyMap(),
-    // Each stop's published (latitude, longitude), where TfL gave one — a starred journey's ends.
+    // Each stop's published (latitude, longitude), where TfL gave one — a favorite journey's ends.
     val stopPositions: Map<String, Pair<Double, Double>> = emptyMap(),
     // Each stop's stop area (TfL `stationId`), where given: opposite bus stops often share one.
     val stopAreas: Map<String, String> = emptyMap(),
@@ -801,7 +801,7 @@ class RouteStopsRepository(
     }
 
     /**
-     * Logs that a starred journey on [lineId] can't be placed on its line's route this way round —
+     * Logs that a favorite journey on [lineId] can't be placed on its line's route this way round —
      * no route calls at both ends in order, or the origin comes out as more than one stop — so a
      * card reading "Couldn't check" says why (SPEC principle 2). The line only: a journey's two ends
      * together are a route the rider travels, which the log's floor keeps out (docs/PRIVACY.md).

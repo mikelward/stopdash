@@ -23,14 +23,14 @@ class TopOverlayTest {
     }
 
     @Test
-    fun `the starred journeys sit above Settings, under the saved places`() {
+    fun `the favorite journeys sit above Settings, under the saved places`() {
         assertEquals(
-            TopOverlay.STARRED_JOURNEYS,
-            topOverlay(licenses = false, onTheWay = false, favoritePlaces = false, settings = true, starredJourneys = true),
+            TopOverlay.FAVORITE_JOURNEYS,
+            topOverlay(licenses = false, onTheWay = false, favoritePlaces = false, settings = true, favoriteJourneys = true),
         )
         assertEquals(
             TopOverlay.FAVORITE_PLACES,
-            topOverlay(licenses = false, onTheWay = false, favoritePlaces = true, settings = true, starredJourneys = true),
+            topOverlay(licenses = false, onTheWay = false, favoritePlaces = true, settings = true, favoriteJourneys = true),
         )
     }
 

@@ -9,7 +9,7 @@ import androidx.compose.ui.unit.dp
 /**
  * The Material **swap_horiz** glyph (two opposed arrows) vendored as an [ImageVector], since
  * `material-icons-core` doesn't ship it — the same vendoring as [StarBorderIcon], from Google's own
- * 24dp path data. It swaps a starred journey's direction.
+ * 24dp path data. It swaps a favorite journey's direction.
  */
 val SwapIcon: ImageVector by lazy {
     ImageVector.Builder(

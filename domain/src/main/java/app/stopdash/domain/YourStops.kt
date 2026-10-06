@@ -3,7 +3,7 @@ package app.stopdash.domain
 /**
  * The stops "Find a station" knows without asking TfL (SPEC *Finding stops → Find a station*):
  * the user's [recent] picks from the search, most recent first, and their [favorites] not picked
- * lately (the ends of starred journeys, and the stops holding a starred row), both listed before
+ * lately (the ends of favorite journeys, and the stops holding a starred row), both listed before
  * anything is typed, the recent first ([recentPicks], with the places a To… search picked among
  * them); and [known], the
  * stops the app has lately shown near the user. All of them match as the user types, alongside the
@@ -52,7 +52,7 @@ data class YourStops(
          * rest of the app shows them.
          */
         fun of(
-            journeys: List<StarredJourney>,
+            journeys: List<FavoriteJourney>,
             starred: List<StationMatch>,
             recent: List<SearchEntry>,
             known: List<StationMatch>,

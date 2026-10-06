@@ -15,7 +15,7 @@ import app.stopdash.domain.LineRoute
 import app.stopdash.domain.LineSequence
 import app.stopdash.domain.RouteSequenceSource
 import app.stopdash.domain.RouteStopsRepository
-import app.stopdash.domain.StarredJourney
+import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StopAreaSource
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopLocation
@@ -51,7 +51,7 @@ class JourneyCardsOffMainTest {
         routes = listOf(LineRoute("Brixton ↔ Walthamstow Central", listOf("940GZZLUVIC", "940GZZLUWRR", "940GZZLUWWL"))),
         stopNames = mapOf("940GZZLUVIC" to "Victoria", "940GZZLUWRR" to "Warren Street", "940GZZLUWWL" to "Walthamstow Central"),
     )
-    private val victoriaToWarrenStreet = StarredJourney(
+    private val victoriaToWarrenStreet = FavoriteJourney(
         JourneyEnd("940GZZLUVIC", "Victoria"), JourneyEnd("940GZZLUWRR", "Warren Street"), "victoria",
     )
     private val victoria = StopArrivals(
@@ -180,7 +180,7 @@ class JourneyCardsOffMainTest {
         stopAreas = mapOf("PARKN" to "G-PARK", "PARKS" to "G-PARK", "HILLN" to "G-HILL", "HILLS" to "G-HILL"),
     )
     private val b3 = LineSequence(listOf(LineRoute("Park ↔ Hill", listOf("PARKK", "HILLN"))), mapOf("PARKK" to "Park", "HILLN" to "Hill"))
-    private val parkToHill = StarredJourney(JourneyEnd("PARKN", "Park"), JourneyEnd("HILLN", "Hill"), "b1", "B1", "bus")
+    private val parkToHill = FavoriteJourney(JourneyEnd("PARKN", "Park"), JourneyEnd("HILLN", "Hill"), "b1", "B1", "bus")
 
     private fun pole(id: String, line: String) =
         StopLocation(id, "Park", 51.5, -0.12, listOf(LineRef(line, line, "bus")), clusterId = "G-PARK", stopLetter = id.takeLast(1))

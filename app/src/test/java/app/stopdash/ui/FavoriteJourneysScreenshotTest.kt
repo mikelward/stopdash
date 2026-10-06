@@ -11,7 +11,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import app.stopdash.domain.JourneyEnd
-import app.stopdash.domain.StarredJourney
+import app.stopdash.domain.FavoriteJourney
 import app.stopdash.ui.theme.StopDashTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Assert.assertEquals
@@ -23,24 +23,24 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * The starred journeys in Settings (SPEC *Journeys*): the list with Remove, none, and a file this
+ * The favorite journeys in Settings (SPEC *Journeys*): the list with Remove, none, and a file this
  * build can't read. Public TfL interchanges only, never anyone's stops (SPEC *Privacy*).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36], qualifiers = "en-rGB-w411dp-h914dp-420dpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-class StarredJourneysScreenshotTest {
+class FavoriteJourneysScreenshotTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
-    private val victoriaLine = StarredJourney(
+    private val victoriaLine = FavoriteJourney(
         JourneyEnd("940GZZLUVIC", "Victoria"),
         JourneyEnd("940GZZLUKSX", "King's Cross St. Pancras"),
         "victoria",
         lineName = "Victoria",
         mode = "tube",
     )
-    private val northern = StarredJourney(
+    private val northern = FavoriteJourney(
         JourneyEnd("940GZZLUEUS", "Euston"),
         JourneyEnd("940GZZLUWLO", "Waterloo"),
         "northern",
@@ -48,10 +48,10 @@ class StarredJourneysScreenshotTest {
         mode = "tube",
     )
 
-    private fun show(state: StarredJourneysUi, onRemove: (StarredJourney) -> Unit = {}) {
+    private fun show(state: FavoriteJourneysUi, onRemove: (FavoriteJourney) -> Unit = {}) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
-                StarredJourneysScreen(state = state, onBack = {}, onRemove = onRemove)
+                FavoriteJourneysScreen(state = state, onBack = {}, onRemove = onRemove)
             }
         }
         composeRule.waitForIdle()
@@ -59,20 +59,20 @@ class StarredJourneysScreenshotTest {
 
     @Test
     fun the_list_names_each_journey_and_removes_the_one_tapped() {
-        val removed = mutableListOf<StarredJourney>()
-        show(StarredJourneysUi(listOf(victoriaLine, northern)), onRemove = { removed += it })
+        val removed = mutableListOf<FavoriteJourney>()
+        show(FavoriteJourneysUi(listOf(victoriaLine, northern)), onRemove = { removed += it })
         composeRule.onNodeWithText("Victoria ➔ King's Cross St. Pancras").assertIsDisplayed()
         composeRule.onNodeWithText("Northern").assertIsDisplayed()
-        captureSnapshot("starred-journeys-list.png")
+        captureSnapshot("favorite-journeys-list.png")
         composeRule.onNodeWithContentDescription("Remove Euston to Waterloo").performClick()
         assertEquals(listOf(northern), removed)
     }
 
     @Test
     fun none_says_how_to_star_one() {
-        show(StarredJourneysUi(emptyList()))
+        show(FavoriteJourneysUi(emptyList()))
         composeRule.onNodeWithText("Long-press a stop", substring = true).assertIsDisplayed()
-        captureSnapshot("starred-journeys-empty.png")
+        captureSnapshot("favorite-journeys-empty.png")
     }
 
     @Test
@@ -80,10 +80,10 @@ class StarredJourneysScreenshotTest {
         var retries = 0
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
-                StarredJourneysScreen(state = StarredJourneysUi(journeys = null), onBack = {}, onRemove = {}, onRetry = { retries++ })
+                FavoriteJourneysScreen(state = FavoriteJourneysUi(journeys = null), onBack = {}, onRemove = {}, onRetry = { retries++ })
             }
         }
-        composeRule.onNodeWithText("Can't read your starred journeys.").assertIsDisplayed()
+        composeRule.onNodeWithText("Can't read your favourite journeys.").assertIsDisplayed()
         composeRule.onNodeWithTag("retryJourneys").performClick()
         assertEquals(1, retries)
     }
@@ -93,8 +93,8 @@ class StarredJourneysScreenshotTest {
         var dismissed = 0
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
-                StarredJourneysScreen(
-                    state = StarredJourneysUi(listOf(victoriaLine), writeFailed = true),
+                FavoriteJourneysScreen(
+                    state = FavoriteJourneysUi(listOf(victoriaLine), writeFailed = true),
                     onBack = {},
                     onRemove = {},
                     onDismissWriteError = { dismissed++ },

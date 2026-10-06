@@ -262,7 +262,7 @@ internal fun RouteStopsSection(
     modifier: Modifier = Modifier,
     // The way the train heads ("Southbound"), shown atop the list; null shows no heading.
     direction: String? = null,
-    // Stations (after the boarding stop) with a starred journey from here; each shows a star.
+    // Stations (after the boarding stop) with a favorite journey from here; each shows a star.
     starredStopIds: Set<String> = emptySet(),
     // Stations the line's service alert names ([app.stopdash.domain.AlertStops]); each shows a ⚠.
     alertStopIds: Set<String> = emptySet(),
@@ -378,7 +378,7 @@ private fun StopOnRail(
     railColor: Color,
     first: Boolean,
     last: Boolean,
-    // A starred journey ends here: the name carries a star, and the row says so to a screen reader.
+    // A favorite journey ends here: the name carries a star, and the row says so to a screen reader.
     starred: Boolean = false,
     // The line's service alert names this station, or a stretch it's in: the name carries a ⚠, and
     // the row says so too.

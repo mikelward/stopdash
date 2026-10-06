@@ -119,7 +119,7 @@ class RailAwareTflClientTest {
         val client = RailAwareTflClient(tfl, board, { shared }, elapsedMillis = { 0L })
         fun List<Departure>.rail() = count { it.mode == "national-rail" }
         assertEquals(1, client.arrivals("910GTWINA").rail())
-        // National Rail hidden: the near-me stop leaves the board out; a starred journey's origin,
+        // National Rail hidden: the near-me stop leaves the board out; a favorite journey's origin,
         // its twin, still shows it, well within the owner's hold.
         assertEquals(0, client.arrivals("910GTWINA", railBoard = false).rail())
         assertEquals(1, client.arrivals("910GTWINB", railBoard = true).rail())

@@ -29,8 +29,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.stopdash.R
 import app.stopdash.domain.SnapshotStore
-import app.stopdash.domain.StarredJourney
-import app.stopdash.domain.StarredJourneysStore
+import app.stopdash.domain.FavoriteJourney
+import app.stopdash.domain.FavoriteJourneysStore
 import app.stopdash.domain.WidgetJourneysReport
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -41,11 +41,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * The starred journeys as Settings lists them (SPEC *Journeys*): one at a time, as saved.
+ * The favorite journeys as Settings lists them (SPEC *Journeys*): one at a time, as saved.
  * [journeys] is null while unreadable; [loaded] false before the store's first read.
  */
-data class StarredJourneysUi(
-    val journeys: List<StarredJourney>? = emptyList(),
+data class FavoriteJourneysUi(
+    val journeys: List<FavoriteJourney>? = emptyList(),
     val loaded: Boolean = true,
     val writeFailed: Boolean = false,
 )
@@ -58,9 +58,9 @@ data class StarredJourneysUi(
  * screen's own pin writes take, so the two don't interleave. A store that can't be read after the
  * removal leaves the pins for the main screen's next report. A failed removal throws to the caller; a failed unpin is only logged ([warn]).
  */
-internal suspend fun removeStarredJourney(
-    journey: StarredJourney,
-    journeys: StarredJourneysStore,
+internal suspend fun removeFavoriteJourney(
+    journey: FavoriteJourney,
+    journeys: FavoriteJourneysStore,
     widget: SnapshotStore,
     lock: Mutex = WidgetJourneysWrites.lock,
     warn: (String) -> Unit = {},
@@ -84,7 +84,7 @@ internal suspend fun removeStarredJourney(
 }
 
 /**
- * The starred journeys, reached from Settings and hosted as an activity-level overlay like
+ * The favorite journeys, reached from Settings and hosted as an activity-level overlay like
  * [FavoritePlacesScreen], so its own Back closes it (maintainer, 2026-10-05: a journey starred by
  * mistake had no place to be seen and removed but its own card). Each row names the journey and its
  * line, with Remove; starring stays on the route page's stop list (a long press).
@@ -93,10 +93,10 @@ internal suspend fun removeStarredJourney(
  * JVM/Robolectric-renderable for the screenshot test without a store.
  */
 @Composable
-fun StarredJourneysScreen(
-    state: StarredJourneysUi,
+fun FavoriteJourneysScreen(
+    state: FavoriteJourneysUi,
     onBack: () -> Unit,
-    onRemove: (StarredJourney) -> Unit,
+    onRemove: (FavoriteJourney) -> Unit,
     onDismissWriteError: () -> Unit = {},
     // Reads the store again after it couldn't be read (a disk error, or a newer StopDash's file).
     onRetry: () -> Unit = {},
@@ -110,7 +110,7 @@ fun StarredJourneysScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    text = stringResource(R.string.starred_journeys_title),
+                    text = stringResource(R.string.favorite_journeys_title),
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.weight(1f),
                 )
@@ -126,7 +126,7 @@ fun StarredJourneysScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = stringResource(R.string.starred_journeys_write_failed),
+                        text = stringResource(R.string.favorite_journeys_write_failed),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.weight(1f),
@@ -148,21 +148,21 @@ fun StarredJourneysScreen(
             ) {
                 when {
                     // Before the first read: the screen shows at once, with nothing to remove yet.
-                    !state.loaded -> item { Note(stringResource(R.string.starred_journeys_loading)) }
+                    !state.loaded -> item { Note(stringResource(R.string.favorite_journeys_loading)) }
                     // Unreadable: a disk error or a newer schema, which the store doesn't tell apart. Said,
                     // not shown as none (principle 2), with Retry, since a disk error may pass (Codex on #589).
                     journeys == null -> item {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(modifier = Modifier.weight(1f)) {
-                                Note(stringResource(R.string.starred_journeys_unavailable), error = true)
+                                Note(stringResource(R.string.favorite_journeys_unavailable), error = true)
                             }
                             TextButton(
                                 onClick = onRetry,
                                 modifier = Modifier.padding(end = 8.dp).testTag("retryJourneys"),
-                            ) { Text(stringResource(R.string.starred_journeys_retry)) }
+                            ) { Text(stringResource(R.string.favorite_journeys_retry)) }
                         }
                     }
-                    journeys.isEmpty() -> item { Note(stringResource(R.string.starred_journeys_empty)) }
+                    journeys.isEmpty() -> item { Note(stringResource(R.string.favorite_journeys_empty)) }
                     else -> items(journeys, key = { it.key }) { journey ->
                         JourneyRow(journey, onRemove = { onRemove(journey) })
                     }
@@ -183,7 +183,7 @@ private fun Note(text: String, error: Boolean = false) {
 }
 
 @Composable
-private fun JourneyRow(journey: StarredJourney, onRemove: () -> Unit) {
+private fun JourneyRow(journey: FavoriteJourney, onRemove: () -> Unit) {
     val spoken = stringResource(R.string.journey_title_spoken, journey.from.name, journey.to.name)
     Row(
         modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
@@ -212,12 +212,12 @@ private fun JourneyRow(journey: StarredJourney, onRemove: () -> Unit) {
         }
         Spacer(modifier = Modifier.width(8.dp))
         // TalkBack names the journey, not just "Remove", so the right row's action is clear.
-        val removeDescription = stringResource(R.string.starred_journey_remove_description, journey.from.name, journey.to.name)
+        val removeDescription = stringResource(R.string.favorite_journey_remove_description, journey.from.name, journey.to.name)
         TextButton(
             onClick = onRemove,
             modifier = Modifier
                 .testTag("remove-${journey.key}")
                 .semantics { contentDescription = removeDescription },
-        ) { Text(stringResource(R.string.starred_journey_remove)) }
+        ) { Text(stringResource(R.string.favorite_journey_remove)) }
     }
 }

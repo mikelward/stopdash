@@ -10,7 +10,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
 import app.stopdash.domain.JourneyEnd
 import app.stopdash.domain.RouteStop
-import app.stopdash.domain.StarredJourney
+import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StepFreeAccess
 import app.stopdash.domain.StepFreeLevel
 import app.stopdash.domain.StepFreePlatform
@@ -40,7 +40,7 @@ class RoutePageOffMainTest {
     private val here = RouteStop("940GZZEXMPA", "Example A")
     private val there = RouteStop("940GZZEXMPB", "Example B")
     private val page = RouteStopsUi.Loaded(listOf(here, there))
-    private val journey = StarredJourney(JourneyEnd(here.id, here.name), JourneyEnd(there.id, there.name), "victoria", "Victoria", "tube")
+    private val journey = FavoriteJourney(JourneyEnd(here.id, here.name), JourneyEnd(there.id, there.name), "victoria", "Victoria", "tube")
     private val table = StepFreeAccess(
         mapOf(
             here.id to mapOf("victoria" to listOf(StepFreePlatform(StepFreeLevel.LEVEL))),
