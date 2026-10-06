@@ -2,6 +2,7 @@ package app.stopdash.ui
 
 import app.stopdash.domain.ActiveTrip
 import app.stopdash.domain.Departure
+import app.stopdash.domain.LineStatus
 import app.stopdash.domain.OnTheWay.Step
 import app.stopdash.domain.RouteDisruption
 import app.stopdash.domain.TflException
@@ -148,6 +149,11 @@ class ActiveTripTrackerTest {
     private var knownNotes: List<RouteDisruption.StationNote> = emptyList()
     // The direction of each coming leg's trains, as each check was given it.
     private val directionsGiven = mutableListOf<Map<Int, String>>()
+    // The next board's lines each check was asked about besides the trip's, and the lines' statuses it says it found.
+    private val alsoLinesGiven = mutableListOf<Collection<String>>()
+    // Called while a check is out, before it answers.
+    private var duringCheck: () -> Unit = {}
+    private var knownLines: RouteDisruption.LinesChecked? = null
     // What happened to the "route disruption" notification, in order: each post (how, with what's
     // known, by key) or done.
     private val disruptionAlerts = mutableListOf<String>()
@@ -266,8 +272,10 @@ class ActiveTripTrackerTest {
             if (how == ActiveTripTracker.BoardPost.KEEP) boardShowing && boardPosts else boardPosts
         },
         onBoardSoonDone = { boardAlerts += "done" },
-        disruptions = { _, _, directions ->
+        disruptions = { _, _, directions, also ->
             directionsGiven += directions
+            alsoLinesGiven += also
+            duringCheck()
             if (knownFails) throw TflException.Offline(null)
             RouteDisruption.Found(
                 known,
@@ -275,6 +283,7 @@ class ActiveTripTrackerTest {
                 knownStands,
                 notes = knownNotes,
                 notesUntil = now.plus(Duration.ofMinutes(5)).takeIf { !((knownNotes as? Watched<*>)?.quietlyEmpty ?: knownNotes.isEmpty()) },
+                lines = knownLines,
             )
         },
         onDisruption = { _, signals, how, until ->
@@ -710,6 +719,74 @@ class ActiveTripTrackerTest {
         // Known again, it's back on the trip's screen, though not sounded again.
         assertEquals(listOf(severe), tracker.routeDisruptions.value?.signals)
         assertTrue(logged.any { it.startsWith("on the way: disruption check failed") })
+    }
+
+    @Test
+    fun `the lines' statuses a check found are kept, with the next board's lines asked too`() = runTest {
+        // A train tapped on the board opens its line's page with a status (maintainer, 2026-10-06): the
+        // board's lines go into the same check, and what it found is kept, whole.
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        // A bus at the stop too: the board shows the ride's mode alone, so it isn't asked about (Codex, #627).
+        departures["A"] = listOf(
+            train("3", 8), train("4", 9).copy(lineId = "blue", lineName = "Blue"),
+            train("5", 10).copy(lineId = "bus1", lineName = "1", mode = "bus"),
+        )
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        assertNull("none before a check", tracker.lineChecks.value)
+        val good = LineStatus("blue", 10, "Good Service")
+        knownLines = RouteDisruption.LinesChecked(setOf("red", "blue"), mapOf("blue" to good), now)
+        // While the check is out, it says which lines it's asking about (Codex, #627).
+        var askingSeen: Set<String>? = null
+        duringCheck = { askingSeen = tracker.lineChecks.value?.asking }
+        tracker.refresh()
+        assertEquals(setOf("red", "blue"), askingSeen)
+        assertEquals(setOf("red", "blue"), alsoLinesGiven.last().toSet())
+        // In, it asks nothing more.
+        assertEquals(knownLines, tracker.lineChecks.value)
+        assertNull(tracker.lineChecks.value?.asking)
+        // The next one out keeps what the last found beside what it asks.
+        var heldSeen: RouteDisruption.LinesChecked? = null
+        duringCheck = { heldSeen = tracker.lineChecks.value }
+        tracker.refresh()
+        assertEquals(knownLines?.copy(asking = setOf("red", "blue")), heldSeen)
+        duringCheck = {}
+        // A check that failed has every line it would have asked about, with no status.
+        knownFails = true
+        tracker.refresh()
+        val failed = tracker.lineChecks.value
+        assertEquals(setOf("red", "blue"), failed?.asked)
+        assertTrue(failed?.statuses.orEmpty().isEmpty())
+        assertNull(failed?.at)
+        assertNull(failed?.asking)
+        // The trip over, nothing is kept.
+        knownFails = false
+        tracker.end()
+        assertNull(tracker.lineChecks.value)
+    }
+
+    @Test
+    fun `a board line the board no longer lists isn't followed from the moment the board is read`() = runTest {
+        // The board read again without the Blue line: its page no longer takes Blue's last status as
+        // current, even while this refresh is still on its way to the check that leaves it out (Codex, #627).
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8), train("4", 9).copy(lineId = "blue", lineName = "Blue"))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        knownLines = RouteDisruption.LinesChecked(setOf("red", "blue"), mapOf("blue" to LineStatus("blue", 10, "Good Service")), now)
+        tracker.refresh()
+        val before = boardLineStatus(tracker.lineChecks.value, "blue", now)
+        assertFalse("current while the board lists it", before.unknown || before.checking)
+        departures["A"] = listOf(train("3", 8))
+        // Read once the new board is in, as the train's calls are, before the check goes out.
+        var between: RouteDisruption.LinesChecked? = null
+        afterRead = { between = tracker.lineChecks.value }
+        tracker.refresh()
+        assertNull("no check out yet", between?.asking)
+        assertEquals(setOf("red"), between?.following)
+        val blue = boardLineStatus(between, "blue", now)
+        assertTrue("no longer current", blue.unknown)
+        assertFalse(blue.checking)
     }
 
     @Test

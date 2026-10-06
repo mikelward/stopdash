@@ -116,7 +116,8 @@ class RouteLineRowTest {
     @Test
     fun `the page's row stays up only while it says the same, as sure as before`() {
         val delays = LineStatus("northern", 9, "Minor Delays", fullText = "Northern line: minor delays.")
-        fun inputs(r: app.stopdash.domain.DepartureRow, unknown: Boolean = false, checking: Boolean = false) = Inputs(r, null, unknown, checking)
+        fun inputs(r: app.stopdash.domain.DepartureRow, unknown: Boolean = false, checking: Boolean = false) =
+            Inputs(r, null, r.status ?: r.statusBehind, r.statusDismissed, unknown, checking)
         val held = inputs(row.copy(status = delays))
         // The same alert fetched again, a new object: kept.
         assertTrue(sameVerdict(held, inputs(row.copy(status = delays.copy()))))
@@ -138,7 +139,7 @@ class RouteLineRowTest {
 
     @Test
     fun `the page's stand-in is the line's pill alone, claiming no status`() {
-        val stand = routeLineStandIn(row.copy(lineName = "")).every.single()
+        val stand = lineStandIn("northern", "", "tube").every.single()
         assertEquals("northern", stand.leg.lineId)
         assertEquals("a blank name goes by the id", "northern", stand.leg.lineName)
         assertTrue(stand.restoring)

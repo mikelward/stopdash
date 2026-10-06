@@ -33,6 +33,10 @@ import org.junit.Test
 
 /** What a trip on the way's "route disruption" goes by, on synthetic stops A–C and an example line. */
 class RouteDisruptionChecksTest {
+    // What [found] says is wrong, without the lines' statuses it came by ([RouteDisruption.Found.lines]),
+    // which a check reports whatever it finds.
+    private fun RouteDisruption.Found.signalsOnly() = copy(lines = null)
+
     private val t0 = Instant.parse("2026-09-26T08:00:00Z")
     private fun at(minutes: Long) = t0.plus(Duration.ofMinutes(minutes))
     private var now = t0
@@ -143,6 +147,31 @@ class RouteDisruptionChecksTest {
     }
 
     @Test
+    fun `the next board's lines are asked with the trip's, kept as found, and never alerted`() = runTest {
+        // A train tapped on the board opens its line's page with a status (maintainer, 2026-10-06).
+        val checks = checks(StopClosureCache(), StandardTestDispatcher(testScheduler))
+        val blueDelays = LineStatus("blue", 6, "Severe Delays")
+        statuses = mapOf("red" to LineStatus("red", 10, "Good Service"), "blue" to blueDelays)
+        val found = checks.check(trip, waiting, emptyMap(), alsoLines = listOf("blue", "red", "", "green"))
+        // One request for them all.
+        assertEquals(1, statusReads)
+        val lines = found.lines!!
+        assertEquals(setOf("red", "blue", "green"), lines.asked)
+        assertEquals(blueDelays, lines.statuses["blue"])
+        // TfL left one out: no status, so it couldn't be checked.
+        assertNull(lines.statuses["green"])
+        assertTrue(lines.at != null)
+        // Not the trip's line, so not its alert.
+        assertTrue(found.signals.isEmpty())
+        // A request that failed has them all asked, with no status and no time.
+        statusesFail = true
+        val failed = checks.check(trip, waiting, emptyMap(), alsoLines = listOf("blue")).lines!!
+        assertEquals(setOf("red", "blue"), failed.asked)
+        assertTrue(failed.statuses.isEmpty())
+        assertNull(failed.at)
+    }
+
+    @Test
     fun `a coming station's other notice is a note that stands while its check is current, with nothing to alert`() = runTest {
         val checks = checks(StopClosureCache(), StandardTestDispatcher(testScheduler))
         statuses = mapOf("red" to LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service"))
@@ -250,7 +279,7 @@ class RouteDisruptionChecksTest {
             ),
         )
         statuses = mapOf("99" to LineStatus("99", 6, "Diversion", "Not serving stops between 'Bank Station' and 'Moorgate Station'.", soleAlert = true))
-        assertEquals(RouteDisruption.Found.NONE, checks.check(busTrip, TripProgress.Waiting(bus, at(5)), emptyMap()))
+        assertEquals(RouteDisruption.Found.NONE, checks.check(busTrip, TripProgress.Waiting(bus, at(5)), emptyMap()).signalsOnly())
         assertEquals(1, sequenceReads)
         assertTrue(logged.any { it == "on the way: 1 line alert(s) left out, naming only stops off the ride" })
         // Planned work counts from its day, as the signals read it: started today, its route is read;
@@ -319,7 +348,7 @@ class RouteDisruptionChecksTest {
         notices["C"] = listOf(StopDisruption("Station closed"))
         closuresFail += "C"
         val found = checks.check(trip, waiting, emptyMap())
-        assertEquals(RouteDisruption.Found.NONE, found)
+        assertEquals(RouteDisruption.Found.NONE, found.signalsOnly())
         assertTrue(logged.any { it.startsWith("on the way: line status failed") })
         assertTrue(logged.any { it.startsWith("on the way closure check failed") })
     }
@@ -347,7 +376,7 @@ class RouteDisruptionChecksTest {
         val severe = LineStatus("red", 6, "Severe Delays")
         statuses = mapOf("red" to severe)
         dismissed = setOf(DismissedAlert.ofLineStatus(severe))
-        assertEquals(RouteDisruption.Found.NONE, checks.check(trip, waiting, emptyMap()))
+        assertEquals(RouteDisruption.Found.NONE, checks.check(trip, waiting, emptyMap()).signalsOnly())
         dismissedFails = true
         assertEquals(1, checks.check(trip, waiting, emptyMap()).signals.size)
         assertTrue(logged.any { it.startsWith("on the way: dismissals unreadable") })
@@ -369,7 +398,7 @@ class RouteDisruptionChecksTest {
         dismissed = setOf(DismissedAlert.ofLineStatus(severe))
         gate.complete(Unit)
         other.join()
-        assertEquals(RouteDisruption.Found.NONE, found.await())
+        assertEquals(RouteDisruption.Found.NONE, found.await().signalsOnly())
     }
 
     @Test
@@ -378,7 +407,7 @@ class RouteDisruptionChecksTest {
         val severe = LineStatus("red", 6, "Severe Delays")
         dismissed = setOf(DismissedAlert.ofLineStatus(severe))
         statuses = mapOf("red" to severe)
-        assertEquals(RouteDisruption.Found.NONE, checks.check(trip, waiting, emptyMap()))
+        assertEquals(RouteDisruption.Found.NONE, checks.check(trip, waiting, emptyMap()).signalsOnly())
         // It ends: with nothing else checking the line, the trip on the way settles the dismissal (Codex, PR #441).
         statuses = mapOf("red" to LineStatus("red", LineStatus.GOOD_SERVICE, "Good Service"))
         checks.check(trip, waiting, emptyMap())
@@ -394,7 +423,7 @@ class RouteDisruptionChecksTest {
         val severe = LineStatus("red", 6, "Severe Delays")
         dismissed = setOf(DismissedAlert.ofLineStatus(severe))
         statuses = mapOf("red" to severe)
-        assertEquals(RouteDisruption.Found.NONE, checks.check(trip, waiting, emptyMap()))
+        assertEquals(RouteDisruption.Found.NONE, checks.check(trip, waiting, emptyMap()).signalsOnly())
         // An answer naming nothing for the line is still a verdict on it, as the list counts it (Codex, PR #441).
         statuses = emptyMap()
         checks.check(trip, waiting, emptyMap())
@@ -416,7 +445,7 @@ class RouteDisruptionChecksTest {
         val card = RouteDisruption.closureCards(trip, waiting, mapOf("C" to closed), emptyMap(), now).single()
         dismissed = setOf(DismissedAlert.ofStopClosure(card))
         notices["C"] = closed
-        assertEquals(RouteDisruption.Found.NONE, checks.check(trip, waiting, emptyMap()))
+        assertEquals(RouteDisruption.Found.NONE, checks.check(trip, waiting, emptyMap()).signalsOnly())
         // A failed lookup of the stop isn't evidence it reopened: the dismissal stays.
         now = at(6)
         closuresFail += "C"
@@ -484,7 +513,7 @@ class RouteDisruptionChecksTest {
     fun `nothing is asked once the trip has arrived`() = runTest {
         val checks = checks(StopClosureCache(), StandardTestDispatcher(testScheduler))
         val found = checks.check(trip, TripProgress.Arrived, emptyMap())
-        assertEquals(RouteDisruption.Found.NONE, found)
+        assertEquals(RouteDisruption.Found.NONE, found.signalsOnly())
         assertNull(found.until)
         assertEquals(0, statusReads)
         assertEquals(emptyList<String>(), closureReads)

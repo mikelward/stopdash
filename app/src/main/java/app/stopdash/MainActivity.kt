@@ -169,6 +169,7 @@ import app.stopdash.ui.AlertsBehindRecorder
 import app.stopdash.ui.AppMenuActions
 import app.stopdash.ui.BugReportConsentDialog
 import app.stopdash.ui.DISRUPTION_REUSE
+import app.stopdash.ui.collectByIdentityWithLifecycle
 import app.stopdash.ui.DeparturesUiState
 import app.stopdash.ui.FAR_ARRIVALS_REUSE
 import app.stopdash.ui.FarRevealState
@@ -1025,6 +1026,8 @@ class MainActivity : ComponentActivity() {
                                 val routeDisruptions by tracker.routeDisruptions.collectAsStateWithLifecycle()
                                 val stationNotes by tracker.stationNotes.collectAsStateWithLifecycle()
                                 val replanFrom by tracker.replanFrom.collectAsStateWithLifecycle()
+                                // Taken in by identity: a check's every line status, never compared on the main thread (Codex, #627).
+                                val lineChecks by tracker.lineChecks.collectByIdentityWithLifecycle()
                                 // The next ride's trains, checked against the same route data as the trip's cards.
                                 CompositionLocalProvider(LocalRouteStops provides routeStops(applicationContext)) {
                                 OnTheWayScreen(
@@ -1082,6 +1085,8 @@ class MainActivity : ComponentActivity() {
                                     onTake = { ride, branch ->
                                         ((application as? StopdashApp)?.applicationScope ?: onTheWayScope).launch { tracker.take(ride, branch) }
                                     },
+                                    // A train tapped on the board opens its line's page with its status (maintainer, 2026-10-06).
+                                    lineChecks = lineChecks,
                                 )
                                 }
                             } else if (top == TopOverlay.FAVORITE_PLACES) {
