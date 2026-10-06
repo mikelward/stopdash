@@ -5,12 +5,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import app.stopdash.domain.AlertPlacement
 import app.stopdash.domain.JourneySegment
+import app.stopdash.domain.RouteMiss
 import app.stopdash.domain.SiblingPoles
+import app.stopdash.domain.WidgetJourneysReport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
@@ -53,6 +58,46 @@ internal class Worked<K, T>(val key: K, val value: T)
 internal class JourneySegments(val segments: Map<String, JourneySegment?>, val unplaced: Set<String>)
 
 /**
+ * A value the screen reports to its model ([ReportChanges]), compared by identity where it's reported:
+ * worked out with [of] on the worker, which hands back the last one when the value is the same, so the
+ * main thread never walks a collection to tell (AGENTS.md *Main thread: read and dispatch only*).
+ */
+internal class Reported<T>(val value: T) {
+    companion object {
+        /** [value], as [last] when that holds the same (compared by equals, on the worker). */
+        @WorkerThread
+        fun <T> of(value: T, last: Reported<T>?): Reported<T> = if (last != null && last.value == value) last else Reported(value)
+    }
+}
+
+/**
+ * Each journey's own origin, the stop it's fetched from ([journeyOriginsOf]), and the lines whose routes
+ * the cards need there and beside it ([lineIds], [journeyLineIdsOf]), worked out together, so the lines
+ * are always the origins' own.
+ */
+internal class JourneyOrigins(val origins: List<StopRef>, val lineIds: Reported<List<String>>)
+
+/**
+ * The stops the journeys are fetched from, as the screen reports them ([fetched]: each journey's own
+ * origin, then the poles beside a bus origin that board a line reaching its far end), and each
+ * journey's boarding stops by key with the journey view open when they were worked out ([stopIds]).
+ * One answer, so the screen reports the stops and then the ids that say they're in, as one change
+ * ([journeyStopsOf]).
+ */
+internal class JourneyStops(val fetched: Reported<List<StopRef>>, val stopIds: Reported<Pair<Map<String, Set<String>>, String?>>)
+
+/**
+ * What the journey cards report, from one judging of them ([cardReportsOf]): the widget's pins
+ * ([widget]), the far ends to check for a closure ([destinations]), and the departures the cards
+ * couldn't check ([misses]).
+ */
+internal class CardReports(
+    val widget: Reported<WidgetJourneysReport>,
+    val destinations: Reported<List<StopRef>>,
+    val misses: Reported<Set<RouteMiss>>,
+)
+
+/**
  * The near-me list's answers worked out on [LocalWorker], one slot per stage. Hoisted above the
  * overlays and the route page with the list's scroll position, so a return to the list draws its last
  * rows at once, not a spinner while they are worked out again.
@@ -68,6 +113,15 @@ class ListWork {
     // The journey cards' segments and neighboring poles, by journey key.
     internal val segments: MutableState<Worked<Inputs, JourneySegments>?> = mutableStateOf(null)
     internal val siblings: MutableState<Worked<Inputs, Map<String, SiblingPoles>>?> = mutableStateOf(null)
+
+    // The stops the journeys are fetched from, and the lines whose routes their cards need.
+    // Each journey's own origin with the lines its card needs, and the stops reported from them.
+    internal val journeyOrigins: MutableState<Worked<Inputs, JourneyOrigins>?> = mutableStateOf(null)
+    internal val journeyStops: MutableState<Worked<Inputs, JourneyStops?>?> = mutableStateOf(null)
+
+    // What the judged journey cards report, and the farther cards shown beside the list's rows.
+    internal val cardReports: MutableState<Worked<Inputs, CardReports?>?> = mutableStateOf(null)
+    internal val farther: MutableState<Worked<Inputs, List<FartherCard>>?> = mutableStateOf(null)
 }
 
 /**
@@ -167,4 +221,33 @@ internal fun <K : Any, T> rememberWorked(
     }
     val held = slot.value ?: return null
     return held.value.takeIf { held.key == key || keep(held.key, key) }
+}
+
+/**
+ * The key a stage is wanted for when it's worked out from another stage's answer: [wanted], or, while
+ * that answer is [pending] for things as they stand, the key [slot] last answered, so the stage holds
+ * its last answer rather than work one out against an answer standing in, which the current one would
+ * then undo (a report ahead of what it says is in, a route load canceled and asked again).
+ */
+internal fun <K : Any> heldWhile(pending: Boolean, slot: State<Worked<K, *>?>, wanted: K): K =
+    slot.value?.key?.takeIf { pending } ?: wanted
+
+/**
+ * Calls [report] with [reported]'s value once it's worked out, and again only as it changes: a null
+ * (nothing worked out yet, or nothing to report now) reports nothing, and the same [Reported] as the
+ * last one reported (the worker found the value unchanged, [Reported.of]) isn't reported again, told
+ * apart by identity alone. What was reported is kept per [owner], the list's work: a new list has a new
+ * model to tell, so it reports again, as does a return to the screen, as a keyed effect would.
+ */
+@Composable
+internal fun <T> ReportChanges(reported: Reported<T>?, owner: Any, report: suspend (T) -> Unit) {
+    val latest by rememberUpdatedState(report)
+    val last = remember(owner) { arrayOfNulls<Reported<*>>(1) }
+    LaunchedEffect(owner, reported) {
+        if (reported != null && reported !== last[0]) {
+            // Noted once made: a report canceled partway (a newer value came) is made again.
+            latest(reported.value)
+            last[0] = reported
+        }
+    }
 }

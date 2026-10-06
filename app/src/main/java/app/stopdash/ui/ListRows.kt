@@ -42,6 +42,7 @@ internal class ListInputs(val listKey: Any?, val parts: Inputs) {
  * one stop of a place. [marked]: [nearby] less dismissed alerts, unflagged as [all] is.
  * [destinationClosures]: the journeys' far ends' closure notices, dismissed ones out, and
  * [destinationsUnknown] the far ends whose check failed with nothing known, from the same check.
+ * [placeModes]: each place's modes less those hidden, for a header's "Hide ‹mode›" items ([placeModes]).
  *
  * [source] and [now] are the snapshot and time these rows were built from. Anything judged against
  * the rows (the journey cards) reads them too, so rows held over from an earlier snapshot are never
@@ -56,6 +57,7 @@ internal class ListRows(
     val marked: RowsRevision,
     val destinationClosures: List<DepartureRow>,
     val destinationsUnknown: Set<String>,
+    val placeModes: Map<String, Set<String>> = emptyMap(),
 )
 
 /**
@@ -169,7 +171,8 @@ internal fun listRowsOf(
     val marked = RowsRevision(DepartureRows.withAlertsBehind(DepartureRows.withoutDismissed(nearby, dismissed), alertSequences), now)
     val destinationClosures = DepartureRows.withoutDismissed(DepartureRows.across(journeyDestinationStops, now), dismissed)
         .filter { it.stopDisruption != null }
-    return ListRows(source, now, all, nearby, shared, marked, destinationClosures, journeyDestinationsUnknown)
+    val modes = placeModes(stops).mapValues { (_, modes) -> modes.filterNotTo(LinkedHashSet()) { HiddenModes.isHidden(it, hiddenModes) } }
+    return ListRows(source, now, all, nearby, shared, marked, destinationClosures, journeyDestinationsUnknown, modes)
 }
 
 /**

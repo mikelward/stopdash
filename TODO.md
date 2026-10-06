@@ -923,9 +923,19 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
         list's worker (`ListWork`, keyed on the snapshot's identity, not its collections). The screen
         draws against the snapshot and time its rows were built from; the last rows stand in while new
         ones are built, and a new list shows a spinner until its first rows are in.
-  - [ ] **The rest of the main screen's loops off the main thread**: the widget journey checks and
-        boarding keys, `journeySiblings`, `journeyOrigins`, `fartherShown` and `placeModesShown` still
-        loop over cards, rows or stops in composition. Move them to the list's worker the same way.
+  - [x] **The main screen's journey reports and farther cards off the main thread**: each journey's
+        origin (`journeyOriginsOf`), the lines its card needs (`journeyLineIdsOf`), the stops reported
+        with the poles beside a bus origin (`journeyStopsOf`), what the judged cards report (the widget's
+        checks and boarding keys, the far ends, the misses: `cardReportsOf`) and the farther cards shown
+        (`fartherShownOf`) are worked out in slots of the list's worker. Each report is made only as
+        it changes, which the worker decides (`Reported.of`), so the main thread tells reports apart by
+        identity alone (`ReportChanges`); a new list, with its new model, reports afresh. Each place's
+        modes (`ListRows.placeModes`) come with the rows.
+  - [ ] **The last of the main screen's loops off the main thread**: `cardJourneys`,
+        `journeyStarLines`, `journeyAreas` and `journeyDestinationIds` still loop over the journeys in
+        composition, and the near and far journey cards are split there (`journeyCards.filter`, and
+        `journeyViewCard`'s find). Moving them changes when the slots after them see a change, so each
+        needs the same care over what reports in the meantime.
   - [x] **Work a trip card's times out off the main thread**: each card's `cardTimes` is worked out
         on the page's worker (`rememberWorked`); its last times stand in meanwhile, drawn against the
         time they were worked out for. The card's statuses and closures, and the page's estimates,
