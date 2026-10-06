@@ -233,7 +233,7 @@ class NextTrainsOffMainTest {
                     next = rememberNextTrains(shown, now, ride = ride)
                 }
             }
-            composeRule.waitUntil(10_000) { next?.trains?.isNotEmpty() == true }
+            composeRule.waitUntilWorked(executor) { next?.trains?.isNotEmpty() == true }
             assertEquals(listOf(at(3), at(5)), times(next!!))
             assertTrue(reads.isNotEmpty())
             assertEquals(setOf("trains-worker"), reads.toSet())

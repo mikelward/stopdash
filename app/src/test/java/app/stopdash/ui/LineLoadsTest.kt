@@ -126,7 +126,7 @@ class LineLoadsTest {
                     loads = rememberLineLoads(listOf("1"), now)
                 }
             }
-            composeRule.waitUntil("first load", timeoutMillis = 5_000) { loads?.sequences?.get("1") != null }
+            composeRule.waitUntilWorked(worker.executor) { loads?.sequences?.get("1") != null }
             synchronized(threads) { threads.clear() }
             // The hourly recheck judges the held route; it's still current, so nothing loads again.
             now = now.plus(Duration.ofHours(1))
@@ -164,7 +164,7 @@ class LineLoadsTest {
                     lines = rememberTripLineIds(planned, emptySet(), null)
                 }
             }
-            composeRule.waitUntil(timeoutMillis = 5_000) { lines?.isNotEmpty() == true }
+            composeRule.waitUntilWorked(worker.executor) { lines?.isNotEmpty() == true }
             assertEquals(listOf("red"), lines)
             assertTrue(reads.isNotEmpty())
             assertEquals(setOf("test-worker"), reads.toSet())
