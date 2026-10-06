@@ -3417,7 +3417,12 @@ class MainActivity : ComponentActivity() {
                 alertDirections = LineAlertDirections.shared,
                 alertDirectionScope = (context.applicationContext as? StopdashApp)?.applicationScope,
             ),
-            rail = KtorDarwinClient(httpClient, apiKey = { RailApiKeySetting.current }, warn = ::logDepartureWarning),
+            rail = KtorDarwinClient(
+                httpClient,
+                apiKey = { RailApiKeySetting.current },
+                warn = ::logDepartureWarning,
+                stopIdFor = { RailStationCodesStore.load(context.applicationContext).stopIdFor(it) },
+            ),
             codes = { RailStationCodesStore.load(context.applicationContext) },
             warn = ::logDepartureWarning,
             boardAtEveryStop = boardAtEveryStop,

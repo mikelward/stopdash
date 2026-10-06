@@ -415,7 +415,12 @@ internal suspend fun refreshStoredSnapshot(
                         alertDirections = LineAlertDirections.shared,
                         alertDirectionScope = directionLookups,
                     ),
-                    rail = KtorDarwinClient(http, apiKey = { railKey }, warn = ::logWidgetSnapshotWarning),
+                    rail = KtorDarwinClient(
+                        http,
+                        apiKey = { railKey },
+                        warn = ::logWidgetSnapshotWarning,
+                        stopIdFor = { RailStationCodesStore.load(context).stopIdFor(it) },
+                    ),
                     codes = { RailStationCodesStore.load(context) },
                     warn = ::logWidgetSnapshotWarning,
                     boards = ArrivalsCache.SHARED,

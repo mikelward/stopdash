@@ -37,6 +37,9 @@ class KtorDarwinClient(
     // Where a board's answer is read, as for TfL's ([KtorTflClient]): off the caller's thread, which
     // is a screen's main thread when it loads its own. A test swaps in its own.
     private val decodeDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    // TfL's stop id for a station code (RailStationCodes.stopIdFor), read where the board is: a
+    // train's terminus by id, for its stop list. Null for none, as in a test.
+    private val stopIdFor: (String) -> String? = { null },
 ) : RailBoardSource {
     override val available: Boolean get() = !apiKey().isNullOrBlank()
 
@@ -49,7 +52,7 @@ class KtorDarwinClient(
                 httpClient.get("$baseUrl/GetDepartureBoard/$crs") {
                     header("x-apikey", key)
                     parameter("numRows", ROWS)
-                }.body<DarwinBoardDto>().toBoard(warn)
+                }.body<DarwinBoardDto>().toBoard(stopIdFor, warn)
             }
         } catch (e: CancellationException) {
             throw e

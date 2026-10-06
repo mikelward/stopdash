@@ -821,7 +821,11 @@ destination names neither a stop ahead nor the route: a bus blind shows an area 
 its last stop's name, so matching by name alone left most buses with no list. A
 bus short-working whose label *does* name a stop ahead still ends there, and two variants that part
 ways ahead are still unavailable. Rail keeps the strict name match — its destinations are stations,
-so a miss there is a working the sequence doesn't model. **A loop goes the way its platform faces**
+so a miss there is a working the sequence doesn't model. **A terminus named another way is found by
+its id**: a National Rail board spells some stations its own way ("St Albans" for TfL's "St Albans
+City"), so where no stop ahead has the destination's name, the stop with its terminus's id ends the
+list — TfL's id, or the board's station code read as TfL's, where the code is one station — never a
+looser name. **A loop goes the way its platform faces**
 (maintainer, 2026-09-26): a Circle line train "to Edgware Road" can reach it either way round, so
 where more than one path matches, the platform's compass ("Eastbound", or a loop's "Inner Rail" /
 "Outer Rail", the outer running clockwise) keeps the path that leaves that way. TfL's direction

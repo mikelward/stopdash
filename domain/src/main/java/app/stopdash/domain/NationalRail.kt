@@ -79,6 +79,18 @@ class RailStationCodes(private val codes: Map<String, String>) {
     fun crsFor(stopId: String): String? =
         if (stopId.startsWith(TFL_RAIL_PREFIX)) codes[stopId.removePrefix(TFL_RAIL_PREFIX)] else null
 
+    // Each code's one TIPLOC; a code several share is left out. Built with the table, which is read
+    // off the main thread ([RailStationCodesStore]), so a lookup is constant time wherever it runs.
+    private val tiplocs: Map<String, String> =
+        codes.entries.groupBy({ it.value }, { it.key }).mapNotNull { (crs, all) -> all.singleOrNull()?.let { crs to it } }.toMap()
+
+    /**
+     * The TfL stop id of the station with [crs], as a National Rail board names a train's terminus: how
+     * its stop list finds the stop whatever the board calls it ("St Albans" for TfL's "St Albans
+     * City"). Null when no station has it, or several do (St Pancras's three), as one would be a guess.
+     */
+    fun stopIdFor(crs: String): String? = tiplocs[crs.uppercase()]?.let { TFL_RAIL_PREFIX + it }
+
     companion object {
         private const val TFL_RAIL_PREFIX = "910G"
         val EMPTY = RailStationCodes(emptyMap())

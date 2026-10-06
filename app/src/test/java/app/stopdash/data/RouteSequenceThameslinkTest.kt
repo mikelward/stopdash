@@ -55,6 +55,18 @@ class RouteSequenceThameslinkTest {
     }
 
     @Test
+    fun `a train its board names by another spelling ends where its station code says`() {
+        // National Rail's board calls the terminus "St Albans"; TfL's route calls it "St Albans City".
+        val sequence = thameslink.callingAt(ST_PANCRAS_DOMESTIC)
+        assertEquals(RouteStops.Resolution.NoMatch, RouteStops.resolve(sequence, ST_PANCRAS_DOMESTIC, "St Albans", null, "thameslink"))
+        val stops = RouteStops.ahead(sequence, ST_PANCRAS_DOMESTIC, "St Albans", null, "thameslink", destinationId = ST_ALBANS_CITY)!!
+        assertEquals(ST_PANCRAS_DOMESTIC, stops.first().id)
+        assertEquals("Kentish Town", stops[1].name)
+        assertEquals(ST_ALBANS_CITY, stops.last().id)
+        assertEquals("St Albans City", stops.last().name)
+    }
+
+    @Test
     fun `another station in the interchange is not a sibling`() {
         // King's Cross is in the same hub, and its own route also reaches Cambridge: counting it
         // would leave two paths. On a route itself, it is left as it is.
@@ -139,5 +151,6 @@ class RouteSequenceThameslinkTest {
         const val ST_PANCRAS_LL = "910GSTPXBOX"
         const val KINGS_CROSS = "910GKNGX"
         const val FINSBURY_PARK = "910GFNPK"
+        const val ST_ALBANS_CITY = "910GSTALBCY"
     }
 }
