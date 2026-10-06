@@ -240,12 +240,17 @@ exercises the whole spine the widget later renders from.
       the engineering ones (the worker, a slot, an answer standing in, held, settle, snapshot,
       refresh, reconcile, relocation, report, check, lookup, verdict). Then use them as defined:
       a term whose meaning isn't written down drifts, and a reader (or a reviewer) can't tell
-      which of two meanings a sentence uses.
+      which of two meanings a sentence uses. Drafted in `GLOSSARY.md`: its ⚑ entries are the
+      maintainer's to settle, then the spec and code follow the words chosen.
       - So far (maintainer, 2026-10-13): a **route** is all of a line's runs between its two
         termini, as decided earlier, and "bus route" is the established term. A **trip** is a
         planned From→To, legs and changes included, and each of the Planner's alternatives is one.
         On trial in the copy: **favorite ride** for a saved pair of stops (it was "favorite
         journey"; "direct trip" the other candidate), and no "journey" at all.
+      - **Closure** is a closed stop only, and **notice** any stop notice (maintainer,
+        2026-10-16). The spec's "closure check" and "closure card" become notice check and notice
+        card; the code's closure names (`StopClosureCache`, `closurePending`) follow as each is
+        next touched, not in one sweep.
       - [ ] **Device check:** try the trial names. If they stick, carry them into SPEC's prose,
             `docs/PRIVACY.md`'s, the store listing and the code's names (the code still says
             favorite journey), then the translations follow (AGENTS *Translations*).
