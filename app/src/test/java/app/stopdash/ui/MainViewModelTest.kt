@@ -7950,6 +7950,135 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `the widget's journeys are compared and gathered off the main thread`() = runTest(dispatcher) {
+        // A worker of its own, on the test's scheduler, that marks the work it runs: the disk's too, as
+        // neither is the main thread.
+        val onWorker = ThreadLocal.withInitial { false }
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) = dispatcher.dispatch(context) {
+                onWorker.set(true)
+                try {
+                    block.run()
+                } finally {
+                    onWorker.set(false)
+                }
+            }
+        }
+        val store = FakeStore()
+        val vm = MainViewModel(ReuseCountingClient(), listOf(seeds.first()), clock = { now }, io = worker, compute = worker, snapshotStore = store)
+        vm.setJourneyStops(listOf(StopRef(ksxId, "King's Cross St. Pancras")))
+        advanceUntilIdle()
+        // Each journey check read: comparing a report with the one written, and gathering its origins,
+        // read them.
+        val read = mutableListOf<Boolean>()
+        val check = WidgetJourneyCheck("j", ksxId, setOf(JourneyCall("victoria", "Victoria", null)))
+        fun checks() = object : AbstractList<WidgetJourneyCheck>() {
+            override val size: Int get() = 1
+            override fun get(index: Int): WidgetJourneyCheck = check.also { read += onWorker.get() }
+        }
+        vm.setWidgetJourneys(setOf("j"), checks())
+        advanceUntilIdle()
+        // The same again, as an equal list: compared, and not written twice.
+        vm.setWidgetJourneys(setOf("j"), checks())
+        advanceUntilIdle()
+
+        assertEquals(1, store.reports.size)
+        assertEquals(listOf(ksxId), store.reportOrigins.single().map { it.stopId })
+        assertTrue("$read", read.isNotEmpty() && read.all { it })
+    }
+
+    @Test
+    fun `the widget's snapshot is worked out off the main thread`() = runTest(dispatcher) {
+        // A worker of its own, on the test's scheduler, that marks the work it runs: the disk's too, as
+        // neither is the main thread.
+        val onWorker = ThreadLocal.withInitial { false }
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) = dispatcher.dispatch(context) {
+                onWorker.set(true)
+                try {
+                    block.run()
+                } finally {
+                    onWorker.set(false)
+                }
+            }
+        }
+        // Each stop's distance, noting where each is read: the widget's order (nearest first) reads them.
+        val read = mutableListOf<Boolean>()
+        val backing = mapOf(oxcId to 120.0, ksxId to 400.0)
+        val distances = object : AbstractMap<String, Double>() {
+            override val entries: Set<Map.Entry<String, Double>> get() = backing.entries.also { read += onWorker.get() }
+            override fun get(key: String): Double? = backing[key].also { read += onWorker.get() }
+            override fun containsKey(key: String): Boolean = backing.containsKey(key).also { read += onWorker.get() }
+        }
+        val store = FakeStore()
+        val vm = MainViewModel(
+            ReuseCountingClient(),
+            seeds,
+            clock = { now },
+            io = worker,
+            compute = worker,
+            snapshotStore = store,
+            stopDistanceMeters = distances,
+        )
+        advanceUntilIdle()
+        read.clear()
+        val saved = store.saves.size
+
+        vm.refresh()
+        advanceUntilIdle()
+
+        assertEquals(saved + 1, store.saves.size)
+        assertEquals(listOf(oxcId, ksxId), store.saves.last().nearestFirst)
+        assertTrue("$read", read.isNotEmpty() && read.all { it })
+    }
+
+    @Test
+    fun `a saved snapshot is restored off the main thread`() = runTest(dispatcher) {
+        // A worker of its own, on the test's scheduler, that marks the work it runs: the disk's too, as
+        // neither is the main thread.
+        val onWorker = ThreadLocal.withInitial { false }
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) = dispatcher.dispatch(context) {
+                onWorker.set(true)
+                try {
+                    block.run()
+                } finally {
+                    onWorker.set(false)
+                }
+            }
+        }
+        // Each stop's distance, noting where each is read: the restored list names its missing stops
+        // nearest first (two of them, so there's an order to find).
+        val read = mutableListOf<Boolean>()
+        val euston = StopRef("940GZZLUEUS", "Euston")
+        val backing = mapOf(oxcId to 120.0, ksxId to 400.0, euston.id to 300.0)
+        val distances = object : AbstractMap<String, Double>() {
+            override val entries: Set<Map.Entry<String, Double>> get() = backing.entries.also { read += onWorker.get() }
+            override fun get(key: String): Double? = backing[key].also { read += onWorker.get() }
+            override fun containsKey(key: String): Boolean = backing.containsKey(key).also { read += onWorker.get() }
+        }
+        // Saved with one of the three stops: restored as incomplete, naming the others.
+        val store = FakeStore(
+            DeparturesSnapshot(stops = listOf(stopArrivals(oxcId, "Oxford Circus", 600, now.minusSeconds(120))), fetchedAt = now.minusSeconds(120)),
+        )
+        // The refresh after it never comes back, so the restored list stays.
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String): List<Departure> = CompletableDeferred<List<Departure>>().await()
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
+        }
+        val vm = MainViewModel(client, seeds + euston, clock = { now }, io = worker, compute = worker, snapshotStore = store, stopDistanceMeters = distances)
+        advanceTimeBy(1)
+        runCurrent()
+
+        val restored = vm.state.value as DeparturesUiState.Loaded
+        assertTrue(restored.partialRefresh)
+        assertEquals(listOf(euston.id, ksxId), restored.partialStops.keys.toList())
+        assertTrue("$read", read.isNotEmpty() && read.all { it })
+        vm.viewModelScope.cancel()
+    }
+
+    @Test
     fun `a failed journeys write is retried after the next fetch`() = runTest(dispatcher) {
         val store = FakeStore()
         val client = ReuseCountingClient()
