@@ -11,6 +11,7 @@ import app.stopdash.domain.LocationFix
 import app.stopdash.domain.LocationProvider
 import app.stopdash.domain.MoveFollow
 import app.stopdash.domain.NearbySelection
+import app.stopdash.domain.NearestByLine
 import app.stopdash.domain.NearestStops
 import app.stopdash.domain.StopFinder
 import app.stopdash.domain.StopLocation
@@ -156,6 +157,13 @@ class NearbyStopsViewModel(
              * the list's farther cards offer (SPEC *Finding stops*).
              */
             val nearbyStops: List<StopRef> = (eager + more).flatMap { c -> c.stops.map { it.toStopRef() } }
+
+            /**
+             * Each line's stop nearest the rider within walking reach, from both tiers' stop data, so a
+             * near station whose times aren't fetched yet still counts: what a line's map keeps on the
+             * page ([NearestByLine.byLine]).
+             */
+            val nearestStopByLine: Map<String, String> = NearestByLine.byLine((eager + more).flatMap { it.stops }, distanceMeters)
 
             /**
              * Order-independent identity of the WHOLE nearby set (both tiers), so a relocation that

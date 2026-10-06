@@ -64,6 +64,8 @@ class LineMap internal constructor(
         val marked: Boolean = false,
         // One of the rider's starred stops.
         val starred: Boolean = false,
+        // The line's station nearest the rider, within walking reach.
+        val nearby: Boolean = false,
         // A stop of the rider's trip on this line.
         val riding: Boolean = false,
         // On a stretch the rider's trip rides, where it boards and gets off included.
@@ -105,7 +107,7 @@ class LineMap internal constructor(
          * or leaves at by the way it rides where its stretch is placed (Codex, #613). Not a closure on
          * another branch at a station the trip only passes or gets off at, which folds as anywhere else.
          */
-        val alertsRider: Boolean = ridden && (marked || own.any { it.closedRidden }) || (starred || ridingUnplaced) && level != null
+        val alertsRider: Boolean = ridden && (marked || own.any { it.closedRidden }) || (starred || nearby || ridingUnplaced) && level != null
 
         /**
          * On the page however the map is folded: the rider's own stops, and what an alert places on a
@@ -113,7 +115,7 @@ class LineMap internal constructor(
          * or turn back). An alert anywhere else folds away with where it is, its fold saying how bad
          * (maintainer, 2026-10-06).
          */
-        val kept: Boolean = starred || riding || alertsRider
+        val kept: Boolean = starred || nearby || riding || alertsRider
 
         /** Folds into a run with its neighbors: one track through, nothing placed on it, nothing of its own to say. */
         val plain: Boolean = !kept && !end && !junction && level == null
@@ -290,8 +292,8 @@ class LineMap internal constructor(
          * names an alert as shutting ([PartClosure.sections]), each its stops in the order trains run
          * through it, so a stretch TfL shuts both ways is listed once each way round; the stations
          * [alertText] names are marked, and those each of the [placed] closures' own words name where none
-         * of its own track lands on the map. [starred] and [riding] are the rider's own stops, matched by
-         * stop, stop area or interchange, and [rides] the stretches their trip rides, each the stops it
+         * of its own track lands on the map. [starred], [nearby] and [riding] are the rider's own stops,
+         * matched by stop, stop area or interchange, and [rides] the stretches their trip rides, each the stops it
          * calls at in order, where it boards first (its two ends alone where no path is known).
          *
          * The routes are taken one way (TfL's outbound, else each kept once whichever way TfL runs it),
@@ -312,12 +314,13 @@ class LineMap internal constructor(
             riding: Set<String> = emptySet(),
             placed: List<PartClosure> = emptyList(),
             rides: List<List<String>> = emptyList(),
+            nearby: Set<String> = emptySet(),
         ): LineMap? {
             val alone = oneWay(sequence, otherWay = false)
             val both = oneWay(sequence, otherWay = true)
-            val outbound = laidOut(sequence, alone, closures, alertText, placed, starred, riding, rides)
+            val outbound = laidOut(sequence, alone, closures, alertText, placed, starred, riding, rides, nearby)
             if (both.routes == alone.routes) return outbound
-            val drawn = laidOut(sequence, both, closures, alertText, placed, starred, riding, rides) ?: return outbound
+            val drawn = laidOut(sequence, both, closures, alertText, placed, starred, riding, rides, nearby) ?: return outbound
             fun LineMap.twice() = rows.size - rows.mapTo(HashSet()) { it.stopId }.size
             return if (outbound != null && drawn.twice() > outbound.twice()) outbound else drawn
         }
@@ -331,6 +334,7 @@ class LineMap internal constructor(
             starred: Set<String>,
             riding: Set<String>,
             rides: List<List<String>>,
+            nearby: Set<String>,
         ): LineMap? {
             fun same(id: String) = way.same[id] ?: id
             val routes = northUp(way.routes, sequence)
@@ -349,6 +353,7 @@ class LineMap internal constructor(
                 }
             }
             val starredPlaces = places(starred.mapTo(HashSet(starred)) { same(it) }, sequence)
+            val nearbyPlaces = places(nearby.mapTo(HashSet(nearby)) { same(it) }, sequence)
             val ridingPlaces = places(riding.mapTo(HashSet(riding)) { same(it) }, sequence)
             val nodePlaces = graph.nodes.associateWith { places(setOf(base(it)), sequence) }
             // The stretches the trip rides, each through the stops it calls at in order, so it takes the
@@ -430,6 +435,7 @@ class LineMap internal constructor(
                         name = sequence.stopNames[stop]?.takeIf { it.isNotBlank() } ?: stop,
                         marked = stop in marked,
                         starred = nodePlaces.getValue(row.key).any { it in starredPlaces },
+                        nearby = nodePlaces.getValue(row.key).any { it in nearbyPlaces },
                         riding = row.key in riding,
                         ridingUnplaced = row.key in unplaced,
                         ridden = row.key in ridden,
@@ -447,7 +453,7 @@ class LineMap internal constructor(
          * where it already is drawn, and the stations it sends riders to instead, which no alert is at.
          * A [quieted] alert, worse than [status] but dismissed, which the page still names, has its
          * closures drawn too (Codex, #606). [rides] are the stretches the rider's trip rides, each the
-         * stops it calls at in order.
+         * stops it calls at in order, and [nearby] the line's station nearest the rider.
          */
         @WorkerThread
         fun forStatus(
@@ -457,9 +463,10 @@ class LineMap internal constructor(
             riding: Set<String> = emptySet(),
             quieted: LineStatus? = null,
             rides: List<List<String>> = emptyList(),
+            nearby: Set<String> = emptySet(),
         ): LineMap? {
             val placed = (placed(status) + placed(quieted)).distinct()
-            return of(sequence, placed.flatMap { it.sections }.distinct(), shown(status, placed), starred, riding, placed, rides)
+            return of(sequence, placed.flatMap { it.sections }.distinct(), shown(status, placed), starred, riding, placed, rides, nearby)
         }
 
         /**

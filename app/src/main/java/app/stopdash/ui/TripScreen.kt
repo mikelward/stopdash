@@ -3202,6 +3202,8 @@ internal data class TripLine(
     // Each ride of this line, the stops it calls at in order ([mapCalls]): where its map shows an alert in
     // full, folding one anywhere else (SPEC *Line page → Map*).
     val rides: List<List<String>> = listOf(mapCalls(leg)).filter { it.size >= 2 },
+    // The line's stop nearest the rider, within walking reach, which its map keeps on the page; none on a trip's.
+    val nearby: Set<String> = emptySet(),
     // What its map draws of [status] ([LineMap.alertKey]), worked out with the line: a status rebuilt with
     // the same alert keeps the map up, another redraws it. Null where not worked out: [status] itself.
     val mapKey: String? = null,

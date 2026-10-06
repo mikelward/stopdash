@@ -81,7 +81,7 @@ private class Laid(val from: LineSequence?, val statusKey: Any?, val map: LineMa
 /**
  * [lineId]'s map for its page (SPEC *Line page → Map*): its route data from the route pages' own
  * day-long cache ([LocalRouteStops]), loaded when the page opens and never on a refresh path, laid out
- * with [status]'s alert placed on it, the rider's [starred] and [riding] stops kept and an alert on the
+ * with [status]'s alert placed on it, the rider's [starred], [nearby] and [riding] stops kept and an alert on the
  * [rides] they take shown in full, then folded as
  * [opened] and [all] say. Both run on [LocalWorker], never in composition; while a tap's new folding
  * is worked out the last one stands, so nothing moves under the finger. A map laid out for another
@@ -103,6 +103,7 @@ internal fun rememberLineMap(
     statusKey: Any? = status,
     quieted: LineStatus? = null,
     rides: List<List<String>> = emptyList(),
+    nearby: Set<String> = emptySet(),
 ): LineMapUi? {
     val repository = LocalRouteStops.current ?: return null
     val worker = LocalWorker.current
@@ -124,8 +125,8 @@ internal fun rememberLineMap(
     }
     val sequence = source as? LineSequence
     val laidSlot = remember { mutableStateOf<Worked<Inputs, Laid>?>(null) }
-    val laid = rememberWorked(laidSlot, Inputs(sequence, status, statusKey, starred, riding, quieted, rides), keep = { _, _ -> true }) {
-        Laid(sequence, statusKey, sequence?.let { LineMap.forStatus(it, status, starred, riding, quieted, rides) })
+    val laid = rememberWorked(laidSlot, Inputs(sequence, status, statusKey, starred, riding, quieted, rides, nearby), keep = { _, _ -> true }) {
+        Laid(sequence, statusKey, sequence?.let { LineMap.forStatus(it, status, starred, riding, quieted, rides, nearby) })
     }
     // A map laid out for this route data and this status, for starred or ridden stops since changed
     // standing in until the new one is in; never one laid out before the data came, which would read
@@ -202,7 +203,7 @@ internal fun rememberLineMapSection(line: TripLine, starred: Set<String>): LineM
     var retry by remember(leg.lineId) { mutableIntStateOf(0) }
     var opened by rememberSaveable(leg.lineId, stateSaver = OpenedFoldsSaver) { mutableStateOf<OpenedFolds?>(null) }
     var all by rememberSaveable(leg.lineId) { mutableStateOf(false) }
-    val ui = rememberLineMap(leg.lineId, line.status, starred, line.riding, opened, all, retry, line.mapKey ?: line.status, line.quieted, line.rides)
+    val ui = rememberLineMap(leg.lineId, line.status, starred, line.riding, opened, all, retry, line.mapKey ?: line.status, line.quieted, line.rides, line.nearby)
     val atFirst = opened == null && !all
     return if (ui == null) {
         null
@@ -337,6 +338,7 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color) {
     val state = listOfNotNull(
         stringResource(R.string.route_stop_current).takeIf { row.riding },
         stringResource(R.string.line_map_starred).takeIf { row.starred },
+        stringResource(R.string.line_map_nearest).takeIf { row.nearby && !row.riding },
         stringResource(R.string.route_stop_in_alert).takeIf { row.marked },
         // A closed track drawn to it, where its own line says nothing (Codex, #606).
         stringResource(R.string.line_map_beside_closure).takeIf { row.besideClosure },
@@ -376,6 +378,14 @@ private fun StationRow(row: LineMap.Row, columns: Int, railColor: Color) {
             when {
                 row.unserved -> Text(stringResource(R.string.line_map_no_service), style = MaterialTheme.typography.bodySmall, color = closedColor)
                 row.servedOneWay -> Text(stringResource(R.string.line_map_no_service_one_way), style = MaterialTheme.typography.bodySmall, color = closedColor)
+            }
+            // Why it's on the page when the stations around it fold, under its service where that's shut.
+            if (row.nearby && !row.riding) {
+                Text(
+                    stringResource(R.string.line_map_nearest),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
