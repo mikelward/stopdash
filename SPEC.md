@@ -2008,7 +2008,9 @@ them there:
   an exit shut, gets a quiet card on the trip's screen under anything that may stop the trip: the
   station, then TfL's words. Never alerted, never a reason to plan again: it changes how the rider
   walks through the station, not which train to take. Checked with the route's closures, standing
-  only while that check is current; one the rider dismissed on a list is left out here too.
+  only while that check is current; one the rider dismissed on a list is left out here too. Its ×
+  (maintainer, 2026-10-06) lets it go for **this trip only**, as Keep going does; it comes back once
+  TfL's words for it change.
 - **Where it shows:** the trip's own screen (the next step over the route), a **card pinned at the
   top of the main view**, the trip screen's own card (where to and when, then the next step;
   maintainer, 2026-10-04), its arrival without the board's next train, which only the trip screen

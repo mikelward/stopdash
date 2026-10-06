@@ -33,7 +33,8 @@ import kotlin.math.roundToInt
  * [disruptionsHeard] is each "route disruption" already heard ([RouteDisruption.Signal.key]), so a restart
  * doesn't sound it again and only something new is heard. [disruptionsDismissed] is each the rider
  * dismissed on the trip's screen, read and kept going: no longer shown nor alerted on this trip, while
- * something new (another stop, a worse status) still is. [vehicleLeg] is the ride as the line of the
+ * something new (another stop, a worse status) still is; a station's note ([RouteDisruption.StationNote.dismissKey])
+ * its × let go of too. [vehicleLeg] is the ride as the line of the
  * train followed runs it, where that's another of the ride's lines than the Planner's ([RideLines]):
  * its line is the one TfL answers for the train on, and the one the step tells the rider to board, and
  * the train's calls are checked against its own stops ([OnTheWay.ridden]). Null for the ride's own

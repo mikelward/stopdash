@@ -705,6 +705,32 @@ class ActiveTripTracker(
         }
     }
 
+    /**
+     * The rider dismissed a station's [note] on the trip's screen (its ×): kept on the trip as dismissed
+     * ([RouteDisruption.StationNote.dismissKey]), so it isn't shown again on this trip until the notice
+     * changes. Saved before it's made, as [dismissDisruptions] is: one that can't be kept isn't made, and
+     * says so ([notKept]).
+     */
+    suspend fun dismissNote(note: RouteDisruption.StationNote) = lock.withLock {
+        val trip = _trip.value ?: return@withLock
+        val progress = _progress.value
+        if (progress == null || progress == TripProgress.Arrived) return@withLock
+        // Keyed and added on [io], not the caller's (the main) thread: the key joins TfL's words.
+        val kept = withContext(io) {
+            note.dismissKey.takeIf { it !in trip.disruptionsDismissed }?.let { trip.copy(disruptionsDismissed = trip.disruptionsDismissed + it) }
+        } ?: return@withLock
+        unsaved = true
+        val saved = withContext(io) { save(kept) }
+        unsaved = !saved
+        _notKept.value = !saved
+        if (!saved) return@withLock
+        _trip.value = kept
+        val known = _stationNotes.value ?: return@withLock
+        _stationNotes.value = withContext(io) {
+            known.notes.filter { it.dismissKey !in kept.disruptionsDismissed }.takeIf { it.isNotEmpty() }?.let { known.copy(notes = it) }
+        }
+    }
+
     /** End the trip: forgotten here and on the device. */
     suspend fun end(): Boolean = withContext(compute) { lock.withLock { endLocked() } }
 
@@ -807,8 +833,10 @@ class ActiveTripTracker(
         val answered = _updatedAt.value
         // The stations' notes stand as long as their evidence, and no longer than the trip's own answer,
         // whatever the alert does: none while there's no answer to show them against.
-        _stationNotes.value = found.notesUntil?.takeIf { found.notes.isNotEmpty() }?.let { evidence ->
-            answered?.let { KnownNotes(found.notes, SteadyClock.stamp(minOf(evidence, it.plus(CURRENT_FOR)))) }
+        // Those the rider dismissed ([dismissNote]) left out, on [io], never the caller's (the main) thread.
+        val notes = withContext(io) { found.notes.filter { it.dismissKey !in trip.disruptionsDismissed } }
+        _stationNotes.value = found.notesUntil?.takeIf { notes.isNotEmpty() }?.let { evidence ->
+            answered?.let { KnownNotes(notes, SteadyClock.stamp(minOf(evidence, it.plus(CURRENT_FOR)))) }
         }
         // No train predicted where the rider changes, from a board read for this refresh's answer only:
         // none read once the refresh failed. It stands as long as that answer does.

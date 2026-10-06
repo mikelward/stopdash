@@ -144,6 +144,8 @@ class ActiveTripTrackerTest {
     // How long each known signal's own evidence stands, by its key, where the check says.
     private var knownStands: Map<String, Instant> = emptyMap()
     private var knownFails = false
+    // The coming stations' notes the check finds.
+    private var knownNotes: List<RouteDisruption.StationNote> = emptyList()
     // The direction of each coming leg's trains, as each check was given it.
     private val directionsGiven = mutableListOf<Map<Int, String>>()
     // What happened to the "route disruption" notification, in order: each post (how, with what's
@@ -271,6 +273,8 @@ class ActiveTripTrackerTest {
                 known,
                 (knownStands.values + now.plus(Duration.ofMinutes(5))).min().takeIf { !((known as? Watched<*>)?.quietlyEmpty ?: known.isEmpty()) },
                 knownStands,
+                notes = knownNotes,
+                notesUntil = now.plus(Duration.ofMinutes(5)).takeIf { !((knownNotes as? Watched<*>)?.quietlyEmpty ?: knownNotes.isEmpty()) },
             )
         },
         onDisruption = { _, signals, how, until ->
@@ -856,6 +860,82 @@ class ActiveTripTrackerTest {
         tracker.refresh()
         assertNull(tracker.routeDisruptions.value)
         assertEquals(emptyList<String>(), disruptionAlerts)
+    }
+
+    @Test
+    fun `a dismissed station note leaves the screen for the trip, and comes back once it changes`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        val lift = RouteDisruption.StationNote(0, "C", "C", "Lift out of service.")
+        val exit = RouteDisruption.StationNote(0, "B", "B", "Exit closed.")
+        knownNotes = listOf(lift, exit)
+        tracker.refresh()
+        assertEquals(listOf(lift, exit), tracker.stationNotes.value?.notes)
+        disruptionAlerts.clear()
+        tracker.dismissNote(lift)
+        assertEquals(listOf(exit), tracker.stationNotes.value?.notes)
+        assertEquals(setOf(lift.dismissKey), kept?.disruptionsDismissed)
+        // Never alerted, so dismissing one posts nothing.
+        assertEquals(emptyList<String>(), disruptionAlerts)
+        tracker.refresh()
+        assertEquals(listOf(exit), tracker.stationNotes.value?.notes)
+        // Only one left, dismissed: none.
+        tracker.dismissNote(exit)
+        assertNull(tracker.stationNotes.value)
+        // TfL's words change: a new notice, shown.
+        val changed = lift.copy(text = "Lift out of service until Friday.")
+        knownNotes = listOf(changed, exit)
+        tracker.refresh()
+        assertEquals(listOf(changed), tracker.stationNotes.value?.notes)
+    }
+
+    @Test
+    fun `a station note dismissal that can't be saved isn't made, and says so`() = runTest {
+        val tracker = tracker(StandardTestDispatcher(testScheduler))
+        departures["A"] = listOf(train("3", 8))
+        trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+        tracker.start(route, "C", readyAt = now)
+        val lift = RouteDisruption.StationNote(0, "C", "C", "Lift out of service.")
+        knownNotes = listOf(lift)
+        tracker.refresh()
+        saves = false
+        tracker.dismissNote(lift)
+        assertTrue(tracker.notKept.value)
+        assertEquals(listOf(lift), tracker.stationNotes.value?.notes)
+        assertEquals(emptySet<String>(), tracker.trip.value?.disruptionsDismissed)
+    }
+
+    @Test
+    fun `a station note is dismissed off the caller's thread`() {
+        // AGENTS.md *Main thread*: the rider taps the × on the main thread; the key is worked out, the
+        // trip saved and the notes left out on the worker.
+        val caller = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "caller") }.asCoroutineDispatcher()
+        val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }.asCoroutineDispatcher()
+        try {
+            val tracker = tracker(worker)
+            departures["A"] = listOf(train("3", 8))
+            trains["3"] = listOf(call("A", 8), call("B", 11), call("C", 14))
+            val lift = RouteDisruption.StationNote(0, "C", "C", "Lift out of service.")
+            val read = mutableListOf<String>()
+            knownNotes = Watched(listOf(lift), read)
+            kotlinx.coroutines.runBlocking(caller) {
+                tracker.start(route, "C", readyAt = now)
+                tracker.refresh()
+                saveThreads.clear()
+                tracker.dismissNote(lift)
+                tracker.refresh()
+            }
+            assertEquals(setOf(lift.dismissKey), kept?.disruptionsDismissed)
+            assertNull(tracker.stationNotes.value)
+            assertTrue(saveThreads.isNotEmpty() && saveThreads.all { it == "worker" })
+            assertTrue(read.isNotEmpty())
+            assertEquals(setOf("worker"), read.toSet())
+        } finally {
+            caller.close()
+            worker.close()
+        }
     }
 
     @Test

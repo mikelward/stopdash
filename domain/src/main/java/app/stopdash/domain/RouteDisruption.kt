@@ -640,7 +640,14 @@ object RouteDisruption {
         val text: String,
         val until: Instant? = null,
         val support: List<Map<String, Instant?>> = listOf(mapOf(stopId to until)),
-    )
+    ) {
+        /**
+         * What its × lets go of ([ActiveTrip.disruptionsDismissed]): the station as headed and TfL's words,
+         * so it stays gone on this trip until the notice changes. No leg in it: the same notice at the same
+         * station is the same, whichever leg reaches it, and a split leg ([OffPlan]) leaves it as it is.
+         */
+        val dismissKey: String get() = "note/$stopName/$text"
+    }
 
     /**
      * Each coming stop's notices in force ([closureCards]) that the rider hasn't dismissed and that say
