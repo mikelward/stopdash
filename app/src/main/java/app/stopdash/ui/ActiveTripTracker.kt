@@ -739,7 +739,8 @@ class ActiveTripTracker(
         // What's left stands as long as its own evidence ([disruptionStands]), not as long as what was let
         // go of: a notice ending soon no longer cuts short a line's alert (Codex on #519).
         val (kept, left) = withContext(io) {
-            val dismissed = trip.disruptionsDismissed + shown.map { it.dismissKey }
+            // Not a branch taken by itself: no card shows it, so Keep going isn't an answer to it (Codex, #633).
+            val dismissed = trip.disruptionsDismissed + shown.filter { it !is RouteDisruption.Signal.NoneDirect }.map { it.dismissKey }
             if (dismissed.size == trip.disruptionsDismissed.size) return@withContext null to null
             trip.copy(disruptionsDismissed = dismissed) to known?.let { known ->
                 val signals = known.signals.filter { signal -> signal.dismissKey !in dismissed }
@@ -964,6 +965,8 @@ class ActiveTripTracker(
         // No train predicted where the rider changes, from a board read for this refresh's answer only:
         // none read once the refresh failed. It stands as long as that answer does.
         val change = answered?.let { changeSignal(trip, progress, boards) }
+        // The branch the trip took by itself, none of the plan's trains listed: said as long as that answer.
+        val noneDirect = answered?.let { RouteDisruption.noneDirect(trip, progress) }
         // Joined with what else is known there, and what the rider dismissed on the trip's screen
         // ([dismissDisruptions]) left out, neither shown nor alerted again: on [io], not the caller's (the
         // main) thread, as is keying what's new to hear (Codex on #519).
@@ -971,7 +974,9 @@ class ActiveTripTracker(
         // no longer than the trip's own answer: what's kept stands as long as the earliest of them, never
         // as long as one let go of (Codex on #519).
         val (checked, deadline) = withContext(io) {
-            val withChange = if (change != null && answered != null) found.with(change, answered.plus(CURRENT_FOR)) else found
+            val withChange = listOfNotNull(change, noneDirect).fold(found) { all, signal ->
+                if (answered != null) all.with(signal, answered.plus(CURRENT_FOR)) else all
+            }
             val kept = withChange.copy(signals = withChange.signals.filter { it.dismissKey !in trip.disruptionsDismissed })
             val stands = kept.signals.mapNotNull { signal ->
                 withChange.standsUntil(signal)?.let { evidence -> answered?.let { signal.key to minOf(evidence, it.plus(CURRENT_FOR)) } }

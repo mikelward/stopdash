@@ -292,7 +292,9 @@ internal fun OnTheWayScreen(
                 // a step the trip has since taken, and a stop now behind the rider is never offered (Codex on #479).
                 val planFrom = replanFrom?.takeIf { it.id in ReplanOrigin.stopsAhead(trip, ReplanOrigin.rideAhead(trip, progress)) }
                 val planAgain = planFrom?.takeIf { onPlanAgain != null }
-                if (disruptions.isNotEmpty() && (planAgain != null || onDismissDisruptions != null)) {
+                // Only under a card: a branch the trip took by itself is said under the step, and neither a new
+                // plan (the Planner offers the same train) nor Keep going answers it (Codex, #633).
+                if (cards.isNotEmpty() && (planAgain != null || onDismissDisruptions != null)) {
                     // Plan again, or Keep going as planned (maintainer, 2026-10-03), side by side
                     // under the cards they answer; Keep going alone sits at the end.
                     item(key = "planAgain") {

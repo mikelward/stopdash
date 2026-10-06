@@ -220,6 +220,10 @@ class OffPlanTest {
         val again = OffPlan.take(first, 0, loop.copy(forkIndex = 0, forkName = "B"), at(2))!!
         val said = OffPlan.takenBySelf(first, again, 0, loop.copy(forkIndex = 0, forkName = "B"))
         assertEquals(Triple(1, "X", "C"), Triple(said.branchTakenLeg, said.branchTakenTo, said.branchTakenFork))
+        // Heard once for that ride: its key, kept with what's heard, shifted with the split (Codex, #633).
+        val heard = RouteDisruption.noneDirect(first, null)!!.key
+        val split = OffPlan.take(first.copy(disruptionsHeard = setOf(heard)), 0, loop.copy(forkIndex = 0, forkName = "B"), at(2))!!
+        assertTrue(RouteDisruption.noneDirect(split, null)!!.key in split.disruptionsHeard)
     }
 
     @Test

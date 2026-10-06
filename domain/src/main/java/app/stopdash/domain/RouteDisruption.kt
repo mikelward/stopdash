@@ -99,6 +99,24 @@ object RouteDisruption {
             override val tier: Tier get() = Tier.MEDIUM
             override val key: String get() = "unpredicted/$legIndex/$lineId/$stopId"
         }
+
+        /**
+         * None of the plan's trains was listed for the ride [legIndex] on the line [lineId] (named
+         * [lineName]), only a branch's, so the trip took the branch by itself ([ActiveTrip.branchTakenLeg];
+         * maintainer, 2026-10-06): none direct to [toName], a change at [forkName]. Heard once for that ride,
+         * however it's split since: keyed as "kind/leg/…", whose leg a split shifts as it does every key
+         * heard ([OffPlan.take]), so the same branch taken on another ride is heard for itself (Codex, #633).
+         */
+        data class NoneDirect(
+            override val legIndex: Int,
+            val lineId: String,
+            val lineName: String,
+            val toName: String,
+            val forkName: String,
+        ) : Signal {
+            override val tier: Tier get() = Tier.MEDIUM
+            override val key: String get() = "nonedirect/$legIndex/$lineId/$toName/$forkName"
+        }
     }
 
     /**
@@ -158,12 +176,25 @@ object RouteDisruption {
      * Worked out with what's known, never in composition (Codex on #519).
      */
     @WorkerThread
-    fun cards(signals: List<Signal>): List<Signal> = signals.distinctBy { signal ->
+    fun cards(signals: List<Signal>): List<Signal> = signals.filter { it !is Signal.NoneDirect }.distinctBy { signal ->
         when (signal) {
             is Signal.Line -> DismissedAlert.ofLineStatus(signal.status)
             is Signal.Stop -> Pair(signal.stopId, signal.closed)
             is Signal.Unpredicted -> Pair(signal.lineId, signal.stopId)
+            // Said under the trip's step, not as a card ([cards] leaves it out).
+            is Signal.NoneDirect -> signal.key
         }
+    }
+
+    /**
+     * The trip's branch taken by itself ([Signal.NoneDirect]) while the rider is still short of the ride's
+     * end, its fork ([ActiveTrip.branchTakenLeg]), or null: none taken, the rider past that ride, or arrived.
+     */
+    fun noneDirect(trip: ActiveTrip, progress: TripProgress?): Signal.NoneDirect? {
+        if (progress == TripProgress.Arrived) return null
+        val index = trip.branchTakenLeg.takeIf { it >= trip.legIndex } ?: return null
+        val ride = trip.route.legs.getOrNull(index)?.takeIf { !it.isWalk } ?: return null
+        return Signal.NoneDirect(index, ride.lineId, ride.lineName, trip.branchTakenTo.ifBlank { ride.toName }, trip.branchTakenFork.ifBlank { ride.toName })
     }
 
     /** [signals] worst first, then in route order, as they're said. */

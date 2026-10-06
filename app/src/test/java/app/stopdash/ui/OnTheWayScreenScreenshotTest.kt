@@ -205,6 +205,19 @@ class OnTheWayScreenScreenshotTest {
     }
 
     @Test
+    fun a_branch_taken_by_itself_alone_offers_neither_plan_again_nor_keep_going() {
+        // Said under the step, not as a card: nothing for either button to answer (Codex, #633).
+        val none = RouteDisruption.Signal.NoneDirect(0, "mildmay", "Mildmay", "Stratford", "Highbury & Islington")
+        show(
+            trip, TripProgress.Waiting(mildmay, at(4)), disruptions = listOf(none),
+            replanFrom = ReplanOrigin.Stop("910GHGHI", "Highbury & Islington"), onPlanAgain = {}, onDismissDisruptions = {},
+        )
+        composeRule.onNodeWithTag("onTheWayDisruption").assertDoesNotExist()
+        composeRule.onNodeWithTag("onTheWayPlanAgain").assertDoesNotExist()
+        composeRule.onNodeWithTag("onTheWayKeepGoing").assertDoesNotExist()
+    }
+
+    @Test
     fun a_station_the_trip_has_since_passed_isnt_offered() {
         // Worked out before the trip moved on to the Jubilee: Highbury & Islington is behind the rider now.
         val status = LineStatus("jubilee", 3, "Part Suspended", fullText = "No service between Stratford and Canary Wharf.")

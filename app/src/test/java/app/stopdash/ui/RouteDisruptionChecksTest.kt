@@ -135,6 +135,7 @@ class RouteDisruptionChecksTest {
                     is RouteDisruption.Signal.Stop -> "${it.stopId} ${if (it.closed) "closed" else "moved"}"
                     is RouteDisruption.Signal.Line -> "${it.lineId} ${it.status.description}"
                     is RouteDisruption.Signal.Unpredicted -> "${it.lineId} none at ${it.stopId}"
+                    is RouteDisruption.Signal.NoneDirect -> "${it.lineId} none direct to ${it.toName}"
                 }
             },
         )

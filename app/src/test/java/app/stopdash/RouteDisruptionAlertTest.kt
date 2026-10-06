@@ -33,4 +33,12 @@ class RouteDisruptionAlertTest {
         val words = "Bus stop 'Alpha Road' will not be served."
         assertEquals("99: Diversion" to words, RouteDisruptionAlert.content(app, listOf(diversion(0, words), diversion(2, words))))
     }
+
+    @Test
+    fun `a branch taken by itself says where to change only where that has a name`() {
+        val named = RouteDisruption.Signal.NoneDirect(0, "northern", "Northern", "Morden", "Kennington")
+        assertEquals("None direct to Morden · Change at Kennington" to null, RouteDisruptionAlert.content(app, listOf(named)))
+        // TfL's route names no stop where the branch turns off: no "Change at" with nothing after it (Codex, #633).
+        assertEquals("None direct to Morden" to null, RouteDisruptionAlert.content(app, listOf(named.copy(forkName = ""))))
+    }
 }
