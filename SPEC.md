@@ -1737,8 +1737,10 @@ them there:
   (maintainer, 2026-09-28), and after its train has left until they're seen on board (above): every line of the ride's mode whose route calls at
   where they get off — judged by each train's own line route, so another branch's trains stay out —
   a row per line and terminus with its next few times, not only the train followed, a time grayed
-  when it leaves before the rider can be there (as a trip's cards gray one); "Updating…"
-  once the board is too old to stand behind (D4); it shows "Loading" from the step's first frame
+  when it leaves before the rider can be there (as a trip's cards gray one). Once the board is too
+  old to stand behind (D4) its rows stay, drawn as the boards draw an old one (each line's soonest a
+  marked guess), under "Checking…", with no train off the plan offered from them (maintainer,
+  2026-10-06); it shows "Loading" from the step's first frame
   until the first board is in. It costs one arrivals request per refresh during those steps, plus,
   for a line at that stop whose route isn't already held, the same route lookup a trip's cards make
   (one or two TfL requests per line, kept a day and shared with them), and for a bus, coach or tram
@@ -3361,7 +3363,7 @@ Mirrors the sibling fleet:
   - **The stale stand-in is a marked guess (maintainer, 2026-10-04).** Past the threshold, a
     line shows its soonest train's predicted time in London, dimmed and marked "21:14?", in
     place of a bare "?", on every surface that lists times: the app's cards (as they reload
-    after a while away), the widget, the watch tile and the watch's trip. It still says
+    after a while away), a trip's board of next trains, the widget, the watch tile and the watch's trip. It still says
     roughly when, while the "?", the dimming and the age stamp say it's no longer live; a
     clock time, unlike a countdown, doesn't read as recomputed from now. A guess goes once its
     train is due, as a departed countdown does, so a surface that doesn't redraw on its own

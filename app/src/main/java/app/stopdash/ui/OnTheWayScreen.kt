@@ -363,8 +363,8 @@ internal fun OnTheWayScreen(
  * (maintainer, 2026-09-28): every line of the ride's mode, not just the Planner's, each a way to the
  * same stop ([OnTheWay.boardTrains]). [pending] while a line's route is still loading and
  * [unresolved] when a train couldn't be checked, so a short or empty list is never passed off as the
- * whole answer; [stale] when the last board is too old to stand behind (D4), when its times give way
- * to "Updating…"; [failed] when the last update couldn't reach TfL, said beside whatever is shown.
+ * whole answer; [stale] when the last board is too old to stand behind (D4), when its rows are drawn
+ * as marked guesses under "Checking…"; [failed] when the last update couldn't reach TfL, said beside whatever is shown.
  * A train due before [readyAt] (the rider still walking or changing) is grayed: listed, but not one
  * they can catch.
  */
@@ -807,10 +807,10 @@ private fun NextTrainsSection(
     Column(Modifier.fillMaxWidth().testTag("onTheWayTrains"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         // A failed update is said whatever else shows: the rows may be the last good board's.
         if (next.failed) NoteText(stringResource(R.string.on_the_way_failed))
-        if (next.stale) {
-            if (!next.failed) NoteText(stringResource(R.string.on_the_way_updating))
-            return@Column
-        }
+        // Too old to stand behind (D4): the last board's rows stay, drawn as the boards draw an old one
+        // (each line's soonest a dimmed, marked guess), while it's checked, as the card above keeps its
+        // time beside "Checking…" (maintainer, 2026-10-06).
+        if (next.stale && !next.failed) NoteText(stringResource(R.string.on_the_way_checking))
         if (next.failed && next.none) return@Column
         next.cards.forEach { card ->
             val group = card.group
@@ -827,9 +827,11 @@ private fun NextTrainsSection(
         }
         // The trains that leave the plan, under the plan's own (maintainer, 2026-10-05).
         // The branches off the plan, behind Other routes so they don't crowd the board (maintainer, 2026-10-05).
-        if (offPlan) OtherRoutes(next.offPlan, next.ride, now, onTake)
-        // What the rows may be missing, said rather than left to be taken as the whole answer.
-        when {
+        // Not from a board too old to stand behind: a branch taken off the plan is chosen by its times.
+        if (offPlan && !next.stale) OtherRoutes(next.offPlan, next.ride, now, onTake)
+        // What the rows may be missing, said rather than left to be taken as the whole answer; an old
+        // board's "Checking…" above says it already.
+        if (!next.stale) when {
             next.pending && groups.isEmpty() -> NoteText(stringResource(R.string.on_the_way_trains_loading))
             next.pending -> NoteText(stringResource(R.string.on_the_way_trains_checking))
             next.unresolved -> NoteText(stringResource(R.string.on_the_way_trains_unchecked))
