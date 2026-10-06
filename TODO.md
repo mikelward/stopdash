@@ -2529,6 +2529,16 @@ Builds on Phase 1's minimal line-status marking.
       fold, ⛔ on the fold for no service, ⚠ for a station an alert's words name. Each closure TfL places
       is taken on its own, so the map no longer works out which one the page shows. Starred stops stand
       in for a ride from the home screen.
+- [ ] **"View line" wherever a stop or departure is shown** (maintainer, 2026-10-06), opening the line's
+      page with its map: next up. First the route page's overflow and a trip's ride; then where else it
+      fits (the on-the-way screen with the ride's stretch open, a stop's line pills), checked in the code
+      before it's offered.
+- [ ] **The route page as its origin, a folded span, the current station and the rest of the route**
+      (maintainer's idea, 2026-10-06: explore, or discard). Pairs with the folding-map item above.
+- [ ] **Rethink long-pressing a stop on the route page** (maintainer, 2026-10-06). It was meant to offer
+      starring the route; think the experience through before changing it.
+- [ ] **Tapping a stop shows its details or departures** (maintainer, 2026-10-06): explore what a tap on
+      a stop in a stop list should open.
 - [ ] **The home screen's line page shows its boarding station's notice** (maintainer, 2026-10-04). A
       line page can read "No disruptions reported" while the station it boards at has a notice in
       force (an escalator out, say); the stop's own notice belongs there too.
