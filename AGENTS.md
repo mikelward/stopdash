@@ -197,9 +197,11 @@ as a confirmed TfL hex. SPEC has the full scheme and rationale.
   merge rewrites the committer — expected either way; never re-author or amend merged
   commits to "fix" authorship or signing, and don't narrate it. It is not a finding.
 - **Unshallow before answering anything depending on history depth** (`git rev-list
-  --count`, versionCode): if `git rev-parse --is-shallow-repository` is `true`, run
-  `git fetch --unshallow origin +refs/heads/main:refs/remotes/origin/main` first (by
-  refspec, so `origin/main` itself moves in a single-branch clone).
+  --count`, versionCode): the session-start hook runs `scripts/unshallow.sh`, but it
+  is best-effort and Claude-only, so check anyway: if `git rev-parse
+  --is-shallow-repository` is `true`, run `git fetch --unshallow origin
+  +refs/heads/main:refs/remotes/origin/main` first (by refspec, so `origin/main`
+  itself moves in a single-branch clone).
 
 ## Commit messages
 
