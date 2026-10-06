@@ -443,6 +443,14 @@ it before committing to the design.
 - **The next ride's trains** are the trip screen's: every pole of the boarding pair, each filtered
   as the ride boards there. A line whose route isn't held yet is loaded through the shared route
   repository rather than its trains dropped; a load that failed waits five minutes before the next.
+  Each is named with its branch where that's a choice from the stop ("Morden/Bank"), as the tile
+  and the trip screen name them, so the watch's trip and its departures read alike (maintainer,
+  2026-10-06).
+- **On the tile** (maintainer, 2026-10-06): while the watch shows a trip, the tile shows it in the
+  departures' place, as the phone's widget does (`TileTrip`): the heading, what to do now, and the
+  next ride's trains under their poles. Its timeline changes at each train's departure and countdown minute,
+  marks the trip out of date where the watch app would, and asks for a fresh render where the trip would go, when the
+  tile shows its departures again. Each update from the phone asks the tile to render again.
   Where the pair's other poles have trains too, each pole's sit under its own "Stop N", as the trip
   screen heads them. One leaving before the rider can be there is grayed, as the trip screen grays
   it, and is sent only where catchable ones leave room in the watch's three.
