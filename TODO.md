@@ -1683,8 +1683,22 @@ fix lands in the shared layer, not per-surface. Raised in chat 2026-09-19.
       - [x] **Take a branch off the plan** (maintainer, 2026-10-05; SPEC *On the way*): the trip's
             board lists the ride's line's branches that turn off its way, from the route, grayed, and
             **Take this one** reroutes the trip with a change where the branch turns off (`OffPlan`).
-      - [ ] **Notice a branch taken without a tap**: a rider who boards the other branch's train
-            without saying so is still lost on it once it turns off.
+      - [x] **None of the plan's trains listed: say so, and take the branch** (maintainer, 2026-10-06):
+            the Planner's timetable can route a direct train TfL's live board doesn't list. The board
+            leads with the plan's row (a dash for its times) under "None direct to …" / "Change at …",
+            the branch trains open, and the trip takes the soonest branch by itself, saying why until
+            the rider is past the ride to the fork (#630).
+      - [ ] **Notice a branch taken without a tap** (maintainer, 2026-10-06: next PR): a rider who
+            boards the other branch's train without saying so is still lost on it once it turns off.
+            Moving off before the followed (plan's) train has left means another train: the one the
+            board saw leave then (`boardSeen`). On a branch, take it with the rider aboard, as **Take
+            this one** on board does. Seen on the branch past the fork: plan again from there. No
+            fix underground: stay uncertain, don't guess. Uses the ride's fixes only, no new wakeups.
+      - [ ] **Alert the unexpected** (maintainer, 2026-10-06: with the item above): sound once, then
+            keep up silently, through the route-disruption channel (no new one), when the trip takes a
+            branch by itself ("None direct to … · Change at …"), when the rider is seen on another
+            train than the plan's, and, most urgently, when they're seen past their change stop (what
+            to do now: back from the next stop, or a new route from where they are).
       - [x] **Change branch, from the trip's screen, riding or waiting** (maintainer, 2026-10-05):
             **Other routes** under the board, and under the step on board (riding, or lost on a train
             that changed its branch), lists the branches still ahead and reroutes from the one picked,
