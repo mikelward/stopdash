@@ -88,7 +88,7 @@ class FavoritePlacesViewModelTest {
     private val positionless = StationMatch("490000000A", "Somewhere Road", listOf("bus"))
 
     private fun vm(store: FavoritePlacesStore, finder: StationFinder) =
-        FavoritePlacesViewModel(store, finder, io = dispatcher, debounceMillis = 300, newId = { "id-1" })
+        FavoritePlacesViewModel(store, finder, io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" })
 
     @Test
     fun `saved places are exposed once the store loads`() = runTest {
@@ -225,7 +225,7 @@ class FavoritePlacesViewModelTest {
         )
         val model = FavoritePlacesViewModel(
             FakeStore(), FakeFinder(), postcodes = { PostcodeResolution.Options(candidates) },
-            io = dispatcher, debounceMillis = 300, newId = { "id-1" },
+            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
         )
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
@@ -251,7 +251,7 @@ class FavoritePlacesViewModelTest {
         val candidate = PlaceCandidate("X1 9XX", Coordinates(51.50, -0.10))
         val model = FavoritePlacesViewModel(
             FakeStore(), FakeFinder(), postcodes = { PostcodeResolution.Resolved(candidate) },
-            io = dispatcher, debounceMillis = 300, newId = { "id-1" },
+            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
         )
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
@@ -275,7 +275,7 @@ class FavoritePlacesViewModelTest {
                 attempt++
                 if (attempt == 1) throw TflException.Offline(null) else PostcodeResolution.Resolved(candidate)
             },
-            io = dispatcher, debounceMillis = 300, newId = { "id-1" },
+            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
         )
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
@@ -296,7 +296,7 @@ class FavoritePlacesViewModelTest {
         var calls = 0
         val model = FavoritePlacesViewModel(
             FakeStore(), FakeFinder(), postcodes = { calls++; PostcodeResolution.None },
-            io = dispatcher, debounceMillis = 300, newId = { "id-1" },
+            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
         )
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
@@ -321,7 +321,7 @@ class FavoritePlacesViewModelTest {
                     ),
                 )
             },
-            io = dispatcher, debounceMillis = 300, newId = { "id-1" },
+            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
         )
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
@@ -341,7 +341,7 @@ class FavoritePlacesViewModelTest {
             FakeStore(),
             FakeFinder(search = { searchCalls++; emptyList() }),
             postcodes = { PostcodeResolution.None },
-            io = dispatcher, debounceMillis = 300, newId = { "id-1" },
+            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
         )
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
@@ -358,7 +358,7 @@ class FavoritePlacesViewModelTest {
     fun `a postcode that resolves to nothing reports no places`() = runTest {
         val model = FavoritePlacesViewModel(
             FakeStore(), FakeFinder(), postcodes = { PostcodeResolution.None },
-            io = dispatcher, debounceMillis = 300, newId = { "id-1" },
+            io = dispatcher, compute = dispatcher, debounceMillis = 300, newId = { "id-1" },
         )
         advanceUntilIdle()
         model.startAdd(FavoriteKind.CUSTOM, "")
@@ -467,12 +467,12 @@ class FavoritePlacesViewModelTest {
     fun `a restored draft keeps its icon and chip label`() = runTest {
         val saved = SavedStateHandle()
         val work = FavoritePlace("w", FavoriteKind.WORK, "Work", Coordinates(51.5, -0.12))
-        val first = FavoritePlacesViewModel(FakeStore(listOf(work)), FakeFinder(), io = dispatcher, savedState = saved)
+        val first = FavoritePlacesViewModel(FakeStore(listOf(work)), FakeFinder(), io = dispatcher, compute = dispatcher, savedState = saved)
         advanceUntilIdle()
         first.startEdit(work)
         first.onIconChange(FavoritePlaceIcon.OFFICE)
         first.onChipShowsChange(ChipLabel.BOTH)
-        val restored = FavoritePlacesViewModel(FakeStore(listOf(work)), FakeFinder(), io = dispatcher, savedState = saved)
+        val restored = FavoritePlacesViewModel(FakeStore(listOf(work)), FakeFinder(), io = dispatcher, compute = dispatcher, savedState = saved)
         assertEquals(FavoritePlaceIcon.OFFICE, restored.state.value.editor?.icon)
         assertEquals(ChipLabel.BOTH, restored.state.value.editor?.chipShows)
     }
@@ -481,11 +481,11 @@ class FavoritePlacesViewModelTest {
     fun `a restored draft keeps its days`() = runTest {
         val saved = SavedStateHandle()
         val work = FavoritePlace("w", FavoriteKind.WORK, "Work", Coordinates(51.5, -0.12))
-        val first = FavoritePlacesViewModel(FakeStore(listOf(work)), FakeFinder(), io = dispatcher, savedState = saved)
+        val first = FavoritePlacesViewModel(FakeStore(listOf(work)), FakeFinder(), io = dispatcher, compute = dispatcher, savedState = saved)
         advanceUntilIdle()
         first.startEdit(work)
         first.onToggleDay(DayOfWeek.SUNDAY)
-        val restored = FavoritePlacesViewModel(FakeStore(listOf(work)), FakeFinder(), io = dispatcher, savedState = saved)
+        val restored = FavoritePlacesViewModel(FakeStore(listOf(work)), FakeFinder(), io = dispatcher, compute = dispatcher, savedState = saved)
         assertEquals(FavoritePlace.EVERY_DAY - DayOfWeek.SUNDAY, restored.state.value.editor?.showOnDays)
     }
 
@@ -605,7 +605,7 @@ class FavoritePlacesViewModelTest {
         // Android saves instance state while the save is in flight).
         val first = FavoritePlacesViewModel(
             store, FakeFinder(search = { listOf(oxford) }),
-            io = dispatcher, savedState = saved, debounceMillis = 300, newId = { "first-id" },
+            io = dispatcher, compute = dispatcher, savedState = saved, debounceMillis = 300, newId = { "first-id" },
         )
         advanceUntilIdle()
         first.startAdd(FavoriteKind.CUSTOM, "")
@@ -616,7 +616,7 @@ class FavoritePlacesViewModelTest {
         store.save(FavoritePlace("first-id", FavoriteKind.CUSTOM, "Oxford Circus", Coordinates(51.5, -0.12), "Oxford Circus"))
         // A new instance restores the still-open draft; a fresh id would be minted if it weren't saved.
         val restored = FavoritePlacesViewModel(
-            store, FakeFinder(), io = dispatcher, savedState = saved, debounceMillis = 300, newId = { "second-id" },
+            store, FakeFinder(), io = dispatcher, compute = dispatcher, savedState = saved, debounceMillis = 300, newId = { "second-id" },
         )
         advanceUntilIdle()
         restored.commit()
@@ -632,7 +632,7 @@ class FavoritePlacesViewModelTest {
         val store = FakeStore()
         val first = FavoritePlacesViewModel(
             store, FakeFinder(search = { listOf(oxford) }),
-            io = dispatcher, savedState = saved, debounceMillis = 300, newId = { "first-id" },
+            io = dispatcher, compute = dispatcher, savedState = saved, debounceMillis = 300, newId = { "first-id" },
         )
         advanceUntilIdle()
         first.startAdd(FavoriteKind.HOME, "Home")
@@ -641,7 +641,7 @@ class FavoritePlacesViewModelTest {
         first.onPick(oxford)
         // Restored after process death, with a different id source, still saves under the assigned id.
         val restored = FavoritePlacesViewModel(
-            store, FakeFinder(), io = dispatcher, savedState = saved, debounceMillis = 300, newId = { "second-id" },
+            store, FakeFinder(), io = dispatcher, compute = dispatcher, savedState = saved, debounceMillis = 300, newId = { "second-id" },
         )
         advanceUntilIdle()
         restored.commit()
@@ -746,12 +746,12 @@ class FavoritePlacesViewModelTest {
     fun `an in-progress edit is restored from saved state`() = runTest {
         val home = FavoritePlace("h", FavoriteKind.HOME, "Home", Coordinates(51.5, -0.12), "Old place")
         val saved = SavedStateHandle()
-        val first = FavoritePlacesViewModel(FakeStore(listOf(home)), FakeFinder(), io = dispatcher, savedState = saved, newId = { "id-1" })
+        val first = FavoritePlacesViewModel(FakeStore(listOf(home)), FakeFinder(), io = dispatcher, compute = dispatcher, savedState = saved, newId = { "id-1" })
         advanceUntilIdle()
         first.startEdit(home)
         first.onLabelChange("Flat")
         // A new instance from the same saved state (as after process death) restores the draft.
-        val restored = FavoritePlacesViewModel(FakeStore(listOf(home)), FakeFinder(), io = dispatcher, savedState = saved, newId = { "id-1" })
+        val restored = FavoritePlacesViewModel(FakeStore(listOf(home)), FakeFinder(), io = dispatcher, compute = dispatcher, savedState = saved, newId = { "id-1" })
         advanceUntilIdle()
         val editor = restored.state.value.editor
         assertEquals(FavoriteKind.HOME, editor?.kind)
@@ -767,7 +767,7 @@ class FavoritePlacesViewModelTest {
         val model = FavoritePlacesViewModel(
             FakeStore(),
             FakeFinder(search = { throw TflException.Offline(null) }),
-            io = dispatcher,
+            io = dispatcher, compute = dispatcher,
             loadIndex = { index },
             debounceMillis = 300,
             newId = { "id-1" },

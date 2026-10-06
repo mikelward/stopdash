@@ -19,6 +19,7 @@ import app.stopdash.domain.StationIndex
 import app.stopdash.domain.StationMatch
 import app.stopdash.domain.TflException
 import app.stopdash.domain.UkPostcode
+import app.stopdash.domain.Workers
 import java.time.DayOfWeek
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -62,6 +63,9 @@ class FavoritePlacesViewModel(
     // other surfaces/tests that don't exercise postcodes need no resolver; production passes the client.
     private val postcodes: PostcodeResolver = PostcodeResolver { PostcodeResolution.None },
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    // Centers a picked station's stops and places the bundled matches, off the main thread (AGENTS.md
+    // *Main thread*).
+    private val compute: CoroutineDispatcher = Workers.compute,
     // The bundled station index, so the picker matches on the device as the user types and returns the
     // same ranked list as From…/To… (SPEC *Finding stops*); loaded once, off the main thread, on first
     // search. Empty by default (tests, and before it loads) leaves matching to TfL's search alone.
@@ -322,7 +326,8 @@ class FavoritePlacesViewModel(
         resolve = viewModelScope.launch {
             val center: Coordinates?
             try {
-                center = FixedLocation.centerOf(withContext(io) { finder.stationStops(match.id) })
+                val stops = withContext(io) { finder.stationStops(match.id) }
+                center = withContext(compute) { FixedLocation.centerOf(stops) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: TflException.NotFound) {
@@ -558,7 +563,7 @@ class FavoritePlacesViewModel(
             // Bundled matches are positionless from search/rank; fill their own coordinate from the
             // index so a station favorite is selectable even when TfL is unreachable (Codex). Applied
             // to the displayed lists only, so rank/fold behavior stays identical to From…/To….
-            val localShown = stations.withBundledPositions(local)
+            val localShown = withContext(compute) { stations.withBundledPositions(local) }
             _state.update {
                 val editor = it.editor?.takeIf { e -> e.query.trim() == trimmed } ?: return@update it
                 if (localShown.isEmpty()) it else it.copy(editor = editor.copy(results = localShown))
@@ -566,7 +571,7 @@ class FavoritePlacesViewModel(
             delay(debounceMillis)
             try {
                 val remote = withContext(io) { finder.searchStations(trimmed) }
-                val merged = withContext(io) { stations.withBundledPositions(stations.rank(trimmed, local, remote)) }
+                val merged = withContext(compute) { stations.withBundledPositions(stations.rank(trimmed, local, remote)) }
                 _state.update {
                     // Guard against a result landing after the editor closed or moved on.
                     val editor = it.editor?.takeIf { e -> e.query.trim() == trimmed } ?: return@update it
