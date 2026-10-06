@@ -56,6 +56,8 @@ internal class FileRecentStationsStore(
 
     private fun save(picks: List<SearchEntry>) {
         try {
+            // Its directory is named, not checked, when the store is built ([AppDirs]), so made here.
+            tmp.parentFile?.mkdirs()
             tmp.writeText(json.encodeToString(PersistedRecentStations(picks.map { it.toPersisted() })))
             // Replace in one step, so a reader never sees a half-written file.
             if (!tmp.renameTo(file)) warn("recent stations not saved: rename failed")

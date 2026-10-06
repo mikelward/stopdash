@@ -53,6 +53,8 @@ internal class FileStarredPlacesStore(
     private fun save(places: Map<String, StationMatch>) {
         try {
             val persisted = places.map { (stopId, p) -> PersistedStarredPlace(stopId, p.id, p.name, p.modes) }
+            // Its directory is named, not checked, when the store is built ([AppDirs]), so made here.
+            tmp.parentFile?.mkdirs()
             tmp.writeText(json.encodeToString(PersistedStarredPlaces(persisted)))
             // Replace in one step, so a reader never sees a half-written file.
             if (!tmp.renameTo(file)) warn("starred places not saved: rename failed")

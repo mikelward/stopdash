@@ -52,6 +52,8 @@ internal class FileNearbyStopsStore(
 
     override fun save(entries: List<NearbyStopsCache.Entry>) {
         try {
+            // Its directory is named, not checked, when the store is built ([AppDirs]), so made here.
+            tmp.parentFile?.mkdirs()
             tmp.writeText(json.encodeToString(PersistedNearbyStops(entries.map { it.toPersisted() })))
             // Replace in one step, so a reader never sees a half-written file.
             if (!tmp.renameTo(file)) warn("nearby stops cache not saved: rename failed")
