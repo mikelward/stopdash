@@ -64,6 +64,13 @@ exercises the whole spine the widget later renders from.
       newest lookup of it, a failed one leaving it unchecked, and its nearer places from the distances
       then, so a `remeasure` the batch ran past isn't undone. What's left is the hop from that pass to
       the main thread, which following the cache instead would close.
+- [ ] **A stop the refresh dropped isn't added back at publish** (Codex, #624). A stop the list never
+      showed whose arrivals and closure check both failed in a refresh is left out of it; when another
+      screen's newer check finds it closed before the refresh publishes, the publish pass, which only
+      revisits the stops the batch kept (`asPublished`), doesn't add it, so its closure shows at the next
+      refresh (which reuses that check) rather than this one. Adding it there needs its declared lines'
+      status too, which the batch filters to the stops it kept (`lineIds`), so it's a change to what the
+      batch keeps rather than to the publish pass.
 - [x] The trip tracker off the main thread (#536): `restore`, `start`, `goTo`, `end` and `refresh`
       each hop to `compute` before taking the tracker's lock, so a refresh's step, a tap's move, a
       start and a restore walk the trip's route on the worker.
