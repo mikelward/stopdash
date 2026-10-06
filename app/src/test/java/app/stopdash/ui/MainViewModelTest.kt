@@ -1499,6 +1499,44 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `which journey destinations to ask about is chosen off the main thread`() = runTest(dispatcher) {
+        // A worker of its own, on the test's scheduler, that marks the work it runs.
+        val onWorker = ThreadLocal.withInitial { false }
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) = dispatcher.dispatch(context) {
+                onWorker.set(true)
+                try {
+                    block.run()
+                } finally {
+                    onWorker.set(false)
+                }
+            }
+        }
+        val askedFor = mutableListOf<String>()
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>().also { askedFor += stopId }
+        }
+        val vm = MainViewModel(client, seeds, clock = { now }, io = dispatcher, compute = worker)
+        advanceUntilIdle()
+        // Where every walk of the reported destinations ran: their check's choice of which to ask walks
+        // them too, so none is on the caller's (the main) thread.
+        val walked = mutableListOf<Boolean>()
+        val destination = StopRef("940GZZLUEUS", "Euston")
+        // Each element read is one: a size alone ([List.isEmpty]) walks nothing.
+        val reported = object : AbstractList<StopRef>() {
+            override val size: Int get() = 1
+            override fun get(index: Int): StopRef = destination.also { walked += onWorker.get() }
+        }
+        vm.setJourneyDestinations(reported)
+        advanceUntilIdle()
+
+        assertTrue(destination.id in askedFor)
+        assertTrue("$walked", walked.isNotEmpty() && walked.all { it })
+    }
+
+    @Test
     fun `a journey destination's cards are worked out off the main thread`() = runTest(dispatcher) {
         // A worker of its own, on the test's scheduler, that marks the work it runs.
         val onWorker = ThreadLocal.withInitial { false }
@@ -1705,6 +1743,185 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `what a refresh is for, and what each stop needs, are worked out off the main thread`() = runTest(dispatcher) {
+        // A worker of its own, on the test's scheduler, that marks the work it runs.
+        val onWorker = ThreadLocal.withInitial { false }
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) = dispatcher.dispatch(context) {
+                onWorker.set(true)
+                try {
+                    block.run()
+                } finally {
+                    onWorker.set(false)
+                }
+            }
+        }
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
+        }
+        val vm = MainViewModel(client, seeds, clock = { now }, io = dispatcher, compute = worker)
+        advanceUntilIdle()
+        // A journey's origin, noting where each walk of the journey stops runs: the refresh's own setup
+        // (the ids it's for, the stops it asks) and each stop's plan (the lines a journey takes from it,
+        // for its National Rail board) walk them.
+        val walked = mutableListOf<Boolean>()
+        val origin = StopRef("940GZZLUEUS", "Euston", lines = listOf(LineRef("victoria", "Victoria", "tube")))
+        // Each element read is one: a size alone ([List.isEmpty]) walks nothing.
+        val reported = object : AbstractList<StopRef>() {
+            override val size: Int get() = 1
+            override fun get(index: Int): StopRef = origin.also { walked += onWorker.get() }
+        }
+        vm.setJourneyStops(reported)
+        advanceUntilIdle()
+        walked.clear()
+
+        vm.refresh()
+        advanceUntilIdle()
+
+        assertTrue(origin.id in (vm.state.value as DeparturesUiState.Loaded).stops.map { it.stopId })
+        assertTrue("$walked", walked.isNotEmpty() && walked.all { it })
+    }
+
+    @Test
+    fun `a refresh sends nothing until the worker has worked out what to ask`() = runTest(dispatcher) {
+        // A worker held on a scheduler of its own, so this (the main) thread can be run to idle without it.
+        val scheduler = kotlinx.coroutines.test.TestCoroutineScheduler()
+        val held = StandardTestDispatcher(scheduler)
+        val asked = mutableListOf<String>()
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String): List<Departure> {
+                asked += stopId
+                return listOf(departure("victoria", "Victoria", 120))
+            }
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
+        }
+        val vm = MainViewModel(client, seeds, clock = { now }, io = dispatcher, compute = held)
+        repeat(10) {
+            scheduler.advanceUntilIdle()
+            advanceUntilIdle()
+        }
+        assertTrue(vm.state.value is DeparturesUiState.Loaded)
+        asked.clear()
+
+        vm.refresh()
+        advanceUntilIdle()
+        // Its setup and each stop's plan wait on the worker: nothing is asked yet.
+        assertEquals(emptyList<String>(), asked)
+
+        repeat(10) {
+            scheduler.advanceUntilIdle()
+            advanceUntilIdle()
+        }
+        assertEquals(seeds.map { it.id }.toSet(), asked.toSet())
+    }
+
+    @Test
+    fun `a closure lookup that fails while the worker plans the batch isn't passed over`() = runTest(dispatcher) {
+        // Runs what's handed to it at once, or, once holding, keeps it until let go, as a busy worker would.
+        val held = mutableListOf<Runnable>()
+        var holding = false
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (holding) held += block else dispatcher.dispatch(context, block)
+            }
+        }
+        val asked = mutableListOf<String>()
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>().also { asked += stopId }
+        }
+        val cache = StopClosureCache()
+        val vm = MainViewModel(
+            client,
+            listOf(seeds.first()),
+            clock = { now },
+            io = dispatcher,
+            compute = worker,
+            disruptionCache = cache,
+            disruptionReuse = java.time.Duration.ofMinutes(5),
+        )
+        advanceUntilIdle()
+        // Checked once; a refresh now would take that answer from the cache.
+        assertEquals(listOf(seeds.first().id), asked)
+        asked.clear()
+
+        holding = true
+        vm.refresh()
+        advanceUntilIdle()
+        // The refresh's setup, run on the worker as this thread waits.
+        held.single().also { held.clear() }.run()
+        advanceUntilIdle()
+        // Then its plan of each stop, which takes the cached answer.
+        held.single().also { held.clear() }.run()
+        // Before this thread sends the batch from it, another screen's newer lookup of the stop fails, so
+        // the cached answer no longer answers for it.
+        cache.settle(seeds.first().id, cache.ask(now), Result.failure(java.io.IOException("offline")))
+        holding = false
+        advanceUntilIdle()
+        held.forEach { it.run() }
+        held.clear()
+        advanceUntilIdle()
+
+        // Asked again rather than shown as checked on an answer older than its latest check.
+        assertEquals(listOf(seeds.first().id), asked)
+    }
+
+    @Test
+    fun `a closure kept while the worker plans the batch stops a stop being carried over`() = runTest(dispatcher) {
+        // Runs what's handed to it at once, or, once holding, keeps it until let go, as a busy worker would.
+        val held = mutableListOf<Runnable>()
+        var holding = false
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (holding) held += block else dispatcher.dispatch(context, block)
+            }
+        }
+        val fetched = mutableListOf<String>()
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120)).also { fetched += stopId }
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
+        }
+        val cache = StopClosureCache()
+        val vm = MainViewModel(
+            client,
+            listOf(seeds.first()),
+            clock = { now },
+            io = dispatcher,
+            compute = worker,
+            arrivalsReuse = java.time.Duration.ofMinutes(5),
+            disruptionCache = cache,
+        )
+        advanceUntilIdle()
+        // Fetched moments ago: a refresh now would carry it over unasked.
+        assertEquals(listOf(seeds.first().id), fetched)
+        fetched.clear()
+
+        holding = true
+        vm.refresh()
+        advanceUntilIdle()
+        // The refresh's setup, then its plan of each stop, run on the worker as this thread waits.
+        held.single().also { held.clear() }.run()
+        advanceUntilIdle()
+        held.single().also { held.clear() }.run()
+        // Before this thread sends the batch, another screen keeps a newer closure lookup of the stop:
+        // carried over, the stop would show without it.
+        cache.keep(seeds.first().id, cache.ask(now), listOf(StopDisruption("Station closed")))
+        holding = false
+        advanceUntilIdle()
+        held.forEach { it.run() }
+        held.clear()
+        advanceUntilIdle()
+
+        // Fetched again, its closure with it, rather than carried over past the newer lookup.
+        assertEquals(listOf(seeds.first().id), fetched)
+    }
+
+    @Test
     fun `a newer closure lookup that failed stops a stop being carried over`() = runTest(dispatcher) {
         val fetched = mutableListOf<String>()
         val client = object : TflClient {
@@ -1732,6 +1949,166 @@ class MainViewModelTest {
         advanceUntilIdle()
 
         assertEquals(listOf(seeds.first().id), fetched)
+    }
+
+    @Test
+    fun `a closure lookup that fails while the worker plans the batch stops a stop being carried over`() = runTest(dispatcher) {
+        // Runs what's handed to it at once, or, once holding, keeps it until let go, as a busy worker would.
+        val held = mutableListOf<Runnable>()
+        var holding = false
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (holding) held += block else dispatcher.dispatch(context, block)
+            }
+        }
+        val fetched = mutableListOf<String>()
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120)).also { fetched += stopId }
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
+        }
+        val cache = StopClosureCache()
+        val vm = MainViewModel(
+            client,
+            listOf(seeds.first()),
+            clock = { now },
+            io = dispatcher,
+            compute = worker,
+            arrivalsReuse = java.time.Duration.ofMinutes(5),
+            disruptionCache = cache,
+        )
+        advanceUntilIdle()
+        assertEquals(listOf(seeds.first().id), fetched)
+        fetched.clear()
+
+        holding = true
+        vm.refresh()
+        advanceUntilIdle()
+        // The refresh's setup, then its plan of each stop (carry it over), run on the worker as this
+        // thread waits.
+        held.single().also { held.clear() }.run()
+        advanceUntilIdle()
+        held.single().also { held.clear() }.run()
+        // Before this thread sends the batch, another screen's newer lookup of the stop fails.
+        cache.settle(seeds.first().id, cache.ask(now), Result.failure(java.io.IOException("offline")))
+        holding = false
+        advanceUntilIdle()
+        held.forEach { it.run() }
+        held.clear()
+        advanceUntilIdle()
+
+        assertEquals(listOf(seeds.first().id), fetched)
+    }
+
+    @Test
+    fun `poles whose newer closure lookup failed before the plan are asked in one batch`() = runTest(dispatcher) {
+        // Runs what's handed to it at once, or, once holding, keeps it until let go, as a busy worker would.
+        val held = mutableListOf<Runnable>()
+        var holding = false
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (holding) held += block else dispatcher.dispatch(context, block)
+            }
+        }
+        val batches = mutableListOf<List<String>>()
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120))
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
+            override suspend fun poleDisruptions(stopIds: List<String>): Map<String, List<StopDisruption>> {
+                batches += stopIds
+                return stopIds.associateWith { emptyList() }
+            }
+        }
+        val cache = StopClosureCache()
+        val poles = listOf("490000001A", "490000002B")
+        val vm = MainViewModel(
+            client,
+            listOf(
+                StopRef(poles[0], "Example Road", clusterId = "490G000EXAMPLE"),
+                StopRef(poles[1], "Sample Street", clusterId = "490G000SAMPLE"),
+            ),
+            clock = { now },
+            io = dispatcher,
+            compute = worker,
+            arrivalsReuse = java.time.Duration.ofMinutes(5),
+            disruptionCache = cache,
+        )
+        advanceUntilIdle()
+        assertEquals(listOf(poles), batches)
+        batches.clear()
+
+        holding = true
+        vm.refresh()
+        advanceUntilIdle()
+        // The refresh's setup runs on the worker as this thread waits: both poles to carry over.
+        held.single().also { held.clear() }.run()
+        advanceUntilIdle()
+        // Before the worker plans the batch, another screen's newer lookup of each pole fails.
+        poles.forEach { cache.settle(it, cache.ask(now), Result.failure(java.io.IOException("offline"))) }
+        held.single().also { held.clear() }.run()
+        holding = false
+        advanceUntilIdle()
+        held.forEach { it.run() }
+        held.clear()
+        advanceUntilIdle()
+
+        // Both asked again, together: one request for the junction, not one per pole.
+        assertEquals(listOf(poles), batches)
+    }
+
+    @Test
+    fun `arrivals another screen fetches while the worker plans the batch are taken over a carry-over`() = runTest(dispatcher) {
+        // Runs what's handed to it at once, or, once holding, keeps it until let go, as a busy worker would.
+        val held = mutableListOf<Runnable>()
+        var holding = false
+        val worker = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (holding) held += block else dispatcher.dispatch(context, block)
+            }
+        }
+        val fetched = mutableListOf<String>()
+        val client = object : TflClient {
+            override suspend fun arrivals(stopId: String) = listOf(departure("victoria", "Victoria", 120)).also { fetched += stopId }
+            override suspend fun lineStatuses(lineIds: Collection<String>) = emptyList<LineStatus>()
+            override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
+        }
+        val shared = ArrivalsCache()
+        var current = now
+        val vm = MainViewModel(
+            client,
+            listOf(seeds.first()),
+            clock = { current },
+            io = dispatcher,
+            compute = worker,
+            arrivalsReuse = java.time.Duration.ofMinutes(5),
+            sharedArrivals = shared,
+        )
+        advanceUntilIdle()
+        assertEquals(listOf(seeds.first().id), fetched)
+        fetched.clear()
+        current = now.plusSeconds(30)
+
+        holding = true
+        vm.refresh()
+        advanceUntilIdle()
+        // The refresh's setup, then its plan of each stop (carry it over), run on the worker as this
+        // thread waits.
+        held.single().also { held.clear() }.run()
+        advanceUntilIdle()
+        held.single().also { held.clear() }.run()
+        // Before this thread sends the batch, another screen fetches the stop's arrivals afresh.
+        shared.put(seeds.first().id, listOf(departure("northern", "Northern", 60)), now.plusSeconds(20))
+        holding = false
+        advanceUntilIdle()
+        held.forEach { it.run() }
+        held.clear()
+        advanceUntilIdle()
+
+        // Taken, as two screens mustn't show different times, rather than the older carried over.
+        assertEquals(emptyList<String>(), fetched)
+        val stop = (vm.state.value as DeparturesUiState.Loaded).stops.single()
+        assertEquals(listOf("northern"), stop.departures.map { it.lineId })
     }
 
     @Test
