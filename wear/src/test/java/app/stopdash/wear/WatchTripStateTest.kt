@@ -133,6 +133,15 @@ class WatchTripStateTest {
     }
 
     @Test
+    fun `an old board's trains from the phone read as marked guesses, though the trip is current`() {
+        // The phone holds the board as too old to stand behind, and sends its trains apart (D4).
+        val fresh = sentAgo(10)
+        val row = trainRows(fresh.copy(departures = emptyList(), oldDepartures = fresh.departures), now, stale = false).single().row
+        assertTrue(row.countdown, Regex("\\d\\d:\\d\\d\\?").matches(row.countdown))
+        assertTrue(row.stale)
+    }
+
+    @Test
     fun `a missed train gets its own muted row, and each pole its own rows`() {
         val trip = sentAgo(10).copy(
             departures = listOf(

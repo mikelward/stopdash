@@ -961,7 +961,7 @@ internal fun WidgetTripContent(model: WidgetTripModel, layout: WidgetTripLayout,
             Column(modifier = GlanceModifier.fillMaxWidth()) {
                 layout.rows.forEach { row ->
                     row.header?.let { WidgetStopHeader(WidgetHeader(it, it)) }
-                    val countdownStale = model.stale || row.train.missed
+                    val countdownStale = model.stale || row.train.missed || row.train.guess
                     if (row.stacked) {
                         // Too narrow at this font for all three on one line, as a departure row stacks.
                         Column(modifier = GlanceModifier.fillMaxWidth().padding(bottom = 8.dp)) {

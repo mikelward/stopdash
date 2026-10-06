@@ -41,6 +41,8 @@ internal object TileTrip {
         // its count goes down (at exactly 2:00 left it still reads "2 min"); and where it turns out of date.
         val changes = sortedSetOf<Instant>()
         if (staleAt > now) changes += staleAt
+        // An old board's trains ([WatchTrip.oldDepartures]) read as clock times, so only their going changes the frame.
+        for (train in held.trip.oldDepartures) Instant.ofEpochMilli(train.dueAt).takeIf { it > now }?.let { changes += it }
         for (train in held.trip.departures) {
             val due = Instant.ofEpochMilli(train.dueAt)
             if (due <= now) continue

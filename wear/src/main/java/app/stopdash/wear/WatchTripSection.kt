@@ -109,8 +109,12 @@ internal data class TripTrainRow(val stop: String, val row: TileRow)
  * one. Rows keep the order of each one's soonest train, a pole's rows together.
  */
 internal fun trainRows(trip: WatchTrip, now: Instant, stale: Boolean): List<TripTrainRow> {
+    // From a board the phone holds as too old to stand behind ([WatchTrip.oldDepartures]): marked guesses,
+    // as when the trip itself has gone out of date.
+    val old = trip.departures.isEmpty() && trip.oldDepartures.isNotEmpty()
+    val marked = stale || old
     // Paired, not keyed: two poles can list the same train, and each keeps its own pole.
-    val due = trip.departures
+    val due = (if (old) trip.oldDepartures else trip.departures)
         .map { Departure(it.lineId, it.lineName, "", it.destination, null, Instant.ofEpochMilli(it.dueAt), it.mode) to it }
         .filter { Countdown.upcoming(listOf(it.first), now).isNotEmpty() }
         .sortedBy { it.first.expectedArrival }
@@ -118,8 +122,8 @@ internal fun trainRows(trip: WatchTrip, now: Instant, stale: Boolean): List<Trip
         trains.groupBy { (d, t) -> listOf(t.missed, d.lineId, d.lineName, d.destination) }.map { (_, group) ->
             val first = group.first().first
             val missed = group.first().second.missed
-            val countdown = if (stale) Countdown.staleLabel(group.map { it.first }) else Countdown.mergedLabel(group.map { it.first }, now)
-            TripTrainRow(stop, TileRow(first.lineName, first.lineId, first.mode, lineCode(first.lineName, first.mode, first.lineId), first.destination, countdown, starred = false, stale = stale, muted = missed))
+            val countdown = if (marked) Countdown.staleLabel(group.map { it.first }) else Countdown.mergedLabel(group.map { it.first }, now)
+            TripTrainRow(stop, TileRow(first.lineName, first.lineId, first.mode, lineCode(first.lineName, first.mode, first.lineId), first.destination, countdown, starred = false, stale = marked, muted = missed))
         }
     }
 }

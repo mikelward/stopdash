@@ -57,6 +57,18 @@ class WatchTripsTest {
     }
 
     @Test
+    fun `an old board's trains go apart, never as live ones`() {
+        val sent = runBlocking {
+            WatchTrips.build(trip, "Walk to King's Cross St. Pancras", "4 min", listOf(train(9), train(7)), t0, trainsNote = "Checking…", old = true) { leg, _ -> leg.toName }
+        }
+        // A watch that doesn't know [WatchTrip.oldDepartures] shows only the note (D4).
+        assertTrue(sent.departures.isEmpty())
+        assertEquals(listOf(at(7), at(9)).map { it.toEpochMilli() }, sent.oldDepartures.map { it.dueAt })
+        assertEquals("Checking…", sent.departuresNote)
+        assertEquals(1, sent.departuresAt)
+    }
+
+    @Test
     fun `no trains, no step for them`() {
         assertEquals(-1, build().departuresAt)
         assertTrue(build().departures.isEmpty())
