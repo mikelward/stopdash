@@ -79,7 +79,7 @@ class LineMapOffMainTest {
         assertTrue(first.items.any { it is LineMap.Item.Fold && it.level == LineMap.Level.CLOSURE })
 
         // A fold opened: the folding it was tapped on stays up while the new one is worked out.
-        opened = OpenedFolds(first.items.first { it is LineMap.Item.Fold }.key, null)
+        opened = OpenedFolds(first.items.first { it is LineMap.Item.Fold && it.count > 1 }.key, null)
         composeRule.waitForIdle()
         assertSame(first.items, (ui as LineMapUi.Ready).items)
         runWorker()

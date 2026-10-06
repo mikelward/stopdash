@@ -173,15 +173,16 @@ class LineMap internal constructor(
      * and its plain runs fold. A fold opened shows every station it holds. An alert off the rider's own stops and
      * stretches folds with the plain stations around it on its track, a station on its own included,
      * its fold saying how many and how bad ([Item.Fold.level]) without naming any of them
-     * ([Item.Fold.unnamed]; maintainer, 2026-10-06). The rider's own stops never fold (SPEC *Line
-     * page → Map*).
+     * ([Item.Fold.unnamed]; maintainer, 2026-10-06), though an end of the line it's placed on still
+     * shows. The rider's own stops never fold (SPEC *Line page → Map*).
      */
     @WorkerThread
     fun folded(opened: Set<String>, all: Boolean = false): List<Item> {
         if (all) return rows.map { Item.Station(it) }
-        // Its own row from the first: the rider's, and with nothing of theirs alerted, the line's ends and
+        // Its own row from the first: the rider's, and with nothing of theirs alerted, the line's ends,
+        // an alert on one or not, so every end reads at a glance (maintainer, 2026-10-06), and its
         // junctions, unless an alert is placed on one, which folds with the rest of where it is.
-        fun shown(row: Row) = row.kept || !alerted && (row.end || row.junction) && row.level == null
+        fun shown(row: Row) = row.kept || !alerted && (row.end || row.junction && row.level == null)
         val items = ArrayList<Item>()
         var i = 0
         while (i < rows.size) {

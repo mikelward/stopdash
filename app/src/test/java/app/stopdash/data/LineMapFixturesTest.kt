@@ -55,12 +55,14 @@ class LineMapFixturesTest {
         val map = LineMap.of(northern, closures = closure)!!
         assertEquals(setOf("Nine Elms", "Battersea Power Station"), map.names { it.unserved })
         val items = map.folded(emptySet())
-        // Off the rider's own stops and rides, the branch it shuts folds, Kennington still on the page.
+        // Off the rider's own stops and rides, the branch it shuts folds, Kennington and the line's end
+        // still on the page (maintainer, 2026-10-06).
         assertTrue("Kennington" in items.labels())
+        assertTrue("Battersea Power Station" in items.labels())
         assertTrue("Nine Elms" !in items.labels())
         val branch = items.filterIsInstance<LineMap.Item.Fold>().single { it.level != null }
         assertEquals(LineMap.Level.CLOSURE, branch.level)
-        assertEquals(listOf("Battersea Power Station"), branch.ends)
+        assertEquals("Nine Elms", branch.first)
         assertTrue("its stations named only once it's opened", branch.unnamed)
     }
 
