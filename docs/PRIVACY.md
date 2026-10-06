@@ -165,7 +165,9 @@ still to reach that's closed or moved, or a line with no train predicted at the 
 it at, with the destination; you can turn any of them off in
 Android's settings for StopDash. While a trip is on the way, an ongoing
 notification shows its next step, until you arrive or end the trip (or, for a trip left running,
-four hours after it started). If you've allowed location, stopdash takes your
+four hours after it started). With the watch app, your watch shows the step you're at in a
+notification of its own, made on the watch from the trip it already has, and gone when the trip
+ends. If you've allowed location, stopdash takes your
 precise position about every 30 seconds while you walk to a stop you're boarding at, only to see
 whether you've reached it, and for the first ten minutes you wait there for your train, only to see
 whether you've already left on another (at a later stop of the ride, or well along it), a few times in the five

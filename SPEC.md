@@ -3157,7 +3157,10 @@ watch stops showing one the phone stopped updating (its copy in the Data Layer g
 phone's next trip). The watch only shows it: paging through the
 steps there looks ahead or back without moving the trip. The watch's tile shows the trip in its departures' place while
 the watch shows one, as the phone's widget does, so neither keeps showing the departures where
-the app was last opened while the rider travels (maintainer, 2026-10-06).
+the app was last opened while the rider travels (maintainer, 2026-10-06). While it shows one, the watch keeps an
+ongoing activity of its own (maintainer, 2026-10-06): a silent watch-only notification, one tap
+from the trip, saying the step the rider is at; the phone's ongoing notification stays quiet and
+on the phone.
 
 With a National Rail key set (*Data source*), a rail station's departures request also goes to
 the Rail Data Marketplace, carrying that station's CRS code and the user's own key, never a
