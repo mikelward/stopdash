@@ -6,6 +6,7 @@ import android.os.SystemClock
 import app.stopdash.MainActivity
 import app.stopdash.R
 import app.stopdash.StopdashDebugLog
+import app.stopdash.data.RouteTopologyStore
 import app.stopdash.data.WatchSyncContract
 import app.stopdash.data.WatchTrip
 import app.stopdash.domain.ActiveTrip
@@ -99,9 +100,11 @@ internal object WatchTripSync {
                 // The trains, their poles and the screen's note, all worked out on IO: nothing that grows
                 // with the board runs on the service's main-thread scope.
                 val (found, note) = withContext(Dispatchers.IO) { trainsFor(app, trip, board, now) }
+                // To name each train's branch as the trip's screen does; read on IO (the first read is a file's).
+                val topology = withContext(Dispatchers.IO) { RouteTopologyStore.load(app) }
                 // A train leaving before the rider can board is grayed, as the trip's screen grays it.
                 val readyAt = OnTheWay.readyAt(trip, progress)
-                WatchTrips.build(trip, title, detail, found.trains, now, note, readyAt, poleOf = { found.poles[it] }) { leg, onBoard ->
+                WatchTrips.build(trip, title, detail, found.trains, now, note, readyAt, poleOf = { found.poles[it] }, topology = topology) { leg, onBoard ->
                     stepText(app, leg, onBoard)
                 }.also { built = it }
             }

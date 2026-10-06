@@ -6,7 +6,9 @@ import app.stopdash.domain.Countdown
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DepartureLabels
 import app.stopdash.domain.OnTheWay
+import app.stopdash.domain.RouteTopology
 import app.stopdash.domain.TripLeg
+import app.stopdash.domain.abbreviateBranch
 import app.stopdash.ui.BusPoleCues
 import app.stopdash.ui.busPoleLabels
 import java.time.Duration
@@ -45,9 +47,10 @@ internal object WatchTrips {
         trainsNote: String = "",
         readyAt: Instant? = null,
         poleOf: (Departure) -> Pole? = { null },
+        topology: RouteTopology = RouteTopology.EMPTY,
         dispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.Default,
         stepText: (leg: TripLeg, onBoard: Boolean) -> String,
-    ): WatchTrip = kotlinx.coroutines.withContext(dispatcher) { assemble(trip, title, detail, trains, now, trainsNote, readyAt, poleOf, stepText) }
+    ): WatchTrip = kotlinx.coroutines.withContext(dispatcher) { assemble(trip, title, detail, trains, now, trainsNote, readyAt, poleOf, topology, stepText) }
 
     // [build]'s work, on whichever thread calls it.
     private fun assemble(
@@ -60,6 +63,7 @@ internal object WatchTrips {
         trainsNote: String = "",
         readyAt: Instant?,
         poleOf: (Departure) -> Pole?,
+        topology: RouteTopology,
         stepText: (leg: TripLeg, onBoard: Boolean) -> String,
     ): WatchTrip {
         val steps = OnTheWay.steps(trip)
@@ -93,7 +97,13 @@ internal object WatchTrips {
             current = current,
             departures = shown.map {
                 // Shortened as the boards say it ("Brixton", not "Brixton Underground Station").
-                val destination = DepartureLabels.destinationLabel(it.destination, it.direction) ?: it.destination
+                val label = DepartureLabels.destinationLabel(it.destination, it.direction) ?: it.destination
+                // With its branch where it's a choice from this stop ("Morden/Bank"), as the tile, the
+                // widget and the trip's screen name it: two branches' trains read apart (maintainer, 2026-10-06).
+                val stop = poleOf(it)?.key?.ifBlank { null } ?: ride?.fromId.orEmpty()
+                val branch = topology.grouping(it.lineId, stop, it.destination, it.branch).label
+                // Shortened as the widget shortens it ("Newbury Pk"): the watch and the trip widget are narrow too.
+                val destination = if (branch != null) "$label/${abbreviateBranch(branch)}" else label
                 val missed = readyAt != null && it.expectedArrival.isBefore(readyAt)
                 WatchTrip.Train(it.lineId, it.lineName, it.mode, destination, it.expectedArrival.toEpochMilli(), poleOf(it)?.let { pole -> stops[pole.key] }.orEmpty(), missed)
             },

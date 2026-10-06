@@ -226,4 +226,28 @@ class WatchTripsTest {
         val sent = build(trains = listOf(train(9)))
         assertEquals(sent, runBlocking { WatchTrip.decode(WatchTrip.encode(sent)) { throw AssertionError(it) } })
     }
+
+    // Boarding at Euston, where the Northern line's two branches part: each train's branch is a choice
+    // there, so it's named, as the tile and the trip's screen name it (maintainer, 2026-10-06).
+    @Test
+    fun `a train's branch is named where it's a choice from the stop`() {
+        val topology = app.stopdash.domain.RouteTopology(
+            mapOf(
+                "northern" to listOf(
+                    app.stopdash.domain.RoutePattern("Bank", listOf("HGT", "CTN", "EUS", "BNK", "KNG", "MDN"), "High Barnet", "Morden"),
+                    app.stopdash.domain.RoutePattern("Charing Cross", listOf("HGT", "CTN", "EUS", "CHX", "KNG", "MDN"), "High Barnet", "Morden"),
+                ),
+            ),
+        )
+        val walkThere = TripLeg(TripLeg.WALKING, "", "", "", "", "EUS", "Euston", at(0), at(5))
+        val northern = TripLeg("tube", "northern", "Northern", "EUS", "Euston", "KNG", "Kennington", at(6), at(15))
+        val toKennington = ActiveTrip(TripRoute(listOf(walkThere, northern)), "Kennington", startedAt = t0)
+        fun morden(minutes: Long, branch: String) =
+            Departure("northern", "Northern", "outbound", "Morden Underground Station", null, at(minutes), "tube", branch = branch)
+        val sent = runBlocking {
+            WatchTrips.build(toKennington, "Walk to Euston", "4 min", listOf(morden(6, "Bank"), morden(8, "Charing Cross")), t0, topology = topology) { leg, _ -> leg.toName }
+        }
+        // Shortened as the widget shortens a branch (Codex on #612).
+        assertEquals(listOf("Morden/Bank", "Morden/Charing X"), sent.departures.map { it.destination })
+    }
 }
