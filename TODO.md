@@ -184,6 +184,14 @@ exercises the whole spine the widget later renders from.
       regenerated with `./gradlew :app:exportBundledLicenses`, since AGP 9 can't wire the
       resource at build time), and a `LicensesScreen` renders it — reached from an About
       dialog behind the top-bar overflow menu. Roborazzi-covered.
+- [ ] **Write `GLOSSARY.md`** (maintainer, 2026-10-06): one place that says what each term the
+      spec, this file, the code and the PRs lean on means, decided with the maintainer where uses
+      differ or overlap. The product's own words (place, hub, interchange, stop, pole, stand,
+      cluster, near me, farther, journey, origin, far end, closure, notice, alert, dismissal) and
+      the engineering ones (the worker, a slot, an answer standing in, held, settle, snapshot,
+      refresh, reconcile, relocation, report, check, lookup, verdict). Then use them as defined:
+      a term whose meaning isn't written down drifts, and a reader (or a reviewer) can't tell
+      which of two meanings a sentence uses.
 
 ## Phase 1 — In-app departures view (first deliverable)
 
