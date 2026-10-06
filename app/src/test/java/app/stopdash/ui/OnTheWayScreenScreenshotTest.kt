@@ -98,6 +98,7 @@ class OnTheWayScreenScreenshotTest {
         onPlanAgain: ((ReplanOrigin.Stop) -> Unit)? = null,
         onDismissDisruptions: ((List<RouteDisruption.Signal>) -> Unit)? = null,
         notes: List<RouteDisruption.StationNote> = emptyList(),
+        onDismissNote: ((RouteDisruption.StationNote) -> Unit)? = null,
         onTake: ((TripLeg, OffPlan.Branch) -> Unit)? = null,
     ) {
         composeRule.setContent {
@@ -106,7 +107,7 @@ class OnTheWayScreenScreenshotTest {
                     trip, progress, failed, now, onEnd, onBack, current = current, notKept = notKept, endFailed = endFailed, alertsOff = alertsOff,
                     appOpenOnly = appOpenOnly, nextTrains = nextTrains, onGoTo = onGoTo, disruptions = disruptions, cards = cards,
                     replanFrom = replanFrom, onPlanAgain = onPlanAgain, onDismissDisruptions = onDismissDisruptions, notes = notes,
-                    onTake = onTake,
+                    onDismissNote = onDismissNote, onTake = onTake,
                 )
             }
         }
@@ -116,11 +117,15 @@ class OnTheWayScreenScreenshotTest {
     fun on_the_way_notes_a_coming_station_s_notice_without_alerting() {
         // A made-up lift notice where the trip changes: said, quietly, with nothing to plan again over.
         val note = RouteDisruption.StationNote(2, "940GZZLUSTD", "Stratford", "Lift to the Jubilee line platforms out of service.")
-        show(trip, TripProgress.Waiting(mildmay, at(4)), notes = listOf(note), onDismissDisruptions = {})
+        val dismissed = mutableListOf<RouteDisruption.StationNote>()
+        show(trip, TripProgress.Waiting(mildmay, at(4)), notes = listOf(note), onDismissDisruptions = {}, onDismissNote = { dismissed += it })
         composeRule.onNodeWithText("Lift to the Jubilee line platforms out of service.").assertExists()
         composeRule.onAllNodes(hasTestTag("onTheWayDisruption")).assertCountEquals(0)
         composeRule.onAllNodes(hasTestTag("onTheWayKeepGoing")).assertCountEquals(0)
         captureSnapshot("on-the-way-station-note.png")
+        // Its × hands the note to be dismissed.
+        composeRule.onNodeWithTag("onTheWayStationNoteDismiss").performClick()
+        assertEquals(listOf(note), dismissed)
     }
 
     @Test

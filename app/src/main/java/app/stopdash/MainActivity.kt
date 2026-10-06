@@ -1068,6 +1068,10 @@ class MainActivity : ComponentActivity() {
                                     onDismissDisruptions = { shown ->
                                         ((application as? StopdashApp)?.applicationScope ?: onTheWayScope).launch { tracker.dismissDisruptions(shown) }
                                     },
+                                    // A station's note let go of with its ×, saved in the app's scope as Keep going is.
+                                    onDismissNote = { note ->
+                                        ((application as? StopdashApp)?.applicationScope ?: onTheWayScope).launch { tracker.dismissNote(note) }
+                                    },
                                     // The rider at a step the trip couldn't tell they'd reached (maintainer, 2026-09-28).
                                     onGoTo = { from, to ->
                                         ((application as? StopdashApp)?.applicationScope ?: onTheWayScope).launch { tracker.goTo(from, to) }
