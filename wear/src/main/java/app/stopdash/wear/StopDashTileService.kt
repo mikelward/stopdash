@@ -1,6 +1,7 @@
 package app.stopdash.wear
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -42,6 +43,8 @@ import java.time.Instant
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The StopDash tile (dev-docs/wear-os.md *Surfaces*): the widget's rows, favorites first, as many as
@@ -51,6 +54,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 class StopDashTileService : TileService() {
     /** The envelope and route-topology reads run here, never on the request's calling thread. */
     private val worker = Executors.newSingleThreadExecutor()
+
+    /** The trip's read-back ([lookUpTripOnce]), apart from [worker] so it never queues a render behind it. */
+    private val tripLookup = Executors.newSingleThreadExecutor()
 
     override fun onTileRequest(requestParams: RequestBuilders.TileRequest): ListenableFuture<TileBuilders.Tile> =
         CallbackToFutureAdapter.getFuture { completer ->
@@ -70,7 +76,11 @@ class StopDashTileService : TileService() {
                     val now = Instant.now()
                     // The watch's asset with the phone's refreshed route lines over it.
                     val topology = RouteTopologyStore.over(this, envelope?.routePatterns().orEmpty())
-                    val schedule = TileTimeline.schedule(envelope, now, topology, screen)
+                    // While On the way follows a trip, the tile shows it, as the phone's widget does; else
+                    // the departures. A trip that arrived before this process started is read back once.
+                    val schedule = TileTrip.schedule(WatchTripState.trip.value, now, SystemClock.elapsedRealtime(), screen) { from, max ->
+                        TileTimeline.schedule(envelope, from, topology, screen, maxScheduled = max)
+                    } ?: TileTimeline.schedule(envelope, now, topology, screen)
                     val notices = RefreshPolicy.notices(WatchRefresh.state.value, now)
                     val timeline = tileTimeline(this, TileTimeline.withNotice(schedule.entries, notices))
                     val tile = TileBuilders.Tile.Builder()
@@ -82,6 +92,7 @@ class StopDashTileService : TileService() {
                     }
                     completer.set(tile.build())
                     lookUpOnce(store)
+                    lookUpTripOnce()
                 } catch (e: Exception) {
                     // The failure type only; the system keeps the tile's last layout.
                     Log.w(TAG, "tile render failed: ${e::class.simpleName}")
@@ -109,6 +120,25 @@ class StopDashTileService : TileService() {
         if (after != null && after != before) requestUpdate(this)
     }
 
+    /**
+     * Reads back the trip the Data Layer holds, once per process (again on a later request if it
+     * failed), after this render is answered, so a slow lookup never holds the tile up; a trip found
+     * re-renders it (Codex on #612). One that arrived while this process ran came through the listener.
+     */
+    private fun lookUpTripOnce() {
+        if (WatchTripState.trip.value != null || !tripLookedUp.compareAndSet(false, true)) return
+        // On a thread of its own and bounded, so a stalled Data Layer never holds up the renders
+        // queued on [worker] (Codex on #612).
+        tripLookup.execute {
+            val found = runBlocking { withTimeoutOrNull(TRIP_LOOKUP_BOUND_MS) { WatchTripState.lookUp(this@StopDashTileService) } } == true
+            if (!found) {
+                tripLookedUp.set(false)
+                return@execute
+            }
+            if (WatchTripState.trip.value != null) requestUpdate(this)
+        }
+    }
+
     override fun onTileResourcesRequest(
         requestParams: RequestBuilders.ResourcesRequest,
     ): ListenableFuture<ResourceBuilders.Resources> =
@@ -131,6 +161,7 @@ class StopDashTileService : TileService() {
 
     override fun onDestroy() {
         worker.shutdown()
+        tripLookup.shutdown()
         super.onDestroy()
     }
 
@@ -143,6 +174,12 @@ class StopDashTileService : TileService() {
         private const val MIN_FRESHNESS_MS = 60_000L
 
         private val lookedUp = AtomicBoolean(false)
+
+        // Whether this process has read back the trip the Data Layer holds ([WatchTripState.lookUp]).
+        private val tripLookedUp = AtomicBoolean(false)
+
+        /** How long the trip's read-back may take before it counts as failed, to try again later. */
+        private const val TRIP_LOOKUP_BOUND_MS = 10_000L
 
         /**
          * Asks the system to re-render the tile, after a new envelope arrives. The updater binds a
@@ -218,6 +255,25 @@ internal object TileLayout {
                 // Nothing loaded is exactly when a refresh is wanted.
                 column.addContent(Spacer.Builder().setHeight(dp(4f)).build())
                 column.addContent(refresh(context, notice))
+            }
+            is TileFrame.Trip -> {
+                // As the watch app heads it: "On the way", and that it may be out of date.
+                column.addContent(text(context.getString(R.string.watch_trip), 12f, if (frame.stale) warning else gray))
+                if (frame.stale) column.addContent(text(context.getString(R.string.tile_may_be_out_of_date), 12f, warning))
+                column.addContent(Spacer.Builder().setHeight(dp(4f)).build())
+                column.addContent(text(frame.title, 14f, white, bold = true, maxLines = 2))
+                if (frame.detail.isNotBlank()) column.addContent(text(frame.detail, 12f, gray))
+                if (frame.note.isNotEmpty()) column.addContent(text(frame.note, 12f, warning))
+                for (line in frame.lines) {
+                    column.addContent(Spacer.Builder().setHeight(dp(4f)).build())
+                    column.addContent(
+                        when (line) {
+                            is TileLine.Header -> text(line.text, 12f, gray, bold = true, spoken = line.spoken)
+                            is TileLine.Departure -> row(context, line.row)
+                            else -> text("", 12f, gray)
+                        },
+                    )
+                }
             }
             is TileFrame.Rows -> {
                 val stamp = when {
@@ -319,7 +375,8 @@ internal object TileLayout {
             .addContent(
                 Box.Builder().setWidth(expand())
                     .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_START)
-                    .addContent(text(row.label, 14f, white))
+                    // A trip's train the rider can't make reads muted, as the watch app grays it.
+                    .addContent(text(row.label, 14f, if (row.muted) gray else white))
                     .build(),
             )
             .addContent(Spacer.Builder().setWidth(dp(4f)).build())
@@ -329,7 +386,7 @@ internal object TileLayout {
                     addContent(Spacer.Builder().setWidth(dp(4f)).build())
                 }
             }
-            .addContent(text(row.countdown, 14f, if (row.stale) warning else white, bold = true))
+            .addContent(text(row.countdown, 14f, if (row.stale) warning else if (row.muted) gray else white, bold = true))
             .build()
 
     /**

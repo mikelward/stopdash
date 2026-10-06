@@ -3153,7 +3153,9 @@ trains for the next ride. It is the one exception to a trip being kept on the ph
 the watch can show the step the rider is at; it is taken off the watch when the trip ends, and the
 watch stops showing one the phone stopped updating (its copy in the Data Layer goes with the
 phone's next trip). The watch only shows it: paging through the
-steps there looks ahead or back without moving the trip.
+steps there looks ahead or back without moving the trip. The watch's tile shows the trip in its departures' place while
+the watch shows one, as the phone's widget does, so neither keeps showing the departures where
+the app was last opened while the rider travels (maintainer, 2026-10-06).
 
 With a National Rail key set (*Data source*), a rail station's departures request also goes to
 the Rail Data Marketplace, carrying that station's CRS code and the user's own key, never a

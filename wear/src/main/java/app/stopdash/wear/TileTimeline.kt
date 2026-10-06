@@ -104,6 +104,19 @@ sealed interface TileFrame {
          *  says disruptions couldn't be checked, as the widget and app do (SPEC D3). */
         val statusUnknown: Boolean = false,
     ) : TileFrame
+
+    /**
+     * The trip On the way follows, in the departures' place while the phone keeps it updated
+     * ([TileTrip]): what to do now ([title], [detail]), what the phone says of the next ride's trains
+     * ([note]), and those trains under their poles. [stale] once the phone hasn't updated it lately.
+     */
+    data class Trip(
+        val title: String,
+        val detail: String,
+        val note: String,
+        val lines: List<TileLine>,
+        val stale: Boolean,
+    ) : TileFrame
 }
 
 /** The watch's screen, as the tile request reports it: what bounds how many lines fit. */
@@ -303,6 +316,8 @@ object TileTimeline {
         now: Instant,
         topology: RouteTopology = RouteTopology.EMPTY,
         screen: TileScreen? = null,
+        // The most entries to make: fewer where they follow others in one timeline ([TileTrip]).
+        maxScheduled: Int = MAX_SCHEDULED,
     ): TileSchedule {
         // A check or a stop dated after [now] (the clock moved back) is never trusted, and it stays
         // untrusted for the whole timeline: dropped or restamped stale here once, so a later frame
@@ -322,7 +337,7 @@ object TileTimeline {
             if (next == current) continue
             // Room is kept for the horizon's two entries; when a change doesn't fit (or the scan's
             // bound is reached), the timeline stops here with every countdown withheld.
-            if (next == null || closed.size + 1 > MAX_SCHEDULED - 2) {
+            if (next == null || closed.size + 1 > maxScheduled - 2) {
                 closed += TileEntry(start, at, current)
                 val tail = TileEntry(at, null, frame(envelope, at, topology, withhold = true, screen = screen))
                 return TileSchedule(closed + tail, refreshAt = at)
@@ -343,7 +358,7 @@ object TileTimeline {
         for ((evaluated, at) in after.withIndex()) {
             val next = if (evaluated < MAX_CANDIDATES) frame(envelope, at, topology, screen = screen) else null
             if (next == current) continue
-            if (next == null || closed.size + 1 > MAX_SCHEDULED - 2) {
+            if (next == null || closed.size + 1 > maxScheduled - 2) {
                 closed += TileEntry(start, at, current)
                 val tail = TileEntry(at, null, frame(envelope, at, topology, withhold = true, screen = screen))
                 return TileSchedule(closed + tail, refreshAt = at)

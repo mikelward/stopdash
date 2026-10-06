@@ -55,6 +55,8 @@ class SnapshotListenerService : WearableListenerService() {
                 WatchTripState.ingest(trip.map { it.dataItem })
             }
         }
+        // The tile shows the trip while there's one, and its departures again once it goes ([TileTrip]).
+        if (trip.isNotEmpty()) StopDashTileService.requestUpdate(this)
         val store = WatchEnvelopeStore.from(this)
         val ingested = events
             .filter { it.type == DataEvent.TYPE_CHANGED && it.dataItem.uri.path == WatchSyncContract.SNAPSHOT_PATH }
