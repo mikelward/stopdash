@@ -2,6 +2,7 @@ package app.stopdash.ui
 
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.LineStatus
+import app.stopdash.domain.Staleness
 import app.stopdash.domain.StopArrivals
 import java.time.Instant
 
@@ -102,6 +103,9 @@ sealed interface DeparturesUiState {
         // "checking" while a row whose check is already back undetermined reads "couldn't check".
         // Worked out with the state, so the screen only looks rows up in it.
         val pendingLineIds: Set<String> = emptySet(),
+        // When each of [determinedLineIds] was answered, by the steady clock: a line's check ages on its
+        // own, so a stop's arrivals kept from before don't make its line's fresh check old (Codex, #623).
+        val lineCheckedAt: Map<String, Instant> = emptyMap(),
     ) : DeparturesUiState {
         /**
          * The one reason the banner gives: the one every named stop failed with, else null — a stop
@@ -126,8 +130,24 @@ sealed interface DeparturesUiState {
          * doesn't make this one read "couldn't check" before its own is back.
          */
         fun checkingDisruptionsFor(row: DepartureRow): Boolean =
-            row.stopId in closurePending ||
-                (statusPending && row.lineId in pendingLineIds && row.stopId !in stopsDisruptionUnknown)
+            row.stopId in closurePending || (checkingLineFor(row) && row.stopId !in stopsDisruptionUnknown)
+
+        /**
+         * Whether [row]'s line's own status went unchecked: a blank id, or one TfL gave no status for.
+         * Its stop's closure check aside, as its line's page has it ("View line", Codex, #623).
+         */
+        fun lineUncheckedFor(row: DepartureRow): Boolean = row.lineId.isBlank() || row.lineId !in determinedLineIds
+
+        /**
+         * Whether [row]'s line's own status can't be stood behind at [now]: unchecked ([lineUncheckedFor]), or
+         * its check gone stale, aged by its own stamp ([lineCheckedAt]) where it has one, else as old as the
+         * row (SPEC D4).
+         */
+        fun lineDoubtedFor(row: DepartureRow, now: Instant): Boolean =
+            lineUncheckedFor(row) || Staleness.isStale(lineCheckedAt[row.lineId] ?: row.fetchedAt, now)
+
+        /** Whether [row]'s line's own status check is still out on a cold load, its stop's aside. */
+        fun checkingLineFor(row: DepartureRow): Boolean = statusPending && row.lineId in pendingLineIds
     }
 
     /** A stop that couldn't be refreshed: its [name], and [reason] if known. */

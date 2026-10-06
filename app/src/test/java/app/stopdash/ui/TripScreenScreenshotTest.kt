@@ -65,9 +65,11 @@ import app.stopdash.R
 import app.stopdash.data.TflRouteSequenceDto
 import app.stopdash.domain.AvoidedLines
 import app.stopdash.domain.Departure
+import app.stopdash.domain.DepartureRows
 import app.stopdash.domain.MaxWalk
 import app.stopdash.domain.ModeGroups
 import app.stopdash.domain.StepFree
+import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.TripModes
 import app.stopdash.domain.DepartureRow
 import app.stopdash.domain.DismissedAlert
@@ -83,6 +85,7 @@ import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.TripClosures
 import app.stopdash.domain.TflException
 import app.stopdash.domain.TripLeg
+import app.stopdash.domain.Workers
 import app.stopdash.domain.TripRoute
 import app.stopdash.domain.WalkingSpeed
 import app.stopdash.ui.theme.StopDashTheme
@@ -3739,6 +3742,202 @@ class TripScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText(composeRule.activity.getString(R.string.dismiss_write_failed)).assertExists()
         assertEquals(1, acknowledged)
+    }
+
+    // A route page for a Northern line train from King's Cross St. Pancras, a big interchange, with its
+    // line opened from the overflow's "View line"; the route page's own Back counted in [back].
+    // [disruptionUnknown] the route page's own doubt, its stop's check included; [lineUnknown] its line's
+    // alone, by default the same as the route page's.
+    private fun openLineFromRoutePage(
+        row: DepartureRow,
+        stale: Boolean = false,
+        disruptionUnknown: Boolean = false,
+        lineUnknown: Boolean = disruptionUnknown || stale,
+        worker: CoroutineDispatcher = Workers.compute,
+        // Read as the page composes, where a test moves the route page's age on with it open.
+        staleNow: androidx.compose.runtime.State<Boolean>? = null,
+        // Read as the page composes, where a test moves the route page's row on with it open.
+        rowNow: androidx.compose.runtime.State<DepartureRow>? = null,
+        back: () -> Unit = {},
+    ) {
+        val repository = RouteStopsRepository(object : RouteSequenceSource {
+            override suspend fun routeSequence(lineId: String, direction: String): LineSequence = northernLine
+        })
+        val menu = AppMenuActions(updateAvailable = false, onOpenAppListing = {}, onSendBugReport = {}, onOpenLicenses = {})
+        composeRule.setContent {
+            StopDashTheme(dynamicColor = false) {
+                CompositionLocalProvider(LocalAppMenu provides menu, LocalRouteStops provides repository, LocalWorker provides worker) {
+                    val old = staleNow?.value ?: stale
+                    RouteDetailScreen(
+                        row = rowNow?.value ?: row, isStarred = false, starrable = true, disruptionUnknown = disruptionUnknown, stale = old, now = now,
+                        onToggleStar = {}, onBack = back, routeStops = RouteStopsUi.Loading, lineUnknown = if (staleNow != null) old else lineUnknown,
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithContentDescription(composeRule.activity.getString(R.string.menu_more)).performClick()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.route_detail_view_line)).performClick()
+    }
+
+    private val kingsCrossNorthern: DepartureRow by lazy {
+        val stop = StopArrivals(
+            stopId = "940GZZLUKSX",
+            stopName = "King's Cross St. Pancras",
+            departures = listOf(Departure("northern", "Northern", "outbound", "Morden", null, at(2), "tube")),
+            fetchedAt = now,
+        )
+        DepartureRows.across(listOf(stop), now).first { it.upcoming.isNotEmpty() }
+    }
+
+    // The line page's own nodes: the route page under it has a list and a Back of its own.
+    private val onLinePage = hasAnyAncestor(hasTestTag("tripLinesPage"))
+
+    @Test
+    fun a_routes_page_opens_its_line_from_the_overflow() {
+        // "View line" opens the line's own page over the route page, its map keeping this stop as the
+        // rider's (maintainer, 2026-10-06).
+        var back = 0
+        openLineFromRoutePage(kingsCrossNorthern) { back++ }
+        composeRule.waitUntil(10_000) {
+            runCatching { composeRule.onNode(hasScrollAction() and onLinePage).performScrollToNode(hasText("King's Cross St. Pancras")) }.isSuccess
+        }
+        composeRule.onNode(hasText("King's Cross St. Pancras") and onLinePage)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, composeRule.activity.getString(R.string.route_stop_current)))
+        // Back closes the line's page alone, onto the route page, never to a list of lines.
+        composeRule.onNode(hasContentDescription(composeRule.activity.getString(R.string.action_back)) and onLinePage).performClick()
+        composeRule.onNodeWithTag("tripLinesPage").assertDoesNotExist()
+        assertEquals(0, back)
+    }
+
+    @Test
+    fun a_stale_routes_line_page_never_claims_a_good_service() {
+        // The route page's check gone stale: its line's page says it couldn't check (SPEC D4).
+        openLineFromRoutePage(kingsCrossNorthern, stale = true)
+        composeRule.onNode(hasText(composeRule.activity.getString(R.string.trip_lines_unknown)) and onLinePage).assertExists()
+        composeRule.onNode(hasText(composeRule.activity.getString(R.string.trip_lines_good)) and onLinePage).assertDoesNotExist()
+    }
+
+    @Test
+    fun a_routes_line_page_doubts_its_line_not_its_stop() {
+        // The route page couldn't check its stop's closures, but its line was checked: the line's page is
+        // about the line, so it says the line's good service (Codex, #623).
+        openLineFromRoutePage(kingsCrossNorthern, disruptionUnknown = true, lineUnknown = false)
+        composeRule.waitUntil(10_000) { composeRule.onAllNodes(hasText(composeRule.activity.getString(R.string.trip_lines_good)) and onLinePage).fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNode(hasText(composeRule.activity.getString(R.string.trip_lines_unknown)) and onLinePage).assertDoesNotExist()
+    }
+
+    @Test
+    fun a_routes_line_page_keeps_a_delay_and_says_it_couldnt_check() {
+        // A delay kept from a check since gone stale: shown, and doubted beside it (Codex, #623).
+        val delays = LineStatus("northern", 9, "Minor Delays")
+        openLineFromRoutePage(kingsCrossNorthern.copy(status = delays), stale = true)
+        composeRule.waitUntil(10_000) { composeRule.onAllNodes(hasText("Minor Delays") and onLinePage).fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNode(hasText(composeRule.activity.getString(R.string.trip_lines_unknown)) and onLinePage).assertExists()
+    }
+
+    @Test
+    fun a_routes_line_page_is_up_before_its_line_is_worked_out() {
+        // The worker held: the page is up at once, its pill alone, and Back closes it, never the route
+        // page under it (Codex, #623).
+        val release = CountDownLatch(1)
+        val held = Executors.newSingleThreadExecutor { Thread(it, "held-worker") }
+        held.execute { release.await() }
+        val worker = held.asCoroutineDispatcher()
+        try {
+            var back = 0
+            openLineFromRoutePage(kingsCrossNorthern, worker = worker) { back++ }
+            composeRule.onNode(hasText("Northern") and onLinePage).assertExists()
+            composeRule.onNode(hasText(composeRule.activity.getString(R.string.trip_lines_good)) and onLinePage).assertDoesNotExist()
+            composeRule.onNode(hasContentDescription(composeRule.activity.getString(R.string.action_back)) and onLinePage).performClick()
+            composeRule.onNodeWithTag("tripLinesPage").assertDoesNotExist()
+            assertEquals(0, back)
+        } finally {
+            release.countDown()
+            worker.close()
+        }
+    }
+
+    @Test
+    fun a_routes_line_page_never_holds_a_verdict_its_check_no_longer_stands_behind() {
+        // Open on a checked line, then its check goes stale while the worker is busy: the good service is
+        // taken down at once, never left up until the doubted row is in (Codex, #623).
+        val release = CountDownLatch(1)
+        val pool = Executors.newSingleThreadExecutor { Thread(it, "held-worker") }
+        val worker = pool.asCoroutineDispatcher()
+        val staleNow = mutableStateOf(false)
+        try {
+            openLineFromRoutePage(kingsCrossNorthern, worker = worker, staleNow = staleNow)
+            val good = hasText(composeRule.activity.getString(R.string.trip_lines_good)) and onLinePage
+            val doubted = hasText(composeRule.activity.getString(R.string.trip_lines_unknown)) and onLinePage
+            composeRule.waitUntil(10_000) { composeRule.onAllNodes(good).fetchSemanticsNodes().isNotEmpty() }
+            pool.execute { release.await() }
+            staleNow.value = true
+            composeRule.waitForIdle()
+            composeRule.onNode(good).assertDoesNotExist()
+            composeRule.onNode(hasText("Northern") and onLinePage).assertExists()
+            release.countDown()
+            composeRule.waitUntil(10_000) { composeRule.onAllNodes(doubted).fetchSemanticsNodes().isNotEmpty() }
+        } finally {
+            release.countDown()
+            worker.close()
+        }
+    }
+
+    @Test
+    fun a_routes_line_page_never_holds_an_alert_that_has_changed() {
+        // Open on a good service, then a closure begins while the worker is busy: the good service is taken
+        // down at once, never left up over a line now closed, and the closure follows (Codex, #623).
+        val release = CountDownLatch(1)
+        val pool = Executors.newSingleThreadExecutor { Thread(it, "held-worker") }
+        val worker = pool.asCoroutineDispatcher()
+        val rowNow = mutableStateOf(kingsCrossNorthern)
+        try {
+            openLineFromRoutePage(kingsCrossNorthern, worker = worker, rowNow = rowNow)
+            val good = hasText(composeRule.activity.getString(R.string.trip_lines_good)) and onLinePage
+            composeRule.waitUntil(10_000) { composeRule.onAllNodes(good).fetchSemanticsNodes().isNotEmpty() }
+            pool.execute { release.await() }
+            rowNow.value = kingsCrossNorthern.copy(status = LineStatus("northern", app.stopdash.domain.PlannedAlert.PART_CLOSURE, "Part Closure"))
+            composeRule.waitForIdle()
+            composeRule.onNode(good).assertDoesNotExist()
+            composeRule.onNode(hasText("Northern") and onLinePage).assertExists()
+            release.countDown()
+            composeRule.waitUntil(10_000) { composeRule.onAllNodes(hasText("Part Closure") and onLinePage).fetchSemanticsNodes().isNotEmpty() }
+        } finally {
+            release.countDown()
+            worker.close()
+        }
+    }
+
+    @Test
+    fun a_routes_line_page_holds_still_through_an_alert_fetched_again_unchanged() {
+        // The same delay fetched again, a new object saying the same: the page stays as it is while its row
+        // is worked out again, never blanking to the line's pill (holding still).
+        val release = CountDownLatch(1)
+        val pool = Executors.newSingleThreadExecutor { Thread(it, "held-worker") }
+        val worker = pool.asCoroutineDispatcher()
+        val delayed = kingsCrossNorthern.copy(status = LineStatus("northern", 9, "Minor Delays"))
+        val rowNow = mutableStateOf(delayed)
+        try {
+            openLineFromRoutePage(delayed, worker = worker, rowNow = rowNow)
+            val delays = hasText("Minor Delays") and onLinePage
+            composeRule.waitUntil(10_000) { composeRule.onAllNodes(delays).fetchSemanticsNodes().isNotEmpty() }
+            pool.execute { release.await() }
+            rowNow.value = delayed.copy(status = LineStatus("northern", 9, "Minor Delays"))
+            composeRule.waitForIdle()
+            composeRule.onNode(delays).assertExists()
+        } finally {
+            release.countDown()
+            worker.close()
+        }
+    }
+
+    @Test
+    fun a_routes_line_dismissed_never_reads_good_service() {
+        // Its alert dismissed, the route page has no alert left to name: the line's page says it was
+        // dismissed, never that the line runs a good service.
+        openLineFromRoutePage(kingsCrossNorthern.copy(statusDismissed = true))
+        composeRule.onNode(hasText(composeRule.activity.getString(R.string.route_detail_alert_dismissed)) and onLinePage).assertExists()
+        composeRule.onNode(hasText(composeRule.activity.getString(R.string.trip_lines_good)) and onLinePage).assertDoesNotExist()
     }
 
     @Test

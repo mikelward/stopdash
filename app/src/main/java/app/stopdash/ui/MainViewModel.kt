@@ -1000,6 +1000,8 @@ class MainViewModel(
         // The stops kept only for a closure this batch found ([Snapshot.mergeStop]): their arrivals failed
         // and none was shown before, so one whose closure is gone by the time it's published goes too.
         val closureOnly: Set<String> = emptySet(),
+        // Each of [determinedLineIds]' verdict stamps ([heldLines]), so a line's check ages on its own.
+        val lineCheckedAt: Map<String, Instant> = emptyMap(),
     )
 
     /**
@@ -1664,6 +1666,11 @@ class MainViewModel(
         }
         val statusAnswered = listOfNotNull(earlyLines, lateLines).any { it.answered }
         val lineStatusRequests = listOfNotNull(earlyLines, lateLines).sumOf { it.requests }
+        // When each determined line's verdict was had, a reused one's included: a line's check ages on its
+        // own, not with the arrivals of the stop showing it (Codex, #623). Off the main thread.
+        val lineCheckedAt = withContext(compute) {
+            determinedLineIds.mapNotNull { id -> (heldLines[id] as? HeldLine.Verdict)?.at?.let { id to it } }.toMap()
+        }
 
         logStats(
             LoadStats.describe(
@@ -1697,6 +1704,7 @@ class MainViewModel(
             // The latest check's copy holds every line known unknown by then. With no check at all, no
             // stop shows a line to check, so none is needed.
             unknownLineIds = (lateLines ?: earlyLines)?.unknown.orEmpty(),
+            lineCheckedAt = lineCheckedAt,
         )
     }
 
@@ -2084,6 +2092,11 @@ class MainViewModel(
                         // in), they're unchecked, as is a stop whose own closure check failed.
                         lineStatuses = progress.lines?.disrupted.orEmpty(),
                         determinedLineIds = progress.lines?.determined.orEmpty(),
+                        // Each verdict's own stamp, as the finished batch has them: a farther card part-shown
+                        // this way stamps the alert it shows, so a merged list never pairs it with another
+                        // source's newer check (Codex, #623).
+                        lineCheckedAt = progress.lines?.determined.orEmpty()
+                            .mapNotNull { id -> (heldLines[id] as? HeldLine.Verdict)?.at?.let { id to it } }.toMap(),
                         disruptionUnknown = progress.lines?.let { disruptionUnknownOf(shown, it.determined, progress.closureUnknown, it.unknown) } ?: true,
                         stopsDisruptionUnknown = progress.closureUnknown,
                         checkFailed = checkFailedOf(shown, progress),
@@ -2191,6 +2204,7 @@ class MainViewModel(
                             // provenance ([disruptionUnknownOf]).
                             disruptionUnknown = disruptionUnknownOf(merged, determinedLineIds, stopsDisruptionUnknown, unknown),
                             determinedLineIds = determinedLineIds,
+                            lineCheckedAt = batch.lineCheckedAt,
                             stopsDisruptionUnknown = stopsDisruptionUnknown,
                             unavailableStopIds = toFetch.mapTo(HashSet()) { it.id } - merged.mapTo(HashSet()) { it.stopId },
                         )

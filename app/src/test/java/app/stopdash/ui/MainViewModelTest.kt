@@ -26,6 +26,7 @@ import app.stopdash.domain.SnapshotStore
 import app.stopdash.domain.StopArrivals
 import app.stopdash.domain.StopLocation
 import app.stopdash.domain.StopClosureCache
+import app.stopdash.domain.Staleness
 import app.stopdash.domain.SteadyClock
 import app.stopdash.domain.StopDisruption
 import app.stopdash.domain.TflClient
@@ -1090,6 +1091,9 @@ class MainViewModelTest {
         assertFalse(partial.disruptionUnknown)
         assertFalse(partial.checkFailed)
         assertEquals(setOf("victoria", "circle") + HomeLines.TUBE_IDS, partial.determinedLineIds)
+        // Each with its check's stamp, as a finished load has them, so a farther card part-shown this way
+        // stamps what it shows (Codex, #623).
+        assertEquals(partial.determinedLineIds, partial.lineCheckedAt.keys)
 
         gate.complete(Unit)
         advanceUntilIdle()
@@ -3242,6 +3246,42 @@ class MainViewModelTest {
         }
 
     @Test
+    fun `a line checked afresh is current though its stop's arrivals are kept from before`() =
+        runTest(dispatcher) {
+            // A partial refresh keeps King's Cross's aged rows, but its line's status is asked again and
+            // answered: the line's own check stands on its own age, so its page needn't doubt it (Codex, #623).
+            var current = now
+            var failKsx = false
+            val client = object : TflClient {
+                override suspend fun arrivals(stopId: String): List<Departure> {
+                    if (stopId == "940GZZLUKSX" && failKsx) throw TflException.Offline(null)
+                    return listOf(departure("victoria", "Victoria", 3600))
+                }
+
+                override suspend fun lineStatuses(lineIds: Collection<String>) =
+                    lineIds.map { LineStatus(it, 10, "Good Service") }
+
+                override suspend fun stopDisruptions(stopId: String) = emptyList<StopDisruption>()
+            }
+            val vm = MainViewModel(client, seeds, clock = { current }, io = dispatcher)
+            advanceUntilIdle()
+            // Past the staleness threshold; King's Cross fails while Oxford Circus and the line answer.
+            current = now.plus(Duration.ofMinutes(10))
+            failKsx = true
+            vm.refresh()
+            advanceUntilIdle()
+            val merged = vm.state.value as DeparturesUiState.Loaded
+            val kept = DepartureRows.across(merged.stops, current).first { it.stopId == "940GZZLUKSX" && it.lineId == "victoria" }
+            assertTrue("its arrivals are old", Staleness.isStale(kept.fetchedAt, current))
+            assertEquals(SteadyClock.stamp(current), merged.lineCheckedAt["victoria"])
+            assertFalse(merged.lineDoubtedFor(kept, current))
+            // Without a stamp it ages with the row, never passed off as current.
+            assertTrue(merged.copy(lineCheckedAt = emptyMap()).lineDoubtedFor(kept, current))
+            // Its own check gone stale in turn, it's doubted.
+            assertTrue(merged.lineDoubtedFor(kept, current.plus(Duration.ofMinutes(10))))
+        }
+
+    @Test
     fun `every arrivals request failing on first load errors even when stops declare lines`() =
         runTest(dispatcher) {
             // The production seed stops declare lines. If every arrivals request fails on a
@@ -5292,6 +5332,39 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `a merged line's check stamp is the one whose verdict the list shows`() {
+        // The list's alert wins over a card's newer clean verdict, as the merged statuses have it: so does its
+        // stamp, never pairing the old alert with the card's fresh time (Codex, #623).
+        val delays = LineStatus("victoria", 6, "Severe Delays")
+        val list = DeparturesUiState.Loaded(
+            stops = listOf(StopArrivals("E", "E", emptyList(), now)), fetchedAt = now,
+            lineStatuses = mapOf("victoria" to delays), determinedLineIds = setOf("victoria", "northern"),
+            lineCheckedAt = mapOf("victoria" to now, "northern" to now),
+        )
+        val later = now.plusSeconds(120)
+        val card = DeparturesUiState.Loaded(
+            stops = listOf(StopArrivals("MA", "Farther", emptyList(), later)), fetchedAt = later,
+            lineStatuses = mapOf("northern" to LineStatus("northern", 6, "Severe Delays")),
+            determinedLineIds = setOf("victoria", "northern", "jubilee"),
+            lineCheckedAt = mapOf("victoria" to later, "northern" to later, "jubilee" to later),
+        )
+        val shown = withOpenedFarther(list, listOf(setOf("MA") to card))
+        assertEquals(delays, shown.lineStatuses["victoria"])
+        assertEquals(now, shown.lineCheckedAt["victoria"])
+        // The card's alert over the list's clean verdict: the card's stamp with it.
+        assertEquals(later, shown.lineCheckedAt["northern"])
+        // Only the card checked it.
+        assertEquals(later, shown.lineCheckedAt["jubilee"])
+        // A card's alert with no stamp of its own (a stamp left out) takes none, never the list's newer clean one.
+        val unstamped = withOpenedFarther(list, listOf(setOf("MA") to card.copy(lineCheckedAt = card.lineCheckedAt - "northern")))
+        assertEquals(LineStatus("northern", 6, "Severe Delays"), unstamped.lineStatuses["northern"])
+        assertFalse("northern" in unstamped.lineCheckedAt)
+        // Nor does the list's own alert borrow a card's clean one.
+        val listUnstamped = withOpenedFarther(list.copy(lineCheckedAt = list.lineCheckedAt - "victoria"), listOf(setOf("MA") to card))
+        assertFalse("victoria" in listUnstamped.lineCheckedAt)
+    }
+
+    @Test
     fun `a row's line still being checked reads as checking though another stop's check failed`() {
         fun row(stopId: String, lineId: String) = DepartureRow(
             stopId = stopId, stopName = stopId, lineId = lineId, lineName = lineId, direction = "outbound",
@@ -5309,6 +5382,35 @@ class MainViewModelTest {
         assertTrue(shown.checkingDisruptionsFor(row("F", "northern")))
         // Once the load is done, nothing is still checking.
         assertFalse(shown.copy(statusPending = false).checkingDisruptionsFor(row("F", "northern")))
+    }
+
+    @Test
+    fun `a row's line is checked or checking apart from its stop, for the line's page`() {
+        fun row(stopId: String, lineId: String) = DepartureRow(
+            stopId = stopId, stopName = stopId, lineId = lineId, lineName = lineId, direction = "outbound",
+            directionKey = "outbound", destination = "Example", mode = "tube", upcoming = emptyList(), fetchedAt = now,
+        )
+        // E's closure check failed and F's is still out, while E's line was checked and F's line is still out.
+        val shown = DeparturesUiState.Loaded(
+            stops = listOf(StopArrivals("E", "E", emptyList(), now), StopArrivals("F", "F", emptyList(), now)),
+            fetchedAt = now,
+            statusPending = true,
+            determinedLineIds = setOf("victoria"),
+            stopsDisruptionUnknown = setOf("E"),
+            closurePending = setOf("F"),
+            pendingLineIds = setOf("northern"),
+        )
+        // The row is unchecked for its stop, but its line's page has the line checked (Codex, #623).
+        assertFalse(shown.lineUncheckedFor(row("E", "victoria")))
+        assertFalse(shown.checkingLineFor(row("E", "victoria")))
+        assertTrue(shown.checkingDisruptionsFor(row("F", "victoria")))
+        assertFalse("its stop's check is out, its line's isn't", shown.checkingLineFor(row("F", "victoria")))
+        // The line still out reads as checking on its page, even where its stop's check failed.
+        assertTrue(shown.checkingLineFor(row("E", "northern")))
+        assertFalse(shown.checkingDisruptionsFor(row("E", "northern")))
+        // A line TfL gave no status for, or a blank one, is unchecked whatever its stop.
+        assertTrue(shown.lineUncheckedFor(row("F", "northern")))
+        assertTrue(shown.lineUncheckedFor(row("F", "")))
     }
 
     @Test

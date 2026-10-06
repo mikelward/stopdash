@@ -356,6 +356,13 @@ internal fun withOpenedFarther(
     val stops = list.stops.toMutableList()
     var lineStatuses = list.lineStatuses
     val determined = list.determinedLineIds.toHashSet()
+    // Each determined line's check stamp, from the source whose verdict the merged list shows, as
+    // [lineStatuses] merges them: the first alert wins, the list's then each card's in turn, so its stamp
+    // does too, or none where that source has none (a cold load's partial state), never another
+    // source's; a line no source has an alert for has the newest clean verdict's (Codex, #623).
+    val checkedAt = HashMap(list.lineCheckedAt)
+    list.lineStatuses.keys.forEach { if (it !in list.lineCheckedAt) checkedAt.remove(it) }
+    val alertStamped = list.lineStatuses.keys.toHashSet()
     val disruptionUnknown = list.stopsDisruptionUnknown.toHashSet()
     // A card's stops shown while their own closure check is still out, as the list's own are.
     val closurePending = list.closurePending.toHashSet()
@@ -382,6 +389,15 @@ internal fun withOpenedFarther(
                 if (state.refreshFailure == null) added.filter { it.arrivalsFresh }.mapTo(freshFromCards) { it.stopId }
                 lineStatuses = state.lineStatuses + lineStatuses
                 determined += state.determinedLineIds
+                state.lineStatuses.keys.forEach { id ->
+                    if (alertStamped.add(id)) {
+                        val at = state.lineCheckedAt[id]
+                        if (at != null) checkedAt[id] = at else checkedAt.remove(id)
+                    }
+                }
+                state.lineCheckedAt.forEach { (id, at) ->
+                    if (id !in alertStamped) checkedAt.merge(id, at) { held, other -> maxOf(held, other) }
+                }
                 disruptionUnknown += state.stopsDisruptionUnknown
                 // Only for the rows the card adds: a stop the list already shows keeps the list's own mark.
                 added.filter { it.stopId in state.closurePending }.mapTo(closurePending) { it.stopId }
@@ -424,6 +440,7 @@ internal fun withOpenedFarther(
         partialUnnamed = listPartial && !cardPartial && list.partialUnnamed,
         lineStatuses = lineStatuses,
         determinedLineIds = determined,
+        lineCheckedAt = checkedAt,
         stopsDisruptionUnknown = disruptionUnknown,
         closurePending = closurePending,
         unavailableStopIds = unavailable,
