@@ -218,6 +218,10 @@ class MainViewModel(
     // choice, by key, once it's read), whose lines are asked about with the list's own: read at each refresh, so a new
     // choice is asked next, and expanded into lines on [compute], since that walks them (Codex, #592).
     private val alwaysNetworks: suspend () -> Set<String> = { HomeLines.DEFAULT_NETWORKS },
+    // The rider's favorite journeys' lines, asked about with the always-covered networks' so the row judges each
+    // wherever its stop is, a far journey whose origin isn't fetched included (maintainer, 2026-10-06; Codex,
+    // #640). Read at each refresh, as [alwaysNetworks] is.
+    private val favoriteLines: suspend () -> Set<String> = { emptySet() },
     // Monotonic milliseconds for timing a fetch, and the shared rate limiter's running total of
     // time spent waiting — both only feed the per-fetch debug-log line ([LoadStats]).
     private val elapsedMillis: () -> Long = { System.nanoTime() / 1_000_000 },
@@ -1341,10 +1345,18 @@ class MainViewModel(
             // 2026-10-05).
             // The lines the row always covers, as chosen: the stored choice once it's read, never the
             // default in its place on a cold start (Codex, #592), worked out while the arrivals are out.
-            val alwaysAsked = async(compute) { HomeLines.idsOf(alwaysNetworks()) }
-            val earlyCheck = async { if (linesGo.await()) checkLines(declaredLineIds + alwaysAsked.await()) else null }
+            val alwaysAsked = async(compute) { HomeLines.idsOf(alwaysNetworks()) + favoriteLines() }
+            // The list's own lines once a stop's arrivals are in; the always-covered ones (a far favorite's, a chosen
+            // network's) whatever the arrivals did, as nothing else renews them: no line declared, no stop at all,
+            // or every stop's arrivals failed alike (Codex, #640). A line the list shows that isn't asked here is
+            // asked after the merge, as a prediction-only line is.
+            val earlyCheck = async {
+                val ids = (if (linesGo.await()) declaredLineIds else emptySet()) + alwaysAsked.await()
+                if (ids.isEmpty()) null else checkLines(ids)
+            }
             when {
-                declaredLineIds.isEmpty() -> linesGo.complete(false)
+                // Nothing the list declares: settled below, once the arrivals are in.
+                declaredLineIds.isEmpty() -> Unit
                 plan.anyPrior -> linesGo.complete(true)
                 else -> arrivals.filterNotNull().forEach { arrival ->
                     launch { if (arrival.await().isSuccess) linesGo.complete(true) }
@@ -1524,7 +1536,7 @@ class MainViewModel(
                 }
             }
             val arrivalResults = arrivals.map { it?.await() }
-            // No stop's arrivals came back (and none was shown from before): the check isn't sent.
+            // No stop's arrivals came back (and none was shown from before): the list's own lines aren't asked.
             linesGo.complete(arrivalResults.any { it?.isSuccess == true })
             Triple(arrivalResults, disruptions.map { it?.await() }, earlyCheck.await()?.also { publishAlways(it, now, alwaysAsked.await()) })
         }
@@ -1952,7 +1964,7 @@ class MainViewModel(
             val now = clock()
             // The chosen lines, and those of them whose verdict is missing or aged: those being asked about.
             val (asked, stale) = withContext(compute) {
-                val ids = HomeLines.idsOf(alwaysNetworks())
+                val ids = HomeLines.idsOf(alwaysNetworks()) + favoriteLines()
                 ids to ids.filterTo(HashSet()) { held == null || !held.current(it, now) }
             }
             if (asked.isEmpty() || stale.isEmpty()) return@launch

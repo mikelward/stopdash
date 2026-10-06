@@ -11,18 +11,22 @@ import app.stopdash.domain.FavoriteJourney
 import app.stopdash.domain.StarredRow
 import app.stopdash.domain.TripLeg
 import java.time.Instant
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 
 /**
  * The home screen's disruptions row (maintainer, 2026-10-05): the trip's one-row summary ([TripRow])
- * over the lines a rider near here may take: every line of the networks they chose ([Network], the tube
- * by default), and each line with a departure (or the
+ * over the lines a rider near here may take: every line of the networks they chose ([Network], none
+ * by default), their favorites' lines (a journey's wherever it is, a starred row's in the list), and each line with a departure (or the
  * list's status row for one with an alert and none) from a stop within the walking reach ([NEARBY_METERS], the list's eager radius). A tap opens the same lines
  * page as a trip's ([TripLinesPage]).
  */
 object HomeLines {
     /**
-     * The networks the row can always cover, whatever's near (maintainer, 2026-10-05: a modes setting,
-     * the tube on by default): each with its lines, by TfL id and name, in TfL's order. [key] is how a
+     * The networks the row can always cover, whatever's near (maintainer, 2026-10-05: a modes setting;
+     * none on by default since 2026-10-06): each with its lines, by TfL id and name, in TfL's order. [key] is how a
      * choice is stored.
      */
     enum class Network(val key: String, val lines: List<LineRef>) {
@@ -59,11 +63,12 @@ object HomeLines {
     }
 
     /**
-     * What the row covers until the rider chooses: every network (maintainer, 2026-10-05). Their 20 line ids
-     * ride the list's own line-status request, so this costs no request of its own unless the nearby
-     * lines push it past one batch ([app.stopdash.domain.LineStatusBatch]).
+     * What the row covers until the rider chooses: no network (maintainer, 2026-10-06), so the row is the
+     * rider's own lines (near them, and their favorites'), a whole network only by choice. A chosen
+     * network's line ids ride the list's own line-status request, so it costs no request of its own unless
+     * the nearby lines push it past one batch ([app.stopdash.domain.LineStatusBatch]).
      */
-    val DEFAULT_NETWORKS: Set<String> = Network.entries.mapTo(LinkedHashSet()) { it.key }
+    val DEFAULT_NETWORKS: Set<String> = emptySet()
 
     /** The tube's lines. */
     val TUBE: List<LineRef> = Network.TUBE.lines
@@ -73,6 +78,14 @@ object HomeLines {
     /** Every line of the [networks] (by key), in the row's order. Walks every network: on a worker only. */
     @WorkerThread
     fun linesOf(networks: Set<String>): List<LineRef> = Network.of(networks).flatMap { it.lines }
+
+    /**
+     * The favorite [journeys]' line ids as they change, for the screen to ask about a journey just starred at
+     * once (Codex, #640): walked on [compute], never the collector's thread, which can be the main one
+     * (AGENTS.md *Main thread: read and dispatch only*). An unreadable store (null) reads as none.
+     */
+    fun journeyLineIds(journeys: Flow<List<FavoriteJourney>?>, compute: CoroutineDispatcher): Flow<Set<String>> =
+        journeys.map { list -> list.orEmpty().mapNotNullTo(HashSet()) { it.lineId.takeIf(String::isNotBlank) } }.flowOn(compute)
 
     /** Their ids, for the list's status request to ask about. On a worker only. */
     @WorkerThread
@@ -128,7 +141,6 @@ object HomeLines {
         val alwaysLines = linesOf(networks)
         val refs = LinkedHashMap<String, LineRef>()
         alwaysLines.forEach { refs[it.id] = it }
-        val alwaysIds = alwaysLines.mapTo(HashSet()) { it.id }
         val near = loaded?.stops.orEmpty().filter { stop ->
             distances.isEmpty() || distances[stop.stopId]?.let { it <= NEARBY_METERS } == true
         }
@@ -151,6 +163,28 @@ object HomeLines {
                 }
             }
         }
+        // The rider's favorites' lines (maintainer, 2026-10-06: the row is about the rider's own lines, the
+        // networks only by choice). A journey's, wherever its stop is: named as a fetched stop declares it or
+        // shows it leaving, else as the journey stored it, and asked about with the always-covered lines so one
+        // no fetched stop vouches for is judged too (Codex, #640). A starred row's while its stop is in the list,
+        // judged by the list's own check: a star stores no line name or mode to show it by otherwise, and ranks
+        // only within the list anyway (Codex, #640).
+        // A star is at one stop: its line counts there, not at another fetched stop the line also serves (Codex, #640).
+        val starredAt = starred.mapTo(HashSet()) { it.stopId to it.lineId }
+        // The starred lines whose own stop is in the list: those alone rank as the rider's own.
+        val starredHere = HashSet<String>()
+        for (stop in loaded?.stops.orEmpty()) {
+            fun wanted(id: String): Boolean {
+                if (id.isBlank()) return false
+                val star = (stop.stopId to id) in starredAt
+                if (star) starredHere += id
+                return star || id in journeyLines
+            }
+            stop.departures.forEach { if (wanted(it.lineId)) refs.putIfAbsent(it.lineId, LineRef(it.lineId, it.lineName, it.mode)) }
+            stop.lines.forEach { if (wanted(it.id)) refs.putIfAbsent(it.id, it) }
+        }
+        journeys.forEach { if (it.lineId.isNotBlank()) refs.putIfAbsent(it.lineId, it.line) }
+        val alwaysIds = alwaysLines.mapTo(HashSet()) { it.id }.apply { journeys.forEach { if (it.lineId.isNotBlank()) add(it.lineId) } }
         // Each line's stop nearest the rider within reach, which its map keeps on the page.
         val nearest = NearestByLine.merged(loaded?.stops.orEmpty(), nearestStops, distances)
         val listChecked = loaded?.determinedLineIds.orEmpty()
@@ -203,7 +237,7 @@ object HomeLines {
             .let { ways -> ways.isNotEmpty() && ways.all { DismissedAlert.ofLineStatus(it) in dismissed } }
         // The lines that matter most to the rider: near them, or a favorite's.
         val mine = HashSet<String>(nearby)
-        starred.forEach { mine += it.lineId }
+        mine += starredHere
         mine += journeyLines
         val every = refs.values.map { ref ->
             val id = ref.id

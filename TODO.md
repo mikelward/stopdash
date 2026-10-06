@@ -2560,7 +2560,7 @@ Builds on Phase 1's minimal line-status marking.
       line, and every line with a departure from a stop within the walking reach (500 m), under the
       favorite places' chips; "+N" for what doesn't fit, a tap opening the lines page (`HomeLines`, `HomeDisruptionsRow`).
   - [x] **Choose the networks the row always covers** (maintainer, 2026-10-05): "Always include" in
-        Settings: Tube, Overground, Elizabeth line, DLR and Tram, all on by default; nearby lines always.
+        Settings: Tube, Overground, Elizabeth line, DLR and Tram (all on by default until 2026-10-06, now none); nearby lines always.
   - [x] **A switch to turn the row off**: "Disruptions summary", second in Settings (maintainer,
         2026-10-05: narrower than "Show disruptions").
   - [x] **What's dismissed stays off the row and goes down the page** (maintainer, 2026-10-05): off the
@@ -2574,8 +2574,13 @@ Builds on Phase 1's minimal line-status marking.
         the right of the title row; consider a top-left up arrow as the rest of the app has, and the
         options: whether every Settings page follows, how it sits beside the overflow menu, and whether
         up and Back ever differ (a page opened from the lines page going up to Settings).
-  - [ ] **Let the rider choose what the row covers** (maintainer, 2026-10-05): a list of lines,
-        favorite routes, or favorite trips? And how to rank and collapse it when many are disrupted.
+  - [x] **The row is the rider's own lines** (maintainer, 2026-10-06): no network by default; their
+        favorite journeys' lines covered wherever their stop is, starred rows' while in the list.
+  - [ ] **Pick individual lines too** (maintainer, 2026-10-06), alongside the network chips: grouped by
+        network, each line a toggle with an "All" per group, and a hint to add favorite places instead.
+  - [ ] **Cover the lines near favorite places** (maintainer, 2026-10-06): resolve each place's stops
+        within walking reach once on save (and now and then after), their lines joining the rider's own;
+        maybe their stations' closures too.
   - [ ] **Name the walking reach's closed stops on the row**, as a trip's row names its closed stops.
   - [x] **Fold the list's "couldn't check for disruptions" banner into the row** (maintainer,
         2026-10-05): where the row shows, its "Unknown" says what the banner did, naming what it can.

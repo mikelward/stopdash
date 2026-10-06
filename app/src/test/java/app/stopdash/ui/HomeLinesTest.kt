@@ -8,6 +8,9 @@ import app.stopdash.domain.LineStatus
 import app.stopdash.domain.StopArrivals
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.toList
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -53,25 +56,34 @@ class HomeLinesTest {
         val loaded = DeparturesUiState.Loaded(
             listOf(stop("near", "73" to "bus")), now, lineStatuses = mapOf("73" to severe), determinedLineIds = setOf("73"),
         )
-        val row = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to central)), emptySet(), now)
+        val row = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to central)), emptySet(), now, networks = setOf("tube"))
         assertEquals(listOf("73", "central"), row.lines.map { it.lineId })
         assertEquals(listOf("73", "central"), row.every.take(2).map { it.leg.lineId })
         // A worse one far away: still after the near one on the pills, but first on the page.
         val suspended = LineStatus("central", 16, "Suspended")
-        val worse = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to suspended)), emptySet(), now)
+        val worse = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to suspended)), emptySet(), now, networks = setOf("tube"))
         assertEquals(listOf("73", "central"), worse.lines.map { it.lineId })
         assertEquals(listOf("central", "73"), worse.every.take(2).map { it.leg.lineId })
-        // A favorite's line counts as the rider's own, far away or not.
+        // A starred row's line counts as the rider's own while its stop is in the list, far away or not.
         val victoria = LineStatus("victoria", 20, "Service Closed")
-        val starred = setOf(app.stopdash.domain.StarredRow("elsewhere", "central", "outbound"))
-        val fav = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to central) + ("victoria" to victoria)), emptySet(), now, starred = starred)
+        val withFar = DeparturesUiState.Loaded(
+            listOf(stop("near", "73" to "bus"), stop("far", "central" to "tube")), now,
+            lineStatuses = mapOf("73" to severe, "central" to central), determinedLineIds = setOf("73", "central"),
+        )
+        val starred = setOf(app.stopdash.domain.StarredRow("far", "central", "outbound"))
+        val fav = HomeLines.row(withFar, mapOf("near" to 50.0, "far" to 2000.0), tube(good + ("central" to central) + ("victoria" to victoria)), emptySet(), now, networks = setOf("tube"), starred = starred)
         // Both the rider's own (as bad as each other, in the row's order), then the closed one.
         assertEquals(listOf("central", "73", "victoria"), fav.lines.map { it.lineId })
+        // A star whose stop has left the list ranks nothing: its line goes with the network's (Codex, #640).
+        val goneStar = setOf(app.stopdash.domain.StarredRow("elsewhere", "central", "outbound"))
+        val left = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to central) + ("victoria" to victoria)), emptySet(), now, networks = setOf("tube"), starred = goneStar)
+        assertEquals("73", left.lines.first().lineId)
+        assertEquals(setOf("73", "central", "victoria"), left.lines.mapTo(HashSet()) { it.lineId })
         // So does any line a favorite journey rides, not only the one it was starred from.
-        val ridden = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to central) + ("victoria" to victoria)), emptySet(), now, journeyLines = setOf("central"))
+        val ridden = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to central) + ("victoria" to victoria)), emptySet(), now, networks = setOf("tube"), journeyLines = setOf("central"))
         assertEquals(listOf("central", "73", "victoria"), ridden.lines.map { it.lineId })
         // A dismissed one is never a pill, however near.
-        val gone = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to central)), setOf(DismissedAlert.ofLineStatus(severe)), now)
+        val gone = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to central)), setOf(DismissedAlert.ofLineStatus(severe)), now, networks = setOf("tube"))
         assertEquals(listOf("central"), gone.lines.map { it.lineId })
     }
 
@@ -84,7 +96,7 @@ class HomeLinesTest {
             to = app.stopdash.domain.JourneyEnd("940GZZLUWLO", "Waterloo"),
             lineId = "northern",
         )
-        val row = HomeLines.row(null, emptyMap(), tube(good), emptySet(), now, starred = starred, journeys = listOf(journey))
+        val row = HomeLines.row(null, emptyMap(), tube(good), emptySet(), now, networks = setOf("tube"), starred = starred, journeys = listOf(journey))
         assertEquals(setOf("940GZZLUKSX", "940GZZLUBNK", "HUBBAN", "940GZZLUWLO"), row.starredStops)
     }
 
@@ -101,14 +113,14 @@ class HomeLinesTest {
             determinedLineIds = setOf("northern", "victoria", "jubilee"),
         )
         val distances = mapOf("940GZZLUKSX" to 300.0, "940GZZLUEUS" to 150.0, "940GZZLUWLO" to 2000.0)
-        val nearest = HomeLines.row(loaded, distances, tube(), emptySet(), now).every.associate { it.leg.lineId to it.nearby }
+        val nearest = HomeLines.row(loaded, distances, tube(), emptySet(), now, networks = setOf("tube")).every.associate { it.leg.lineId to it.nearby }
         assertEquals(setOf("940GZZLUEUS"), nearest["northern"])
         assertEquals(setOf("940GZZLUKSX"), nearest["victoria"])
         // Beyond the walking reach, or a line with no stop near: nothing kept.
         assertEquals(emptySet<String>(), nearest["jubilee"])
         assertEquals(emptySet<String>(), nearest["central"])
         // The watched list has no position to measure from.
-        assertTrue(HomeLines.row(loaded, emptyMap(), tube(), emptySet(), now).every.all { it.nearby.isEmpty() })
+        assertTrue(HomeLines.row(loaded, emptyMap(), tube(), emptySet(), now, networks = setOf("tube")).every.all { it.nearby.isEmpty() })
     }
 
     @Test
@@ -117,7 +129,7 @@ class HomeLinesTest {
         // Euston, nearer, in the tier not fetched yet; Waterloo beyond the walking reach.
         val distances = mapOf("940GZZLUKSX" to 300.0, "940GZZLUEUS" to 150.0, "940GZZLUWLO" to 2000.0)
         val stops = mapOf("victoria" to "940GZZLUEUS", "northern" to "940GZZLUEUS", "jubilee" to "940GZZLUWLO")
-        val nearest = HomeLines.row(loaded, distances, tube(), emptySet(), now, nearestStops = stops).every.associate { it.leg.lineId to it.nearby }
+        val nearest = HomeLines.row(loaded, distances, tube(), emptySet(), now, networks = setOf("tube"), nearestStops = stops).every.associate { it.leg.lineId to it.nearby }
         assertEquals(setOf("940GZZLUEUS"), nearest["victoria"])
         assertEquals(setOf("940GZZLUEUS"), nearest["northern"])
         assertEquals(emptySet<String>(), nearest["jubilee"])
@@ -322,8 +334,95 @@ class HomeLinesTest {
     }
 
     @Test
-    fun `every network is covered until the rider chooses`() {
-        assertEquals(HomeLines.Network.entries.map { it.key }.toSet(), HomeLines.DEFAULT_NETWORKS)
+    fun `no network is covered until the rider chooses`() {
+        assertEquals(emptySet<String>(), HomeLines.DEFAULT_NETWORKS)
+    }
+
+    @Test
+    fun `a favorite's line is covered wherever its stop is, with no network chosen`() {
+        // A journey from a far station on the Victoria line, and a starred bus at another far stop, both
+        // fetched with the list (a journey's origin declares its line), nothing near.
+        val victoria = LineStatus("victoria", 6, "Severe Delays")
+        val loaded = DeparturesUiState.Loaded(
+            listOf(stop("origin", "victoria" to "tube"), stop("pole", "38" to "bus"), stop("other", "73" to "bus")),
+            now,
+            lineStatuses = mapOf("victoria" to victoria),
+            determinedLineIds = setOf("victoria", "38", "73"),
+        )
+        val journey = app.stopdash.domain.FavoriteJourney(
+            app.stopdash.domain.JourneyEnd("origin", "Origin"), app.stopdash.domain.JourneyEnd("end", "End"), "victoria", "Victoria", "tube",
+        )
+        val starred = setOf(app.stopdash.domain.StarredRow("pole", "38", "outbound"))
+        val far = mapOf("origin" to 3000.0, "pole" to 2000.0, "other" to 2500.0)
+        val row = HomeLines.row(loaded, far, null, emptySet(), now, starred = starred, journeyLines = setOf("victoria"), journeys = listOf(journey))
+        // The favorites' lines, checked by the list; never a line no favorite rides, nor a whole network.
+        assertEquals(setOf("victoria", "38"), row.every.mapTo(HashSet()) { it.leg.lineId })
+        assertEquals(listOf("victoria"), row.lines.map { it.lineId })
+        assertFalse(row.checking)
+        assertFalse(row.unknown)
+        // Before the list is in, the journey's line still shows, as checking.
+        val cold = HomeLines.row(null, emptyMap(), null, emptySet(), now, journeyLines = setOf("victoria"), journeys = listOf(journey))
+        assertEquals(listOf("victoria"), cold.every.map { it.leg.lineId })
+        assertTrue(cold.every.single().checking)
+    }
+
+    @Test
+    fun `a journey no fetched stop vouches for is judged by the always-covered check, a star only in the list`() {
+        // A far journey not yet revealed (so not fetched): checking until its check is in, then judged by it,
+        // never "Unknown". A starred row whose stop has left the list stays off the row: a star stores no line
+        // name or mode, and ranks only within the list (Codex, #640).
+        val loaded = DeparturesUiState.Loaded(listOf(stop("near", "73" to "bus")), now, determinedLineIds = setOf("73"))
+        val starred = setOf(app.stopdash.domain.StarredRow("gone", "38", "outbound"))
+        val journey = app.stopdash.domain.FavoriteJourney(
+            app.stopdash.domain.JourneyEnd("far", "Far"), app.stopdash.domain.JourneyEnd("end", "End"), "elizabeth", "Elizabeth line", "elizabeth-line",
+        )
+        val near = mapOf("near" to 50.0)
+        val waiting = HomeLines.row(loaded, near, null, emptySet(), now, starred = starred, journeyLines = setOf("elizabeth"), journeys = listOf(journey))
+        assertEquals(setOf("73", "elizabeth"), waiting.every.mapTo(HashSet()) { it.leg.lineId })
+        assertTrue(row(waiting, "elizabeth").checking)
+        assertFalse(waiting.unknown)
+        val part = LineStatus("elizabeth", 3, "Part Suspended")
+        val judged = HomeLines.row(loaded, near, HomeLines.Always(mapOf("elizabeth" to part), now), emptySet(), now, starred = starred, journeyLines = setOf("elizabeth"), journeys = listOf(journey))
+        assertEquals(listOf("elizabeth"), judged.lines.map { it.lineId })
+        assertFalse(judged.checking)
+        assertFalse(judged.unknown)
+    }
+
+    @Test
+    fun `a star counts at its own stop, not at another fetched stop the line serves`() {
+        // The 38 starred at a stop gone from the list; another far stop, fetched, also serves it: that stop
+        // doesn't stand in for the star (Codex, #640). Starred at the fetched stop, it does.
+        val loaded = DeparturesUiState.Loaded(listOf(stop("other", "38" to "bus")), now, determinedLineIds = setOf("38"))
+        val far = mapOf("other" to 2000.0)
+        val elsewhere = HomeLines.row(loaded, far, null, emptySet(), now, starred = setOf(app.stopdash.domain.StarredRow("gone", "38", "outbound")))
+        assertTrue(elsewhere.every.none { it.leg.lineId == "38" })
+        val here = HomeLines.row(loaded, far, null, emptySet(), now, starred = setOf(app.stopdash.domain.StarredRow("other", "38", "outbound")))
+        assertEquals(listOf("38"), here.every.map { it.leg.lineId })
+    }
+
+    @Test
+    fun `the journeys' lines are walked on the worker, never the collector's thread`() {
+        // AGENTS.md *Main thread*: the screen collects this from a LaunchedEffect; the walk over every saved
+        // journey runs on the worker (Codex, #640). The list notes the thread each journey is read on.
+        val journey = app.stopdash.domain.FavoriteJourney(
+            app.stopdash.domain.JourneyEnd("a", "A"), app.stopdash.domain.JourneyEnd("b", "B"), "elizabeth", "Elizabeth line", "elizabeth-line",
+        )
+        val readOn = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val journeys = object : AbstractList<app.stopdash.domain.FavoriteJourney>() {
+            override val size get() = 2
+            override fun get(index: Int) = journey.also { readOn += Thread.currentThread().name }
+        }
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }
+        try {
+            val ids = kotlinx.coroutines.runBlocking {
+                HomeLines.journeyLineIds(flowOf(journeys, null), executor.asCoroutineDispatcher()).toList()
+            }
+            assertEquals(listOf(setOf("elizabeth"), emptySet()), ids)
+            assertTrue(readOn.isNotEmpty())
+            assertTrue(readOn.all { it.startsWith("worker") })
+        } finally {
+            executor.shutdown()
+        }
     }
 
     @Test
