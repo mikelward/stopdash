@@ -264,7 +264,9 @@ class StopDashWidget : GlanceAppWidget() {
         }
         // The bundled branch topology (shared, cached instance), so the widget merges/labels a
         // branching row exactly as the in-app card does.
-        val topology = RouteTopologyStore.load(context)
+        // On the IO dispatcher: Glance draws on the main thread, and the first load reads the asset and
+        // the kept patterns from disk (maintainer bug report, 2026-10-05).
+        val topology = withContext(Dispatchers.IO) { RouteTopologyStore.load(context) }
         // The line budget comes from each size's height and the system font scale, so the rows
         // never run past the cell's bottom edge. The model for every size the launcher reports is
         // worked out here, on a worker, before composing: building one walks every stop's rows

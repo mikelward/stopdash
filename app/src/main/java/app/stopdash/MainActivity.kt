@@ -67,6 +67,8 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.work.WorkManager
 import app.stopdash.data.AndroidLocationProvider
+import app.stopdash.data.AppDirs
+import app.stopdash.data.PrecisePrompted
 import app.stopdash.data.AvoidedLinesSetting
 import app.stopdash.data.DataStoreAlertsBehindStore
 import app.stopdash.data.DataStoreAppSettings
@@ -532,7 +534,8 @@ class MainActivity : ComponentActivity() {
                 ) { grants ->
                     // The precise request has now been shown, whichever way it was answered —
                     // so an upgraded coarse-only user isn't prompted again on every open.
-                    markPrecisePrompted()
+                    // In the process's scope, so the activity going (a rotation) can't cancel the write.
+                    ((application as? StopdashApp)?.applicationScope ?: lifecycleScope).launch { precisePrompted.mark() }
                     UsageEvents.log(
                         UsageEvent.LocationPermission(
                             UsageEvent.Grant.of(
@@ -611,7 +614,7 @@ class MainActivity : ComponentActivity() {
                                 nearbyPermissionAction(
                                     hasFine = hasFineLocation(),
                                     hasAnyLocation = hasLocationPermission(),
-                                    precisePrompted = precisePrompted(),
+                                    precisePrompted = precisePrompted.get(),
                                 )
                             ) {
                                 NearbyPermissionAction.LOCATE -> nearbyViewModel.locate()
@@ -3328,15 +3331,7 @@ class MainActivity : ComponentActivity() {
     // precise exactly once — adding FINE to the manifest does not upgrade a live coarse grant,
     // so without this such a user would silently keep the inaccurate coarse behavior (Codex).
     // A completed approximate choice sets it too, so the user isn't nagged every open.
-    private val locationPrefs by lazy {
-        getSharedPreferences("stopdash.location", MODE_PRIVATE)
-    }
-
-    private fun precisePrompted(): Boolean = locationPrefs.getBoolean(KEY_PRECISE_PROMPTED, false)
-
-    private fun markPrecisePrompted() {
-        locationPrefs.edit().putBoolean(KEY_PRECISE_PROMPTED, true).apply()
-    }
+    private val precisePrompted get() = PrecisePrompted.of(this)
 
     /** Opens this app's system settings so the user can grant a permanently-denied permission. */
     private fun openAppSettings() {
@@ -3356,7 +3351,6 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.ACCESS_COARSE_LOCATION,
         )
 
-        private const val KEY_PRECISE_PROMPTED = "precise_prompted"
 
         // The Play listing, Play-app scheme first then the web fallback; the applicationId is
         // appended at open time (see [openPlayListing]).
@@ -3460,7 +3454,7 @@ class MainActivity : ComponentActivity() {
         internal fun activeTrip(context: Context): ActiveTripTracker = synchronized(activeTripLock) {
             activeTripInstance ?: run {
                 val planner = journeyPlanner(context)
-                val store = FileActiveTripStore(File(context.applicationContext.noBackupFilesDir, "active-trip.json"), ::logDepartureWarning)
+                val store = FileActiveTripStore(File(AppDirs.noBackup(context), "active-trip.json"), ::logDepartureWarning)
                 ActiveTripTracker(
                     // A walk's first distance from the fix the app took lately, before one on the walk.
                     remembered = { AndroidLocationProvider.rememberedPreciseFix(context.applicationContext) },
@@ -3612,7 +3606,7 @@ class MainActivity : ComponentActivity() {
                     keyAnswered = RejectedApiKey.SHARED::record,
                 ),
                 warn = ::logRouteStopsWarning,
-                store = FileRouteStopsStore(File(context.applicationContext.cacheDir, "route-stops.json"), ::logRouteStopsWarning),
+                store = FileRouteStopsStore(File(AppDirs.cache(context), "route-stops.json"), ::logRouteStopsWarning),
                 // Places a station departures are listed under by an id its line's route doesn't
                 // call at (St Pancras's Thameslink platforms), wherever that id comes from.
                 stations = { StationIndexStore.load(context.applicationContext).stations },
@@ -4150,7 +4144,7 @@ private val stationAreaStopsCache = NearbyStopsCache()
 
 private fun nearbyStopsCache(context: Context): NearbyStopsCache = synchronized(nearbyStopsCacheLock) {
     nearbyStopsCacheInstance ?: NearbyStopsCache(
-        FileNearbyStopsStore(File(context.applicationContext.cacheDir, "nearby-stops.json"), warn = ::logLocationWarning),
+        FileNearbyStopsStore(File(AppDirs.cache(context), "nearby-stops.json"), warn = ::logLocationWarning),
     ).also { nearbyStopsCacheInstance = it }
 }
 
@@ -4163,7 +4157,7 @@ private val recentSearchesLock = Any()
 private var recentSearchesInstance: RecentSearches? = null
 
 private fun recentSearches(context: Context): RecentSearches = synchronized(recentSearchesLock) {
-    recentSearchesInstance ?: RecentSearches(context.applicationContext.noBackupFilesDir, warn = ::logDepartureWarning)
+    recentSearchesInstance ?: RecentSearches(AppDirs.noBackup(context), warn = ::logDepartureWarning)
         .also { recentSearchesInstance = it }
 }
 
@@ -4181,7 +4175,7 @@ private val starredPlacesMutex = Mutex()
 
 private fun starredPlacesStore(context: Context): FileStarredPlacesStore = synchronized(starredPlacesLock) {
     starredPlacesInstance ?: FileStarredPlacesStore(
-        File(context.applicationContext.noBackupFilesDir, "starred-places.json"),
+        File(AppDirs.noBackup(context), "starred-places.json"),
         warn = ::logStarWarning,
     ).also { starredPlacesInstance = it }
 }

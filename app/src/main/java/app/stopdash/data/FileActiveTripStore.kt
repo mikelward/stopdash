@@ -106,6 +106,8 @@ internal class FileActiveTripStore(
         }
         try {
             val text = json.encodeToString(PersistedActiveTrip.of(trip))
+            // Its directory is named, not checked, when the store is built ([AppDirs]), so made here.
+            tmp.parentFile?.mkdirs()
             tmp.writeText(text)
             // Replace in one step, so a reader never sees a half-written file; failing that, in
             // place (a torn write loads as no trip).
@@ -145,6 +147,8 @@ internal class FileActiveTripStore(
         val marked = try {
             // Written aside and renamed in, so dying mid-write can't leave an empty mark, which
             // reads as cleared.
+            // Its directory is named, not checked, when the store is built ([AppDirs]), so made here.
+            endedAside.parentFile?.mkdirs()
             endedAside.writeText(ENDED)
             // Failing the rename, the whole mark stands where it was written ([stagedEnd]): rewriting
             // it in place could leave it empty if the app died mid-write.

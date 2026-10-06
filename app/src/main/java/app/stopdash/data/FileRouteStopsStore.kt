@@ -67,6 +67,8 @@ internal class FileRouteStopsStore(
                     RouteCacheAreaPoles(areaId, entry.at.toString(), entry.value.map { it.toPersisted() })
                 },
             )
+            // Its directory is named, not checked, when the store is built ([AppDirs]), so made here.
+            tmp.parentFile?.mkdirs()
             tmp.writeText(json.encodeToString(persisted))
             // Replace in one step, so a reader never sees a half-written file.
             if (!tmp.renameTo(file)) warn("route cache not saved: rename failed")
