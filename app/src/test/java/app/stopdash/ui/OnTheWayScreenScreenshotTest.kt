@@ -684,11 +684,17 @@ class OnTheWayScreenScreenshotTest {
     }
 
     @Test
-    fun on_the_way_next_trains_too_old_say_updating() {
+    fun on_the_way_next_trains_too_old_keep_their_rows_as_marked_guesses() {
         val walking = trip.copy(legIndex = 1)
-        show(walking, TripProgress.Walking(walk, at(24)), nextTrains = NextTrains(jubilee, listOf(jubileeTrain("Stanmore", 21)), stale = true).withGroups(now))
-        composeRule.onNodeWithText("Updating…").assertIsDisplayed()
+        // Read ten minutes ago: the rows stay, each line's soonest a dimmed, marked guess as the boards
+        // draw an old one (D4), under "Checking…", never a live countdown (maintainer, 2026-10-06).
+        val old = NextTrains(jubilee, listOf(jubileeTrain("Stanmore", 21)), stale = true, fetchedAt = now.minusSeconds(600)).withGroups(now)
+        show(walking, TripProgress.Walking(walk, at(24)), nextTrains = old)
+        composeRule.onNodeWithText("Checking…").assertIsDisplayed()
+        composeRule.onNodeWithText("Updating…").assertDoesNotExist()
+        composeRule.onNodeWithText("Stanmore", substring = true).assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithText("21 min").fetchSemanticsNodes().isEmpty())
+        captureSnapshot("on-the-way-next-trains-stale.png")
     }
 
     @Test
