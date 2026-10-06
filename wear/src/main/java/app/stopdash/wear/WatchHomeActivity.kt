@@ -1,8 +1,13 @@
 package app.stopdash.wear
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.SystemClock
+import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -17,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -27,8 +33,26 @@ import kotlinx.coroutines.launch
  */
 class WatchHomeActivity : ComponentActivity() {
     private companion object {
+        const val TAG = "StopDash.Watch"
+        const val ASKED_NOTIFICATIONS = "asked_notifications"
+
         // How often the trip's minutes and age are worked out again while it's shown.
         val TRIP_TICK: Duration = Duration.ofSeconds(15)
+    }
+
+    private var askedNotifications = false
+
+    // Counts taps on the trip's ongoing activity that reached the app already open ([onNewIntent]).
+    private val openTrip = MutableStateFlow(0)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.getBooleanExtra(WatchTripOngoing.EXTRA_OPEN_TRIP, false)) openTrip.value++
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(ASKED_NOTIFICATIONS, askedNotifications)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -62,8 +86,34 @@ class WatchHomeActivity : ComponentActivity() {
                 // phone's latest item, so an update the listener couldn't read is picked up.
                 WatchRefresh.request(this@WatchHomeActivity)
                 // The trip on the way, which may have arrived before this process started.
-                launch { WatchTripState.lookUpRetrying(this@WatchHomeActivity) }
+                launch {
+                    WatchTripState.lookUpRetrying(this@WatchHomeActivity)
+                    // One read back by a new process gets its ongoing activity too.
+                    WatchTripOngoing.update(this@WatchHomeActivity)
+                }
                 WatchSurfaces.lookUpRetrying(this@WatchHomeActivity, store)
+            }
+        }
+        // The trip's ongoing activity needs notifications: asked for while the app is in front with a
+        // trip on screen, so the reason is in view, and once per open, kept across recreation (the
+        // dialog itself pauses and resumes the app; the system stops asking after two refusals).
+        // A held trip past its time isn't shown, so it doesn't ask.
+        askedNotifications = savedInstanceState?.getBoolean(ASKED_NOTIFICATIONS) ?: false
+        val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                lifecycleScope.launch(Dispatchers.IO) { WatchTripOngoing.update(this@WatchHomeActivity) }
+            } else {
+                Log.i(TAG, "notifications refused: no trip ongoing activity")
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                WatchTripState.trip.first { WatchTripState.shown(it, Instant.now(), SystemClock.elapsedRealtime()) != null }
+                if (askedNotifications) return@repeatOnLifecycle
+                askedNotifications = true
+                if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
             }
         }
         setContent {
@@ -97,7 +147,8 @@ class WatchHomeActivity : ComponentActivity() {
                 }
             }
             val (now, elapsedNow) = clock
-            WatchHomeScreen(shown, notice?.kind, { WatchRefresh.request(this@WatchHomeActivity) }, WatchTripState.shown(trip, now, elapsedNow), now)
+            val opened by openTrip.collectAsStateWithLifecycle()
+            WatchHomeScreen(shown, notice?.kind, { WatchRefresh.request(this@WatchHomeActivity) }, WatchTripState.shown(trip, now, elapsedNow), now, opened)
         }
     }
 }

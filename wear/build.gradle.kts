@@ -167,6 +167,12 @@ dependencies {
     implementation(libs.androidx.wear.tiles)
     implementation(libs.androidx.wear.protolayout)
     implementation(libs.androidx.wear.complications.data.source)
+    implementation(libs.androidx.wear.ongoing)
+    constraints {
+        // The complications library brings Fragment 1.1.0 (through preference), which mishandles the
+        // permission request the trip's ongoing activity makes (lint's InvalidFragmentVersionForActivityResult).
+        implementation(libs.androidx.fragment)
+    }
     implementation(libs.androidx.concurrent.futures)
     implementation(libs.play.services.wearable)
     implementation(libs.kotlinx.coroutines.play.services)

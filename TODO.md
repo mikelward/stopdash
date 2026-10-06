@@ -3308,6 +3308,11 @@ and these carry the rest as their own PRs:
     - [ ] **Device check:** a trip followed on the phone shows on the watch, pages, counts down,
           and goes when the trip ends; out of date once the phone stops updating it.
     - [ ] (Later) A trip followed only by the open app (the service refused) isn't sent.
+    - [x] **An ongoing activity on the watch** (maintainer, 2026-10-06): the watch posts its own
+          silent ongoing notification as a Wear OS ongoing activity while it shows a trip, one tap
+          from the trip; the phone's channel stays quiet.
+      - [ ] **Device check:** the icon on a watch face and in the launcher, a tap opening the trip,
+            the permission prompt, and the activity going when the trip ends or the phone stops.
 
 ## Beyond MVP (not planned)
 

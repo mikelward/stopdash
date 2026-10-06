@@ -463,14 +463,27 @@ it before committing to the design.
   to the rider's. The watch app holds it in memory, and one started later reads the item back. The
   Data Layer keeps the item until the phone sends or removes the next one, so one left by a phone
   app that stopped without ending its trip outlasts the 15 minutes it's shown for.
+- **An ongoing activity on the watch** (maintainer, 2026-10-06): the phone's ongoing notification
+  doesn't reach the watch (it isn't bridged), and a louder channel buzzing the phone to get there would
+  undo its point, so the watch posts its own from the trip it holds: a silent, watch-only ongoing
+  notification wrapped as a Wear OS `OngoingActivity` (`WatchTripOngoing`). The system shows it as
+  an icon on watch faces that support one and at the top of the launcher; a tap opens the watch app
+  on the trip. It says only the rider's step in the phone's words, never a countdown, since it isn't
+  redrawn between updates. Each update from the phone posts it again, pushing back its timeout to
+  where the trip would read out of date (two minutes, *Staleness* below): it can't mark itself out
+  of date as the app does, so it stands only while the trip is current, and the trip's removal
+  takes it off sooner. A setting of the watch's clock works it out again (`ClockChangeReceiver`). It needs the watch's notification permission, asked for when the watch app
+  first shows a trip; refused, the
+  watch app still shows the trip. The watch never opens the trip by itself: that needs a
+  full-screen intent, and would take over the watch face uninvited.
 - **Staleness:** out of date two minutes after the phone stamped it, when stamped ahead of the
   watch's clock, or after two minutes held without an update; not shown after fifteen held without
   one. Time held is measured by each device's monotonic clock (as is the phone's heartbeat), so no
   clock change holds either back, and a trip the phone stopped following without deleting it (the
   process died) doesn't linger as current.
 - **Battery:** at most one write per 30 seconds while a trip is followed and a watch has the app,
-  each a few hundred bytes, and at least one a minute; the watch app re-renders the trip every 15
-  seconds while open. Measure on a watch with the rest.
+  each a few hundred bytes, and at least one a minute, each also re-posting the ongoing activity
+  (no wakeup of its own); the watch app re-renders the trip every 15 seconds while open. Measure on a watch with the rest.
 
 ## Privacy and Play Data Safety
 

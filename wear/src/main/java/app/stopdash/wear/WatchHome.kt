@@ -68,19 +68,21 @@ fun WatchHomeScreen(
     // The trip on the way, first when there is one ([TripSection]).
     trip: ShownTrip? = null,
     now: Instant = Instant.now(),
+    // Bumped each time the trip's ongoing activity opens the app: back to the trip, at the rider's step.
+    openTrip: Int = 0,
 ) {
     MaterialTheme {
         val background = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
         // The trip's page ([tripItems]): back at the rider's own step with each step the phone sends,
         // and with another trip (started at another time), whatever its current step.
         // Keyed in constant time ([ShownTrip.stepsKey]): this runs on the main thread every tick.
-        var page by remember(trip?.trip?.startedAt, trip?.trip?.current, trip?.stepsKey) { mutableIntStateOf(trip?.trip?.current ?: 0) }
+        var page by remember(trip?.trip?.startedAt, trip?.trip?.current, trip?.stepsKey, openTrip) { mutableIntStateOf(trip?.trip?.current ?: 0) }
         // With a trip, the list opens at its top, the trip first, rather than centered on its second item.
         val list = rememberScalingLazyListState(initialCenterItemIndex = if (trip != null) 0 else 1)
         // A trip that arrives with the screen open goes above where the list stands, and so does the
         // step paged to (from the pager below it) or sent by the phone: bring it into view.
         val hasTrip = trip != null
-        LaunchedEffect(hasTrip, trip?.trip?.startedAt, trip?.trip?.current, page) { if (hasTrip) list.scrollToItem(0) }
+        LaunchedEffect(hasTrip, trip?.trip?.startedAt, trip?.trip?.current, page, openTrip) { if (hasTrip) list.scrollToItem(0) }
         when {
             frame is TileFrame.Rows -> ScalingLazyColumn(modifier = background, state = list, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (trip != null) tripItems(trip, now, page) { page = it }
