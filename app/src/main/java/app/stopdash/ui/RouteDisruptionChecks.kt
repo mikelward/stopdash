@@ -155,8 +155,8 @@ internal class RouteDisruptionChecks(
                 when (signal) {
                     is RouteDisruption.Signal.Line -> statuses?.at
                     is RouteDisruption.Signal.Stop -> checked.at[signal.stopId]
-                    // A change's board is the tracker's to read, never this check's.
-                    is RouteDisruption.Signal.Unpredicted -> null
+                    // A change's board is the tracker's to read, never this check's, as is a branch it took.
+                    is RouteDisruption.Signal.Unpredicted, is RouteDisruption.Signal.NoneDirect -> null
                 }
             }
             val stale = stamps.minOrNull()?.let(::staleAt)
@@ -175,7 +175,7 @@ internal class RouteDisruptionChecks(
                         checked.at[signal.stopId]?.let(::staleAt),
                         current[signal.stopId].orEmpty().filter { it.isActiveAt(at) }.mapNotNull { it.validTo }.minOrNull(),
                     ).minOrNull()
-                    is RouteDisruption.Signal.Unpredicted -> null
+                    is RouteDisruption.Signal.Unpredicted, is RouteDisruption.Signal.NoneDirect -> null
                 }?.let { signal.key to it }
             }.toMap()
             RouteDisruption.Found(signals, listOfNotNull(stale, ends.minOrNull()).minOrNull(), stands, notes, notesUntil)

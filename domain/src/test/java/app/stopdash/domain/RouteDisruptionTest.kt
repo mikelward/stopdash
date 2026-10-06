@@ -938,4 +938,23 @@ class RouteDisruptionTest {
         // The same alert keys the same however many others are under way.
         assertEquals(signals.first().key, Signal.Line(0, "99", "99", LineStatus("99", 6, "Diversion", beta, soleAlert = true), RouteDisruption.Tier.MEDIUM).key)
     }
+
+    @Test
+    fun `a branch the trip took by itself is heard until the rider is past the ride to its fork, never as a card`() {
+        // The ride cut to C, where the branch turns off, for the plan's E (maintainer, 2026-10-06).
+        val taken = trip.copy(branchTakenLeg = 0, branchTakenTo = "E", branchTakenFork = "C")
+        val none = RouteDisruption.noneDirect(taken, waiting)
+        assertEquals(Signal.NoneDirect(0, "red", "Red", "E", "C"), none)
+        assertEquals(Tier.MEDIUM, none?.tier)
+        // Keyed by its leg as every heard key is, which a split shifts ([OffPlan.take]).
+        assertEquals("nonedirect/0/red/E/C", none?.key)
+        // Riding to the fork, still; past that ride, or arrived, or with none taken, not.
+        assertEquals(none, RouteDisruption.noneDirect(taken, riding))
+        assertNull(RouteDisruption.noneDirect(taken.copy(legIndex = 1), TripProgress.Walking(walk, at(20))))
+        assertNull(RouteDisruption.noneDirect(taken, TripProgress.Arrived))
+        assertNull(RouteDisruption.noneDirect(trip, waiting))
+        // Said under the trip's step, so no card says it again.
+        val line = Signal.Line(2, "blue", "Blue", status("blue", 3, "Part Suspended"), Tier.MEDIUM)
+        assertEquals(listOf(line), RouteDisruption.cards(listOf(none!!, line)))
+    }
 }

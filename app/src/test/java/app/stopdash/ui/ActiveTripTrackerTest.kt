@@ -4357,6 +4357,15 @@ class ActiveTripTrackerTest {
         assertTrue(logged.any { "took the branch" in it })
         // Said on the trip's screen until the rider is past the ride to B, kept with the trip for a restart (Codex, #630).
         assertEquals(Triple(0, "C", "B"), Triple(taken.branchTakenLeg, taken.branchTakenTo, taken.branchTakenFork))
+        // And sounded, as the unexpected is (maintainer, 2026-10-06): once, through "route disruption".
+        assertEquals(listOf("new nonedirect/0/red/C/B"), disruptionAlerts.filter { it != "done" })
+        tracker.refresh()
+        assertEquals("keep nonedirect/0/red/C/B", disruptionAlerts.last())
+        assertEquals(1, disruptionAlerts.count { it.startsWith("new") })
+        // Not a card, so not Keep going's to let go of (Codex, #633).
+        tracker.dismissDisruptions(checkNotNull(tracker.routeDisruptions.value).signals)
+        assertEquals(emptySet<String>(), tracker.trip.value?.disruptionsDismissed)
+        assertEquals(listOf("nonedirect/0/red/C/B"), tracker.routeDisruptions.value?.signals?.map { it.key })
         // A reroute that can't be kept moves nothing, the board shown with it (Codex, #630).
         assertTrue(tracker.end())
         tracker.start(route, "C", readyAt = now)

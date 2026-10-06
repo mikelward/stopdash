@@ -1890,7 +1890,10 @@ them there:
   own stretch**; a stop still to reach that a notice in force says is closed or moved) and **medium**
   ones (severe delays; a part suspension or part closure placed elsewhere on the line, or not placed
   yet; and **no train predicted at a change** the rider is **five minutes** or less from boarding at,
-  "Jubilee: none soon at Bond Street"). Minor delays and the like never alert. A **bus** line's alert
+  "Jubilee: none soon at Bond Street"), and **the trip taking a branch by itself** because none of the
+  plan's trains is listed (*Branches off the plan*; maintainer, 2026-10-06: the unexpected is said),
+  "None direct to Morden · Change at Kennington", heard once and kept up until the rider is past the
+  ride to the change, said under the trip's step rather than as a card. Minor delays and the like never alert. A **bus** line's alert
   that names stops only off the rider's part of the route is left out, and the debug log says so
   (maintainer, 2026-10-01): TfL gives a bus diversion's stretch only as prose ("not serving stops
   between 'Bank Station' and 'Moorgate Station'"), read as the route page marks it, and a diversion at
@@ -2004,7 +2007,8 @@ them there:
   this one would: the ride becomes one to where it turns off and a change there, so the next board shows
   at the change. Only from a fresh board with every train checked, before a train is followed; at worst
   the change's board lists the train the rider is already on. The warning stays under the trip's card
-  until the rider is past that ride, kept with the trip through a restart, so the reroute doesn't hide why. They're read from the
+  until the rider is past that ride, kept with the trip through a restart, so the reroute doesn't hide why, and
+  sounds once as a *Route disruption*. They're read from the
   line's route, not TfL's live labels, so a branch shows even when TfL lists none of its trains or names
   them for the other branch, as it can; route patterns that run on alike past the fork are one row,
   named by a "via" past the fork, else by where it ends. **Other lines from the platform** are offered
