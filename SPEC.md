@@ -2963,7 +2963,10 @@ holding live-looking countdowns forever (D4) — and its header stamps the data 
 ("Updated 13:00"), not an age, since Android can defer that redraw and an age frozen at the last
 render would read as newer than the data is (maintainer bug report, 2026-10-05) — a single bounded wake per snapshot, not a
 polling cadence, and not a data refresh (fetching new data while the app isn't driving the
-widget stays deferred, D5). A setting of the device's clock redraws a placed widget at once too,
+widget stays deferred, D5). While the app is on screen, the widget is also redrawn from what's
+stored **where its countdowns change** (a train departing, a count going down), and at least once a
+minute, so they keep counting down (maintainer, 2026-10-06): a render only, with no fetch. While On the way follows a trip, the trip it shows is redrawn with each of the
+trip's updates, every 30 seconds. A setting of the device's clock redraws a placed widget at once too,
 since its countdowns and age are drawn against the clock as it read then (*Freshness*). The snapshot also records which of the stops it should show a
 refresh asked for but couldn't get, with nothing earlier to fall back on; while any is missing
 the widget says its stops are partly out of date, so a first refresh where one stop failed never

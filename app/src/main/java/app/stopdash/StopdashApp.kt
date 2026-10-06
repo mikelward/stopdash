@@ -1,6 +1,5 @@
 package app.stopdash
 
-import app.stopdash.widget.redrawWidgets
 import android.app.Application
 import android.content.Context
 import android.util.Log
@@ -32,7 +31,7 @@ import app.stopdash.telemetry.settleWhenConsentLoads
 import app.stopdash.telemetry.startTelemetry
 import app.stopdash.watch.WatchSync
 import app.stopdash.widget.WidgetDismissalRedraw
-import app.stopdash.widget.StopDashWidget
+import app.stopdash.widget.redrawWidgets
 import com.mikelward.androidlog.DebugLog
 import com.mikelward.androidlog.android.DebugFileSink
 import com.mikelward.androidlog.android.LogcatSink
