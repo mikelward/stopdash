@@ -2704,13 +2704,14 @@ class TripScreenScreenshotTest {
         // One a shown route gets off at: it can't vouch for that route, and names the stop.
         state.value = running.copy(closuresFailed = setOf(highbury.first))
         settleNote()
-        inRow(hasText("Unknown:")).assertExists()
-        inRow(hasText(highbury.second)).assertExists()
+        inRow("Unknown:").assertExists()
+        inRow(highbury.second).assertExists()
     }
 
-    // A node in the disruptions row over the routes.
-    private fun inRow(matcher: androidx.compose.ui.test.SemanticsMatcher) =
-        composeRule.onNode(matcher and hasAnyAncestor(hasTestTag("tripDisruptions")), useUnmergedTree = true)
+    // The disruptions row over the routes when it says [text]: the row is heard whole, every line and
+    // stop named, so it's matched by what it says rather than by what fits on its one line.
+    private fun inRow(text: String) =
+        composeRule.onNode(hasTestTag("tripDisruptions") and hasContentDescription(text, substring = true))
 
     @Test
     fun a_route_list_says_it_couldnt_check_only_for_a_line_a_route_shown_rides() {
@@ -2728,16 +2729,16 @@ class TripScreenScreenshotTest {
         // "Unknown:" and the line's pill (maintainer, 2026-10-04).
         state.value = running.copy(statusFailed = true, statusFailedLines = setOf("windrush"))
         settleNote()
-        inRow(hasText("Unknown:")).assertExists()
-        inRow(hasContentDescription("Windrush")).assertExists()
+        inRow("Unknown:").assertExists()
+        inRow("Windrush").assertExists()
         state.value = running.copy(statusUnknown = setOf("windrush"))
         settleNote()
-        inRow(hasContentDescription("Windrush")).assertExists()
+        inRow("Windrush").assertExists()
         // A line and a stop together: the line's pill, then the stop.
         state.value = running.copy(statusUnknown = setOf("windrush"), closuresFailed = setOf(highbury.first))
         settleNote()
-        inRow(hasContentDescription("Windrush")).assertExists()
-        inRow(hasText(highbury.second)).assertExists()
+        inRow("Windrush").assertExists()
+        inRow(highbury.second).assertExists()
     }
 
     @Test
@@ -3245,45 +3246,45 @@ class TripScreenScreenshotTest {
         // The worker inline, so the row's lines and stops are never behind the cards here: what's held
         // is the check's word alone.
         show(checking, held = held, worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
-        composeRule.onNodeWithText("Checking…").assertExists()
+        inRow("Checking…").assertExists()
         composeRule.mainClock.autoAdvance = false
 
         // A moment between two checks: still checking, never "couldn't check".
         held.value = between
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(500)
-        composeRule.onNodeWithText("Checking…").assertExists()
-        inRow(hasText("Unknown", substring = true)).assertDoesNotExist()
+        inRow("Checking…").assertExists()
+        inRow("Unknown").assertDoesNotExist()
         held.value = checking
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(2_000)
-        composeRule.onNodeWithText("Checking…").assertExists()
-        inRow(hasText("Unknown", substring = true)).assertDoesNotExist()
+        inRow("Checking…").assertExists()
+        inRow("Unknown").assertDoesNotExist()
 
         // Every line checked: "None" once that holds, not the moment it reads so, in the same row.
         val rowTop = composeRule.onNodeWithTag("tripDisruptions").fetchSemanticsNode().boundsInRoot.top
         held.value = running
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(500)
-        composeRule.onNodeWithText("Checking…").assertExists()
+        inRow("Checking…").assertExists()
         composeRule.mainClock.advanceTimeBy(2_000)
-        composeRule.onNodeWithText("None").assertExists()
-        composeRule.onNodeWithText("Checking…").assertDoesNotExist()
-        inRow(hasText("Unknown", substring = true)).assertDoesNotExist()
+        inRow("None").assertExists()
+        inRow("Checking…").assertDoesNotExist()
+        inRow("Unknown").assertDoesNotExist()
         assertEquals(rowTop, composeRule.onNodeWithTag("tripDisruptions").fetchSemanticsNode().boundsInRoot.top)
 
         // A check that starts again says so at once.
         held.value = checking
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(100)
-        composeRule.onNodeWithText("Checking…").assertExists()
+        inRow("Checking…").assertExists()
 
         // And one that couldn't check says so once that holds.
         held.value = between
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(2_000)
-        inRow(hasText("Unknown", substring = true)).assertIsDisplayed()
-        composeRule.onNodeWithText("Checking…").assertDoesNotExist()
+        inRow("Unknown").assertIsDisplayed()
+        inRow("Checking…").assertDoesNotExist()
     }
 
     @Test
@@ -3298,7 +3299,7 @@ class TripScreenScreenshotTest {
         val held = mutableStateOf(running)
         try {
             show(running, worker = worker, held = held)
-            composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodesWithText("None").fetchSemanticsNodes().isNotEmpty() }
+            composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodes(hasTestTag("tripDisruptions") and hasContentDescription("None", substring = true)).fetchSemanticsNodes().isNotEmpty() }
 
             // The Jubilee turns disrupted while the worker is held: the row's "None" is from the cards
             // before. It may stand a moment, as a card's last times do, but then says it's checking.
@@ -3307,15 +3308,15 @@ class TripScreenScreenshotTest {
             held.value = running.copy(statuses = running.statuses + ("jubilee" to LineStatus("jubilee", 9, "Minor Delays")))
             composeRule.waitForIdle()
             composeRule.mainClock.advanceTimeBy(2_000)
-            composeRule.onNodeWithText("Checking…").assertExists()
-            composeRule.onNodeWithText("None").assertDoesNotExist()
+            inRow("Checking…").assertExists()
+            inRow("None").assertDoesNotExist()
 
             // Released, the worker catches up: the Jubilee's pill, and no "None".
             gate.countDown()
             composeRule.mainClock.autoAdvance = true
-            composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodesWithText("Checking…").fetchSemanticsNodes().isEmpty() }
-            composeRule.onNodeWithText("None").assertDoesNotExist()
-            inRow(hasContentDescription("Jubilee")).assertExists()
+            composeRule.waitUntil(timeoutMillis = 5_000) { composeRule.onAllNodes(hasTestTag("tripDisruptions") and hasContentDescription("Checking…", substring = true)).fetchSemanticsNodes().isEmpty() }
+            inRow("None").assertDoesNotExist()
+            inRow("Jubilee").assertExists()
 
             // Back to running with the worker held again: the Jubilee's pill is for the cards before, so
             // once the row says it's checking, the pill goes with it.
@@ -3326,8 +3327,8 @@ class TripScreenScreenshotTest {
                 held.value = running
                 composeRule.waitForIdle()
                 composeRule.mainClock.advanceTimeBy(2_000)
-                inRow(hasText("Checking…")).assertExists()
-                inRow(hasContentDescription("Jubilee")).assertDoesNotExist()
+                inRow("Checking…").assertExists()
+                inRow("Jubilee").assertDoesNotExist()
             } finally {
                 gate2.countDown()
             }
@@ -3348,18 +3349,18 @@ class TripScreenScreenshotTest {
         val held = mutableStateOf(disrupted)
         // The worker inline, so the row's lines are always the current cards': what's held is the change.
         show(disrupted, held = held, worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
-        inRow(hasContentDescription("Jubilee")).assertExists()
+        inRow("Jubilee").assertExists()
 
         // The Jubilee clears: its pill stays a moment, and "None" waits out the hold (Codex, #543).
         composeRule.mainClock.autoAdvance = false
         held.value = running
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(500)
-        inRow(hasContentDescription("Jubilee")).assertExists()
-        inRow(hasText("None")).assertDoesNotExist()
+        inRow("Jubilee").assertExists()
+        inRow("None").assertDoesNotExist()
         composeRule.mainClock.advanceTimeBy(2_000)
-        inRow(hasContentDescription("Jubilee")).assertDoesNotExist()
-        inRow(hasText("None")).assertExists()
+        inRow("Jubilee").assertDoesNotExist()
+        inRow("None").assertExists()
     }
 
     @Test
@@ -3439,7 +3440,7 @@ class TripScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(2_500)
         composeRule.onNodeWithTag("tripRoutes").assertExists()
-        inRow(hasText("Unknown:")).assertExists()
+        inRow("Unknown:").assertExists()
         composeRule.onNodeWithText("Some routes couldn't be checked").assertDoesNotExist()
     }
 
@@ -3457,13 +3458,13 @@ class TripScreenScreenshotTest {
         composeRule.mainClock.autoAdvance = false
         show(planned, routeStops = RouteStopsRepository(failing, io = inline, compute = inline), worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher(), held = held)
         composeRule.mainClock.advanceTimeBy(3_000)
-        inRow(hasText("Unknown:")).assertExists()
+        inRow("Unknown:").assertExists()
         // A new plan: no cards while it's planned. The last plan's failure never stands over its
         // placeholder for the row's hold (Codex, #543).
         held.value = planned.copy(routes = null, planning = true)
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(100)
-        inRow(hasText("Unknown:")).assertDoesNotExist()
+        inRow("Unknown:").assertDoesNotExist()
     }
 
     @Test
@@ -3491,14 +3492,14 @@ class TripScreenScreenshotTest {
             }
         }
         composeRule.mainClock.advanceTimeBy(3_000)
-        inRow(hasText("Unknown:")).assertExists()
+        inRow("Unknown:").assertExists()
         // The Jubilee avoided, and the trip planned without it: the route left was all checked, and the
         // row's "Unknown:" goes at once, never standing over it for its hold (Codex, #543).
         avoided.value = setOf("jubilee")
         state.value = planned.copy(routes = listOf(viaWhitechapel))
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(100)
-        inRow(hasText("Unknown:")).assertDoesNotExist()
+        inRow("Unknown:").assertDoesNotExist()
     }
 
     @Test
@@ -3551,14 +3552,39 @@ class TripScreenScreenshotTest {
         val disrupted = running.copy(statuses = running.statuses + ("jubilee" to LineStatus("jubilee", 9, "Minor Delays")))
         val held = mutableStateOf(disrupted)
         show(disrupted, held = held, worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
-        inRow(hasContentDescription("Jubilee")).assertExists()
+        inRow("Jubilee").assertExists()
         val withPill = composeRule.onNodeWithTag("tripDisruptions").fetchSemanticsNode().size.height
         held.value = running
         composeRule.waitForIdle()
         settleNote()
-        inRow(hasText("None")).assertExists()
+        inRow("None").assertExists()
         // A pill coming or going never moves the cards under the row (Codex, #543).
         assertEquals(withPill, composeRule.onNodeWithTag("tripDisruptions").fetchSemanticsNode().size.height)
+    }
+
+    @Test
+    @Config(qualifiers = "en-rGB-w240dp-h914dp-420dpi")
+    fun the_disruptions_row_stays_one_line_with_more_than_fits() {
+        val lines = planned.routes.orEmpty().flatMap { route -> route.rides.map { it.lineId } } +
+            planned.live.values.flatMap { stop -> stop.departures.map { it.lineId } }
+        val running = planned.copy(statuses = lines.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") })
+        val one = running.copy(statuses = running.statuses + ("jubilee" to LineStatus("jubilee", 9, "Minor Delays")))
+        // Every line disrupted, on a narrow screen: more pills than one line holds.
+        val every = running.copy(statuses = lines.associateWith { LineStatus(it, 9, "Minor Delays") })
+        val held = mutableStateOf(one)
+        show(one, held = held, worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
+        inRow("Jubilee").assertExists()
+        val withPill = composeRule.onNodeWithTag("tripDisruptions").fetchSemanticsNode().size.height
+        held.value = every
+        composeRule.waitForIdle()
+        settleNote()
+        // One line high still (maintainer, 2026-10-04): what doesn't fit is counted, never wrapped.
+        assertEquals(withPill, composeRule.onNodeWithTag("tripDisruptions").fetchSemanticsNode().size.height)
+        // A "+N" shows (the row measures others it doesn't place, to choose what fits).
+        assertTrue(composeRule.onAllNodes(hasText("+", substring = true) and hasAnyAncestor(hasTestTag("tripDisruptions")), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+        // Heard whole: every line named, not only the pills that fit.
+        inRow("Jubilee").assertExists()
+        inRow("Windrush").assertExists()
     }
 
     @Test
@@ -3568,7 +3594,7 @@ class TripScreenScreenshotTest {
         val running = planned.copy(statuses = lines.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") })
         val disrupted = running.copy(statuses = running.statuses + ("jubilee" to LineStatus("jubilee", 9, "Minor Delays")))
         show(disrupted, worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
-        inRow(hasContentDescription("Jubilee")).assertExists()
+        inRow("Jubilee").assertExists()
         composeRule.onNodeWithTag("tripDisruptions").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Line status").assertExists()
@@ -4011,7 +4037,7 @@ class TripScreenScreenshotTest {
         val running = planned.copy(statuses = lines.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") })
         val disrupted = running.copy(statuses = running.statuses + ("jubilee" to LineStatus("jubilee", 9, "Minor Delays")))
         show(disrupted, worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
-        inRow(hasContentDescription("Jubilee")).assertExists()
+        inRow("Jubilee").assertExists()
         // The trip has settled: opening a route draws its row as it is, never "Checking…" held for a
         // moment first (Codex, #543).
         composeRule.mainClock.autoAdvance = false
@@ -4021,7 +4047,7 @@ class TripScreenScreenshotTest {
         composeRule.mainClock.advanceTimeBy(100)
         composeRule.onAllNodes(hasTestTag("tripRoutes")).assertCountEquals(0)
         composeRule.onNodeWithTag("tripDisruptions").assertExists()
-        inRow(hasText("Checking…")).assertDoesNotExist()
+        inRow("Checking…").assertDoesNotExist()
     }
 
     @Test
@@ -4047,7 +4073,7 @@ class TripScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        inRow(hasContentDescription("Jubilee")).assertExists()
+        inRow("Jubilee").assertExists()
         // A new nearest stop: another journey, whose trip already has another route open.
         composeRule.mainClock.autoAdvance = false
         journey.value = "C>B"
@@ -4056,7 +4082,7 @@ class TripScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(100)
         // Its row is its own, never the last journey's Jubilee held for a moment (Codex, #543).
-        inRow(hasContentDescription("Jubilee")).assertDoesNotExist()
+        inRow("Jubilee").assertDoesNotExist()
     }
 
     @Test
@@ -4066,7 +4092,7 @@ class TripScreenScreenshotTest {
         val running = planned.copy(statuses = lines.associateWith { LineStatus(it, LineStatus.GOOD_SERVICE, "Good Service") })
         val disrupted = running.copy(statuses = running.statuses + ("jubilee" to LineStatus("jubilee", 9, "Minor Delays")))
         show(disrupted, worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
-        inRow(hasContentDescription("Jubilee")).assertExists()
+        inRow("Jubilee").assertExists()
         composeRule.onNodeWithText("28 min · ~08:30").performClick()
         composeRule.waitForIdle()
         // The route open: the list has left the screen.
@@ -4077,8 +4103,8 @@ class TripScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeByFrame()
         composeRule.onNodeWithTag("tripRoutes").assertExists()
-        inRow(hasContentDescription("Jubilee")).assertExists()
-        inRow(hasText("Checking…")).assertDoesNotExist()
+        inRow("Jubilee").assertExists()
+        inRow("Checking…").assertDoesNotExist()
     }
 
     @Test
@@ -4089,7 +4115,7 @@ class TripScreenScreenshotTest {
         val disrupted = running.copy(statuses = running.statuses + ("jubilee" to LineStatus("jubilee", 9, "Minor Delays")))
         val held = mutableStateOf(disrupted)
         show(disrupted, held = held, worker = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher())
-        inRow(hasContentDescription("Jubilee")).assertExists()
+        inRow("Jubilee").assertExists()
         // A new plan: no cards while it's planned, then its own, with nothing disrupted.
         composeRule.mainClock.autoAdvance = false
         held.value = running.copy(routes = null, planning = true)
@@ -4100,7 +4126,7 @@ class TripScreenScreenshotTest {
         composeRule.mainClock.advanceTimeBy(100)
         // The last plan's Jubilee never stands over the new cards (Codex, #543).
         composeRule.onNodeWithTag("tripRoutes").assertExists()
-        inRow(hasContentDescription("Jubilee")).assertDoesNotExist()
+        inRow("Jubilee").assertDoesNotExist()
     }
 
     @Test
@@ -4117,8 +4143,8 @@ class TripScreenScreenshotTest {
         // The row is worked out behind the placeholder: the list appears with it, never with "Checking…"
         // that gives way to pills under the rider a moment later (Codex, #543).
         composeRule.onNodeWithTag("tripRoutes").assertExists()
-        inRow(hasContentDescription("Jubilee")).assertExists()
-        inRow(hasText("Checking…")).assertDoesNotExist()
+        inRow("Jubilee").assertExists()
+        inRow("Checking…").assertDoesNotExist()
     }
 
     @Test
@@ -4141,7 +4167,7 @@ class TripScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        inRow(hasContentDescription("Jubilee")).assertExists()
+        inRow("Jubilee").assertExists()
         // Another pace's plan, kept from before, replaces the cards at once, with no gap without them.
         composeRule.mainClock.autoAdvance = false
         speed.value = WalkingSpeed.SLOW
@@ -4149,7 +4175,7 @@ class TripScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(100)
         // The last plan's Jubilee never stands over the new plan's cards (Codex, #543).
-        inRow(hasContentDescription("Jubilee")).assertDoesNotExist()
+        inRow("Jubilee").assertDoesNotExist()
     }
 
     @Test
@@ -4172,7 +4198,7 @@ class TripScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        inRow(hasContentDescription("Jubilee")).assertExists()
+        inRow("Jubilee").assertExists()
         // A new nearest stop: another journey, its plan cached, so its cards come at once with the
         // same options (Codex, #543).
         composeRule.mainClock.autoAdvance = false
@@ -4186,7 +4212,7 @@ class TripScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(100)
         composeRule.onNodeWithTag("tripRoutes").assertExists()
-        inRow(hasContentDescription("Jubilee")).assertDoesNotExist()
+        inRow("Jubilee").assertDoesNotExist()
     }
 
     @Test
@@ -4208,7 +4234,7 @@ class TripScreenScreenshotTest {
             }
         }
         composeRule.waitForIdle()
-        inRow(hasContentDescription("Jubilee")).assertExists()
+        inRow("Jubilee").assertExists()
         // The Jubilee avoided: only the Whitechapel route is left, and the row never shows the
         // Jubilee's pill over it (Codex, #543).
         composeRule.mainClock.autoAdvance = false
@@ -4216,7 +4242,7 @@ class TripScreenScreenshotTest {
         composeRule.waitForIdle()
         composeRule.mainClock.advanceTimeBy(100)
         composeRule.onNodeWithTag("tripRoutes").assertExists()
-        inRow(hasContentDescription("Jubilee")).assertDoesNotExist()
+        inRow("Jubilee").assertDoesNotExist()
     }
 
     @Test
