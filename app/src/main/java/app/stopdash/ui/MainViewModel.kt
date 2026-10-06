@@ -434,9 +434,6 @@ class MainViewModel(
     private var journeyStopsJob: Job? = null
     private var journeyStopsReportedWhileOut = false
 
-    // The lines the starred journeys take from [stopId]: hiding doesn't reach them.
-    private fun starredLines(stopId: String): List<LineRef> = starredLines(journeyStops, stopId)
-
     // The far ends of the starred journeys as shown (SPEC *Journeys*): only their stop-level
     // disruptions (a closure, a moved stop) are checked, not their departures, so a journey card can
     // say its destination is closed. Checked with every refresh, reusing [disruptionCache].
@@ -554,7 +551,9 @@ class MainViewModel(
             // Which to ask: each joins a request another check already has out for it, else is asked now. Sent
             // in [viewModelScope], not this check's own job, so a check restarted by a changed destination set
             // (routes arriving one by one) joins the same request rather than cancel it and ask again.
-            val toAsk = stops.map { it.id }.distinct().filter { cached(it) == null && !failedInFetch(it) }
+            // Chosen on the worker, as it walks every destination (AGENTS.md *Main thread*); both reads are
+            // safe there ([StopClosureCache], [disruptionFailedAt]).
+            val toAsk = withContext(compute) { stops.map { it.id }.distinct().filter { cached(it) == null && !failedInFetch(it) } }
             val requests = lookUpClosures(viewModelScope, toAsk, logAs = "destination")
             val fetched: Map<String, Result<StopClosureCache.Lookup>> = requests.mapValues { (_, request) -> request.await() }
             val shown = _journeyDestinationStops.value
@@ -758,8 +757,8 @@ class MainViewModel(
     // When each stop's arrivals last came back from a fetch by THIS ViewModel (the cycle's start
     // stamp). What makes a stop eligible to be carried over ([recentlyFetched]): a stop restored from
     // disk is never in it, since the snapshot doesn't persist the closure check a carried-over stop
-    // would need. In-memory only; main thread.
-    private val arrivalsFetchedAt = mutableMapOf<String, Instant>()
+    // would need. In-memory only; written on the main thread, read on the worker too ([recentlyFetched]).
+    private val arrivalsFetchedAt: MutableMap<String, Instant> = ConcurrentHashMap()
 
     // The National Rail stations whose last fetch left their board out, National Rail being hidden
     // ([HiddenModes.wantsRailBoard]). One wanting it again ("Show all", a National Rail journey starred
@@ -768,8 +767,8 @@ class MainViewModel(
 
     // Which closure lookup each stop shows ([StopClosureCache.Lookup.ask]): one asked after it that the
     // cache has since kept is newer, so the stop isn't carried over past it ([recentlyFetched]).
-    // In-memory only; main thread.
-    private val closureShown = mutableMapOf<String, StopClosureCache.Ask>()
+    // In-memory only; written on the main thread, read on the worker too.
+    private val closureShown: MutableMap<String, StopClosureCache.Ask> = ConcurrentHashMap()
 
     // The init coroutine that loads the last-good snapshot and then calls refresh(). Tracked so
     // cancelFetch() can stop it too: during its load() the fetchJob isn't assigned yet, so
@@ -982,6 +981,107 @@ class MainViewModel(
         val unknownLineIds: Set<String> = emptySet(),
     )
 
+    /** What a refresh is for ([refresh]), worked out on the worker before it sends anything. */
+    private data class RefreshSetup(
+        val prior: Map<String, StopArrivals>,
+        val reuse: Set<String>,
+        val nearIds: Set<String>,
+        val journeyIds: Set<String>,
+        val toFetch: List<StopRef>,
+    )
+
+    /**
+     * What a batch needs of each of its stops before it sends anything ([fetchBatch]), by the stop's
+     * index: whether it may be carried over unasked ([reusable]: it's one to carry over and its board is
+     * wanted as before), and whether its National Rail board is asked for ([board]); the bus poles whose
+     * closures share a request ([poleBatches]); the lines the stops declare; whether any is shown from
+     * before ([anyPrior]); and the near-me places. What the caches hold for a stop isn't kept here: they
+     * can move on while the worker has the plan (another screen's fetch or closure lookup landing), so
+     * each stop reads them as it's launched.
+     */
+    private class BatchPlan(
+        val reusable: BooleanArray,
+        val board: BooleanArray,
+        val poleBatches: List<List<String>>,
+        val declaredLineIds: Set<String>,
+        val anyPrior: Boolean,
+        val places: List<Terminating.Place>,
+    )
+
+    /**
+     * [fetchBatch]'s [BatchPlan] for [stops]: each walks them, so it's worked out here, on the worker
+     * (AGENTS.md *Main thread: read and dispatch only*). [source], [hidden] and [journeyStops] are as the
+     * batch began; the caches it reads ([sharedArrivals], [disruptionCache], [boardSkipped]) are safe to
+     * read from any thread. Its pole batches leave out a stop the caches answered for then; one they no
+     * longer do by its launch is asked on its own.
+     */
+    @WorkerThread
+    private fun batchPlan(
+        stops: List<StopRef>,
+        prior: Map<String, StopArrivals>,
+        now: Instant,
+        reuse: Set<String>,
+        useShared: Boolean,
+        source: Any?,
+        hidden: Set<String>,
+        journeyStops: List<StopRef>,
+        places: List<Terminating.Place>,
+    ): BatchPlan {
+        fun newerShared(stop: StopRef) = isNewer(sharedOf(stop.id, prior, now, useShared, source), prior[stop.id])
+        fun railBoard(stop: StopRef) = HiddenModes.wantsRailBoard(hidden, starredLines(journeyStops, stop.id))
+        val board = BooleanArray(stops.size) { i -> railBoard(stops[i]) }
+        val reusable = BooleanArray(stops.size) { i ->
+            val stop = stops[i]
+            stop.id in reuse && prior[stop.id] != null && !(stop.id in boardSkipped && board[i])
+        }
+        // As the caches stand now, for the pole batches only: each stop reads them again as it's launched.
+        // A pole whose shown lookup is no longer the cache's ([closureStillShown]) is asked in its batch.
+        val reused = BooleanArray(stops.size) { i -> reusable[i] && !newerShared(stops[i]) && closureStillShown(stops[i].id) }
+        val cached = BooleanArray(stops.size) { i -> cachedClosure(stops[i].id, now) != null }
+        // Bus poles still to check share one request per [StopDisruptionBatch.MAX_PER_REQUEST] (a junction
+        // is often 4-8 poles, each otherwise its own request against the keyless budget).
+        val poleBatches = stops.indices
+            .filter { i -> !reused[i] && !cached[i] && StopDisruptionBatch.isPole(stops[i].id) }
+            .map { stops[it].id }
+            .distinct()
+            .chunked(StopDisruptionBatch.MAX_PER_REQUEST)
+        return BatchPlan(
+            reusable = reusable,
+            board = board,
+            poleBatches = poleBatches,
+            declaredLineIds = stops.flatMap { it.lines }.map { it.id }.filterTo(HashSet()) { it.isNotBlank() },
+            anyPrior = stops.any { prior[it.id] != null },
+            places = places,
+        )
+    }
+
+    // [stopId]'s arrivals another screen fetched within the TTL ([sharedArrivals]), unless older than this
+    // list's own ([prior]): taken over a carry-over, so two screens don't show different times. A stop not
+    // carried over takes one no older than its own; one carried over, only a newer one ([isNewer]).
+    private fun sharedOf(stopId: String, prior: Map<String, StopArrivals>, now: Instant, useShared: Boolean, source: Any?): ArrivalsCache.Entry? {
+        if (!useShared || sharedArrivals == null) return null
+        val entry = sharedArrivals.recent(stopId, now, source) ?: return null
+        val held = prior[stopId]
+        return if (held != null && entry.fetchedAt.isBefore(held.fetchedAt)) null else entry
+    }
+
+    private fun isNewer(shared: ArrivalsCache.Entry?, held: StopArrivals?): Boolean =
+        shared != null && (held == null || shared.fetchedAt.isAfter(held.fetchedAt))
+
+    // Whether the closure lookup [stopId] shows ([closureShown]) is still the one the cache answers with
+    // ([StopClosureCache.get]): one asked after it, by a later batch whose arrivals failed or by a trip,
+    // that the cache kept is a newer closure the stop would show without, and one that failed leaves its
+    // closure unknown, which a carry-over would pass off as checked. Told by the lookups' order, which the
+    // cache keeps, not their clock, which two can share. Only then may the stop be carried over unasked.
+    private fun closureStillShown(stopId: String): Boolean {
+        val shown = closureShown[stopId] ?: return false
+        return disruptionCache[stopId]?.ask === shown
+    }
+
+    // [stopId]'s closure lookup that succeeded within [disruptionReuse]: reused rather than re-requested.
+    private fun cachedClosure(stopId: String, now: Instant): StopClosureCache.Lookup? =
+        disruptionCache[stopId]?.takeIf { isWithin(it.at, now, disruptionReuse) }
+
     /**
      * Fetch [stops] (arrivals + disruptions, each merged into its [prior] at age [now]) and check the
      * status of every line they show, returning a [FetchBatch]. Pure of UI state — the caller decides
@@ -1058,22 +1158,22 @@ class MainViewModel(
         // closure check is still out (SPEC *Freshness → Cold load*). Each request catches its own
         // failure, so one stop failing never cancels its siblings.
         // A reused stop costs no request; its results are never read (it's carried over below).
-        // Each stop's arrivals another screen fetched within the TTL, where newer than this list's
-        // own ([sharedArrivals]): taken over a carry-over, so two screens don't show different times.
-        // A stop not carried over takes one no older than its own; one carried over, only a newer one.
+        // What each stop needs ([BatchPlan]), worked out on the worker from the stops, their priors and
+        // the caches (AGENTS.md *Main thread: read and dispatch only*), so this thread only sends the
+        // requests.
         val source = client.arrivalsSource()
-        val sharedFetch = if (!useShared || sharedArrivals == null) emptyMap() else stops.mapNotNull { stop ->
-            val entry = sharedArrivals.recent(stop.id, now, source) ?: return@mapNotNull null
-            val held = prior[stop.id]
-            if (held != null && entry.fetchedAt.isBefore(held.fetchedAt)) null else stop.id to entry
-        }.toMap()
-        fun newerShared(stop: StopRef) = sharedFetch[stop.id]?.let { entry ->
-            prior[stop.id]?.let { entry.fetchedAt.isAfter(it.fetchedAt) } ?: true
-        } ?: false
         val hidden = hiddenModes()
-        fun railBoard(stop: StopRef) = HiddenModes.wantsRailBoard(hidden, starredLines(stop.id))
-        fun reused(stop: StopRef) = stop.id in reuse && prior[stop.id] != null && !newerShared(stop) &&
-            !(stop.id in boardSkipped && railBoard(stop))
+        val journeys0 = journeyStops
+        val eager0 = eagerStops
+        val more0 = more
+        val distances0 = stopDistanceMeters
+        val plan = withContext(compute) {
+            batchPlan(stops, prior, now, reuse, useShared, source, hidden, journeys0, nearbyPlacesOf(eager0, more0, distances0))
+        }
+        // Each stop's caches read as it's launched (one read each, below): whether it's carried over, and
+        // the arrivals another screen fetched that it takes instead.
+        val reused = BooleanArray(stops.size)
+        fun reused(i: Int) = reused[i]
         // The stations this batch fetched without their board (see [boardSkipped]); written off the
         // main thread, where the client can tell a station from any other stop.
         val skippedNow = ConcurrentHashMap.newKeySet<String>()
@@ -1088,7 +1188,7 @@ class MainViewModel(
         val poleBatchCount = AtomicInteger()
         // The near-me places by distance, for [Terminating]: every eager and "more" stop, since the
         // rider's nearest place may sit in either tier.
-        val places = nearbyPlaces()
+        val places = plan.places
         // One interchange lookup per hub per batch, shared by the early per-stop reveal and the final
         // pass, so members asking at once — or a failed lookup, which isn't cached — cost one call.
         val hubLookups = HashMap<String, CompletableDeferred<HubInfo>>()
@@ -1115,18 +1215,22 @@ class MainViewModel(
         // The lines the stops declare, checked alongside their arrivals rather than once the slowest
         // is back, so a cold load can vouch for them while a stop is still out (SPEC *Freshness →
         // Cold load*). A line only a prediction names is checked after the merge, below.
-        val declaredLineIds = stops.flatMap { it.lines }.map { it.id }.filterTo(HashSet()) { it.isNotBlank() }
+        val declaredLineIds = plan.declaredLineIds
         val (arrivalResults, disruptionResults, earlyLines) = coroutineScope {
             val arrivals = stops.mapIndexed { i, stop ->
-                val recent = if (!reused(stop)) sharedFetch[stop.id] else null
+                val sharedNow = sharedOf(stop.id, prior, now, useShared, source)
+                // A stop's carry-over stands only while its shown closure lookup is still the cache's
+                // ([closureStillShown]) and no newer arrivals have been fetched for it since.
+                reused[i] = plan.reusable[i] && !isNewer(sharedNow, prior[stop.id]) && closureStillShown(stop.id)
+                val recent = if (reused[i]) null else sharedNow
                 when {
-                    reused(stop) -> null
+                    reused(i) -> null
                     recent != null -> {
                         shared[i] = recent
                         CompletableDeferred(Result.success(recent.departures))
                     }
                     else -> {
-                        val board = railBoard(stop)
+                        val board = plan.board[i]
                         async {
                             runCatchingTfl {
                                 withContext(io) {
@@ -1153,7 +1257,7 @@ class MainViewModel(
             val earlyCheck = async { if (linesGo.await()) checkLines(declaredLineIds + alwaysAsked.await()) else null }
             when {
                 declaredLineIds.isEmpty() -> linesGo.complete(false)
-                stops.any { prior[it.id] != null } -> linesGo.complete(true)
+                plan.anyPrior -> linesGo.complete(true)
                 else -> arrivals.filterNotNull().forEach { arrival ->
                     launch { if (arrival.await().isSuccess) linesGo.complete(true) }
                 }
@@ -1164,12 +1268,9 @@ class MainViewModel(
             // out entirely (SPEC *Disruptions*). Per stop, or per batch of bus poles (below), off the
             // render path. A lookup that fails falls back to the aged disruption and flags the state unknown
             // rather than passing the stop off as verified-clear.
-            // A lookup that succeeded within [disruptionReuse] is reused rather than re-requested.
-            fun cachedDisruption(stop: StopRef) = disruptionCache[stop.id]
-                ?.takeIf { isWithin(it.at, now, disruptionReuse) }
-            // Bus poles still to check share one request per [StopDisruptionBatch.MAX_PER_REQUEST]
-            // (a junction is often 4-8 poles, each otherwise its own request against the keyless
-            // budget); a failed batch fails each of its poles, as a failed single lookup would.
+            // A lookup that succeeded within [disruptionReuse] is reused rather than re-requested
+            // ([cachedClosure]), and bus poles share requests ([BatchPlan.poleBatches]); a failed batch
+            // fails each of its poles, as a failed single lookup would.
             val poleBatches = HashMap<String, Deferred<Map<String, Result<StopClosureCache.Lookup>>>>()
             // Each stop's departures request, by stop id: what its closure request waits on.
             val arrivalOf = HashMap<String, Deferred<Result<List<Departure>>>>()
@@ -1177,33 +1278,27 @@ class MainViewModel(
             // The poles a batch found answered by then, from the cache or another screen's lookup
             // while it waited on their departures: not news, as a cached answer isn't.
             val poleFromCache = HashSet<String>()
-            stops
-                .filter {
-                    !reused(it) && cachedDisruption(it) == null && StopDisruptionBatch.isPole(it.id)
+            plan.poleBatches.forEach { ids ->
+                val batch = async {
+                    // Departures first: sent once each of its poles' departures request has settled.
+                    ids.forEach { id -> arrivalOf[id]?.await() }
+                    // Looked up after the wait: a pole another screen answered meanwhile, or has a request
+                    // out for, is taken from that rather than asked again, and isn't news, as a cache hit isn't.
+                    // Counted only when sent: every pole answered meanwhile costs no request.
+                    val pending = lookUpClosures(this, ids, onSend = { poleBatchCount.incrementAndGet() })
+                    for ((id, answer) in pending) if (answer.cached || answer.joined) poleFromCache += id
+                    // As the cache settles each: a later lookup (a trip's) wins over this one, failed or not.
+                    ids.associateWith { id -> pending.getValue(id).await().onFailure { disruptionFailedAt[id] = now } }
                 }
-                .map { it.id }
-                .distinct()
-                .chunked(StopDisruptionBatch.MAX_PER_REQUEST)
-                .forEach { ids ->
-                    val batch = async {
-                        // Departures first: sent once each of its poles' departures request has settled.
-                        ids.forEach { id -> arrivalOf[id]?.await() }
-                        // Looked up after the wait: a pole another screen answered meanwhile, or has a request
-                        // out for, is taken from that rather than asked again, and isn't news, as a cache hit isn't.
-                        // Counted only when sent: every pole answered meanwhile costs no request.
-                        val pending = lookUpClosures(this, ids, onSend = { poleBatchCount.incrementAndGet() })
-                        for ((id, answer) in pending) if (answer.cached || answer.joined) poleFromCache += id
-                        // As the cache settles each: a later lookup (a trip's) wins over this one, failed or not.
-                        ids.associateWith { id -> pending.getValue(id).await().onFailure { disruptionFailedAt[id] = now } }
-                    }
-                    ids.forEach { poleBatches[it] = batch }
-                    poleBatchIds += ids
-                }
+                ids.forEach { poleBatches[it] = batch }
+                poleBatchIds += ids
+            }
             val disruptions: List<Deferred<Result<StopClosureCache.Lookup>>?> = stops.mapIndexed { i, stop ->
-                val cached = cachedDisruption(stop)
+                // As the cache holds it now: a newer lookup that failed since the plan leaves none.
+                val cached = cachedClosure(stop.id, now)
                 val batch = poleBatches[stop.id]
                 when {
-                    reused(stop) -> null
+                    reused(i) -> null
                     // Ahead of the cache check: a batch that already finished has written this
                     // pole's fresh result to the cache, which must not read as a cached (not new) one.
                     batch != null -> async {
@@ -1488,7 +1583,7 @@ class MainViewModel(
                 LoadStats.Requests(
                     departures = arrivalResults.count { it != null },
                     closures = stops.indices.count { i ->
-                        !reused(stops[i]) && !disruptionFromCache[i] && stops[i].id !in poleBatchIds
+                        !reused(i) && !disruptionFromCache[i] && stops[i].id !in poleBatchIds
                     },
                     closureBatches = poleBatchCount.get(),
                     lineStatus = lineStatusRequests,
@@ -1634,14 +1729,21 @@ class MainViewModel(
      * that fetch's result (not an older one a canceled batch left behind), and their own closure
      * check didn't fail. A failed or carried-aged stop, or one
      * whose closure check failed, is always refetched — those are what a quick retry is for — and so
-     * is a stop restored from disk, which lacks the unpersisted closure check.
+     * is a stop restored from disk, which lacks the unpersisted closure check. [distances] is each
+     * stop's distance as the refresh began.
      */
-    private fun recentlyFetched(loaded: DeparturesUiState.Loaded, now: Instant, automatic: Boolean = false): Set<String> =
+    @WorkerThread
+    private fun recentlyFetched(
+        loaded: DeparturesUiState.Loaded,
+        now: Instant,
+        automatic: Boolean,
+        distances: Map<String, Double>,
+    ): Set<String> =
         loaded.stops
             .filter { stop ->
                 // On the timer, a stop past the walking reach is refreshed less often: its departures
                 // matter once the rider is closer, and the rate budget is better spent on the near ones.
-                val far = (stopDistanceMeters[stop.stopId] ?: 0.0) > NearbySelection.EAGER_RADIUS_METERS
+                val far = (distances[stop.stopId] ?: 0.0) > NearbySelection.EAGER_RADIUS_METERS
                 val window = if (automatic && far) maxOf(arrivalsReuse, farArrivalsReuse) else arrivalsReuse
                 // The shown stop must BE that fetch (same stamp): a batch canceled after its
                 // arrivals came back but before it was published leaves a newer stamp here than the
@@ -1657,16 +1759,6 @@ class MainViewModel(
                     stop.stopId !in loaded.stopsDisruptionUnknown
             }
             .mapTo(mutableSetOf()) { it.stopId }
-
-    // Whether the closure lookup [stopId] shows ([closureShown]) is still the one the cache answers with
-    // ([StopClosureCache.get]): one asked after it, by a later batch whose arrivals failed or by a trip,
-    // that the cache kept is a newer closure the stop would show without, and one that failed leaves its
-    // closure unknown, which a carry-over would pass off as checked. Told by the lookups' order, which the
-    // cache keeps, not their clock, which two can share. Only then may the stop be carried over unasked.
-    private fun closureStillShown(stopId: String): Boolean {
-        val shown = closureShown[stopId] ?: return false
-        return disruptionCache[stopId]?.ask === shown
-    }
 
     /**
      * The screen-wide "some shown departures' disruption state is unverified" flag, derived from the
@@ -1846,16 +1938,25 @@ class MainViewModel(
                     _state.value = restoredLoaded(loaded)
                 }
             }
-            val prior = priorStops.associateBy { it.stopId }
-            // Fetch the whole set, merged into the prior at this cycle's stamp (see [fetchBatch]) —
-            // except stops fetched moments ago, carried over as they are. A retry soon after a
-            // rate-limited refresh then spends the budget left only on the stops still missing,
-            // rather than refetching every stop and hitting the limit again.
-            val reuse = if (priorLoaded != null && !force) recentlyFetched(priorLoaded, now, automatic) else emptySet()
-            // The nearby stops this fetch is for: the only ones the widget may be given below.
-            val nearIds = nearStops.mapTo(HashSet()) { it.id }
-            val journeyIds = journeyStops.mapTo(HashSet()) { it.id }
-            val toFetch = fetchedStops
+            // What this fetch is for, worked out on the worker from the tiers and journey stops as they
+            // are now (AGENTS.md *Main thread: read and dispatch only*): each pass walks every stop.
+            val near0 = nearStops
+            val journeys0 = journeyStops
+            val distances0 = stopDistanceMeters
+            val (prior, reuse, nearIds, journeyIds, toFetch) = withContext(compute) {
+                RefreshSetup(
+                    prior = priorStops.associateBy { it.stopId },
+                    // Fetch the whole set, merged into the prior at this cycle's stamp (see [fetchBatch]) —
+                    // except stops fetched moments ago, carried over as they are. A retry soon after a
+                    // rate-limited refresh then spends the budget left only on the stops still missing,
+                    // rather than refetching every stop and hitting the limit again.
+                    reuse = if (priorLoaded != null && !force) recentlyFetched(priorLoaded, now, automatic, distances0) else emptySet(),
+                    // The nearby stops this fetch is for: the only ones the widget may be given below.
+                    nearIds = near0.mapTo(HashSet()) { it.id },
+                    journeyIds = journeys0.mapTo(HashSet()) { it.id },
+                    toFetch = fetchedOf(near0, journeys0),
+                )
+            }
             // Only while there's nothing else to show — a cold load with no saved snapshot, or one
             // already part-shown this way. A kept snapshot stays on screen until the batch is done.
             // Never saved: a part-loaded list isn't a snapshot (SPEC D4).
@@ -2121,7 +2222,7 @@ class MainViewModel(
             // Each place and line as old as its own answer, a reused lookup or line status perhaps: a
             // dismissal counted after stays.
             reconcileDismissals(
-                fetchedStops, merged, lineStatuses, determinedLineIds, stopsDisruptionUnknown, since, refreshSettles,
+                toFetch, merged, lineStatuses, determinedLineIds, stopsDisruptionUnknown, since, refreshSettles,
                 stopAsks = batch.closureAsks,
                 lineMarks = batch.lineDismissals,
             )

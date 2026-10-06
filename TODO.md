@@ -37,16 +37,33 @@ exercises the whole spine the widget later renders from.
         what comes back (`sharedClosures` among it; the verdict checks that move `failures` are on `io`
         already), and the callbacks the page's effects make into it as routes and estimates
         change (`boardAt`, `noteWithheld`, `checkShownStops`).
-- [ ] The near-me list's refresh off the main thread, before its requests: `checkJourneyDestinations`'
-      choice of which to ask (its requests now go through the cache's single flight,
-      `StopClosureCache.lookUp`, which can be asked from the worker), `refresh`'s own setup ahead of `fetchBatch` (the prior stops by id, `recentlyFetched`, both id sets, `fetchedStops`),
-      `fetchBatch`'s setup (the shared arrivals taken, the lines declared, each stop's request and the
-      pole batches built from `stops`) and the widget's snapshot and journey checks (`forWidget`, `widgetLineChecks`, `setWidgetJourneys`/`writeWidgetJourneys` ahead of their write,
-      which read the line-status caches main-thread code writes) still run on `viewModelScope` at each
-      refresh. Work them out on `compute` and publish the result, as a cold load's progress is (#527).
-      The per-stop merge and the list build moved in #534; the dismissal pass is #532's; the screen's
-      journey-stop and destination reports (`setJourneyStops`, `setJourneyDestinations`) are worked out on
-      the worker, applied in order; so are a destination check's cards.
+- [ ] The near-me list's refresh off the main thread, before its requests: the widget's snapshot and
+      journey checks (`forWidget`, `widgetLineChecks`, `setWidgetJourneys`/`writeWidgetJourneys` ahead of
+      their write, which read the line-status caches main-thread code writes) still run on
+      `viewModelScope` at each refresh, and so does a refresh's restore of the saved snapshot when it
+      races the first one (`isIncomplete`, `restoredLoaded`). Work them out on `compute` and publish the
+      result, as a cold load's progress is (#527). `refresh`'s own setup (`RefreshSetup`: the prior
+      stops by id, `recentlyFetched`, both id sets, the stops asked), `fetchBatch`'s per-stop plan
+      (`BatchPlan`: each stop's board and whether it may be carried over, the lines declared and the pole
+      batches) and `checkJourneyDestinations`' choice of which to ask now run on the worker.
+      `fetchBatch`'s launch loop still runs on the caller's thread: one request per stop, each with its
+      constant-time cache reads as it's launched (the shared arrivals, the kept closure,
+      `closureStillShown`). Launching from a serial view of `compute` instead needs everything the loop
+      starts safe there first: the early line check (`checkLines`) writes main-thread state
+      (`lineStatusMarks`, `unknownLineIds`), and the batch's bookkeeping (`arrivalOf`, `poleFromCache`,
+      the hub lookups) assumes one thread (Codex, #619). The per-stop merge and the list build moved in
+      #534; the dismissal pass is #532's; the screen's journey-stop and destination reports
+      (`setJourneyStops`, `setJourneyDestinations`) are worked out on the worker, applied in order; so
+      are a destination check's cards.
+- [ ] **A stop's closure as the list publishes it, not as it was read** (Codex, #619; the design is the
+      maintainer's call). A near-me refresh reads each stop's closure from the shared cache once: as the
+      stop is launched (a carry-over's `closureStillShown`, a cached lookup) or as its own lookup settles.
+      It publishes after the batch's other work (the other stops, the line check), so a newer lookup
+      another screen finishes in between, a closure found or a check failed, shows only at the next
+      refresh, which `closureStillShown` makes ask again. `fetchBatch` has always worked this way: it
+      decided a carry-over before its awaits. Two ways to close it: reconcile every stop with the cache's
+      current lookup at the merge, which narrows the gap to the hop back to the main thread; or have the
+      list follow the closure cache and re-merge a stop whose shown lookup is superseded, which closes it.
 - [x] The trip tracker off the main thread (#536): `restore`, `start`, `goTo`, `end` and `refresh`
       each hop to `compute` before taking the tracker's lock, so a refresh's step, a tap's move, a
       start and a restore walk the trip's route on the worker.
