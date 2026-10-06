@@ -100,6 +100,7 @@ class OnTheWayScreenScreenshotTest {
         notes: List<RouteDisruption.StationNote> = emptyList(),
         onDismissNote: ((RouteDisruption.StationNote) -> Unit)? = null,
         onTake: ((TripLeg, OffPlan.Branch) -> Unit)? = null,
+        asOf: java.time.Instant? = null,
     ) {
         composeRule.setContent {
             StopDashTheme(dynamicColor = false) {
@@ -107,7 +108,7 @@ class OnTheWayScreenScreenshotTest {
                     trip, progress, failed, now, onEnd, onBack, current = current, notKept = notKept, endFailed = endFailed, alertsOff = alertsOff,
                     appOpenOnly = appOpenOnly, nextTrains = nextTrains, onGoTo = onGoTo, disruptions = disruptions, cards = cards,
                     replanFrom = replanFrom, onPlanAgain = onPlanAgain, onDismissDisruptions = onDismissDisruptions, notes = notes,
-                    onDismissNote = onDismissNote, onTake = onTake,
+                    onDismissNote = onDismissNote, onTake = onTake, asOf = asOf,
                 )
             }
         }
@@ -1087,6 +1088,41 @@ class OnTheWayScreenScreenshotTest {
     }
 
     @Test
+    fun an_answer_too_old_to_stand_behind_keeps_its_time_while_its_stops_are_checked() {
+        val resources = composeRule.activity.resources
+        val asOf = at(-3)
+        // The last answer's time stays; its stops give way to "Checking…" (maintainer, 2026-10-06).
+        val riding = TripProgress.Riding(mildmay, "Hackney Central", 4, at(16), getOffSoon = false)
+        val rideAt = CLOCK.format(at(16).atZone(LONDON))
+        assertEquals("Checking… · 16 min · $rideAt", nextStepText(resources, riding, now, current = false, asOf = asOf).second)
+        val dueAt = CLOCK.format(at(4).atZone(LONDON))
+        assertEquals("Checking… · 4 min · $dueAt", nextStepText(resources, TripProgress.Waiting(mildmay, at(4)), now, current = false, asOf = asOf).second)
+        // A time already gone by isn't claimed, nor read as a train never found (Codex, #611).
+        assertEquals("Checking…", nextStepText(resources, riding.copy(getOffAt = at(-1)), now, current = false, asOf = asOf).second)
+        assertEquals("Checking…", nextStepText(resources, TripProgress.Waiting(mildmay, at(-1)), now, current = false, asOf = asOf).second)
+        // Told to get off: the ride's own words stand in, as an answer too old no longer says the stop is next.
+        val soon = TripProgress.Riding(mildmay, "Stratford", 1, at(1), getOffSoon = true)
+        assertEquals("Ride to Stratford", nextStepText(resources, soon, now, current = false, asOf = asOf).first)
+    }
+
+    @Test
+    fun on_the_way_card_keeps_its_times_while_checking_after_a_failed_refresh() {
+        show(
+            trip.copy(boarded = true, onBoardSeen = true),
+            TripProgress.Riding(mildmay, "Hackney Central", 4, at(16), getOffSoon = false),
+            failed = true,
+            current = false,
+            asOf = at(-3),
+        )
+        composeRule.onNodeWithText("Checking…").assertIsDisplayed()
+        composeRule.onNodeWithText("16 min · ${CLOCK.format(at(16).atZone(LONDON))}").assertIsDisplayed()
+        composeRule.onNodeWithTag("onTheWayEta").assertIsDisplayed()
+        composeRule.onNodeWithText("4 stops", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithText("Updating…").assertDoesNotExist()
+        captureSnapshot("on-the-way-checking.png")
+    }
+
+    @Test
     fun a_next_stop_not_named_is_left_out_of_the_stops_left() {
         val resources = composeRule.activity.resources
         // Not called by where they get off (Codex, PR #449): the stops alone, timed where predicted.
@@ -1117,6 +1153,16 @@ class OnTheWayScreenScreenshotTest {
         val gone = TripProgress.Waiting(mildmay, at(-1))
         show(trip, gone, nextTrains = NextTrains(mildmay, emptyList(), readyAt = now, nextDue = at(10)).withGroups(now))
         composeRule.onNodeWithTag("onTheWayEta").assertTextEquals("est. 37 min · 08:39")
+    }
+
+    @Test
+    fun a_stale_answered_trains_time_gone_by_times_the_trip_from_no_other_train() {
+        // Stale, its train's time passed: that doesn't say the rider missed it, so the arrival goes rather
+        // than move to the board's next train (Codex, #611).
+        val gone = TripProgress.Waiting(mildmay, at(-1))
+        show(trip, gone, current = false, asOf = at(-3), nextTrains = NextTrains(mildmay, emptyList(), readyAt = now, nextDue = at(10)).withGroups(now))
+        composeRule.onNodeWithTag("onTheWayEta").assertDoesNotExist()
+        onCard("Checking…").assertIsDisplayed()
     }
 
     @Test
