@@ -67,6 +67,10 @@ exercises the whole spine the widget later renders from.
       decided a carry-over before its awaits. Two ways to close it: reconcile every stop with the cache's
       current lookup at the merge, which narrows the gap to the hop back to the main thread; or have the
       list follow the closure cache and re-merge a stop whose shown lookup is superseded, which closes it.
+      The near-me places a refresh merges (`Terminating.nearer`) have the same shape: worked out from the
+      distances the batch began with, so a `remeasure` that publishes while the batch is out is
+      overwritten by the refresh's older places until the next fix or refresh (Codex, #619). Whichever
+      design is chosen should cover both.
 - [x] The trip tracker off the main thread (#536): `restore`, `start`, `goTo`, `end` and `refresh`
       each hop to `compute` before taking the tracker's lock, so a refresh's step, a tap's move, a
       start and a restore walk the trip's route on the worker.
