@@ -192,7 +192,7 @@ class MainViewModel(
     // moving signal — is still checked every refresh. The app shares one with a trip
     // ([StopClosureCache.SHARED]), so each reuses the other's lookups; a test gets its own.
     private val disruptionCache: StopClosureCache = StopClosureCache(),
-    // How long a line's determined status is reused ([lineStatusCache]); zero (always ask) by
+    // How long a line's determined status is reused ([heldLines]); zero (always ask) by
     // default for tests, [LINE_STATUS_REUSE] in the app.
     private val lineStatusReuse: Duration = Duration.ZERO,
     // Each nearby stop's distance from the fix this set was resolved at (empty for a watched list),
@@ -275,9 +275,6 @@ class MainViewModel(
     // A same-set reconcile's refresh held for the screen's next journey-stop report (see reconcile).
     private var refreshAwaitsJourneyStops = false
 
-    private val fetchedStops: List<StopRef>
-        get() = fetchedOf(nearStops, journeyStops)
-
     // A same-set reconcile worked out on the worker and not yet applied: a refresh waits for it
     // ([reconcile]), and the screen's journey-stop report is noted for it.
     private var reconcileJob: Job? = null
@@ -292,6 +289,8 @@ class MainViewModel(
     // writer's. The latest report, and whether it still needs writing (a write failed).
     private var widgetJourneysReport: WidgetJourneysReport? = null
     private var widgetJourneysPending = false
+    // The last report written: the same one again needs no write.
+    private var widgetJourneysWritten: WidgetJourneysReport? = null
     // This ViewModel's place in line: a newer one (a relocation made it) owns the widget's journeys,
     // so this one's writes stand down rather than land an older report over the newer one's.
     private val widgetJourneysGeneration = if (ownsWidgetJourneys) WidgetJourneysWrites.next() else NO_WIDGET_JOURNEYS
@@ -301,12 +300,14 @@ class MainViewModel(
      * [journeyIds], both captured when the fetch began — kept positively, so an origin a flip has
      * since dropped can't slip through a fetch in flight. A journey origin that isn't nearby is
      * marked journey-only: the widget shows just its journey's departures, and the store keeps it
-     * only while a pin starts from it.
+     * only while a pin starts from it. [distances] is each stop's distance as the fetch ended.
      */
+    @WorkerThread
     private fun forWidget(
         snapshot: DeparturesSnapshot,
         nearIds: Set<String>,
         journeyIds: Set<String>,
+        distances: Map<String, Double>,
     ): DeparturesSnapshot {
         val kept = snapshot.stops.filter { it.stopId in nearIds || it.stopId in journeyIds }
         return DeparturesSnapshot(
@@ -321,18 +322,21 @@ class MainViewModel(
             lineStatuses = widgetLineChecks(kept),
             // Nearest the rider now first, so the widget shows a line once, from its nearest stop, as
             // this list does. The nearby stops only: a journey-only origin isn't one the rider is near.
-            nearestFirst = nearestFirstOf(kept.map { it.stopId }.filter { it in nearIds }, stopDistanceMeters),
+            nearestFirst = nearestFirstOf(kept.map { it.stopId }.filter { it in nearIds }, distances),
         )
     }
 
-    /** The [lineStatusCache] entries for the lines [stops] show, as the widget snapshot's checks. */
+    /** The [heldLines] answers for the lines [stops] show, as the widget snapshot's checks. */
+    @WorkerThread
     private fun widgetLineChecks(stops: List<StopArrivals>): Map<String, LineStatusCheck> =
         LineStatusCheck.linesOf(stops).mapNotNull { id ->
-            val verdict = lineStatusCache[id]?.let { (at, status) -> LineStatusCheck(status, at) }
-            val omitted = lineStatusOmitted[id]?.let { LineStatusCheck.noVerdict(id, it) }
-            // At most one is held: each answer clears the other kind, so the latest wins whatever
-            // the clock did in between.
-            (verdict ?: omitted)?.let { id to it }
+            // One is held at most: each answer replaces the other kind, so the latest wins whatever the
+            // clock did in between.
+            when (val held = heldLines[id]) {
+                is HeldLine.Verdict -> id to LineStatusCheck(held.status, held.at)
+                is HeldLine.Omitted -> id to LineStatusCheck.noVerdict(id, held.at)
+                null -> null
+            }
         }.toMap()
 
     /**
@@ -340,6 +344,7 @@ class MainViewModel(
      * asked for — even if none came back — so a journey origin's fresh arrivals alone never save
      * failed nearby stops over the last good ones.
      */
+    @WorkerThread
     private fun widgetJudged(stops: List<StopArrivals>, nearIds: Set<String>): List<StopArrivals> =
         if (nearIds.isEmpty()) stops else stops.filter { it.stopId in nearIds }
 
@@ -355,17 +360,17 @@ class MainViewModel(
         // Each settled journey's boarding keys, its own and its neighboring poles' ([WidgetJourneysReport.boarding]).
         boarding: Map<String, Set<String>> = emptyMap(),
     ) {
-        val report = WidgetJourneysReport(keys, checks, shownFrom, boarding)
-        if (report == widgetJourneysReport) return
-        widgetJourneysReport = report
+        // Compared with what was written last on the worker, as it walks every journey ([writeWidgetJourneys]).
+        widgetJourneysReport = WidgetJourneysReport(keys, checks, shownFrom, boarding)
         writeWidgetJourneys()
     }
 
     /**
      * Applies the latest report to the stored snapshot, with the fetched copy of each checked
      * journey's origin (one the store doesn't hold yet joins with it). Writes run one at a time,
-     * process-wide, each taking the report current when it runs; a failure is retried after the
-     * next fetch.
+     * process-wide, each taking the report current when it runs; one the same as the last written is
+     * nothing new, and isn't written again. A failure is retried after the next fetch. Its comparison and
+     * its origins are worked out on the worker (AGENTS.md *Main thread: read and dispatch only*).
      */
     private fun writeWidgetJourneys() {
         widgetJourneysPending = true
@@ -373,11 +378,19 @@ class MainViewModel(
             WidgetJourneysWrites.lock.withLock {
                 if (!widgetJourneysPending || WidgetJourneysWrites.latest() != widgetJourneysGeneration) return@withLock
                 val report = widgetJourneysReport ?: return@withLock
-                val originIds = report.checks.mapTo(HashSet()) { it.originId }
-                val origins = (_state.value as? DeparturesUiState.Loaded)?.stops.orEmpty().filter { it.stopId in originIds }
+                // Taken now, before the worker has it: a report made meanwhile is pending again, and its own
+                // write follows this one.
                 widgetJourneysPending = false
+                val written = widgetJourneysWritten
+                val stops = (_state.value as? DeparturesUiState.Loaded)?.stops.orEmpty()
+                val origins = withContext(compute) {
+                    if (report == written) return@withContext null
+                    val originIds = report.checks.mapTo(HashSet()) { it.originId }
+                    stops.filter { it.stopId in originIds }
+                } ?: return@withLock
                 try {
                     withContext(io) { snapshotStore.updateWidgetJourneys(report, origins) }
+                    widgetJourneysWritten = report
                 } catch (e: CancellationException) {
                     widgetJourneysPending = true
                     throw e
@@ -719,11 +732,14 @@ class MainViewModel(
     // still shows each stop as it lands rather than holding the rest until the whole batch is in.
     private var coldLoadUnfinished = false
 
-    // Each line's last DETERMINED status (good or disrupted) and when it came back (stamped by the
-    // steady clock, [SteadyClock]), reused for [lineStatusReuse] so a refresh a minute after the last
-    // one needn't re-ask about the same lines.
-    // A line TfL gave no status for, or a failed request, is never cached. In-memory, main thread.
-    private val lineStatusCache = mutableMapOf<String, Pair<Instant, LineStatus>>()
+    // Each line's last answer and when it came back (stamped by the steady clock, [SteadyClock]): its
+    // DETERMINED status (good or disrupted), reused for [lineStatusReuse] so a refresh a minute after the
+    // last one needn't re-ask about the same lines, or that TfL was asked and gave none (a no-verdict
+    // check for the widget). One per line, the latest replacing the other kind outright, so a clock moved
+    // back can't leave a future-dated entry outranking it ([widgetLineChecks]). A failed request is never
+    // kept. In-memory; written on the main thread, read on the worker too ([forWidget]), so a concurrent
+    // map, and one entry per line so no read sees a line both answered and left out.
+    private val heldLines: MutableMap<String, HeldLine> = ConcurrentHashMap()
 
     // The always-covered lines as the latest check found them, for the home screen's disruptions row
     // ([HomeLines]): null until one is had. Never persisted, like the list's own checks.
@@ -737,16 +753,13 @@ class MainViewModel(
         val asked = SteadyClock.stamp(now)
         if (_always.value?.let { asked.isBefore(it.asked) } == true) return
         val statuses = check.statuses.filter { it.lineId in askedFor }.associateBy { it.lineId }
-        val stamps = statuses.keys.mapNotNull { id -> lineStatusCache[id]?.first?.let { id to it } }.toMap()
+        val stamps = statuses.keys.mapNotNull { id -> (heldLines[id] as? HeldLine.Verdict)?.at?.let { id to it } }.toMap()
         val at = stamps.values.minOrNull() ?: asked
         _always.value = HomeLines.Always(statuses, at, asked, askedFor, stamps)
     }
     // The dismissed alerts' count ([DismissedAlertsStore.mark]) each cached status was asked at: a
     // refresh settling dismissals on a reused verdict is as old as it. In-memory, main thread, like it.
     private val lineStatusMarks = mutableMapOf<String, Long>()
-    // When each line was last asked about and TfL gave no status for it (a no-verdict check for the
-    // widget). In-memory, main thread, like the cache.
-    private val lineStatusOmitted = mutableMapOf<String, Instant>()
     // Lines TfL answered 404 for ("not recognised": a National Rail service it has no line for, such
     // as Eurostar). Not asked about again this session — the answer won't change — and never
     // determined, so their rows still read as unchecked rather than clean (SPEC principle 1). They
@@ -855,8 +868,13 @@ class MainViewModel(
                 warn("snapshot restore failed: ${reason(e)}")
                 null
             }
-            if (restored != null && _state.value is DeparturesUiState.Loading) {
-                _state.value = restoredLoaded(restored)
+            if (restored != null) {
+                // Worked out on the worker, as it walks every stop; shown only if nothing else is by then.
+                val near0 = nearStops
+                val journeys0 = journeyStops
+                val distances0 = stopDistanceMeters
+                val shown = withContext(compute) { restoredLoaded(restored, fetchedOf(near0, journeys0), distances0) }
+                if (_state.value is DeparturesUiState.Loading) _state.value = shown
             }
             refresh()
         }
@@ -954,7 +972,7 @@ class MainViewModel(
         // per-line surface can tell "checked, good service" from "never checked" (Codex on #100).
         val determinedLineIds: Set<String>,
         // Whether TfL answered a line-status request this batch, even with nothing for any line: its
-        // omissions are checks too ([lineStatusOmitted]), which the widget must learn of.
+        // omissions are checks too ([heldLines]), which the widget must learn of.
         val statusAnswered: Boolean,
         // Stop ids whose OWN stop-level disruption request failed this batch — an axis independent of
         // line status (a stop's line can be determined while its closure was never checked), so a
@@ -1629,13 +1647,13 @@ class MainViewModel(
     private suspend fun checkLinesNow(lineIds: Set<String>, now: Instant): LineCheck {
         // Not one still waiting on its alerts' directions: asked again, it splits by direction.
         val cachedStatuses = lineIds.mapNotNull { id ->
-            lineStatusCache[id]?.takeIf { (at, status) -> isWithin(at, now, lineStatusReuse) && !status.awaitingDirections }?.second
+            (heldLines[id] as? HeldLine.Verdict)?.takeIf { isWithin(it.at, now, lineStatusReuse) && !it.status.awaitingDirections }?.status
         }
         // A line TfL left out within the same window isn't asked about again either: it still
         // reads as unchecked, but asking every cycle would spend the rate budget and the radio
         // on an answer that just came back empty.
         val recentlyOmitted = lineIds.filterTo(HashSet()) { id ->
-            lineStatusOmitted[id]?.let { at -> isWithin(at, now, lineStatusReuse) } == true
+            (heldLines[id] as? HeldLine.Omitted)?.let { isWithin(it.at, now, lineStatusReuse) } == true
         }
         val toQuery = lineIds - cachedStatuses.mapTo(HashSet()) { it.lineId } - unknownLineIds - recentlyOmitted
         val cachedDismissals = cachedStatuses.associate { it.lineId to (lineStatusMarks[it.lineId] ?: 0L) }
@@ -1673,12 +1691,10 @@ class MainViewModel(
             // already near its expiry (SPEC D3/D4). By the steady clock, as a fetch is
             // ([SteadyClock]).
             val answeredAt = SteadyClock.stamp(clock())
-            // The latest answer for a line replaces the other kind outright, so a clock moved
-            // back can't leave a future-dated entry outranking it ([widgetLineChecks]).
+            // The latest answer for a line replaces the other kind outright ([heldLines]).
             fetched.forEach {
-                lineStatusCache[it.lineId] = answeredAt to it
+                heldLines[it.lineId] = HeldLine.Verdict(answeredAt, it)
                 lineStatusMarks[it.lineId] = askedAt
-                lineStatusOmitted.remove(it.lineId)
             }
             // A line TfL returned no determinable status for is unknown, not clean — flag it so
             // those rows aren't shown as verified-clean (the client drops such lines, so they're
@@ -1688,8 +1704,7 @@ class MainViewModel(
             // Asked and left out: remembered, so the widget's copy of an older verdict for it
             // is replaced by "no verdict" rather than kept ([widgetLineChecks]).
             toQuery.filterNot { it in determined || it in failed }.forEach {
-                lineStatusOmitted[it] = answeredAt
-                lineStatusCache.remove(it)
+                heldLines[it] = HeldLine.Omitted(answeredAt)
                 lineStatusMarks.remove(it)
             }
             // This check's unknown and failed lines were just named above.
@@ -1912,6 +1927,11 @@ class MainViewModel(
             // from clearing the "some stops couldn't be refreshed" warning on an
             // already-incomplete snapshot recovered from the store.
             val priorLoaded = previous as? DeparturesUiState.Loaded
+            // The tiers and journey stops this fetch is for, as they are now: a change to either while it
+            // runs cancels it ([setJourneyStops], [reconcile]).
+            val near0 = nearStops
+            val journeys0 = journeyStops
+            val distances0 = stopDistanceMeters
             val priorStops: List<StopArrivals>
             val priorPartial: Boolean
             if (priorLoaded != null) {
@@ -1927,22 +1947,21 @@ class MainViewModel(
                     null
                 }
                 priorStops = loaded?.stops ?: emptyList()
-                priorPartial = loaded != null && isIncomplete(loaded.stops)
+                // As the init restore shows it, worked out on the worker: it walks every stop.
+                val restoredState = loaded?.let { withContext(compute) { restoredLoaded(it, fetchedOf(near0, journeys0), distances0) } }
+                priorPartial = restoredState?.partialRefresh == true
                 // Show the aged last-good at once rather than holding the spinner through the
                 // whole fetch: this branch runs only when the state wasn't Loaded (a refresh
                 // that raced or replaced the init restore), and if the network then hangs a
                 // Loading spinner would hide valid data already read from disk (SPEC principle
                 // 5). Same construction as the init restore, so both restore paths reach the
                 // screen identically. The fetch below then replaces it.
-                if (loaded != null) {
-                    _state.value = restoredLoaded(loaded)
+                if (restoredState != null) {
+                    _state.value = restoredState
                 }
             }
-            // What this fetch is for, worked out on the worker from the tiers and journey stops as they
-            // are now (AGENTS.md *Main thread: read and dispatch only*): each pass walks every stop.
-            val near0 = nearStops
-            val journeys0 = journeyStops
-            val distances0 = stopDistanceMeters
+            // What this fetch is for, worked out on the worker from the tiers and journey stops above
+            // (AGENTS.md *Main thread: read and dispatch only*): each pass walks every stop.
             val (prior, reuse, nearIds, journeyIds, toFetch) = withContext(compute) {
                 RefreshSetup(
                     prior = priorStops.associateBy { it.stopId },
@@ -2056,55 +2075,70 @@ class MainViewModel(
             val seeds = toFetch
             val distances = stopDistanceMeters
             val unknown = batch.unknownLineIds
-            val newState = withContext(compute) { when {
-                merged.isNotEmpty() ->
-                    // Grouping into rows is the screen's job, recomputed from the live
-                    // clock (SPEC D4) — the snapshot is the merged stops, each at its age.
-                    DeparturesUiState.Loaded(
-                        stops = merged,
-                        // The whole-screen "last updated" stamp is the freshest stop's age;
-                        // per-row withhold uses each stop's own age (SPEC D4).
-                        fetchedAt = merged.maxOf { it.fetchedAt },
-                        // Some stops shown are fresh and at least one couldn't be refreshed
-                        // (kept aged) — say so, rather than pass a mixed-age list off as one
-                        // fresh whole. On a total failure (nothing fresh) the merged snapshot
-                        // is the prior one unchanged, so inherit its partial flag rather than
-                        // clearing it — an already-incomplete list stays incomplete, and that
-                        // warning must not be dropped just because the refresh also failed.
-                        // priorPartial carries that flag whether the prior was in-memory or
-                        // recovered from the store, so a store-recovered incomplete snapshot
-                        // stays flagged too.
-                        partialRefresh = partial,
-                        // Which stops, and why, so the banner can say "Oxford Circus: server error" rather
-                        // than leave the rider guessing (SPEC principle 6). A stop that failed this
-                        // attempt gets this attempt's reason; one carried over unfetched keeps its own.
-                        partialStops = if (partial) {
-                            incompleteStops(merged, batch.arrivalsErrors, priorLoaded?.partialStops.orEmpty(), seeds, distances)
-                        } else {
-                            emptyMap()
-                        },
-                        partialUnnamed = partial && unnamedIncomplete(merged, seeds),
-                        // Nothing fresh came back at all (every request failed) but a prior
-                        // snapshot was kept — carry the failure so the screen says "couldn't
-                        // refresh" rather than passing the aged rows off as fresh (SPEC D4 /
-                        // principle 2). Cleared by the next refresh that gets anything.
-                        refreshFailure = if (!anyFreshData && firstError != null) kindOf(firstError) else null,
-                        lineStatuses = lineStatuses,
-                        // Screen-wide "status unknown" derives from the merged set and this batch's
-                        // provenance ([disruptionUnknownOf]).
-                        disruptionUnknown = disruptionUnknownOf(merged, determinedLineIds, stopsDisruptionUnknown, unknown),
-                        determinedLineIds = determinedLineIds,
-                        stopsDisruptionUnknown = stopsDisruptionUnknown,
-                        unavailableStopIds = toFetch.mapTo(HashSet()) { it.id } - merged.mapTo(HashSet()) { it.stopId },
-                    )
-                // Nothing came back and nothing failed → there were no stops to fetch
-                // (no watched stops yet, or the seed is empty). That's an empty list, not
-                // a network error — TfL was never contacted.
-                firstError == null -> DeparturesUiState.Loaded(stops = emptyList(), fetchedAt = SteadyClock.stamp(now))
-                // Every stop failed on a first load with no prior snapshot to fall back on
-                // → an honest error, not an empty or stale list (SPEC principles 1–2).
-                else -> DeparturesUiState.Error(kindOf(firstError))
-            } }
+            // With what the widget is given of it (below), in the same pass: no step of the worker's comes
+            // between the list shown and the refresh's settling of its checks, which a list left meanwhile
+            // would otherwise skip.
+            val (newState, widgetSnapshot, toSave) = withContext(compute) {
+                val newState = when {
+                    merged.isNotEmpty() ->
+                        // Grouping into rows is the screen's job, recomputed from the live
+                        // clock (SPEC D4) — the snapshot is the merged stops, each at its age.
+                        DeparturesUiState.Loaded(
+                            stops = merged,
+                            // The whole-screen "last updated" stamp is the freshest stop's age;
+                            // per-row withhold uses each stop's own age (SPEC D4).
+                            fetchedAt = merged.maxOf { it.fetchedAt },
+                            // Some stops shown are fresh and at least one couldn't be refreshed
+                            // (kept aged) — say so, rather than pass a mixed-age list off as one
+                            // fresh whole. On a total failure (nothing fresh) the merged snapshot
+                            // is the prior one unchanged, so inherit its partial flag rather than
+                            // clearing it — an already-incomplete list stays incomplete, and that
+                            // warning must not be dropped just because the refresh also failed.
+                            // priorPartial carries that flag whether the prior was in-memory or
+                            // recovered from the store, so a store-recovered incomplete snapshot
+                            // stays flagged too.
+                            partialRefresh = partial,
+                            // Which stops, and why, so the banner can say "Oxford Circus: server error" rather
+                            // than leave the rider guessing (SPEC principle 6). A stop that failed this
+                            // attempt gets this attempt's reason; one carried over unfetched keeps its own.
+                            partialStops = if (partial) {
+                                incompleteStops(merged, batch.arrivalsErrors, priorLoaded?.partialStops.orEmpty(), seeds, distances)
+                            } else {
+                                emptyMap()
+                            },
+                            partialUnnamed = partial && unnamedIncomplete(merged, seeds),
+                            // Nothing fresh came back at all (every request failed) but a prior
+                            // snapshot was kept — carry the failure so the screen says "couldn't
+                            // refresh" rather than passing the aged rows off as fresh (SPEC D4 /
+                            // principle 2). Cleared by the next refresh that gets anything.
+                            refreshFailure = if (!anyFreshData && firstError != null) kindOf(firstError) else null,
+                            lineStatuses = lineStatuses,
+                            // Screen-wide "status unknown" derives from the merged set and this batch's
+                            // provenance ([disruptionUnknownOf]).
+                            disruptionUnknown = disruptionUnknownOf(merged, determinedLineIds, stopsDisruptionUnknown, unknown),
+                            determinedLineIds = determinedLineIds,
+                            stopsDisruptionUnknown = stopsDisruptionUnknown,
+                            unavailableStopIds = toFetch.mapTo(HashSet()) { it.id } - merged.mapTo(HashSet()) { it.stopId },
+                        )
+                    // Nothing came back and nothing failed → there were no stops to fetch
+                    // (no watched stops yet, or the seed is empty). That's an empty list, not
+                    // a network error — TfL was never contacted.
+                    firstError == null -> DeparturesUiState.Loaded(stops = emptyList(), fetchedAt = SteadyClock.stamp(now))
+                    // Every stop failed on a first load with no prior snapshot to fall back on
+                    // → an honest error, not an empty or stale list (SPEC principles 1–2).
+                    else -> DeparturesUiState.Error(kindOf(firstError))
+                }
+                // What the widget may show of it ([forWidget]), and whether this cycle is authoritative
+                // enough to save (see below): it walks every stop and every line they show.
+                val snapshot = (newState as? DeparturesUiState.Loaded)
+                    ?.let { forWidget(DeparturesSnapshot(it.stops, it.fetchedAt), nearIds, journeyIds, distances) }
+                val widgetStops = snapshot?.stops.orEmpty()
+                val judged = widgetJudged(widgetStops, nearIds)
+                val carriedFresh = judged.any { it.stopId in reuse && it.arrivalsFresh }
+                val freshNear = judged.any { it.stopId in batch.freshArrivalStopIds }
+                val authoritative = freshNear || carriedFresh || (widgetStops.isEmpty() && firstError == null)
+                Triple(newState, snapshot, snapshot?.takeIf { authoritative })
+            }
             _state.value = newState
             closureShown += batch.closureAsks
             coldLoadUnfinished = false
@@ -2129,14 +2163,8 @@ class MainViewModel(
             // Judged on the stops the widget keeps ([forWidget], [widgetJudged]): a journey origin's
             // fresh arrivals must not make a save that rewrites the nearby stops as failed and stamps
             // them "just now".
-            val widgetSnapshot = (newState as? DeparturesUiState.Loaded)
-                ?.let { forWidget(DeparturesSnapshot(it.stops, it.fetchedAt), nearIds, journeyIds) }
-            val widgetStops = widgetSnapshot?.stops.orEmpty()
-            val judged = widgetJudged(widgetStops, nearIds)
-            val carriedFresh = judged.any { it.stopId in reuse && it.arrivalsFresh }
-            val freshNear = judged.any { it.stopId in batch.freshArrivalStopIds }
-            val authoritative = freshNear || carriedFresh || (widgetStops.isEmpty() && firstError == null)
-            val toSave: DeparturesSnapshot? = widgetSnapshot?.takeIf { authoritative }
+            // The widget's snapshot ([widgetSnapshot]) and whether to save it ([toSave]) were worked out
+            // with the list, above.
             if (toSave != null) {
                 try {
                     // Deliberately CANCELLABLE: cancelFetch() is the relocation guard — it cancels this
@@ -2216,7 +2244,7 @@ class MainViewModel(
             // the UI state — a total arrivals failure with no prior yields an Error state and an empty
             // [merged] even though the disruption checks were authoritative, and a resolved closure on
             // that path must still be pruned (SPEC principle 2). This refresh queries the full watched
-            // set ([fetchedStops]); the reconcile is scoped per place to only the queried stops whose
+            // set ([toFetch]); the reconcile is scoped per place to only the queried stops whose
             // disruption lookup succeeded (see reconcileDismissals), so it prunes a resolved notice
             // without touching a place that failed to refresh or belongs to a different nearby set.
             // Each place and line as old as its own answer, a reused lookup or line status perhaps: a
@@ -2805,7 +2833,8 @@ class MainViewModel(
      * states — present-and-fresh, present-and-carried-stale, or missing — so this is the
      * complete incompleteness test.
      */
-    private fun isIncomplete(stops: List<StopArrivals>, seeds: List<StopRef> = fetchedStops): Boolean {
+    @WorkerThread
+    private fun isIncomplete(stops: List<StopArrivals>, seeds: List<StopRef>): Boolean {
         val shown = stops.mapTo(HashSet()) { it.stopId }
         return seeds.any { it.id !in shown } || stops.any { !it.arrivalsFresh }
     }
@@ -2816,13 +2845,14 @@ class MainViewModel(
      * tried it, else the reason it already had in [prior], else unknown. Empty when none has a
      * name, and the banner falls back to its generic wording.
      */
+    @WorkerThread
     private fun incompleteStops(
         stops: List<StopArrivals>,
         failedNow: Map<String, DeparturesUiState.Error.Kind> = emptyMap(),
         prior: Map<String, DeparturesUiState.FailedStop> = emptyMap(),
-        // The stops asked for, and their distances: passed in where this runs off the main thread.
-        seeds: List<StopRef> = fetchedStops,
-        distances: Map<String, Double> = stopDistanceMeters,
+        // The stops asked for, and their distances.
+        seeds: List<StopRef>,
+        distances: Map<String, Double>,
     ): Map<String, DeparturesUiState.FailedStop> {
         fun failed(id: String, name: String) = id to DeparturesUiState.FailedStop(name, failedNow[id] ?: prior[id]?.reason)
         val byId = stops.associateBy { it.stopId }
@@ -2836,13 +2866,14 @@ class MainViewModel(
         }
         val seedIds = seeds.mapTo(HashSet()) { it.id }
         val unseeded = stops.filter { it.stopId !in seedIds && !it.arrivalsFresh }.map { failed(it.stopId, it.stopName) }
-        // [fetchedStops] is in tier order, not distance order (a journey's stop comes after every
+        // [seeds] is in tier order ([fetchedOf]), not distance order (a journey's stop comes after every
         // near one, and one cluster's stop can be farther than the next cluster's), so order by distance.
         return byDistance((seeded + unseeded).toMap(), distances)
     }
 
     /** Whether some stop that makes [stops] incomplete has no name to show ([incompleteStops] drops it). */
-    private fun unnamedIncomplete(stops: List<StopArrivals>, seeds: List<StopRef> = fetchedStops): Boolean {
+    @WorkerThread
+    private fun unnamedIncomplete(stops: List<StopArrivals>, seeds: List<StopRef>): Boolean {
         val byId = stops.associateBy { it.stopId }
         val seedIds = seeds.mapTo(HashSet()) { it.id }
         return seeds.any { seed ->
@@ -2864,16 +2895,24 @@ class MainViewModel(
      * aged snapshot always reaches the screen the same way (SPEC principle 5). The immediate
      * refresh recomputes everything once it completes.
      */
-    private fun restoredLoaded(snapshot: DeparturesSnapshot): DeparturesUiState.Loaded =
-        DeparturesUiState.Loaded(
+    @WorkerThread
+    private fun restoredLoaded(
+        snapshot: DeparturesSnapshot,
+        // The stops asked for ([fetchedOf]) and their distances.
+        seeds: List<StopRef>,
+        distances: Map<String, Double>,
+    ): DeparturesUiState.Loaded {
+        val incomplete = isIncomplete(snapshot.stops, seeds)
+        return DeparturesUiState.Loaded(
             stops = snapshot.stops,
             fetchedAt = snapshot.fetchedAt,
-            partialRefresh = isIncomplete(snapshot.stops),
+            partialRefresh = incomplete,
             // Which stops, not why: the reason isn't persisted with the snapshot, so each is unknown.
-            partialStops = incompleteStops(snapshot.stops),
-            partialUnnamed = isIncomplete(snapshot.stops) && unnamedIncomplete(snapshot.stops),
+            partialStops = incompleteStops(snapshot.stops, seeds = seeds, distances = distances),
+            partialUnnamed = incomplete && unnamedIncomplete(snapshot.stops, seeds),
             disruptionUnknown = true,
         )
+    }
 
     /**
      * The interchange [hubId]'s name + member aliases, from cache or a one-time [TflClient.hubInfo]
@@ -3044,6 +3083,15 @@ private fun fetchedOf(near: List<StopRef>, journeyStops: List<StopRef>): List<St
         stop.copy(lines = (stop.lines + extra).distinctBy { it.id })
     }
     return merged + journeyStops.filter { it.id !in nearIds }
+}
+
+/** A line's last answer ([MainViewModel]'s held lines): its status, or that TfL gave none, and when. */
+private sealed interface HeldLine {
+    val at: Instant
+
+    class Verdict(override val at: Instant, val status: LineStatus) : HeldLine
+
+    class Omitted(override val at: Instant) : HeldLine
 }
 
 /** Where else the rider may be: both tiers' stops, each with its distance. */

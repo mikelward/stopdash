@@ -37,24 +37,27 @@ exercises the whole spine the widget later renders from.
         what comes back (`sharedClosures` among it; the verdict checks that move `failures` are on `io`
         already), and the callbacks the page's effects make into it as routes and estimates
         change (`boardAt`, `noteWithheld`, `checkShownStops`).
-- [ ] The near-me list's refresh off the main thread, before its requests: the widget's snapshot and
-      journey checks (`forWidget`, `widgetLineChecks`, `setWidgetJourneys`/`writeWidgetJourneys` ahead of
-      their write, which read the line-status caches main-thread code writes) still run on
-      `viewModelScope` at each refresh, and so does a refresh's restore of the saved snapshot when it
-      races the first one (`isIncomplete`, `restoredLoaded`). Work them out on `compute` and publish the
-      result, as a cold load's progress is (#527). `refresh`'s own setup (`RefreshSetup`: the prior
-      stops by id, `recentlyFetched`, both id sets, the stops asked), `fetchBatch`'s per-stop plan
-      (`BatchPlan`: each stop's board and whether it may be carried over, the lines declared and the pole
-      batches) and `checkJourneyDestinations`' choice of which to ask now run on the worker.
-      `fetchBatch`'s launch loop still runs on the caller's thread: one request per stop, each with its
-      constant-time cache reads as it's launched (the shared arrivals, the kept closure,
-      `closureStillShown`). Launching from a serial view of `compute` instead needs everything the loop
-      starts safe there first: the early line check (`checkLines`) writes main-thread state
+- [x] The near-me list's refresh off the main thread, before its requests: `refresh`'s own setup
+      (`RefreshSetup`: the prior stops by id, `recentlyFetched`, both id sets, the stops asked),
+      `fetchBatch`'s per-stop plan (`BatchPlan`: the National Rail board each stop asks for, which may be
+      carried over, the pole batches, the lines declared; the caches each stop is launched on are read as
+      it's launched, as they can move on meanwhile) and `checkJourneyDestinations`' choice of which to
+      ask (#619);
+      the widget's snapshot (`forWidget`, `widgetLineChecks`), worked out with the list in one pass so no
+      step comes between the list shown and the refresh's settling of its checks; the widget's journeys
+      write (`setWidgetJourneys`/`writeWidgetJourneys`: compared with the last written, and its origins
+      gathered); and the saved snapshot's restore, on startup or a refresh that races it
+      (`restoredLoaded`). The line-status caches the widget reads are one concurrent map, one answer per
+      line (`heldLines`). The per-stop merge and the list build moved in #534; the dismissal pass is
+      #532's; the screen's journey-stop and destination reports (`setJourneyStops`,
+      `setJourneyDestinations`) are worked out on the worker, applied in order; so are a destination
+      check's cards.
+- [ ] `fetchBatch`'s launch loop off the main thread: it still runs on the caller's thread, one request
+      per stop, each with its constant-time cache reads as it's launched (the shared arrivals, the kept
+      closure, `closureStillShown`). Launching from a serial view of `compute` instead needs everything
+      the loop starts safe there first: the early line check (`checkLines`) writes main-thread state
       (`lineStatusMarks`, `unknownLineIds`), and the batch's bookkeeping (`arrivalOf`, `poleFromCache`,
-      the hub lookups) assumes one thread (Codex, #619). The per-stop merge and the list build moved in
-      #534; the dismissal pass is #532's; the screen's journey-stop and destination reports
-      (`setJourneyStops`, `setJourneyDestinations`) are worked out on the worker, applied in order; so
-      are a destination check's cards.
+      the hub lookups) assumes one thread (Codex, #619).
 - [ ] **A stop's closure as the list publishes it, not as it was read** (Codex, #619; the design is the
       maintainer's call). A near-me refresh reads each stop's closure from the shared cache once: as the
       stop is launched (a carry-over's `closureStillShown`, a cached lookup) or as its own lookup settles.
