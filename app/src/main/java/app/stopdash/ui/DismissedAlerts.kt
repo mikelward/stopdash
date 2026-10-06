@@ -79,8 +79,21 @@ internal suspend fun dismissAlert(
     // Added as the dismissal is counted, in one step with it, so no check's prune can land in between
     // ([DismissedAlertsStore.prune]).
     into: MutableStateFlow<Set<DismissedAlert>>? = null,
+) = dismissAlertOf(store, io, failed, warn, into) { DismissedAlert.of(row) }
+
+/**
+ * Records the [alert] worked out on [io] as dismissed in [store], as [dismissAlert] does a row's; none
+ * (null) does nothing. Its signature joins TfL's text, which grows with the alert, so it's built after
+ * the hop, never on the caller's (the main) thread (AGENTS.md *Main thread*; Codex, #603).
+ */
+internal suspend fun dismissAlertOf(
+    store: DismissedAlertsStore,
+    io: CoroutineDispatcher,
+    failed: MutableStateFlow<Boolean>,
+    warn: (String) -> Unit,
+    into: MutableStateFlow<Set<DismissedAlert>>? = null,
+    alert: () -> DismissedAlert?,
 ) {
-    val alert = DismissedAlert.of(row) ?: return
     try {
         // NonCancellable, like a star: a dismiss tapped just before leaving the page still lands.
         // On [io]: adding copies the whole set, never on the caller's (the main) thread. Already there
@@ -89,10 +102,11 @@ internal suspend fun dismissAlert(
         // didn't take: once no other dismissal of it is written or still being written (the store's say,
         // told to the last of them to fail), as one of those keeps it.
         withContext(NonCancellable + io) {
+            val dismissed = alert() ?: return@withContext
             store.dismiss(
-                alert,
-                counted = { into?.update { if (alert in it) it else it + alert } },
-                notWritten = { into?.update { it - alert } },
+                dismissed,
+                counted = { into?.update { if (dismissed in it) it else it + dismissed } },
+                notWritten = { into?.update { it - dismissed } },
             )
         }
     } catch (e: CancellationException) {

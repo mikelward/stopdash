@@ -3655,6 +3655,63 @@ class TripScreenScreenshotTest {
     }
 
     @Test
+    fun a_line_s_page_dismisses_its_alert_from_the_overflow() {
+        // Maintainer, 2026-10-06: an overflow action on the line's own page, not a × that reads as close.
+        // A disruption without TfL's reason opens a page too, for the action.
+        val severe = LineStatus("jubilee", 6, "Severe Delays")
+        val row = TripRow(
+            checking = false,
+            every = listOf(
+                TripLine(leg("tube", "jubilee", "Jubilee", "A" to "King's Cross", "B" to "Euston", 0, 10, 2), severe),
+                TripLine(leg("tube", "victoria", "Victoria", "A" to "King's Cross", "B" to "Euston", 0, 10, 2), LineStatus("victoria", 9, "Minor Delays"), dismissed = true),
+            ),
+        )
+        val dismissed = mutableListOf<LineStatus>()
+        val menu = AppMenuActions(updateAvailable = false, onOpenAppListing = {}, onSendBugReport = {}, onOpenLicenses = {})
+        val inline = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher()
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalAppMenu provides menu, LocalWorker provides inline) {
+                    TripLinesPage(row, onClose = {}, dismissal = LineAlertDismissal({ dismissed += it }, false, {}, androidx.compose.runtime.mutableIntStateOf(0)))
+                }
+            }
+        }
+        val more = composeRule.activity.getString(R.string.menu_more)
+        val dismiss = composeRule.activity.getString(R.string.alert_dismiss)
+        // The list's own overflow has no line to dismiss.
+        composeRule.onNodeWithContentDescription(more).performClick()
+        composeRule.onNodeWithText(dismiss).assertDoesNotExist()
+        androidx.test.espresso.Espresso.pressBack()
+        composeRule.onNodeWithText("Severe Delays").performClick()
+        composeRule.onNodeWithContentDescription(more).performClick()
+        composeRule.onNodeWithText(dismiss).performClick()
+        assertEquals(listOf(severe), dismissed)
+    }
+
+    @Test
+    fun a_dismiss_that_didn_t_save_is_said_on_the_lines_page() {
+        // The page covers the screen whose snackbar would say it (Codex, #603): it says it itself, while
+        // that screen holds its own word ([LineAlertDismissal.pagesOpen]) until the page closes.
+        var failed by mutableStateOf(false)
+        var acknowledged = 0
+        val open = androidx.compose.runtime.mutableIntStateOf(0)
+        val inline = java.util.concurrent.Executor { it.run() }.asCoroutineDispatcher()
+        composeRule.setContent {
+            StopDashTheme {
+                CompositionLocalProvider(LocalWorker provides inline) {
+                    TripLinesPage(TripRow(checking = false), onClose = {}, dismissal = LineAlertDismissal({}, failed, { acknowledged++; failed = false }, open))
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        assertEquals(1, open.intValue)
+        failed = true
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.dismiss_write_failed)).assertExists()
+        assertEquals(1, acknowledged)
+    }
+
+    @Test
     fun a_reason_page_restored_while_the_trip_checks_again_never_shows_its_saved_reason() {
         fun line(id: String, name: String, status: LineStatus) =
             TripLine(leg("tube", id, name, "A" to "King's Cross", "B" to "Euston", 0, 10, 2), status)

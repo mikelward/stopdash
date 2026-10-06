@@ -2485,6 +2485,8 @@ Builds on Phase 1's minimal line-status marking.
         2026-10-05: narrower than "Show disruptions").
   - [x] **What's dismissed stays off the row and goes down the page** (maintainer, 2026-10-05): off the
         pills once dismissed every way it's disrupted; on the lines page just above the good services.
+  - [x] **Dismiss an alert from the lines page** (maintainer, 2026-10-06): a line's own page offers
+        "Dismiss alert" in its overflow menu, on the trip and the home screen alike.
   - [ ] **Let the rider choose what the row covers** (maintainer, 2026-10-05): a list of lines,
         favorite routes, or favorite trips? And how to rank and collapse it when many are disrupted.
   - [ ] **Name the walking reach's closed stops on the row**, as a trip's row names its closed stops.

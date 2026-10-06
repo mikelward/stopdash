@@ -93,6 +93,29 @@ class DismissedAlertsTest {
     }
 
     @Test
+    fun `a line alert's signature is built on the worker, never the caller's thread`() {
+        // Its signature joins TfL's text, which grows with the alert (Codex, #603): built after the hop.
+        val status = LineStatus("99", shown.severity, shown.description, shown.fullText)
+        val built = mutableListOf<String>()
+        val caller = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "caller") }.asCoroutineDispatcher()
+        val worker = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "worker") }.asCoroutineDispatcher()
+        val into = kotlinx.coroutines.flow.MutableStateFlow<Set<DismissedAlert>>(emptySet())
+        try {
+            runBlocking(caller) {
+                dismissAlertOf(store, worker, kotlinx.coroutines.flow.MutableStateFlow(false), {}, into) {
+                    built += Thread.currentThread().name.substringBefore(" @")
+                    DismissedAlert.ofLineStatus(status)
+                }
+            }
+        } finally {
+            caller.close()
+            worker.close()
+        }
+        assertEquals(listOf("worker"), built)
+        assertEquals(setOf(DismissedAlert.ofLineStatus(status)), into.value)
+    }
+
+    @Test
     fun `a dismissal the store already holds still takes in memory, worked out on the worker`() {
         // A check let go of the alert in memory, its write not yet in, so the store still holds it and
         // the tap changes nothing there to follow: the caller's set is told directly. Adding copies

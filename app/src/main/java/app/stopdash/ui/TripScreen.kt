@@ -61,6 +61,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.MutableIntState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.MutableState
@@ -166,6 +170,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -842,6 +847,8 @@ internal fun TripScreen(
     // dismiss that didn't persist ([dismissWriteFailed]) is said once, then acknowledged.
     dismissed: Set<DismissedAlert> = emptySet(),
     onDismissAlert: ((DepartureRow) -> Unit)? = null,
+    // A line's alert dismissed from the disruptions row's lines page ([TripLinesPage]); null offers none.
+    onDismissLineAlert: ((LineStatus) -> Unit)? = null,
     dismissWriteFailed: Boolean = false,
     onDismissWriteFailureShown: () -> Unit = {},
     // Start an open route on the way (SPEC *On the way*); null offers no Start.
@@ -911,7 +918,9 @@ internal fun TripScreen(
 ) {
     val statuses = rememberStatusesAsOf(state.statuses, state.statusesSortedOn, now)
     val state = remember(state, statuses) { state.copy(statuses = statuses) }
-    CompositionLocalProvider(LocalRouteStops provides routeStops, LocalTripJourney provides journey) {
+    val linesPagesOpen = remember { mutableIntStateOf(0) }
+    val lineDismissal = onDismissLineAlert?.let { LineAlertDismissal(it, dismissWriteFailed, onDismissWriteFailureShown, linesPagesOpen) }
+    CompositionLocalProvider(LocalRouteStops provides routeStops, LocalTripJourney provides journey, LocalDismissLineAlert provides lineDismissal) {
         TripContent(
             title, state, now, access, onBack, onRetry, locationBanner, relocating, onRelocate,
             hiddenModes, onShowAllModes, onHideMode, onUnhideMode, hiddenModesWriteFailed, onHiddenModesWriteFailureShown, menu, openRoute,
@@ -1307,8 +1316,10 @@ private fun TripContent(
     // A hide from a card offers Undo for a moment, as on the list.
     val hideMode = rememberHideWithUndo(onHideMode, onUnhideMode, snackbarHostState)
     val dismissWriteFailedMessage = stringResource(R.string.dismiss_write_failed)
-    LaunchedEffect(alerts.writeFailed) {
-        if (alerts.writeFailed) {
+    // Held while a lines page is open over the trip: that page says it, where it can be seen (Codex, #603).
+    val linesOpen = LocalDismissLineAlert.current?.pagesOpen?.intValue ?: 0
+    LaunchedEffect(alerts.writeFailed, linesOpen == 0) {
+        if (alerts.writeFailed && linesOpen == 0) {
             alerts.onWriteFailureShown()
             snackbarHostState.showSnackbar(dismissWriteFailedMessage)
         }
@@ -3149,6 +3160,9 @@ internal data class TripLine(
      */
     val reason: String? = status?.takeIf { it.disrupted }?.fullText?.takeIf { it.isNotBlank() }
 
+    /** Whether its alert can be dismissed: a disruption shown, not one already dismissed or gone. */
+    val dismissable: Boolean get() = disrupted && !dismissed && !gone && !restoring
+
     /** TfL's reason for the [quieted] alert, null when there's none to show. */
     val quietedReason: String? = quieted?.fullText?.takeIf { it.isNotBlank() }
 }
@@ -3353,8 +3367,26 @@ private fun DisruptionsRow(row: TripRow) {
         // Read out by the row's click label, so it says nothing of its own.
         Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null, tint = muted, modifier = Modifier.padding(start = 8.dp))
     }
-    if (open) TripLinesPage(row, onClose = { open = false })
+    if (open) TripLinesPage(row, onClose = { open = false }, dismissal = LocalDismissLineAlert.current)
 }
+
+/**
+ * How a lines page dismisses a line's alert ([TripLinesPage]): [dismiss] it, and whether a dismiss
+ * didn't save ([failed], acknowledged by [onFailureShown]). The screen under the page holds its own
+ * word on a failure while any of its lines pages is open ([pagesOpen]), as the page says it, over it.
+ */
+internal class LineAlertDismissal(
+    val dismiss: (LineStatus) -> Unit,
+    val failed: Boolean,
+    val onFailureShown: () -> Unit,
+    val pagesOpen: MutableIntState,
+)
+
+/**
+ * The [LineAlertDismissal] of the screen that opens a lines page, the trip or the home screen, so the
+ * rows between need not carry it. Null offers no dismiss.
+ */
+internal val LocalDismissLineAlert = compositionLocalOf<LineAlertDismissal?> { null }
 
 /**
  * Every line a trip rides with its status, as a full-screen dialog over the trip, with Back and the
@@ -3365,7 +3397,33 @@ private fun DisruptionsRow(row: TripRow) {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun TripLinesPage(row: TripRow, onClose: () -> Unit, @StringRes gone: Int = R.string.trip_lines_gone) {
+internal fun TripLinesPage(
+    row: TripRow,
+    onClose: () -> Unit,
+    @StringRes gone: Int = R.string.trip_lines_gone,
+    // Dismisses a line's alert from its page (maintainer, 2026-10-06), as a departure's line page does;
+    // null offers none.
+    dismissal: LineAlertDismissal? = null,
+) {
+    val onDismiss = dismissal?.dismiss
+    // Open: the screen under it holds its word on a dismiss that didn't save, which this page says.
+    if (dismissal != null) {
+        DisposableEffect(dismissal.pagesOpen) {
+            dismissal.pagesOpen.intValue++
+            onDispose { dismissal.pagesOpen.intValue-- }
+        }
+    }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val failedMessage = stringResource(R.string.dismiss_write_failed)
+    val failed = dismissal?.failed == true
+    // Shown in the page's own scope: acknowledging it turns [failed] back, which would cancel it here.
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(failed) {
+        if (failed) {
+            scope.launch { snackbarHostState.showSnackbar(failedMessage) }
+            dismissal?.onFailureShown?.invoke()
+        }
+    }
     val held = rememberOpenedOrder(row)
     val lines = held.lines
     // The line whose reason is open, by its place, which holds while the page is open
@@ -3411,9 +3469,25 @@ internal fun TripLinesPage(row: TripRow, onClose: () -> Unit, @StringRes gone: I
                         Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     },
                     // The app's overflow, as on every screen: a report can start where the problem is seen.
-                    actions = { AppMenuOverflow() },
+                    // On a disrupted line's page it also dismisses that alert (maintainer, 2026-10-06: an
+                    // overflow action, as a × beside it would read as closing the page).
+                    actions = {
+                        val dismissing = reasonLine?.takeIf { onDismiss != null && it.dismissable }?.status
+                        AppMenuOverflow { close ->
+                            if (dismissing != null && onDismiss != null) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.alert_dismiss)) },
+                                    onClick = {
+                                        close()
+                                        onDismiss(dismissing)
+                                    },
+                                )
+                            }
+                        }
+                    },
                 )
             },
+            snackbarHost = { SnackbarHost(snackbarHostState) },
             modifier = Modifier.testTag("tripLinesPage"),
         ) { padding ->
             if (onReason) {
@@ -3445,6 +3519,7 @@ internal fun TripLinesPage(row: TripRow, onClose: () -> Unit, @StringRes gone: I
                     pending = held.pending,
                     state = listState,
                     gone = gone,
+                    dismissable = onDismiss != null,
                     onOpenLine = { index, line ->
                         reasonId = line.leg.lineId
                         reasonName = line.leg.lineName
@@ -3582,16 +3657,30 @@ internal fun inOpenedOrder(
  * disruption opens it on a tap ([onOpen]), on a page of its own, never inline.
  */
 @Composable
-private fun TripLineRow(line: TripLine, onOpen: (() -> Unit)? = null, @StringRes gone: Int = R.string.trip_lines_gone) {
+private fun TripLineRow(
+    line: TripLine,
+    onOpen: (() -> Unit)? = null,
+    @StringRes gone: Int = R.string.trip_lines_gone,
+    // Whether its page offers a dismiss: a disruption without TfL's reason opens too, for its ×.
+    dismissable: Boolean = false,
+) {
     val style = MaterialTheme.typography.bodyMedium
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val status = line.status
-    val opens = onOpen.takeIf { line.reason != null || line.quietedReason != null }
+    val opens = onOpen.takeIf { line.reason != null || line.quietedReason != null || (dismissable && line.dismissable) }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth()
-            .then(if (opens != null) Modifier.clickable(onClickLabel = stringResource(R.string.trip_lines_reason)) { opens() } else Modifier),
+            .then(
+                if (opens != null) {
+                    // "Show reason" only where there's one to show (Codex, #603).
+                    val label = if (line.reason != null || line.quietedReason != null) R.string.trip_lines_reason else R.string.trip_lines_line
+                    Modifier.clickable(onClickLabel = stringResource(label)) { opens() }
+                } else {
+                    Modifier
+                },
+            ),
     ) {
         LinePill(line.leg.lineName, line.leg.lineId, line.leg.mode)
         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -3635,6 +3724,8 @@ internal fun TripLinesContent(
     onOpenLine: ((Int, TripLine) -> Unit)? = null,
     // What a line no longer among the row's says: off the trip, or (home) no longer near.
     @StringRes gone: Int = R.string.trip_lines_gone,
+    // Whether a line's page offers a dismiss ([TripLinesPage]'s onDismiss).
+    dismissable: Boolean = false,
 ) {
     val style = MaterialTheme.typography.bodyMedium
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
@@ -3666,7 +3757,7 @@ internal fun TripLinesContent(
             item(key = "none") { Text(stringResource(none), style = style, color = muted) }
         }
         itemsIndexed(lines, key = { _, line -> line.leg.lineId }) { index, line ->
-            TripLineRow(line, onOpenLine?.let { open -> { open(index, line) } }, gone)
+            TripLineRow(line, onOpenLine?.let { open -> { open(index, line) } }, gone, dismissable)
         }
         if (row.stops.isNotEmpty()) {
             item(key = "stops") { Text(stringResource(R.string.trip_lines_stops, row.stops), style = style) }

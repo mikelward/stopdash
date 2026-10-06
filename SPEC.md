@@ -1349,7 +1349,9 @@ called a good service. The stops the row names follow, then, only when a line co
 note that its times may be wrong. While the page is open each line keeps its place, so a check landing
 changes what a line says, never where it is; a line new since it opened goes last, one gone from the trip
 keeps its place saying so, and a rotation keeps the order. Each line is one row high whatever its status; a disrupted line's TfL reason is a tap away,
-on a page of its own. A trip with no ride says it has no lines. The page renders the row as it was
+on a page of its own, whose overflow menu dismisses that alert as a departure's line page does (maintainer,
+2026-10-06: an overflow action, since a × reads as closing the page); a disruption without a reason opens
+its page too, for that action. A trip with no ride says it has no lines. The page renders the row as it was
 worked out, never working anything out itself.
 
 **Once the list is showing, its cards re-sort as their times move** (maintainer, 2026-10-04): the

@@ -2499,6 +2499,11 @@ class MainViewModel(
         viewModelScope.launch { dismissAlert(dismissedStore, row, io, _dismissWriteFailed, warn, _dismissed) }
     }
 
+    /** Dismisses a line's [status] as its lines page shows it, as a row's × does its line alert. */
+    fun dismissLineAlert(status: LineStatus) {
+        viewModelScope.launch { dismissAlertOf(dismissedStore, io, _dismissWriteFailed, warn, _dismissed) { DismissedAlert.ofLineStatus(status) } }
+    }
+
     /**
      * Prune dismissals whose notice is no longer in the feed — so a resolved incident's stale
      * `(place, text)` dismissal can't later suppress a new same-text closure (SPEC principle 2 —
