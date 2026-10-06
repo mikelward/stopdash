@@ -399,6 +399,10 @@ data class NextTrains(
     // The board's trains that leave the plan ([OffPlan], maintainer 2026-10-05), a row per heading,
     // worked out on the worker with the rest: grayed under the plan's own, each one the rider can take.
     val offPlan: List<OffPlanRow> = emptyList(),
+    // Whether any of [offPlan] lists a train, and where they all turn off when that's one stop (null
+    // otherwise): worked out with [groups] on the worker ([withGroups]), so the section only reads them.
+    val offPlanListed: Boolean = false,
+    val offPlanFork: String? = null,
 ) {
     /**
      * Whether no pole has a train listed: the board's own ([trains]) nor any of [others], nor any that
@@ -715,7 +719,10 @@ internal fun nextTrainsAt(
 @WorkerThread
 internal fun NextTrains.withGroups(now: Instant, topology: RouteTopology = RouteTopology.EMPTY): NextTrains {
     val groups = nextTrainsGroups(this, now)
-    return copy(groups = groups, cards = groups.map { stopCard(it, topology) })
+    // The branches with trains listed, and the one stop they all turn off at, if they share it.
+    val listed = offPlan.filter { it.trains.isNotEmpty() }
+    val fork = listed.map { it.branch.forkName }.distinct().singleOrNull()?.takeIf { it.isNotBlank() }
+    return copy(groups = groups, cards = groups.map { stopCard(it, topology) }, offPlanListed = listed.isNotEmpty(), offPlanFork = fork)
 }
 
 /** [next]'s trains as the board draws them at [now]: the ride's own pole first, then the pair's others, each its own header ("Stop N"). */
@@ -828,6 +835,21 @@ private fun NextTrainsSection(
         // The trains that leave the plan, under the plan's own (maintainer, 2026-10-05).
         // The branches off the plan, behind Other routes so they don't crowd the board (maintainer, 2026-10-05).
         // Not from a board too old to stand behind: a branch taken off the plan is chosen by its times.
+        // With none of the plan's own listed, they're the board's only live trains: shown open, under the
+        // board's "None going to …", rather than an empty board over a button (maintainer, 2026-10-06).
+        // Not while a train couldn't be checked: it may be one of the plan's (Codex, #630).
+        val branchesOnly = offPlan && !next.stale && groups.isEmpty() && !next.pending && !next.unresolved && next.offPlanListed
+        if (branchesOnly) {
+            // Said loudly: the plan's train isn't running as planned (the Planner's timetable can promise
+            // one TfL's live board doesn't list, with no alert to say so), and where to change when every
+            // listed train turns off at the same place (maintainer, 2026-10-06).
+            WarningText(
+                stringResource(R.string.on_the_way_trains_none, next.ride.toName),
+                next.offPlanFork?.let { stringResource(R.string.on_the_way_off_plan_change, it) },
+            )
+            OffPlanCard(next.offPlan, next.ride, now, onTake, planned = true)
+            return@Column
+        }
         if (offPlan && !next.stale) OtherRoutes(next.offPlan, next.ride, now, onTake)
         // What the rows may be missing, said rather than left to be taken as the whole answer; an old
         // board's "Checking…" above says it already.
@@ -915,6 +937,8 @@ private fun OffPlanCard(
     ride: TripLeg,
     now: Instant,
     onTake: ((TripLeg, OffPlan.Branch) -> Unit)?,
+    // Led by the plan's own row, its times a dash: none of its trains listed (maintainer, 2026-10-06).
+    planned: Boolean = false,
 ) {
     // The row opened, by its key: it stays open as its times come and go, and closes once it's gone.
     var open by rememberSaveable { mutableStateOf<String?>(null) }
@@ -924,8 +948,31 @@ private fun OffPlanCard(
     val pillMax = (LocalConfiguration.current.screenWidthDp.dp - 64.dp) * 0.5f
     OutlinedCard(Modifier.fillMaxWidth().testTag("onTheWayOffPlan")) {
         Column {
+            if (planned) {
+                val none = stringResource(R.string.on_the_way_trains_none, ride.toName)
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).testTag("onTheWayPlannedRow"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    LinePill(ride.lineName, ride.lineId, ride.mode, Modifier.widthIn(max = pillMax))
+                    Text(
+                        ride.toName,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                    )
+                    // No time to give, as a board's row with none lists a dash, read out as what it means.
+                    Text(
+                        "—",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.semantics { contentDescription = none },
+                    )
+                }
+            }
             rows.forEachIndexed { index, row ->
-                if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                if (index > 0 || planned) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 val expanded = onTake != null && open == row.key
                 Column(
                     Modifier
@@ -985,6 +1032,16 @@ private fun OffPlanCard(
     }
 }
 
+/** A board's warning, in the error color: none of the plan's trains listed, with [detail] on what to do. */
+@Composable
+private fun WarningText(text: String, detail: String?) {
+    Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp).testTag("onTheWayTrainsWarning")) {
+        Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.error)
+        detail?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error) }
+    }
+}
+
+// A note on the board: what its rows may be missing, or what's known of them.
 @Composable
 private fun NoteText(text: String) {
     Text(

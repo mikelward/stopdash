@@ -460,6 +460,79 @@ class OnTheWayScreenScreenshotTest {
     }
 
     @Test
+    fun with_no_train_of_the_plan_listed_the_branches_show_open() {
+        // Southbound from Waterloo to Morden with only a Battersea train listed (it turns off at Kennington):
+        // the board's only live train, shown open under "None going to Morden", never an empty board over
+        // a button (maintainer, 2026-10-06).
+        val northern = TripLeg(
+            "tube", "northern", "Northern", "940GZZLUWLO", "Waterloo", "940GZZLUMDN", "Morden", at(11), at(40),
+            path = listOf("940GZZLUKNG", "940GZZLUMDN"), pathNames = listOf("Kennington", "Morden"),
+        )
+        val battersea = Departure("northern", "Northern", "inbound", "Battersea Power Station", null, at(3), "tube", vehicleId = "EXAMPLE2")
+        val off = OffPlan.Branch("Battersea", forkIndex = 0, forkName = "Kennington", trains = listOf(battersea))
+        val toWaterloo = TripLeg(TripLeg.WALKING, "", "", "", "", "940GZZLUWLO", "Waterloo", at(0), at(5))
+        val walking = trip.copy(route = TripRoute(listOf(toWaterloo, northern)), destinationName = "Morden", legIndex = 0)
+        val taken = mutableListOf<OffPlan.Branch>()
+        show(
+            walking, TripProgress.Walking(toWaterloo, at(5)),
+            nextTrains = NextTrains(northern, emptyList(), readyAt = at(5), offPlan = offPlanRows(northern, listOf(off))).withGroups(now),
+            onTake = { _, branch -> taken += branch },
+        )
+        // Said loudly, with where to change as every listed train turns off at Kennington.
+        composeRule.onNodeWithTag("onTheWayTrainsWarning").assertIsDisplayed()
+        composeRule.onNodeWithText("None going to Morden").assertIsDisplayed()
+        composeRule.onNodeWithText("Change at Kennington").assertIsDisplayed()
+        composeRule.onNodeWithTag("onTheWayOtherRoutes").assertDoesNotExist()
+        // The plan's own row leads, its times a dash (maintainer, 2026-10-06).
+        composeRule.onNodeWithTag("onTheWayPlannedRow").assertIsDisplayed()
+        composeRule.onNodeWithText("—").assertIsDisplayed()
+        composeRule.onNodeWithText("(Battersea)").assertIsDisplayed()
+        // Still taken from its row, as behind the button.
+        composeRule.onNodeWithText("(Battersea)").performClick()
+        assertEquals(2, composeRule.onAllNodesWithText("Change at Kennington").fetchSemanticsNodes().size)
+        composeRule.onNodeWithTag("onTheWayTakeThis").performClick()
+        assertEquals(listOf(off), taken)
+        captureSnapshot("on-the-way-branches-only.png")
+    }
+
+    @Test
+    fun the_branches_stay_behind_their_button_while_the_board_is_uncertain_or_lists_none_of_theirs() {
+        val northern = TripLeg(
+            "tube", "northern", "Northern", "940GZZLUWLO", "Waterloo", "940GZZLUMDN", "Morden", at(11), at(40),
+            path = listOf("940GZZLUKNG", "940GZZLUMDN"), pathNames = listOf("Kennington", "Morden"),
+        )
+        val battersea = Departure("northern", "Northern", "inbound", "Battersea Power Station", null, at(3), "tube", vehicleId = "EXAMPLE2")
+        val onIt = trip.copy(route = TripRoute(listOf(northern)), destinationName = "Morden", legIndex = 0)
+        // A train that couldn't be checked may be one of the plan's: no "None going to" (Codex, #630).
+        val listed = OffPlan.Branch("Battersea", forkIndex = 0, forkName = "Kennington", trains = listOf(battersea))
+        show(
+            onIt, TripProgress.Waiting(northern, null),
+            nextTrains = NextTrains(northern, emptyList(), unresolved = true, readyAt = now, offPlan = offPlanRows(northern, listOf(listed))).withGroups(now),
+            onTake = { _, _ -> },
+        )
+        composeRule.onNodeWithTag("onTheWayTrainsWarning").assertDoesNotExist()
+        composeRule.onNodeWithTag("onTheWayOtherRoutes").assertIsDisplayed()
+    }
+
+    @Test
+    fun a_branch_with_no_trains_listed_opens_no_board() {
+        val northern = TripLeg(
+            "tube", "northern", "Northern", "940GZZLUWLO", "Waterloo", "940GZZLUMDN", "Morden", at(11), at(40),
+            path = listOf("940GZZLUKNG", "940GZZLUMDN"), pathNames = listOf("Kennington", "Morden"),
+        )
+        val onIt = trip.copy(route = TripRoute(listOf(northern)), destinationName = "Morden", legIndex = 0)
+        // The line branches, but TfL lists none of the branch's trains: the board's plain "None going to" (Codex, #630).
+        val empty = OffPlan.Branch("Battersea", forkIndex = 0, forkName = "Kennington")
+        show(
+            onIt, TripProgress.Waiting(northern, null),
+            nextTrains = NextTrains(northern, emptyList(), readyAt = now, offPlan = offPlanRows(northern, listOf(empty))).withGroups(now),
+            onTake = { _, _ -> },
+        )
+        composeRule.onNodeWithTag("onTheWayTrainsWarning").assertDoesNotExist()
+        composeRule.onNodeWithText("None going to Morden").assertIsDisplayed()
+    }
+
+    @Test
     fun on_board_the_ride_the_board_is_for_its_branches_wait_for_the_train_to_be_placed() {
         // Taken to have left with its train, the board still up: its branches don't say which forks are
         // behind them, and a train the trip can't place offers none (Codex, #586).
