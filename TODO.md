@@ -2490,11 +2490,13 @@ Builds on Phase 1's minimal line-status marking.
       and cancellations of specific services where TfL exposes them.
 - [ ] Rich in-app disruption text; mark a disrupted line/stop even when predictions look
       normal (D3). Domain summarization JVM-tested.
-- [ ] **A trip's disruptions row is one line** (maintainer, 2026-10-04). The row shows the chips that
+- [x] **A trip's disruptions row is one line** (maintainer, 2026-10-04). The row shows the chips that
       fit, then "+N more", so it never wraps and pushes the routes down (Codex, PR #543); it bounds the
       pills composed on the main thread too. The sheet below already lists everything the row cuts.
       More pills can reach it since the lines whose trains couldn't be checked joined "Unknown:"
       (Codex on #618), so a refresh adding or dropping enough of them can wrap it until this lands.
+      Done: the row is laid out by the home row's `OneLine`, its closed and unchecked stops counted
+      among the pills, and heard whole.
 - [x] **Every line a trip rides, with its status, a tap on the disruptions row away** (maintainer,
       2026-10-04). Done as a page of its own (`TripLinesPage`, worked out with the row on the worker:
       `tripLines`): one row per line with its worst-severity status, disruptions first, dismissed ones

@@ -9,6 +9,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.layout.boundsInParent
+import org.junit.Assert.assertFalse
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.test.onNodeWithContentDescription
 import app.stopdash.domain.TripLeg
 import java.time.Instant
@@ -81,5 +86,117 @@ class HomeDisruptionsRowTest {
         // The count is of the pills left out alone: the word is never counted.
         assertTrue("placed $placed counted $counted", placed.isNotEmpty())
         assertEquals(50, counted + placed.size)
+    }
+
+    @Test
+    fun the_word_stands_where_the_lead_does_not_fit_beside_it() {
+        var wordRight = -1f
+        var led = false
+        var rowWidth = -1
+        composeRule.setContent {
+            Box(Modifier.width(120.dp).onGloballyPositioned { rowWidth = it.size.width }) {
+                OneLine(
+                    pills = 0,
+                    pill = {},
+                    labelAt = null,
+                    label = {},
+                    word = { Box(Modifier.width(60.dp).height(10.dp).onGloballyPositioned { wordRight = it.boundsInParent().right }) },
+                    modifier = Modifier.fillMaxWidth(),
+                    lead = { Box(Modifier.width(100.dp).height(10.dp).onGloballyPositioned { led = true }) },
+                ) {}
+            }
+        }
+        composeRule.waitForIdle()
+        // A lead as wide as a large font makes "Disruptions:" leaves the word its room: it's left out.
+        assertFalse(led)
+        assertTrue("word ends at $wordRight of $rowWidth", wordRight in 0f..rowWidth.toFloat())
+    }
+
+    @Test
+    fun the_count_stands_where_the_lead_would_leave_no_room_for_it() {
+        var led = false
+        var counted = false
+        composeRule.setContent {
+            Box(Modifier.width(120.dp)) {
+                OneLine(
+                    pills = 2,
+                    pill = { Box(Modifier.width(70.dp).height(10.dp)) },
+                    labelAt = null,
+                    label = {},
+                    word = null,
+                    modifier = Modifier.fillMaxWidth(),
+                    lead = { Box(Modifier.width(110.dp).height(10.dp).onGloballyPositioned { led = true }) },
+                ) { Box(Modifier.width(30.dp).height(10.dp).onGloballyPositioned { counted = true }) }
+            }
+        }
+        composeRule.waitForIdle()
+        // The lead would leave no room even for "+N": it goes, and the disruptions are still said.
+        assertFalse(led)
+        assertTrue(counted)
+    }
+
+    @Test
+    fun an_item_wider_than_the_line_is_counted_not_clipped() {
+        var drawn = false
+        var counted = false
+        composeRule.setContent {
+            Box(Modifier.width(120.dp)) {
+                OneLine(
+                    pills = 1,
+                    // A stop list too long for the line.
+                    pill = { Box(Modifier.width(300.dp).height(10.dp).onGloballyPositioned { drawn = true }) },
+                    labelAt = null,
+                    label = {},
+                    word = null,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Box(Modifier.width(30.dp).height(10.dp).onGloballyPositioned { counted = true }) }
+            }
+        }
+        composeRule.waitForIdle()
+        assertFalse(drawn)
+        assertTrue(counted)
+    }
+
+    @Test(timeout = 10_000)
+    fun a_row_with_no_pills_and_a_word_wider_than_it_lays_out() {
+        var laidOut = false
+        composeRule.setContent {
+            Box(Modifier.width(40.dp)) {
+                OneLine(
+                    pills = 0,
+                    pill = {},
+                    labelAt = null,
+                    label = {},
+                    word = { Box(Modifier.width(60.dp).height(10.dp).onGloballyPositioned { laidOut = true }) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {}
+            }
+        }
+        composeRule.waitForIdle()
+        // It used to count down past zero forever on the main thread.
+        assertTrue(laidOut)
+    }
+
+    @Test
+    fun the_word_stands_where_not_even_the_count_fits_beside_it() {
+        var wordRight = -1f
+        var counted = false
+        var rowWidth = -1
+        composeRule.setContent {
+            Box(Modifier.width(80.dp).onGloballyPositioned { rowWidth = it.size.width }) {
+                OneLine(
+                    pills = 3,
+                    pill = { Box(Modifier.width(50.dp).height(10.dp)) },
+                    labelAt = null,
+                    label = {},
+                    word = { Box(Modifier.width(60.dp).height(10.dp).onGloballyPositioned { wordRight = it.boundsInParent().right }) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Box(Modifier.width(40.dp).height(10.dp).onGloballyPositioned { counted = true }) }
+            }
+        }
+        composeRule.waitForIdle()
+        // No pill fits beside the word, nor the count: the word shows whole, inside the row.
+        assertFalse(counted)
+        assertTrue("word ends at $wordRight of $rowWidth", wordRight in 0f..rowWidth.toFloat())
     }
 }
