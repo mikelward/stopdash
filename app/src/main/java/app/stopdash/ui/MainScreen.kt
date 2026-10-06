@@ -149,7 +149,6 @@ import app.stopdash.domain.DestinationAbbreviations
 import app.stopdash.domain.DestinationGroup
 import app.stopdash.domain.DismissedAlert
 import app.stopdash.domain.EmptyTimes
-import app.stopdash.domain.FartherBuses
 import app.stopdash.domain.FavoritePlace
 import app.stopdash.domain.HiddenModes
 import app.stopdash.domain.JourneyCall
@@ -192,7 +191,6 @@ import app.stopdash.domain.TripLeg
 import app.stopdash.domain.UntimedTrain
 import app.stopdash.domain.UsageEvent
 import app.stopdash.domain.WidgetJourneyCheck
-import app.stopdash.domain.WidgetJourneys
 import app.stopdash.domain.abbreviateBranch
 import app.stopdash.domain.cleanDisruptionBody
 import app.stopdash.domain.followedDeparture
@@ -510,53 +508,25 @@ fun MainScreen(
             }.toMap()
         }
     }
-    // The stop each journey is fetched from: its resolved origin, or, before its route is in, a
-    // station's own id (the same both ways) — a bus waits, since its way-back pole isn't known yet.
-    val journeyOrigins = remember(cardJourneys, journeySegments, starSequences, journeyPoles) {
-        cardJourneys.mapNotNull { j ->
-            val id = journeySegments[j.key]?.originId ?: j.from.stopId.takeUnless { j.bus } ?: return@mapNotNull null
-            // The starred line, plus every line of its mode the route data lists at the origin (the
-            // 134 beside the 43), so one with no predictions still has its route loaded and its
-            // status checked — a suspended route shows its warning, not "no buses".
-            // Only lines of a known, matching mode: an interchange's lines come in with a blank mode
-            // when it mixes modes (King's Cross's buses beside its tube), and loading every one
-            // would spend the request budget on routes that don't serve this stop.
-            // A journey saved with no mode (TfL left it off) takes its line's known one.
-            val mode = j.mode.ifBlank { Connections.knownMode(j.lineId).orEmpty() }
-            val served = starSequences[j.lineId]?.stopLines?.get(id).orEmpty()
-                .filter { it.mode.isNotBlank() && it.mode.equals(mode, ignoreCase = true) }
-            // Its pole letter and area, once looked up, so the card heads it like its neighbors.
-            val pole = journeyPoles[j.key]?.firstOrNull { it.id == id }
-            StopRef(
-                id, j.from.name, lines = listOf(j.line) + served,
-                clusterId = pole?.clusterId.orEmpty(), stopLetter = pole?.stopLetter.orEmpty(),
-                bearing = pole?.bearing.orEmpty(), towards = pole?.towards.orEmpty(),
-                // Its interchange, so a closure there folds and titles by the interchange (SPEC
-                // *Disruptions*) when no nearby stop brought it in.
-                hubId = Journeys.originHub(id, starSequences[j.lineId], pole),
-            )
-        }.let(::mergeJourneyOrigins)
+    // The stop each journey is fetched from ([journeyOriginsOf]) and, with them, the lines whose routes
+    // the cards need ([journeyLineIdsOf]), worked out together on the list's worker: the lines never run
+    // against origins standing in, which the current ones would then change, canceling the routes they
+    // started loading, asked again after (Codex, #625). The last answer stands in meanwhile, so the lines
+    // loaded don't drop out and back; none until the first is in. The lines are the same [Reported] while
+    // they're unchanged, so the loader keyed on them is told apart by identity and loads nothing again.
+    val loadedStops = loaded?.stops
+    val originsWanted = Inputs(cardJourneys, journeySegments, starSequences, journeyPoles, journeyStarLines, loadedStops)
+    val journeyRoutes = rememberWorked(listWork.journeyOrigins, originsWanted, keep = { _, _ -> true }) {
+        val last = listWork.journeyOrigins.value?.value
+        val origins = journeyOriginsOf(cardJourneys, journeySegments, starSequences, journeyPoles)
+        val lines = journeyLineIdsOf(journeyStarLines, origins, loadedStops.orEmpty(), cardJourneys, journeySegments, journeyPoles)
+        JourneyOrigins(origins, Reported.of(lines, last?.lineIds))
     }
-    val originLines = remember(loaded?.stops, journeyOrigins) {
-        val ids = journeyOrigins.mapTo(HashSet()) { it.id }
-        loaded?.stops.orEmpty().filter { it.stopId in ids }
-            .flatMap { stop -> stop.departures.map { it.lineId } + stop.lines.map { it.id } }
-    }
-    // The lines boarding beside a bus journey's origin (and not at it), so their routes can say
-    // whether they reach the far end ([Journeys.siblingPoles]).
-    val siblingLines = remember(cardJourneys, journeySegments, journeyPoles) {
-        cardJourneys.flatMap { j ->
-            val originId = journeySegments[j.key]?.originId ?: return@flatMap emptyList()
-            val poles = journeyPoles[j.key].orEmpty()
-            val atOrigin = poles.firstOrNull { it.id == originId }?.lines.orEmpty().mapTo(HashSet()) { it.id }
-            poles.filter { it.id != originId }.flatMap { pole ->
-                pole.lines.filter { it.id !in atOrigin && Journeys.ofMode(it, j.mode) }.map { it.id }
-            }
-        }
-    }
-    val journeyLineIds = remember(journeyStarLines, originLines, siblingLines) {
-        (journeyStarLines + originLines + siblingLines).filter { it.isNotBlank() }.distinct()
-    }
+    val journeyOrigins = journeyRoutes?.origins
+    // Whether they're still being worked out for the journeys as they stand: the stops reported, worked
+    // out from them, hold their last answer meanwhile ([heldWhile]).
+    val originsPending = listWork.journeyOrigins.value?.key != originsWanted
+    val journeyRouteLines = journeyRoutes?.lineIds
     // Loads [lineIds]' routes into [loadedSequences], each line at once, so one slow route doesn't hold
     // up the rest.
     suspend fun loadSequences(repository: RouteStopsRepository, lineIds: Collection<String>) = coroutineScope {
@@ -577,11 +547,14 @@ fun MainScreen(
             }
         }
     }
-    LaunchedEffect(routeStopsRepository, journeyLineIds, journeyRouteRetry, routeRecheck) {
-        loadSequences(routeStopsRepository ?: return@LaunchedEffect, journeyLineIds)
+    LaunchedEffect(routeStopsRepository, journeyRouteLines, journeyRouteRetry, routeRecheck) {
+        loadSequences(routeStopsRepository ?: return@LaunchedEffect, journeyRouteLines?.value ?: return@LaunchedEffect)
     }
     // One map until a route comes in, as for the alerts' routes below.
-    val journeySequences by remember(journeyLineIds, routeStopsRepository) { derivedStateOf { sequencesFor(journeyLineIds) } }
+    val journeySequences by remember(journeyRouteLines, routeStopsRepository) {
+        val lineIds = journeyRouteLines?.value.orEmpty()
+        derivedStateOf { sequencesFor(lineIds) }
+    }
     // The routes of the shown stops' bus lines whose alert may lie wholly behind a stop, so a
     // diversion a bus from there never reaches doesn't flag it ([DepartureRows.withAlertsBehind]):
     // one request per such line a day, the route page's own. Until one is in, or where it failed, the
@@ -628,28 +601,32 @@ fun MainScreen(
     // Whether they're still being worked out as things stand: a bus journey with poles checks meanwhile,
     // and the cards wait (below).
     val siblingsPending = listWork.siblings.value?.key != siblingsWanted
-    val siblingOrigins = remember(cardJourneys, journeySiblings) {
-        cardJourneys.flatMap { j ->
-            journeySiblings[j.key]?.poles.orEmpty().map { pole ->
-                pole.toStopRef().copy(lines = pole.lines.filter { Journeys.ofMode(it, j.mode) })
-            }
-        }.distinctBy { it.id }.filter { sibling -> journeyOrigins.none { it.id == sibling.id } }
-    }
     // Each journey's far end this way round: its own stop, and the stops the route places it at (a
     // bus's other poles), whose closure the card shows.
     val journeyDestinationIds = remember(cardJourneys, journeySegments) {
         cardJourneys.associate { j -> j.key to (setOf(j.to.stopId) + journeySegments[j.key]?.destinationIds.orEmpty()) }
     }
-    val reportJourneyOrigins by rememberUpdatedState(onJourneyOrigins)
-    LaunchedEffect(journeyOrigins, siblingOrigins) { reportJourneyOrigins(journeyOrigins + siblingOrigins) }
-    val reportJourneyStopIds by rememberUpdatedState(onJourneyStopIds)
-    val journeyStopIds = remember(cardJourneys, journeySegments, journeySiblings) {
-        cardJourneys.associate { j ->
-            val originId = journeySegments[j.key]?.originId ?: j.from.stopId
-            j.key to (setOf(originId) + journeySiblings[j.key]?.poles.orEmpty().map { it.id })
-        }
+    // The stops the journeys are fetched from, and each one's boarding stops ([journeyStopsOf]), worked
+    // out on the list's worker, the last answer standing in meanwhile; none until the origins are in.
+    // Held while the origins are worked out for the journeys as they stand: worked out against the ones
+    // standing in, a new journey's ids would be reported ahead of its stops, releasing a refresh that
+    // waits on them without its origin (Codex, #625).
+    val journeyStops = rememberWorked(
+        listWork.journeyStops,
+        heldWhile(originsPending, listWork.journeyStops, Inputs(journeyOrigins, cardJourneys, journeySegments, journeySiblings, journeyViewKey)),
+        keep = { _, _ -> true },
+    ) {
+        // The last answer as it stands when this runs, read on the worker, whose reports this one reuses
+        // where they're unchanged.
+        val last = listWork.journeyStops.value?.value
+        journeyOrigins?.let { journeyStopsOf(it, cardJourneys, journeySegments, journeySiblings, journeyViewKey, last) }
     }
-    LaunchedEffect(journeyStopIds, journeyViewKey) { reportJourneyStopIds(journeyStopIds, journeyViewKey) }
+    // The stops first, then the ids that say they're in, each only as it changes: an answer standing in
+    // reports nothing again, so the view model never hears the same stops as if newly reported, which a
+    // refresh waiting on the screen's report would take as its answer (#548). A new list (with its own
+    // model) reports them afresh.
+    ReportChanges(journeyStops?.fetched, listWork, onJourneyOrigins)
+    ReportChanges(journeyStops?.stopIds, listWork) { (stopIds, viewKey) -> onJourneyStopIds(stopIds, viewKey) }
     // The snapshot's rows ([listRowsOf]), built off the main thread from the snapshot as it stands,
     // the list's last rows standing in meanwhile. Null only until a new list's first rows are in:
     // the screen then shows a spinner rather than call the list empty. None are built before the first
@@ -885,96 +862,37 @@ fun MainScreen(
     val drawnLoaded = drawnFrom?.source ?: loaded
     // The drawn rows' own shared notices (Codex, #524).
     val sharedNotices = drawnFrom?.shared.orEmpty()
-    // The cards say only "Some routes couldn't be checked"; the log says which trains and why, once
-    // per distinct set (a refresh finding the same misses logs nothing new), off composition.
-    val journeyMisses = remember(journeyCards) { journeyCards.flatMapTo(LinkedHashSet()) { it.misses } }
-    LaunchedEffect(routeStopsRepository, journeyMisses) { if (shown != null) routeStopsRepository?.reportMisses(journeyMisses) }
-    // The far ends to check for a closure.
-    val journeyDestinations = remember(journeyCards) {
-        journeyCards.flatMap { card -> card.destinationIds.map { id -> StopRef(id, card.journey.to.name) } }.distinctBy { it.id }
+    // What the judged cards report ([cardReportsOf]), worked out on the list's worker, the last answer
+    // standing in meanwhile; none before the cards are judged, which would read as no far ends to check.
+    // Each report is made only as it changes.
+    val cardReportsWanted = Inputs(shown, cardJourneys, farJourneyMeters, journeyAreas, journeyPoles, journeySiblings, siblingsPending)
+    val cardReports = rememberWorked(listWork.cardReports, cardReportsWanted, keep = { _, _ -> true }) {
+        val last = listWork.cardReports.value?.value
+        cardReportsOf(shown, cardJourneys, farJourneyMeters, journeyAreas, journeyPoles, journeySiblings, siblingsPending, last)
     }
-    val reportJourneyDestinations by rememberUpdatedState(onJourneyDestinations)
-    // Not while the cards are still being judged, which would read as no far ends to check.
-    LaunchedEffect(journeyDestinations, shown == null) { if (shown != null) reportJourneyDestinations(journeyDestinations) }
+    // The cards say only "Some routes couldn't be checked"; the log says which trains and why, once
+    // per distinct set (a refresh finding the same misses logs nothing new).
+    ReportChanges(cardReports?.misses, listWork) { routeStopsRepository?.reportMisses(it) }
+    // The far ends to check for a closure.
+    ReportChanges(cardReports?.destinations, listWork, onJourneyDestinations)
     // What each placed journey's card found for the widget (it can't load routes itself): the
     // origin's departures that call at the far end, by line, destination and branch, and — from a
     // complete check — every departure it judged. The ViewModel merges these into what it pins.
-    // The widget follows the same rule as the list: only near journeys are pinned there, so a far
-    // one opened in the app doesn't join it.
-    val journeyKeys = remember(cardJourneys, farJourneyMeters) {
-        cardJourneys.filter { it.key !in farJourneyMeters }.mapTo(HashSet()) { it.key }
-    }
-    // The direction each journey is shown in, so a flip reaches the widget even before its route
-    // can place the new origin.
-    val journeyShownFrom = remember(journeyKeys, cardJourneys) {
-        cardJourneys.filter { it.key in journeyKeys }.associate { it.key to it.from.stopId }
-    }
-    // One check per boarding stop: the origin under the journey's key, a neighboring pole under its
-    // [WidgetJourneys.poleKey], each pinned on the widget from its own stop.
-    val widgetJourneyChecks = remember(journeyCards, journeyKeys) {
-        journeyCards.filter { it.journey.key in journeyKeys }.flatMap { card ->
-            val key = card.journey.key
-            val rows = (card.state as? JourneyCardState.Trains)?.rows.orEmpty()
-            card.boardingIds.mapIndexed { i, id ->
-                WidgetJourneyCheck(
-                    if (i == 0) key else WidgetJourneys.poleKey(key, id),
-                    id,
-                    rows.filter { it.stopId == id }.flatMapTo(HashSet()) { row -> row.upcoming.map(JourneyCall::of) },
-                    card.checked[id].orEmpty(),
-                    card.journey.from.stopId,
-                )
-            }
-        }
-    }
-    // The boarding keys of each journey whose neighboring poles are settled (none to look up, or
-    // looked up and judged), so a pole that no longer qualifies loses its widget pin.
-    val widgetJourneyBoarding = remember(journeyCards, journeyAreas, journeyPoles, journeySiblings, siblingsPending) {
-        journeyCards.filter { card ->
-            val key = card.journey.key
-            card.boardingIds.isNotEmpty() && (
-                key !in journeyAreas ||
-                    journeyPoles[key] != null && !siblingsPending && journeySiblings[key]?.settled == true
-                )
-        }.associate { card ->
-            val key = card.journey.key
-            key to card.boardingIds.mapIndexedTo(HashSet()) { i, id -> if (i == 0) key else WidgetJourneys.poleKey(key, id) }
-        }
-    }
-    val reportWidgetJourneys by rememberUpdatedState(onWidgetJourneys)
-    // Nor while the snapshot's rows are still being built: every card says "checking" then, which
-    // would unpin the widget's trains for a moment.
-    // Judged for the journeys as they stand: a flip's or reload's old cards aren't reported against the
-    // new direction (Codex, #524).
+    // Not while the snapshot's rows are still being built: every card says "checking" then, which
+    // would unpin the widget's trains for a moment. Judged for the journeys as they stand: a flip's or
+    // reload's old cards aren't reported against the new direction (Codex, #524), nor an answer
+    // standing in for older cards (#593).
     val cardsJudged = shown != null && shown.journeys === cardJourneys
-    LaunchedEffect(journeysKnown, cardsJudged, journeyKeys, widgetJourneyChecks, journeyShownFrom, widgetJourneyBoarding) {
-        if (journeysKnown && cardsJudged) reportWidgetJourneys(journeyKeys, widgetJourneyChecks, journeyShownFrom, widgetJourneyBoarding)
+    val cardReportsCurrent = listWork.cardReports.value?.key == cardReportsWanted
+    ReportChanges(cardReports?.widget?.takeIf { journeysKnown && cardsJudged && cardReportsCurrent }, listWork) {
+        onWidgetJourneys(it.keys, it.checks, it.from, it.boarding)
     }
-    // Each place's modes, less those already hidden, for a header's "Hide ‹mode›" items.
-    val placeModesShown = remember(loaded?.stops, hiddenModes) {
-        placeModes(loaded?.stops.orEmpty()).mapValues { (_, modes) ->
-            modes.filterNotTo(LinkedHashSet()) { HiddenModes.isHidden(it, hiddenModes) }
-        }
-    }
-    // The farther bus cards to show, decided against the routes the screen actually shows (SPEC
-    // *Finding stops → Farther stations*): every row drawn, the list's, the journey cards' and an
-    // opened card's (an opened card itself always stays). Deciding it here, from the rows drawn,
-    // means every filter the list applies (dismissed alerts, hidden modes, the nearest-stop dedupe,
-    // a journey's origin) is honored without being copied, and a route an opened card turned out to
-    // run is never offered again by another. A place by a station the screen shows claims its
-    // routes first: one it draws rows for (the list's or a journey card's), or one still drawn as a
-    // cold load's "Loading" card, so the cards don't reshuffle when its rows land (Codex).
-    val pendingStopIds = drawnLoaded?.pendingStops.orEmpty().map { it.id }
-    val fartherShown = remember(farther, rows, journeyRowsShown, pendingStopIds) {
-        val opened = farther.filter { it.load != null }.mapTo(HashSet()) { it.place.key }
-        val shownBus = (rows + journeyRowsShown)
-            .filter { it.mode.equals(FartherBuses.MODE, ignoreCase = true) && it.lineId.isNotBlank() }
-            .mapTo(HashSet()) { it.lineId }
-        val shownStops = (rows + journeyRowsShown).mapTo(HashSet()) { it.stopId }
-        shownStops += pendingStopIds
-        val kept = CollapsedPlaces.withBusesPicked(farther.map { it.place }, shownBus, opened, shownStopIds = shownStops)
-            .associateBy { it.key }
-        farther.mapNotNull { card -> kept[card.place.key]?.let { card.copy(place = it) } }
-    }
+    // The farther bus cards to show ([fartherShownOf]), decided against the rows the screen draws, on the
+    // list's worker; the last ones stand in meanwhile, so the cards don't drop out and back as the rows
+    // change.
+    val fartherShown = rememberWorked(listWork.farther, Inputs(farther, shown, drawnLoaded), keep = { _, _ -> true }) {
+        fartherShownOf(farther, shown?.rows.orEmpty(), shown?.cardRows.orEmpty(), drawnLoaded?.pendingStops.orEmpty())
+    }.orEmpty()
 
     // The platform/pole the user drilled into by tapping its group header, or null for the full list
     // (SPEC D8): its stop ids (comma-joined; for a whole-station view, its cluster keys instead), its [StopGroup.splitKey], and its header text (the
@@ -1101,9 +1019,8 @@ fun MainScreen(
     }
     // A journey card's train opens too: its farther origin isn't in the near-me rows, so the key is
     // also looked up among the journey cards' rows (shown only on the full list, as the cards are).
-    val journeyRows = if (platformRows != null) emptyList() else journeyCards.flatMap {
-        (it.state as? JourneyCardState.Trains)?.shownRows.orEmpty()
-    }
+    // Worked out with the cards ([ShownRows.cardRows]).
+    val journeyRows = if (platformRows != null) emptyList() else journeyRowsShown
     // And, last, among every loaded stop's rows: a page opened from a journey card stays open when
     // that journey is unstarred from the page itself, while its origin's departures are still loaded.
     val loadedRows = drawnFrom?.all.orEmpty()
@@ -1461,7 +1378,7 @@ fun MainScreen(
                         starringAvailable = starringAvailable,
                         hiddenModes = hiddenModes,
                         onHideMode = hideMode,
-                        modesByPlace = placeModesShown,
+                        modesByPlace = drawnFrom?.placeModes.orEmpty(),
                         onShowAllModes = onShowAllModes,
                         // Not on a platform's own view, which is one place.
                         farther = if (platformRows != null) emptyList() else fartherShown,
@@ -3636,6 +3553,7 @@ private fun headerModes(group: StopGroup, placeModes: Map<String, Set<String>>):
  * Each place's modes, by cluster (a stop in none is its own place), from its stops' served lines
  * and departures, for [headerModes].
  */
+@WorkerThread
 internal fun placeModes(stops: List<StopArrivals>): Map<String, Set<String>> {
     val modes = HashMap<String, LinkedHashSet<String>>()
     for (stop in stops) {
@@ -5650,6 +5568,7 @@ internal class DrillScrollStates(private val states: HashMap<String, LazyListSta
  * One [StopRef] per journey origin stop: the lines of every journey fetching it, and the first
  * interchange any of them knows, so one whose route isn't in yet doesn't blank another's.
  */
+@WorkerThread
 internal fun mergeJourneyOrigins(refs: List<StopRef>): List<StopRef> =
     refs.groupBy { it.id }.map { (_, same) ->
         same.first().copy(

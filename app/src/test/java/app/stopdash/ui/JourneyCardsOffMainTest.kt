@@ -126,6 +126,7 @@ class JourneyCardsOffMainTest {
         val held = StandardTestDispatcher(scheduler)
         var journey by mutableStateOf(victoriaToWarrenStreet)
         var origins = emptyList<String>()
+        val reported = mutableListOf<List<String>>()
         composeRule.setContent {
             StopDashTheme {
                 CompositionLocalProvider(
@@ -143,7 +144,10 @@ class JourneyCardsOffMainTest {
                         onRefresh = {},
                         journeys = listOf(journey),
                         listKey = "victoria",
-                        onJourneyOrigins = { refs -> origins = refs.map { it.id } },
+                        onJourneyOrigins = { refs ->
+                            origins = refs.map { it.id }
+                            reported += origins
+                        },
                     )
                 }
             }
@@ -151,12 +155,20 @@ class JourneyCardsOffMainTest {
         settle(scheduler)
         assertEquals(listOf("940GZZLUVIC"), origins)
 
-        // Flipped: until it's placed the other way round, it's fetched from its own new origin.
+        // Flipped: every report from then on fetches it from its own new origin, the one before it's
+        // placed the other way round included; the origins are worked out on the worker, so none comes
+        // until it runs.
+        reported.clear()
         journey = victoriaToWarrenStreet.reversed()
         composeRule.waitForIdle()
-        assertEquals(listOf("940GZZLUWRR"), origins)
+        assertEquals(emptyList<List<String>>(), reported)
+        repeat(8) {
+            scheduler.runCurrent()
+            composeRule.waitForIdle()
+            assertEquals(emptyList<List<String>>(), reported.filter { it != listOf("940GZZLUWRR") })
+        }
         settle(scheduler)
-        assertEquals(listOf("940GZZLUWRR"), origins)
+        assertEquals(listOf(listOf("940GZZLUWRR")), reported)
     }
     // A fictional bus journey (no real place): b1 from Park to Hill, and b3 boarding beside it at pole K.
     private val b1 = LineSequence(
