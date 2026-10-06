@@ -2487,6 +2487,13 @@ Builds on Phase 1's minimal line-status marking.
         pills once dismissed every way it's disrupted; on the lines page just above the good services.
   - [x] **Dismiss an alert from the lines page** (maintainer, 2026-10-06): a line's own page offers
         "Dismiss alert" in its overflow menu, on the trip and the home screen alike.
+  - [x] **Settings from the lines page** (maintainer, 2026-10-06): its overflow menu opens Settings on
+        the Disruptions summary's page, whose Back goes up to Settings, then out.
+  - [ ] **Consider an up arrow for Settings and its pages** (maintainer, 2026-10-06: keep the Back button
+        where it is for now). Settings and its pages (Disruptions summary, …) have a "Back" text button at
+        the right of the title row; consider a top-left up arrow as the rest of the app has, and the
+        options: whether every Settings page follows, how it sits beside the overflow menu, and whether
+        up and Back ever differ (a page opened from the lines page going up to Settings).
   - [ ] **Let the rider choose what the row covers** (maintainer, 2026-10-05): a list of lines,
         favorite routes, or favorite trips? And how to rank and collapse it when many are disrupted.
   - [ ] **Name the walking reach's closed stops on the row**, as a trip's row names its closed stops.

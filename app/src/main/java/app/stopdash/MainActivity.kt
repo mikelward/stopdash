@@ -642,6 +642,8 @@ class MainActivity : ComponentActivity() {
                 // own Back closes it.
                 var licensesOpen by rememberSaveable { mutableStateOf(false) }
                 var settingsOpen by rememberSaveable { mutableStateOf(false) }
+                // Settings opened for the disruptions summary (the lines page's menu): it opens on that page.
+                var settingsOnDisruptions by rememberSaveable { mutableStateOf(false) }
                 // The location gate's About dialog, hosted here rather than in the gate: a lookup that
                 // finishes while it's open replaces the gate, and would close it under the reader (Codex, #470).
                 var gateAboutOpen by rememberSaveable { mutableStateOf(false) }
@@ -965,6 +967,11 @@ class MainActivity : ComponentActivity() {
                         onOpenAppListing = ::openPlayListing,
                         onSendBugReport = requestBugReport,
                         onOpenLicenses = openLicenses,
+                        onOpenDisruptionsSettings = {
+                            UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SETTINGS))
+                            settingsOnDisruptions = true
+                            settingsOpen = true
+                        },
                     ),
                     LocalOnTheWay provides OnTheWayActions(
                         active = onTheWayTrip != null,
@@ -1332,7 +1339,12 @@ class MainActivity : ComponentActivity() {
                                     onStopAvoiding = { entry -> AvoidedLinesSetting.setAvoided(entry, avoided = false) },
                                     avoidedWriteFailed = avoidedWriteFailedNow,
                                     onDismissAvoidedError = AvoidedLinesSetting::writeFailureShown,
-                                    onBack = { settingsOpen = false },
+                                    startOnDisruptions = settingsOnDisruptions,
+                                    onDisruptionsClosed = { settingsOnDisruptions = false },
+                                    onBack = {
+                                        settingsOpen = false
+                                        settingsOnDisruptions = false
+                                    },
                                 )
                             }
                         },
@@ -1465,6 +1477,7 @@ class MainActivity : ComponentActivity() {
                                         onOpenLicenses = openLicenses,
                                         onOpenSettings = {
                                             UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SETTINGS))
+                                            settingsOnDisruptions = false
                                             settingsOpen = true
                                         },
                                         onFindStation = {
@@ -1577,6 +1590,7 @@ class MainActivity : ComponentActivity() {
                                         // Settings is hosted above the gate, as on the list's overflow.
                                         onOpenStopDashSettings = {
                                             UsageEvents.log(UsageEvent.Tapped(UsageEvent.Tap.SETTINGS))
+                                            settingsOnDisruptions = false
                                             settingsOpen = true
                                         },
                                         onOpenAbout = { gateAboutOpen = true },

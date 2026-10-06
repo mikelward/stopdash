@@ -1337,7 +1337,10 @@ cards may not bear out. The "Checking routes…" banner over the list is held th
 **A tap on the disruptions row opens every line the trip rides with its status** (maintainer,
 2026-10-04), its chevron always there so the row reads as a way in. A full-screen dialog over the trip
 (maintainer, 2026-10-04: not a sheet), with the app's menu and Back returning to the trip where it
-was, and one the home screen can open too: one row per line, its pill and the worst status any card shows for it (a line not
+was, and one the home screen can open too. Its menu offers Settings (maintainer, 2026-10-06), after
+a line page's own Dismiss, opening Settings on the Disruptions summary's page, since what the row and this page cover is set
+there: the page closes first, and Back from the Disruptions page goes up to Settings, then out, so
+the rest of Settings is a Back away. The page's lines: one row per line, its pill and the worst status any card shows for it (a line not
 running ahead of one running with delays, whatever TfL's numbers say). Disruptions come first, worst
 first; then lines that couldn't be checked (a failed or left-out check stays so until one succeeds);
 then "Checking…" lines; then any the rider dismissed, just above the good services, still named by the
@@ -2160,7 +2163,8 @@ didn't answer, however far its stop, is named after "Unknown:"; a stop whose clo
 named on its page; and what can't be named (a departure with no line to check) still reads "Unknown".
 **Disruptions summary**, second in Settings under the favorite places, says what the row covers ("All
 networks and lines near you", "Tube and lines near you", or "Off") and opens its own page, since its settings control only the row
-(maintainer, 2026-10-05). There a **Show on home screen** switch turns the row off (on by default;
+(maintainer, 2026-10-05); the lines page's menu opens Settings on that page too, its Back going up to
+Settings. There a **Show on home screen** switch turns the row off (on by default;
 the banner comes back with it off); the row waits for the stored choice, so one turned off never
 flashes up. Under it, **Always include** picks the networks
 covered whatever's near (maintainer, 2026-10-05): Tube, Overground, Elizabeth line,

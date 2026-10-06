@@ -88,6 +88,59 @@ class SettingsScreenScreenshotTest {
     }
 
     @Test
+    fun opened_for_the_disruptions_summary_it_opens_on_its_page_and_back_goes_up_to_settings() {
+        var backs = 0
+        composeRule.setContent {
+            StopDashTheme {
+                SettingsScreen(
+                    liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = { backs++ },
+                    showDisruptionsRow = true, startOnDisruptions = true,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("disruptionsSummaryPage").assertIsDisplayed()
+        composeRule.onNodeWithTag("disruptionsSummaryRow").assertDoesNotExist()
+        // Back goes up to Settings, never straight out of it.
+        composeRule.onNodeWithText("Back").performClick()
+        composeRule.onNodeWithTag("disruptionsSummaryPage").assertDoesNotExist()
+        composeRule.onNodeWithTag("disruptionsSummaryRow").assertIsDisplayed()
+        org.junit.Assert.assertEquals(0, backs)
+        // And Back from Settings leaves it.
+        composeRule.onNodeWithText("Back").performClick()
+        org.junit.Assert.assertEquals(1, backs)
+    }
+
+    @Test
+    fun once_up_from_the_disruptions_summary_settings_composed_again_opens_at_the_top() {
+        // As the activity holds it: the flag it opened with, dropped once the page closes.
+        var onDisruptions by mutableStateOf(true)
+        // Settings off the screen while a page opened from it (favorite places, say) is on top.
+        var shown by mutableStateOf(true)
+        composeRule.setContent {
+            StopDashTheme {
+                if (shown) {
+                    SettingsScreen(
+                        liveWidgetRefresh = false, onLiveWidgetRefreshChange = {}, onBack = {},
+                        showDisruptionsRow = true, startOnDisruptions = onDisruptions,
+                        onDisruptionsClosed = { onDisruptions = false },
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithTag("disruptionsSummaryPage").assertIsDisplayed()
+        composeRule.onNodeWithText("Back").performClick()
+        composeRule.onNodeWithTag("disruptionsSummaryRow").assertIsDisplayed()
+        shown = false
+        composeRule.waitForIdle()
+        shown = true
+        composeRule.waitForIdle()
+        // Back where the rider left it: Settings, not the page it was first opened on (Codex, #607).
+        composeRule.onNodeWithTag("disruptionsSummaryPage").assertDoesNotExist()
+        composeRule.onNodeWithTag("disruptionsSummaryRow").assertIsDisplayed()
+    }
+
+    @Test
     fun the_disruptions_summary_says_nothing_until_its_choices_are_read() {
         composeRule.setContent {
             StopDashTheme {
