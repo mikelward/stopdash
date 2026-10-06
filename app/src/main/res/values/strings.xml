@@ -129,11 +129,62 @@
     <string name="home_disruptions_more" tools:ignore="MissingTranslation">+%1$d</string>
     <!-- On the home screen's lines page, a line whose stops are no longer near since it opened. -->
     <string name="home_lines_gone" tools:ignore="MissingTranslation">No longer nearby</string>
-    <!-- Click label of a disrupted line on the trip's lines page: it opens TfL's reason. -->
+    <!-- Click label of a line on the lines page: it opens the line's own page, with its map. -->
     <!-- TODO: translate -->
-    <string name="trip_lines_reason" tools:ignore="MissingTranslation">Show reason</string>
-    <!-- The click label on a disrupted line with no reason from TfL, which opens its page for its actions. -->
     <string name="trip_lines_line" tools:ignore="MissingTranslation">Open line</string>
+    <!-- Heading of a line's map on its page (SPEC *Line page → Map*). -->
+    <!-- TODO: translate -->
+    <string name="line_map_title" tools:ignore="MissingTranslation">Map</string>
+    <!-- Beside the map's heading: unfolds every station. -->
+    <!-- TODO: translate -->
+    <string name="line_map_show_all" tools:ignore="MissingTranslation">Show all stations</string>
+    <!-- Beside the map's heading once something is unfolded: folds it back as it opened. -->
+    <!-- TODO: translate -->
+    <string name="line_map_fold" tools:ignore="MissingTranslation">Fold</string>
+    <!-- In place of the map while the line's route data loads. -->
+    <!-- TODO: translate -->
+    <string name="line_map_loading" tools:ignore="MissingTranslation">Loading map…</string>
+    <!-- In place of the map for a line whose routes can't be drawn (a loop with no end). -->
+    <!-- TODO: translate -->
+    <string name="line_map_unavailable" tools:ignore="MissingTranslation">No map for this line</string>
+    <!-- In place of the map when the line's route data couldn't be loaded, with why. -->
+    <!-- TODO: translate -->
+    <string name="line_map_failed_offline" tools:ignore="MissingTranslation">Couldn\'t load the map — you\'re offline</string>
+    <!-- TODO: translate -->
+    <string name="line_map_failed_rate_limited" tools:ignore="MissingTranslation">Couldn\'t load the map — TfL is rate-limiting</string>
+    <!-- TODO: translate -->
+    <string name="line_map_failed_unreachable" tools:ignore="MissingTranslation">Couldn\'t load the map — can\'t reach TfL</string>
+    <!-- TODO: translate -->
+    <string name="line_map_failed_key_rejected" tools:ignore="MissingTranslation">Couldn\'t load the map — TfL rejected your API key</string>
+    <!-- A fold of stations on one track, by its first and last: "Burnt Oak to Chalk Farm". -->
+    <!-- TODO: translate -->
+    <string name="line_map_run" tools:ignore="MissingTranslation">%1$s to %2$s</string>
+    <!-- Under a station on the map whose every track is closed. -->
+    <!-- TODO: translate -->
+    <string name="line_map_no_service" tools:ignore="MissingTranslation">No service</string>
+    <!-- TODO: translate -->
+    <string name="line_map_no_service_one_way" tools:ignore="MissingTranslation">No service one way</string>
+    <!-- A screen reader's word for a station on the map with a closed track drawn to it, still served. -->
+    <!-- TODO: translate -->
+    <string name="line_map_beside_closure" tools:ignore="MissingTranslation">Next to a closure</string>
+    <!-- Under the map's heading when the closure the page shows can't be placed on the map. -->
+    <!-- TODO: translate -->
+    <string name="line_map_closure_not_placed" tools:ignore="MissingTranslation">This closure isn\'t on the map</string>
+    <!-- A screen reader's word for a starred station on the map, which draws a star. -->
+    <!-- TODO: translate -->
+    <string name="line_map_starred" tools:ignore="MissingTranslation">Starred</string>
+    <!-- Under a fold on the map: how many stations it holds. -->
+    <!-- TODO: translate -->
+    <plurals name="line_map_stations" tools:ignore="MissingTranslation">
+        <item quantity="one">%d station</item>
+        <item quantity="other">%d stations</item>
+    </plurals>
+    <!-- Click label of a fold on the map: it shows the stations folded into it. -->
+    <!-- TODO: translate -->
+    <plurals name="line_map_show" tools:ignore="MissingTranslation">
+        <item quantity="one">Show %d station</item>
+        <item quantity="other">Show %d stations</item>
+    </plurals>
     <!-- The trip's lines page for a trip with no ride (all walking). -->
     <!-- TODO: translate -->
     <string name="trip_lines_none" tools:ignore="MissingTranslation">No lines on this trip</string>

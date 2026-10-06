@@ -2,6 +2,7 @@ package app.stopdash.ui
 
 import app.stopdash.domain.Departure
 import app.stopdash.domain.DismissedAlert
+import app.stopdash.domain.LineMap
 import app.stopdash.domain.LineRef
 import app.stopdash.domain.LineStatus
 import app.stopdash.domain.StopArrivals
@@ -9,6 +10,7 @@ import java.time.Duration
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -71,6 +73,19 @@ class HomeLinesTest {
         // A dismissed one is never a pill, however near.
         val gone = HomeLines.row(loaded, mapOf("near" to 50.0), tube(good + ("central" to central)), setOf(DismissedAlert.ofLineStatus(severe)), now)
         assertEquals(listOf("central"), gone.lines.map { it.lineId })
+    }
+
+    @Test
+    fun `the rider's starred stops ride with the row, for a line's map to keep`() {
+        // Big interchanges stand in for the rider's own.
+        val starred = setOf(app.stopdash.domain.StarredRow("940GZZLUKSX", "victoria", "outbound"))
+        val journey = app.stopdash.domain.StarredJourney(
+            from = app.stopdash.domain.JourneyEnd("940GZZLUBNK", "Bank", areaId = "HUBBAN"),
+            to = app.stopdash.domain.JourneyEnd("940GZZLUWLO", "Waterloo"),
+            lineId = "northern",
+        )
+        val row = HomeLines.row(null, emptyMap(), tube(good), emptySet(), now, starred = starred, journeys = listOf(journey))
+        assertEquals(setOf("940GZZLUKSX", "940GZZLUBNK", "HUBBAN", "940GZZLUWLO"), row.starredStops)
     }
 
     @Test
@@ -177,6 +192,24 @@ class HomeLinesTest {
         // One way still standing keeps it on the row.
         val oneWay = tubeRow(loaded, mapOf("near" to 50.0), tube(), setOf(DismissedAlert.ofLineStatus(eastbound)), now)
         assertTrue("73" in oneWay.lines.map { it.lineId })
+    }
+
+    @Test
+    fun `a worse alert dismissed while a milder one stands is named beside it, and keys its map`() {
+        // Severe delays one way, minor the other; the rider dismissed the severe, as on a trip (Codex, #606).
+        val severe = LineStatus("73", 6, "Severe Delays", fullText = "Roadworks eastbound")
+        val minor = LineStatus("73", 9, "Minor Delays", fullText = "Roadworks westbound")
+        val lineWide = severe.copy(byDirection = mapOf("outbound" to severe, "inbound" to minor))
+        val loaded = DeparturesUiState.Loaded(
+            listOf(stop("near", "73" to "bus")), now, lineStatuses = mapOf("73" to lineWide), determinedLineIds = setOf("73"),
+        )
+        val line = row(tubeRow(loaded, mapOf("near" to 50.0), tube(), setOf(DismissedAlert.ofLineStatus(severe)), now), "73")
+        assertFalse(line.dismissed)
+        assertEquals("Minor Delays", line.status?.description)
+        assertEquals("Severe Delays", line.quieted?.description)
+        assertEquals(LineMap.alertKey(line.status, line.quieted), line.mapKey)
+        // Nothing dismissed: nothing named beside it.
+        assertNull(row(tubeRow(loaded, mapOf("near" to 50.0), tube(), emptySet(), now), "73").quieted)
     }
 
     @Test

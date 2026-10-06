@@ -593,4 +593,4 @@ internal fun lineAccentColor(lineId: String, mode: String, lineName: String): Co
         ?: overgroundAccentColor(lineId)
 
 /** The boarding stop's "you are here" dot — the familiar map-location blue, the same in both themes. */
-private val CurrentStopBlue = Color(0xFF1A73E8)
+internal val CurrentStopBlue = Color(0xFF1A73E8)
