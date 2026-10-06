@@ -1077,6 +1077,92 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `the favorites' lines are asked about with the list's own, wherever their stops are`() = runTest(dispatcher) {
+        // No network chosen; a starred bus and a journey's line no fetched stop declares, asked in the
+        // list's own request, so they cost none of their own (Codex, #640).
+        val client = object : HubLinesClient() {
+            override fun answer(lineIds: Collection<String>): List<LineStatus> = lineIds.map { LineStatus(it, 10, "Good Service") }
+        }
+        val vm = MainViewModel(
+            client, listOf(seeds[0].copy(lines = listOf(LineRef("victoria", "Victoria", "tube")))), clock = { now }, io = dispatcher,
+            alwaysNetworks = { emptySet() }, favoriteLines = { setOf("38", "elizabeth") },
+        )
+        advanceUntilIdle()
+
+        val always = checkNotNull(vm.always.value)
+        assertEquals(setOf("38", "elizabeth"), always.askedFor)
+        assertEquals(setOf("38", "elizabeth"), always.statuses.keys)
+        assertTrue(client.statusCalls.first().containsAll(listOf("victoria", "38", "elizabeth")))
+    }
+
+    @Test
+    fun `the favorites' lines are asked about even when no stop declares a line`() = runTest(dispatcher) {
+        // A stop with no declared line (its departures name theirs), and a far favorite: the refresh still
+        // asks about the favorite, or nothing would renew its verdict (Codex, #640).
+        val client = object : HubLinesClient() {
+            override fun answer(lineIds: Collection<String>): List<LineStatus> = lineIds.map { LineStatus(it, 10, "Good Service") }
+        }
+        val vm = MainViewModel(
+            client, listOf(seeds[0].copy(lines = emptyList())), clock = { now }, io = dispatcher,
+            alwaysNetworks = { emptySet() }, favoriteLines = { setOf("elizabeth") },
+        )
+        advanceUntilIdle()
+        assertTrue(client.statusCalls.any { "elizabeth" in it })
+        assertEquals(setOf("elizabeth"), checkNotNull(vm.always.value).statuses.keys)
+    }
+
+    @Test
+    fun `the favorites' lines are asked about with no stop at all`() = runTest(dispatcher) {
+        // Nothing near or watched, only a far favorite: the refresh still renews its verdict (Codex, #640).
+        val client = object : HubLinesClient() {
+            override fun answer(lineIds: Collection<String>): List<LineStatus> = lineIds.map { LineStatus(it, 10, "Good Service") }
+        }
+        val vm = MainViewModel(client, emptyList(), clock = { now }, io = dispatcher, alwaysNetworks = { emptySet() }, favoriteLines = { setOf("elizabeth") })
+        advanceUntilIdle()
+        client.statusCalls.clear()
+        vm.refresh()
+        advanceUntilIdle()
+        assertTrue(client.statusCalls.any { "elizabeth" in it })
+    }
+
+    @Test
+    fun `the favorites' lines are asked about when every stop's arrivals fail, the list's own not`() = runTest(dispatcher) {
+        // Every departures request fails on a cold load: the stops' own lines aren't asked about (nothing of
+        // theirs is shown), but the always-covered ones still are, or nothing would renew them (Codex, #640).
+        val client = object : HubLinesClient() {
+            override suspend fun arrivals(stopId: String): List<Departure> = throw java.io.IOException("offline")
+        }
+        val vm = MainViewModel(
+            client, listOf(seeds[0].copy(lines = listOf(LineRef("victoria", "Victoria", "tube")))), clock = { now }, io = dispatcher,
+            alwaysNetworks = { emptySet() }, favoriteLines = { setOf("elizabeth") },
+        )
+        advanceUntilIdle()
+        assertEquals(listOf(setOf("elizabeth")), client.statusCalls.map { it.toSet() })
+        assertEquals(setOf("elizabeth"), checkNotNull(vm.always.value).statuses.keys)
+    }
+
+    @Test
+    fun `a journey starred after the load is asked about at once, not at the next refresh`() = runTest(dispatcher) {
+        // A far journey starred once the list is in: its origin isn't fetched, so no refresh would start;
+        // the screen calls checkAlways on the change, and that asks about the new line alone (Codex, #640).
+        val client = object : HubLinesClient() {
+            override fun answer(lineIds: Collection<String>): List<LineStatus> = lineIds.map { LineStatus(it, 10, "Good Service") }
+        }
+        var favorites = emptySet<String>()
+        val vm = MainViewModel(
+            client, listOf(seeds[0].copy(lines = listOf(LineRef("victoria", "Victoria", "tube")))), clock = { now }, io = dispatcher,
+            alwaysNetworks = { emptySet() }, favoriteLines = { favorites },
+        )
+        advanceUntilIdle()
+        client.statusCalls.clear()
+        favorites = setOf("elizabeth")
+        vm.checkAlways()
+        advanceUntilIdle()
+        assertEquals(listOf(setOf("elizabeth")), client.statusCalls.map { it.toSet() })
+        assertEquals(setOf("elizabeth"), checkNotNull(vm.always.value).statuses.keys)
+    }
+
+    @Test
     fun `a cold load vouches for the declared lines while a stop is still out`() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
         val client = LinedClient(lined[1].id, gate)
@@ -6121,12 +6207,16 @@ class MainViewModelTest {
             }
         }
         val readOnWorker = mutableListOf<Boolean>()
+        val favoritesOnWorker = mutableListOf<Boolean>()
         val vm = MainViewModel(
             client, listOf(seeds[0].copy(lines = listOf(LineRef("victoria", "Victoria", "tube")))), clock = { now }, io = dispatcher,
             compute = worker, alwaysNetworks = { readOnWorker += onWorker.get(); setOf("tube", "dlr") },
+            favoriteLines = { favoritesOnWorker += onWorker.get(); emptySet() },
         )
         advanceUntilIdle()
         assertEquals(listOf(true), readOnWorker.distinct())
+        // The favorites' lines are read there too: their store and the walk over it (Codex, #640).
+        assertEquals(listOf(true), favoritesOnWorker.distinct())
         assertEquals(chosen, checkNotNull(vm.always.value).askedFor)
         assertTrue("dlr" in client.statusCalls.first())
         // A list with no row asks about only its own lines.

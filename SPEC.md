@@ -2206,7 +2206,7 @@ so Home and the favorites keep the top, scrolling with the list as they do: the 
 counted as "+N", with no chevron. The pills put the rider's own lines first, whatever their
 severity: those near them and those of their starred rows and journeys, worst first within each group,
 so "+N" takes the far ones first; a dismissed line is never a pill. Its page goes worst first, the
-rider's own ahead of the rest when as bad (maintainer, 2026-10-05). It covers every line of the networks the rider chose (below; every one by default) and each line with a departure from a stop within the walking
+rider's own ahead of the rest when as bad (maintainer, 2026-10-05). It covers the rider's own lines (maintainer, 2026-10-06: a whole network only by choice) — each line of their favorite journeys wherever its stop, asked about in the list's same line-status request whatever the stops' departures did, so a far journey not yet fetched is judged too, and each starred row's line while its stop is in the list, since a star ranks only there (Codex, #640) — every line of the networks the rider chose (below; none by default) and each line with a departure from a stop within the walking
 reach (500 m, the near-me list's eager radius); on the watched list, which has no distances, every
 watched stop's lines. A line the list shows goes by the list's own check; the chosen networks' other lines are
 asked in the list's same line-status request and share its reuse window, so the row costs no request
@@ -2226,7 +2226,7 @@ to Settings. There a **Show on home screen** switch turns the row off (on by def
 the banner comes back with it off); the row waits for the stored choice, so one turned off never
 flashes up. Under it, **Always include** picks the networks
 covered whatever's near (maintainer, 2026-10-05): Tube, Overground, Elizabeth line,
-DLR and Tram, all on by default (their 20 lines ride the list's one status request, splitting it
+DLR and Tram, none on by default (maintainer, 2026-10-06: every one was, which filled the row with lines far from the rider's own) (their 20 lines ride the list's one status request, splitting it
 only when many nearby lines push it past TfL's length limit); the lines near the rider are always included, a choice of none leaving them alone. A
 network chosen with no current check of its lines reads "Checking…" while it's asked about, at once
 on the choice (or on turning the row on), not at the next refresh: one line-status request at most,

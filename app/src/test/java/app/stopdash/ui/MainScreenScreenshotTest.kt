@@ -297,6 +297,7 @@ class MainScreenScreenshotTest {
                 favoritePlaces = places,
                 showDisruptionsRow = true,
                 always = always,
+                alwaysNetworks = setOf("tube"),
             )
         }
         // Heard whole, every disrupted line named, whatever fits on the line.

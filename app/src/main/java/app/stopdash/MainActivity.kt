@@ -163,6 +163,7 @@ import app.stopdash.domain.currentPatterns
 import app.stopdash.domain.stopPlace
 import app.stopdash.telemetry.TelemetryConsent
 import app.stopdash.telemetry.UsageEvents
+import app.stopdash.ui.HomeLines
 import app.stopdash.ui.ARRIVALS_REUSE
 import app.stopdash.ui.AboutDialog
 import app.stopdash.ui.ActiveTripTracker
@@ -2079,6 +2080,8 @@ class MainActivity : ComponentActivity() {
                             // The networks the disruptions row always covers, asked about with the list's own lines.
                             // None while the row is off: nothing shows them, so they're not asked about (Codex, #592).
                             alwaysNetworks = { if (DisruptionsRowSetting.loaded()) SummaryNetworksSetting.loaded() else emptySet() },
+                            // The favorites' lines, covered wherever their stop is; none while the row is off.
+                            favoriteLines = { if (DisruptionsRowSetting.loaded()) favoriteLineIds(appContext) else emptySet() },
                             lineStatusReuse = LINE_STATUS_REUSE,
                             // Stops past the walking reach refresh every other minute on the timer.
                             stopDistanceMeters = ready.distanceMeters,
@@ -2096,13 +2099,20 @@ class MainActivity : ComponentActivity() {
             val journeyDestinationStops by viewModel.journeyDestinationStops.collectAsStateWithLifecycle()
             val journeyDestinationsUnknown by viewModel.journeyDestinationsUnknown.collectAsStateWithLifecycle()
             val departuresRefreshing by viewModel.refreshing.collectAsStateWithLifecycle()
-            // A network just chosen, or the row just turned on, is checked at once, not at the next refresh:
-            // on each change, and each time this shows (a return from Settings, where the choice was made,
-            // included). A no-op while every chosen line has been asked about (Codex, #599).
+            // A network just chosen, the row just turned on, or a journey just starred (one far away, whose
+            // origin no refresh fetches) is checked at once, not at the next refresh: on each change, and each
+            // time this shows (a return from Settings, where the choice was made, included). A no-op while
+            // every chosen line has been asked about (Codex, #599, #640).
             LaunchedEffect(viewModel) {
-                combine(DisruptionsRowSetting.changes, SummaryNetworksSetting.changes) { on, networks -> on to networks }
+                // The journeys' lines, walked off the main thread; an unreadable store is logged by the store and
+                // reads as none here, the refresh's own read standing.
+                val journeyLines = HomeLines.journeyLineIds(
+                    DataStoreFavoriteJourneysStore.from(appContext, warn = ::logStarWarning).journeys(),
+                    Workers.compute,
+                )
+                combine(DisruptionsRowSetting.changes, SummaryNetworksSetting.changes, journeyLines) { on, networks, lines -> Triple(on, networks, lines) }
                     .distinctUntilChanged()
-                    .collect { (on, _) -> if (on) viewModel.checkAlways() }
+                    .collect { (on, _, _) -> if (on) viewModel.checkAlways() }
             }
             // A relocate holds the indicator on for the whole fresh fix, not just the departures
             // fetch that follows a same-set confirmation.
@@ -4514,6 +4524,22 @@ private suspend fun loadFavoritePlaces(context: Context): List<FavoritePlace>? =
         logDepartureWarning("find a station: favorite places unreadable (${e::class.simpleName})")
         null
     }
+
+/**
+ * The lines of the rider's favorite journeys, for the disruptions row to ask about wherever their stops are
+ * (SPEC *Disruptions*); a starred row's line is covered while its stop is in the list, by the list's own
+ * check. A store that can't be read is logged by kind alone and left out: its lines then read as unknown only
+ * where the list shows them. Call off the main thread.
+ */
+private suspend fun favoriteLineIds(context: Context): Set<String> {
+    val journeys = try {
+        DataStoreFavoriteJourneysStore.from(context, warn = ::logStarWarning).journeys().first().orEmpty()
+    } catch (e: IOException) {
+        logStarWarning("disruptions row: favorite journeys unreadable (${e::class.simpleName})")
+        emptyList()
+    }
+    return journeys.mapNotNullTo(HashSet()) { it.lineId.takeIf(String::isNotBlank) }
+}
 
 private inline fun <T> readOrEmpty(what: String, read: () -> List<T>): List<T> =
     try {
